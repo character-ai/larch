@@ -4,12 +4,12 @@
 
 ## Subcommands
 
-- `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
+- `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--stall-step <N>] [--phase <token>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
   - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress finalize-state or session-env stalls.
   - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
-  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `dirty-tree`, `first-fixer-non-health`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`.
+  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `dirty-state-after-timeout`, `dirty-tree`, `first-fixer-non-health`, `main-branch-post-dispatch`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`.
   - `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only. Argv-only bail reasons can still route transient-infra and dispatch-failure classifications when their text matches classifier evidence.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
@@ -92,7 +92,7 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 - `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or, when no validated detail log is available, the persisted state/session evidence. Standalone auth-failure wording is not treated as transient.
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
-- `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
+- `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, orchestrator-envelope-invalid evidence, or a known Step-2 dispatcher bail token.
 - `ci-fix-exhausted`: `BAIL_REASON=ci-fix-exhausted` together with a readable validated failure-detail log. The CI fix loop exhausted its retry budget, but the surfaced failing job and redacted log tail are actionable, so the main agent applies an inline fix and re-ships (`RESUME_HINT=step8-shippr`). The evidence-specific classes above (test/lint/dispatch/transient) still win when the log matches a more precise signature; without a readable detail log the stall stays `unrecoverable`.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
 - `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.

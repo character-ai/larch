@@ -15,8 +15,8 @@ Invariants:
 
 Case map:
 
-- Cases 1-7 cover classifier branches and retry behavior: transient infra, pytest and jest test failures, lint failure, dispatch failure, contract failure, unrecoverable terminal bail reasons, `NOTE=` evidence, bail-reason-only evidence, same-cause-repeat with `RESUME_HINT=none`, doc-table parity for retry caps, and symbolic `STALL_STEP` resume-hint mappings including the non-resumable `12d` / `bump-branch-guard` cases.
-- Case 8 covers missing-`ship-pr-state.sh` behavior in both forms: absent-state-without-recoverable-evidence stays unrecoverable, while the session-env-only stall path (`STALL_TRACKING=true` plus recoverable bail/detail signal) still classifies recoverably.
+- Cases 1-7 cover classifier branches and retry behavior: transient infra, pytest and jest test failures, lint failure, dispatch failure, contract failure, unrecoverable terminal bail reasons, `NOTE=` evidence, bail-reason-only evidence, same-cause-repeat with `RESUME_HINT=none`, doc-table parity for retry caps, argv-only Step 2 hard-bail context, known dispatcher bail-token classification, and symbolic `STALL_STEP` resume-hint mappings including the non-resumable `12d` / `bump-branch-guard` cases.
+- Case 8 covers missing-`ship-pr-state.sh` behavior in both forms: absent-state-without-recoverable-evidence stays unrecoverable, while the session-env-only stall path (`STALL_TRACKING=true` plus recoverable bail/detail signal) still classifies recoverably. It also covers finalize-state fallback, including a finalize-only `BAIL_REASON`.
 - Case 9 covers invalid `--failure-detail-log` validation branches and asserts distinct stderr diagnostics for relative, outside-tmpdir, symlink, non-regular, and oversize paths.
 - Cases 10-12 cover attempts-file idempotency and larch-dev-clone detection, including fork suppression.
 - Case 13 additionally covers attempts-file containment across all entrypoints: init/record/classify reject outside-tmpdir and symlinked attempts paths before reading or writing.
@@ -28,4 +28,4 @@ Case map:
 - Case 21 covers exit-code boundaries, malformed and symlinked state rejection, and rejection of out-of-tmpdir or symlinked classification/body/output files.
 - Case 22 covers clear/seed durability: keyed and keyless clear paths, symlink and malformed guards, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.
 
-The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns a non-`none` resume hint from the four-layer Step 18a evidence order.
+The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns sanitized bail/step output and a non-`none` resume hint from the four-layer Step 18a evidence order.

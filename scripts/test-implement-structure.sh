@@ -181,12 +181,12 @@ grep -Fq 'then run **post-dispatch branch assertion** (external-implementer path
   || fail "SKILL.md must retain post-dispatch branch assertion contract (git-current-branch.sh + CURRENT_BRANCH_POST_DISPATCH)"
 grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
   || fail "SKILL.md must document FINAL_BAIL_REASON=main-branch-post-dispatch (post-dispatch mismatch bail)"
-grep -Fq 'set `FINAL_BAIL_REASON=orchestrator-envelope-invalid`, set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid`, set `STALL_TRACKING=true`' "$SKILL_MD" \
-  || fail "SKILL.md must mirror orchestrator-envelope-invalid into IMPLEMENT_BAIL_REASON before Step 12d"
-grep -Fq 'mirror dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, set `STALL_TRACKING=true` unconditionally, and bail to Step 12d' "$SKILL_MD" \
-  || fail "SKILL.md STATUS=bailed must mirror REASON into both bail variables and set STALL_TRACKING unconditionally"
-grep -Fq 'set `FINAL_BAIL_REASON=main-branch-post-dispatch`, set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, set `STALL_TRACKING=true`' "$SKILL_MD" \
-  || fail "SKILL.md post-dispatch branch mismatch must mirror IMPLEMENT_BAIL_REASON"
+grep -Fq 'set `FINAL_BAIL_REASON=orchestrator-envelope-invalid`, set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true`' "$SKILL_MD" \
+  || fail "SKILL.md must mirror orchestrator-envelope-invalid into IMPLEMENT_BAIL_REASON and preserve Step 2 context before Step 12d"
+grep -Fq 'mirror dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true` unconditionally, and bail to Step 12d' "$SKILL_MD" \
+  || fail "SKILL.md STATUS=bailed must mirror REASON into bail variables and preserve Step 2 hard-bail context"
+grep -Fq 'set `FINAL_BAIL_REASON=main-branch-post-dispatch`, set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true`' "$SKILL_MD" \
+  || fail "SKILL.md post-dispatch branch mismatch must mirror IMPLEMENT_BAIL_REASON and preserve Step 2 context"
 grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18a stall recovery heading"
 grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \

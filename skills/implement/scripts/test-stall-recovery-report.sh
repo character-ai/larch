@@ -185,6 +185,18 @@ run_capture "$SANDBOX/case7j.out" "$SCRIPT" classify --implement-tmpdir "$dir" -
 assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7j.out")" "7: FINAL_BAIL_REASON fallback wrapper classifies dispatch"
 assert_eq wrapper-validation-failure "$(kv BAIL_REASON "$SANDBOX/case7j.out")" "7: FINAL_BAIL_REASON fallback wrapper renders bail"
 unset IMPLEMENT_BAIL_REASON FINAL_BAIL_REASON
+dir=$(make_tmp case7k)
+run_capture "$SANDBOX/case7k.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true --stall-step 2 --phase implementation --bail-reason dirty-state-after-timeout
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7k.out")" "7: dirty-state-after-timeout is dispatch failure, not transient"
+assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7k.out")" "7: argv-only Step 2 hard-bail resumes implementation"
+assert_eq 2 "$(kv STALL_STEP "$SANDBOX/case7k.out")" "7: argv-only Step 2 hard-bail preserves stall step"
+assert_eq implementation "$(kv PHASE "$SANDBOX/case7k.out")" "7: argv-only Step 2 hard-bail preserves phase"
+assert_eq dirty-state-after-timeout "$(kv BAIL_REASON "$SANDBOX/case7k.out")" "7: dirty-state-after-timeout renders allowlisted bail"
+dir=$(make_tmp case7l)
+write_state "$dir" 2 implementation
+run_capture "$SANDBOX/case7l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason main-branch-post-dispatch
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch classifies dispatch"
+assert_eq main-branch-post-dispatch "$(kv BAIL_REASON "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch renders allowlisted bail"
 while IFS='|' read -r klass attempts delay; do
     run_capture "$SANDBOX/retry-$klass.out" "$SCRIPT" retry-policy --class "$klass"
     assert_eq "$klass" "$(kv FAILURE_CLASS "$SANDBOX/retry-$klass.out")" "7: retry-policy class $klass"
@@ -253,6 +265,17 @@ assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case_finalize_fallback.o
 assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case_finalize_fallback.out")" "finalize fallback resume hint"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall tracking"
 assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall step"
+
+dir=$(make_tmp case_finalize_bail_reason)
+cat >"$dir/finalize-state.sh" <<'STATE'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=first-fixer-non-health
+EXIT_CODE=3
+STATE
+run_capture "$SANDBOX/case_finalize_bail_reason.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq first-fixer-non-health "$(kv BAIL_REASON "$SANDBOX/case_finalize_bail_reason.out")" "8: finalize-state bail reason renders"
 
 dir=$(make_tmp case8finalize)
 cat >"$dir/ship-pr-state.sh" <<'STATE'
