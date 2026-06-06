@@ -14,7 +14,7 @@ TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/larch-step0b-recovery.XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
 
 merge_run_params() {
-  local out="$1" partition_requested="$2" brainstorm_requested="$3" manual_requested="$4"
+  local out="$1" partition_requested="$2" brainstorm_requested="$3"
   local _rp_merge _rp_err
   _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
   _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
@@ -22,8 +22,7 @@ merge_run_params() {
   jq -c \
     --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
     --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
-    --argjson merge_m "$([[ "$manual_requested" == true ]] && echo true || echo false)" \
-    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' \
+    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b)' \
     "$out" >"$_rp_merge" 2>"$_rp_err" || { cat "$_rp_err" >&2; rm -f "$_rp_merge" "$_rp_err"; return 1; }
   mv -f "$_rp_merge" "$out"
   rm -f "$_rp_err"
@@ -32,10 +31,10 @@ merge_run_params() {
 # Replicates design-init-runparams.sh Step 0b outer guard: recovery runs only when at least one argv flag
 # is true and jq exists; when the output file is missing it warns and does not recreate it.
 recovery_merge_if_needed() {
-  local out="$1" partition_requested="$2" brainstorm_requested="$3" manual_requested="$4"
-  if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+  local out="$1" partition_requested="$2" brainstorm_requested="$3"
+  if [[ "$partition_requested" == true || "$brainstorm_requested" == true ]] && command -v jq >/dev/null 2>&1; then
     if [[ -f "$out" ]]; then
-      merge_run_params "$out" "$partition_requested" "$brainstorm_requested" "$manual_requested"
+      merge_run_params "$out" "$partition_requested" "$brainstorm_requested"
     else
       printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
     fi
@@ -43,60 +42,51 @@ recovery_merge_if_needed() {
 }
 
 write_then_recover() {
-  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_manual="$6"
+  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5"
   if ! "$WRITER" --classification "$classification" \
-      --partition-requested false --brainstorm-requested false --manual-gate-b false \
+      --partition-requested false --brainstorm-requested false \
       --output "$out" >/dev/null 2>&1; then
     return 1
   fi
-  recovery_merge_if_needed "$out" "$r_partition" "$r_brainstorm" "$r_manual" || return 1
+  recovery_merge_if_needed "$out" "$r_partition" "$r_brainstorm" || return 1
   : > "$spy"
 }
 
-# Case 1: successful write; manual-only argv => manual=true (FINDING_9 success path).
+# Case 1: successful write; partition argv merges true.
 OUT1="$TMPROOT/case1.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT1" >/dev/null
-recovery_merge_if_needed "$OUT1" false false true
-jq -e '.partition_requested == false and .brainstorm_requested == false and .manual_gate_b == true' "$OUT1" >/dev/null \
-  || fail "case1: manual-only argv merge produced $(cat "$OUT1")"
-
-# Case 2: stored manual=true; argv partition=true + manual=false => manual=false when recovery runs.
-# Reachable runtime shape: outer guard true because partition_requested=true; manual overwrite
-# clears stale persisted manual (SKILL.md Step 0b rationale).
-OUT2="$TMPROOT/case2.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b true --output "$OUT2" >/dev/null
-recovery_merge_if_needed "$OUT2" true false false
-jq -e '.manual_gate_b == false and .partition_requested == true' "$OUT2" >/dev/null \
-  || fail "case2: manual overwrite under reachable guard failed; got $(cat "$OUT2")"
+"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
+recovery_merge_if_needed "$OUT1" true false
+jq -e '.partition_requested == true and .brainstorm_requested == false and (has("manual_gate_b") | not)' "$OUT1" >/dev/null \
+  || fail "case1: partition argv merge produced $(cat "$OUT1")"
 
 # Case 3: stored partition=true; argv partition=false, brainstorm=true => OR-merge preserves partition.
 OUT3="$TMPROOT/case3.json"
-"$WRITER" --classification SIMPLE --partition-requested true --brainstorm-requested false --manual-gate-b false --output "$OUT3" >/dev/null
-recovery_merge_if_needed "$OUT3" false true false
-jq -e '.partition_requested == true and .brainstorm_requested == true and .manual_gate_b == false' "$OUT3" >/dev/null \
+"$WRITER" --classification SIMPLE --partition-requested true --brainstorm-requested false --output "$OUT3" >/dev/null
+recovery_merge_if_needed "$OUT3" false true
+jq -e '.partition_requested == true and .brainstorm_requested == true and (has("manual_gate_b") | not)' "$OUT3" >/dev/null \
   || fail "case3: partition OR-merge regressed; got $(cat "$OUT3")"
 
 # Case 4: stored brainstorm=true; guard enters via partition argv true; brainstorm OR-merge preserves.
 OUT4="$TMPROOT/case4.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested true --manual-gate-b false --output "$OUT4" >/dev/null
-recovery_merge_if_needed "$OUT4" true false false
-jq -e '.brainstorm_requested == true and .partition_requested == true and .manual_gate_b == false' "$OUT4" >/dev/null \
+"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
+recovery_merge_if_needed "$OUT4" true false
+jq -e '.brainstorm_requested == true and .partition_requested == true and (has("manual_gate_b") | not)' "$OUT4" >/dev/null \
   || fail "case4: brainstorm OR-merge regressed; got $(cat "$OUT4")"
 
 # Case 5: all-false argv => outer guard short-circuits; file unchanged (false-branch no-op).
 # Proves the guard's false-branch is exercised so a loosened guard would fail this assertion.
 OUT5="$TMPROOT/case5.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT5" >/dev/null
+"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT5" >/dev/null
 before_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
-recovery_merge_if_needed "$OUT5" false false false
+recovery_merge_if_needed "$OUT5" false false
 after_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 [[ "$before_sum" == "$after_sum" ]] || fail "case5: all-false guard mutated file; before=$before_sum after=$after_sum"
-jq -e '.partition_requested == false and .brainstorm_requested == false and .manual_gate_b == false' "$OUT5" >/dev/null \
+jq -e '.partition_requested == false and .brainstorm_requested == false and (has("manual_gate_b") | not)' "$OUT5" >/dev/null \
   || fail "case5: all-false post-state mismatch"
 
 # Case 6: missing run-params.json under a true argv flag warns and does not recreate fallback defaults.
 OUT6="$TMPROOT/case6.json"
-warning_case6=$(recovery_merge_if_needed "$OUT6" true false false)
+warning_case6=$(recovery_merge_if_needed "$OUT6" true false)
 [[ ! -e "$OUT6" ]] || fail "case6: missing-file degraded path recreated $OUT6"
 [[ "$warning_case6" == "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**" ]] \
   || fail "case6: missing-file degraded warning drifted; got: $warning_case6"
@@ -105,7 +95,7 @@ warning_case6=$(recovery_merge_if_needed "$OUT6" true false false)
 # ran; captured stdout proves the missing-file recovery warning was not emitted.
 OUT7="$TMPROOT/case7.json"; SPY7="$TMPROOT/case7-recovery-reached"; rm -f "$SPY7"
 set +e
-out7_stdout=$(write_then_recover "$OUT7" BOGUS "$SPY7" false false true 2>/dev/null)
+out7_stdout=$(write_then_recover "$OUT7" BOGUS "$SPY7" true false 2>/dev/null)
 rc7=$?
 set -e
 [[ "$rc7" -ne 0 ]] || fail "case7: failing writer must abort before recovery; rc=$rc7"
@@ -114,15 +104,13 @@ set -e
 [[ "$out7_stdout" != *"refusing to recreate it with fallback defaults"* ]] \
   || fail "case7: missing-file recovery warning emitted after writer failure (recovery not bypassed)"
 
-# Case 7b (positive control): a successful write reaches AND completes recovery. Writer writes
-# manual_gate_b=false; recovery (manual=true) must FLIP it to true. Spy present only because
-# recovery returned 0.
+# Case 7b (positive control): a successful write reaches AND completes recovery.
 OUT7B="$TMPROOT/case7b.json"; SPY7B="$TMPROOT/case7b-recovery-reached"; rm -f "$SPY7B"
-set +e; write_then_recover "$OUT7B" SIMPLE "$SPY7B" false false true; rc7b=$?; set -e
+set +e; write_then_recover "$OUT7B" SIMPLE "$SPY7B" true false; rc7b=$?; set -e
 [[ "$rc7b" -eq 0 ]] || fail "case7b: successful write_then_recover returned $rc7b"
 [[ -e "$SPY7B" ]] || fail "case7b: recovery did not complete after successful write (spy absent)"
-jq -e '.manual_gate_b == true' "$OUT7B" >/dev/null \
-  || fail "case7b: recovery did not flip manual_gate_b false->true; got $(cat "$OUT7B")"
+jq -e '.partition_requested == true' "$OUT7B" >/dev/null \
+  || fail "case7b: recovery did not merge partition true; got $(cat "$OUT7B")"
 
 # --- Production driver integration (stubbed plugin scripts) ---
 FAKE_PLUGIN="$TMPROOT/fake-plugin"
@@ -144,7 +132,7 @@ STUB
 chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 
 run_design_init() {
-  local dtmp="$1" partition="$2" brainstorm="$3" manual="$4" extra_path="${5:-}"
+  local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}"
   mkdir -p "$dtmp"
   export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
   local _path="$extra_path"
@@ -156,21 +144,20 @@ run_design_init() {
     --claude-pid 424242 \
     --classification SIMPLE \
     --partition-requested "$partition" \
-    --brainstorm-requested "$brainstorm" \
-    --manual-requested "$manual"
+    --brainstorm-requested "$brainstorm"
 }
 
-# Case 8: invoke production driver; manual argv merges into run-params.json.
+# Case 8: invoke production driver; brainstorm argv merges into run-params.json.
 D8="$TMPROOT/driver8"
 set +e
-out8=$(run_design_init "$D8" false false true 2>&1)
+out8=$(run_design_init "$D8" false true 2>&1)
 rc8=$?
 set -e
 [[ "$rc8" -eq 0 ]] || fail "case8: design-init-runparams.sh rc=$rc8 out=$out8"
 [[ -f "$D8/run-params.json" ]] || fail "case8: missing run-params.json"
 grep -Fq 'INIT_STATUS=ok' "$D8/.design-init-runparams-result.env" \
   || fail "case8: result env missing INIT_STATUS=ok"
-jq -e '.manual_gate_b == true' "$D8/run-params.json" >/dev/null \
+jq -e '.brainstorm_requested == true and (has("manual_gate_b") | not)' "$D8/run-params.json" >/dev/null \
   || fail "case8: driver jq-merge failed; got $(cat "$D8/run-params.json")"
 
 # Case 9: rename failure is best-effort; run-params still written.
@@ -181,7 +168,7 @@ STUB
 chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 D9="$TMPROOT/driver9"
 set +e
-out9=$(run_design_init "$D9" false false false 2>&1)
+out9=$(run_design_init "$D9" false false 2>&1)
 rc9=$?
 set -e
 [[ "$rc9" -eq 0 ]] || fail "case9: rename-fail best-effort rc=$rc9 out=$out9"
@@ -212,7 +199,7 @@ chmod +x "$JQ_STUB/jq"
 D10="$TMPROOT/driver10"
 export LARCH_TEST_JQ_MERGE_FAIL=1
 set +e
-out10=$(run_design_init "$D10" false false true "$JQ_STUB:$HOST_JQ_DIR:/usr/bin:/bin:/usr/local/bin" 2>&1)
+out10=$(run_design_init "$D10" true false "$JQ_STUB:$HOST_JQ_DIR:/usr/bin:/bin:/usr/local/bin" 2>&1)
 unset LARCH_TEST_JQ_MERGE_FAIL
 rc10=$?
 set -e
@@ -232,7 +219,7 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
-printf '%s\n' '{"schema_version":3,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false,"manual_gate_b":false}' >"$out"
+printf '%s\n' '{"schema_version":3,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}' >"$out"
 printf 'RUN_PARAMS_WRITTEN=%s\n' "$out"
 exit 0
 STUB
@@ -248,7 +235,7 @@ for _cmd in bash sh dirname basename mktemp mv rm mkdir cat printf chmod; do
 done
 # jq intentionally absent from _no_jq_path
 set +e
-out11=$(run_design_init "$D11" true false false "$_no_jq_path" 2>&1)
+out11=$(run_design_init "$D11" true false "$_no_jq_path" 2>&1)
 rc11=$?
 set -e
 [[ "$rc11" -eq 0 ]] || fail "case11: jq-unavailable driver rc=$rc11 out=$out11"

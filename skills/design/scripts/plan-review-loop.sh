@@ -1476,6 +1476,7 @@ done <<< "$_tally_raw"
 if [[ "$_tally_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-tally: tally-plan-review.sh exited with rc=$_tally_rc"
     TALLY_PLAN_REVIEW_STATUS="tally-error"
+    TALLY_PLAN_REVIEW_FATAL=true
     [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     emit_findings_classification_header > "$_findings_classification_out"
     if [[ ! -s "$VOTING_TALLY_FILE" ]]; then

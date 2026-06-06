@@ -1061,7 +1061,7 @@ contains "$CONFIG_MD" 'proceeds through Step 3b, then the Step 3b completion bou
 contains "$SKILL_MD" 'repair pre-existing paused SIMPLE runs' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
 contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$SKILL_MD" 'write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`)' 'SKILL missing Gate-B-bypass triple-sentinel prose'
+contains "$SKILL_MD" 'design-step3-state.sh --gate-b-bypass' 'SKILL missing Gate-B-bypass executable helper prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.5"' 'SKILL missing Gate-B-bypass step-3.5 sentinel write'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
@@ -1227,8 +1227,8 @@ assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md design-init-runparams invocation missing --brainstorm-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MANUAL_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
-  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm OR manual"
+grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail "(2754) design-init-runparams.sh jq merge missing brainstorm_requested arm"
@@ -1489,7 +1489,12 @@ assert_folded_sentinel_writes() {
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3 —' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 3 entry fence missing'
-  assert_fence_write_before_pause "$tmp" 'step-1e' 'Step 3 entry'
+  grep -Fq 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" \
+    || fail '(21) Step 3 entry missing direct-review state helper'
+  helper_line=$(grep -nF 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" | head -1 | cut -d: -f1 || true)
+  pause_line=$(grep -nF '.pause-requested' "$tmp" | head -1 | cut -d: -f1 || true)
+  [[ -n "$helper_line" && -n "$pause_line" && "$helper_line" -lt "$pause_line" ]] \
+    || fail 'Step 3 entry direct-review helper must run before pause'
 
   extract_bash_fence_after_marker "$SKILL_MD" '### 2a.5' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 2a.5 prelude fence missing'
@@ -1634,28 +1639,10 @@ assert_backward_reentry_guards() {
   done
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3 —' >"$tmp"
-  grep -Fq 'rm -f "$DESIGN_TMPDIR/.completed/step-3"' "$tmp" \
-    || fail '(21) Step 3 entry must clear downstream step-3 sentinel'
-  grep -Fq '.completed/step-4b' "$tmp" \
-    || fail '(21) Step 3 entry must clear downstream through step-4b'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2a bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2a.5 bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2b bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2b.5 bypass package'
-  grep -Fq 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' "$tmp" \
-    || fail '(21) Step 3 entry restore/clear block must be gated on explicit re-entry marker'
-  assert_step_sentinel_inside_guard "$tmp" 'step-1e' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2a.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2b' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2b.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  for step in step-2a step-2a.5 step-2b step-2b.5; do
-    assert_fence_write_before_pause "$tmp" "$step" 'Step 3 entry'
-  done
+  grep -Fq 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" \
+    || fail '(21) Step 3 entry must delegate direct-review restore to executable helper'
+  grep -Fq 'design-step3-state.sh --direct-review-entry' "$SKILL_MD" \
+    || fail '(21) Step 3 direct-review table/prose missing helper contract'
 
   rm -f "$tmp"
 }

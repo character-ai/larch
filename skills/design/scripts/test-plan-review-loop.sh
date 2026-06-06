@@ -1291,7 +1291,7 @@ else
     unset LARCH_PLAN_REVIEW_TALLY_SH
 fi
 printf '%s\n' "$out2" | grep -q '^TALLY_PLAN_REVIEW_STATUS=tally-error$' || fail "expected tally-error after stub tally rc=2"
-printf '%s\n' "$out2" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop after tally failure"
+printf '%s\n' "$out2" | grep -q '^LOOP_STATUS=tally-error$' || fail "expected tally-error loop after tally failure"
 printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tally WARN"
 [[ -f "$D2/voting-tally.md" ]] || fail "voting-tally.md missing after stub tally failure"
 [[ -s "$D2/voting-tally.md" ]] || fail "voting-tally.md empty after stub tally failure"

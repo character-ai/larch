@@ -51,6 +51,10 @@ Emitted keys (exit **0** only):
 | `SOFT_ADVISORY` | `true` when `mechanical_churn: true` downgraded a diff-side hard trigger; `false` otherwise |
 | `HARD_TRIGGER_FIRED` | `true` or `false` |
 | `TRIGGER_REASONS` | Comma-separated tokens in **fixed priority order** `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy). Empty string when no hard threshold crossing. When mechanical churn downgraded the diff trigger, no diff reason is added. |
+| `DRIFT_TRIGGER_FIRED` | `true` when the current plan-body line count or diff count exceeds the write-once baseline by more than `LARCH_DESIGN_DRIFT_MULTIPLE`; otherwise `false` |
+| `DRIFT_MULTIPLE` | Positive integer multiple used for drift comparison; invalid env values fall back to `2` |
+| `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO` | Current-to-baseline ratios, with `inf` when a zero baseline grows above zero |
+| `BASELINE_PLAN_LINES`, `BASELINE_DIFF_LINES` | Baseline counts used for drift comparison |
 
 **Threshold semantics** (strict `>` — equality does not trip):
 
@@ -59,6 +63,12 @@ Emitted keys (exit **0** only):
 - Diff (legacy fallback): `diff_lines > 1500` when `diff_added` is absent.
 - Deletions never trip; `diff_deleted` is informational only.
 - `mechanical_churn: true` suppresses the diff hard trigger and sets `SOFT_ADVISORY=true` when a diff trigger would have fired; plan-body hard triggers are unaffected.
+
+## Drift baseline
+
+`$DESIGN_TMPDIR/drift-baseline.env` is write-once. When absent, the first successful parse writes `BASELINE_PLAN_LINES=<PLAN_LINES>` and `BASELINE_DIFF_LINES=<DIFF_LINES>` and emits `DRIFT_TRIGGER_FIRED=false` for that call. Later calls compare both axes and fire drift when **either** `PLAN_LINES` or `DIFF_LINES` is strictly greater than its baseline multiplied by `LARCH_DESIGN_DRIFT_MULTIPLE`.
+
+If the baseline file is a symlink, missing either key, or contains a non-integer value for either key, the helper emits a `WARN` and proceeds without a drift trigger for that call. It does not partially trust one key while replacing the other with the current plan size, because that would silently disable one drift axis. Zero baselines are valid: `0 → 0` has ratio `1`; `0 → positive` has ratio `inf` and exceeds any positive multiple.
 
 ## Exit codes
 

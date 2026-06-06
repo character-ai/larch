@@ -4,7 +4,7 @@
 
 **Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
 
-**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A is the **post-plan re-entry** discussion prompt, Gate C is the final approval prompt, and Gate B always uses a 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) before applying accepted in-scope findings. Gate A and Gate C use `AskUserQuestion` on their reachable paths; Gate B uses `AskUserQuestion` only in manual mode and may otherwise explicit apply. Reviewers always see the latest plan with all user-approved or operator-approved/applied prior feedback applied.
+**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A is the **post-plan re-entry** discussion prompt, Gate C is the final approval prompt, and Gate B always uses a 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) before applying accepted in-scope findings. Gate A and Gate C use `AskUserQuestion` on their reachable paths; Gate B also always uses `AskUserQuestion` on its reachable non-empty-findings path. Reviewers always see the latest plan with all user-approved or operator-approved/applied prior feedback applied.
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
@@ -115,19 +115,6 @@ Header: `"Plan findings"`. Substitute the actual counts before asking.
 ### Apply-all body
 
 Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:` — preserve or explicitly recompute them; do not drop mechanical/deletion-heavy estimates while retaining only the legacy total), then Execute `### Shared post-apply pipeline` verbatim.
-
-### One-by-one iteration prompt
-
-For each finding when the user picks **Go through each**:
-
-Question text: `"FINDING_<N> [<Severity>] — <reviewer>: <one-line concern summary>. Apply this finding to the plan?"` Header: `"Finding <N>/<total>"`. Options:
-- **Apply** — record in the applied set.
-- **Skip** — record in the skipped set; the finding moves from accepted to rejected.
-- **Switch to discussion mode** — abort iteration; exit to Gate A; do NOT revise `plan.txt`.
-
-After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only, writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`), then Execute `### Shared post-apply pipeline` verbatim.
-
-### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 

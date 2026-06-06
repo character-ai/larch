@@ -90,7 +90,7 @@ Pause/resume helper coverage lives in
 | `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
 | `step-1d.7`, `step-1e` | Step 2a entry; `step-1e` also Step 3 entry | before pause-check |
 | `step-2a`, `step-2a.5` | Step 2a entry SIMPLE guarded block; Step 2a.5 prelude (`step-2a`, HARD); zero-sketch degraded branch fence; Step 2b prelude (both, HARD repair) | before pause-check |
-| `step-3` | Step 3.5 prelude; Gate-B-bypass triple writes stay explicit | before pause-check |
+| `step-3` | Step 3.5 prelude; `design-step3-state.sh --gate-b-bypass` on bypass paths | before pause-check / before Step 3b |
 | `step-3.5` | Step 3.6 entry | before pause-check |
 | `step-3.6` | Step 3.6 in-fence (rc branches) | unchanged |
 | `step-4` | Step 4 success boundary | boundary-local |
@@ -100,7 +100,7 @@ Pause/resume helper coverage lives in
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
 | Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
-| Step 3 direct-review restore | Step 3 entry only when `$DESIGN_TMPDIR/.step3-reentry` is present | clear stale downstream state and restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5` before pause-check |
+| Step 3 direct-review restore | Step 3 entry via `design-step3-state.sh --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
 | Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block | pause-check retained |
@@ -490,7 +490,6 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --classification "$design_classification" \
      --partition-requested "$partition_requested" \
      --brainstorm-requested "$brainstorm_requested" \
-     --manual-requested "$manual_requested" \
      ${REPO:+--repo "$REPO"})
    _init_rc=$?
    set -e
@@ -972,7 +971,7 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
-Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, the initial HARD snapshot is preserved, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` writes `$DESIGN_TMPDIR/drift-baseline.env` after the initial plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers). Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
+Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, the initial HARD snapshot is preserved, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` seeds `$DESIGN_TMPDIR/drift-baseline.env` from the initial Step 2b plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers) before later revision paths can expand the plan. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -1021,8 +1020,6 @@ case "${_postplan_rc:-1}" in
     : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;
   14)
-    mkdir -p "$DESIGN_TMPDIR/.completed"
-    : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;
   2)
     printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**" >&2
@@ -1096,17 +1093,7 @@ When control arrives from Gate A **Ready for review** (direct-to-Step-3) or othe
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
-  rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
-  mkdir -p "$DESIGN_TMPDIR/.completed"
-  : > "$DESIGN_TMPDIR/.completed/step-1e"
-  # Direct-review re-entry — restore Step 2 bypass package when Step 2 markers were cleared:
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
-  rm -f "$DESIGN_TMPDIR/.step3-reentry"
-fi
+"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry >/dev/null
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
@@ -1213,11 +1200,11 @@ The driver runs `check-mid-run-dirty-tree.sh --mode checkpoint` after reviewer c
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) — proceed to Step 3.5.
 
-If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Step 3.6 is skipped; print `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`. Before jumping to Step 3b, write the Gate-B-bypass completion sentinels: `mkdir -p "$DESIGN_TMPDIR/.completed"` plus `: > "$DESIGN_TMPDIR/.completed/step-3"`, `: > "$DESIGN_TMPDIR/.completed/step-3.5"`, and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`. The Step 3.5 continuation block below is bypassed on this path.
+If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Step 3.6 is skipped; print `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`. Before jumping to Step 3b, run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --gate-b-bypass` to write the Gate-B-bypass completion sentinels. The Step 3.5 continuation block below is bypassed on this path.
 
-If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4; Step 3.6 is skipped on those short-circuits (status-specific skip breadcrumbs in the branch matrix). Before every Gate-B-bypass jump, write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`) so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B or assessor work.
+If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4; Step 3.6 is skipped on those short-circuits (status-specific skip breadcrumbs in the branch matrix). Before every Gate-B-bypass jump, run `design-step3-state.sh --gate-b-bypass` so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B or assessor work.
 
-`.completed/step-3` is written by the Step 3.5 prelude fence before pause-check on Gate B paths — not at a Step 3 success boundary. On Gate-B-bypass paths, also write `step-3.5` and `step-3.6` before entering Step 3b.
+`.completed/step-3` is written by the Step 3.5 prelude fence before pause-check on Gate B paths — not at a Step 3 success boundary. On Gate-B-bypass paths, `design-step3-state.sh --gate-b-bypass` writes `step-3`, `step-3.5`, and `step-3.6` before entering Step 3b.
 
 > **Continue to Step 3.5 IMMEDIATELY when Step 3 actually produced fresh review artifacts.** The plan-review result is not terminal — proceed to the post-review chooser. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (see the post-loop branch matrix). Zero-findings paths still traverse Gate B's short-circuit and then Step 3.6 before Step 3b.
 
@@ -1702,7 +1689,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns unconditional validation for `plan.txt`; Step 5c still guards composed-plan validation prompt-side. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Shared optional-trailer helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.sh` (sourced by `check-plan-size.sh`, `revise-plan-with-waterfall.sh`, `plan-review-loop.sh`, `gate-b-dedup-plan.sh`); awk: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.awk`. Sibling: `lib-plan-optional-trailers.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`. Optional-trailer unit harness (`make test-trailer-helpers`): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-trailer-helpers.sh` (wraps `test-trailer-dedup.sh`, `test-trailer-has-any.sh`, `test-trailer-validate.sh`, `test-trailer-awk.sh`; harness contract: `test-trailer-awk.md`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Shared optional-trailer helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.sh` (sourced by `check-plan-size.sh`, `plan-review-loop.sh`, `gate-b-dedup-plan.sh`); awk: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.awk`. Sibling: `lib-plan-optional-trailers.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`. Optional-trailer unit harness (`make test-trailer-helpers`): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-trailer-helpers.sh` (wraps `test-trailer-dedup.sh`, `test-trailer-has-any.sh`, `test-trailer-validate.sh`, `test-trailer-awk.sh`; harness contract: `test-trailer-awk.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh` — Gate B shared post-apply mechanical dedup and optional-trailer snapshot/validate (`references/approval-gates.md` §Shared post-apply pipeline). Uses `dedup-plan-lines.py` and `lib-plan-optional-trailers.sh`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-gate-b-dedup-plan.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-gate-b-dedup-plan.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.

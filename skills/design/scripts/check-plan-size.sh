@@ -167,13 +167,14 @@ _drift_baseline="$DESIGN_TMPDIR/drift-baseline.env"
 if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
     _bp=$(awk -F= '$1 == "BASELINE_PLAN_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     _bd=$(awk -F= '$1 == "BASELINE_DIFF_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
-    case "$_bp" in ''|*[!0-9]*) emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger" ;;
-        *) baseline_plan_lines=$((10#$_bp)) ;;
-    esac
-    case "$_bd" in ''|*[!0-9]*) emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger" ;;
-        *) baseline_diff_lines=$((10#$_bd)) ;;
-    esac
-    if [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]]; then
+    if [[ "$_bp" == '' || "$_bp" == *[!0-9]* || "$_bd" == '' || "$_bd" == *[!0-9]* ]]; then
+        emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
+    else
+        baseline_plan_lines=$((10#$_bp))
+        baseline_diff_lines=$((10#$_bd))
+    fi
+    if [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]] \
+        && [[ "$_bp" != '' && "$_bp" != *[!0-9]* && "$_bd" != '' && "$_bd" != *[!0-9]* ]]; then
         if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
             drift_trigger=true
         fi

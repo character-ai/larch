@@ -34,6 +34,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 - `POSTPLAN_EMIT_STATUS`, `EMIT_PLAN_STATUS`, `DIFF_LINES`, `SNAPSHOT_STATUS`
 - `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE`
 - `PLAN_SIZE_STATUS`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `PARTITION_REQUESTED`
+- `DRIFT_TRIGGER_FIRED`, `DRIFT_MULTIPLE`, `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO`, `BASELINE_PLAN_LINES`, `BASELINE_DIFF_LINES`
 - `WARN` (repeatable)
 
 ## Exit codes
@@ -57,8 +58,9 @@ Allowlisted keys for orchestrator reads (never `source`):
 | `11` | Pause requested (orchestrator runs `design-pause-save.sh`) |
 | `12` | Hard trigger (`HARD_TRIGGER_FIRED=true`; hard wins over partition) |
 | `13` | `partition_requested=true` without hard trigger |
+| `14` | Drift trigger (`DRIFT_TRIGGER_FIRED=true`; hard and partition both take precedence) |
 
-**Precedence**: defects → plan-size skipped; hard → partition when both apply.
+**Precedence**: defects → plan-size skipped; hard → partition → drift when more than one applies.
 
 ## Plan-size nonfatal failures (merged)
 

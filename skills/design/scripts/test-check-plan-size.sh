@@ -623,4 +623,16 @@ out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
 assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
 
+# --- Case 36: partial corrupt baseline disables no single axis silently ---
+d="$TMPROOT/c36"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=oops\n' >"$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
+assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; proceeding without drift trigger' \
+    || fail "case36: expected unreadable baseline warning"
+
 echo "PASS: test-check-plan-size.sh"
