@@ -13,6 +13,7 @@
   - `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only. Argv-only bail reasons can still route transient-infra and dispatch-failure classifications when their text matches classifier evidence.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
+  - `FAILURE_SIGNATURE` includes a bounded evidence digest (first 2048 bytes of evidence, hashed, truncated to 16 hex chars) so distinct failures with identical `class`/`step`/`phase`/`bail` hash differently and don't prematurely collapse into `same-cause-repeat` (#3592 bug b). The digest is never emitted in public report surfaces.
   - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>`
   - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
