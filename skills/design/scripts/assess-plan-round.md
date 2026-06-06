@@ -6,7 +6,7 @@ Step 3.6 orchestrator for the HARD-only plan-quality assessor lane. It is the on
 
 - Reads `design_classification` through `scripts/read-design-classification.sh` for fail-closed HARD gating. The caller may pass `--design-classification HARD|SIMPLE`; otherwise missing, unreadable, or invalid classification defaults to HARD. Legacy `workflow_path` is not allowed to suppress assessment.
 - Re-reads the round cursor via `snapshot-plan-round.sh read-cursor`; rounds `< 2` are skipped before any assessor artifacts are touched.
-- Requires `plan.txt-original`, `plan-after-round-<N-1>.txt`, `plan.txt`, and `feature-description.txt`.
+- Requires `plan.txt-original`, `plan-after-round-<N-1>.txt`, `plan.txt`, and a feature/scope file. The feature/scope file resolves in order: non-empty `plan-review-scope-anchor.txt`, then `feature-description.txt`, then the legacy `IMPLEMENT_TMPDIR/feature-description.txt` fallback.
 - Missing required inputs do not dispatch. Instead the helper appends a `Warnings` entry to `execution-issues.md`, emits `ASSESSOR_STATUS=missing-snapshot`, and exits without writing verdict artifacts.
 
 ## Dispatch and monitor

@@ -42,7 +42,7 @@ The script always runs one pass and never invokes the revision waterfall; Gate B
 | `TALLY_PLAN_REVIEW_STATUS` | Always |
 | `VOTING_TALLY_FILE` | Always |
 | `VOTER_1_PARSE_RATE_STATUS` | Always |
-| `SCOPE_ANCHOR_FILE` | Always; path to staged binding issue scope anchor |
+| `SCOPE_ANCHOR_FILE` | Dual gate: `TALLY_PLAN_REVIEW_STATUS` in (`ok`, `main-agent-vote-required`) and `LOOP_STATUS` in (`complete`, `main-agent-vote-required`); path to staged binding issue scope anchor |
 | `NIT_ACCEPTED_COUNT` | Single-pass severity count |
 | `NON_NIT_ACCEPTED_COUNT` | Single-pass severity count |
 | `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, etc.) |
@@ -57,7 +57,7 @@ The driver runs one review round and never revises `plan.txt`. It counts collect
 
 ## Durable handoff: `.step3-plan-review-result.env`
 
-Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content) except `SCOPE_ANCHOR_FILE`, which is a validated path handoff to the staged binding issue scope anchor. See `plan-review-loop.sh` function `write_step3_result_env`.
+Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content) except `SCOPE_ANCHOR_FILE`, which is a path handoff to the staged binding issue scope anchor. The loop strips any raw `SCOPE_ANCHOR_FILE=` lines from tally stdout before relay, then re-emits/persists the normalized key only when both tally and loop terminals pass the dual gate (`TALLY_PLAN_REVIEW_STATUS` in `ok`/`main-agent-vote-required` and `LOOP_STATUS` in `complete`/`main-agent-vote-required`); a parsed tally KV wins, otherwise the materialized loop input path is used when the tally omitted the key. `tally-error`, `panel-failed`, and other non-terminal paths omit the key. `round-summary.env` uses the same gate. See `plan-review-loop.sh` functions `_scope_anchor_handoff_value` and `write_step3_result_env`.
 
 ## `round-summary.env` schema
 
@@ -99,6 +99,6 @@ Single-pass mode records one best-effort design plan-review timing `round` row p
 
 ## Scope anchor and scope-reduction preservation
 
-Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/MainAgent fallback anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs`, the terminal machine-output KV stream, and `.step3-plan-review-result.env` for durable Step 3 handoff.
+Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Post-redaction empty anchors fail materialization with exit code 2. Anchors above 64KiB fail materialization with exit code 2 (no `LOOP_STATUS`; argv/config failure before the review round starts). Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/MainAgent fallback anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs`, the terminal machine-output KV stream, and `.step3-plan-review-result.env` only after the normalized tally gate described above.
 
-Collected in-scope findings are snapshotted to `findings-in-scope.pre-dedup.md` before Jaccard dedup. Dedup uses the canonical scope-reduction marker detector, strips severity and `[SCOPE-REDUCTION]` only for comparison, preserves tagged bodies when merging with untagged duplicates, and falls back to the pre-dedup in-scope snapshot if post-dedup tagged parity fails. Ballot input is sequentially renumbered for `FINDING_*` and `OOS_*` headings after aggregation or fallback. `AGGREGATED=false` keeps the current in-scope stream rather than restoring pre-split files. No baseline plan file is created.
+Collected in-scope findings are snapshotted to `findings-in-scope.pre-dedup.md` before Jaccard dedup. Dedup uses the canonical scope-reduction marker detector, strips severity and `[SCOPE-REDUCTION]` only for comparison, preserves tagged bodies when merging with untagged duplicates, and falls back to the pre-dedup in-scope snapshot if post-dedup tagged parity fails. For scope-reduction-tagged blocks, Jaccard comparison text prefers **Concern** / **Description** body text over the `### FINDING_N:` header alone so divergent headers with distinct concerns are not merged; dedup and parity helpers share the same `problem_text()` extraction. Ballot input is sequentially renumbered for `FINDING_*` and `OOS_*` headings after aggregation or fallback. `AGGREGATED=false` keeps the current in-scope stream rather than restoring pre-split files. No baseline plan file is created.

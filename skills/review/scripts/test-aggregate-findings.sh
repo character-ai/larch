@@ -669,6 +669,49 @@ grep -Fq 'REASON=ok' "$TMP/out-merge.env" || fail "merge REASON"
 grep -Fq 'MERGED_COUNT=1' "$TMP/out-merge.env" || fail "MERGED_COUNT"
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-work.md" | tr -d '[:space:]')" == "1" ]] || fail "expected one FINDING block after merge"
 
+echo "=== plan aggregation appends hardened scope anchor ==="
+cp "$TMP/in3.md" "$TMP/in3-scope.md"
+scope_anchor="$TMP/plan-review-scope-anchor.txt"
+printf 'scope token ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH <tag> & data\n' >"$scope_anchor"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+"$AGG" \
+    --findings-file "$TMP/in3-scope.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --input-mode plan \
+    --scope-anchor-file "$scope_anchor" >"$TMP/out-scope.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-scope.env" || fail "scope anchor AGGREGATED"
+grep -Fq '<plan_review_scope_anchor encoding="literal-redacted">' "$TMP/aggregator-prompt.md" || fail "scope anchor prompt missing literal-redacted block"
+grep -Fq '&lt;tag&gt; &amp; data' "$TMP/aggregator-prompt.md" || fail "scope anchor prompt missing escaped delimiter bytes"
+grep -Fq 'REDACTED-TOKEN' "$TMP/aggregator-prompt.md" || fail "scope anchor prompt missing redacted placeholder"
+if grep -Fq 'ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH' "$TMP/aggregator-prompt.md"; then
+    fail "scope anchor prompt leaked raw token"
+fi
+
+echo "=== code aggregation ignores scope anchor file ==="
+cp "$TMP/in3.md" "$TMP/in3-code-scope.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+"$AGG" \
+    --findings-file "$TMP/in3-code-scope.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --input-mode code \
+    --scope-anchor-file "$scope_anchor" >"$TMP/out-code-scope.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-code-scope.env" || fail "code scope AGGREGATED"
+if grep -Fq '<plan_review_scope_anchor' "$TMP/aggregator-prompt.md"; then
+    fail "code-mode prompt should not append scope anchor"
+fi
+
 echo "=== malformed merged output keeps original ==="
 cp "$TMP/in3.md" "$TMP/in3-mal.md"
 write_stub_dispatch
@@ -1857,5 +1900,37 @@ AGGREGATE_DISPATCH_SH="$CODE_SCOPE/dispatch.sh" \
 grep -Fq 'AGGREGATED=true' "$CODE_SCOPE/out.env" || fail "code-mode marker-like aggregation did not succeed"
 grep -Fq 'merged code concern' "$CODE_SCOPE/in.md" || fail "code mode should keep aggregator output"
 if grep -Fq '[SCOPE-REDUCTION] code-mode marker-like text' "$CODE_SCOPE/in.md"; then fail "code mode should not append plan scope-marker block"; fi
+
+echo "=== input-mode plan warns when scope anchor path is invalid ==="
+PLAN_BAD_ANCHOR="$TMP/plan-bad-anchor"
+mkdir -p "$PLAN_BAD_ANCHOR"
+cat >"$PLAN_BAD_ANCHOR/in.md" <<'EOF'
+### FINDING_1:
+- **Reviewer(s)**: merge-a
+- **Severity**: important
+- **Concern**: ordinary plan concern
+- **Suggested revision**: fix it
+
+### FINDING_2:
+- **Reviewer(s)**: merge-b
+- **Severity**: important
+- **Concern**: ordinary plan concern duplicate
+- **Suggested revision**: fix it
+EOF
+cp "$PLAN_SCOPE/dispatch.sh" "$PLAN_BAD_ANCHOR/dispatch.sh"
+issues_log="$PLAN_BAD_ANCHOR/execution-issues.md"
+LARCH_EXECUTION_ISSUES_LOG="$issues_log" \
+AGGREGATE_DISPATCH_SH="$PLAN_BAD_ANCHOR/dispatch.sh" \
+"$AGG" \
+    --findings-file "$PLAN_BAD_ANCHOR/in.md" \
+    --review-tmpdir "$PLAN_BAD_ANCHOR" \
+    --codex-present true \
+    --cursor-present false \
+    --mode description \
+    --input-mode plan \
+    --scope-anchor-file "/tmp/stale-plan-scope-anchor.txt" \
+    --allow-findings-outside-tmpdir true >"$PLAN_BAD_ANCHOR/out.env"
+grep -Fq 'invalid or stale scope-anchor path omitted' "$issues_log" \
+    || fail "invalid plan scope anchor should append execution warning"
 
 echo "All aggregate-findings harness assertions passed."

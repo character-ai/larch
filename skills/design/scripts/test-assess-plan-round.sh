@@ -306,6 +306,33 @@ out=$(IMPLEMENT_TMPDIR="$TMP/implement-tmp" LARCH_QUIET_DISABLE=1 "$SUBJECT" --d
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'design feature preference path failed'
 grep -Fqx "$(cd "$TMP" && pwd -P)/feature-description.txt" "$TMP/feature-path-seen.txt" || fail 'design tmpdir feature-description.txt should win over implement tmpdir copy'
 
+setup_round2
+printf 'staged anchor\n' >"$TMP/plan-review-scope-anchor.txt"
+printf 'design feature\n' >"$TMP/feature-description.txt"
+out=$(IMPLEMENT_TMPDIR="$TMP/implement-tmp" LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'staged anchor preference path failed'
+grep -Fqx "$(cd "$TMP" && pwd -P)/plan-review-scope-anchor.txt" "$TMP/feature-path-seen.txt" || fail 'non-empty staged scope anchor should win over legacy feature files'
+
+setup_round2
+: >"$TMP/plan-review-scope-anchor.txt"
+out=$(IMPLEMENT_TMPDIR="$TMP/implement-tmp" LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'empty staged anchor fallback path failed'
+grep -Fqx "$(cd "$TMP" && pwd -P)/feature-description.txt" "$TMP/feature-path-seen.txt" || fail 'empty staged scope anchor should fall back to design feature'
+
+setup_round2
+mkdir -p "$TMP/implement-tmp"
+: >"$TMP/plan-review-scope-anchor.txt"
+: >"$TMP/feature-description.txt"
+printf 'implement feature\n' >"$TMP/implement-tmp/feature-description.txt"
+export IMPLEMENT_TMPDIR="$TMP/implement-tmp"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'empty design feature should fall back to implement feature'
+got_feature="$(tr -d '\r\n' <"$TMP/feature-path-seen.txt")"
+got_feature_canon="$(cd "$(dirname "$got_feature")" && pwd -P)/$(basename "$got_feature")"
+expected_implement_feature="$(cd "$TMP/implement-tmp" && pwd -P)/feature-description.txt"
+[[ "$got_feature_canon" == "$expected_implement_feature" ]] \
+    || fail 'empty design feature should use implement tmpdir feature-description.txt'
+
 # Two-entry Step 3 integration: cursor advance, snapshots, round-2 assessor firing.
 advance_step3_cursor() {
   local tmp="$1" cursor=1 next cursor_out cursor_line

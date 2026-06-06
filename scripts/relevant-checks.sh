@@ -209,6 +209,16 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/lib-untrusted-block.sh|scripts/lib-scope-anchor-handoff.sh)
+                append_target_once test-plan-review-loop
+                append_target_once test-run-step3-review
+                append_target_once test-launch-claude-subprocess
+                append_target_once test-render-assessor-prompt
+                append_target_once test-dispatch-plan-assessors
+                append_target_once test-lib-scope-anchor-handoff
+                ;;
+        esac
+        case "$f" in
             scripts/lib-net.sh|scripts/lib-net.md|scripts/test-lib-net.sh|scripts/test-lib-net.md)
                 append_target_once test-lib-net
                 ;;

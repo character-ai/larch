@@ -1253,6 +1253,9 @@ export PLAN_REVIEW_VOTER_ARGV_LOG="$DB/voter-argv.log"
 write_voters_three
 outb=$(run_loop "$DB")
 printf '%s\n' "$outb" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with brainstorm merge"
+expected_db_scope="$(cd "$DB" && pwd -P)/plan-review-scope-anchor.txt"
+printf '%s\n' "$outb" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_db_scope" || fail "ok loop output should carry staged scope anchor fallback"
+grep -Fqx "SCOPE_ANCHOR_FILE=$expected_db_scope" "$DB/.step3-plan-review-result.env" || fail "ok result env should carry staged scope anchor fallback"
 grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "scope anchor missing base content"
 if grep -Fq 'extra context' "$DB/feature-file-seen.txt"; then fail "binding scope anchor should not include brainstorm content"; fi
 python3 - "$DB/plan-review-scope-anchor.txt" "$DB/feature-file-path.txt" <<'PY' || fail "panel should receive staged scope anchor path"
@@ -1291,11 +1294,220 @@ fi
 printf '%s\n' "$out2" | grep -q '^TALLY_PLAN_REVIEW_STATUS=tally-error$' || fail "expected tally-error after stub tally rc=2"
 printf '%s\n' "$out2" | grep -q '^LOOP_STATUS=tally-error$' || fail "expected tally-error loop after tally failure"
 printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tally WARN"
+if printf '%s\n' "$out2" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "tally-error stdout should omit scope anchor"; fi
+if grep -q '^SCOPE_ANCHOR_FILE=' "$D2/.step3-plan-review-result.env"; then fail "tally-error result env should omit scope anchor"; fi
 [[ -f "$D2/voting-tally.md" ]] || fail "voting-tally.md missing after stub tally failure"
 [[ -s "$D2/voting-tally.md" ]] || fail "voting-tally.md empty after stub tally failure"
 grep -q 'Tally aborted' "$D2/voting-tally.md" || fail "stub tally banner missing in voting-tally.md"
 [[ -f "$D2/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing after stub tally failure"
 [[ "$(wc -l < "$D2/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "tally-error TSV should contain header only"
+
+echo "=== raw tally scope anchor is stripped on tally-error ==="
+D2RAW="$TMP/z2-raw-scope"
+mkdir -p "$D2RAW"
+printf 'plan\n' >"$D2RAW/plan.txt"
+printf 'feat\n' >"$D2RAW/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'SCOPE_ANCHOR_FILE=/tmp/stale-scope-anchor.txt\n'
+exit 2
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2raw=$(run_loop "$D2RAW")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+if printf '%s\n' "$out2raw" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "raw tally SCOPE_ANCHOR_FILE leaked on error"; fi
+if grep -q '^SCOPE_ANCHOR_FILE=' "$D2RAW/.step3-plan-review-result.env"; then fail "raw tally SCOPE_ANCHOR_FILE persisted on error"; fi
+
+echo "=== stale exported scope anchor is omitted on tally-error ==="
+D2STALE="$TMP/z2-stale-scope"
+mkdir -p "$D2STALE"
+printf 'plan\n' >"$D2STALE/plan.txt"
+printf 'feat\n' >"$D2STALE/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+write_tally_fail
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2stale=$(SCOPE_ANCHOR_FILE=/tmp/stale-scope-anchor.txt run_loop "$D2STALE")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+if printf '%s\n' "$out2stale" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "stale exported scope anchor leaked on tally-error"; fi
+if grep -q '^SCOPE_ANCHOR_FILE=' "$D2STALE/.step3-plan-review-result.env"; then fail "stale exported scope anchor persisted on tally-error"; fi
+
+echo "=== CR/LF parsed tally scope anchor is rejected on ok ==="
+D2CRLF="$TMP/z2-crlf-scope"
+mkdir -p "$D2CRLF"
+printf 'plan\n' >"$D2CRLF/plan.txt"
+printf 'feat\n' >"$D2CRLF/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=/tmp/evil\ranchor.txt\n' "$DESIGN_TMPDIR"
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2crlf=$(run_loop "$D2CRLF")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+expected_crlf="$(cd "$D2CRLF" && pwd -P)/plan-review-scope-anchor.txt"
+printf '%s\n' "$out2crlf" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_crlf" \
+    || fail "CR/LF parsed scope anchor should fall back to materialized anchor"
+if printf '%s\n' "$out2crlf" | grep -q $'SCOPE_ANCHOR_FILE=.*\r'; then
+    fail "CR/LF scope anchor path leaked on stdout"
+fi
+
+echo "=== stale ok tally status is not relayed when tally exits non-zero ==="
+D2STALEOK="$TMP/z2-stale-ok-status"
+mkdir -p "$D2STALEOK"
+printf 'plan\n' >"$D2STALEOK/plan.txt"
+printf 'feat\n' >"$D2STALEOK/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=/tmp/stale-tally.md\n'
+exit 2
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2staleok=$(run_loop "$D2STALEOK")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+printf '%s\n' "$out2staleok" | grep -q '^TALLY_PLAN_REVIEW_STATUS=tally-error$' \
+    || fail "corrected tally-error status should win over raw ok relay"
+if printf '%s\n' "$out2staleok" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$'; then
+    fail "raw ok tally status leaked before correction"
+fi
+if printf '%s\n' "$out2staleok" | grep -q '^SCOPE_ANCHOR_FILE='; then
+    fail "scope anchor should be omitted when corrected tally status is tally-error"
+fi
+
+echo "=== scope anchor over 64KiB fails materialization ==="
+DBIG="$TMP/z-big-scope"
+mkdir -p "$DBIG"
+printf 'plan\n' >"$DBIG/plan.txt"
+python3 -c 'print("x" * 70000)' >"$DBIG/feature-description.txt"
+set +e
+run_loop "$DBIG" 2>"$DBIG/err.txt" >/dev/null
+rc_big=$?
+set -e
+[[ "$rc_big" -eq 2 ]] || fail "expected exit 2 when scope anchor exceeds 64KiB, got $rc_big"
+grep -q 'scope anchor exceeds 64KiB' "$DBIG/err.txt" || fail "missing 64KiB scope anchor error"
+
+echo "=== parsed tally scope anchor wins over materialized fallback ==="
+D2PARSED="$TMP/z2-parsed-scope"
+mkdir -p "$D2PARSED"
+printf 'plan\n' >"$D2PARSED/plan.txt"
+printf 'feat\n' >"$D2PARSED/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+printf 'alternate scope\n' >"$DESIGN_TMPDIR/plan-review-scope-anchor-alt.txt"
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=%s/plan-review-scope-anchor-alt.txt\n' "$DESIGN_TMPDIR" "$DESIGN_TMPDIR"
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2parsed=$(run_loop "$D2PARSED")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+expected_alt="$(cd "$D2PARSED" && pwd -P)/plan-review-scope-anchor-alt.txt"
+printf '%s\n' "$out2parsed" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_alt" || fail "parsed tally scope anchor should win on stdout"
+grep -Fqx "SCOPE_ANCHOR_FILE=$expected_alt" "$D2PARSED/.step3-plan-review-result.env" || fail "parsed tally scope anchor should persist"
+
+echo "=== parsed tally scope anchor outside DESIGN_TMPDIR is rejected ==="
+D2OUT="$TMP/z2-outside-scope"
+mkdir -p "$D2OUT"
+printf 'plan\n' >"$D2OUT/plan.txt"
+printf 'feat\n' >"$D2OUT/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+outside_parsed="$TMP/outside-parsed-scope.txt"
+printf 'outside\n' >"$outside_parsed"
+cat >"$STUB/tally-plan-review.sh" <<EOS
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        --design-tmpdir) DESIGN_TMPDIR="\${2:?}"; shift 2 ;;
+        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "\$DESIGN_TMPDIR" ]] || exit 2
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=$outside_parsed\n' "\$DESIGN_TMPDIR"
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2outside=$(run_loop "$D2OUT")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+expected_fallback="$(cd "$D2OUT" && pwd -P)/plan-review-scope-anchor.txt"
+printf '%s\n' "$out2outside" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_fallback" || fail "outside parsed scope anchor should fall back to materialized anchor"
+grep -Fqx "SCOPE_ANCHOR_FILE=$expected_fallback" "$D2OUT/.step3-plan-review-result.env" || fail "outside parsed scope anchor should not persist"
 
 echo "=== stubbed driver: three reviewers each OOS_1 + FINDING_1 (dedup + tally) ==="
 D3="$TMP/z3"
@@ -1463,6 +1675,13 @@ write_tally_main_agent
 out_ma=$(run_loop "$DMA" 1 --round-cap 2)
 printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent status should be preserved"
 grep -q 'accepted OOS' "$DMA/oos-accepted-design.md" || fail "main-agent OOS accumulation missing"
+expected_dma_scope="$(cd "$DMA" && pwd -P)/plan-review-scope-anchor.txt"
+printf '%s\n' "$out_ma" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_dma_scope" || fail "main-agent-vote-required should carry staged scope anchor fallback"
+grep -Fqx "SCOPE_ANCHOR_FILE=$expected_dma_scope" "$DMA/.step3-plan-review-result.env" || fail "main-agent-vote-required result env should carry staged scope anchor fallback"
+if [[ -f "$DMA/timing-ledger.tsv" ]] && awk -F '\t' '$2 == "round" && $4 == "design" && $6 == 1 { found=1 } END { exit !found }' "$DMA/timing-ledger.tsv" 2>/dev/null; then
+    fail "main-agent-vote-required should defer design round timing row"
+fi
+[[ -s "$DMA/plan-review/round-1/round-start-s" ]] || fail "main-agent-vote-required should preserve round-start-s"
 
 
 echo "=== single-pass: tally-error exits before terminal fallback ==="
@@ -1481,6 +1700,11 @@ printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "tally-err
 printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "tally-error should skip revise"
 grep -q 'prior tally OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should restore prior OOS content"
 ! grep -q 'accepted OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should not merge failed round OOS"
+[[ -f "$DTM/.step3-plan-review-result.env" ]] || fail "tally-error missing result env"
+grep -q '^LOOP_STATUS=tally-error$' "$DTM/.step3-plan-review-result.env" || fail "result env missing tally-error loop status"
+if printf '%s\n' "$out_tm" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "tally-error stdout should omit scope anchor"; fi
+if grep -q '^SCOPE_ANCHOR_FILE=' "$DTM/.step3-plan-review-result.env"; then fail "tally-error result env should omit scope anchor"; fi
+assert_env_has_keys "$DTM/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS NIT_ACCEPTED_COUNT NON_NIT_ACCEPTED_COUNT AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
 
 
 echo "=== single-pass: panel-failed restores prior OOS content ==="
@@ -1556,5 +1780,55 @@ set -e
 [[ "$quiet_rc" -eq 0 ]] || fail "quiet collector stderr tail loop should exit 0"
 grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DQUIET/plan-review-collector.stderr" \
     || fail "stderr tail marker must reach plan-review-collector.stderr under quiet"
+
+echo "=== tagged dedup: divergent Concern bodies with shared header must not merge ==="
+MARKER_HELPER="$ROOT/scripts/check-scope-reduction-marker.sh"
+SCOPE_MARKER_HELPER="$MARKER_HELPER" python3 - <<'PY' || fail 'tagged dedup divergent-header fixture failed'
+import os, re, subprocess, tempfile, sys
+
+helper = os.environ["SCOPE_MARKER_HELPER"]
+
+def is_tagged(block):
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as fh:
+        fh.write(block)
+        name = fh.name
+    try:
+        return subprocess.run([helper, "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    finally:
+        os.unlink(name)
+
+def problem_text(block):
+    candidate_lines = []
+    for line in re.sub(r"```.*?```", "", block, flags=re.S).splitlines():
+        stripped = line.strip()
+        for pattern in (
+            r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*(.*)$",
+            r"^-?\s*(?:\*\*)?Concern(?:\*\*)?:\s*(.*)$",
+            r"^\s*what:\s*(.*)$",
+        ):
+            m = re.match(pattern, stripped, re.I)
+            if m and m.group(1).strip():
+                candidate_lines.append(m.group(1).strip())
+    if is_tagged(block):
+        for label in ("Concern", "Description"):
+            m = re.search(r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)" % label, block, re.S)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+        if candidate_lines:
+            return candidate_lines[0]
+    if candidate_lines:
+        return candidate_lines[0]
+    head = block.splitlines()[0] if block.splitlines() else block
+    return re.sub(r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*", "", head).strip() or block
+
+a = """### FINDING_1: [SCOPE-REDUCTION] shared title
+- **Concern**: Alpha scope reduction rationale unique alpha tokens here.
+"""
+b = """### FINDING_2: [SCOPE-REDUCTION] shared title
+- **Concern**: Beta scope reduction rationale unique beta tokens there.
+"""
+if problem_text(a) == problem_text(b):
+    sys.exit(1)
+PY
 
 printf '%s\n' "test-plan-review-loop: ok"

@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
-if [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]]; then
+if [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
     PLUGIN_ROOT="$REPO_ROOT"
 fi
 # Optional harness overrides (see test-plan-review-loop.sh).
@@ -39,6 +39,8 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
+# shellcheck source=scripts/lib-scope-anchor-handoff.sh
+source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -115,6 +117,8 @@ fi
 [[ -f "$FEATURE_FILE" ]] || { larch_err "plan-review-loop.sh: feature file not found: $FEATURE_FILE"; exit 2; }
 ORIGINAL_FEATURE_FILE="$FEATURE_FILE"
 SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
+_LOOP_SCOPE_ANCHOR_IN=""
+_PARSED_SCOPE_ANCHOR_FILE=""
 
 _materialize_scope_anchor() {
     local stripped_tmp anchor_tmp strip_kv strip_err malformed strip_rc
@@ -154,6 +158,10 @@ _materialize_scope_anchor() {
         return 2
     fi
     "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
+    if ! grep -q '[^[:space:]]' "$SCOPE_ANCHOR_FILE"; then
+        larch_err "plan-review-loop.sh: scope anchor is empty after redaction"
+        return 2
+    fi
     case "$SCOPE_ANCHOR_FILE" in
         *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; return 2 ;;
     esac
@@ -165,7 +173,8 @@ _materialize_scope_anchor() {
         return 2
     fi
 }
-_materialize_scope_anchor
+_materialize_scope_anchor || exit $?
+_LOOP_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"
 
 _brainstorm_file="$DESIGN_TMPDIR/brainstorm.md"
 if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
@@ -187,6 +196,14 @@ fi
 
 emit_loop_kvs() {
     local loop_status="$1" accepted_count="$2" degraded_panel="$3" aggregator_status="$4" tally_status="$5" voting_tally_file="$6" voter1_parse="$7" rounds_completed="${8:-$ROUND_NUM}"
+    local scope_anchor_file saved_loop saved_tally
+    saved_loop="${LOOP_STATUS:-}"
+    saved_tally="${TALLY_PLAN_REVIEW_STATUS:-}"
+    LOOP_STATUS="$loop_status"
+    TALLY_PLAN_REVIEW_STATUS="$tally_status"
+    scope_anchor_file="$(_scope_anchor_handoff_value)"
+    LOOP_STATUS="$saved_loop"
+    TALLY_PLAN_REVIEW_STATUS="$saved_tally"
     emit_kv LOOP_STATUS "$loop_status"
     emit_kv ACCEPTED_COUNT "$accepted_count"
     emit_kv IMPORTANT_ACCEPTED_COUNT "${IMPORTANT_ACCEPTED_COUNT:-0}"
@@ -196,7 +213,7 @@ emit_loop_kvs() {
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
-    emit_kv SCOPE_ANCHOR_FILE "${SCOPE_ANCHOR_FILE:-}"
+    [[ -z "$scope_anchor_file" ]] || emit_kv SCOPE_ANCHOR_FILE "$scope_anchor_file"
     emit_kv NIT_ACCEPTED_COUNT "${NIT_ACCEPTED_COUNT:-0}"
     emit_kv NON_NIT_ACCEPTED_COUNT "${NON_NIT_ACCEPTED_COUNT:-0}"
     emit_kv REASON "${LOOP_REASON:-}"
@@ -205,9 +222,17 @@ emit_loop_kvs() {
     emit_kv COLLECT_FAILURE_COUNT "${COLLECT_FAILURE_COUNT:-0}"
 }
 
+_scope_anchor_handoff_value() {
+    local design_canon
+    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)" || return 0
+    larch_scope_anchor_design_handoff_value "$design_canon" "${_PARSED_SCOPE_ANCHOR_FILE:-}" "${_LOOP_SCOPE_ANCHOR_IN:-}"
+}
+
 write_step3_result_env() {
     local out="$DESIGN_TMPDIR/.step3-plan-review-result.env"
-    if ! phase_driver_write_result_env "$out" \
+    local scope_anchor_file
+    scope_anchor_file="$(_scope_anchor_handoff_value)"
+    local kvs=(
         "LOOP_STATUS=${LOOP_STATUS:-}" \
         "ACCEPTED_COUNT=${ACCEPTED_COUNT:-0}" \
         "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-0}" \
@@ -221,9 +246,11 @@ write_step3_result_env() {
         "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
         "VOTER_1_PARSE_RATE_STATUS=${VOTER_1_PARSE_RATE_STATUS:-}" \
-        "SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}" \
         "COLLECT_OK_COUNT=${COLLECT_OK_COUNT:-0}" \
-        "COLLECT_FAILURE_COUNT=${COLLECT_FAILURE_COUNT:-0}"; then
+        "COLLECT_FAILURE_COUNT=${COLLECT_FAILURE_COUNT:-0}"
+    )
+    [[ -z "$scope_anchor_file" ]] || kvs+=("SCOPE_ANCHOR_FILE=$scope_anchor_file")
+    if ! phase_driver_write_result_env "$out" "${kvs[@]}"; then
         larch_err "plan-review-loop.sh: refusing to write invalid or symlinked Step 3 result env"
         return 1
     fi
@@ -484,6 +511,7 @@ _snapshot_terminal_exit_preserving_status() {
 
 _write_round_summary() {
     local round_num="$1" loop_status="${2:-}" reason="${3:-}" revise_st="${4:-}"
+    local summary_scope_anchor=""
     local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/round-summary.env"
     mkdir -p "$(dirname "$dest")"
     local tmp="${dest}.tmp"
@@ -501,7 +529,10 @@ _write_round_summary() {
         printf 'REVISE_STATUS=%s\n' "$revise_st"
         printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
         printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
-        printf 'SCOPE_ANCHOR_FILE=%s\n' "${SCOPE_ANCHOR_FILE:-}"
+        if [[ -n "$loop_status" ]]; then
+            summary_scope_anchor="$(_scope_anchor_handoff_value)"
+            [[ -z "$summary_scope_anchor" ]] || printf 'SCOPE_ANCHOR_FILE=%s\n' "$summary_scope_anchor"
+        fi
     } >"$tmp"
     mv -f "$tmp" "$dest"
 }
@@ -1070,12 +1101,13 @@ def problem_text(block):
             m = re.match(pattern, stripped, re.I)
             if m and m.group(1).strip():
                 candidate_lines.append(m.group(1).strip())
-    for cand in candidate_lines:
-        norm_cand = cand
-        while re.match(r"^\[[A-Za-z0-9_-]+\]\s*", norm_cand) and not re.match(r"^\[SCOPE-REDUCTION\]", norm_cand, re.I):
-            norm_cand = re.sub(r"^\[[A-Za-z0-9_-]+\]\s*", "", norm_cand)
-        if norm_cand.startswith("[SCOPE-REDUCTION]"):
-            return cand
+    if is_tagged(block):
+        for label in ("Concern", "Description"):
+            m = re.search(r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)" % label, block, re.S)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+        if candidate_lines:
+            return candidate_lines[0]
     for label in ("Concern", "Description"):
         m = re.search(r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)" % label, block, re.S)
         if m and m.group(1).strip():
@@ -1090,8 +1122,7 @@ def comparison_text(block):
     text = problem_text(block)
     text = re.sub(r"```.*?```", "", text, flags=re.S)
     text = re.sub(r"`[^`\n]*`", "", text)
-    while re.match(r"^\s*\[[A-Za-z0-9_-]+\]\s*", text) and not re.match(r"^\s*\[SCOPE-REDUCTION\]", text, re.I):
-        text = re.sub(r"^\s*\[[A-Za-z0-9_-]+\]\s*", "", text)
+    text = re.sub(r"^\s*\[(?:important|nit|latent)\]\s*", "", text, flags=re.I)
     text = re.sub(r"^\s*\[SCOPE-REDUCTION\]\s*", "", text, flags=re.I)
     return text
 
@@ -1240,17 +1271,10 @@ def tagged(block):
         raise SystemExit(2)
     finally: os.unlink(f.name)
 def prob(block):
-    parts=[]
-    if block.splitlines():
-        parts.append(block.splitlines()[0])
-    m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
-    if m:
-        parts.append(m.group(1))
-    for wm in re.finditer(r'(?mi)^\s*what:\s*(.+)$', block):
-        parts.append(wm.group(1))
-    txt='\n'.join(parts) if parts else block
+    txt=problem_text(block)
     txt=re.sub(r'```.*?```','',txt,flags=re.S); txt=re.sub(r'`[^`\n]*`','',txt)
-    txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
+    while re.match(r'^\s*\[[A-Za-z0-9_-]+\]\s*', txt) and not re.match(r'^\s*\[SCOPE-REDUCTION\]', txt, re.I):
+        txt=re.sub(r'^\s*\[[A-Za-z0-9_-]+\]\s*','',txt)
     txt=re.sub(r'^\s*\[SCOPE-REDUCTION\]\s*','',txt,flags=re.I)
     return set(re.findall(r'[A-Za-z0-9_]+', txt.lower()))
 def reviewers(block):
@@ -1456,6 +1480,7 @@ _tally_cmd=(
 TALLY_PLAN_REVIEW_STATUS=""
 VOTING_TALLY_FILE=""
 TALLY_PLAN_REVIEW_FATAL=false
+_PARSED_SCOPE_ANCHOR_FILE=""
 set +e
 if ((${#_vt_args[@]} > 0)); then
     _tally_raw=$("${_tally_cmd[@]}" "${_vt_args[@]}")
@@ -1470,6 +1495,7 @@ while IFS= read -r _tln || [[ -n "$_tln" ]]; do
     case "$_tk" in
         TALLY_PLAN_REVIEW_STATUS) TALLY_PLAN_REVIEW_STATUS="$_tv"; [[ "$_tv" == "tally-error" ]] && TALLY_PLAN_REVIEW_FATAL=true ;;
         VOTING_TALLY_FILE) VOTING_TALLY_FILE="$_tv" ;;
+        SCOPE_ANCHOR_FILE) _PARSED_SCOPE_ANCHOR_FILE="$_tv" ;;
         WARN) emit_kv WARN "$_tv" ;;
     esac
 done <<< "$_tally_raw"
@@ -1488,7 +1514,8 @@ if [[ "$_tally_rc" -ne 0 ]]; then
     fi
 fi
 
-printf '%s\n' "$_tally_raw"
+printf '%s\n' "$_tally_raw" | sed -E \
+    '/^SCOPE_ANCHOR_FILE=/d;/^TALLY_PLAN_REVIEW_STATUS=/d;/^VOTING_TALLY_FILE=/d'
 
 ACCEPTED_COUNT=0
 if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
