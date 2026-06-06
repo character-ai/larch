@@ -79,7 +79,7 @@ Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env
 
 **Completion sentinels for pause/resume.** Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash fences. **Folded contract**: every absorbed prior-step write must occur **after** `source-env` and **before** `design-pause-save.sh` pause-check in the host fence. Boundary-local writes that remain at step success boundaries (for example `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass triple writes, and in-fence `step-3.6` / `step-5c`) still follow the step-body-success rule. **Sole deliberate exception**: `step-6` is written **after** pause-check and **before** `cleanup-tmpdir.sh` in the Step 6 cleanup fence.
 
-**Tradeoff**: folding removes near-empty Bash turns but coarsens timing-ledger granularity and widens pause latency — a pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary, with folded sentinels written first so resume routes forward instead of replaying completed discussion.
+**Tradeoff**: folding removes near-empty Bash turns but coarsens timing-ledger granularity and widens pause latency — a pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary. Folded sentinels are written first at that boundary so resume skips discussion already completed before the boundary; a pause requested mid-discussion can still replay in-flight LLM work that had not reached its host fence.
 
 Pause/resume helper coverage lives in
 `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-pause-resume.sh` and
@@ -658,6 +658,8 @@ if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
     true) _brainstorm_requested=true ;;
   esac
+elif grep -Eq '"brainstorm_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _brainstorm_requested=true
 fi
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
@@ -1098,7 +1100,7 @@ if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
   rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-1e"
-  # Direct-review after backward discussion loop only — restore Step 2 bypass package when Step 2 markers were cleared:
+  # Direct-review re-entry — restore Step 2 bypass package when Step 2 markers were cleared:
   [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
   [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
   [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"

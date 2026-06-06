@@ -29,7 +29,7 @@ Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-nu
 **Shape 2 — re-entry from Gate B(c) or Gate C(b) (post-plan)**: exactly three options.
 
 - **See full plan** — re-display the current `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header (verbatim, no diff vs. prior version) and re-fire the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`). This option never advances state; it loops back to the prompt.
-- **Ready for review** — exit Gate A; proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` (Step 2a sketches and Step 2a.5 dialectic are NOT re-run on re-entry per the existing loop-exit semantics below).
+- **Ready for review** — write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` (Step 2a sketches and Step 2a.5 dialectic are NOT re-run on re-entry per the existing loop-exit semantics below). Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.
 - **Discuss more** — remain in Gate A; conduct another discussion sub-round, then re-prompt.
 
 The trigger for Shape 2 is exactly "Gate A entered from Gate B(c) or Gate C(b)" — the same trigger that already routes the discussion sub-round body to `discussion-round2.md`.
@@ -52,7 +52,7 @@ When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") o
 
 When the user picks **Ready for review**:
 - First-time entry: handled by Step 1d.7 outline-approval; Approve → Step 2a, Cancel → exit, Refine → loop.
-- Re-entry (from Gate B or Gate C): proceed directly to Step 3 (plan review) with the current `$DESIGN_TMPDIR/plan.txt`. Do NOT re-run sketches or dialectic.
+- Re-entry (from Gate B or Gate C): write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 (plan review) with the current `$DESIGN_TMPDIR/plan.txt`. Do NOT re-run sketches or dialectic.
 
 ---
 

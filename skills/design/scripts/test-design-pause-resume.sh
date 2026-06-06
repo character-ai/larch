@@ -1038,12 +1038,17 @@ DESIGN_TMPDIR="$DESIGN_DIRECT" bash -euo pipefail -c '
 rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5"
 mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-1e"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+: > "$DESIGN_TMPDIR/.step3-reentry"
+if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-1e"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+  rm -f "$DESIGN_TMPDIR/.step3-reentry"
+fi
 '
+[[ ! -f "$DESIGN_DIRECT/.step3-reentry" ]] || fail "direct-review restore did not consume .step3-reentry"
 for direct_step in 2a 2a.5 2b 2b.5; do
   [[ -f "$DESIGN_DIRECT/.completed/step-$direct_step" ]] || fail "direct-review restore missing step-$direct_step"
 done
@@ -1075,6 +1080,8 @@ if [ -r "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; the
   case "$(jq -r ".brainstorm_requested // false" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
     true) _brainstorm_requested=true ;;
   esac
+elif grep -Eq "\"brainstorm_requested\"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _brainstorm_requested=true
 fi
 if [ "$_brainstorm_requested" != true ]; then
   : > "$DESIGN_TMPDIR/.completed/step-1d.5"
@@ -1092,6 +1099,35 @@ out_no_brain_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_NO_BRAIN" --issue 9 -
 [[ "$out_no_brain_load" == *"LOAD_OK=true"* && "$out_no_brain_load" == *"STEP=2a"* ]] || fail "no-brainstorm load mismatch: $out_no_brain_load"
 [[ -f "$RESTORE_NO_BRAIN/.completed/step-1d.5" ]] || fail "no-brainstorm restore missing repaired step-1d.5"
 [[ ! -e "$RESTORE_NO_BRAIN/.pause-requested" ]] || fail "no-brainstorm restore should clear .pause-requested"
+
+echo "=== jq-less brainstorm Step 2a entry preserves missing step-1d.5 ==="
+DESIGN_JQLESS_BRAIN="$TMP/design-jqless-brainstorm"
+make_design_tmpdir "$DESIGN_JQLESS_BRAIN"
+printf '{"design_classification":"SIMPLE","brainstorm_requested":true}\n' >"$DESIGN_JQLESS_BRAIN/run-params.json"
+complete_design_steps "$DESIGN_JQLESS_BRAIN" 0c 1c 1d 1d.7
+JQLESS_BIN="$TMP/jqless-bin"
+mkdir -p "$JQLESS_BIN"
+ln -s /usr/bin/grep "$JQLESS_BIN/grep"
+ln -s /bin/mkdir "$JQLESS_BIN/mkdir"
+PATH="$JQLESS_BIN" DESIGN_TMPDIR="$DESIGN_JQLESS_BRAIN" /bin/bash -euo pipefail -c '
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-1c"
+: > "$DESIGN_TMPDIR/.completed/step-1d"
+_brainstorm_requested=false
+if [ -r "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+  case "$(jq -r ".brainstorm_requested // false" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _brainstorm_requested=true ;;
+  esac
+elif grep -Eq "\"brainstorm_requested\"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _brainstorm_requested=true
+fi
+if [ "$_brainstorm_requested" != true ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-1d.5"
+fi
+: > "$DESIGN_TMPDIR/.completed/step-1d.7"
+: > "$DESIGN_TMPDIR/.completed/step-1e"
+'
+[[ ! -f "$DESIGN_JQLESS_BRAIN/.completed/step-1d.5" ]] || fail "jq-less brainstorm Step 2a entry incorrectly repaired step-1d.5"
 
 echo "=== backward-loop re-entry clear host removes stale downstream sentinels ==="
 DESIGN_BACKWARD="$TMP/design-backward-loop"
@@ -1119,12 +1155,17 @@ DESIGN_TMPDIR="$DESIGN_BACKWARD_DIRECT" bash -euo pipefail -c '
 rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-1e"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+: > "$DESIGN_TMPDIR/.step3-reentry"
+if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-1e"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+  rm -f "$DESIGN_TMPDIR/.step3-reentry"
+fi
 '
+[[ ! -f "$DESIGN_BACKWARD_DIRECT/.step3-reentry" ]] || fail "backward-loop direct-review did not consume .step3-reentry"
 printf 'issue body backward direct\n' >"$BODY_FILE"
 out_backward_direct=$(bash "$SAVE" --design-tmpdir "$DESIGN_BACKWARD_DIRECT" --issue 9 --repo owner/repo)
 [[ "$out_backward_direct" == *"PAUSE_OK=true"* && "$out_backward_direct" == *"STEP=3"* ]] || fail "backward-loop direct-review restore should resume at Step 3: $out_backward_direct"

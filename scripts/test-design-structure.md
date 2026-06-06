@@ -71,4 +71,4 @@ Pure-LLM Steps **1c**, **1d**, **1d.7**, and **1e** must not retain standalone `
 
 `assert_step_completion_sentinels` skips host-absorbed steps (`1c`, `1d`, `1e`, `2a`, `2a.5`, `3`, `3.5`, `4b`, `5d`, `6`) and only section-greps self-writing steps: `0c`, `1d.5`, `2b`, `2b.5`, `3b`, `3.6`, `4`, `5b`, plus `assert_gate_b_bypass_branch_sentinels` for Gate-B-bypass triple writes.
 
-`assert_bash_fences_have_pause_check` now starts at `### 0c —` (whitespace-tolerant fence open/close). `assert_step2a_entry_simple_guard` requires pause-check after SIMPLE completion markers inside the entry fence.
+`assert_bash_fences_have_pause_check` starts at `<!-- step:1c` and scans every surviving source-env Bash fence from Step 1c onward (whitespace-tolerant fence open/close). `assert_step2a_entry_simple_guard` requires pause-check after SIMPLE completion markers inside the entry fence.

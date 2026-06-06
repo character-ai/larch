@@ -2081,6 +2081,11 @@ assert_backward_reentry_guards() {
     || fail '(21) Step 3 entry must restore step-2b.5 bypass package'
   grep -Fq 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' "$tmp" \
     || fail '(21) Step 3 entry restore/clear block must be gated on explicit re-entry marker'
+  assert_step_sentinel_inside_guard "$tmp" 'step-1e' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2b' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2b.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
   for step in step-2a step-2a.5 step-2b step-2b.5; do
     assert_fence_write_before_pause "$tmp" "$step" 'Step 3 entry'
   done
@@ -2121,7 +2126,7 @@ assert_publish_fence_guards() {
 assert_bash_fences_have_pause_check() {
   local missing
   missing=$(awk '
-    /^### 0c —/ { start=1; in_fence=0 }
+    /<!-- step:1c/ { start=1; in_fence=0 }
     start && /^[[:space:]]*```bash[[:space:]]*$/ { in_fence=1; saw_source=0; saw_pause=0; next }
     start && in_fence && /^[[:space:]]*```[[:space:]]*$/ {
       if (saw_source && !saw_pause) print source_line

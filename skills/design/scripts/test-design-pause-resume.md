@@ -48,7 +48,7 @@ immediately re-pause.
 | Fixture | Intent |
 |---------|--------|
 | Folded discussion through `step-1e` | Resume routes forward to `STEP=2a` (not replay discussion); snapshot retains `.outline-approved` and discussion sentinels. |
-| Direct-review Step 3 entry | After backward-loop marker loss, Step 3 entry restores `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5` and resumes at `STEP=3`. |
+| Direct-review Step 3 entry | With `.step3-reentry` present, Step 3 entry restores `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5`, consumes the marker, and resumes at `STEP=3`. |
 | No-brainstorm Step 2a entry | Discussion sentinels through `step-1d.7` without `step-1d.5`; Step 2a entry repair writes `step-1d.5` before pause-save. |
 | Backward-loop re-entry clear host | Stale `step-1e`…`step-4b` markers are removed before save; resume lands at `STEP=1e` or, after direct-review restoration, `STEP=3` — not Gate C or a later folded host. |
 | Already-planned Q&A-only terminal | Contiguous prefix through `step-1d.5` (`step-1c`, `step-1d`, and `step-1d.5`), not only the non-contiguous `step-1d.5` marker; resume at `STEP=1d.7`. |
