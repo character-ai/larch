@@ -2,7 +2,7 @@
 
 Sourced-only helper library for Codex review launcher behavior that needs to stay in parity with the Cursor review launcher.
 
-The canonical bodies for `codex_launcher_promote_inner_done` (which promotes `${OUTPUT}.inner.done` to `${OUTPUT}.done` only after launcher-owned post-processing has completed) and `codex_launcher_append_outer_meta` (which appends retry metadata so `collect-agent-results.sh` can replay empty-output retries through `scripts/launch-review.sh --tool codex`) live in `scripts/lib-external-launcher-common.sh` (issue #1502 dedup); this file sources that lib and exposes the per-tool wrapper names so existing callers in `scripts/launch-review.sh --tool codex` continue to work unchanged.
+The canonical bodies for `codex_launcher_promote_inner_done` (which promotes `${OUTPUT}.inner.done` to `${OUTPUT}.done` only after launcher-owned post-processing has completed), `codex_launcher_append_outer_meta` (which appends retry metadata so `collect-agent-results.sh` can replay empty-output retries through `scripts/launch-review.sh --tool codex`), and `codex_launcher_append_codex_exec_outer_meta` (which appends `OUTER_LAUNCHER_KIND=codex-exec` metadata for `scripts/launch-codex-exec.sh` retries) live in `scripts/lib-external-launcher-common.sh` (issue #1502 dedup); this file sources that lib and exposes the per-tool wrapper names so existing callers in `scripts/launch-review.sh --tool codex` continue to work unchanged.
 
 `codex_launcher_record_usage_from_events` is the matching thin wrapper around
 `external_launcher_record_usage_from_events`. It parses `${OUTPUT}.events.jsonl`

@@ -21,13 +21,13 @@ PYTHON ?= python3
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
-.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-awk-multibyte-regex test-lint-awk-multibyte-regex
+.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence
 .PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-awk-multibyte-regex lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-awk-multibyte-regex lint-only
 
 py-lint:
 	cd python && ruff check . && pylint . && pyright
@@ -49,6 +49,9 @@ lint-skill-md-flag-signature:
 
 lint-bare-grep-probe:
 	bash scripts/lint-bare-grep-probe.sh
+
+lint-codex-exec-auth:
+	bash scripts/lint-codex-exec-auth.sh
 
 lint-awk-multibyte-regex:
 	bash scripts/lint-awk-multibyte-regex.sh
@@ -99,7 +102,7 @@ test-harnesses-11: test-set-up-forked-open-source-repo test-design-multi-round-i
 test-harnesses-12: test-dispatch-panel-reuse test-dispatch-panel-limits test-oos-file-conflict-deps test-materialize-manifest-oos test-ship-pr-oos-pr-prep test-cursor-implementer test-dispatch-code-voters-retry-codex-fail-and-fallback test-prompt-template-invariants test-launch-claude-review test-larch-log-write-round test-render-run-summary test-write-design-current-env test-scrub-submodule-paths test-cache-key-discipline test-deny-edit-write test-false-positive-keywords test-finalize-plan test-audit-edit-write test-gather-context test-orchestrator-scope-sync test-render-final-summary-bash32
 test-harnesses-13: test-launch-codex-ci test-dispatch-code-voters-retry-cursor test-allocate-candidates test-design-structure test-mermaid-fragments test-local-cleanup test-lint-bash32 test-parse-plan-commands test-step0b-router-flag-recovery test-lib-cursor-auth test-implement-rebase-macro test-ship-pr-rebase test-git-commit-only test-lib-submodule-prohibition test-anti-improvised-wakeup
 
-test-harnesses-14: test-dispatch-plan-review-panel test-step-7a test-wait-for-reviewers test-dispatch-code-voters-regressions-r3-codex test-tally-plan-assessor test-lint-awk-multibyte-regex test-append-tool-failure test-lint-bare-grep-probe test-relevant-checks-helper-failure test-lint-skill-md-flag-signature test-lint-no-raw-stderr-after-quiet-init test-lib-net test-lib-design-tmpdir test-token-report-summary-format test-research-angle-prompts test-implement-relevant-checks-anti-halt
+test-harnesses-14: test-dispatch-plan-review-panel test-step-7a test-wait-for-reviewers test-dispatch-code-voters-regressions-r3-codex test-tally-plan-assessor test-lint-awk-multibyte-regex test-append-tool-failure test-lint-bare-grep-probe test-lint-codex-exec-auth test-launch-codex-exec test-relevant-checks-helper-failure test-lint-skill-md-flag-signature test-lint-no-raw-stderr-after-quiet-init test-lib-net test-lib-design-tmpdir test-token-report-summary-format test-research-angle-prompts test-implement-relevant-checks-anti-halt
 
 test-harnesses-15: test-implement-bootstrap test-implement-bootstrap-invoke test-validate-citations-budget test-lint-fix-loop test-validate-research-output test-render-findings-batch test-generate-topology-docs test-step3-review-cap test-clarify-state test-lint-gh-body-inline test-compose-collector-failure-log test-render-cost-line-realism test-render-cost-line-callsites test-resolve-repo test-run-step2-dispatch test-persist-implement-run-flags test-implement-anti-polling-rule
 
@@ -571,6 +574,12 @@ test-lint-skill-md-flag-signature:
 
 test-lint-bare-grep-probe:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bare-grep-probe.sh
+
+test-lint-codex-exec-auth:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-codex-exec-auth.sh
+
+test-launch-codex-exec:
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-exec.sh
 
 test-lint-awk-multibyte-regex:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-awk-multibyte-regex.sh

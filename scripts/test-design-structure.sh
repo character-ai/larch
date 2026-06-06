@@ -1051,6 +1051,8 @@ grep -Fq 'waterfall' "$DIALEXEC_MD" \
   || fail "(16) dialectic-execution.md missing waterfall token (step 5 contract)"
 grep -Fq '1. **Per-side external tool assignment**' "$DIALEXEC_MD" \
   || fail "(16) dialectic-execution.md missing step 1 per-side external tool assignment header"
+grep -Fq 'launch-codex-exec.sh' "$DIALEXEC_MD" \
+  || fail "(codex judge) dialectic-execution.md must reference launch-codex-exec.sh for Codex judge"
 grep -Fq 'OUTPUT FORMAT' "$DEBATE_MD" \
   || fail "(16) dialectic-debate.md missing OUTPUT FORMAT header"
 grep -Fq 'SELF-CHECK BEFORE STOPPING' "$DEBATE_MD" \

@@ -103,6 +103,9 @@ source "$SCRIPT_DIR/lib-net.sh" || { echo "collect-agent-results.sh: failed to s
 source "$SCRIPT_DIR/lib-quiet.sh" || { echo "collect-agent-results.sh: failed to source lib-quiet.sh" >&2; exit 1; }
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
 source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { echo "collect-agent-results.sh: failed to source lib-failed-agent-stderr-tail.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-external-launcher-common.sh" || { echo "collect-agent-results.sh: failed to source lib-external-launcher-common.sh" >&2; exit 1; }
 
 normalize_exit_code_or_99() {
     local raw="$1"
@@ -513,6 +516,12 @@ parse_retry_meta() {
     META_OUTER_LAUNCHER_PROMPT_FILE=""
     META_OUTER_LAUNCHER_WORKDIR=""
     META_OUTER_LAUNCHER_RISK=""
+    META_OUTER_LAUNCHER_KIND=""
+    META_OUTER_LAUNCHER_SANDBOX=""
+    META_OUTER_LAUNCHER_WITH_EFFORT=""
+    META_OUTER_LAUNCHER_USAGE_LABEL=""
+    META_OUTER_LAUNCHER_TIMING_KIND=""
+    META_OUTER_LAUNCHER_ADD_DIRS_JSON=""
     META_STDERR_SINK=""
     while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
         meta_key="${meta_line%%=*}"
@@ -528,6 +537,12 @@ parse_retry_meta() {
             OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
             OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
             OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
+            OUTER_LAUNCHER_KIND) META_OUTER_LAUNCHER_KIND="$meta_val" ;;
+            OUTER_LAUNCHER_SANDBOX) META_OUTER_LAUNCHER_SANDBOX="$meta_val" ;;
+            OUTER_LAUNCHER_WITH_EFFORT) META_OUTER_LAUNCHER_WITH_EFFORT="$meta_val" ;;
+            OUTER_LAUNCHER_USAGE_LABEL) META_OUTER_LAUNCHER_USAGE_LABEL="$meta_val" ;;
+            OUTER_LAUNCHER_TIMING_KIND) META_OUTER_LAUNCHER_TIMING_KIND="$meta_val" ;;
+            OUTER_LAUNCHER_ADD_DIRS_JSON) META_OUTER_LAUNCHER_ADD_DIRS_JSON="$meta_val" ;;
             STDERR_SINK) META_STDERR_SINK="$meta_val" ;;
         esac
     done < "$meta_path"
@@ -568,6 +583,111 @@ validate_retry_timeout_or_mark() {
     return 0
 }
 
+retry_jq_available() {
+    [[ "${LARCH_TEST_FORCE_NO_JQ:-}" == "1" ]] && return 1
+    command -v jq >/dev/null 2>&1
+}
+
+parse_json_string_array_no_jq() {
+    local json="$1"
+    local __array_name="$2"
+    local inner item rest
+    printf -v "$__array_name" '%s' ""
+    [[ "$json" == \[*\] ]] || return 1
+    inner="${json:1:${#json}-2}"
+    [[ -n "$inner" ]] || return 0
+    rest="$inner"
+    while [[ -n "$rest" ]]; do
+        [[ "$rest" == \"* ]] || return 1
+        rest="${rest:1}"
+        item=""
+        while [[ -n "$rest" ]]; do
+            case "$rest" in
+                \"*)
+                    rest="${rest:1}"
+                    eval "$__array_name+=(\"\$item\")"
+                    if [[ -z "$rest" ]]; then
+                        return 0
+                    fi
+                    [[ "$rest" == ,* ]] || return 1
+                    rest="${rest:1}"
+                    break
+                    ;;
+                \\\\*)
+                    item+="\\"
+                    rest="${rest:2}"
+                    ;;
+                \\\"*)
+                    item+="\""
+                    rest="${rest:2}"
+                    ;;
+                \\*) return 1 ;;
+                *)
+                    item+="${rest:0:1}"
+                    rest="${rest:1}"
+                    ;;
+            esac
+        done
+    done
+    return 1
+}
+
+build_codex_exec_outer_retry_args_or_mark() {
+    local idx="$1"
+    local orig_output="$2"
+    local retry_output="$3"
+    local prompt_file="$4"
+    local timeout_value="$5"
+
+    case "$META_OUTER_LAUNCHER_KIND" in
+        codex-exec) ;;
+        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_KIND must be codex-exec"; return 1 ;;
+    esac
+    case "$META_OUTER_LAUNCHER_SANDBOX" in
+        full-auto|read-only) ;;
+        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_SANDBOX invalid"; return 1 ;;
+    esac
+    case "$META_OUTER_LAUNCHER_WITH_EFFORT" in
+        true|false) ;;
+        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_WITH_EFFORT invalid"; return 1 ;;
+    esac
+    [[ -n "$META_OUTER_LAUNCHER_USAGE_LABEL" ]] || {
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER_USAGE_LABEL"; return 1
+    }
+    [[ -n "$META_OUTER_LAUNCHER_TIMING_KIND" ]] || {
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER_TIMING_KIND"; return 1
+    }
+
+    _codex_exec_retry_args=(
+        --output "$retry_output"
+        --timeout "$timeout_value"
+        --workdir "$META_OUTER_LAUNCHER_WORKDIR"
+        --prompt-file "$prompt_file"
+        --sandbox "$META_OUTER_LAUNCHER_SANDBOX"
+        --usage-label "$META_OUTER_LAUNCHER_USAGE_LABEL"
+        --timing-task-kind "$META_OUTER_LAUNCHER_TIMING_KIND"
+    )
+    [[ "$META_OUTER_LAUNCHER_WITH_EFFORT" == true ]] && _codex_exec_retry_args+=(--with-effort)
+    if retry_jq_available; then
+        if ! printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -e 'type=="array"' >/dev/null 2>&1; then
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"; return 1
+        fi
+        _add_dir=""
+        while IFS= read -r _add_dir; do
+            [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
+        done < <(printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -r '.[]?')
+    else
+        _add_dirs_no_jq=()
+        if ! parse_json_string_array_no_jq "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" _add_dirs_no_jq; then
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"; return 1
+        fi
+        for _add_dir in "${_add_dirs_no_jq[@]}"; do
+            [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
+        done
+    fi
+    return 0
+}
+
 launch_outer_retry_or_mark() {
     local idx="$1"
     local orig_output="$2"
@@ -593,10 +713,10 @@ launch_outer_retry_or_mark() {
         *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER contains .."; return 1 ;;
     esac
     _launcher_base=$(basename "$META_OUTER_LAUNCHER")
-    case "$META_TOOL:$_launcher_base" in
-        cursor:launch-review.sh|codex:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
-        cursor:*|codex:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
-        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"; return 1 ;;
+    case "$_launcher_base" in
+        launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh"; _outer_launcher_kind="review" ;;
+        launch-codex-exec.sh) _expected_launcher="$SCRIPT_DIR/launch-codex-exec.sh"; _outer_launcher_kind="codex-exec" ;;
+        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or launch-codex-exec.sh"; return 1 ;;
     esac
     if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
         mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
@@ -635,26 +755,38 @@ launch_outer_retry_or_mark() {
         mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory"
         return 1
     fi
-    case "$META_OUTER_LAUNCHER_RISK" in
-        high|low) ;;
-        *) META_OUTER_LAUNCHER_RISK=high ;;
-    esac
-    validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
-    _outer_sink_args=()
-    [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
-    (
-        cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
-        env -u LARCH_ALLOW_TEST_HOOKS \
-            -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
-            -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
-            -- "$META_OUTER_LAUNCHER" \
-                --tool "$META_TOOL" \
-                --output "$retry_output" \
-                --timeout "$timeout_value" \
-                --risk "$META_OUTER_LAUNCHER_RISK" \
-                --prompt-file "$prompt_file" \
-                "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
-    ) >/dev/null 2>&1 &
+    if [[ "$_outer_launcher_kind" == "review" ]]; then
+        case "$META_OUTER_LAUNCHER_RISK" in
+            high|low) ;;
+            *) META_OUTER_LAUNCHER_RISK=high ;;
+        esac
+        validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
+        _outer_sink_args=()
+        [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
+        (
+            cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
+            env -u LARCH_ALLOW_TEST_HOOKS \
+                -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
+                -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
+                -- "$META_OUTER_LAUNCHER" \
+                    --tool "$META_TOOL" \
+                    --output "$retry_output" \
+                    --timeout "$timeout_value" \
+                    --risk "$META_OUTER_LAUNCHER_RISK" \
+                    --prompt-file "$prompt_file" \
+                    "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
+        ) >/dev/null 2>&1 &
+    else
+        build_codex_exec_outer_retry_args_or_mark "$idx" "$orig_output" "$retry_output" "$prompt_file" "$timeout_value" || return 1
+        (
+            cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
+            env -u LARCH_ALLOW_TEST_HOOKS \
+                -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
+                -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
+                -- "$META_OUTER_LAUNCHER" \
+                    "${_codex_exec_retry_args[@]}"
+        ) >/dev/null 2>&1 &
+    fi
     eval "$launched_var=1"
     eval "$sentinels_var+=(\"\${retry_output}.done\")"
     return 0
@@ -798,34 +930,13 @@ for i in "${!OUTPUT_FILES[@]}"; do
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
             # Queue for retry if .meta exists
             if [[ -f "$META" ]]; then
-                # .meta is one KEY=VALUE record per line. This parser relies on
-                # run-external-agent.sh's writer-side field contract to keep
-                # values line-oriented; only META_TIMEOUT is needed here.
-                ORIG_TIMEOUT=""
-                while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
-                    meta_key="${meta_line%%=*}"
-                    meta_val="${meta_line#*=}"
-                    [[ "$meta_key" == "TIMEOUT" ]] && ORIG_TIMEOUT="$meta_val"
-                done < "$META"
-                _orig_invalid_reason=""
-                if [[ -z "$ORIG_TIMEOUT" ]]; then
-                    _orig_invalid_reason="Retry metadata invalid: TIMEOUT missing"
-                else
-                    case "$ORIG_TIMEOUT" in
-                        ''|*[!0-9]*) _orig_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
-                        *) if (( 10#$ORIG_TIMEOUT < 1 )); then
-                               _orig_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
-                           fi ;;
-                    esac
-                fi
-                if [[ -n "$_orig_invalid_reason" ]]; then
-                    mark_retry_metadata_invalid "$i" "$OUTPUT" "$_orig_invalid_reason"
+                parse_retry_meta "$META"
+                if ! validate_retry_timeout_or_mark "$i" "$OUTPUT" "$META_TIMEOUT"; then
                     continue
                 fi
-                ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
                 RETRY_FILES+=("$OUTPUT")
                 RETRY_INDICES+=("$i")
-                RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
+                RETRY_TIMEOUTS+=("$META_TIMEOUT")
             else
                 : # no .meta; keep EMPTY_OUTPUT and let callers decide fallback.
             fi
@@ -845,25 +956,14 @@ for i in "${!OUTPUT_FILES[@]}"; do
         && [[ -f "${OUTPUT}.diag" ]] \
         && is_transient_net_signature "$FAILURE_REASON" \
         && [[ -f "$META" ]]; then
-        ORIG_TIMEOUT=""
-        while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
-            meta_key="${meta_line%%=*}"
-            meta_val="${meta_line#*=}"
-            [[ "$meta_key" == "TIMEOUT" ]] && ORIG_TIMEOUT="$meta_val"
-        done < "$META"
-        case "$ORIG_TIMEOUT" in
-            ''|*[!0-9]*) ;;
-            *)
-                if (( 10#$ORIG_TIMEOUT >= 1 )); then
-                    ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
-                    STATUS="EMPTY_OUTPUT"
-                    larch_err "collect-agent-results.sh: transient diagnostic for $(basename "$OUTPUT"); retrying once"
-                    RETRY_FILES+=("$OUTPUT")
-                    RETRY_INDICES+=("$i")
-                    RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
-                fi
-                ;;
-        esac
+        parse_retry_meta "$META"
+        if validate_retry_timeout_or_mark "$i" "$OUTPUT" "$META_TIMEOUT"; then
+            STATUS="EMPTY_OUTPUT"
+            larch_err "collect-agent-results.sh: transient diagnostic for $(basename "$OUTPUT"); retrying once"
+            RETRY_FILES+=("$OUTPUT")
+            RETRY_INDICES+=("$i")
+            RETRY_TIMEOUTS+=("$META_TIMEOUT")
+        fi
     fi
 
     if [[ "$STATUS" == "OK" ]] && _classify_sentinel_status "$OUTPUT"; then
@@ -897,158 +997,18 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             MAX_RETRY_TIMEOUT=$RETRY_WAIT
         fi
 
-        # Parse .meta file (full parse for retry command reconstruction). The
-        # line-oriented grammar and field safety guarantees are owned by
-        # run-external-agent.sh's .meta writer contract.
-        META_TOOL=""
-        META_TIMEOUT=""
-        META_CAPTURE=""
-        META_CAPTURE_STDOUT_ONLY=""
-        META_CMD_JSON=""
-        META_ORIG_OUTPUT=""
-        META_OUTER_LAUNCHER=""
-        META_OUTER_LAUNCHER_PROMPT_FILE=""
-        META_OUTER_LAUNCHER_WORKDIR=""
-        META_OUTER_LAUNCHER_RISK=""
-        META_STDERR_SINK=""
-        while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
-            meta_key="${meta_line%%=*}"
-            meta_val="${meta_line#*=}"
-            case "$meta_key" in
-                TOOL)           META_TOOL="$meta_val" ;;
-                TIMEOUT)        META_TIMEOUT="$meta_val" ;;
-                CAPTURE_STDOUT) META_CAPTURE="$meta_val" ;;
-                CAPTURE_STDOUT_ONLY) META_CAPTURE_STDOUT_ONLY="$meta_val" ;;
-                OUTPUT_FILE)    META_ORIG_OUTPUT="$meta_val" ;;
-                CMD_JSON)       META_CMD_JSON="$meta_val" ;;
-                OUTER_LAUNCHER) META_OUTER_LAUNCHER="$meta_val" ;;
-                OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
-                OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
-                OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
-                STDERR_SINK) META_STDERR_SINK="$meta_val" ;;
-            esac
-        done < "$META"
-
-        _meta_invalid_reason=""
-        if [[ -z "$META_TIMEOUT" ]]; then
-            _meta_invalid_reason="Retry metadata invalid: TIMEOUT missing"
-        else
-            case "$META_TIMEOUT" in
-                ''|*[!0-9]*) _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
-                *) if (( 10#$META_TIMEOUT < 1 )); then
-                       _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
-                   fi ;;
-            esac
-        fi
-        if [[ -n "$_meta_invalid_reason" ]]; then
-            IDX="${RETRY_INDICES[$j]}"
-            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "$_meta_invalid_reason"
+        parse_retry_meta "$META"
+        IDX="${RETRY_INDICES[$j]}"
+        if ! validate_retry_timeout_or_mark "$IDX" "$ORIG_OUTPUT" "$META_TIMEOUT"; then
             continue
         fi
-        META_TIMEOUT=$((10#$META_TIMEOUT))
 
         if [[ -n "$META_OUTER_LAUNCHER" || -n "$META_OUTER_LAUNCHER_PROMPT_FILE" || -n "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
-            IDX="${RETRY_INDICES[$j]}"
-            if [[ -z "$META_OUTER_LAUNCHER" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER"
+            _outer_retry_launched=0
+            if ! launch_outer_retry_or_mark \
+                "$IDX" "$ORIG_OUTPUT" "$RETRY_OUTPUT" "$META_OUTER_LAUNCHER_PROMPT_FILE" "$META_TIMEOUT" _outer_retry_launched "RETRY_SENTINELS"; then
                 continue
             fi
-            if [[ -z "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE"
-                continue
-            fi
-            if [[ -z "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR"
-                continue
-            fi
-            case "$META_OUTER_LAUNCHER" in
-                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER contains .."; continue ;;
-            esac
-            _launcher_base=$(basename "$META_OUTER_LAUNCHER")
-            case "$META_TOOL:$_launcher_base" in
-                cursor:launch-review.sh|codex:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
-                cursor:*|codex:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
-                *) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"; continue ;;
-            esac
-            if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                continue
-            fi
-            if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                continue
-            fi
-            _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
-            _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
-            if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-                continue
-            fi
-            if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
-                # Reject symlinked launchers (R2_FINDING_2 of /review). Mirrors
-                # the OUTER_LAUNCHER_PROMPT_FILE non-symlink rule below for
-                # uniform defense-in-depth: even though the canonicalization
-                # above resolves directory symlinks via `pwd -P`, a leaf
-                # symlink at the canonical path could be swapped between the
-                # canonical comparison and the exec.
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
-                continue
-            fi
-            _expected_prompt="${ORIG_OUTPUT}.prompt"
-            case "$META_OUTER_LAUNCHER_PROMPT_FILE" in
-                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains .."; continue ;;
-            esac
-            if [[ "$META_OUTER_LAUNCHER_PROMPT_FILE" != "$_expected_prompt" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar"
-                continue
-            fi
-            if [[ ! -f "$META_OUTER_LAUNCHER_PROMPT_FILE" || -L "$META_OUTER_LAUNCHER_PROMPT_FILE" || ! -r "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file"
-                continue
-            fi
-            case "$META_OUTER_LAUNCHER_WORKDIR" in
-                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR contains .."; continue ;;
-            esac
-            if [[ ! -d "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory"
-                continue
-            fi
-            case "$META_OUTER_LAUNCHER_RISK" in
-                high|low) ;;
-                *) META_OUTER_LAUNCHER_RISK=high ;;
-            esac
-            if ! validate_retry_stderr_sink_or_mark "${RETRY_INDICES[$j]}" "$ORIG_OUTPUT"; then
-                continue
-            fi
-            _outer_sink_args=()
-            [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
-            (
-                cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
-                # Sanitize test-hook env vars before exec (R2_FINDING_1 of
-                # /review). The launcher's per-invocation gating
-                # (LARCH_ALLOW_TEST_HOOKS=1 + LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE)
-                # is correct for direct callers, but the collector's outer-
-                # retry path runs in a silenced background subshell — if those
-                # env vars are inherited from the collector process (CI env
-                # leak, attacker on same UID, etc.), every retry would
-                # silently source an arbitrary file under the collector UID
-                # with no log signal. `env -u` clears them just for this
-                # exec, defense-in-depth on top of the per-invocation gate.
-                # The legacy single-env-var name is also cleared even though
-                # the launcher does not honor it, to keep the cleared set
-                # symmetric with the launcher's gating contract.
-                env -u LARCH_ALLOW_TEST_HOOKS \
-                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
-                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
-                    -- "$META_OUTER_LAUNCHER" \
-                        --tool "$META_TOOL" \
-                        --output "$RETRY_OUTPUT" \
-                        --timeout "$META_TIMEOUT" \
-                        --risk "$META_OUTER_LAUNCHER_RISK" \
-                        --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE" \
-                        "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
-            ) >/dev/null 2>&1 &
-            RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
             RETRY_LAUNCHED[j]=1
             continue
         fi

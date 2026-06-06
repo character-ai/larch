@@ -174,7 +174,7 @@ Otherwise, build the ballot per `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-p
 Launch 3 judges **in parallel** (single message). Spawn order: Cursor first, then Codex, then the Claude subagent. Follow the protocol's Launching Judges section for exact command templates:
 
 - Cursor judge via `run-external-agent.sh --tool cursor --capture-stdout` (with `run_in_background: true`, `timeout: 1860000`). If `judge_cursor_available=false`, launch a Claude subagent replacement via the Agent tool inline.
-- Codex judge via `run-external-agent.sh --tool codex` (with `run_in_background: true`, `timeout: 1860000`). If `judge_codex_available=false`, launch a Claude subagent replacement inline.
+- Codex judge via `launch-codex-exec.sh` (with `run_in_background: true`, `timeout: 1860000`). If `judge_codex_available=false`, launch a Claude subagent replacement inline.
 - Claude Code Reviewer subagent judge: always via the Agent tool (subagent_type: `larch:code-reviewer`), inline.
 
 ## Collecting judge results (split pattern)

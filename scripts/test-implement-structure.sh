@@ -378,8 +378,10 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-quiet\.sh' "$LINT_FIX_LOOP_SH
   || fail "lint-fix-loop.sh must source lib-quiet.sh"
 grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-cursor-launcher-common\.sh' "$LINT_FIX_LOOP_SH" \
   || fail "lint-fix-loop.sh must source lib-cursor-launcher-common.sh"
+grep -Fq 'launch-codex-exec.sh' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must dispatch Codex through launch-codex-exec.sh"
 grep -Fq 'run-external-agent.sh' "$LINT_FIX_LOOP_SH" \
-  || fail "lint-fix-loop.sh must dispatch through run-external-agent.sh"
+  || fail "lint-fix-loop.sh must dispatch Cursor through run-external-agent.sh"
 
 step3_lint_status=0
 awk '

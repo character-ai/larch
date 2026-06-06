@@ -68,13 +68,13 @@ Non-accepted tie-breaks (after the acceptance-threshold check fails), in order:
 
 **For plan review** (`/design` Step 3):
 - **Voter 1**: Claude Code Reviewer subagent — launched as a fresh Agent tool invocation (subagent_type: `larch:code-reviewer`) with a focused voting prompt (separate from the reviewer subagents)
-- **Voter 2**: Codex — via `run-external-agent.sh`
-- **Voter 3**: Cursor — via `run-external-agent.sh`
+- **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
+- **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 
 **For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches all three voters every round:
 - **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched)
-- **Voter 2**: Codex — via `run-external-agent.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
-- **Voter 3**: Cursor — via `run-external-agent.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
+- **Voter 2**: Codex — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
+- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 
@@ -158,18 +158,15 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 **Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
 ```bash
-# Same temp-file pattern as the Cursor block above — propagate
-# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
-CODEX_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort > "$CODEX_MODEL_ARGS_TMP" || exit $?
-CODEX_MODEL_ARGS=()
-while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
-
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpdir>/codex-vote-output.txt" --timeout 1200 -- \
-  codex exec --sandbox read-only -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-    --output-last-message "<tmpdir>/codex-vote-output.txt" \
-    "<voter prompt with ballot>."
+# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
+"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
+  --output "<tmpdir>/codex-vote-output.txt" \
+  --timeout 1200 \
+  --workdir "$PWD" \
+  --add-dir "$PWD" \
+  --sandbox read-only \
+  --with-effort \
+  --prompt "<voter prompt with ballot>."
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.

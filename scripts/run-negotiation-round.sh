@@ -68,12 +68,32 @@ case "$TOOL" in
     codex)
         codex_events="${OUTPUT_FILE%.txt}.events.jsonl"
         codex_sidecar="${OUTPUT_FILE%.txt}.sidecar"
+        codex_home=""
+        CODEX_MODEL_ARGS_TMP=""
+        _negotiation_codex_cleanup() {
+            rm -f "${CODEX_MODEL_ARGS_TMP:-}"
+            rm -rf "${codex_home:-}"
+        }
+        codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-negotiation-home-XXXXXX")
+        trap '_negotiation_codex_cleanup' EXIT
+        if [[ -f ~/.codex/config.toml ]]; then
+            if ! cp ~/.codex/config.toml "$codex_home/config.toml"; then
+                _negotiation_codex_cleanup
+                emit_kv RESPONSE_FILE "$OUTPUT_FILE"
+                exit 2
+            fi
+        fi
+        if ! external_prepare_codex_auth "$codex_home"; then
+            _negotiation_codex_cleanup
+            emit_kv RESPONSE_FILE "$OUTPUT_FILE"
+            exit 2
+        fi
         CODEX_MODEL_ARGS_TMP=$(mktemp)
         if "$SCRIPT_DIR/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
             :
         else
             rc=$?
-            rm -f "$CODEX_MODEL_ARGS_TMP"
+            _negotiation_codex_cleanup
             exit "$rc"
         fi
         CODEX_MODEL_ARGS=()
@@ -81,17 +101,27 @@ case "$TOOL" in
             CODEX_MODEL_ARGS+=("$arg")
         done < "$CODEX_MODEL_ARGS_TMP"
         rm -f "$CODEX_MODEL_ARGS_TMP"
+        CODEX_MODEL_ARGS_TMP=""
+        project_key=${WORKSPACE//\\/\\\\}
+        project_key=${project_key//\"/\\\"}
+        trust_config_arg="projects.\"$project_key\".trust_level=\"trusted\""
+        CODEX_AUTH_ARGS=()
+        external_codex_auth_config_args CODEX_AUTH_ARGS
         _SERIAL_LOCK=""
-        external_serial_lock_acquire _SERIAL_LOCK "codex"
+        if ! external_serial_lock_acquire _SERIAL_LOCK "codex"; then
+            _negotiation_codex_cleanup
+            emit_kv RESPONSE_FILE "$OUTPUT_FILE"
+            exit 2
+        fi
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         rm -f "$codex_events" "$codex_sidecar"
         codex_rc=0
-        codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-            --output-last-message "$OUTPUT_FILE" \
-            --json \
-            -- \
-            - < "$PROMPT_FILE" >"$codex_events" 2>"$codex_sidecar" || codex_rc=$?
+        CODEX_HOME="$codex_home" codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} -c "$trust_config_arg" ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} --output-last-message "$OUTPUT_FILE" --json -- - < "$PROMPT_FILE" >"$codex_events" 2>"$codex_sidecar" || codex_rc=$? # lint-codex-exec-auth: ok inline stdin-pipe dispatch; auth wired per check-reviewers.sh:211-245
+        if [[ "$codex_rc" -ne 0 ]]; then
+            external_launcher_mirror_quota_from_events "$codex_events" "$codex_sidecar"
+        fi
         external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_sidecar" "codex_negotiation" || true
+        _negotiation_codex_cleanup
         if [[ "$codex_rc" -ne 0 ]]; then
             emit_kv RESPONSE_FILE "$OUTPUT_FILE"
             exit 2

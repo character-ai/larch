@@ -32,6 +32,38 @@ external_launcher_append_outer_meta() {
     } >> "$meta_path"
 }
 
+external_launcher_append_codex_exec_outer_meta() {
+    local meta_path="$1"
+    local outer_launcher_path="$2"
+    local prompt_file_sidecar="$3"
+    local workdir="$4"
+    local sandbox="$5"
+    local with_effort="$6"
+    local usage_label="$7"
+    local timing_kind="$8"
+    local add_dirs_json="$9"
+    [[ -f "$meta_path" ]] || return 0
+    case "$sandbox" in
+        full-auto|read-only) ;;
+        *) sandbox=full-auto ;;
+    esac
+    case "$with_effort" in
+        true|false) ;;
+        *) with_effort=false ;;
+    esac
+    {
+        printf 'OUTER_LAUNCHER=%s\n' "$outer_launcher_path"
+        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
+        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
+        printf 'OUTER_LAUNCHER_KIND=codex-exec\n'
+        printf 'OUTER_LAUNCHER_SANDBOX=%s\n' "$sandbox"
+        printf 'OUTER_LAUNCHER_WITH_EFFORT=%s\n' "$with_effort"
+        printf 'OUTER_LAUNCHER_USAGE_LABEL=%s\n' "$usage_label"
+        printf 'OUTER_LAUNCHER_TIMING_KIND=%s\n' "$timing_kind"
+        printf 'OUTER_LAUNCHER_ADD_DIRS_JSON=%s\n' "$add_dirs_json"
+    } >> "$meta_path"
+}
+
 external_launch_health_gate_timeout() {
     local _out_var="$1"
     local candidate="" session_file="" script_dir=""
@@ -318,7 +350,7 @@ external_launcher_mirror_quota_from_events() {
     fi
     if external_is_quota_failure "codex" "$events_file"; then
         printf 'codex-quota: usage limit / quota reported on the codex exec --json events stream (%s); see that file for the reset time\n' \
-            "$events_file" >> "$sidecar" 2>/dev/null || true
+            "$events_file" >> "$sidecar" 2>/dev/null || true # lint-codex-exec-auth: ok quota-mirror sidecar message text pinned by test-launch-review.sh and test-launch-codex-ci.sh; not a dispatch site
     fi
     return 0
 }
@@ -705,6 +737,23 @@ external_prepare_codex_auth() {
     if [[ -f ~/.codex/auth.json ]]; then
         ln -sf "$(cd ~/.codex && pwd)/auth.json" "$home_dir/auth.json" || return 1
     fi
+}
+
+json_array_from_args() {
+    local sep="" item
+    printf '['
+    for item in "$@"; do
+        case "$item" in
+            *$'\n'*|*$'\r'*|*$'\t'*)
+                return 1
+                ;;
+        esac
+        item=${item//\\/\\\\}
+        item=${item//\"/\\\"}
+        printf '%s"%s"' "$sep" "$item"
+        sep=","
+    done
+    printf ']'
 }
 
 external_codex_auth_config_args() {

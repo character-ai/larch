@@ -905,6 +905,16 @@ exclude = [
   "scripts/lint-bare-grep-probe.md",
   "scripts/test-lint-bare-grep-probe.sh",
   "scripts/test-lint-bare-grep-probe.md",
+  # scripts/lint-codex-exec-auth.sh — Makefile/pre-commit-only linter (issue #3475).
+  # scripts/launch-codex-exec.sh — markdown-fence + lint-fix-loop launcher-variable indirection.
+  "scripts/lint-codex-exec-auth.sh",
+  "scripts/lint-codex-exec-auth.md",
+  "scripts/test-lint-codex-exec-auth.sh",
+  "scripts/test-lint-codex-exec-auth.md",
+  "scripts/launch-codex-exec.sh",
+  "scripts/launch-codex-exec.md",
+  "scripts/test-launch-codex-exec.sh",
+  "scripts/test-launch-codex-exec.md",
   "scripts/lint-awk-multibyte-regex.sh",
   "scripts/lint-awk-multibyte-regex.md",
   "scripts/test-lint-awk-multibyte-regex.sh",

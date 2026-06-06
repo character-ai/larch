@@ -11,8 +11,10 @@ fail() {
     exit 1
 }
 
-grep -F -- "--stderr-sink \"\$codex_wrapper_log\"" "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
-    || fail "lint-fix-loop.sh run_codex must forward --stderr-sink \"\$codex_wrapper_log\""
+grep -F -- 'LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh run_codex must route through launch-codex-exec.sh"
+grep -F -- "--prompt-file \"\$run_dir/prompt.md\"" "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh run_codex must pass prompt by file"
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-lint-fix-loop.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
@@ -105,9 +107,59 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/external-tool-registry.sh" "$dir/external-tool-registry.sh"
     cp "$SOURCE_SCRIPTS/lib-cursor-auth.sh" "$dir/lib-cursor-auth.sh"
     cp "$SOURCE_SCRIPTS/cursor-wrap-prompt.sh" "$dir/cursor-wrap-prompt.sh"
+    cat > "$dir/launch-codex-exec.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+timeout=""
+prompt_file=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) timeout="$2"; shift 2 ;;
+        --prompt-file) prompt_file="$2"; shift 2 ;;
+        --workdir|--add-dir|--usage-label|--sandbox|--timing-task-kind)
+            if [[ -n "${LINT_FIX_STUB_ARGV_LOG:-}" ]]; then
+                printf '%s\n' "$1" >> "$LINT_FIX_STUB_ARGV_LOG"
+                printf '%s\n' "$2" >> "$LINT_FIX_STUB_ARGV_LOG"
+            fi
+            shift 2 ;;
+        --with-effort) shift ;;
+        *) shift ;;
+    esac
+done
+
+[[ -n "$output" ]] || exit 9
+[[ -n "$prompt_file" && -f "$prompt_file" ]] || exit 10
+
+rc=0
+"${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH:?}" \
+    --tool codex \
+    --output "$output" \
+    --timeout "${timeout:-1800}" \
+    -- \
+    codex exec --full-auto -C . --output-last-message "$output" --json -- "$(cat "$prompt_file")" \
+    >"${output}.events.jsonl" 2>"${output}.sidecar" || rc=$?
+if grep -Fq '"input_tokens":1000' "${output}.events.jsonl" 2>/dev/null; then
+    {
+        printf 'TOOL=codex\n'
+        printf 'INPUT=100\n'
+        printf 'OUTPUT=50\n'
+        printf 'CACHE_READ=900\n'
+        printf 'TOTAL=1050\n'
+        printf 'RAW=codex_lint_fix\n'
+    } >"${output}.token-record"
+elif [[ -s "${output}.events.jsonl" ]]; then
+    printf 'parse-codex-usage.sh: failed to parse usage\n' >>"${output}.sidecar"
+fi
+printf 'LAUNCHER_EXIT=%s\n' "$rc"
+exit 0
+EOF
     chmod +x \
         "$dir/agent-model-args.sh" \
         "$dir/cursor-wrap-prompt.sh" \
+        "$dir/launch-codex-exec.sh" \
         "$dir/lint-fix-loop.sh" \
         "$dir/lib-cursor-launcher-common.sh" \
         "$dir/parse-codex-usage.sh" \
@@ -534,7 +586,9 @@ run_case() {
         # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
+        LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$fixture_scripts/launch-codex-exec.sh" \
         LARCH_TOKEN_LEDGER="${LARCH_TOKEN_LEDGER:-}" \
+        LINT_FIX_STUB_ARGV_LOG="${LINT_FIX_STUB_ARGV_LOG:-}" \
         bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1
     ) || rc=$?
     printf '%s\n%s\n' "$rc" "$out"
@@ -548,26 +602,40 @@ SESSION0A="$CASE0A/session"
 CHECKS0A="$CASE0A/checks.log"
 WRAPPER0A="$CASE0A/wrapper.sh"
 LEDGER0A="$CASE0A/token-ledger.jsonl"
+ARGV0A="$CASE0A/launcher.argv"
 make_repo "$REPO0A"
 make_fixture_scripts "$SCRIPTS0A"
 make_session "$SESSION0A"
 printf 'synthetic checks failure\n' > "$CHECKS0A"
 write_wrapper_codex_telemetry "$WRAPPER0A"
 
-case0a_result=$(LARCH_TOKEN_LEDGER="$LEDGER0A" run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A")
+case0a_result=$(LINT_FIX_STUB_ARGV_LOG="$ARGV0A" LARCH_TOKEN_LEDGER="$LEDGER0A" run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A")
 case0a_rc=$(printf '%s\n' "$case0a_result" | sed -n '1p')
 case0a_out=$(printf '%s\n' "$case0a_result" | sed -n '2,$p')
 [[ "$case0a_rc" == "0" ]] || fail "case0a expected rc 0, got $case0a_rc"
 assert_contains "$case0a_out" 'LINT_FIX_STATUS=no-changes' "case0a no changes"
 case0a_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a_out")
-[[ -s "$case0a_run_dir/codex.events.jsonl" ]] || fail "case0a expected codex.events.jsonl"
+[[ -s "$case0a_run_dir/codex.log.events.jsonl" ]] || fail "case0a expected codex.log.events.jsonl"
 grep -Fq 'CODEX FINAL MESSAGE' "$case0a_run_dir/codex.log" || fail "case0a expected codex.log final message"
-[[ -f "$case0a_run_dir/codex.wrapper.log" ]] || fail "case0a expected codex.wrapper.log"
-if grep -Fq '"type":"token_usage"' "$case0a_run_dir/codex.wrapper.log"; then
+[[ -f "$case0a_run_dir/codex.log.sidecar" ]] || fail "case0a expected codex.log.sidecar"
+if grep -Fq '"type":"token_usage"' "$case0a_run_dir/codex.log.sidecar"; then
     fail "case0a wrapper log must not contain JSONL events"
 fi
-jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' "$LEDGER0A" >/dev/null \
-    || fail "case0a expected codex_lint_fix token ledger row"
+grep -Fq 'RAW=codex_lint_fix' "$case0a_run_dir/codex.log.token-record" \
+    || fail "case0a expected codex_lint_fix token record"
+grep -Fq 'TOTAL=1050' "$case0a_run_dir/codex.log.token-record" \
+    || fail "case0a expected token total"
+if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0A" >/dev/null; then
+    :
+else
+    fail "case0a expected codex_lint_fix token ledger row"
+fi
+grep -Fxq -- '--add-dir' "$ARGV0A" || fail "case0a expected --add-dir routing"
+grep -Fq "$case0a_run_dir" "$ARGV0A" || fail "case0a expected run_dir add-dir path"
+repo0a_canon=$(cd "$REPO0A" && pwd -P)
+grep -Fq "$repo0a_canon" "$ARGV0A" || fail "case0a expected repo add-dir path"
+grep -Fxq -- '--usage-label' "$ARGV0A" || fail "case0a expected --usage-label routing"
+grep -Fxq -- 'codex_lint_fix' "$ARGV0A" || fail "case0a expected codex_lint_fix usage label"
 
 # Case 0a.1: unset CLAUDE_PLUGIN_ROOT still records Codex telemetry through the script-dir fallback.
 CASE0A1="$TMPROOT/case0a1"
@@ -588,6 +656,7 @@ case0a1_result=$(
     unset CLAUDE_PLUGIN_ROOT && \
     IMPLEMENT_TMPDIR="$SESSION0A1" \
     LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$WRAPPER0A1" \
+    LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$SCRIPTS0A1/launch-codex-exec.sh" \
     LARCH_TOKEN_LEDGER="$LEDGER0A1" \
     bash "$SCRIPTS0A1/lint-fix-loop.sh" --tmpdir "$SESSION0A1" --site step3 --checks-log "$CHECKS0A1" 2>&1
 )
@@ -595,9 +664,9 @@ case0a1_rc=$?
 [[ "$case0a1_rc" == "0" ]] || fail "case0a1 expected rc 0, got $case0a1_rc"
 assert_contains "$case0a1_result" 'LINT_FIX_STATUS=no-changes' "case0a1 no changes"
 case0a1_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a1_result")
-[[ -s "$case0a1_run_dir/codex.events.jsonl" ]] || fail "case0a1 expected codex.events.jsonl"
-jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0A1" >/dev/null \
-    || fail "case0a1 expected unset-root codex_lint_fix token ledger row"
+[[ -s "$case0a1_run_dir/codex.log.events.jsonl" ]] || fail "case0a1 expected codex.log.events.jsonl"
+grep -Fq 'RAW=codex_lint_fix' "$case0a1_run_dir/codex.log.token-record" \
+    || fail "case0a1 expected unset-root codex_lint_fix token record"
 
 # Case 0a.2: parse diagnostics go to a telemetry sidecar instead of the publishable wrapper log.
 CASE0A2="$TMPROOT/case0a2"
@@ -618,11 +687,8 @@ case0a2_out=$(printf '%s\n' "$case0a2_result" | sed -n '2,$p')
 [[ "$case0a2_rc" == "0" ]] || fail "case0a2 expected rc 0, got $case0a2_rc"
 assert_contains "$case0a2_out" 'LINT_FIX_STATUS=no-changes' "case0a2 no changes"
 case0a2_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a2_out")
-[[ -f "$case0a2_run_dir/codex.wrapper.log" ]] || fail "case0a2 expected codex.wrapper.log"
-if grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.wrapper.log"; then
-    fail "case0a2 wrapper log must not contain parse diagnostics"
-fi
-grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.sidecar" \
+[[ -f "$case0a2_run_dir/codex.log.sidecar" ]] || fail "case0a2 expected codex.log.sidecar"
+grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.log.sidecar" \
     || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
 # Case 0b: Codex fails at runtime and Cursor is absent; #3207 waterfalls to the
@@ -648,9 +714,30 @@ case0b_out=$(printf '%s\n' "$case0b_result" | sed -n '2,$p')
 assert_contains "$case0b_out" 'LINT_FIX_STATUS=main-agent-required' "case0b waterfalls to main-agent (#3207)"
 assert_contains "$case0b_out" 'FAILURE_REASON=dispatch-failed' "case0b retains dispatch-failed diagnostic"
 case0b_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0b_out")
-[[ -s "$case0b_run_dir/codex.events.jsonl" ]] || fail "case0b expected codex.events.jsonl despite failure"
-jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0B" >/dev/null \
-    || fail "case0b expected failed Codex token ledger row"
+[[ -s "$case0b_run_dir/codex.log.events.jsonl" ]] || fail "case0b expected codex.log.events.jsonl despite failure"
+grep -Fq 'RAW=codex_lint_fix' "$case0b_run_dir/codex.log.token-record" \
+    || fail "case0b expected failed Codex token record"
+
+# Case 0b.1: launcher reports LAUNCHER_EXIT=1 while its wrapper exits 0;
+# run_codex must treat the launcher key as authoritative.
+CASE0B1="$TMPROOT/case0b1"
+REPO0B1="$CASE0B1/repo"
+SCRIPTS0B1="$CASE0B1/scripts"
+SESSION0B1="$CASE0B1/session"
+CHECKS0B1="$CASE0B1/checks.log"
+WRAPPER0B1="$CASE0B1/wrapper.sh"
+make_repo "$REPO0B1"
+make_fixture_scripts "$SCRIPTS0B1"
+make_session "$SESSION0B1"
+printf 'synthetic checks failure\n' > "$CHECKS0B1"
+write_wrapper_codex_telemetry "$WRAPPER0B1"
+
+case0b1_result=$(TEST_CODEX_RC=1 run_case "$SCRIPTS0B1" "$REPO0B1" "$SESSION0B1" "$CHECKS0B1" "$WRAPPER0B1")
+case0b1_rc=$(printf '%s\n' "$case0b1_result" | sed -n '1p')
+case0b1_out=$(printf '%s\n' "$case0b1_result" | sed -n '2,$p')
+[[ "$case0b1_rc" == "0" ]] || fail "case0b1 expected rc 0 (#3207 waterfall to main-agent), got $case0b1_rc"
+assert_contains "$case0b1_out" 'LINT_FIX_STATUS=main-agent-required' "case0b1 treats LAUNCHER_EXIT=1 as Codex failure"
+assert_contains "$case0b1_out" 'FAILURE_REASON=dispatch-failed' "case0b1 retains dispatch-failed diagnostic"
 
 # Case 1: external coder commits on the same clean branch; lint-fix-loop accepts it.
 CASE1="$TMPROOT/case1"

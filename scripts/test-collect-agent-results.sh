@@ -16,6 +16,7 @@ export TMPDIR="$TMPROOT/collector-tmp"
 mkdir -p "$TMPDIR"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMPROOT/execution-issues.md"
+export LARCH_TIMING_LEDGER="$TMPDIR/timing-ledger.tsv"
 trap 'rm -rf "$TMPROOT" 2>/dev/null' EXIT
 
 PASS=0
@@ -98,6 +99,25 @@ done
 exec bash "$helper" "${args[@]}"
 CURSOR_STUB
 chmod +x "$STUB_BIN/cursor"
+cat > "$STUB_BIN/codex" <<'CODEX_STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+last=""
+for arg in "$@"; do
+    if [[ -n "${CODEX_STUB_ARGV_LOG:-}" ]]; then
+        printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"
+    fi
+    if [[ "$last" == "--output-last-message" ]]; then
+        out="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$out" ]] || exit 40
+printf 'NO_ISSUES_FOUND\n' > "$out"
+printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+CODEX_STUB
+chmod +x "$STUB_BIN/codex"
 PATH="$STUB_BIN:$PATH"
 export PATH
 
@@ -232,6 +252,57 @@ RESULT_T1=$(run_collector 5 "$OUT_T1")
 assert_line "C_T1 retry file" "REVIEWER_FILE=${OUT_T1%.txt}-retry.txt" "$RESULT_T1"
 assert_line "C_T1 status" "STATUS=OK" "$RESULT_T1"
 assert_line "C_T1 stderr retry diagnostic" "collect-agent-results.sh: transient diagnostic for $(basename "$OUT_T1"); retrying once" "$(cat "$TMPROOT/$(basename "$OUT_T1").stderr")"
+
+# C_T1_CODEX_EXEC: empty/transient retry re-enters launch-codex-exec.sh with
+# codex-exec metadata rather than replaying raw CMD_JSON.
+OUT_T1_CODEX="$TMPROOT/codex-exec-t1.txt"
+WORKDIR_T1_CODEX="$TMPROOT/codex-workdir"
+ARGV_T1_CODEX="$TMPROOT/codex-exec.argv"
+mkdir -p "$WORKDIR_T1_CODEX"
+: > "$OUT_T1_CODEX"
+printf '1\n' > "${OUT_T1_CODEX}.done"
+printf 'Could not resolve host: example.invalid\n' > "${OUT_T1_CODEX}.diag"
+printf 'Review prompt\n' > "${OUT_T1_CODEX}.prompt"
+{
+    printf 'TOOL=codex\n'
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_T1_CODEX"
+    printf 'CMD_JSON=["raw","cmd","must","not","run"]\n'
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-codex-exec.sh"
+    printf 'OUTER_LAUNCHER_KIND=codex-exec\n'
+    printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_T1_CODEX}.prompt"
+    printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_T1_CODEX"
+    printf 'OUTER_LAUNCHER_SANDBOX=read-only\n'
+    printf 'OUTER_LAUNCHER_WITH_EFFORT=false\n'
+    printf 'OUTER_LAUNCHER_USAGE_LABEL=codex_exec_test\n'
+    printf 'OUTER_LAUNCHER_TIMING_KIND=codex-exec\n'
+    printf 'OUTER_LAUNCHER_ADD_DIRS_JSON=["%s"]\n' "$WORKDIR_T1_CODEX"
+} > "${OUT_T1_CODEX}.meta"
+RESULT_T1_CODEX=$(CODEX_STUB_ARGV_LOG="$ARGV_T1_CODEX" run_collector 5 "$OUT_T1_CODEX")
+assert_line "C_T1_CODEX retry file" "REVIEWER_FILE=${OUT_T1_CODEX%.txt}-retry.txt" "$RESULT_T1_CODEX"
+assert_line "C_T1_CODEX status" "STATUS=OK" "$RESULT_T1_CODEX"
+if grep -Fxq -- '--output-last-message' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- '--sandbox' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- 'read-only' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- '--add-dir' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- "$WORKDIR_T1_CODEX" "$ARGV_T1_CODEX" && \
+    ! grep -Fxq -- 'raw' "$ARGV_T1_CODEX"; then
+    ok "C_T1_CODEX re-entered launch-codex-exec without CMD_JSON replay"
+else
+    fail "C_T1_CODEX did not preserve codex-exec retry routing"
+fi
+if grep -Fq 'codex_exec_test' "${OUT_T1_CODEX%.txt}-retry.txt.token-record" 2>/dev/null; then
+    ok "C_T1_CODEX preserved usage label"
+else
+    fail "C_T1_CODEX did not preserve usage label"
+fi
+if grep -Fq 'codex-exec' "$LARCH_TIMING_LEDGER" 2>/dev/null; then
+    ok "C_T1_CODEX preserved timing kind"
+else
+    fail "C_T1_CODEX did not preserve timing kind"
+fi
 
 # C_T2: transient initial FAILED retries, but retry failure is reported as EMPTY_OUTPUT.
 OUT_T2="$TMPROOT/cursor-t2.txt"
@@ -662,7 +733,7 @@ fi
 echo "# Case: WAIT_STDERR relay strips control bytes (SCRIPT_DIR sibling harness)"
 HARNESS_WAIT="$TMPROOT/wait-relay-harness"
 mkdir -p "$HARNESS_WAIT/scripts"
-for dep in collect-agent-results.sh external-tool-registry.sh lib-failed-agent-stderr-tail.sh lib-net.sh lib-quiet.sh; do
+for dep in collect-agent-results.sh external-tool-registry.sh lib-external-launcher-common.sh lib-failed-agent-stderr-tail.sh lib-net.sh lib-quiet.sh; do
     cp "$REPO_ROOT/scripts/$dep" "$HARNESS_WAIT/scripts/"
 done
 chmod +x "$HARNESS_WAIT/scripts"/*.sh

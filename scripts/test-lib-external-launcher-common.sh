@@ -807,6 +807,38 @@ assert_resolver_timeout "resolver positive override" "45" "" "" "45"
 assert_resolver_timeout "resolver non-numeric env" "abc" "" "" "30"
 assert_resolver_timeout "resolver empty env" "__EMPTY__" "" "" "30"
 
+_outer_meta="$TMPDIR_ROOT/codex-exec.meta"
+printf 'TOOL=codex\nTIMEOUT=7\n' > "$_outer_meta"
+external_launcher_append_codex_exec_outer_meta \
+    "$_outer_meta" \
+    "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    "$TMPDIR_ROOT/codex.prompt" \
+    "$REPO_ROOT" \
+    read-only \
+    true \
+    codex_exec_unit \
+    codex-exec \
+    "[\"$REPO_ROOT\"]"
+assert_file_contains "codex-exec outer meta records launcher" "$_outer_meta" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-codex-exec.sh"
+assert_file_contains "codex-exec outer meta records prompt" "$_outer_meta" "OUTER_LAUNCHER_PROMPT_FILE=$TMPDIR_ROOT/codex.prompt"
+assert_file_contains "codex-exec outer meta records workdir" "$_outer_meta" "OUTER_LAUNCHER_WORKDIR=$REPO_ROOT"
+assert_file_contains "codex-exec outer meta records kind" "$_outer_meta" "OUTER_LAUNCHER_KIND=codex-exec"
+assert_file_contains "codex-exec outer meta records sandbox" "$_outer_meta" "OUTER_LAUNCHER_SANDBOX=read-only"
+assert_file_contains "codex-exec outer meta records effort" "$_outer_meta" "OUTER_LAUNCHER_WITH_EFFORT=true"
+assert_file_contains "codex-exec outer meta records usage label" "$_outer_meta" "OUTER_LAUNCHER_USAGE_LABEL=codex_exec_unit"
+assert_file_contains "codex-exec outer meta records timing kind" "$_outer_meta" "OUTER_LAUNCHER_TIMING_KIND=codex-exec"
+assert_file_contains "codex-exec outer meta records add dirs" "$_outer_meta" "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]"
+
+# shellcheck disable=SC2016
+_codex_auth_inventory='launch-review.sh --tool codex`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `launch-codex-exec.sh`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`'
+for _inventory_file in \
+    "$REPO_ROOT/docs/external-reviewers.md" \
+    "$REPO_ROOT/docs/configuration-and-permissions.md" \
+    "$REPO_ROOT/SECURITY.md" \
+    "$REPO_ROOT/scripts/lib-external-launcher-common.md"; do
+    assert_file_contains "codex auth inventory matches $(basename "$_inventory_file")" "$_inventory_file" "$_codex_auth_inventory"
+done
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     for f in "${FAILURES[@]}"; do

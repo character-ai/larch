@@ -139,7 +139,7 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 | Slot | Primary | Replacement (when primary unavailable) |
 |---|---|---|
 | 1 | Cursor (via `run-external-agent.sh --tool cursor --capture-stdout`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
-| 2 | Codex (via `run-external-agent.sh --tool codex`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
+| 2 | Codex (via `launch-codex-exec.sh`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
 | 3 | Claude Code Reviewer subagent (Agent tool, always inline) | — |
 
 The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See `skills/design/references/dialectic-execution.md` step **5** (per-side waterfall retry).
@@ -226,21 +226,14 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex judge** (if `judge_codex_available`):
 
 ```bash
-# Same temp-file pattern as the Cursor block above — propagate
-# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
-CODEX_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort > "$CODEX_MODEL_ARGS_TMP" || exit $?
-CODEX_MODEL_ARGS=()
-while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
-
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex \
+# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
+"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
-  --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" \
-    ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-    --output-last-message "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
-    "<judge prompt from template above>."
+  --timeout 1800 \
+  --workdir "$PWD" \
+  --add-dir "$PWD" \
+  --with-effort \
+  --prompt "<judge prompt from template above>."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000`.
@@ -253,7 +246,7 @@ Use `run_in_background: true` and `timeout: 1860000`.
 
 External judges and inline Claude judges use different collection paths. This split is **required** because `collect-agent-results.sh` polls `.done` sentinels produced by `run-external-agent.sh`; inline Agent-tool subagents produce no sentinel.
 
-Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by direct `run-external-agent.sh` invocations. The Cursor and Codex judge calls below therefore do not emit `codex-judge` / `cursor-judge` timing rows yet; those task kinds are reserved in `scripts/lib-timing-kinds.sh` for a future run-external-agent execution-boundary instrumentation.
+Timing note: v1 timing rows are emitted by launch-wrapper scripts. Codex judge calls through `launch-codex-exec.sh` currently record the launcher's default `codex-exec` task kind unless the caller passes an explicit `--timing-task-kind codex-judge`; Cursor judge rows remain tied to their launcher surface.
 
 1. **Inline judges (Claude subagent + any Claude replacements)**: vote text is returned in the Agent tool's return value. Parse per-decision vote lines directly from the returned text. Inline judges are always eligible (local execution does not fail in the `collect-agent-results.sh` sense).
 

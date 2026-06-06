@@ -132,7 +132,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 **Critical sequencing**: launch all four lanes in a single message — Codex Bash invocations (with `run_in_background: true`) AND any per-lane Claude `Agent` fallbacks together.
 
-**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `${CLAUDE_PLUGIN_ROOT}/scripts/token-tally.sh write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. External (non-fallback) Codex lanes are unmeasurable.
+**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `${CLAUDE_PLUGIN_ROOT}/scripts/token-tally.sh write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
 
 **Named angle prompts** (orchestrator substitutes `<RESEARCH_QUESTION>` literally at launch time; appends the per-lane suffix from §1.2 when `RESEARCH_PLAN_N>0`):
 
@@ -147,22 +147,13 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 **Codex launch (per lane)** when `codex_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
 
 ```bash
-# Use a temp file (NOT process substitution) so a non-zero exit from
-# agent-model-args.sh — e.g., LARCH_CODEX_MODEL contains [[:cntrl:]] or is
-# blank — propagates and aborts the launch, instead of being swallowed and
-# producing an empty MODEL_ARGS array that lets codex run with no -m flag.
-# The defensive `${ARR[@]+"${ARR[@]}"}` expansion is required for Bash 3.2
-# compatibility under `set -u`.
-CODEX_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP" || exit $?
-CODEX_MODEL_ARGS=()
-while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
-
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-    --output-last-message "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
-    "<LANE_PROMPT>"
+"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
+  --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
+  --timeout 1800 \
+  --workdir "$PWD" \
+  --add-dir "$PWD" \
+  --usage-label codex_research \
+  --prompt "<LANE_PROMPT>"
 ```
 
 `<slot>` is one of `arch` / `edge` / `ext` / `sec`. Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -216,7 +207,7 @@ Synthesis MUST write `$RESEARCH_TMPDIR/research-report.txt` so Step 2 and Step 3
 
 ### Pre-synthesis lane-output persistence
 
-The synthesis subagent's prompts reference each lane's output by file path under `<lane_N_output_path>` tags. External Codex lanes are already on disk via `run-external-agent.sh`. For each Claude `Agent` fallback (pre-launch or runtime), the orchestrator MUST persist the Agent return value to the corresponding slot file path via the `Write` tool BEFORE invoking the synthesis subagent: `codex-research-arch-output.txt` / `codex-research-edge-output.txt` / `codex-research-ext-output.txt` / `codex-research-sec-output.txt`.
+The synthesis subagent's prompts reference each lane's output by file path under `<lane_N_output_path>` tags. External Codex lanes are already on disk via `launch-codex-exec.sh`. For each Claude `Agent` fallback (pre-launch or runtime), the orchestrator MUST persist the Agent return value to the corresponding slot file path via the `Write` tool BEFORE invoking the synthesis subagent: `codex-research-arch-output.txt` / `codex-research-edge-output.txt` / `codex-research-ext-output.txt` / `codex-research-sec-output.txt`.
 
 ### Reduced-diversity banner preamble
 

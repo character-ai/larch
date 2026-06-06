@@ -1,0 +1,21 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+2026-06-06T04:06:04.823232Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/scripts/collect-agent-results.md:
+`OUTER_LAUNCHER=.../launch-codex-exec.sh` requires `OUTER_LAUNCHER_KIND=codex-exec`, sandbox, effort, usage label, timing kind, and add-dir JSON metadata; with `jq` present malformed add-dir JSON fails closed, while missing `jq` skips add-dir reconstruction and explicitly passes `--add-dir "$OUTER_LAUNCHER_WORKDIR"` so the documented default grant remains present.
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+⏳ codex agent: still running (14m elapsed)
+⏳ codex agent: still running (15m elapsed)
+⏳ codex agent: still running (16m elapsed)
+✓ codex agent: completed (exit code 0, 982s elapsed, output 252 bytes)

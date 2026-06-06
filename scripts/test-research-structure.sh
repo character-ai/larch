@@ -166,6 +166,50 @@ assert_p3119_family_b_fence_absent "$RESEARCH_MD" "research-phase.md"
 assert_p3119_family_b_fence_absent "$VALIDATION_MD" "validation-phase.md"
 PASS=$((PASS + 3))
 
+# ---------- Check 10: Codex auth-wired launcher pins ----------
+
+for stem in codex-research-arch-output.txt codex-research-edge-output.txt codex-research-ext-output.txt codex-research-sec-output.txt; do
+  if grep -Fq "$stem" "$RESEARCH_MD"; then
+    PASS=$((PASS + 1))
+  else
+    fail "[codex launcher] research-phase.md must pin expected output stem '$stem'"
+  fi
+done
+
+for pair in \
+  "$RESEARCH_MD:codex-research-arch-output.txt" \
+  "$VALIDATION_MD:codex-validation-output.txt" \
+  "$REPO_ROOT/skills/shared/voting-protocol.md:codex-vote-output.txt" \
+  "$REPO_ROOT/skills/shared/dialectic-protocol.md:codex-judge-output.txt"; do
+  file="${pair%%:*}"
+  stem="${pair#*:}"
+  if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" "$file"; then
+    PASS=$((PASS + 1))
+  else
+    fail "[codex launcher] $(basename "$file") must use \${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh"
+  fi
+  if grep -Fq "$stem" "$file"; then
+    PASS=$((PASS + 1))
+  else
+    fail "[codex launcher] $(basename "$file") must pin expected output stem '$stem'"
+  fi
+done
+
+# ---------- Check 11: Codex research telemetry wording ----------
+
+if grep -Fq 'Non-fallback Codex lanes receive best-effort usage records' "$RESEARCH_MD" \
+  && grep -Fq "\${OUTPUT}.token-record" "$RESEARCH_MD"; then
+  PASS=$((PASS + 1))
+else
+  fail "[codex telemetry] research-phase.md must pin best-effort Codex usage records"
+fi
+
+if grep -Fqi 'Codex telemetry is unmeasurable' "$RESEARCH_MD"; then
+  fail "[codex telemetry] research-phase.md must not claim Codex telemetry is unmeasurable"
+else
+  PASS=$((PASS + 1))
+fi
+
 # ---------- Summary ----------
 
 if (( FAIL > 0 )); then
