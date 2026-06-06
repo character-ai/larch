@@ -67,14 +67,14 @@ require_log_root() {
 round_artifact_included() {
     local name="$1"
     case "$name" in
-        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
-            return 1
-            ;;
         # Excluded raw per-specialist reviewer outputs and their sidecars
         # (findings.md is the canonical aggregate). Phased static Cursor/Codex
         # fallback outputs and their sidecars remain included via the broad
-        # *-output-*.txt patterns below.
+        # *-output* allow below.
         cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
+            return 1
+            ;;
+        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
             return 1
             ;;
         # Excluded vote prompts (the ballot is byte-identical across voters
@@ -82,9 +82,22 @@ round_artifact_included() {
         *-vote-prompt.txt)
             return 1
             ;;
+        # Dynamic Codex retry transcripts are deliberately excluded from
+        # durable logs; retry bookkeeping remains private session state.
+        # Keep this deny before the broad *-output* allow below.
+        dyn-*-codex-output-retry*.txt|dyn-*-codex-output-retry*.txt.meta|dyn-*-codex-output-retry*.txt.json|dyn-*-codex-output-retry*.txt.cap-hit)
+            return 1
+            ;;
         # Excluded zero-byte placeholders (observed empty in every committed run).
         skipped-findings.security.md|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder-commit.log)
             return 1
+            ;;
+        # Dynamic Codex twins are retained for forensics; unphased static
+        # codex-specialist-*-output.txt raw transcripts remain excluded above.
+        # Keep this explicit allow before the broad *-output* allow below so
+        # dynamic Codex retention does not depend on catch-all transcript globs.
+        dyn-*-codex-output.txt|dyn-*-codex-output-phase*.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output-phase*.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output-phase*.txt.json|dyn-*-codex-output.txt.cap-hit|dyn-*-codex-output-phase*.txt.cap-hit)
+            return 0
             ;;
         findings.md|findings-classification.tsv|scout-archetype-yield.tsv|accepted-findings.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
             return 0

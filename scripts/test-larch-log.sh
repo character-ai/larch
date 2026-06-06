@@ -153,6 +153,42 @@ assert_round_artifact_included "codex.events.jsonl" "1" "round artifact excludes
 assert_round_artifact_included "coder-codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
 assert_round_artifact_included "foo.events.jsonl" "1" "round artifact excludes arbitrary events jsonl"
 assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt" "0" "round artifact includes dynamic codex raw output"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt" "0" "round artifact includes dynamic codex phased output"
+assert_round_artifact_included "dyn-api-contract-codex-output-retry.txt" "1" "round artifact excludes unsupported dynamic codex retry output"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.meta" "0" "round artifact includes dynamic codex meta sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.json" "0" "round artifact includes dynamic codex json sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.cap-hit" "0" "round artifact includes dynamic codex cap-hit sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.meta" "0" "round artifact includes dynamic codex phased meta sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.json" "0" "round artifact includes dynamic codex phased json sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.cap-hit" "0" "round artifact includes dynamic codex phased cap-hit sidecar"
+assert_round_artifact_included "codex-specialist-security-output.txt" "1" "round artifact excludes static codex raw output"
+assert_round_artifact_included "codex-specialist-security-output-phase2.txt" "0" "round artifact includes phased static codex raw output"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.prompt" "1" "round artifact excludes dynamic codex prompt"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.prompt" "1" "round artifact excludes dynamic codex phased prompt"
+assert_round_artifact_included "dyn-api-contract-codex-output-vote-prompt.txt" "1" "round artifact excludes dynamic codex vote prompt"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.events.jsonl" "1" "round artifact excludes dynamic codex events telemetry"
+assert_round_artifact_included "skipped-findings.security.md" "1" "round artifact excludes zero-byte placeholder"
+
+if awk '
+    /^[[:space:]]*#/ { next }
+    index($0, "codex-specialist-*-output.txt") { static_deny = NR }
+    index($0, "dyn-*-codex-output-*.txt") { dyn_catchall = 1 }
+    index($0, "dyn-*-codex-output-phase*.txt") { dyn_allow = NR }
+    /[*]-vote-prompt\.txt/ { vote_deny = NR }
+    /skipped-findings\.security\.md/ { zero_deny = NR }
+    /dirty-checkpoint-\*\.env/ { broad_allow = NR }
+    END {
+        ok = static_deny && dyn_allow && vote_deny && zero_deny && broad_allow
+        ok = ok && static_deny < dyn_allow && vote_deny < dyn_allow && zero_deny < dyn_allow
+        ok = ok && dyn_allow < broad_allow && !dyn_catchall
+        exit(ok ? 0 : 1)
+    }
+' "$LARCH_LOG"; then
+    pass "round artifact dynamic codex explicit allow is ordered before broad output allows"
+else
+    fail "round artifact dynamic codex explicit allow ordering/regression pin"
+fi
 
 echo "=== manifest updates mutable fields ==="
 out="$("$LARCH_LOG" manifest --skill implement --run-id abc123 --field status=done --field pr_number=99)"
