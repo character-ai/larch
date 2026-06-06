@@ -134,7 +134,9 @@ else
     lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
     set -e
     if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
-        merge_replace_state_keys "$SHIP_PR_STATE" "$lines_blob"
+        if ! merge_replace_state_keys "$SHIP_PR_STATE" "$lines_blob"; then
+            larch_err "write-final-report.sh: warning: could not persist PR line counts"
+        fi
     fi
     LINES_STATUS=$(read_lines_kv LINES_STATUS "$lines_blob")
     CODE_ADDED=$(read_lines_kv CODE_ADDED "$lines_blob")

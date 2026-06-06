@@ -34,7 +34,6 @@ if not _version_supported(sys.version_info):
 import argparse
 import os
 import re
-import time
 import traceback
 from contextlib import suppress
 from dataclasses import dataclass
@@ -66,6 +65,43 @@ _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
 _PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
+_ALLOWED_SHIP_STATE_KEYS = frozenset({
+    "PHASE",
+    "BRANCH_NAME",
+    "ISSUE_NUMBER",
+    "RUN_ID",
+    "REPO",
+    "REPO_UNAVAILABLE",
+    "FORKED_TARGET",
+    "IMPLEMENT_TMPDIR",
+    "MANIFEST_PATH",
+    "MERGE",
+    "DRAFT",
+    "PR_CLOSED",
+    "PR_NUMBER",
+    "PR_URL",
+    "PR_TITLE",
+    "MERGE_RESULT",
+    "OOS_PENDING",
+    "CI_FIX_REBASE_PENDING",
+    "CI_FIX_REBASE_PENDING_HEAD",
+    "REBASE_COUNT",
+    "FIX_ATTEMPTS",
+    "ITERATION",
+    "TRANSIENT_RETRIES",
+    "RESUME_PHASE",
+    "CALLER_KIND",
+    "CONFLICT_FILES",
+    "STALL_TRACKING",
+    "STALL_STEP",
+    "EXIT_CODE",
+    "BAIL_REASON",
+    "BAIL_NEEDS_USER_INPUT",
+    "FAILED_RUN_ID",
+    "BAIL_FAILURE_DETAIL_LOG",
+    "EXPECTED_SESSION_ID",
+    "EXPECTED_TMPDIR_BASENAME_PREFIX",
+})
 _TERMINAL_ONLY_STATE_KEYS = frozenset({
     "EXIT_CODE",
     "BAIL_REASON",
@@ -77,7 +113,6 @@ _NON_STALL_STATE_KEYS = frozenset({"STALL_TRACKING", "STALL_STEP"})
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
-_STALE_STATE_TMP_MAX_AGE_SEC = 3600
 _PYTHON_TRANSIENT_STALL_ATTEMPT = 4
 
 
@@ -153,8 +188,22 @@ def _step_result_to_ship(
 
 
 def _is_infrastructure_ship_error(exc: Exception) -> bool:
-    _ = exc
-    return False
+    text = str(exc)
+    return any(
+        token in text
+        for token in (
+            "cannot read existing ship state",
+            "invalid ship state",
+            "invalid newline in ship state value",
+            "refusing to write symlinked ship state path",
+            "refusing to write symlinked finalize-state path",
+            "refusing to replace symlinked finalize-state path",
+            "refusing to write symlinked finalize-state temp path",
+            "finalize-state value",
+            "invalid finalize-state key",
+            "state_file",
+        )
+    )
 
 
 def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
@@ -642,6 +691,9 @@ def _write_ship_state(
         return
     path = Path(ctx.state_file)
     path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    if path.is_symlink() or tmp.is_symlink():
+        raise ShipError(f"refusing to write symlinked ship state path: {path}")
     if resume_phase is None:
         resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE") if path.is_file() else ""
     if caller_kind is None:
@@ -665,7 +717,7 @@ def _write_ship_state(
                 if "=" not in line:
                     continue
                 key, _, value = line.partition("=")
-                if key and "\n" not in key and "\r" not in key:
+                if key in _ALLOWED_SHIP_STATE_KEYS and "\n" not in key and "\r" not in key:
                     fields[key] = value
         except (OSError, UnicodeDecodeError) as exc:
             raise ShipError(f"cannot read existing ship state: {path}") from exc
@@ -735,18 +787,8 @@ def _write_ship_state(
         fields.update(extra_fields)
     for key, value in fields.items():
         _validate_ship_state_value(key, str(value))
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    if path.is_symlink() or tmp.is_symlink():
-        raise ShipError(f"refusing to write symlinked ship state path: {path}")
-    if tmp.exists():
-        try:
-            age = time.time() - tmp.stat().st_mtime
-        except OSError as exc:
-            raise ShipError(f"refusing unreadable ship state temp file: {tmp}") from exc
-        if age > _STALE_STATE_TMP_MAX_AGE_SEC:
-            tmp.unlink()
-        else:
-            raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}")
+    with suppress(FileNotFoundError):
+        tmp.unlink()
     data = "".join(f"{key}={value}\n" for key, value in fields.items())
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
@@ -796,6 +838,11 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         ("REPO_UNAVAILABLE", "repo_unavailable"),
         ("DRAFT", "draft"),
         ("MERGE", "merge"),
+        ("STALL_TRACKING", "stall_tracking"),
+        ("BAIL_NEEDS_USER_INPUT", "bail_needs_user_input"),
+        ("PR_CLOSED", "pr_closed"),
+        ("OOS_PENDING", "oos_pending"),
+        ("CI_FIX_REBASE_PENDING", "ci_fix_rebase_pending"),
     ):
         value = state.get(key, "")
         if value:
@@ -926,7 +973,16 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
+    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
     phase14_flag = Path(ctx.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    if (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+        and not phase14_flag.is_file()
+        and not phase14_flag.is_symlink()
+    ):
+        with suppress(OSError):
+            _ = phase14_flag.write_text("RESUME_PHASE=ship-pr-rrr-phase14\n", encoding="utf-8")
     if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE and not phase14_flag.is_file():
         if not _valid_repo_slug(state_repo):
             state_repo = ctx.repo
@@ -1908,6 +1964,8 @@ def build_parser() -> argparse.ArgumentParser:
 def _state_file_kv(path: str | None) -> dict[str, str]:
     if not path:
         return {}
+    if Path(path).is_symlink():
+        return {}
     try:
         return finalize.read_finalize_state(path)
     except ShipError:
@@ -2011,7 +2069,10 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
             changes[field_name] = str(value).strip().lower() in {"1", "true", "yes", "on"}
     if args.no_logs_commit is not None:
         changes["no_logs_commit"] = str(args.no_logs_commit).strip().lower() in {"1", "true", "yes", "on"}
-    return env_ctx.with_(**changes)
+    ctx = env_ctx.with_(**changes)
+    if ctx.state_file:
+        ctx = _context_with_state_overlay(ctx)
+    return ctx
 
 
 def main(argv: list[str] | None = None) -> int:

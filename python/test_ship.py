@@ -1507,27 +1507,51 @@ def test_resume_state_write_preserves_persisted_run_id(tmp_path: Path) -> None:
     assert "RUN_ID=state-run\n" in state_file.read_text(encoding="utf-8")
 
 
-def test_blocked_rebase_second_refusal_preserves_markers_and_counters(tmp_path: Path) -> None:
+def test_pre_push_handoff_without_flag_recreates_flag_and_resumes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
-        f"PHASE=rebase\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        f"PHASE=rebase\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n"
         f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nCALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n"
         "ITERATION=8\nREBASE_COUNT=2\nFIX_ATTEMPTS=3\nTRANSIENT_RETRIES=4\n",
         encoding="utf-8",
     )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    rebase_calls: list[bool] = []
 
-    first = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
-    second = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+        rebase_calls.append(True)
 
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
+    monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})())
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert rebase_calls == [True]
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
     state = state_file.read_text(encoding="utf-8")
-    assert first.outcome is Outcome.NEEDS_USER_INPUT
-    assert second.outcome is Outcome.NEEDS_USER_INPUT
-    assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
-    assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
-    assert "ITERATION=8\n" in state
-    assert "REBASE_COUNT=2\n" in state
-    assert "FIX_ATTEMPTS=3\n" in state
-    assert "TRANSIENT_RETRIES=4\n" in state
+    assert "RESUME_PHASE=\n" in state
+    assert "CALLER_KIND=\n" in state
 
 
 def test_terminal_counter_persistence_counts_failed_fixing(
@@ -2358,6 +2382,21 @@ def test_main_help_has_no_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert '"outcome"' not in captured.out
 
 
+def test_ctx_from_args_rehydrates_cli_state_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=seeded\nRESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    args = ship.build_parser().parse_args(["--tmpdir", str(tmp_path), "--state-file", str(state_file)])
+    ctx = ship._ctx_from_args(args)  # pyright: ignore[reportPrivateUsage]
+
+    assert ctx.stall_tracking is True
+    assert ctx.stall_step == "seeded"
+
+
 def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     class FailingJournal:
         def __init__(self, *_args: object) -> None:
@@ -2528,6 +2567,34 @@ def test_ship_state_write_refuses_symlink_leaf(tmp_path: Path) -> None:
     assert not target.exists()
 
 
+def test_ship_state_write_unlinks_leftover_regular_tmp(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    tmp = tmp_path / "ship-pr-state.sh.tmp"
+    _ = tmp.write_text("stale\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        phase="ci-initial",
+    )
+
+    assert not tmp.exists()
+    assert "PHASE=ci-initial\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_ship_state_write_drops_unknown_existing_keys(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("MALICIOUS_KEY=source-me\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        phase="ci-initial",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "MALICIOUS_KEY=" not in state
+    assert "EXPECTED_SESSION_ID=session-1\n" in state
+
+
 def test_ship_state_read_error_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("STALL_TRACKING=true\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
@@ -2633,6 +2700,19 @@ def test_transient_and_oos_reentry_do_not_write_finalize(monkeypatch: pytest.Mon
     assert oos_result.outcome is Outcome.NEEDS_USER_INPUT
     assert not (tmp2 / "finalize-state.sh").exists()
     assert oos_state.is_file()
+
+
+def test_checks_stall_writes_terminal_finalize_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "checks"))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert finalize_state["STALL_TRACKING"] == "true"
+    assert finalize_state["EXIT_CODE"] == "4"
+    assert "STALL_TRACKING=true\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

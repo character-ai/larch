@@ -308,7 +308,10 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 ### `LARCH_VERSION_FILES`
 
 Colon-separated list of additional repo-relative paths that should be treated
-as version files during `scripts/ship-pr.sh` CI-fix rebase conflict handling.
+as version files during active Step 8+ CI-fix rebase conflict handling. Both
+drivers honor it: bash through `scripts/ship-pr.sh` / `run_rebase_rebump`, and
+the default Python path through `python/rebase.py` with the `ship_pr_pre_push`
+handoff.
 Entries are trimmed for surrounding whitespace; empty entries are ignored. When
 a conflicted path matches `.claude-plugin/plugin.json`, built-in version-adjacent
 basenames (`version.go`, `go.sum`), or any path listed here, `ship-pr.sh` keeps
@@ -317,7 +320,7 @@ non-bump-only conflict recovery path.
 
 `LARCH_BUMP_FILES` is a deprecated compatibility alias. If
 `LARCH_VERSION_FILES` is unset or empty and `LARCH_BUMP_FILES` is set,
-`ship-pr.sh` reads the old variable with the same colon-separated semantics and
+the active driver reads the old variable with the same colon-separated semantics and
 emits a deprecation warning on stderr. If both variables are set,
 `LARCH_VERSION_FILES` wins. This alias no longer controls any per-PR
 drop-bump behavior; per-PR version bumps have been retired, so existing

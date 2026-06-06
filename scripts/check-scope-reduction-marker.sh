@@ -32,7 +32,8 @@ def strip_code(s):
 
 def norm(s):
     s = " ".join(strip_code(s).strip().split())
-    s = re.sub(r"^\[(?:important|nit|latent)\]\s*", "", s, flags=re.I)
+    while re.match(r"^\[[A-Za-z0-9_-]+\]\s*", s) and not re.match(r"^\[SCOPE-REDUCTION\]", s, re.I):
+        s = re.sub(r"^\[[A-Za-z0-9_-]+\]\s*", "", s)
     return s
 
 
@@ -71,7 +72,8 @@ def strip_code(s):
 
 def norm(s):
     s = " ".join(strip_code(s).strip().split())
-    s = re.sub(r"^\[(?:important|nit|latent)\]\s*", "", s, flags=re.I)
+    while re.match(r"^\[[A-Za-z0-9_-]+\]\s*", s) and not re.match(r"^\[SCOPE-REDUCTION\]", s, re.I):
+        s = re.sub(r"^\[[A-Za-z0-9_-]+\]\s*", "", s)
     return s
 
 

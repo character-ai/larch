@@ -113,6 +113,8 @@ grep -Fq 'default `LARCH_SHIP_PR_IMPL=python` runs' "$SKILL_MD" \
   || fail "SKILL.md must document Python ship driver as the default"
 grep -Fq 'Critical boundary: after the active Step 8+ driver (`python3 …/python/ship.py` unless `LARCH_SHIP_PR_IMPL=bash`) exits on the default Python path, route only from process exit code + JSON stdout per the Python driver selector' "$SKILL_MD" \
   || fail "SKILL.md anti-halt reminder must pin default-Python JSON routing"
+grep -Fq 'Immediately before the active Step 8+ driver unless `LARCH_SHIP_PR_IMPL=bash` (then before `ship-pr.sh` first invocation): `--step 8-pre-ship` via `phantom-probe-with-warn.sh`.' "$SKILL_MD" \
+  || fail "Phantom Probe registry must name the active Step 8+ driver before bash opt-in"
 grep -Fq 'on the default path, `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` on terminal driver outcomes' "$SKILL_MD" \
   || fail "SKILL.md NEVER #11 must pin default-Python finalize-state writer"
 grep -Fq 'When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte' "$SKILL_MD" \
@@ -145,13 +147,13 @@ printf '%s
 ' "$python_selector_window" | grep -Fq 'oos-filing' \
   || fail "Python selector window must include oos-filing routing"
 printf '%s
-' "$python_selector_window" | grep -Fq '4th failure → treat as Exit 4 stall and persist stall keys in `$IMPLEMENT_TMPDIR/ship-pr-state.sh`' \
+' "$python_selector_window" | grep -Fq '4th failure → treat as Exit 4 stall and seed stall keys with `stall-recovery-report.sh seed-terminal-state`' \
   || fail "Python selector window must pin fourth Exit 6 stall-state persistence"
 
 bash_matrix_gate_window=$(awk '
   /Apply the following exit matrix \*\*only when `LARCH_SHIP_PR_IMPL=bash`\*\*/ { in_region = 1 }
   in_region { print }
-  in_region && /\*\*Exit 5\*\*/ { exit }
+  in_region && /\*\*Exit 6\*\*/ { exit }
 ' "$SKILL_MD")
 printf '%s
 ' "$bash_matrix_gate_window" | grep -Fq 'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**' \

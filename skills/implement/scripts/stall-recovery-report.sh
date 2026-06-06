@@ -418,12 +418,12 @@ validate_tmpdir_write_file() {
 validate_optional_state_evidence_file() {
     local path=$1 label=$2 size
     [ -e "$path" ] || return 1
-    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: symlinked $label"; exit 3; }
-    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $label must be regular"; exit 3; }
-    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $label must be readable"; exit 3; }
+    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: skipping symlinked optional evidence $label"; return 1; }
+    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: skipping non-regular optional evidence $label"; return 1; }
+    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: skipping unreadable optional evidence $label"; return 1; }
     size=$(wc -c <"$path" 2>/dev/null | awk '{print $1}' || printf '65537')
     case "$size" in ''|*[!0-9]*) size=65537 ;; esac
-    [ "$size" -le 65536 ] || { larch_err "stall-recovery-report.sh: $label exceeds 64KiB"; exit 3; }
+    [ "$size" -le 65536 ] || { larch_err "stall-recovery-report.sh: skipping oversized optional evidence $label"; return 1; }
     return 0
 }
 

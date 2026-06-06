@@ -97,7 +97,7 @@ This warning fires once per `session-setup.sh` invocation from a larch dev clone
 
 ### /report-tokens prerequisites
 
-`/report-tokens` runs through the stdlib-only Python entrypoint under `python/` and requires Python 3.11 or newer. `gh` is required when the command needs to resolve the repository slug or post the report issue; pass `--no-issue` or set `LARCH_REPORT_TOKENS_NO_ISSUE=1` to run text analysis without posting. Plotting uses optional matplotlib in a subprocess and gracefully skips PNG generation when matplotlib is unavailable; pass `--no-plot` or set `LARCH_REPORT_TOKENS_NO_PLOT=1` to skip it explicitly. Rate override environment variables are documented in `skills/report-tokens/scripts/run-analysis.md`.
+`/report-tokens` runs through the stdlib-only Python entrypoint under `python/` and shares the repository Python floor: Python 3.12 or newer. `gh` is required when the command needs to resolve the repository slug or post the report issue; pass `--no-issue` or set `LARCH_REPORT_TOKENS_NO_ISSUE=1` to run text analysis without posting. Plotting uses optional matplotlib in a subprocess and gracefully skips PNG generation when matplotlib is unavailable; pass `--no-plot` or set `LARCH_REPORT_TOKENS_NO_PLOT=1` to skip it explicitly. Rate override environment variables are documented in `skills/report-tokens/scripts/run-analysis.md`.
 
 ### Mermaid CLI (required when Markdown changes contain Mermaid fences)
 
