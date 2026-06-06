@@ -282,7 +282,8 @@ Accepted OOS items can be tagged as **security findings** that are held locally 
 - **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.
 - **Heading tag token**: the block-opening heading may start its title with `[security]` or `<security>` (optionally after `[OUT_OF_SCOPE]` / `[OOS]`). Later `### ... [security] ...` headings inside prose are not routing tags.
 - **Match discrimination (false-positive guard)**: canonical-token occurrences inside backtick or triple-backtick regions are fenced and do not count — only unfenced occurrences mark a finding as security-tagged.
-- Accepted OOS items where the block matches are written ONLY to the local `oos-accepted-*.md` artifact and to the local-only artifact path; security-tagged findings are held locally and NEVER filed publicly — the canonical filing pipeline (`/implement` Step 9a.1 → `/issue` batch mode) is skipped for them.
+- **Security counter-invariant**: a real security finding MUST carry at least one routing token recognized by `is_security_block` — an unfenced canonical token, a dedicated `focus-area` field line, or a block-opening heading tag; otherwise it will not be held locally.
+- Accepted OOS items where the block matches are written ONLY to the local `oos-accepted-*.md` artifact and to the local-only artifact path; security-tagged findings (focus-area=security) are held locally and NEVER filed publicly — the canonical filing pipeline (`/implement` Step 9a.1 → `/issue` batch mode) is skipped for them.
 
 ### OOS Reporting
 
