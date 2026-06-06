@@ -520,7 +520,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         # Code review supports OOS_N headings and legacy FINDING_N headings
         # tagged with [OUT_OF_SCOPE].
         is_oos=false
-        if [[ "$id" == OOS_* ]] || head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
+        if [[ "$id" == OOS_* ]] || head -n1 "$block" | grep -Eq '\[(OUT_OF_SCOPE|OOS)\]'; then
             is_oos=true
         fi
         # Scope-fit gate: reclassify in-scope findings whose locations are all
@@ -544,8 +544,15 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         }' >> "$score_rows"
 
         security=false
-        if is_security_block "$block" 2>/dev/null; then
+        sec_rc=0
+        is_security_block "$block" || sec_rc=$?
+        if [[ "$sec_rc" -eq 0 ]]; then
             security=true
+        elif [[ "$sec_rc" -eq 1 ]]; then
+            security=false
+        else
+            larch_err "tally-code-votes.sh: security classifier failed for $id"
+            exit 2
         fi
 
         if [[ "$kind" == "finding" ]]; then
@@ -596,13 +603,14 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                     :
                 else
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
-                    normalized=$("$NORMALIZE_OOS_HELPER" --seq "$OOS_WRITE_SEQ" --block-file "$block")
-                    printf '%s\n' "$normalized" >> "$OOS_ACCEPTED_FILE"
+                    normalized_file="$REVIEW_TMPDIR/normalized-oos-${OOS_WRITE_SEQ}.md"
+                    "$NORMALIZE_OOS_HELPER" --seq "$OOS_WRITE_SEQ" --block-file "$block" > "$normalized_file"
+                    cat "$normalized_file" >> "$OOS_ACCEPTED_FILE"
                     printf '\n' >> "$OOS_ACCEPTED_FILE"
                     # Mirror to the parent-tmpdir sink only when the paths
                     # differ — standalone mode aliases both to the same file.
                     if [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]]; then
-                        printf '%s\n' "$normalized" >> "$OOS_ACCEPTED_OUT"
+                        cat "$normalized_file" >> "$OOS_ACCEPTED_OUT"
                         printf '\n' >> "$OOS_ACCEPTED_OUT"
                     fi
                     OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))

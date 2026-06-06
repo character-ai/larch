@@ -30,6 +30,14 @@ trap cleanup EXIT
 
 is_security_tagged_block() {
     local block="$1"
+    command -v python3 >/dev/null 2>&1 || {
+        echo "oos-serialize.sh: python3 is required for security classification" >&2
+        return 2
+    }
+    python3 -c 'import re, sys' >/dev/null 2>&1 || {
+        echo "oos-serialize.sh: python3 security classifier smoke test failed" >&2
+        return 2
+    }
     python3 - "$block" <<'PYEOF'
 import re
 import sys
@@ -68,9 +76,13 @@ flush_block() {
     fi
     block_file="$TMPDIR_OOS/block.md"
     printf '%s' "$block" > "$block_file"
-    if is_security_tagged_block "$block_file"; then
+    local sec_rc=0
+    is_security_tagged_block "$block_file" || sec_rc=$?
+    if [[ "$sec_rc" -eq 0 ]]; then
         held=$((held + 1))
-    elif [[ "$block" != *"Result="* || "$block" == *"Result=accepted"* ]]; then
+    elif [[ "$sec_rc" -ne 1 ]]; then
+        exit 2
+    elif awk 'BEGIN { found=0; accepted=0 } /^Vote tally: / && /(^|[[:space:]])Result=/ { found=1; if ($0 ~ /(^|[[:space:]])Result=accepted([[:space:]]|$)/) accepted=1 } END { exit (found && !accepted) ? 1 : 0 }' "$block_file"; then
         seq=$((seq + 1))
         "$NORMALIZE_OOS_HELPER" --seq "$seq" --block-file "$block_file" >> "$OUTPUT_FILE"
         printf '\n' >> "$OUTPUT_FILE"

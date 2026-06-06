@@ -30,11 +30,11 @@ _FILED_URL_LINE = re.compile(
     re.MULTILINE,
 )
 _OOS_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_|FINDING_\d+:.*\[OUT_OF_SCOPE\])",
+    r"^###\s+(?:OOS_|FINDING_\d+:.*\[(?:OUT_OF_SCOPE|OOS)\])",
     re.MULTILINE,
 )
 _SECURITY_FOCUS_RE = re.compile(
-    r"^\s*-\s*focus-area\s*[:=]\s*"
+    r"^[ \t-]*focus-area[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
 )

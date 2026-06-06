@@ -1524,6 +1524,11 @@ grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' "$implement_tmp/oos-acc
 if grep -Eq '^### FINDING_' "$implement_tmp/oos-accepted-review.md"; then
     fail "skipped-routing bare FINDING_ header survived in oos-accepted-review.md"
 fi
+jsonl_body=$(jq -r '.body' "$implement_tmp/accumulated-oos.jsonl")
+grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' <<< "$jsonl_body" || fail "skipped-routing jsonl body header not normalized"
+if grep -Eq '^### FINDING_' <<< "$jsonl_body"; then
+    fail "skipped-routing jsonl body retained bare FINDING_ header"
+fi
 oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
 [[ "$oos_awk_count" == "1" ]] || fail "skipped-routing awk non-security count expected 1 got $oos_awk_count"
 

@@ -1460,7 +1460,7 @@ _implement_round_body() {
             rm -f "$block_file"
         done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
 
-        if [[ -s "$skipped_file" ]]; then
+        if [[ "$classifier_loop_abort" -eq 0 && -s "$skipped_file" ]]; then
             jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \
                 '{round: $round, source: "code-review-skipped", body: $body}' >> "$oos_jsonl"
             [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"

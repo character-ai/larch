@@ -198,6 +198,32 @@ rc=$?
 set -e
 assert_rc "security-hardening focus-area passes without URLs" 0 "$rc"
 
+# --- Case: unbulleted focus-area field is security-routed (awk/python parity) ---
+cat >"$TMP/sec-unbulleted.md" <<'EOF'
+### OOS_1: Hardening item
+focus-area = security-hardening
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/sec-unbulleted.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "unbulleted security focus-area passes without URLs" 0 "$rc"
+
+awk_count=$(awk -f "$SCRIPT_DIR/oos-non-security-block-count.awk" "$TMP/sec-unbulleted.md")
+py_count=$(PYTHONPATH="$SCRIPT_DIR/../../../python" python3 -c 'import oos, sys; print(oos.count_non_security((sys.argv[1],)))' "$TMP/sec-unbulleted.md")
+if [ "$awk_count" = "$py_count" ]; then
+  pass "awk/python non-security counter parity for unbulleted security focus-area"
+else
+  fail "awk/python non-security counter parity expected same count, awk=$awk_count python=$py_count"
+fi
+
 # --- Case: non-security OOS + no URLs + no inline fails (isolated repo) ---
 cat >"$TMP/bad.md" <<'EOF'
 ### OOS_1: Orphan

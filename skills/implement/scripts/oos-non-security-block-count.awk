@@ -12,7 +12,7 @@ function is_security_header(line,    lower) {
   return lower ~ /^###[[:space:]]+(oos_[0-9]+:|finding_[0-9]+:)[[:space:]]*(\[(out_of_scope|oos)\][[:space:]]*)?`?(\[security\]|<security>)`?([[:space:]]|$|[:-])/
 }
 BEGIN { n = 0; inblk = 0; sec = 0 }
-/^###[[:space:]]+OOS_/ || ($0 ~ /^###[[:space:]]+FINDING_[0-9]+:/ && index($0, "[OUT_OF_SCOPE]")) {
+/^###[[:space:]]+OOS_/ || ($0 ~ /^###[[:space:]]+FINDING_[0-9]+:/ && ($0 ~ /\[(OUT_OF_SCOPE|OOS)\]/)) {
   if (inblk && !sec) n++
   inblk = 1
   sec = is_security_header($0)
@@ -21,7 +21,7 @@ BEGIN { n = 0; inblk = 0; sec = 0 }
 inblk {
   line = tolower($0)
   gsub(/[`*]/, "", line)
-  if (line ~ /^[[:space:]]*-[[:space:]]*focus-area[[:space:]]*[:=][[:space:]]*security([-[:alnum:][:space:]_]*)([[:space:]]|$|\(|#|\.|,)/) sec = 1
+  if (line ~ /^[[:space:]-]*focus-area[[:space:]]*[:=][[:space:]]*security([-[:alnum:][:space:]_]*)([[:space:]]|$|\(|#|\.|,)/) sec = 1
 }
 END {
   if (inblk && !sec) n++

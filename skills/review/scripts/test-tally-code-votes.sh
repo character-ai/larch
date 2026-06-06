@@ -132,6 +132,51 @@ classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}'
 grep -Fq $'OOS_1\tCursor-Testing\taccepted\tYES\ttrue\tminor\tadequate\tfalse\tYES\ttrue\tminor\tgood\tfalse\tNO\tpartially-true\tnit\tweak\tfalse' "$classification_file" \
     || { FAIL=1; printf '  FAIL classification TSV missing direct OOS_N row\n'; }
 
+echo "# Case: legacy [OOS] shorthand normalizes as accepted OOS"
+TMP="$WORKDIR/case_oos_shorthand"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: [OOS] shorthand follow-up
+- **Reviewer**: Cursor-Testing
+- **Concern**: Pre-existing issue.
+- **Suggested revision**: Track later.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$TMP/out.env"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/out.env"); assert_eq "[OOS] shorthand accepted count" "$got" "1"
+grep -Eq '^### OOS_1: \[OOS\] shorthand follow-up$' "$TMP/oos-accepted-review.md" \
+    || { FAIL=1; printf '  FAIL [OOS] shorthand header not normalized\n'; }
+
+echo "# Case: security classifier failure fails closed"
+TMP="$WORKDIR/case_security_classifier_failure"
+mkdir -p "$TMP" "$TMP/bin"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] security follow-up
+- **Reviewer**: Cursor-Security
+- **Concern**: focus-area = security
+- **Suggested revision**: Hold locally.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+cat > "$TMP/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$TMP/bin/python3"
+set +e
+PATH="$TMP/bin:$PATH" "$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$TMP/out.env" 2>"$TMP/err.log"
+rc=$?
+set -e
+assert_eq "security classifier failure rc" "$rc" "2"
+if [[ -s "$TMP/oos-accepted-review.md" ]]; then
+    FAIL=1; printf '  FAIL classifier failure wrote public accepted OOS sink\n'
+fi
+
 echo "# Case: parser failure emits WARN breadcrumb and records JUDGE_ERROR in TSV"
 TMP="$WORKDIR/case_parser_failure_warn"
 mkdir -p "$TMP"

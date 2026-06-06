@@ -193,11 +193,22 @@ printf 'FINDING_1: YES\n' > "$TMP/chained/round-1/claude-vote-output.txt"
 "$TALLY_SCRIPT" --ballot-file "$TMP/chained/round-1/ballot.md" \
     --voter-files "$TMP/chained/round-1/cursor-vote-output.txt" "$TMP/chained/round-1/codex-vote-output.txt" "$TMP/chained/round-1/claude-vote-output.txt" \
     --review-tmpdir "$TMP/chained/round-1" > "$TMP/chained/round-1/tally.out"
+printf -- '- **Tally-only marker**: preserve me.\n' >> "$TMP/chained/round-1/oos-accepted-review.md"
+cat > "$TMP/chained/round-1/oos.md" <<'EOF'
+### FINDING_9: [OUT_OF_SCOPE] conflicting serialize fallback
+- **Concern**: Broken preserve would rebuild this instead.
+Vote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
+EOF
 "$SCRIPT" --tally-file "$TMP/chained/round-1/review-tally.env" \
     --accepted-findings-file "$TMP/chained/round-1/accepted-findings.md" \
     --oos-file "$TMP/chained/round-1/oos.md" \
     --review-tmpdir "$TMP/chained/round-1" --round 1 --mode diff >/dev/null
 grep -Eq '^### OOS_1: Chained accepted OOS \[OUT_OF_SCOPE\]$' "$TMP/chained/round-1/oos-accepted-review.md" || { echo "FAIL: chained tally→emit path lost normalized OOS header" >&2; exit 1; }
+grep -Fq 'Tally-only marker' "$TMP/chained/round-1/oos-accepted-review.md" || { echo "FAIL: chained tally→emit path did not preserve tally-written sink" >&2; exit 1; }
+if grep -Fq 'conflicting serialize fallback' "$TMP/chained/round-1/oos-accepted-review.md"; then
+    echo "FAIL: chained tally→emit path rebuilt from oos.md instead of preserving sink" >&2
+    exit 1
+fi
 if grep -Eq '^### FINDING_' "$TMP/chained/round-1/oos-accepted-review.md"; then
     echo "FAIL: chained tally→emit path emitted legacy FINDING header" >&2
     exit 1

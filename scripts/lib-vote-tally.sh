@@ -74,15 +74,18 @@ canonical_token = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
 explicit_header = re.compile(
     r'^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?'
     r'`?(?:\[security\]|<security>)`?(?:\s|$|[:-])',
-    re.IGNORECASE | re.MULTILINE,
+    re.IGNORECASE,
 )
 field_value = re.compile(
     r'^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)',
     re.IGNORECASE,
 )
-found = bool(canonical_token.search(text_no_backtick) or explicit_header.search(text_no_fence))
+lines = text_no_fence.splitlines()
+found = bool(canonical_token.search(text_no_backtick))
+if not found and lines and explicit_header.search(lines[0]):
+    found = True
 if not found:
-    for line in text_no_fence.splitlines():
+    for line in lines:
         normalized = line.replace('`', '').replace('*', '').strip()
         if field_value.search(normalized):
             found = True

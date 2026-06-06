@@ -206,6 +206,18 @@ def test_count_non_security_counts_legacy_trailing_tagged_headers(
     assert oos.count_non_security((str(accepted),)) == 1
 
 
+def test_count_non_security_counts_legacy_oos_shorthand_header(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OOS] Legacy shorthand block\n"
+        "- **Description**: tag after title matches awk parity.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
 def test_count_non_security_ignores_bare_finding_headers(tmp_path: Path) -> None:
     accepted = tmp_path / "accepted.md"
     _ = accepted.write_text(
@@ -249,6 +261,18 @@ def test_count_non_security_excludes_backtick_unbold_security_focus_area(
     _ = accepted.write_text(
         "### OOS_1: Security item\n"
         "- `focus-area`: `security-hardening`\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_unbulleted_security_focus_area(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Security item\n"
+        "focus-area: security-hardening\n",
         encoding="utf-8",
     )
     assert oos.count_non_security((str(accepted),)) == 0
