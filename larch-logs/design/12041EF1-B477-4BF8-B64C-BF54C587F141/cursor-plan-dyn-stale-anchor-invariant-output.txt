@@ -1,0 +1,43 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:25,115	plan-review-loop persist rule requires stdout-carried SCOPE_ANCHOR_FILE KV but edge case requires main-agent-vote-required relay	FINDING_3 forbids tally --scope-anchor-file; tally stdout likely omits SCOPE_ANCHOR_FILE on main-agent-vote-required. Strict stdout-only _PARSED persist then omits anchor from emit_loop_kvs/write_step3_result_env while edge case 115 requires same relay as ok; re-tally _RETALLY_SCOPE_ANCHOR_IN may read only a stale shell export	State explicitly: on ok and main-agent-vote-required when tally stdout lacks the KV, emit CR/LF-clean path from _LOOP_SCOPE_ANCHOR_IN (materialized anchor) into loop KVs/result env; keep stdout-parse guard for tally-error and other terminals only
+2	in_scope	important	architecture	plan.txt:93	SECURITY.md path-only subsection names MainAgent re-tally argv while plan forbids tally/re-tally scope-anchor argv (FINDING_3)	Readers may reintroduce --scope-anchor-file to tally/re-tally contrary to #3548 and SKILL.md env-sourced design	Replace re-tally argv with env-sourced KV refresh through .step3-plan-review-result.env and .step3-review-result.env after stdout parse
+
+**1. [correctness] `plan.txt:25` vs `plan.txt:115` — MAV relay vs stdout-only loop persist**
+
+`plan-review-loop.sh` delta (line 25) says persist into `emit_loop_kvs` / `write_step3_result_env` only when terminal status is `ok` or `main-agent-vote-required` **and stdout carried the KV**, and never persist input env on missing stdout KV.
+
+Edge cases (line 115) require `main-agent-vote-required` to relay `SCOPE_ANCHOR_FILE` the same as `ok`.
+
+FINDING_3 removes tally `--scope-anchor-file`; `tally-plan-review.sh` is not a scope-anchor stdout producer. On the 0-judge `main-agent-vote-required` exit, `_tally_raw` parse will often leave `_PARSED_SCOPE_ANCHOR_FILE` empty, so the stdout-only rule blocks durable handoff while line 115 still requires it.
+
+**Suggested revision:** On `ok` and `main-agent-vote-required`, when tally stdout omits `SCOPE_ANCHOR_FILE`, allow emit from sanitized `_LOOP_SCOPE_ANCHOR_IN` (materialized staged path). Keep stdout-parse-only omit for `tally-error` and other non-terminal paths.
+
+---
+
+**2. [architecture] `plan.txt:93` — SECURITY.md says re-tally argv**
+
+Proposed `SECURITY.md` path-only surface lists handoffs as: loop / tally / Step 3 result env / **MainAgent re-tally argv**.
+
+Elsewhere the plan forbids `--scope-anchor-file` on tally and re-tally (lines 25, 45, FINDING_3). SKILL.md re-tally delta is env-sourced `_RETALLY_SCOPE_ANCHOR_IN` / `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` with dual env refresh.
+
+**Suggested revision:** Document env-sourced KV refresh (no argv) for MainAgent re-tally; drop tally from the path-only chain or note tally does not accept scope-anchor argv.
+
+---
+
+**Surfaces reviewed — pattern coverage**
+
+| Surface | `_IN` / `_PARSED` + unset-before-parse | stdout-only persist (not input env) | stale-seed harness |
+|---------|----------------------------------------|-------------------------------------|-------------------|
+| `plan-review-loop.sh` (`plan.txt:25`) | Yes (`_LOOP_SCOPE_ANCHOR_IN`, `_PARSED_SCOPE_ANCHOR_FILE`, unset before parse) | Yes, with gap above on MAV without stdout KV | `test-plan-review-loop.sh` (`plan.txt:31`) |
+| `run-step3-review.sh` (`plan.txt:34`) | Yes (unset local relay state before parse) | Yes (`ok` / `main-agent-vote-required` only) | `test-run-step3-review.sh` (`plan.txt:37`, always) |
+| `SKILL.md` re-tally (`plan.txt:45`) | Yes (`_RETALLY_*`, unset before parse) | Yes (`ok` only — appropriate post-adjudication) | `test-step3-orchestrator-fence.sh` (`plan.txt:54`) |
+| `test-step3-orchestrator-fence.sh` stale pin (`plan.txt:54`) | Implied via input/output separation pins | Re-tally omit-KV case specified | Yes |
+
+**Terminal write conditions (`ok` / `main-agent-vote-required`)**
+
+- Loop (`plan-review-loop.md` delta, `plan.txt:28`): both terminals — consistent.
+- Relay (`run-step3-review.md`, `plan.txt:40`): both; omit on `panel-failed` — consistent.
+- Re-tally (`SKILL.md`, `plan.txt:45`): `ok` only — consistent (re-tally runs after MAV; success normalizes to `ok`).
+- `SECURITY.md` (`plan.txt:88-93`): does not list terminal gates — documentation gap only; relay/loop docs carry the contract.
+
+**Exonerated (SIMPLE minimum-change):** Failure modes §2 (`plan.txt:126`) lumping re-tally with `main-agent-vote-required` write terminals is internally inconsistent with line 45 but low risk because re-tally success sets `ok`. SKILL.md Step 3 handoff verify-first (`plan.txt:44`) does not spell out unset-before-parse; relay + re-tally coverage is sufficient for the four named surfaces.

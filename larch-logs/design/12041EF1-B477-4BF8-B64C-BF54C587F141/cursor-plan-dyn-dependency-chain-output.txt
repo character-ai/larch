@@ -1,0 +1,48 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:5	Hard-dependency prose says items 1, 2, 4, and 6 edit files that exist only on branch sergey-zhupanov/implementing-design-review-anchor-scout-3511	git cat-file shows assess-plan-round.sh, tally-plan-review.sh, and SECURITY.md on both main and origin/sergey-zhupanov/implementing-design-review-anchor-scout-3511; only scripts/check-scope-reduction-marker.sh is branch-only	Rephrase dependency: files 1/2/6 exist on main; gate on branch-only symbols (plan-review-scope-anchor.txt, SCOPE_ANCHOR_FILE handoff, marker helper) not file presence
+1	in_scope	important	correctness	plan.txt:8-9,34-35	Item 3 marked partially done on main; only residual framing prose needed	On main skills/design/scripts/revise-plan-with-waterfall.sh:143-149 still emit raw plan/findings/feature tags via sed; emit_untrusted_file_block exists only on the branch (#3548) at revise-plan-with-waterfall.sh:39-48	Reclassify item 3 as branch-dependent; state framing prose applies only after #3548 lands (or list porting emit_untrusted_file_block as prerequisite)
+1	in_scope	important	correctness	plan.txt:9,52-53	Item 5 marked fully done in code; plan adds tests only	On main scripts/launch-claude-subprocess.sh:180-181 cat context files without redact-secrets.sh or HTML escaping; branch adds redact+sed at lines 181-184	Reclassify item 5 as branch-dependent test coverage; note main would need the #3548 redact/escape pipeline before tests can pass
+1	in_scope	important	architecture	plan.txt:31-32,13-14	Item 2 SKILL.md re-tally edit assumes SCOPE_ANCHOR_FILE MainAgent choreography	main skills/design/SKILL.md:1128 has no SCOPE_ANCHOR_FILE or render-main-agent-scope-anchor.sh; branch adds that block at SKILL.md:1133 plus render-main-agent-scope-anchor.sh (missing on main)	Applying item 2 to main would add orphaned scope-anchor KV/re-tally prose with no materialization or renderer; keep hard gate on #3548 merge before item 2
+1	in_scope	important	correctness	plan.txt:13-14,55-56	Item 1 anchor preference assumes plan-review-scope-anchor.txt is staged	Neither main nor branch assess-plan-round.sh references plan-review-scope-anchor.txt today (resolve_feature_file at assess-plan-round.sh:83-94); staging exists only on branch plan-review-loop.sh:133-172	Dependency claim is correct for symbols but under-specified: item 1 is a no-op until loop materializes the anchor; call out symbol dependency explicitly in the hard-dependency block
+
+**1. [correctness] `plan.txt:5` — Branch-only file claim is overstated**
+
+`git cat-file -e` on current `main` vs `origin/sergey-zhupanov/implementing-design-review-anchor-scout-3511` shows `skills/design/scripts/assess-plan-round.sh`, `skills/design/scripts/tally-plan-review.sh`, and `SECURITY.md` on **both** refs. Only `scripts/check-scope-reduction-marker.sh` is branch-only (missing on `main`). The real gate is branch-only **symbols** (`plan-review-scope-anchor.txt`, `SCOPE_ANCHOR_FILE`, `plan-block-strip-body.sh`, `render-main-agent-scope-anchor.sh`), not file existence. Wording that says items 1, 2, 4, and 6 edit files that “exist only on that branch” can let `/implement` start early and produce incomplete or misleading diffs.
+
+**Suggested revision:** Split the hard-dependency block into (a) files that are branch-only (`check-scope-reduction-marker.sh`) vs (b) edits to shared files that depend on branch-only pipeline symbols.
+
+---
+
+**2. [correctness] `plan.txt:8-9`, `skills/design/scripts/revise-plan-with-waterfall.sh:143-149` — Item 3 is not “partially done” on `main`**
+
+The plan says `<plan>` / `<findings>` already use `emit_untrusted_file_block` and only framing prose is missing. On **`main`**, `compose_prompt()` still writes raw `<plan>`, `<findings>`, and `<feature>` blocks with `sed` and no redaction or `encoding="literal-redacted"`. On the **branch**, `emit_untrusted_file_block` exists (≈lines 39–48) and is used for all three blocks; feature framing is already present (≈157–158), plan/findings framing is not.
+
+Implementing “residual framing prose” on `main` before #3548 would target the wrong API (raw tags, no helper). After #3548, item 3 is correctly scoped as small prose additions only.
+
+---
+
+**3. [correctness] `plan.txt:9`, `scripts/launch-claude-subprocess.sh:180-181` — Item 5 is not “fully done” on `main`**
+
+The plan limits item 5 to harness coverage and says behavior shipped in #3548. On **`main`**, context files are included with framing prose but via `cat "$ctx"` — no `redact-secrets.sh`, no `&lt;`/`&amp;` escaping. The branch adds redact + `sed` escaping (≈181–184). Tests asserting escapes and secret suppression would **fail on `main`** if run before #3548.
+
+---
+
+**4. [architecture] `plan.txt:31-32`, `skills/design/SKILL.md:1128` vs branch `SKILL.md:1133` — Item 2 SKILL edit is branch-only choreography**
+
+Item 2 updates MainAgent re-tally to pass `--scope-anchor-file` and parse `SCOPE_ANCHOR_FILE` from tally output instead of prose preservation. **`main` `SKILL.md`** has no `SCOPE_ANCHOR_FILE`, no `render-main-agent-scope-anchor.sh`, and no “preserve scope anchor” block. The branch adds the full MainAgent scope-anchor path and `skills/design/scripts/render-main-agent-scope-anchor.sh` (branch-only file).
+
+Applying item 2 to `main` without #3548 would document KV/re-tally behavior with no anchor materialization, no renderer, and no durable `SCOPE_ANCHOR_FILE` handoff from `plan-review-loop.sh`.
+
+---
+
+**5. [correctness] `plan.txt:13-14`, `assess-plan-round.sh:83-94` — Item 1 depends on branch-only anchor staging (correct intent, imprecise categorization)**
+
+Item 1 correctly prefers `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` when non-empty. That path is materialized only on the branch (`plan-review-loop.sh:133-172`). Neither `main` nor branch `resolve_feature_file()` references it yet. On `main`, the change is a safe fallback no-op; after #3548 it closes a real gap (assessor still uses `feature-description.txt` while panel/voters use the anchor).
+
+The plan should say item 1 depends on anchor **staging**, not on assess-plan-round.sh being branch-only.
+
+---
+
+**[OUT_OF_SCOPE] [latent] `plan.txt:55-56` — Item 6 SECURITY subsection names branch-only consumers**
+
+The proposed `### Plan-review scope-anchor pipeline` subsection names `plan-block-strip-body.sh` and `render-main-agent-scope-anchor.sh`, which exist only on the feature branch. Safe and accurate **after** #3548; if merged early onto `main`, it would document helpers that are not yet on `main`.
