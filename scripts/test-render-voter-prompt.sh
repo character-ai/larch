@@ -204,19 +204,23 @@ case_argument_validation() {
     set -e
     [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --verification-context should exit 2 (got $rc)" >&2; exit 1; }
 
+    # scope anchor with code context: non-fatal — warns to stderr, skips anchor block, exits 0, ballot pointer present
     tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-render-voter-args.XXXXXX")
     printf '%s\n' scope > "$tmp/scope.txt"
+    local _code_anchor_out
     set +e
-    "$RENDER" \
+    _code_anchor_out=$("$RENDER" \
         --ballot-file "$BALLOT" \
         --panel-role x \
         --id-grammar finding-oos \
         --verification-context code \
-        --scope-anchor-file "$tmp/scope.txt" >/dev/null 2>&1
+        --scope-anchor-file "$tmp/scope.txt" 2>/dev/null)
     rc=$?
     set -e
     rm -rf "$tmp"
-    [[ "$rc" -eq 2 ]] || { echo "FAIL: scope anchor with code context should exit 2 (got $rc)" >&2; exit 1; }
+    [[ "$rc" -eq 0 ]] || { echo "FAIL: scope anchor with code context should exit 0 (warn+skip), got $rc" >&2; exit 1; }
+    grep -qF 'Read the ballot from this path' <<< "$_code_anchor_out" \
+        || { echo "FAIL: scope anchor with code context must still contain ballot pointer" >&2; exit 1; }
 }
 
 case_finding_only

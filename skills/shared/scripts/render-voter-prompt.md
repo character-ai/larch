@@ -64,3 +64,5 @@ The drift harness `case_canonical_text_drift_guard` greps a **shared substring**
 ## Scope anchor option
 
 `--scope-anchor-file <path>` is plan-review-only (`--verification-context plan`) and defaults off, preserving byte-compatible prompts when omitted. When supplied, the renderer inlines the staged scope anchor as untrusted evidence, instructs voters to evaluate proportionality against the originating issue scope rather than the finding text alone, treats leading `[SCOPE-REDUCTION]` findings problem-first, states that non-leading tag mentions are not markers, and confirms normal quorum/threshold behavior remains unchanged.
+
+Scope-anchor validation is **non-fatal**: if the path fails validation (wrong context, bad shape, or not under an allowed workspace/cache/tmpdir), the renderer warns to stderr and skips the anchor block, but still emits the ballot pointer and output grammar (exit 0). Dispatchers guard against silent truncation by asserting the rendered prompt contains `Read the ballot from this path` before launching voters.

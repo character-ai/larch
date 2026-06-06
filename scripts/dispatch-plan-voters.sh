@@ -74,7 +74,14 @@ make_prompt_file() {
     if [[ -n "$SCOPE_ANCHOR_FILE" ]]; then
         _render_args+=(--scope-anchor-file "$SCOPE_ANCHOR_FILE")
     fi
-    "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" "${_render_args[@]}" > "$prompt_file"
+    if ! "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" "${_render_args[@]}" > "$prompt_file"; then
+        larch_err "dispatch-plan-voters.sh: render-voter-prompt.sh failed for $tool voter; aborting"
+        exit 2
+    fi
+    if ! grep -qF 'Read the ballot from this path' "$prompt_file"; then
+        larch_err "dispatch-plan-voters.sh: render-voter-prompt.sh output for $tool voter is missing ballot pointer; aborting"
+        exit 2
+    fi
     printf '%s' "$prompt_file"
 }
 
