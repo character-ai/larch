@@ -9,10 +9,10 @@
 - **PR**: #3610 — https://github.com/character-ai/larch/pull/3610
 - **Plan review**: N/A
 - **Code review**: N/A
-- **Lines (PR diff)**: code +82/-4, larch-logs +492/-0
+- **Lines (PR diff)**: code +82/-4, larch-logs +507/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/F43613EC-CBF0-497D-8800-21965279B5AF/`
 
 <!-- larch:run-summary v=1 -->
