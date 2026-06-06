@@ -1050,7 +1050,7 @@ issue_value_is_url() {
 }
 
 cmd_normalize_issue_env() {
-    local tmpdir="" issue_stdout="" issue_exit_code=0 out_file="" filtered=""
+    local tmpdir="" issue_stdout="" issue_exit_code="" out_file="" filtered=""
     local issues_failed issue_failed issue_number issue_url duplicate duplicate_number duplicate_url content
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -1068,7 +1068,11 @@ cmd_normalize_issue_env() {
     [ -n "$out_file" ] || out_file="$tmpdir/stall-recovery-issue.env"
     validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
     case "$issue_exit_code" in
-        ""|*[!0-9]*) die_argv "--issue-exit-code must be a non-negative integer" ;;
+        "")
+            emit_issue_env_false "issue-exit-code-missing" "$out_file"
+            return 0
+            ;;
+        *[!0-9]*) die_argv "--issue-exit-code must be a non-negative integer" ;;
     esac
 
     if [ "$issue_exit_code" -ne 0 ]; then
@@ -1076,8 +1080,11 @@ cmd_normalize_issue_env() {
         return 0
     fi
 
-    filtered="$tmpdir/stall-recovery-issue.stdout.filtered.$$"
-    awk '
+    filtered=$(mktemp "$tmpdir/stall-recovery-issue.stdout.filtered.XXXXXX") || {
+        emit_issue_env_false "filter-temp-failed" "$out_file"
+        return 0
+    }
+    if ! awk '
         {
             sub(/\r$/, "")
             key = $0
@@ -1086,7 +1093,11 @@ cmd_normalize_issue_env() {
                 print
             }
         }
-    ' "$issue_stdout" >"$filtered"
+    ' "$issue_stdout" >"$filtered"; then
+        rm -f "$filtered"
+        emit_issue_env_false "filter-failed" "$out_file"
+        return 0
+    fi
 
     issues_failed=$(kv_get "$filtered" ISSUES_FAILED "")
     case "$issues_failed" in
@@ -1141,10 +1152,8 @@ cmd_normalize_issue_env() {
     })
     rm -f "$filtered"
     if ! atomic_write_text "$out_file" "$content"; then
-        emit_kv NORMALIZED false
-        emit_kv ISSUE_ENV_WRITTEN false
-        emit_kv REASON write-failed
-        exit 1
+        emit_issue_env_false "write-failed" "$out_file"
+        return 0
     fi
     emit_kv NORMALIZED true
     emit_kv ISSUE_ENV_WRITTEN true

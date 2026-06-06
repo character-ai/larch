@@ -711,9 +711,12 @@ done <<'EOF'
 9a1
 9b
 10-max-retries
+10-head-changed
 12b
 12c
 12d
+12-head-changed
+12-max-retries
 10-detached-head
 bump-branch-guard
 EOF
@@ -831,6 +834,61 @@ if [ ! -e "$dir/stall-recovery-issue.env" ]; then
     pass "20: normalize issue nonzero exit removes stale env"
 else
     fail "20: normalize issue nonzero exit removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20r-normalize-missing-exit-code)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=999
+ISSUE_1_URL=https://github.com/example/repo/issues/999
+EOF
+run_capture "$SANDBOX/case20r-normalize-missing-exit-code.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out"
+assert_eq 0 "$RC" "20: normalize missing issue exit code exits 0"
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20r-normalize-missing-exit-code.out")" "20: normalize missing issue exit code emits false"
+assert_eq issue-exit-code-missing "$(kv REASON "$SANDBOX/case20r-normalize-missing-exit-code.out")" "20: normalize missing issue exit code reports reason"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize missing issue exit code removes stale env"
+else
+    fail "20: normalize missing issue exit code removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20s-normalize-write-failed)
+stub_bin="$dir/stub-bin"
+mkdir -p "$stub_bin"
+cat >"$stub_bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+count_file=${LARCH_MKTEMP_STUB_COUNT:?}
+template=${1:?}
+count=$(cat "$count_file" 2>/dev/null || printf '0')
+count=$((count + 1))
+printf '%s\n' "$count" >"$count_file"
+if [ "$count" -eq 2 ]; then
+    exit 1
+fi
+path=${template%XXXXXX}stub$count
+: >"$path" || exit 1
+printf '%s\n' "$path"
+EOF
+chmod +x "$stub_bin/mktemp"
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=999
+ISSUE_1_URL=https://github.com/example/repo/issues/999
+EOF
+PATH="$stub_bin:$PATH" LARCH_MKTEMP_STUB_COUNT="$dir/mktemp.count" run_capture "$SANDBOX/case20s-normalize-write-failed.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq 0 "$RC" "20: normalize write failure exits 0"
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20s-normalize-write-failed.out")" "20: normalize write failure emits false"
+assert_eq write-failed "$(kv REASON "$SANDBOX/case20s-normalize-write-failed.out")" "20: normalize write failure reports reason"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize write failure removes stale env"
+else
+    fail "20: normalize write failure removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
 fi
 
 dir=$(make_tmp case20c)

@@ -231,10 +231,30 @@ stall_step4_window=$(awk '
 [[ -n "$stall_step4_window" ]] || fail "stall-recovery.md must retain Step 4 first-detection issue filing"
 printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-report.sh is-larch-dev-clone' \
   || fail "stall-recovery.md Step 4 must preserve the dev-clone discriminator"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'bug-body' \
+  || fail "stall-recovery.md Step 4 must compose the sanitized bug body"
 printf '%s\n' "$stall_step4_window" | grep -Fq 'issue-input-file' \
   || fail "stall-recovery.md Step 4 must compose the heading-bearing issue input file"
 printf '%s\n' "$stall_step4_window" | grep -Eq '/larch:issue --input-file.*stall-recovery-issue-input\.md' \
   || fail "stall-recovery.md Step 4 must file stall-recovery-issue-input.md via /larch:issue --input-file"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-issue.stdout' \
+  || fail "stall-recovery.md Step 4 must capture /larch:issue stdout to stall-recovery-issue.stdout"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'normalize-issue-env' \
+  || fail "stall-recovery.md Step 4 must normalize /larch:issue stdout through normalize-issue-env"
+# shellcheck disable=SC2016
+printf '%s\n' "$stall_step4_window" | grep -Fq -- '--issue-exit-code "$ISSUE_RC"' \
+  || fail "stall-recovery.md Step 4 must pass the captured ISSUE_RC to normalize-issue-env"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'ISSUE_ENV_WRITTEN' \
+  || fail "stall-recovery.md Step 4 must parse ISSUE_ENV_WRITTEN from normalize-issue-env"
+stall_step4_order_line=$(printf '%s\n' "$stall_step4_window" | tr '\n' ' ')
+stall_step4_dev_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "stall-recovery-report.sh is-larch-dev-clone")}')
+stall_step4_bug_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "bug-body")}')
+stall_step4_input_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "issue-input-file")}')
+stall_step4_issue_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "/larch:issue --input-file")}')
+if [ "$stall_step4_dev_pos" -le 0 ] || [ "$stall_step4_bug_pos" -le 0 ] || [ "$stall_step4_input_pos" -le 0 ] || [ "$stall_step4_issue_pos" -le 0 ] \
+  || [ "$stall_step4_dev_pos" -ge "$stall_step4_bug_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_input_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_issue_pos" ]; then
+    fail "stall-recovery.md Step 4 must run is-larch-dev-clone before report composition and /larch:issue filing"
+fi
 # shellcheck disable=SC2016
 grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"

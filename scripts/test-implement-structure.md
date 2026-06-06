@@ -26,8 +26,11 @@ It pins `write-final-report.sh --print-stdout` to Step **17** only; Step **18**
 must call `write-final-report.sh` **without** `--print-stdout` (silent refresh).
 
 For Step 18a first-detection filing, it pins the `is-larch-dev-clone` gate,
-the `issue-input-file` composition token, and the positive
-`stall-recovery-issue-input.md` `/larch:issue --input-file` filename check.
+the `bug-body` and `issue-input-file` composition tokens, the positive
+`stall-recovery-issue-input.md` `/larch:issue --input-file` filename check,
+stdout capture to `stall-recovery-issue.stdout`, `normalize-issue-env`,
+`--issue-exit-code "$ISSUE_RC"`, `ISSUE_ENV_WRITTEN`, and the ordering rule
+that the dev-clone gate precedes report composition and `/larch:issue` filing.
 
 Two assertions added for the orchestrator narrow-protocol-bounds rule (issue #2286):
 `SKILL.md Exit 4 prose must direct orchestrator to 'Continue to Step 16'` (pins that
