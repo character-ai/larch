@@ -31,7 +31,15 @@ APPENDED=true
 LOG=<path>
 ```
 
-Failures use `FAILED=true` / `ERROR=<message>` and exit non-zero.
+Usage failures (unknown flags, missing required flags, invalid categories, unreadable `--entry-file`, or invalid `--entry` / `--entry-file` combinations) emit the full synopsis and exit `1`:
+
+```
+FAILED=true
+ERROR=usage: <message>
+USAGE=append-execution-issue.sh --log FILE --category CAT (--entry STR | --entry-file FILE)
+```
+
+I/O failures keep the shorter `FAILED=true` / `ERROR=<message>` envelope and exit `2`.
 
 ## Conventions
 

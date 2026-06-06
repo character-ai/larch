@@ -12,7 +12,7 @@ Thin `/implement` Step 0 wrapper around `scripts/implement-bootstrap.sh`. Collap
 
 | Variable | `initial` | `resume` |
 |----------|-----------|----------|
-| `CLAUDE_PLUGIN_ROOT` | required | required |
+| `CLAUDE_PLUGIN_ROOT` | self-derived from `$0` when unset, then required and exported to the child | self-derived from `$0` when unset, then required and exported to the child |
 | `CALLER_ENV_PATH` / `SESSION_ENV_PATH` | optional | optional |
 | `TARGET_ISSUE_NUMBER` / `ISSUE_NUMBER` | optional | optional |
 | `forked_target`, `UPSTREAM_REPO` | optional | optional |
@@ -21,7 +21,7 @@ Thin `/implement` Step 0 wrapper around `scripts/implement-bootstrap.sh`. Collap
 | `coder` | optional (`--coder` forwarded only when non-empty) | ignored |
 | `IMPLEMENT_TMPDIR` | — | **required** (pass-through to bootstrap child for `resume_existing_tmpdir`) |
 
-On `--mode resume`, the wrapper re-exports caller `IMPLEMENT_TMPDIR` unchanged before invoking bootstrap.
+When `CLAUDE_PLUGIN_ROOT` is unset, the wrapper derives it from the absolute loader-expanded `$0` path (`dirname "$0"/..`), exports the derived value to the `implement-bootstrap.sh` child, and still guards the final value with `:?` so broken layouts fail loudly. On `--mode resume`, the wrapper re-exports caller `IMPLEMENT_TMPDIR` unchanged before invoking bootstrap.
 
 ## Bootstrap argv per mode
 

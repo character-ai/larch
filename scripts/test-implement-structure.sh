@@ -419,6 +419,66 @@ awk '
 ' "$SKILL_MD" || step5_lint_status=$?
 [[ "$step5_lint_status" == "0" ]] || fail "Step 5 region must reference lint-fix-loop.sh"
 
+step5_fence_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-step5-fence.XXXXXX")
+awk '
+  /<!-- step:5/ { in_step = 1; next }
+  in_step && /^```bash$/ { in_fence = 1; next }
+  in_step && in_fence && /^```$/ { exit }
+  in_step && in_fence { print }
+' "$SKILL_MD" >"$step5_fence_tmp"
+[[ -s "$step5_fence_tmp" ]] || fail "SKILL.md Step 5 telemetry fence missing"
+for needle in \
+  '--count-prior-degraded "$IMPLEMENT_TMPDIR" 1' \
+  "printf 'DYNAMIC_ARCHETYPES_CAP=%s\\n'" \
+  "printf 'PRIOR_DEGRADED_ROUNDS=%s\\n'" \
+  "printf 'ROUND_CAP=%s\\n'" \
+  "printf 'EFFECTIVE_ROUND_CAP=%s\\n'"
+do
+  grep -Fq -- "$needle" "$step5_fence_tmp" || fail "Step 5 telemetry fence missing: $needle"
+done
+if grep -Fq 'dynamic_archetypes_value' "$step5_fence_tmp"; then
+  fail "Step 5 telemetry fence must not read dead dynamic_archetypes_value state"
+fi
+step5_session_cap_line=$(grep -n 'LARCH_DYNAMIC_ARCHETYPES_MAX=' "$step5_fence_tmp" | head -1 | cut -d: -f1 || true)
+step5_ambient_cap_line=$(grep -n 'LARCH_DYNAMIC_ARCHETYPES_MAX:-' "$step5_fence_tmp" | head -1 | cut -d: -f1 || true)
+if [ -z "$step5_session_cap_line" ] || [ -z "$step5_ambient_cap_line" ] || [ "$step5_session_cap_line" -ge "$step5_ambient_cap_line" ]; then
+  fail "Step 5 telemetry fence must resolve session-env dynamic archetypes before ambient env"
+fi
+
+step5_cap_tmp=$(mktemp -d "${TMPDIR:-/tmp}/larch-step5-cap.XXXXXX")
+cat >"$step5_cap_tmp/session-env.sh" <<EOF
+LARCH_CLAUDE_PLUGIN_ROOT=$REPO_ROOT
+CODEX_PRESENT=true
+CURSOR_PRESENT=false
+LARCH_TOKEN_SESSION_ID=step5-cap-run
+LARCH_TIMING_LEDGER=$step5_cap_tmp/timing-ledger.tsv
+LARCH_DYNAMIC_ARCHETYPES_MAX=2
+EOF
+printf '%s\n' "step5-cap-run" >"$step5_cap_tmp/session-id"
+printf '%s\n' "Feature description" >"$step5_cap_tmp/feature-description.txt"
+printf '%s\n' "Plan body for Step 5 cap structure regression." >"$step5_cap_tmp/plan.txt"
+set +e
+step5_fence_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$step5_cap_tmp" LARCH_DYNAMIC_ARCHETYPES_MAX=7 bash "$step5_fence_tmp" 2>&1)
+step5_fence_rc=$?
+set -e
+[[ "$step5_fence_rc" == "0" ]] || fail "Step 5 telemetry fence must execute in harness (rc=$step5_fence_rc, output=$step5_fence_out)"
+step5_banner_cap=$(printf '%s\n' "$step5_fence_out" | awk -F= '$1 == "DYNAMIC_ARCHETYPES_CAP" {print $2; exit}')
+[[ "$step5_banner_cap" == "2" ]] || fail "Step 5 banner cap must prefer session-env over ambient env (got: ${step5_banner_cap:-<empty>})"
+step5_spy="$step5_cap_tmp/review-spy.sh"
+cat >"$step5_spy" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$RUN_STEP5_ARGV_FILE"
+printf 'STEP5_REVIEW_STATUS=complete\n'
+EOF
+chmod +x "$step5_spy"
+step5_argv_file="$step5_cap_tmp/review.argv"
+RUN_STEP5_REVIEW_SH="$step5_spy" RUN_STEP5_ARGV_FILE="$step5_argv_file" LARCH_DYNAMIC_ARCHETYPES_MAX=7 \
+  "$REPO_ROOT/scripts/run-step5-review.sh" --implement-tmpdir "$step5_cap_tmp" --mode loop >/dev/null
+step5_forwarded_cap=$(awk 'prev == "--dynamic-archetypes" {print; exit} {prev = $0}' "$step5_argv_file")
+[[ "$step5_forwarded_cap" == "$step5_banner_cap" ]] || fail "Step 5 banner cap must match forwarded CLI dynamic-archetypes cap"
+rm -rf "$step5_cap_tmp"
+rm -f "$step5_fence_tmp"
+
 if grep -Eiq 'diagnose([[:space:]]*,[[:space:]]*|[[:space:]]*\+[[:space:]]*)fix' "$SKILL_MD"; then
   fail "SKILL.md must not contain bare diagnose/fix relevant-checks loops without lint-fix-loop.sh routing"
 fi
