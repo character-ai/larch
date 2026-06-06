@@ -60,7 +60,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 | `13` | `partition_requested=true` without hard trigger |
 | `14` | Drift trigger (`DRIFT_TRIGGER_FIRED=true`; hard and partition both take precedence) |
 
-**Precedence**: defects → plan-size skipped; hard → partition → drift when more than one applies.
+**Precedence**: hard → partition → defects (validator handoff, rc **10**) → drift when more than one applies. When `VALIDATE_STATUS=defects-found`, validator defects win over drift even if `check-plan-size.sh` also fired drift.
 
 ## Plan-size nonfatal failures (merged)
 

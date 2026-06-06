@@ -853,9 +853,9 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D36" --with-plan-size >"$D36/stdout.txt" 2>"$D36/stderr.txt"
 rc=$?
 set -e
-assert_rc "defects drift trigger rc" 14 "$rc"
-assert_file_kv "$D36/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "defects drift trigger status"
-assert_contains "$D36/stdout.txt" '## Plan Size — Drift' "defects drift trigger section"
+assert_rc "defects drift trigger rc" 10 "$rc"
+assert_file_kv "$D36/.design-postplan-emit-result.env" PLAN_SIZE_STATUS skipped-defects "defects win over drift trigger status"
+assert_not_contains "$D36/stdout.txt" '## Plan Size — Drift' "defects win over drift trigger section"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

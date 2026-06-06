@@ -1380,7 +1380,9 @@ PY
     set -e
     if [[ "$_ballot_rc" -ne 0 ]]; then
         larch_err "plan-review-ballot: renumber failed on pre-dedup fallback (rc=$_ballot_rc)"
-        exit 1
+        LOOP_STATUS=panel-failed
+        LOOP_REASON=panel-failed
+        return 1
     fi
 fi
 
@@ -1576,7 +1578,14 @@ IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-pl
 _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
 revise_status=skipped
 
-if [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 ]]; then
+if [[ "$ACCEPTED_COUNT" -eq 0 \
+    && "$collect_ok_count" -eq 0 \
+    && "$DEGRADED_PANEL" -eq 1 \
+    && "${TALLY_PLAN_REVIEW_STATUS:-}" == "skipped-empty-findings" \
+    && "${ALL_SLOTS_DROPPED:-false}" != "true" ]]; then
+    LOOP_STATUS=zero-findings-degraded-panel
+    LOOP_REASON=zero-findings-degraded-panel
+elif [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 ]]; then
     LOOP_STATUS=degraded-empty-collector
     LOOP_REASON=degraded-empty-collector
     DEGRADED_PANEL=1

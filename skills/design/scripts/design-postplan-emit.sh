@@ -406,18 +406,18 @@ _postplan_finish_merged_plan_size() {
         _postplan_flush || exit 1
         exit 13
     fi
+    if [[ -n "$_defects_exit" ]]; then
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=skipped-defects
+        _postplan_flush || exit 1
+        exit "$_defects_exit"
+    fi
     if [[ "$DRIFT_TRIGGER_FIRED" == true ]]; then
         _postplan_emit_drift_section
         POSTPLAN_EMIT_STATUS=ok
         PLAN_SIZE_STATUS=drift-trigger
         _postplan_flush || exit 1
         exit 14
-    fi
-    if [[ -n "$_defects_exit" ]]; then
-        POSTPLAN_EMIT_STATUS=ok
-        PLAN_SIZE_STATUS=skipped-defects
-        _postplan_flush || exit 1
-        exit "$_defects_exit"
     fi
     POSTPLAN_EMIT_STATUS=ok
     PLAN_SIZE_STATUS=under-threshold

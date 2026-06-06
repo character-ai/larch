@@ -95,7 +95,7 @@ Each Step 3 entry clears `plan-review/round-*/` before launch (SKILL.md); prior 
 
 Keep this file aligned with `plan-review-loop.sh` behavior and argv.
 
-Multi-round mode records one best-effort design plan-review timing `round` row per completed round. Terminal exits emit through `_snapshot_terminal_exit_preserving_status`; `main-agent-vote-required` persists `round-start-s` under `plan-review/round-N/` and defers emission to `skills/design/SKILL.md` after inline re-tally.
+Single-pass mode records one best-effort design plan-review timing `round` row per terminal exit through `_snapshot_terminal_exit_preserving_status`. `main-agent-vote-required` persists `round-start-s` under `plan-review/round-N/` and defers emission to `skills/design/SKILL.md` after inline re-tally.
 
 ## Scope anchor and scope-reduction preservation
 

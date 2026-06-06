@@ -636,8 +636,10 @@ printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=oops\n' >"$d/drift-baseline.
 { fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
-assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
-assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+assert_kv_eq BASELINE_PLAN_LINES "" "$out"
+assert_kv_eq BASELINE_DIFF_LINES "" "$out"
+assert_kv_eq DRIFT_PLAN_RATIO inf "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
 printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; failing closed on drift trigger' \
     || fail "case36: expected fail-closed unreadable baseline warning"
 
@@ -648,8 +650,10 @@ ln -s /tmp/not-a-real-baseline "$d/drift-baseline.env"
 { fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
-assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
-assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+assert_kv_eq BASELINE_PLAN_LINES "" "$out"
+assert_kv_eq BASELINE_DIFF_LINES "" "$out"
+assert_kv_eq DRIFT_PLAN_RATIO inf "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
 [[ ! -L "$d/drift-baseline.env" ]] || fail "case37: expected symlink baseline removal attempt"
 printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; failing closed on drift trigger' \
     || fail "case37: expected fail-closed symlink baseline warning"

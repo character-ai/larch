@@ -180,10 +180,11 @@ drift_exceeds() {
     (( current > baseline * multiple ))
 }
 
-baseline_plan_lines="$plan_lines"
-baseline_diff_lines="$diff_lines"
-baseline_plan_display="$baseline_plan_lines"
-baseline_diff_display="$baseline_diff_lines"
+baseline_plan_lines=0
+baseline_diff_lines=0
+baseline_plan_display=""
+baseline_diff_display=""
+_baseline_trusted=false
 drift_trigger=false
 _drift_baseline="$(larch_drift_baseline_path "$DESIGN_TMPDIR")"
 _baseline_recovered=false
@@ -207,13 +208,18 @@ _recover_baseline_from_plan() {
     baseline_plan_display="$baseline_plan_lines"
     baseline_diff_display="$baseline_diff_lines"
     _baseline_recovered=true
+    _baseline_trusted=true
     return 0
 }
 
 _fail_closed_on_unreadable_baseline() {
     emit_kv WARN "check-plan-size: drift baseline unreadable; failing closed on drift trigger"
+    larch_drift_baseline_mark_unreadable "$DESIGN_TMPDIR"
     if [[ "$_baseline_recovered" != true ]]; then
         drift_trigger=true
+        baseline_plan_display=""
+        baseline_diff_display=""
+        _baseline_trusted=false
         return 0
     fi
     if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" \
@@ -228,6 +234,8 @@ _write_drift_baseline() {
         baseline_diff_lines="$diff_lines"
         baseline_plan_display="$baseline_plan_lines"
         baseline_diff_display="$baseline_diff_lines"
+        _baseline_trusted=true
+        larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
     else
         emit_kv WARN "check-plan-size: could not write drift baseline; proceeding without drift trigger"
     fi
@@ -241,12 +249,16 @@ if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
             _fail_closed_on_unreadable_baseline
         else
             emit_kv WARN "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original"
+            larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$baseline_plan_lines" "$baseline_diff_lines"
+            larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
         fi
     else
         baseline_plan_lines=$((10#$_bp))
         baseline_diff_lines=$((10#$_bd))
         baseline_plan_display="$baseline_plan_lines"
         baseline_diff_display="$baseline_diff_lines"
+        _baseline_trusted=true
+        larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
     fi
     if [[ "$drift_trigger" != true ]] \
         && [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]] \
@@ -265,16 +277,42 @@ elif [[ -e "$_drift_baseline" || -L "$_drift_baseline" ]]; then
         _fail_closed_on_unreadable_baseline
     else
         emit_kv WARN "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original"
+        larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$baseline_plan_lines" "$baseline_diff_lines"
+        larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
         if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
             drift_trigger=true
         fi
     fi
 else
-    _write_drift_baseline
+    if larch_drift_baseline_is_unreadable "$DESIGN_TMPDIR"; then
+        if ! _recover_baseline_from_plan "$DESIGN_TMPDIR/plan.txt-original"; then
+            _fail_closed_on_unreadable_baseline
+        else
+            emit_kv WARN "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original"
+            larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$baseline_plan_lines" "$baseline_diff_lines"
+            larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
+            if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+                drift_trigger=true
+            fi
+        fi
+    elif _recover_baseline_from_plan "$DESIGN_TMPDIR/plan.txt-original"; then
+        larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$baseline_plan_lines" "$baseline_diff_lines"
+        larch_drift_baseline_clear_unreadable "$DESIGN_TMPDIR"
+        if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+            drift_trigger=true
+        fi
+    else
+        _write_drift_baseline
+    fi
 fi
 
-drift_plan_ratio=$(ratio_token "$plan_lines" "$baseline_plan_lines")
-drift_diff_ratio=$(ratio_token "$diff_lines" "$baseline_diff_lines")
+if [[ "$_baseline_trusted" == true ]]; then
+    drift_plan_ratio=$(ratio_token "$plan_lines" "$baseline_plan_lines")
+    drift_diff_ratio=$(ratio_token "$diff_lines" "$baseline_diff_lines")
+else
+    drift_plan_ratio=inf
+    drift_diff_ratio=inf
+fi
 
 hard_plan=0
 if (( plan_lines > 800 )); then hard_plan=1; fi
