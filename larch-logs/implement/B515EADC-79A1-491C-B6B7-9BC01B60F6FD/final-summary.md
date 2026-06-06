@@ -12,7 +12,7 @@
 - **Lines (PR diff)**: code +51/-25, larch-logs +591/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 5
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/B515EADC-79A1-491C-B6B7-9BC01B60F6FD/`
 
 <!-- larch:run-summary v=1 -->
