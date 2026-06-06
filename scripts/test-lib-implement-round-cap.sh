@@ -76,6 +76,23 @@ cli_returns_zero_for_fresh_round_one() {
     pass "cli_returns_zero_for_fresh_round_one"
 }
 
+cli_accepts_leading_zero_rounds() {
+    local case_tmp="$TMP/leading-zero"
+    mkdir -p "$case_tmp/round-7"
+    printf 'DEGRADED_ROUND=true\n' > "$case_tmp/round-7/review-and-fix.env"
+    local got
+    got="$("$LIB" --count-prior-degraded "$case_tmp" 08)"
+    [[ "$got" == "1" ]] || fail "expected CLI count 1 for leading-zero round 08, got $got"
+    pass "cli_accepts_leading_zero_rounds"
+}
+
+sourcing_with_positional_args_stays_inert() {
+    local got
+    got="$(bash -c '. "$1" --not-a-cli-command dummy; declare -F count_prior_degraded_rounds >/dev/null; count_prior_degraded_rounds "$2" 1' _ "$LIB" "$TMP")"
+    [[ "$got" == "0" ]] || fail "expected sourced library with positional args to stay inert and return helper count 0, got $got"
+    pass "sourcing_with_positional_args_stays_inert"
+}
+
 assert_cli_usage() {
     local label=$1
     local stdout_file="$TMP/cli-usage.out"
@@ -97,6 +114,8 @@ lib_helper_ignores_non_degraded_rounds
 lib_helper_handles_missing_round_artifacts_gracefully
 cli_counts_degraded_rounds_correctly
 cli_returns_zero_for_fresh_round_one
+cli_accepts_leading_zero_rounds
+sourcing_with_positional_args_stays_inert
 assert_cli_usage "cli_missing_arg_exits_usage" --count-prior-degraded "$TMP"
 assert_cli_usage "cli_non_integer_round_exits_usage" --count-prior-degraded "$TMP" nope
 assert_cli_usage "cli_non_positive_round_exits_usage" --count-prior-degraded "$TMP" 0

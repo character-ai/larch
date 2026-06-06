@@ -50,8 +50,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             case "$3" in
                 ''|*[!0-9]*) _lib_round_cap_usage ;;
             esac
-            [ "$3" -ge 1 ] || _lib_round_cap_usage
-            count_prior_degraded_rounds "$2" "$3"
+            current_round=$((10#$3))
+            [ "$current_round" -ge 1 ] || _lib_round_cap_usage
+            count_prior_degraded_rounds "$2" "$current_round"
             ;;
         *)
             _lib_round_cap_usage

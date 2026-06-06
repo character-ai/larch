@@ -773,6 +773,34 @@ IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 "${CLAUDE_PLUGIN_ROOT}/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
+dynamic_archetypes_cap="${dynamic_archetypes_value:-}"
+if [ -z "$dynamic_archetypes_cap" ]; then
+  if [ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]; then
+    dynamic_archetypes_cap="$LARCH_DYNAMIC_ARCHETYPES_MAX"
+  elif [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+    dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+  fi
+fi
+# Implement-mode default when no dynamic-archetypes override is present.
+[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=6
+case "$dynamic_archetypes_cap" in
+  [0-8]) ;;
+  *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s\n' "$dynamic_archetypes_cap" >&2; exit 2 ;;
+esac
+# Base Step 5 round cap; degraded rounds only inflate the banner hint.
+round_cap=5
+if ! prior_degraded_rounds="$("${CLAUDE_PLUGIN_ROOT}/scripts/lib-implement-round-cap.sh" --count-prior-degraded "$IMPLEMENT_TMPDIR" 1)"; then
+  printf 'ERROR: Step 5 banner failed to count prior degraded rounds\n' >&2
+  exit 2
+fi
+case "$prior_degraded_rounds" in
+  ''|*[!0-9]*) printf 'ERROR: Step 5 banner prior_degraded_rounds is non-integer: %s\n' "$prior_degraded_rounds" >&2; exit 2 ;;
+esac
+effective_round_cap=$((round_cap + prior_degraded_rounds))
+printf 'DYNAMIC_ARCHETYPES_CAP=%s\n' "$dynamic_archetypes_cap"
+printf 'PRIOR_DEGRADED_ROUNDS=%s\n' "$prior_degraded_rounds"
+printf 'ROUND_CAP=%s\n' "$round_cap"
+printf 'EFFECTIVE_ROUND_CAP=%s\n' "$effective_round_cap"
 ```
 
 ### Scripted review loop
@@ -781,7 +809,7 @@ export IMPLEMENT_TMPDIR
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 inherited a validated session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `6` (implement mode default, valid up to 8). For the Step 5 banner only, compute `prior_degraded_rounds` by running `${CLAUDE_PLUGIN_ROOT}/scripts/lib-implement-round-cap.sh --count-prior-degraded "$IMPLEMENT_TMPDIR" 1` and using its stdout, set `round_cap` to the fixed base **5**, then `effective_round_cap=$((round_cap + prior_degraded_rounds))` as an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round).
+Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 inherited a validated session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `6` (implement mode default, valid up to 8). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
 
 Print once before the `run-step5-review.sh` invocation:
 
