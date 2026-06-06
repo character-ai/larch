@@ -280,47 +280,47 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 3,
-          "cache_read": 352779,
-          "cache_create": 150152,
-          "cache_create_5m": 150152,
+          "input": 33,
+          "cache_read": 5803567,
+          "cache_create": 172732,
+          "cache_create_5m": 172732,
           "cache_create_1h": 0,
-          "output": 2036,
-          "total": 504970
+          "output": 14574,
+          "total": 5990906
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 3,
-              "cache_read": 352779,
-              "cache_create": 150152,
-              "cache_create_5m": 150152,
+              "input": 33,
+              "cache_read": 5803567,
+              "cache_create": 172732,
+              "cache_create_5m": 172732,
               "cache_create_1h": 0,
-              "output": 2036,
-              "total": 504970
+              "output": 14574,
+              "total": 5990906
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 43,
-      "cache_read": 6105615,
-      "cache_create": 210435,
-      "cache_create_5m": 210435,
+      "input": 73,
+      "cache_read": 11556403,
+      "cache_create": 233015,
+      "cache_create_5m": 233015,
       "cache_create_1h": 0,
-      "output": 33701,
-      "total": 6349794
+      "output": 46239,
+      "total": 11835730
     }
   },
   "BUCKETS_claude": {
-    "input": 43,
-    "cache_read": 6105615,
-    "cache_create_5m": 210435,
+    "input": 73,
+    "cache_read": 11556403,
+    "cache_create_5m": 233015,
     "cache_create_1h": 0,
-    "output": 33701,
-    "total": 6349794
+    "output": 46239,
+    "total": 11835730
   },
   "BUCKETS_codex": {
     "input": 0,
