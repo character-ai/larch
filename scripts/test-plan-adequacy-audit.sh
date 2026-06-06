@@ -21,7 +21,7 @@ grep -Fq '**Few-shot A — pass**' "$SKILL" || fail "missing few-shot pass examp
 grep -Fq '**Few-shot B — refuse**' "$SKILL" || fail "missing few-shot refuse example"
 grep -Fq '**⚠ --forked and --merge are mutually exclusive. Aborting.**' "$SKILL" || fail "missing forked/merge mutex"
 grep -Fq '**⚠ --draft and --merge are mutually exclusive. Aborting.**' "$SKILL" || fail "missing draft/merge mutex"
-grep -Fq '**⚠ --emergency and --merge are mutually exclusive. Aborting.**' "$SKILL" || fail "missing emergency/merge mutex"
+grep -Fq '`--emergency` and `--merge` are **compatible**' "$SKILL" || fail "missing emergency/merge compatibility note"
 grep -Fq '**⚠ --emergency and --draft are mutually exclusive. Aborting.**' "$SKILL" || fail "missing emergency/draft mutex"
 # shellcheck disable=SC2016
 grep -Fq 'If `false` and `emergency_requested=false`, print `**❌ Issue #<N> has no larch:plan block — run /design <N> first.**` and exit **2**.' "$SKILL" || fail "missing non-emergency missing-plan refusal contract"
