@@ -185,7 +185,12 @@ while (( attempt <= 100 )); do
 done
 [[ -n "$LOG_FILE" ]] || fail "log-allocation-attempt-cap" 1
 
-if (cd "$REPO_ROOT" && "$CHECK_SCRIPT") >"$LOG_FILE" 2>&1; then
+# Scrub LARCH_QUIET_* so test harnesses inside the checks pipeline run
+# hermetically regardless of the invoking skill session's quiet state.
+if (
+    unset LARCH_QUIET_DISABLE LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG
+    cd "$REPO_ROOT" && "$CHECK_SCRIPT"
+) >"$LOG_FILE" 2>&1; then
     rc=0
 else
     rc=$?
