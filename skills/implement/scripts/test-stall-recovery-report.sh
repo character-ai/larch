@@ -156,6 +156,35 @@ dir=$(make_tmp case7b)
 write_state "$dir" 8 ci-initial
 run_capture "$SANDBOX/case7b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "network timeout while posting issue"
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case7b.out")" "7: bail-reason-only evidence classifies transient infra"
+dir=$(make_tmp case7g)
+write_state "$dir" 2 implementation
+run_capture "$SANDBOX/case7g.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason wrapper-validation-failure
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7g.out")" "7: argv-only wrapper-validation-failure stays dispatch-failure"
+assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7g.out")" "7: argv-only wrapper-validation-failure keeps step2 resume"
+assert_eq wrapper-validation-failure "$(kv BAIL_REASON "$SANDBOX/case7g.out")" "7: argv-only wrapper-validation-failure renders allowlisted bail"
+dir=$(make_tmp case7h)
+write_state "$dir" 2 checks "" "NOTE=invalid envelope in step2 dispatch"
+run_capture "$SANDBOX/case7h.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason orchestrator-envelope-invalid
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7h.out")" "7: #3550 envelope evidence stays dispatch-failure"
+assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7h.out")" "7: #3550 envelope evidence keeps step2 resume"
+assert_eq orchestrator-envelope-invalid "$(kv BAIL_REASON "$SANDBOX/case7h.out")" "7: #3550 envelope bail renders allowlisted token"
+dir=$(make_tmp case7i)
+write_state "$dir" 2 implementation
+IMPLEMENT_BAIL_REASON=
+FINAL_BAIL_REASON=orchestrator-envelope-invalid
+export IMPLEMENT_BAIL_REASON FINAL_BAIL_REASON
+run_capture "$SANDBOX/case7i.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}"
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7i.out")" "7: FINAL_BAIL_REASON fallback orchestrator classifies dispatch"
+assert_eq orchestrator-envelope-invalid "$(kv BAIL_REASON "$SANDBOX/case7i.out")" "7: FINAL_BAIL_REASON fallback orchestrator renders bail"
+dir=$(make_tmp case7j)
+write_state "$dir" 2 implementation
+IMPLEMENT_BAIL_REASON=
+FINAL_BAIL_REASON=wrapper-validation-failure
+export IMPLEMENT_BAIL_REASON FINAL_BAIL_REASON
+run_capture "$SANDBOX/case7j.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}"
+assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7j.out")" "7: FINAL_BAIL_REASON fallback wrapper classifies dispatch"
+assert_eq wrapper-validation-failure "$(kv BAIL_REASON "$SANDBOX/case7j.out")" "7: FINAL_BAIL_REASON fallback wrapper renders bail"
+unset IMPLEMENT_BAIL_REASON FINAL_BAIL_REASON
 while IFS='|' read -r klass attempts delay; do
     run_capture "$SANDBOX/retry-$klass.out" "$SCRIPT" retry-policy --class "$klass"
     assert_eq "$klass" "$(kv FAILURE_CLASS "$SANDBOX/retry-$klass.out")" "7: retry-policy class $klass"
@@ -260,6 +289,49 @@ run_capture "$SANDBOX/case8c.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "8: missing ship state with no evidence exits 0"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8c.out")" "8: missing ship state without recoverable evidence is unrecoverable"
 
+dir=$(make_tmp case8exit_missing)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=
+EOF
+run_capture "$SANDBOX/case8exit-missing.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq unknown "$(kv EXIT_CODE "$SANDBOX/case8exit-missing.out")" "8: missing EXIT_CODE emits unknown"
+cp "$SANDBOX/case8exit-missing.out" "$dir/class.env"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" >"$dir/body.out"
+assert_contains "| Exit code | \`unknown\` |" "$(cat "$(kv BODY_FILE "$dir/body.out")")" "8: missing EXIT_CODE renders unknown"
+
+dir=$(make_tmp case8exit_zero)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=
+EXIT_CODE=0
+EOF
+run_capture "$SANDBOX/case8exit-zero.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 0 "$(kv EXIT_CODE "$SANDBOX/case8exit-zero.out")" "8: EXIT_CODE=0 emits 0"
+cp "$SANDBOX/case8exit-zero.out" "$dir/class.env"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" >"$dir/body.out"
+assert_contains "| Exit code | \`0\` |" "$(cat "$(kv BODY_FILE "$dir/body.out")")" "8: EXIT_CODE=0 renders 0"
+
+dir=$(make_tmp case8exit_four)
+write_state "$dir" 8 ci-initial
+run_capture "$SANDBOX/case8exit-four.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 4 "$(kv EXIT_CODE "$SANDBOX/case8exit-four.out")" "8: EXIT_CODE=4 emits 4"
+
+dir=$(make_tmp case8exit_malformed)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=
+EXIT_CODE=abc
+EOF
+run_capture "$SANDBOX/case8exit-malformed.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq unknown "$(kv EXIT_CODE "$SANDBOX/case8exit-malformed.out")" "8: malformed EXIT_CODE emits unknown"
+
 dir=$(make_tmp case9)
 write_state "$dir" 8 ci-initial
 printf 'x\n' >"$dir/ok.log"
@@ -348,6 +420,18 @@ run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir" --f
 assert_not_contains "SENTINEL_SECRET_13B" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "13: evidence sentinels stay out of public outputs"
 assert_not_contains "$GHP_TOKEN_CASE13" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "13: evidence ghp token stays out of public outputs"
 assert_eq redacted "$(kv BAIL_REASON "$dir/classify.out")" "13: classification bail reason is redacted"
+assert_contains "| Bail reason | \`redacted\` |" "$(cat "$(kv BODY_FILE "$dir/body.out")")" "13: redacted bail reason renders redacted"
+
+dir=$(make_tmp case13_bail_rows)
+cp "$SANDBOX/case7h.out" "$dir/orchestrator.env"
+cp "$SANDBOX/case7g.out" "$dir/wrapper.env"
+cp "$SANDBOX/case5a.out" "$dir/none.env"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/orchestrator.env" --output-file "$dir/orchestrator.md" >"$dir/orchestrator.out"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/wrapper.env" --output-file "$dir/wrapper.md" >"$dir/wrapper.out"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/none.env" --output-file "$dir/none.md" >"$dir/none.out"
+assert_contains "| Bail reason | \`orchestrator-envelope-invalid\` |" "$(cat "$dir/orchestrator.md")" "13: orchestrator bail reason renders allowlisted token"
+assert_contains "| Bail reason | \`wrapper-validation-failure\` |" "$(cat "$dir/wrapper.md")" "13: wrapper bail reason renders allowlisted token"
+assert_contains "| Bail reason | \`none\` |" "$(cat "$dir/none.md")" "13: empty bail reason renders none"
 
 dir=$(make_tmp case13c)
 cat >"$dir/session-env.sh" <<'EOF'

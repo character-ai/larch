@@ -546,6 +546,13 @@ safe_bail_reason_value() {
     esac
 }
 
+safe_exit_code_value() {
+    case "${1:-}" in
+        ""|*[!0-9]*) printf 'unknown\n' ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
+
 retry_cap_for() {
     case "${1:-}" in
         transient-infra) printf '4\n' ;;
@@ -680,9 +687,7 @@ $(cat "$session_env")"
         fi
     fi
 
-    case "$exit_code" in
-        ""|*[!0-9]*) exit_code=0 ;;
-    esac
+    exit_code=$(safe_exit_code_value "$exit_code")
 
     emit_kv FAILURE_CLASS "$failure_class"
     emit_kv FAILURE_SIGNATURE "$signature"
@@ -880,15 +885,16 @@ load_classification_arg() {
 
 compose_body_content() {
     local class_file=$1 attempts_file=${2:-} comment_mode=${3:-false}
-    local failure_class signature step phase exit_code attempt_count final_class final_sig
+    local failure_class signature step phase bail_reason exit_code attempt_count final_class final_sig
     failure_class=$(safe_class_value "$(load_classification_arg "$class_file" FAILURE_CLASS "unrecoverable")")
     signature=$(safe_signature_value "$(load_classification_arg "$class_file" FAILURE_SIGNATURE "$(printf '%s' "$failure_class" | hash_text)")")
     step=$(safe_step_value "$(load_classification_arg "$class_file" STALL_STEP "")")
     phase=$(safe_phase_value "$(load_classification_arg "$class_file" PHASE "")")
-    exit_code=$(load_classification_arg "$class_file" EXIT_CODE "0")
+    bail_reason=$(safe_bail_reason_value "$(load_classification_arg "$class_file" BAIL_REASON "")")
+    [ -n "$bail_reason" ] || bail_reason=none
+    exit_code=$(safe_exit_code_value "$(load_classification_arg "$class_file" EXIT_CODE "")")
     final_class=$failure_class
     final_sig=$signature
-    case "$exit_code" in ""|*[!0-9]*) exit_code=0 ;; esac
     {
         printf '<!-- larch-stall:signature=%s -->\n\n' "$signature"
         printf '## Sanitized stall report\n\n'
@@ -897,6 +903,7 @@ compose_body_content() {
         printf "| Failing step | \`%s\` |\n" "$step"
         printf "| Failing phase | \`%s\` |\n" "$phase"
         printf "| Failure class | \`%s\` |\n" "$failure_class"
+        printf "| Bail reason | \`%s\` |\n" "$bail_reason"
         printf "| Exit code | \`%s\` |\n" "$exit_code"
         printf "| Signature hash | \`%s\` |\n\n" "$signature"
         printf '## Inferred root cause\n\n%s\n\n' "$(root_cause_template "$failure_class")"
@@ -1014,6 +1021,7 @@ code_allowlist_lines() {
 bug-body	failing_step
 bug-body	failing_phase
 bug-body	failure_class
+bug-body	bail_reason
 bug-body	exit_code
 bug-body	signature_hash
 bug-body	inferred_root_cause
@@ -1021,6 +1029,7 @@ bug-body	suggested_mitigation
 bug-comment	failing_step
 bug-comment	failing_phase
 bug-comment	failure_class
+bug-comment	bail_reason
 bug-comment	exit_code
 bug-comment	signature_hash
 bug-comment	inferred_root_cause
@@ -1034,6 +1043,7 @@ issue-input-file	body
 chat-print	failing_step
 chat-print	failing_phase
 chat-print	failure_class
+chat-print	bail_reason
 chat-print	exit_code
 chat-print	signature_hash
 chat-print	inferred_root_cause
