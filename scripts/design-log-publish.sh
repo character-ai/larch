@@ -305,6 +305,24 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
+    case "$name" in
+        cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)
+            return 0
+            ;;
+        cursor-plan-*-output*.txt.meta|cursor-plan-*-output*.txt.json|cursor-plan-*-output*.txt.cap-hit|cursor-plan-*-output*.txt.tsv|cursor-plan-*-output*.txt.launch-stderr|cursor-plan-*-output*.txt.stderr-tail)
+            return 0
+            ;;
+        codex-primary-plan-*-output*.txt.meta|codex-primary-plan-*-output*.txt.json|codex-primary-plan-*-output*.txt.cap-hit|codex-primary-plan-*-output*.txt.tsv|codex-primary-plan-*-output*.txt.launch-stderr|codex-primary-plan-*-output*.txt.stderr-tail)
+            return 0
+            ;;
+        claude-plan-*-output*.txt.meta|claude-plan-*-output*.txt.tsv|claude-plan-*-output*.txt.launch-stderr|claude-plan-*-output*.txt.stderr-tail|claude-plan-*-output*.txt.stderr|claude-plan-*-output*.txt.jsonl)
+            return 0
+            ;;
+        claude-plan-*.prompt|cursor-plan-*-collector.failure.log|codex-plan-*-collector.failure.log|dyn-cursor-plan-*-collector.failure.log|dyn-codex-plan-*-collector.failure.log|unknown-slot-collector.failure.log|plan-review-collector.stderr|plan-review-slots.ndjson.output-files.dropped-slots)
+            return 0
+            ;;
+    esac
     return 1
 }
 

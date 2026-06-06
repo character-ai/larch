@@ -24,7 +24,7 @@ Any allowlist change MUST update, in the same commit:
 
 **Include patterns:** `*-vote-output.txt`, `*-vote-output-first-pass.txt`, `voter*-diag.txt`.
 
-**Exclude patterns:** raw reviewer outputs (`cursor-plan-*-output.txt`, `codex-plan-*-output.txt`, `dyn-*-output.txt`) and sidecars (`*.dirty-tree`, `*.untracked-baseline`, `*.done`, `*.diag`, `*.sidecar`, `*.events.jsonl`, `*-output.txt.prompt`, `*-output.txt.meta`, `*-output.txt.json`, `*-output.txt.cap-hit`, `*-vote-prompt.txt`).
+**Exclude patterns:** raw reviewer outputs (`cursor-plan-*-output.txt`, `codex-primary-plan-*-output.txt`, `dyn-*-output.txt`) and sidecars (`*.dirty-tree`, `*.untracked-baseline`, `*.done`, `*.diag`, `*.sidecar`, `*.events.jsonl`, `*-output.txt.prompt`, `*-output.txt.meta`, `*-output.txt.json`, `*-output.txt.cap-hit`, `*-vote-prompt.txt`).
 
 ## `round-N/revise/` allowlist
 

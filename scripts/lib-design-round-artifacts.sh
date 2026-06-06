@@ -5,7 +5,7 @@
 design_round_artifact_included() {
     local name="$1"
     case "$name" in
-        cursor-plan-*-output.txt|codex-plan-*-output.txt|dyn-*-output.txt)
+        cursor-plan-*-output.txt|codex-primary-plan-*-output.txt|dyn-*-output.txt)
             return 1
             ;;
         *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl)

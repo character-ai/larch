@@ -25,19 +25,30 @@ branch by:
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `plan-review/` and `render-cache/` subtrees fail closed on any
    symlink anywhere in them.
-   Files whose basename matches the suffix deny-list are skipped before any
-   trim/redact work (`design_artifact_excluded`, narrows the
-   `round_artifact_included` deny patterns in `scripts/larch-log.sh` for
-   `/implement` to the sidecar/operational-scratch family that also appears
-   in design tmpdirs): `*.sidecar`, `*.dirty-tree`, `*.untracked-baseline`,
-   `*.done`, `*.diag`, `*.events.jsonl`, `*-output.txt.prompt`,
-   `*-output-*.txt.prompt`. Other
+   Files whose basename matches `design_artifact_excluded` are skipped before
+   any trim/redact work. The deny-list is exclusion-only: it never adds files
+   to the publish set, so per-run flushed design-log bytes cannot increase
+   when new deny arms land. Shared operational-scratch suffixes (also present
+   in `round_artifact_included` for `/implement`): `*.sidecar`, `*.dirty-tree`,
+   `*.untracked-baseline`, `*.done`, `*.diag`, `*.events.jsonl`,
+   `*-output.txt.prompt`, `*-output-*.txt.prompt`. Plan-review-specific
+   exclusions (#3534) deny raw transcripts (`cursor-plan-*-output*.txt`,
+   `codex-primary-plan-*-output*.txt`, `claude-plan-*-output*.txt`; phased
+   `-output-phase2.txt` / dynamic slugs match `*-output*.txt`), producer-backed
+   sidecars (Cursor: `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`,
+   `.stderr-tail`; Codex primary: `.meta`, `.json`, `.cap-hit`, `.tsv`,
+   `.launch-stderr`, `.stderr-tail`; Claude: `.meta`, `.tsv`, `.launch-stderr`,
+   `.stderr`, `.stderr-tail`, `.jsonl` — not Cursor/Codex `.stderr` or
+   cursor/codex `.jsonl`, which have no producers), and diagnostics
+   (`claude-plan-*.prompt`, slot-named `*-collector.failure.log` patterns,
+   `plan-review-collector.stderr`,
+   `plan-review-slots.ndjson.output-files.dropped-slots`). Other
    `/implement`-specific deny patterns (`coder-output.log`, `coder-codex.log`,
    `cursor-specialist-*-output.txt`, `*-vote-prompt.txt`, the known empty
    placeholders) are intentionally NOT included — those basenames do not
-   appear in design tmpdirs. All other basenames pass through (deny-only
-   model — `/design` has many file types `/implement` does not, so the design
-   path is default-allow). Each included file is trimmed then redacted:
+   appear in design tmpdirs. All other top-level basenames pass through
+   (deny-only model). `findings.md` / `voting-tally.md` under `plan-review/`
+   remain canonical. Each included file is trimmed then redacted:
    `*.meta` strips leading `CMD_JSON=`
    lines (`larch_redact_strip_meta_cmd_json`); files whose names match
    `*-output*.json` delete a top-level `.result` object when valid JSON
