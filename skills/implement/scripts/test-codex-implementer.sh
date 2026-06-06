@@ -26,6 +26,22 @@ FAIL_COUNT=0
 fail() { echo "FAIL [$1]: $2" >&2; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
+snapshot_larch_codex_homes() {
+    { ls -d /tmp/larch-codex-home-* 2>/dev/null || true; } | LC_ALL=C sort
+}
+
+assert_no_new_larch_codex_homes() {
+    local label="$1" before_file="$2"
+    local after line
+    after=$(snapshot_larch_codex_homes)
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if ! grep -Fxq "$line" "$before_file" 2>/dev/null; then
+            fail "$label" "new /tmp larch-codex-home survivor: $line"
+        fi
+    done <<< "$after"
+}
+
 assert_manifest_template_present() {
     local test_id="$1"
     local json_file="$SCRATCH/${test_id}-manifest-template.json"
@@ -309,6 +325,9 @@ TOKEN_SESSION_FILE="$SCRATCH/codex-token-session.txt"
 CODEX_HOME_FILE="$SCRATCH/codex-home.txt"
 CODEX_CONFIG_FILE="$SCRATCH/codex-config.toml"
 
+_homes_before="$SCRATCH/larch-codex-homes-before-happy.txt"
+snapshot_larch_codex_homes > "$_homes_before"
+
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     STUB_ARGV_FILE="$ARGV_FILE" \
@@ -375,6 +394,7 @@ if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_F
 else
     fail 4e "env-key auth should use argv var-name overrides only"
 fi
+assert_no_new_larch_codex_homes "4 happy-path /tmp cleanup" "$_homes_before"
 
 ARGV_LOGIN_UNSET="$SCRATCH/codex-argv-login-unset.txt"
 AUTH_LINK_LOGIN_UNSET="$SCRATCH/codex-auth-link-login-unset.txt"
@@ -403,9 +423,15 @@ OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
 if [[ "$OUT_LOGIN_UNSET" == LAUNCHER_EXIT=0* ]] \
-   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null \
-   && [[ "$(cat "$AUTH_LINK_LOGIN_UNSET" 2>/dev/null)" == "$HOME_LOGIN/.codex/auth.json" ]]; then
-    pass
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null; then
+    _login_unset_link=$(cat "$AUTH_LINK_LOGIN_UNSET" 2>/dev/null || true)
+    _login_unset_auth_real=$(cd "$HOME_LOGIN/.codex" && pwd)/auth.json
+    if [[ "$_login_unset_link" == "$_login_unset_auth_real" ]] \
+       || [[ "$_login_unset_link" == "$HOME_LOGIN/.codex/auth.json" ]]; then
+        pass
+    else
+        fail 4f "unset OPENAI_API_KEY auth link mismatch (got '$_login_unset_link' want '$_login_unset_auth_real')"
+    fi
 else
     fail 4f "unset OPENAI_API_KEY should use login auth without env-key argv"
 fi
@@ -450,6 +476,8 @@ chmod +x "$AUTH_PREP_BIN/mv"
 mkdir -p "$AUTH_PREP_HOME/.codex"
 printf 'model_provider = "openai-larch-env"\n' > "$AUTH_PREP_HOME/.codex/config.toml"
 chmod a-w "$AUTH_PREP_HOME/.codex/config.toml" 2>/dev/null || true
+_homes_before_auth_prep="$SCRATCH/larch-codex-homes-before-auth-prep.txt"
+snapshot_larch_codex_homes > "$_homes_before_auth_prep"
 AUTH_PREP_TRANSCRIPT="$SCRATCH/auth-prep-fail-transcript.txt"
 AUTH_PREP_SIDECAR="$SCRATCH/auth-prep-fail-sidecar.log"
 AUTH_PREP_OUT=$(cd "$REPO_ROOT" && \
@@ -481,6 +509,7 @@ if [[ "$AUTH_PREP_OUT" == *"MANIFEST_WRITTEN=false"* ]] \
 else
     fail 4h "auth-prep failure should emit launcher KV envelope and skip Codex spawn; out=$AUTH_PREP_OUT sidecar=$(cat "$AUTH_PREP_SIDECAR" 2>/dev/null)"
 fi
+assert_no_new_larch_codex_homes "4h auth-prep-failure /tmp cleanup" "$_homes_before_auth_prep"
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
     pass
