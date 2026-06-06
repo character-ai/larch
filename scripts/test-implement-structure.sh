@@ -571,6 +571,53 @@ grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step
 grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization"' "$IMPLEMENT_BOOTSTRAP_SH" \
   || fail "implement-bootstrap.sh must contain plan materialization timing-ledger mark pinned to implement"
 
+implement_timing_emitters=(
+  "scripts/implement-bootstrap.sh"
+  "skills/implement/scripts/step2-implement.sh"
+  "skills/implement/scripts/commit-implementation.sh"
+  "skills/implement/scripts/commit-review-fixes.sh"
+  "skills/implement/scripts/step-7a.sh"
+  "scripts/refresh-run-logs.sh"
+  "scripts/implement-finalize.sh"
+  "scripts/step-telemetry-mark.sh"
+  "scripts/run-step5-review.sh"
+  "scripts/run-relevant-checks-captured.sh"
+  "scripts/launch-codex-implement.sh"
+  "scripts/launch-cursor-implement.sh"
+  "scripts/launch-codex-ci.sh"
+  "scripts/launch-cursor-ci.sh"
+  "scripts/launch-claude-ci.sh"
+)
+
+for rel in "${implement_timing_emitters[@]}"; do
+  path="$REPO_ROOT/$rel"
+  [[ -f "$path" ]] || fail "implement timing emitter missing: $rel"
+  awk -v rel="$rel" '
+    function is_timing_call(line) {
+      return ((index(line, "timing-ledger.sh") > 0 && (index(line, " mark ") > 0 || index(line, " record-vendor-task") > 0)) || index(line, "timing-report.sh") > 0)
+    }
+    is_timing_call($0) && index($0, "LARCH_TIMING_SKILL=implement") == 0 {
+      printf "%s:%d timing invocation lacks same-line LARCH_TIMING_SKILL=implement pin: %s\n", rel, NR, $0 > "/dev/stderr"
+      offending = 1
+    }
+    END { exit offending }
+  ' "$path" || fail "implement timing emitter lacks same-line LARCH_TIMING_SKILL=implement pin: $rel"
+  if grep -Fq 'workflow_path' "$path"; then
+    fail "production implement timing emitter must not read workflow_path: $rel"
+  fi
+done
+
+for rel in "skills/implement/scripts/run-step2-dispatch.sh" "skills/implement/scripts/step2-implement.sh"; do
+  path="$REPO_ROOT/$rel"
+  [[ -f "$path" ]] || fail "Step 2 dispatch stack file missing: $rel"
+  ! grep -Fq 'workflow_path' "$path" \
+    || fail "Step 2 dispatch stack must not reference workflow_path: $rel"
+  ! grep -Fq -- '--workflow' "$path" \
+    || fail "Step 2 dispatch stack must not pass workflow flags: $rel"
+  ! grep -Eq '(^|[^A-Za-z0-9_])(HARD|SIMPLE)([^A-Za-z0-9_]|$)' "$path" \
+    || fail "Step 2 dispatch stack must not branch on HARD/SIMPLE workflow tokens: $rel"
+done
+
 # Pin Exit 4 handling in SKILL.md: must direct orchestrator to "Continue to Step 16"
 exit4_step16_status=0
 awk '

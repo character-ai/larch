@@ -189,7 +189,7 @@ mv "${OUTPUT}.tmp.$$" "$OUTPUT" 2>/dev/null || true
 mv "${OUTPUT}.stderr.$$" "${OUTPUT}.stderr" 2>/dev/null || true
 
 END_S=$(date +%s)
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
     --vendor claude \
     --task-kind "$TIMING_TASK_KIND" \
     --start-s "$START_S" \

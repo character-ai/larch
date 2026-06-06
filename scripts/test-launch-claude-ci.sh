@@ -69,6 +69,11 @@ if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
 else
     fail "fix role prompt includes topology.tsv sentinel"
 fi
+if awk -F '\t' '$2 == "vendor" && $4 == "implement" && $6 == "claude" && $7 == "claude-ci-fix" && $12 == 0 && $13 == "complete" { found=1 } END { exit found ? 0 : 1 }' "$TMPDIR_BASE/timing-ledger.tsv" 2>/dev/null; then
+    ok "claude ci fix records implement timing row"
+else
+    fail "claude ci fix records implement timing row"
+fi
 OUT_RC="$TMPDIR_BASE/ci-fix-prompt-resolve"
 (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
     bash "$REPO_ROOT/scripts/launch-claude-ci.sh" --role resolve-conflict --output "$OUT_RC" --run-id r1 --repo owner/repo --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true

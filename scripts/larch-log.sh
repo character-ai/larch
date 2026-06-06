@@ -92,10 +92,12 @@ round_artifact_included() {
         skipped-findings.security.md|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder-commit.log)
             return 1
             ;;
-        # Dynamic Codex twins are retained for forensics; unphased static
-        # codex-specialist-*-output.txt raw transcripts remain excluded above.
-        # Keep this explicit allow before the broad *-output* allow below so
-        # dynamic Codex retention does not depend on catch-all transcript globs.
+        # Pin the known Dynamic Codex forensics families and sidecars here:
+        # dyn-*-codex-output.txt and dyn-*-codex-output-phase*.txt plus
+        # .meta/.json/.cap-hit. Retry outputs are denied above; other/future
+        # output shapes may still fall through to the broad *-output* allow.
+        # These retained families rely on the documented pattern-based
+        # redaction posture for committed run logs; see SECURITY.md.
         dyn-*-codex-output.txt|dyn-*-codex-output-phase*.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output-phase*.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output-phase*.txt.json|dyn-*-codex-output.txt.cap-hit|dyn-*-codex-output-phase*.txt.cap-hit)
             return 0
             ;;

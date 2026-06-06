@@ -166,7 +166,7 @@ emit_timing_record() {
     local end_s status
     end_s=$(date +%s)
     (( rc == 0 )) && status=complete || status=signal
-    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
         --vendor cursor \
         --task-kind "$TIMING_TASK_KIND" \
         --start-s "$TIMING_START_S" \

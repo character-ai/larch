@@ -244,7 +244,7 @@ if (( LAUNCHER_EXIT != 0 )); then
 fi
 
 END_S=$(date +%s)
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
     --vendor codex \
     --task-kind "$TIMING_TASK_KIND" \
     --start-s "$TIMING_START_S" \
