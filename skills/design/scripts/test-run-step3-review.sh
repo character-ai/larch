@@ -432,6 +432,12 @@ printf '3\n' >"$D1B/review-round-count.txt"
 mkdir -p "$D1B/plan-review/round-1" "$D1B/plan-review/round-2"
 printf 'stale\n' >"$D1B/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$D1B/plan-review/round-2/stale.txt"
+printf 'stale accepted\n' >"$D1B/accepted-plan-findings.md"
+printf 'stale rejected\n' >"$D1B/rejected-findings.md"
+printf 'stale oos\n' >"$D1B/oos.md"
+printf 'cumulative oos\n' >"$D1B/oos-accepted-design.md"
+printf 'stale tally\n' >"$D1B/voting-tally.md"
+printf 'stale ballot\n' >"$D1B/ballot.txt"
 stub="$(write_loop_stub "$D1B" 'exit 97')"
 set +e
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
@@ -445,6 +451,12 @@ else
 fi
 [[ ! -e "$D1B/plan-review/round-1" ]] || fail 'cap-reached should remove stale round-1'
 [[ ! -e "$D1B/plan-review/round-2" ]] || fail 'cap-reached should remove stale round-2'
+[[ ! -e "$D1B/accepted-plan-findings.md" ]] || fail 'cap-reached should clear stale accepted findings'
+[[ ! -e "$D1B/rejected-findings.md" ]] || fail 'cap-reached should clear stale rejected findings'
+[[ ! -e "$D1B/oos.md" ]] || fail 'cap-reached should clear stale round OOS'
+[[ ! -e "$D1B/voting-tally.md" ]] || fail 'cap-reached should clear stale voting tally'
+[[ ! -e "$D1B/ballot.txt" ]] || fail 'cap-reached should clear stale ballot'
+grep -Fq 'cumulative oos' "$D1B/oos-accepted-design.md" || fail 'cap-reached should preserve cumulative accepted OOS'
 
 echo "=== symlinked plan-review round dir skipped during cleanup ==="
 D1S="$TMP/symlink-round"

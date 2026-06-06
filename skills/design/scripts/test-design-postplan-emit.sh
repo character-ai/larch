@@ -793,6 +793,51 @@ assert_rc "drift trigger rc" 14 "$rc"
 assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "drift trigger status"
 assert_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger section"
 
+D33="$TMP/drift-hard-precedence"
+setup_design_tmp "$D33" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D33/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 801 b
+    printf 'diff_lines: 25\n'
+} >"$D33/plan.txt"
+set +e
+run_subject "$D33" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift hard precedence rc" 12 "$rc"
+assert_file_kv "$D33/.design-postplan-emit-result.env" PLAN_SIZE_STATUS hard-trigger "drift hard precedence status"
+assert_not_contains "$D33/stdout.txt" '## Plan Size — Drift' "drift hard precedence no drift section"
+
+D34="$TMP/drift-partition-precedence"
+setup_design_tmp "$D34" full SIMPLE
+printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"SIMPLE","partition_requested":true}\n' >"$D34/run-params.json"
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D34/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D34/plan.txt"
+set +e
+run_subject "$D34" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift partition precedence rc" 13 "$rc"
+assert_file_kv "$D34/.design-postplan-emit-result.env" PLAN_SIZE_STATUS partition-requested "drift partition precedence status"
+assert_not_contains "$D34/stdout.txt" '## Plan Size — Drift' "drift partition precedence no drift section"
+
+D35="$TMP/defects-seed-drift-baseline"
+setup_design_tmp "$D35" full HARD
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D35" --with-plan-size --snapshot-original >"$D35/stdout.txt" 2>"$D35/stderr.txt"
+rc=$?
+set -e
+assert_rc "defects seed drift baseline rc" 10 "$rc"
+assert_file_kv "$D35/drift-baseline.env" BASELINE_PLAN_LINES 2 "defects seed drift baseline plan"
+assert_file_kv "$D35/drift-baseline.env" BASELINE_DIFF_LINES 12 "defects seed drift baseline diff"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2
     exit 1

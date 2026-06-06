@@ -207,16 +207,16 @@ it is fail-closed:
   three subtree staging loops (`plan-review/`, `render-cache/`, `.completed/`).
 - Top-level round files must match `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and pass
   `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`.
-- Files under `^round-[1-9][0-9]*/revise/[A-Za-z0-9._+-]+$` must pass
-  `design_round_revise_artifact_included(basename)`.
+- Files under `^round-[1-9][0-9]*/revise/` are rejected. Step 3 no longer
+  runs inter-round revise, so newly published logs must not carry revise
+  prompts, outputs, or candidate patches.
 - Any other path under `plan-review/` emits `larch_err` and `PUBLISH_OK=false`.
 - Round numbers are positive integers with no leading zero; `round-0` and `round-01` are rejected.
 
 Edit-in-sync: any allowlist change updates `lib-design-round-artifacts.sh`, this doc,
 `plan-review-loop.md`, `scripts/lib-design-round-artifacts.md`, and
 `scripts/test-lib-design-round-artifacts.sh` in the same change. The current
-`round-N/revise/` include set is `codex-output.txt`, `cursor-output.txt`,
-`claude-output.txt`, `revise.env`, `prompt.txt`, and `*-candidate.patch`.
+`round-N/revise/` has an empty include set.
 
 Allowed files are staged through the same trim/redact pipeline as other design
 artifacts at `larch-logs/design/<RUN_ID>/plan-review/<relpath>`.

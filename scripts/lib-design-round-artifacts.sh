@@ -37,13 +37,6 @@ design_round_artifact_included() {
 
 # Return 0 when basename is included under plan-review/round-N/revise/; 1 when excluded.
 design_round_revise_artifact_included() {
-    local name="$1"
-    case "$name" in
-        codex-output.txt|cursor-output.txt|claude-output.txt|revise.env|prompt.txt|*-candidate.patch)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    local name="${1:-}"
+    return 1
 }

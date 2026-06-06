@@ -254,7 +254,7 @@ elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
 fi
 
 if [[ "$STEP3_REVIEW_CAP_REACHED" == true ]]; then
-    for _stale_review_artifact in accepted-plan-findings.md rejected-findings.md oos.md oos-accepted-design.md voting-tally.md findings-classification.tsv ballot.txt; do
+    for _stale_review_artifact in accepted-plan-findings.md rejected-findings.md oos.md voting-tally.md findings-classification.tsv ballot.txt; do
         rm -f "$DESIGN_TMPDIR/$_stale_review_artifact"
     done
     LOOP_STATUS=cap-reached

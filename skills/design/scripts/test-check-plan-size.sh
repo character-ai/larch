@@ -630,10 +630,11 @@ printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=oops\n' >"$d/drift-baseline.
 { fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
-assert_kv_eq BASELINE_PLAN_LINES unknown "$out"
-assert_kv_eq BASELINE_DIFF_LINES unknown "$out"
-printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; proceeding without drift trigger' \
-    || fail "case36: expected unreadable baseline warning"
+assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
+assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+grep -Fq 'BASELINE_PLAN_LINES=21' "$d/drift-baseline.env" || fail "case36: expected baseline re-seed"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; re-seeding from current plan' \
+    || fail "case36: expected unreadable baseline re-seed warning"
 
 # --- Case 37: symlink baseline is not treated as anchored current metrics ---
 d="$TMPROOT/c37"
@@ -642,9 +643,19 @@ ln -s /tmp/not-a-real-baseline "$d/drift-baseline.env"
 { fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
-assert_kv_eq BASELINE_PLAN_LINES unknown "$out"
-assert_kv_eq BASELINE_DIFF_LINES unknown "$out"
-printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; proceeding without drift trigger' \
-    || fail "case37: expected symlink baseline warning"
+assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
+assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+[[ ! -L "$d/drift-baseline.env" ]] || fail "case37: expected symlink baseline replacement"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; re-seeding from current plan' \
+    || fail "case37: expected symlink baseline re-seed warning"
+
+# --- Case 38: invalid drift multiple coerces to default 2 ---
+d="$TMPROOT/c38"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=10\n' >"$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(LARCH_DESIGN_DRIFT_MULTIPLE=bogus run_ok "$d")
+assert_kv_eq DRIFT_MULTIPLE 2 "$out"
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
 
 echo "PASS: test-check-plan-size.sh"

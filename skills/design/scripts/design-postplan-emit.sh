@@ -558,6 +558,13 @@ fi
 
 POSTPLAN_EMIT_STATUS=ok
 if [[ "$VALIDATE_STATUS" == defects-found ]]; then
+    if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
+        _plan_size_run_rc=0
+        _postplan_run_plan_size || _plan_size_run_rc=$?
+        if [[ "$_plan_size_run_rc" -eq 0 ]]; then
+            _postplan_snapshot_drift_baseline
+        fi
+    fi
     PLAN_SIZE_STATUS=skipped-defects
     _postplan_flush || exit 1
     exit 10

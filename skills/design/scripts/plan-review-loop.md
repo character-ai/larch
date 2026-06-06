@@ -21,7 +21,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` for normal tally runs; header-only TSV on empty-artifact exits.
 - Writes `$DESIGN_TMPDIR/.step3-plan-review-result.env` at every terminal exit.
 - Per-round forensics allowlist: `scripts/lib-design-round-artifacts.md`.
-- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the new snapshot payload is discarded, pre-existing `round-N/revise/` forensics are preserved, and terminal statuses keep their original `LOOP_STATUS` while appending `snapshot-failed` to `REASON` when the failure happens after a terminal outcome has already been determined.
+- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the new snapshot payload is discarded and terminal statuses keep their original `LOOP_STATUS` while appending `snapshot-failed` to `REASON` when the failure happens after a terminal outcome has already been determined.
 
 ## Argv
 
@@ -99,6 +99,6 @@ Multi-round mode records one best-effort design plan-review timing `round` row p
 
 ## Scope anchor and scope-reduction preservation
 
-Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/revise anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs`, the terminal machine-output KV stream, and `.step3-plan-review-result.env` for durable Step 3 handoff.
+Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/MainAgent fallback anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs`, the terminal machine-output KV stream, and `.step3-plan-review-result.env` for durable Step 3 handoff.
 
 Collected in-scope findings are snapshotted to `findings-in-scope.pre-dedup.md` before Jaccard dedup. Dedup uses the canonical scope-reduction marker detector, strips severity and `[SCOPE-REDUCTION]` only for comparison, preserves tagged bodies when merging with untagged duplicates, and falls back to the pre-dedup in-scope snapshot if post-dedup tagged parity fails. Ballot input is sequentially renumbered for `FINDING_*` and `OOS_*` headings after aggregation or fallback. `AGGREGATED=false` keeps the current in-scope stream rather than restoring pre-split files. No baseline plan file is created.

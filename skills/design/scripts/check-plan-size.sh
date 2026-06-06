@@ -184,13 +184,24 @@ baseline_plan_display="$baseline_plan_lines"
 baseline_diff_display="$baseline_diff_lines"
 drift_trigger=false
 _drift_baseline="$DESIGN_TMPDIR/drift-baseline.env"
+_write_drift_baseline() {
+    local _baseline_tmp="${_drift_baseline}.tmp.$$"
+    if { printf 'BASELINE_PLAN_LINES=%s\n' "$plan_lines"; printf 'BASELINE_DIFF_LINES=%s\n' "$diff_lines"; } >"$_baseline_tmp" 2>/dev/null && mv -f "$_baseline_tmp" "$_drift_baseline" 2>/dev/null; then
+        baseline_plan_lines="$plan_lines"
+        baseline_diff_lines="$diff_lines"
+        baseline_plan_display="$baseline_plan_lines"
+        baseline_diff_display="$baseline_diff_lines"
+    else
+        rm -f "$_baseline_tmp" 2>/dev/null || true
+        emit_kv WARN "check-plan-size: could not write drift baseline; proceeding without drift trigger"
+    fi
+}
 if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
     _bp=$(awk -F= '$1 == "BASELINE_PLAN_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     _bd=$(awk -F= '$1 == "BASELINE_DIFF_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     if [[ "$_bp" == '' || "$_bp" == *[!0-9]* || "$_bd" == '' || "$_bd" == *[!0-9]* ]]; then
-        emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
-        baseline_plan_display=unknown
-        baseline_diff_display=unknown
+        emit_kv WARN "check-plan-size: drift baseline unreadable; re-seeding from current plan"
+        _write_drift_baseline
     else
         baseline_plan_lines=$((10#$_bp))
         baseline_diff_lines=$((10#$_bd))
@@ -204,22 +215,13 @@ if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
         fi
     fi
 elif [[ -e "$_drift_baseline" || -L "$_drift_baseline" ]]; then
-    emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
-    baseline_plan_display=unknown
-    baseline_diff_display=unknown
+    emit_kv WARN "check-plan-size: drift baseline unreadable; re-seeding from current plan"
+    rm -f "$_drift_baseline" 2>/dev/null || true
+    _write_drift_baseline
 else
-    _baseline_tmp="${_drift_baseline}.tmp.$$"
-    if { printf 'BASELINE_PLAN_LINES=%s\n' "$plan_lines"; printf 'BASELINE_DIFF_LINES=%s\n' "$diff_lines"; } >"$_baseline_tmp" 2>/dev/null && mv -f "$_baseline_tmp" "$_drift_baseline" 2>/dev/null; then
-        :
-    else
-        rm -f "$_baseline_tmp" 2>/dev/null || true
-        emit_kv WARN "check-plan-size: could not write drift baseline; proceeding without drift trigger"
-    fi
+    _write_drift_baseline
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-    emit_kv WARN "check-plan-size: python3 unavailable; using awk drift ratio fallback"
-fi
 drift_plan_ratio=$(ratio_token "$plan_lines" "$baseline_plan_lines")
 drift_diff_ratio=$(ratio_token "$diff_lines" "$baseline_diff_lines")
 

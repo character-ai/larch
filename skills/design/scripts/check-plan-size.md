@@ -81,7 +81,7 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 ## Callers
 
 - **Merged**: `design-postplan-emit.sh --with-plan-size` (initial Step 2b, Gate B, discussion-round2 / Gate A after-discussion).
-- **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects), `plan-review-loop.sh` post-revise pipeline.
+- **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects).
 
 **Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, use Split/Override/Cancel.
 

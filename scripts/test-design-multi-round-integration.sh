@@ -102,4 +102,4 @@ grep -q 'Accepted OOS' "$TMP/design/oos-accepted-design.md" || fail "accepted OO
 [[ -f "$TMP/design/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing"
 [[ -f "$TMP/design/.step3-plan-review-result.env" ]] || fail "result env missing"
 
-printf '%s\n' 'test-design-multi-round-integration: ok'
+printf '%s\n' 'test-design-single-pass-integration: ok'

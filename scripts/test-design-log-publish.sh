@@ -455,9 +455,6 @@ printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-revie
 printf '### FINDING_1:\n' >"$TMP/design/plan-review/round-1/findings.md"
 printf 'tally\n' >"$TMP/design/plan-review/round-1/voting-tally.md"
 printf '123\n' >"$TMP/design/plan-review/round-1/round-start-s"
-mkdir -p "$TMP/design/plan-review/round-1/revise"
-printf 'prompt\n' >"$TMP/design/plan-review/round-1/revise/prompt.txt"
-printf 'patch\n' >"$TMP/design/plan-review/round-1/revise/codex-output-candidate.patch"
 # Files that MUST be denied by design_artifact_excluded (suffix + plan-review #3534):
 printf 'noisy raw transcript\n' >"$TMP/design/codex-primary-plan-arch-output.txt.sidecar"
 printf 'STATUS=clean\n' >"$TMP/design/codex-primary-plan-arch-output.txt.dirty-tree"
@@ -527,8 +524,6 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/voting-tally.md" ]] || fail "plan-review voting-tally.md missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s must survive plan-review snapshot pruning"
-[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/prompt.txt" ]] || fail "plan-review revise prompt.txt missing"
-[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/codex-output-candidate.patch" ]] || fail "plan-review revise candidate patch missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
@@ -671,14 +666,16 @@ out_miss=$(
 unset GIT_STUB_EMPTY_STATUS_FOR
 rm -rf "$TMPMISS"
 
-echo "=== revise allowlist rejects unexpected file under round-N/revise ==="
+echo "=== revise artifacts are no longer published ==="
+mkdir -p "$TMP/design/plan-review/round-1/revise"
+printf 'prompt\n' >"$TMP/design/plan-review/round-1/revise/prompt.txt"
 printf 'nope\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
 out_revise_bad=$(
     (cd "$clone" && bash "$PUBLISH" --design-tmpdir "$TMP/design" --run-id "RUNPUBREV1" --issue 42 --repo owner/repo) 2>/dev/null || true
 )
-[[ "$out_revise_bad" == *"PUBLISH_OK=false"* ]] || fail "unexpected revise file should fail publish"
+[[ "$out_revise_bad" == *"PUBLISH_OK=false"* ]] || fail "revise files should fail publish"
 git -C "$clone" branch -D larch-log-design-RUNPUBREV1 >/dev/null 2>&1 || true
-rm -f "$TMP/design/plan-review/round-1/revise/extra.log"
+rm -rf "$TMP/design/plan-review/round-1/revise"
 
 echo "=== pause reason stages .completed and manifest paused ==="
 TMPPAUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause.XXXXXX")

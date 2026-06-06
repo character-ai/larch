@@ -555,7 +555,7 @@ apply_gate_b_bypass_sentinels "$DESIGN_GATE_B" || fail "gate B bypass helper ref
 [[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass helper missing triple sentinels"
 printf 'issue body gate b\n' >"$BODY_FILE"
 out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
-[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass plan-size-trigger writes triple sentinels from empty state: $out_gate_b"
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass writes triple sentinels from empty state: $out_gate_b"
 out_gate_b_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_load" == *"LOAD_OK=true"* && "$out_gate_b_load" == *"STEP=3b"* ]] || fail "gate B bypass empty-state load mismatch: $out_gate_b_load"
 printf '12\n' >"$DESIGN_GATE_B/diff-lines.txt"

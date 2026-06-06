@@ -14,7 +14,7 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 - Optional `--reason <text>`, `--source <text>`, `--sketch-budget <0|2|4>`, and `--workflow-path <SIMPLE|HARD>` default to JSON null when omitted or passed as an empty string. The parser accepts `--reason ""` / `--source ""` and emits null instead of treating the empty string as a missing argv value.
 - Optional `--partition-requested <true|false>` and optional `--brainstorm-requested <true|false>` default to JSON false when omitted. Each requires a present, non-empty `true`/`false` value when passed on the command line and rejects a missing or empty argv value with `exit 2` (unlike the nullable text flags above, which accept `""` and emit JSON null). See [`skills/design/references/flags.md`](../skills/design/references/flags.md) for the public `-p` / `--partition` and `--brainstorm` flag semantics wired from `/design` Step 0b.
 - Validates `--classification` as `SIMPLE` or `HARD`; any other value is rejected (exit 2).
-- Emits schema v3 JSON with these keys: `schema_version`, `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `workflow_path`, `partition_requested`, `brainstorm_requested`,.
+- Emits schema v3 JSON with these keys: `schema_version`, `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `workflow_path`, `partition_requested`, and `brainstorm_requested`.
 - Readers must accept `schema_version >= 2` for backward compatibility with older persisted run-params artifacts.
 - Prints `RUN_PARAMS_WRITTEN=<path>` on success and exits non-zero on validation or write failure.
 

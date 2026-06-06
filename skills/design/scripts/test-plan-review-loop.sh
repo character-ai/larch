@@ -3,8 +3,7 @@
 
 set -euo pipefail
 # Fast poll intervals so stub-backed slots don't pay the 10s (run-external-agent)
-# or 5s (wait-for-reviewers) sleep cycles — including revise-plan-with-waterfall
-# invocations triggered by multi-round scenarios before the per-section overrides.
+# or 5s (wait-for-reviewers) sleep cycles.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
@@ -945,7 +944,6 @@ run_loop() {
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
     export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
-    export LARCH_PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
     export LARCH_AGGREGATOR_DISABLED=1
     bash "$PLR" \
         --design-tmpdir "$d" \
@@ -1504,7 +1502,6 @@ set +e
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
     export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
-    export LARCH_PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
     export LARCH_AGGREGATOR_DISABLED=1
     unset LARCH_QUIET_DISABLE
     bash "$PLR" \
