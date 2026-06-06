@@ -16,7 +16,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|retry-policy|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|clear-stall|seed-terminal-state|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|retry-policy|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|normalize-issue-env|clear-stall|seed-terminal-state|lint> ..."
 }
 
 die_argv() {
@@ -820,7 +820,9 @@ safe_step_value() {
     local value=${1:-}
     if [ "$value" = "bump-branch-guard" ]; then
         printf '%s\n' "$value"
-    elif [[ "$value" =~ ^(2|3|5|6|8|9|10|11|12|13|14|15)([[:lower:]][[:digit:]]?|-[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*)?$ ]]; then
+    elif [[ "$value" =~ ^(2|3|5|6)$ ]]; then
+        printf '%s\n' "$value"
+    elif [[ "$value" =~ ^(8|9|10|11|12|13|14|15)([[:lower:]][[:digit:]]?|-[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*)?$ ]]; then
         printf '%s\n' "$value"
     else
         printf 'unknown\n'
@@ -1028,6 +1030,129 @@ cmd_issue_input_file() {
     emit_kv DRY_RUN_DECISION "$dry_run"
 }
 
+emit_issue_env_false() {
+    local reason=$1 out_file=${2:-}
+    [ -n "$out_file" ] && rm -f "$out_file"
+    emit_kv NORMALIZED false
+    emit_kv ISSUE_ENV_WRITTEN false
+    emit_kv REASON "$reason"
+}
+
+issue_value_is_url() {
+    case "${1:-}" in
+        http://*|https://*) ;;
+        *) return 1 ;;
+    esac
+    case "$1" in
+        *[[:space:]]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+cmd_normalize_issue_env() {
+    local tmpdir="" issue_stdout="" issue_exit_code=0 out_file="" filtered=""
+    local issues_failed issue_failed issue_number issue_url duplicate duplicate_number duplicate_url content
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --issue-stdout-file) [ $# -ge 2 ] || die_argv "--issue-stdout-file requires a value"; issue_stdout=$2; shift 2 ;;
+            --issue-exit-code) [ $# -ge 2 ] || die_argv "--issue-exit-code requires a value"; issue_exit_code=$2; shift 2 ;;
+            --output-file) [ $# -ge 2 ] || die_argv "--output-file requires a value"; out_file=$2; shift 2 ;;
+            *) die_argv "unknown normalize-issue-env option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$issue_stdout" ] || die_missing "--issue-stdout-file is required"
+    validate_tmpdir_local_file "$tmpdir" "$issue_stdout" "--issue-stdout-file" || exit 1
+    [ -n "$out_file" ] || out_file="$tmpdir/stall-recovery-issue.env"
+    validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
+    case "$issue_exit_code" in
+        ""|*[!0-9]*) die_argv "--issue-exit-code must be a non-negative integer" ;;
+    esac
+
+    if [ "$issue_exit_code" -ne 0 ]; then
+        emit_issue_env_false "issue-exit-code" "$out_file"
+        return 0
+    fi
+
+    filtered="$tmpdir/stall-recovery-issue.stdout.filtered.$$"
+    awk '
+        {
+            sub(/\r$/, "")
+            key = $0
+            sub(/=.*/, "", key)
+            if (key ~ /^ISSUES_(CREATED|FAILED|DEDUPLICATED)$/ || key ~ /^ISSUE_1_[A-Z0-9_]+$/) {
+                print
+            }
+        }
+    ' "$issue_stdout" >"$filtered"
+
+    issues_failed=$(kv_get "$filtered" ISSUES_FAILED "")
+    case "$issues_failed" in
+        0) ;;
+        ""|*[!0-9]*)
+            rm -f "$filtered"
+            emit_issue_env_false "issues-failed-invalid" "$out_file"
+            return 0
+            ;;
+        *)
+            rm -f "$filtered"
+            emit_issue_env_false "issues-failed-nonzero" "$out_file"
+            return 0
+            ;;
+    esac
+
+    issue_failed=$(kv_get "$filtered" ISSUE_1_FAILED "")
+    if truthy "$issue_failed"; then
+        rm -f "$filtered"
+        emit_issue_env_false "issue-1-failed" "$out_file"
+        return 0
+    fi
+
+    issue_number=$(kv_get "$filtered" ISSUE_1_NUMBER "")
+    issue_url=$(kv_get "$filtered" ISSUE_1_URL "")
+    duplicate=$(kv_get "$filtered" ISSUE_1_DUPLICATE "")
+    duplicate_number=$(kv_get "$filtered" ISSUE_1_DUPLICATE_OF_NUMBER "")
+    duplicate_url=$(kv_get "$filtered" ISSUE_1_DUPLICATE_OF_URL "")
+
+    if { truthy "$duplicate" || [ -z "$issue_number" ]; } && [ -n "$duplicate_number" ]; then
+        issue_number=$duplicate_number
+        issue_url=$duplicate_url
+    fi
+
+    case "$issue_number" in
+        ""|*[!0-9]*)
+            rm -f "$filtered"
+            emit_issue_env_false "issue-number-missing" "$out_file"
+            return 0
+            ;;
+    esac
+    if ! issue_value_is_url "$issue_url"; then
+        rm -f "$filtered"
+        emit_issue_env_false "issue-url-missing" "$out_file"
+        return 0
+    fi
+
+    content=$({
+        printf 'ISSUE_NUMBER=%s\n' "$issue_number"
+        printf 'ISSUE_URL=%s\n' "$issue_url"
+        cat "$filtered"
+    })
+    rm -f "$filtered"
+    if ! atomic_write_text "$out_file" "$content"; then
+        emit_kv NORMALIZED false
+        emit_kv ISSUE_ENV_WRITTEN false
+        emit_kv REASON write-failed
+        exit 1
+    fi
+    emit_kv NORMALIZED true
+    emit_kv ISSUE_ENV_WRITTEN true
+    emit_kv ISSUE_ENV_FILE "$out_file"
+    emit_kv ISSUE_NUMBER "$issue_number"
+    emit_kv ISSUE_URL "$issue_url"
+}
+
 code_allowlist_lines() {
     cat <<'EOF'
 bug-body	failing_step
@@ -1151,6 +1276,7 @@ main() {
         bug-body) cmd_bug_body_like bug-body "$@" ;;
         bug-comment) cmd_bug_body_like bug-comment "$@" ;;
         issue-input-file) cmd_issue_input_file "$@" ;;
+        normalize-issue-env) cmd_normalize_issue_env "$@" ;;
         clear-stall) cmd_clear_stall "$@" ;;
         seed-terminal-state) cmd_seed_terminal_state "$@" ;;
         lint) cmd_lint "$@" ;;
