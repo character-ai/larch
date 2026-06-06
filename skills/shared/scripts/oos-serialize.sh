@@ -23,10 +23,10 @@ done
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 awk '
-# is_security_tagged: returns 1 when at least one UNFENCED occurrence of the
-# canonical token (case-insensitive, optional whitespace around =) exists.
-# Fenced = inside inline backtick or triple-backtick region. Per SECURITY.md.
-function is_security_tagged(line,    lower, i, fenced, c, result) {
+# is_security_tagged: returns 1 when a security routing token exists outside
+# triple-backtick fences. Inline-code examples are ignored for prose tokens, but
+# dedicated focus-area fields may backtick-wrap their label or value.
+function is_security_tagged(line,    lower, normalized, i, fenced, c, result) {
     lower = tolower(line)
     # Check triple-backtick fencing on this line.
     fenced = (line ~ /^[ \t]*```/)
@@ -44,8 +44,10 @@ function is_security_tagged(line,    lower, i, fenced, c, result) {
         }
         i++
     }
-    if (!result && lower ~ /^[ \t-]*\**focus-area\**[ \t]*:[ \t]*security([-a-z0-9 _]*)([ \t]|$|\(|#|\.|,)/) result = 1
-    if (!result && lower ~ /^###[^\n]*(\[security\]|\<security\>)/) result = 1
+    normalized = lower
+    gsub(/[`*]/, "", normalized)
+    if (!result && normalized ~ /^[ \t-]*focus-area[ \t]*[:=][ \t]*security([-a-z0-9 _]*)([ \t]|$|\(|#|\.|,)/) result = 1
+    if (!result && (lower ~ /^###[^\n]*`?\[security\]`?/ || lower ~ /^###[^\n]*`?<security>`?/)) result = 1
     return result
 }
 BEGIN { in_block=0; block=""; security=0; oos=0; in_fence=0; seq=0 }

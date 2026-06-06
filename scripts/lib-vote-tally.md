@@ -41,7 +41,7 @@ For multi-voter panels, `classify_result` applies exoneration after acceptance a
 
 ## Security tag
 
-`is_security_block` exits 0 when the block has at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive). Both triple-backtick fenced regions and single-backtick code spans are stripped before matching. This is the canonical security counter-invariant — real security findings MUST contain at least one unfenced occurrence.
+`is_security_block` exits 0 when the block has a security routing token outside triple-backtick fences. Prose/code examples inside single-backtick spans do not count for the canonical `focus-area\s*=\s*security` token. Dedicated line-start `focus-area: security` / `focus-area = security` fields do count even when the label or value is backtick-wrapped, and explicit heading tags such as `[security]` / `<security>` count even when backtick-wrapped. Ordinary heading prose containing the bare word `security` does not count.
 
 ## Callers (must be kept in sync)
 

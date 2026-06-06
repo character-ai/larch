@@ -4,7 +4,9 @@
 
 Primary caller: `skills/review/scripts/emit-tally.sh`.
 
-Inputs: `--findings-file`, `--output-file`, and optional `--session-env-path`. The current implementation treats all OOS blocks in the input file as accepted; callers should pass an accepted-findings file when threshold filtering is needed.
+Inputs: `--findings-file`, `--output-file`, and optional `--session-env-path`. The serializer scans `### FINDING_N:` blocks tagged `[OUT_OF_SCOPE]` or `[OOS]`, writes only blocks with no `Result=` marker or `Result=accepted`, and rewrites emitted headings to canonical `### OOS_<seq>:`. Blocks with `Result=rejected` are excluded from the accepted sink.
+
+Security holdback recognizes unfenced `focus-area = security`, dedicated line-start `focus-area: security` / `focus-area = security` fields whose label or value may be backtick-wrapped, and explicit heading tags such as `[security]` / `<security>` (also when backtick-wrapped). Ordinary heading prose containing the bare word `security` is not a security-routing signal.
 
 Stdout is `OOS_ACCEPTED` and `OOS_HELD_SECURITY`.
 

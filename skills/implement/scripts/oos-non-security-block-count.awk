@@ -4,8 +4,9 @@
 # bare "### FINDING_N:" stays in-scope in mixed accepted-findings files.
 # Security routing: only a dedicated **focus-area** field line whose value
 # begins with "security" (case-folded), optionally continued with -word
-# tokens (e.g. security-hardening). Avoids prose like "focus-area = security"
-# inside **Description** bodies (no **focus-area** label on that line).
+# tokens (e.g. security-hardening), and allowing backtick-wrapped labels or
+# values. Avoids prose like "focus-area = security" inside **Description**
+# bodies (no line-start **focus-area** label).
 BEGIN { n = 0; inblk = 0; sec = 0 }
 /^###[[:space:]]+OOS_/ || ($0 ~ /^###[[:space:]]+FINDING_[0-9]+:/ && index($0, "[OUT_OF_SCOPE]")) {
   if (inblk && !sec) n++
@@ -13,8 +14,10 @@ BEGIN { n = 0; inblk = 0; sec = 0 }
   sec = 0
   next
 }
-inblk && tolower($0) ~ /^[[:space:]]*-[[:space:]]*\*\*focus-area\*\*[[:space:]]*:[[:space:]]*security([-[:alnum:][:space:]_]*)([[:space:]]|$|\(|#|\.|,)/ {
-  sec = 1
+inblk {
+  line = tolower($0)
+  gsub(/[`*]/, "", line)
+  if (line ~ /^[[:space:]]*-[[:space:]]*focus-area[[:space:]]*[:=][[:space:]]*security([-[:alnum:][:space:]_]*)([[:space:]]|$|\(|#|\.|,)/) sec = 1
 }
 END {
   if (inblk && !sec) n++
