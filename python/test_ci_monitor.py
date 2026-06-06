@@ -400,6 +400,52 @@ def test_monitor_transient_bail_maps_to_transient(monkeypatch: pytest.MonkeyPatc
     assert result.result.detail == "HTTP 502 Bad Gateway"
 
 
+def test_monitor_already_merged_short_circuit_ok() -> None:
+    runner = RecordingRunner(_status(merged=True))
+
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        sleep_fn=lambda _s: None,
+    )
+
+    assert result.action == "already_merged"
+    assert result.ci_status == "merged"
+    assert result.result.outcome is Outcome.OK
+    assert result.did_fixing is False
+    assert result.goto_rebase is False
+
+
+def test_monitor_consecutive_status_errors_are_transient() -> None:
+    responses = _status(status="pass")
+    responses[
+        (
+            "gh",
+            "pr",
+            "view",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "number,url,state,headRefName,mergedAt,mergeStateStatus",
+        )
+    ] = _cr(("gh", "pr", "view"), rc=1)
+    runner = RecordingRunner(responses)
+
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        sleep_fn=lambda _s: None,
+    )
+
+    assert result.action == "bail"
+    assert result.ci_status == "error"
+    assert result.result.outcome is Outcome.TRANSIENT
+    assert "3 times consecutively" in (result.result.detail or "")
+
+
 def test_poll_ci_suspend_not_charged() -> None:
     runner = RecordingRunner(_status(status="pending", behind=0))
     clock_values = [0.0, 70.0, 70.0, 140.0, 210.0, 280.0]

@@ -42,6 +42,10 @@ Callers may set `LARCH_QUIET_LOG_FILE` or `LARCH_QUIET_LOG` to choose the log
 path. Otherwise the library writes `larch-quiet-<script>-<pid>.log` under the
 first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 `DESIGN_TMPDIR`, `RESEARCH_TMPDIR`) or `${TMPDIR:-/tmp}`.
+`larch_quiet_init` truncates the selected bash quiet log before redirecting
+stdout/stderr (truncate-per-initialization), unlike the Python
+append-forensics behavior documented in `python/logging_util.py` and
+`python/README.md`.
 
 ## Invariants
 

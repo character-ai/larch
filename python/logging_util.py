@@ -73,6 +73,8 @@ def quiet_init(*, argv0: str | None = None) -> None:
     try:
         path = Path(log_file)
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Python quiet logs intentionally append for crash/retry forensics,
+        # unlike bash larch_quiet_init's truncate-per-initialization contract.
         with path.open("a", encoding="utf-8"):
             pass
         _ = os.dup2(1, 3)

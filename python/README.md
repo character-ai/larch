@@ -7,7 +7,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
 - `config.py` — tunables (exit codes, timeouts, tier order, env-var names)
 - `proc.py` — injectable subprocess seam
 - `errors.py`, `outcomes.py`, `run_context.py` — typed errors and run context
-- `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` mirrors `scripts/lib-quiet.sh`, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
+- `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` mirrors `scripts/lib-quiet.sh` stream routing but intentionally opens quiet logs in append-forensics mode instead of bash's truncate-per-initialization behavior, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
