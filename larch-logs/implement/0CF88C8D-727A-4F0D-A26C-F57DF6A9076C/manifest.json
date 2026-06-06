@@ -1,25 +1,28 @@
 {
-  "schema_version": 2,
-  "skill": "implement",
-  "run_id": "0CF88C8D-727A-4F0D-A26C-F57DF6A9076C",
-  "operator_cwd": "<OPERATOR_CWD>",
-  "operator_repo_root": "<REPO_ROOT>",
-  "parent_skill": null,
+  "attempt": 1,
+  "created_at": "",
+  "effort": "max",
+  "flags": {},
   "issue_number": 3550,
   "larch_version": "47.0.70",
   "model_roster": {
     "main": "unknown"
   },
-  "effort": "max",
-  "started_at": "2026-06-06T02:01:03Z",
-  "updated_at": "2026-06-06T05:53:58Z",
-  "attempt": 1,
-  "superseded_by": null,
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "run_id": "0CF88C8D-727A-4F0D-A26C-F57DF6A9076C",
+  "schema_version": 2,
+  "skill": "implement",
   "stalled_at_step": null,
+  "started_at": "2026-06-06T02:01:03Z",
+  "status": "partial",
   "steps_ran": {
-    "step9a1": false,
+    "step7a": false,
     "step8": false,
-    "step7a": false
+    "step9a1": false
   },
-  "flags": {}
+  "superseded_by": null,
+  "updated_at": "2026-06-06T06:05:49Z",
+  "version": "1"
 }
