@@ -8,11 +8,12 @@
 # nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
 # helper or validate runtime behavior.
 #
-# Extraction detects the three helper invocation sites in SKILL.md today.
+# Extraction detects the four helper invocation sites in SKILL.md today.
 # Steps 10 and 12c moved into scripts/ship-pr.sh.
 #   (1) Step 3 first-pass checks.
-#   (2) Step 5 accepted-fix checks.
-#   (3) Step 6 FILES_CHANGED=true branch checks.
+#   (2) Step 5 self-review mode checks.
+#   (3) Step 5 accepted-fix checks.
+#   (4) Step 6 FILES_CHANGED=true branch checks.
 #
 # A site passes only when "> **Continue after child returns.**" appears within
 # the five physical lines preceding the invocation line.
@@ -30,7 +31,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 CANONICAL_OPENER='> **Continue after child returns.**'
-EXPECTED_SITES=3
+EXPECTED_SITES=4
 
 if [[ ! -f "$SKILL_MD" ]]; then
     echo "ERROR: SKILL.md not found: $SKILL_MD" >&2
