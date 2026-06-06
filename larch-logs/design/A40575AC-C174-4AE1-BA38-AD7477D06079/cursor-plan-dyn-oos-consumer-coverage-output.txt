@@ -1,0 +1,33 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	Makefile:868-909	New harness skills/shared/scripts/test-normalize-oos-block-header.sh is not registered in any test-harnesses-N shard	Shared helper contract regressions will not run under make lint / CI; sibling skills/shared/scripts/test-oos-serialize.sh is wired via test-harnesses-9	Add a Makefile test-normalize-oos-block-header target and include it in an existing shard (e.g. test-harnesses-9 beside test-oos-serialize)
+2	in_scope	important	correctness	skills/shared/scripts/oos-serialize.sh:55-61	Plan extends oos-non-security-block-count.awk / python/oos.py to count legacy ### FINDING_N: [OUT_OF_SCOPE] but leaves oos-serialize.sh emitting those headers unchanged on the OOS_ACCEPTED_COUNT==0 fallback	When tally wrote zero accepted OOS but oos.md has tagged blocks, emit-tally still serializes them into oos-accepted-review.md with FINDING headers; after the reader backstop change the disposition gate sees non_security_oos>0, yet oos-issue-cap.sh:125-128 rejects batches without ### OOS_<digits>: and parse-input.sh:377 only enters OOS mode on ### OOS_N: — Step 9a.1 filing cannot clear a gate that newly fires	Normalize serialize output headers via normalize-oos-block-header.sh, or document and test that the reader backstop must not count serialize-only sinks; minimum fix is header rewrite in oos-serialize.sh (or immediately after serialize in emit-tally.sh)
+
+**1. [risk-integration] `Makefile` — new helper harness not CI-wired**
+
+The plan adds `skills/shared/scripts/test-normalize-oos-block-header.sh` but does not register it in the Makefile. Peer `skills/shared/scripts/test-oos-serialize.sh` is invoked from `test-harnesses-9` (`Makefile:908`). Without a shard entry, `make lint` will not exercise the shared normalization contract the tally and review-and-fix producers depend on.
+
+**2. [correctness] Serialize fallback vs reader backstop vs filing shape**
+
+Consumers enumerated for `### OOS_` / tagged `### FINDING_N:` counting:
+
+| Consumer | Plan coverage |
+|---|---|
+| `skills/implement/scripts/oos-non-security-block-count.awk` | Explicitly updated |
+| `python/oos.py` | Explicitly updated |
+| `skills/implement/scripts/oos-disposition-gate.sh` | Uses shared awk; doc-only update |
+| `skills/implement/scripts/oos-disposition-checkpoint.sh` | Same awk at lines 165–173; no independent counter logic |
+| `scripts/ship-pr.sh` | Same awk (~line 745); covered by awk change |
+| `python/ship.py` | Uses `oos.count_non_security` / `disposition_ok`; covered via `python/oos.py` |
+| `skills/issue/scripts/parse-input.sh` | Requires `### OOS_[0-9]+:` (line 377); **no plan change** — sufficient on producer-normalized review paths, insufficient on serialize fallback output |
+| `skills/implement/scripts/oos-issue-cap.sh` | Stricter than parse-input: requires `### OOS_<digits>:` (lines 125–135); absent from plan file list |
+| `skills/shared/scripts/oos-serialize.sh` | Matches tagged `FINDING` (lines 55–61) but **preserves FINDING headers** in output; plan leaves unchanged |
+| `skills/implement/scripts/oos-file-conflict-deps.sh` | Delegates to parse-input; upstream shape matters |
+| `skills/design/scripts/file-design-oos.sh` | `extract_unfiled_blocks` keys on `### OOS_` only; design path already writes `OOS_` (out of plan scope) |
+| `skills/implement/scripts/materialize-manifest-oos.sh` | Writes/counts `### OOS_` only |
+| `.claude/skills/audit-runs/scripts/audit-scan-run.sh` | Uses shared awk (~line 614); covered by awk change |
+
+`oos-disposition-checkpoint.sh` shares the same awk file as the gate and ship-pr; it does not need a separate patch once the awk counter is extended.
+
+`parse-input.sh` does not need a plan-level change **if** all accepted-OOS sinks are producer-normalized before filing — true for the tally + review-and-fix paths the plan fixes. It is **not** sufficient alone for the `OOS_ACCEPTED_COUNT==0` serialize fallback: `oos-serialize.sh` still copies tagged `FINDING` blocks verbatim, while `oos-issue-cap.sh` hard-rejects non-`OOS_` batches. Extending the reader backstop without normalizing serialize output can convert a previously silent orphan path into a disposition gate failure that Step 9a.1 cannot resolve.
+
+**[OUT_OF_SCOPE]** `scripts/compose-review-findings.sh:282-289` already recognizes both header shapes for composition; no disposition impact. Design-path producers (`tally-plan-review.sh`, `plan-review-loop.sh`) are explicitly excluded and already emit `### OOS_N:`.

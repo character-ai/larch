@@ -1,0 +1,52 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,9 +1,9 @@
+ ## Plan
+ 
+ Fix the OOS disposition gate silently dropping accepted out-of-scope review findings (#3550). Root cause is a format-contract mismatch: producers write legacy `### FINDING_N: [OUT_OF_SCOPE]` headers (and scope-drift reclassifications keep bare `### FINDING_N:` headers), while counters and the filing parser key on `### OOS_N:`. On the production review path, `tally-code-votes.sh` writes accepted OOS into `oos-accepted-review.md`, but `emit-tally.sh` unconditionally invokes `oos-serialize.sh` on `oos.md` and **overwrites** that sink — dropping scope-drift blocks entirely and preserving legacy `FINDING_` headers for tagged OOS.
+ 
+-Fix = producer normalization in tally (primary) + **preserve tally output in emit-tally** when tally already wrote accepted OOS (production overwrite chain) + reader hardening (defense-in-depth) + regression tests spanning tally-only, emit-tally, review-core integration, and both bash/Python gates.
++Fix = producer normalization in tally (primary) + **preserve tally output in emit-tally** when tally already wrote accepted OOS (production overwrite chain) + reader hardening (defense-in-depth) + regression tests spanning tally-only, emit-tally, and both bash/Python gates.
+ 
+ SIMPLE-tier: minimum change at each site. No gate-disposition math, vote-tally logic, `/issue` filing schema, or design-path OOS producer changes.
+ 
+@@ -78,12 +78,6 @@
+ - Case: pre-populate `$TMP/oos-accepted-review.md` with a canonical `### OOS_1:` block; set `OOS_ACCEPTED_COUNT=1` in tally env and non-empty `oos.md`; run emit-tally; assert `oos-accepted-review.md` **unchanged** (tally output preserved, not overwritten by `oos-serialize`).
+ - Case: `OOS_ACCEPTED_COUNT=0` with tagged OOS in `oos.md` — assert `oos-serialize` path still runs (existing empty-oos behavior preserved).
+ 
+-### UPDATED: `skills/review/scripts/test-review-core.sh`
+-
+-Integration coverage for production chain (FINDING_1): extend harness/fixtures so a full `review-core` round with accepted `[OUT_OF_SCOPE]` and scope-drift OOS yields parent `oos-accepted-review.md` containing canonical `### OOS_` headers (not reverted to bare `### FINDING_` by emit-tally) and awk count `> 0`.
+-
+ ### UPDATED: `python/test_oos.py`
+ 
+ - `count_non_security` returns `> 0` for file with only `### FINDING_N: [OUT_OF_SCOPE]` blocks; `0` for bare `### FINDING_N:` (no tag).
+@@ -112,6 +106,7 @@
+ - `OOS_ACCEPTED_COUNT == 0`: emit-tally still runs serialize/truncate — unchanged standalone behavior.
+ - 0-judge main-agent path: inherits tally + emit-tally fixes on re-tally.
+ - Header rewrite preserves title verbatim; only `### <ID>:` token replaced.
++- `test-review-core.sh` out of scope: harness stubs `REVIEW_CORE_TALLY_VOTES_SH` / `REVIEW_CORE_EMIT_TALLY_SH` to `$TMP/tally.sh` and `$TMP/emit.sh` (stub emit overwrites `oos-accepted-review.md` with placeholder content), so extending that harness cannot exercise the production tally→emit overwrite chain; FINDING_1 coverage stays in `test-tally-code-votes.sh` + `test-emit-tally.sh`.
+ - Renumber-all for genuine `### OOS_N:` ids: safe — consumers key on ordinals.
+ - Bash 3.2 / BSD portability: awk `sub()`, not GNU sed.
+ 
+@@ -119,7 +114,7 @@
+ 
+ 1. **emit-tally still overwrites tally output** — mitigated by `OOS_ACCEPTED_COUNT > 0` skip guard + review-core integration test. Earliest signal: parent `oos-accepted-review.md` contains `### FINDING_` after full review round.
++1. **emit-tally still overwrites tally output** — mitigated by `OOS_ACCEPTED_COUNT > 0` skip guard + `test-emit-tally.sh` (pre-seeded tally output preserved) and `test-tally-code-votes.sh` (producer normalization). Earliest signal: parent `oos-accepted-review.md` contains `### FINDING_` after full review round.
+ 2. **Dual-sink duplication** — mitigated by equality guard + standalone harness asserting awk count `== 1`. Earliest signal: gate false-fails with `non_security` 2× expected.
+ 3. **Reader over-counts in-scope findings** — mitigated by requiring `[OUT_OF_SCOPE]` in reader match. Earliest signal: gate `non_security` higher than accepted OOS count.
+ 4. **awk/python parity drift** — edit both in lockstep; shared test fixtures for legacy-header + security exclusion.
+@@ -128,9 +123,8 @@
+ 
+ - `bash skills/review/scripts/test-tally-code-votes.sh` — normalization, scope-drift, dual-sink count.
+ - `bash skills/review/scripts/test-emit-tally.sh` — skip-serialize when `OOS_ACCEPTED_COUNT > 0`.
+-- `bash skills/review/scripts/test-review-core.sh` — end-to-end parent `oos-accepted-review.md` canonical headers.
+ - `python/test_oos.py` + `bash skills/implement/scripts/test-oos-disposition-gate.sh` — legacy-header gate behavior.
+ - `bash scripts/relevant-checks.sh` (or `make lint` + `make py-test`).
+ 
+-diff_added: 165
+-diff_deleted: 20
+-diff_lines: 185
++diff_added: 130
++diff_deleted: 18
++diff_lines: 148
