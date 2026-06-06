@@ -67,6 +67,7 @@ COLLECT_OK_COUNT=0
 COLLECT_FAILURE_COUNT=0
 TALLY_PLAN_REVIEW_STATUS=""
 VOTING_TALLY_FILE=""
+TALLY_PLAN_REVIEW_FATAL=false
 AGGREGATOR_STATUS=""
 ACCEPTED_COUNT=0
 DEGRADED_PANEL=0
@@ -1453,6 +1454,7 @@ _tally_cmd=(
 )
 TALLY_PLAN_REVIEW_STATUS=""
 VOTING_TALLY_FILE=""
+TALLY_PLAN_REVIEW_FATAL=false
 set +e
 if ((${#_vt_args[@]} > 0)); then
     _tally_raw=$("${_tally_cmd[@]}" "${_vt_args[@]}")
@@ -1465,7 +1467,7 @@ while IFS= read -r _tln || [[ -n "$_tln" ]]; do
     _tk="${_tln%%=*}"
     _tv="${_tln#*=}"
     case "$_tk" in
-        TALLY_PLAN_REVIEW_STATUS) TALLY_PLAN_REVIEW_STATUS="$_tv" ;;
+        TALLY_PLAN_REVIEW_STATUS) TALLY_PLAN_REVIEW_STATUS="$_tv"; [[ "$_tv" == "tally-error" ]] && TALLY_PLAN_REVIEW_FATAL=true ;;
         VOTING_TALLY_FILE) VOTING_TALLY_FILE="$_tv" ;;
         WARN) emit_kv WARN "$_tv" ;;
     esac
@@ -1554,7 +1556,7 @@ if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN
     _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
 fi
 
-if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" ]]; then
+if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" && "${TALLY_PLAN_REVIEW_FATAL:-false}" == "true" ]]; then
     _restore_prior_round_oos "$_prior_cum_oos"
     LOOP_STATUS=tally-error
     LOOP_REASON=tally-error

@@ -367,6 +367,14 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_degraded() {
+    write_dispatch_combined_threshold
+}
+
+write_dispatch_no_paths_degraded() {
+    write_dispatch_empty_paths_ok
+}
+
 write_dispatch_dropped_slots() {
     # #3392: panel reports all slots dropped under --no-fallback and forwards a
     # DROPPED_SLOTS_FILE sidecar with per-slot reasons + snippets.
@@ -473,6 +481,27 @@ EOS
 
 write_collect_one_nit() {
     write_collect one_nit
+}
+
+write_collect_no_findings() {
+    write_collect empty
+}
+
+write_collect_important() {
+    write_collect one
+}
+
+write_collect_important_with_oos() {
+    write_collect_with_oos_votes
+}
+
+write_collect_empty_fail() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 1
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
 }
 
 write_collect_failing_tail() {
@@ -633,8 +662,8 @@ while IFS= read -r p || [[ -n "$p" ]]; do
     {
         printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
         printf '%s\n' "in_scope	important	correctness	src/a	Accepted finding	scenario	fix"
-        printf '%s\n' "out_of_scope	important	correctness	src/oos1	Accepted OOS problem	scenario accepted	fix accepted"
-        printf '%s\n' "out_of_scope	important	correctness	src/oos2	Rejected OOS problem	scenario rejected	fix rejected"
+        printf '%s\n' "out_of_scope	important	correctness	src/oos1	accepted OOS problem	scenario accepted	fix accepted"
+        printf '%s\n' "out_of_scope	important	correctness	src/oos2	rejected OOS problem	scenario rejected	fix rejected"
     } >"$tsv"
     printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
 done <"$paths"
@@ -734,6 +763,8 @@ vp="$DESIGN_TMPDIR/voter-paths.list"
 for f in "$v1" "$v2" "$v3"; do
     cat >"$f" <<'INNER'
 FINDING_1: YES
+OOS_1: YES
+OOS_2: NO
 INNER
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
@@ -790,7 +821,7 @@ done
 [[ -n "$DESIGN_TMPDIR" ]] || exit 2
 cat >"$DESIGN_TMPDIR/oos-accepted-design.md" <<'INNER'
 ### OOS_1:
-- **Description**: Main-agent branch OOS. Scenario: branch coverage
+- **Description**: main-agent accepted OOS. Scenario: branch coverage
 - **Reviewer**: Cursor-Arch
 - **Severity**: important
 - **Focus area**: correctness
@@ -801,6 +832,31 @@ INNER
 printf 'TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nVOTING_TALLY_FILE=%s\n' "$DESIGN_TMPDIR/voting-tally.md"
 EOS
     chmod +x "$STUB/tally-plan-review.sh"
+}
+
+write_tally_main_agent() {
+    write_tally_main_agent_stub
+    export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+}
+
+write_tally_error() {
+    cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+printf 'TALLY_PLAN_REVIEW_STATUS=tally-error\nVOTING_TALLY_FILE=%s\n' "$DESIGN_TMPDIR/voting-tally.md"
+exit 2
+EOS
+    chmod +x "$STUB/tally-plan-review.sh"
+    export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
 }
 
 write_voters_slot2_failed() {
@@ -1319,7 +1375,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/accepted-plan-findings.md\nplan-review/round-1/ballot.txt\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/findings-in-scope.md\nplan-review/round-1/findings-in-scope.pre-dedup.md\nplan-review/round-1/findings-oos.md\nplan-review/round-1/findings.md\nplan-review/round-1/oos-accepted-design.md\nplan-review/round-1/oos.md\nplan-review/round-1/plan-review-scope-anchor.txt\nplan-review/round-1/plan-review-slots.ndjson\nplan-review/round-1/plan.txt\nplan-review/round-1/rejected-findings.md\nplan-review/round-1/round-summary.env\nplan-review/round-1/scout-plan-manifest.json\nplan-review/round-1/voting-tally.md\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 
