@@ -24,10 +24,14 @@ LEDGER="$TMP_BASE/timing.tsv"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind codex-implement --start-s 10 --end-s 20 \
     --output "/private/work/output.txt" --exit-code 0 --status complete
+LARCH_TIMING_SKILL=implement "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-ci-fix --start-s 21 --end-s 25 \
+    --output "/private/work/claude.txt" --exit-code 0 --status complete
 
 [[ $(awk -F '\t' '{print NF}' "$LEDGER" | sort -u) == "13" ]]
 grep -Fq $'v1\tmark\t' "$LEDGER"
 grep -Fq $'\tcodex\tcodex-implement\t10\t20\t10\toutput.txt\t0\tcomplete' "$LEDGER"
+grep -Fq $'\timplement\t-\tclaude\tclaude-ci-fix\t21\t25\t4\tclaude.txt\t0\tcomplete' "$LEDGER"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
     --skill implement --step "Step 5 — code review" --round 1 --start-s 40 --end-s 45 --accepted 2 --rejected 3
 round_line=$(awk -F '\t' '$2 == "round" {print; exit}' "$LEDGER")
@@ -59,6 +63,9 @@ BAD="$TMP_BASE/bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind BadKind --start-s 1 --end-s 2 --output x 2>"$BAD"
 grep -Fq 'malformed task-kind' "$BAD"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-review --start-s 1 --end-s 2 --output x 2>"$BAD"
+grep -Fq 'vendor claude is only supported for task-kind claude-ci-fix' "$BAD"
 ROUND_BAD="$TMP_BASE/round-bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
     --skill review --step "bad" --round 1 --start-s 1 --end-s 2 --accepted 0 --rejected 0 2>"$ROUND_BAD"
