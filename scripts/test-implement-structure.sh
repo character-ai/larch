@@ -223,6 +223,49 @@ grep -Fq '[--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]' "$STALL_R
 # shellcheck disable=SC2016
 grep -Fq -- '--bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must coalesce IMPLEMENT_BAIL_REASON and FINAL_BAIL_REASON for classify"
+stall_step4_window=$(awk '
+  /^4\. \*\*First-detection issue filing\.\*\*/ { in_step = 1 }
+  /^5\. \*\*Dispatch on `RESUME_HINT`\.\*\*/ { in_step = 0 }
+  in_step { print }
+' "$STALL_RECOVERY_MD")
+[[ -n "$stall_step4_window" ]] || fail "stall-recovery.md must retain Step 4 first-detection issue filing"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-report.sh is-larch-dev-clone' \
+  || fail "stall-recovery.md Step 4 must preserve the dev-clone discriminator"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'bug-body' \
+  || fail "stall-recovery.md Step 4 must compose the sanitized bug body"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'issue-input-file' \
+  || fail "stall-recovery.md Step 4 must compose the heading-bearing issue input file"
+printf '%s\n' "$stall_step4_window" | grep -Eq '/larch:issue --input-file.*stall-recovery-issue-input\.md' \
+  || fail "stall-recovery.md Step 4 must file stall-recovery-issue-input.md via /larch:issue --input-file"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'Skill tool' \
+  || fail "stall-recovery.md Step 4 must describe /larch:issue as a Skill tool invocation"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-issue.stdout' \
+  || fail "stall-recovery.md Step 4 must capture /larch:issue stdout to stall-recovery-issue.stdout"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'normalize-issue-env' \
+  || fail "stall-recovery.md Step 4 must normalize /larch:issue stdout through normalize-issue-env"
+# shellcheck disable=SC2016
+printf '%s\n' "$stall_step4_window" | grep -Fq -- '--issue-exit-code "$ISSUE_RC"' \
+  || fail "stall-recovery.md Step 4 must pass the captured ISSUE_RC to normalize-issue-env"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'ISSUE_ENV_WRITTEN' \
+  || fail "stall-recovery.md Step 4 must parse ISSUE_ENV_WRITTEN from normalize-issue-env"
+stall_step4_order_line=$(printf '%s\n' "$stall_step4_window" | tr '\n' ' ')
+stall_step4_dev_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "stall-recovery-report.sh is-larch-dev-clone")}')
+stall_step4_bug_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "bug-body")}')
+stall_step4_input_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "issue-input-file")}')
+stall_step4_issue_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "/larch:issue --input-file")}')
+stall_step4_stdout_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "stall-recovery-issue.stdout")}')
+stall_step4_normalize_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "normalize-issue-env")}')
+if [ "$stall_step4_dev_pos" -le 0 ] || [ "$stall_step4_bug_pos" -le 0 ] || [ "$stall_step4_input_pos" -le 0 ] || [ "$stall_step4_issue_pos" -le 0 ] \
+  || [ "$stall_step4_dev_pos" -ge "$stall_step4_bug_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_input_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_issue_pos" ]; then
+    fail "stall-recovery.md Step 4 must run is-larch-dev-clone before report composition and /larch:issue filing"
+fi
+if [ "$stall_step4_bug_pos" -ge "$stall_step4_input_pos" ] || [ "$stall_step4_input_pos" -ge "$stall_step4_issue_pos" ]; then
+    fail "stall-recovery.md Step 4 must compose bug-body before issue-input-file and issue-input-file before /larch:issue filing"
+fi
+if [ "$stall_step4_stdout_pos" -le 0 ] || [ "$stall_step4_normalize_pos" -le 0 ] \
+  || [ "$stall_step4_issue_pos" -ge "$stall_step4_stdout_pos" ] || [ "$stall_step4_stdout_pos" -ge "$stall_step4_normalize_pos" ]; then
+    fail "stall-recovery.md Step 4 must capture /larch:issue stdout before normalize-issue-env"
+fi
 # shellcheck disable=SC2016
 grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"

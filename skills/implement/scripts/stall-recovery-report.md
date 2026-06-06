@@ -33,6 +33,11 @@
   - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
   - `--classification-file` and `--body-file` must be absolute paths that resolve to regular, non-symlink, readable files under `$IMPLEMENT_TMPDIR`.
   - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
+- `normalize-issue-env --implement-tmpdir <path> --issue-stdout-file <path> [--issue-exit-code <n>] [--output-file <path>]`
+  - Consumes captured single-item `/larch:issue --input-file` stdout and writes `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` only when `/issue` exited `0`, `ISSUES_FAILED=0`, `ISSUE_1_FAILED` is not truthy, and either a create path (`ISSUE_1_NUMBER` plus `ISSUE_1_URL`) or dedup path (`ISSUE_1_DUPLICATE_OF_NUMBER` plus `ISSUE_1_DUPLICATE_OF_URL`) is resolvable.
+  - Emits `NORMALIZED=true`, `ISSUE_ENV_WRITTEN=true`, `ISSUE_ENV_FILE`, canonical `ISSUE_NUMBER`, and canonical `ISSUE_URL` on success. The env file writes only canonical validated `ISSUE_NUMBER` and `ISSUE_URL`; raw `/issue` stdout metadata remains in the captured stdout file and is not persisted into the sourceable env file.
+  - On missing `--issue-exit-code`, `/issue` non-zero exit, `ISSUES_FAILED>0`, truthy `ISSUE_1_FAILED`, missing counters, missing canonical create/dedup fields, or output write failure, removes any stale output file, emits `NORMALIZED=false`, `ISSUE_ENV_WRITTEN=false`, and `REASON=<token>`, then exits `0` so the orchestrator can log the filing failure and continue to the manual-filing fallback.
+  - `--issue-stdout-file` and `--output-file` must stay under `$IMPLEMENT_TMPDIR`; invalid paths exit non-zero.
 - `clear-stall --implement-tmpdir <path>`
   - Owns the Step 18a success-path atomic clear of `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (disk before memory). Emits `CLEARED=true|false` on every path.
   - Present-file guards are two-tier: (1) symlink or non-regular file → `CLEARED=false`, exit 3; (2) syntax-invalid lines (`check_ship_pr_state_syntax`) → `CLEARED=false`, exit 3. Never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`).

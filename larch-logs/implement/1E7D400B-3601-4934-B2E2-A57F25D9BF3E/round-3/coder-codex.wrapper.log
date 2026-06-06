@@ -1,0 +1,14 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-06-06T19:00:38.423118Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/implement/scripts/test-stall-recovery-report.sh:
+    "$SCRIPT" issue-input-file --implement-tmpdir "$token_dir" --classification-file "$token_dir/class.env" --body-file "$token_dir/body.md" >"$token_dir/input.out"
+    first_line=$(sed -n '1p' "$(kv INPUT_FILE "$token_dir/input.out")")
+    assert_eq "### [Bug] /implement stall: transient-infra at unknown" "$first_line" "20: invalid exact-only step token becomes unknown: $step_token"
+done <<'EOF'
+8aevil
+2a
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+✓ codex agent: completed (exit code 0, 280s elapsed, output 133 bytes)

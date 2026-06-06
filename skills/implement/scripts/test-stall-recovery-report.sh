@@ -687,6 +687,247 @@ cp "$SANDBOX/case1.out" "$dir/class.env"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
 assert_eq "### [Bug] /implement stall: transient-infra at 8" "$first_line" "20: issue input title shape"
+run_capture "$dir/parse-input.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv INPUT_FILE "$dir/input.out")" --output-dir "$dir/parsed-input"
+assert_eq 0 "$RC" "20: parse-input accepts issue input file"
+assert_eq 1 "$(kv ITEMS_TOTAL "$dir/parse-input.out")" "20: headed issue input parses as one item"
+run_capture "$dir/parse-body.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv BODY_FILE "$dir/body.out")" --output-dir "$dir/parsed-body"
+assert_eq 0 "$RC" "20: parse-input accepts raw bug body"
+assert_eq 0 "$(kv ITEMS_TOTAL "$dir/parse-body.out")" "20: heading-less bug body parses as zero items"
+
+while IFS= read -r step_token; do
+    [ -n "$step_token" ] || continue
+    safe_name=$(printf '%s' "$step_token" | tr -c '[:alnum:]' '_')
+    token_dir=$(make_tmp "case20-token-$safe_name")
+    cat >"$token_dir/class.env" <<EOF
+FAILURE_CLASS=transient-infra
+STALL_STEP=$step_token
+EOF
+    printf 'body for %s\n' "$step_token" >"$token_dir/body.md"
+    "$SCRIPT" issue-input-file --implement-tmpdir "$token_dir" --classification-file "$token_dir/class.env" --body-file "$token_dir/body.md" >"$token_dir/input.out"
+    first_line=$(sed -n '1p' "$(kv INPUT_FILE "$token_dir/input.out")")
+    assert_eq "### [Bug] /implement stall: transient-infra at $step_token" "$first_line" "20: production step token preserved: $step_token"
+done <<'EOF'
+8b
+9a1
+9b
+10-max-retries
+10-head-changed
+12b
+12c
+12d
+12-head-changed
+12-max-retries
+10-detached-head
+bump-branch-guard
+EOF
+
+dir=$(make_tmp case20-unsafe-step)
+cat >"$dir/class.env" <<'EOF'
+FAILURE_CLASS=transient-infra
+STALL_STEP=8a<script>
+EOF
+printf 'unsafe body fixture\n' >"$dir/body.md"
+"$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$dir/body.md" >"$dir/input.out"
+first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
+assert_eq "### [Bug] /implement stall: transient-infra at unknown" "$first_line" "20: unsafe step token becomes unknown"
+assert_not_contains "8a<script>" "$first_line" "20: unsafe step token is absent from issue title"
+
+while IFS= read -r step_token; do
+    [ -n "$step_token" ] || continue
+    safe_name=$(printf '%s' "$step_token" | tr -c '[:alnum:]' '_')
+    token_dir=$(make_tmp "case20-invalid-token-$safe_name")
+    cat >"$token_dir/class.env" <<EOF
+FAILURE_CLASS=transient-infra
+STALL_STEP=$step_token
+EOF
+    printf 'body for invalid %s\n' "$step_token" >"$token_dir/body.md"
+    "$SCRIPT" issue-input-file --implement-tmpdir "$token_dir" --classification-file "$token_dir/class.env" --body-file "$token_dir/body.md" >"$token_dir/input.out"
+    first_line=$(sed -n '1p' "$(kv INPUT_FILE "$token_dir/input.out")")
+    assert_eq "### [Bug] /implement stall: transient-infra at unknown" "$first_line" "20: invalid exact-only step token becomes unknown: $step_token"
+    assert_not_contains "$step_token" "$first_line" "20: invalid exact-only step token absent from issue title: $step_token"
+done <<'EOF'
+8aevil
+2a
+3a
+5-max-retries
+6a
+EOF
+
+dir=$(make_tmp case20m-normalize-create)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=123
+ISSUE_1_URL=https://github.com/example/repo/issues/123
+ISSUE_1_TITLE=created title with spaces
+EOF
+run_capture "$SANDBOX/case20m-normalize-create.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq 0 "$RC" "20: normalize create exits 0"
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20m-normalize-create.out")" "20: normalize create emits true"
+assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize create writes canonical ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize create writes canonical ISSUE_URL"
+assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create strips raw ISSUE_1 metadata"
+assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_URL --default "")" "20: normalize create strips source ISSUE_1_URL"
+
+dir=$(make_tmp case20n-normalize-dedup)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=0
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=456
+ISSUE_1_DUPLICATE_OF_URL=https://github.com/example/repo/issues/456
+EOF
+run_capture "$SANDBOX/case20n-normalize-dedup.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n-normalize-dedup.out")" "20: normalize dedup emits true"
+assert_eq 456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize dedup writes duplicate canonical ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize dedup writes duplicate canonical ISSUE_URL"
+
+dir=$(make_tmp case20n2-normalize-dedup-invalid-url-keeps-create)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1
+ISSUE_1_NUMBER=123
+ISSUE_1_URL=https://github.com/example/repo/issues/123
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=456
+ISSUE_1_DUPLICATE_OF_URL=not-a-url
+EOF
+run_capture "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out")" "20: normalize invalid dedup URL keeps valid create metadata"
+assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize invalid dedup URL keeps create ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize invalid dedup URL keeps create ISSUE_URL"
+
+dir=$(make_tmp case20n3-normalize-dedup-missing-url)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=0
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=456
+ISSUE_1_DUPLICATE_OF_URL=not-a-url
+EOF
+run_capture "$SANDBOX/case20n3-normalize-dedup-missing-url.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20n3-normalize-dedup-missing-url.out")" "20: normalize dedup without valid URL emits false"
+assert_eq issue-url-missing "$(kv REASON "$SANDBOX/case20n3-normalize-dedup-missing-url.out")" "20: normalize dedup without valid URL reports missing URL"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize dedup without valid URL removes stale env"
+else
+    fail "20: normalize dedup without valid URL removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20o-normalize-failure)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=0
+ISSUES_FAILED=1
+ISSUES_DEDUPLICATED=0
+ISSUE_1_FAILED=true
+ISSUE_1_ERROR=network
+EOF
+run_capture "$SANDBOX/case20o-normalize-failure.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq 0 "$RC" "20: normalize failed issue exits 0"
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20o-normalize-failure.out")" "20: normalize failed issue emits false"
+assert_eq issues-failed-nonzero "$(kv REASON "$SANDBOX/case20o-normalize-failure.out")" "20: normalize failed issue reports failed counter"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize failed issue removes stale env"
+else
+    fail "20: normalize failed issue removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20p-normalize-item-failure)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_FAILED=true
+ISSUE_1_NUMBER=789
+ISSUE_1_URL=https://github.com/example/repo/issues/789
+EOF
+run_capture "$SANDBOX/case20p-normalize-item-failure.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20p-normalize-item-failure.out")" "20: normalize item failure emits false"
+assert_eq issue-1-failed "$(kv REASON "$SANDBOX/case20p-normalize-item-failure.out")" "20: normalize item failure reports item failure"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize item failure omits env"
+else
+    fail "20: normalize item failure omits env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20q-normalize-exit-failure)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=999
+ISSUE_1_URL=https://github.com/example/repo/issues/999
+EOF
+run_capture "$SANDBOX/case20q-normalize-exit-failure.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 2
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20q-normalize-exit-failure.out")" "20: normalize issue nonzero exit emits false"
+assert_eq issue-exit-code "$(kv REASON "$SANDBOX/case20q-normalize-exit-failure.out")" "20: normalize issue nonzero exit reports reason"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize issue nonzero exit removes stale env"
+else
+    fail "20: normalize issue nonzero exit removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20r-normalize-missing-exit-code)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=999
+ISSUE_1_URL=https://github.com/example/repo/issues/999
+EOF
+run_capture "$SANDBOX/case20r-normalize-missing-exit-code.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out"
+assert_eq 0 "$RC" "20: normalize missing issue exit code exits 0"
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20r-normalize-missing-exit-code.out")" "20: normalize missing issue exit code emits false"
+assert_eq issue-exit-code-missing "$(kv REASON "$SANDBOX/case20r-normalize-missing-exit-code.out")" "20: normalize missing issue exit code reports reason"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize missing issue exit code removes stale env"
+else
+    fail "20: normalize missing issue exit code removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
+
+dir=$(make_tmp case20s-normalize-write-failed)
+stub_bin="$dir/stub-bin"
+mkdir -p "$stub_bin"
+cat >"$stub_bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+count_file=${LARCH_MKTEMP_STUB_COUNT:?}
+template=${1:?}
+count=$(cat "$count_file" 2>/dev/null || printf '0')
+count=$((count + 1))
+printf '%s\n' "$count" >"$count_file"
+if [ "$count" -eq 2 ]; then
+    exit 1
+fi
+path=${template%XXXXXX}stub$count
+: >"$path" || exit 1
+printf '%s\n' "$path"
+EOF
+chmod +x "$stub_bin/mktemp"
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=999
+ISSUE_1_URL=https://github.com/example/repo/issues/999
+EOF
+PATH="$stub_bin:$PATH" LARCH_MKTEMP_STUB_COUNT="$dir/mktemp.count" run_capture "$SANDBOX/case20s-normalize-write-failed.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq 0 "$RC" "20: normalize write failure exits 0"
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20s-normalize-write-failed.out")" "20: normalize write failure emits false"
+assert_eq write-failed "$(kv REASON "$SANDBOX/case20s-normalize-write-failed.out")" "20: normalize write failure reports reason"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize write failure removes stale env"
+else
+    fail "20: normalize write failure removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
 
 dir=$(make_tmp case20c)
 write_state "$dir" 8 ci-initial
@@ -817,6 +1058,20 @@ run_capture "$SANDBOX/case21-issue-out.out" "$SCRIPT" issue-input-file --impleme
 assert_eq 1 "$RC" "21: issue-input-file rejects output file outside tmpdir"
 assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-issue-out.out.err")" "21: issue-input-file output outside tmpdir stderr"
 rm -f "$outside_out"
+
+dir=$(make_tmp case21-normalize-issue-stdout-outside)
+outside_stdout=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-normalize-stdout-outside.XXXXXX")
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=1\nISSUE_1_URL=https://github.com/x/y/issues/1\n' >"$outside_stdout"
+run_capture "$SANDBOX/case21-normalize-issue-stdout-outside.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$outside_stdout" --issue-exit-code 0
+assert_eq 1 "$RC" "21: normalize-issue-env rejects issue-stdout-file outside tmpdir"
+assert_contains "--issue-stdout-file outside implement tmpdir" "$(cat "$SANDBOX/case21-normalize-issue-stdout-outside.out.err")" "21: normalize-issue-env outside stdout stderr"
+rm -f "$outside_stdout"
+outside_normalize_out=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-normalize-out-outside.XXXXXX")
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=1\nISSUE_1_URL=https://github.com/x/y/issues/1\n' >"$dir/issue.out"
+run_capture "$SANDBOX/case21-normalize-output-outside.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0 --output-file "$outside_normalize_out"
+assert_eq 1 "$RC" "21: normalize-issue-env rejects output-file outside tmpdir"
+assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-normalize-output-outside.out.err")" "21: normalize-issue-env outside output stderr"
+rm -f "$outside_normalize_out"
 
 dir=$(make_tmp case22-clear-success)
 write_state "$dir" 8 ci-initial "adopted-issue-closed" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
