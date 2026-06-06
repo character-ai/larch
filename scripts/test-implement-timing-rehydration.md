@@ -12,7 +12,7 @@
    the same-fence `plugin-root.env` source guard (canonical) or, on
    pre-bootstrap sites only (Step 0 foreground, dirty-tree recovery, legacy
    structured-invocation pin), the `session-env.sh` awk fallback. Cardinality:
-   42 source guards, 4 awk fallbacks, zero legacy 4-line `if`/`fi` fences.
+   44 source guards, 4 awk fallbacks, zero legacy 4-line `if`/`fi` fences.
 
 ## Wiring
 

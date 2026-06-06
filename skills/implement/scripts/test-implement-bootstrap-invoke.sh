@@ -500,7 +500,7 @@ unset IMPLEMENT_TMPDIR coder coder_fallback REPO
 
 # --- wrapper routing key set in source ---
 _wrapper_src=$(cat "$REAL_WRAPPER")
-expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION SELF_REVIEW_REQUESTED'
 actual_routing_keys=$(printf '%s\n' "$_wrapper_src" | awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}')
 if [ "$actual_routing_keys" = "$expected_routing_keys" ]; then
   PASS=$((PASS + 1))

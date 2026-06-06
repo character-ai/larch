@@ -1054,7 +1054,7 @@ grep -Fq '_ib_kv_scan()' "$SKILL_MD" \
   && fail "SKILL.md must not retain _ib_kv_scan helper"
 grep -Fq '_ib_handle_bootstrap_exit2()' "$SKILL_MD" \
   && fail "SKILL.md must not retain _ib_handle_bootstrap_exit2 helper"
-expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION SELF_REVIEW_REQUESTED'
 parse_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh")
 invoke_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh")
 if [ "$parse_keys" != "$expected_routing_keys" ] || [ "$invoke_keys" != "$expected_routing_keys" ]; then

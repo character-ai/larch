@@ -18,6 +18,7 @@ Thin `/implement` Step 0 wrapper around `scripts/implement-bootstrap.sh`. Collap
 | `forked_target`, `UPSTREAM_REPO` | optional | optional |
 | `RUN_ID`, `PREFLIGHT_TMPDIR` | optional | optional |
 | `emergency_requested` | `true`/`false` only when passed as `--emergency-requested` | same |
+| `self_review` | `true`/`false` only when passed as `--self-review-requested` | same |
 | `coder` | optional (`--coder` forwarded only when non-empty) | ignored |
 | `IMPLEMENT_TMPDIR` | — | **required** (pass-through to bootstrap child for `resume_existing_tmpdir`) |
 
@@ -44,7 +45,7 @@ The wrapper is the **sole owner** of exit-2 message formatting (including `copy-
 
 Keys with consumers before the first `read-session-env-key.sh` / session-env rehydration:
 
-`IMPLEMENT_TMPDIR`, `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `codex_available`, `cursor_available`, `RUN_ID`, `BRANCH_NAME`, `BRANCH_ACTION`.
+`IMPLEMENT_TMPDIR`, `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `codex_available`, `cursor_available`, `RUN_ID`, `BRANCH_NAME`, `BRANCH_ACTION`, `SELF_REVIEW_REQUESTED`.
 
 Dual transport: stdout envelope (for command substitution) and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (file-first re-parse via `scripts/parse-bootstrap-routing-envelope.sh`). On success the wrapper writes through a same-directory temporary file when `bootstrap-routing.env` is absent or a regular file. When the path is a symlink or other non-regular file, the wrapper emits the filtered envelope on **stdout**, warns on **stderr**, and exits `0` without overwriting the path.
 
