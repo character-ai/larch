@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-bug-urgent-render-voter-pro-3596 60c5d262f] Fix scope-anchor validation truncating voter prompts; harden dispatcher exit-code checks
+ 5 files changed, 43 insertions(+), 25 deletions(-)
