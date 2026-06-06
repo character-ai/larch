@@ -1,0 +1,50 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/launch-codex-ci.sh:161-161	agent-model-args.sh failure has no collect sidecar path in the copied mechanics	Plan copies launch-codex-ci.sh:156-264 where agent-model-args runs bare under set -e; on failure the launcher exits before writing OUTPUT.done/.meta, so background fences stall until collect-agent-results SENTINEL_TIMEOUT	Mirror launch-review.sh:509-534 preflight bundle for agent-model-args failures (truncate output, .diag STATUS=FAILED, stub .meta, .done with rc) and exit 0; add harness case
+1	in_scope	important	risk-integration	scripts/launch-codex-ci.sh:198-206	Missing-codex pre-check omits .done for collect-managed callers	Plan copies launch-codex-ci command -v codex branch (LAUNCHER_EXIT=127 then exit 1, no sidecars); today research/voter/judge fences call run-external-agent directly and its health-gate EXIT trap still writes OUTPUT.done	Omit the launch-codex-ci binary pre-check from launch-codex-exec.sh and delegate to run-external-agent.sh health gate, or write the 444-463 preflight bundle before exit 0
+
+**1. [correctness] `agent-model-args.sh` preflight not covered by the 444-463 bundle**
+
+The plan requires auth-prep and other pre-`run-external-agent` failures to mirror `launch-review.sh:444-463` (truncate output, `.diag`, stub `.meta`, `.done`, `LAUNCHER_EXIT`, exit 0). It also says mechanics come from `launch-codex-ci.sh:156-264`.
+
+In `launch-codex-ci.sh`, model args are resolved with a bare call that aborts under `set -e` on failure:
+
+```161:161:scripts/launch-codex-ci.sh
+"$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"
+```
+
+There is no `.done`/`.meta` write on that path. By contrast, `launch-review.sh` handles the same failure with the full collector bundle:
+
+```520:534:scripts/launch-review.sh
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=agent-model-args.sh failed (exit %s): %s\n' \
+            "$rc" "$(head -1 "$MODEL_ARGS_ERR" 2>/dev/null | tr '\n' ' ')"
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    ...
+    printf '%s\n' "$rc" > "${OUTPUT}.done" 2>/dev/null || true
+```
+
+For collect-managed background fences (research, validation, voter, judge), a model-args failure that omits `.done` produces `SENTINEL_TIMEOUT` in `collect-agent-results.sh` instead of fast `STATUS=FAILED`.
+
+**Suggested revision:** Specify `agent-model-args.sh` failure handling explicitly (adapt `launch-review.sh:509-534`, drop review-only dirty-tree noise), exit 0 with `LAUNCHER_EXIT`, and add a harness case.
+
+---
+
+**2. [risk-integration] `command -v codex` pre-check regresses the collect sentinel contract**
+
+The plan copies `launch-codex-ci.sh`'s missing-binary branch:
+
+```198:206:scripts/launch-codex-ci.sh
+if ! command -v codex >/dev/null 2>&1; then
+    LAUNCHER_EXIT=127
+    ...
+    exit 1
+fi
+```
+
+That path emits `LAUNCHER_EXIT` but never writes `${OUTPUT}.done`. Foreground `lint-fix-loop.sh` can still parse stdout, but background fences depend on `.done` sentinels per `collect-agent-results.sh:74-75`.
+
+Today's uncovered fences call `run-external-agent.sh` directly; its health gate (`run-external-agent.sh:207-216`) sets `EXIT_CODE` and the EXIT trap (`:161-167`) still writes `${OUTPUT}.done`. Wrapping with a launcher that short-circuits before `run-external-agent.sh` removes that sentinel on missing-binary failures.
+
+**Suggested revision:** Drop the `launch-codex-ci` binary pre-check from `launch-codex-exec.sh` and let `run-external-agent.sh` own health-gate failures, or write the full 444-463 preflight bundle before exit 0 when the binary is absent.
