@@ -44,13 +44,20 @@ function is_security_tagged(line,    lower, i, fenced, c, result) {
         }
         i++
     }
+    if (!result && lower ~ /^[ \t-]*\**focus-area\**[ \t]*:[ \t]*security([-a-z0-9 _]*)([ \t]|$|\(|#|\.|,)/) result = 1
+    if (!result && lower ~ /^###[^\n]*(\[security\]|\<security\>)/) result = 1
     return result
 }
-BEGIN { in_block=0; block=""; security=0; oos=0; in_fence=0 }
+BEGIN { in_block=0; block=""; security=0; oos=0; in_fence=0; seq=0 }
 function flush() {
     if (!in_block) return
     if (oos && security) held++
-    else if (oos) { print block; accepted++ }
+    else if (oos && (block !~ /Result=/ || block ~ /Result=accepted/)) {
+        seq++
+        sub(/^###[[:space:]]+[A-Za-z]+_[0-9]+:/, "### OOS_" seq ":", block)
+        print block
+        accepted++
+    }
 }
 /^### FINDING_[0-9]+:/ {
     flush()

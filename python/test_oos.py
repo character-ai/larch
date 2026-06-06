@@ -194,6 +194,18 @@ def test_count_non_security_counts_legacy_tagged_headers(tmp_path: Path) -> None
     assert oos.count_non_security((str(accepted),)) == 1
 
 
+def test_count_non_security_counts_legacy_trailing_tagged_headers(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: Legacy tagged block [OUT_OF_SCOPE]\n"
+        "- **Description**: tag after title matches awk parity.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
 def test_count_non_security_ignores_bare_finding_headers(tmp_path: Path) -> None:
     accepted = tmp_path / "accepted.md"
     _ = accepted.write_text(

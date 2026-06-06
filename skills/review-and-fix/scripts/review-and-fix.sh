@@ -1443,7 +1443,7 @@ _implement_round_body() {
         # round skipped OOS stay monotonic.
         OOS_WRITE_SEQ=0
         if [[ -s "$oos_markdown" ]]; then
-            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_markdown" 2>/dev/null || printf '0')
+            OOS_WRITE_SEQ=$(awk '/^###[[:space:]]+(OOS_|FINDING_[0-9]+:)/ { n++ } END { print n + 0 }' "$oos_markdown" 2>/dev/null || printf '0')
             case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
         fi
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do

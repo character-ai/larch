@@ -121,6 +121,13 @@ fi
 # FINDING_, or a pre-existing OOS_ id being renumbered into the run sequence).
 NORMALIZE_OOS_HELPER="$SCRIPT_DIR/../../shared/scripts/normalize-oos-block-header.sh"
 OOS_WRITE_SEQ=0
+if [[ -n "$SESSION_ENV_PATH" ]]; then
+    accumulated_oos="$(dirname "$SESSION_ENV_PATH")/accumulated-oos.md"
+    if [[ -s "$accumulated_oos" ]]; then
+        OOS_WRITE_SEQ=$(awk '/^###[[:space:]]+(OOS_|FINDING_[0-9]+:)/ { n++ } END { print n + 0 }' "$accumulated_oos" 2>/dev/null || printf '0')
+        case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
+    fi
+fi
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-code-votes.XXXXXX")
 cleanup() { rm -rf "$WORKDIR"; }

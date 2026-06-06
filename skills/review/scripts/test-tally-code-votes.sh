@@ -382,12 +382,33 @@ assert_eq "round-shape-only standalone path keeps round-suffixed TSV" "$classifi
 echo "# Case: session-bound nested implement round uses flat classification filename"
 TMP="$WORKDIR/case4d_session_bound"
 mkdir -p "$TMP/round-2"
-mk_ballot "$TMP/round-2/ballot.md"
+cat > "$TMP/round-2/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Session mirrored OOS
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Pre-existing thing.
+- **Suggested revision**: Revision 1.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/round-2/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/claude-vote-output.txt"
 : > "$TMP/session.env"
+cat > "$TMP/accumulated-oos.md" <<'EOF'
+### OOS_1: Prior accepted OOS
+- **Concern**: Existing prior-round item.
+EOF
 out="$TMP/round-2/out.env"
-"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" \
+    --voter-files "$TMP/round-2/cursor-vote-output.txt" "$TMP/round-2/codex-vote-output.txt" "$TMP/round-2/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
 assert_eq "session-bound nested round uses flat TSV" "$classification_file" "$TMP/round-2/findings-classification.tsv"
+grep -Eq '^### OOS_2: \[OUT_OF_SCOPE\] Session mirrored OOS$' "$TMP/round-2/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound round sink missing continued normalized OOS\n'; }
+cmp -s "$TMP/round-2/oos-accepted-review.md" "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound parent OOS mirror differs from round sink\n'; }
+if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL session-bound parent OOS mirror has legacy FINDING header\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "session-bound parent OOS awk count=1" "$got" "1"
 
 echo "# Case: --both-down true → main-agent-vote-required"
 TMP="$WORKDIR/case4e"
@@ -419,9 +440,10 @@ echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"
 mkdir -p "$TMP"
 cat > "$TMP/ballot.md" <<'EOF'
-### FINDING_1: [OUT_OF_SCOPE] Privilege escalation in setup
+### FINDING_1: [OUT_OF_SCOPE] security Privilege escalation in setup
 - **Reviewer**: Codex-Security
-- **Concern**: focus-area = security, this is sensitive.
+- **focus-area**: security
+- **Concern**: This is sensitive.
 - **Suggested revision**: redacted.
 EOF
 printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
@@ -490,6 +512,7 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "drift-norm: reclassified count=1" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "drift-norm: accepted OOS count=1" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "drift-norm: review-tally.env accepted OOS count=1" "$got" "1"
 grep -Eq '^### OOS_1: ' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL drift-norm: missing canonical ### OOS_1: header\n'; }
 if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
     FAIL=1; printf '  FAIL drift-norm: bare FINDING_ header survived normalization\n'

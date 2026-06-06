@@ -1520,6 +1520,35 @@ fi
 oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
 [[ "$oos_awk_count" == "1" ]] || fail "skipped-routing awk non-security count expected 1 got $oos_awk_count"
 
+work_skipped_round2="$TMP/skipped-routing-round2"
+make_work_repo "$work_skipped_round2"
+implement_tmp="$work_skipped_round2/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$implement_tmp/accumulated-oos.md" <<'EOF_PRESEEDED_OOS'
+### OOS_1: Prior accepted OOS
+- **Concern**: Existing prior-round item.
+EOF_PRESEEDED_OOS
+cp "$implement_tmp/accumulated-oos.md" "$implement_tmp/oos-accepted-review.md"
+cat > "$work_skipped_round2/implement/round-1-coder.log.seed" <<'EOF_LOG_ROUND2'
+SKIPPED: FINDING_1
+EOF_LOG_ROUND2
+set +e
+out=$(
+    cd "$work_skipped_round2" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
+    REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 --session-env-path "$implement_tmp/session-env.sh"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "skipped-routing-round2 expected exit 0 got $rc"; }
+grep -Eq '^### OOS_2: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing-round2 new block not numbered OOS_2"
+oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
+[[ "$oos_awk_count" == "2" ]] || fail "skipped-routing-round2 awk non-security count expected 2 got $oos_awk_count"
+
 mkdir -p "$TMP/fail-python-bin"
 cat > "$TMP/fail-python-bin/python3" <<'EOF_PYFAIL'
 #!/usr/bin/env bash

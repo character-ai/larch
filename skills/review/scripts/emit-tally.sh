@@ -152,18 +152,34 @@ jq -n \
     }' \
     > "$REVIEW_SUMMARY_FILE"
 
-if (( oos_accepted_count > 0 )); then
+oos_sink_count=0
+if [[ -s "$OOS_ACCEPTED_FILE" ]]; then
+    oos_sink_count=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$OOS_ACCEPTED_FILE" 2>/dev/null || printf '0')
+    case "$oos_sink_count" in ''|*[!0-9]*) oos_sink_count=0 ;; esac
+fi
+
+if (( oos_accepted_count > 0 && oos_sink_count > 0 )); then
     # #3550: tally-code-votes.sh already wrote normalized accepted OOS to
     # $OOS_ACCEPTED_FILE — preserve it. oos-serialize.sh re-derives from
     # oos.md and cannot recover scope-drift blocks (bare ### FINDING_N:
     # without [OUT_OF_SCOPE]/[OOS] tags), and the missing-oos.md truncate
     # would wipe tally output; both branches are skipped.
+    if (( oos_sink_count != oos_accepted_count )); then
+        larch_err "emit-tally.sh: warning: OOS_ACCEPTED_COUNT=$oos_accepted_count but accepted sink has $oos_sink_count non-security block(s); preserving sink"
+    fi
     :
 elif [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
+    if (( oos_accepted_count > 0 )); then
+        larch_err "emit-tally.sh: warning: OOS_ACCEPTED_COUNT=$oos_accepted_count but accepted sink has $oos_sink_count non-security block(s); rebuilding from oos.md"
+    fi
     oos_args=(--findings-file "$OOS_FILE" --output-file "$OOS_ACCEPTED_FILE")
     [[ -n "$SESSION_ENV_PATH" ]] && oos_args+=(--session-env-path "$SESSION_ENV_PATH")
     "$SHARED_DIR/oos-serialize.sh" "${oos_args[@]}" >/dev/null || true
 else
+    if (( oos_accepted_count > 0 )); then
+        larch_err "emit-tally.sh: OOS_ACCEPTED_COUNT=$oos_accepted_count but accepted sink has no non-security blocks and oos.md is absent"
+        exit 1
+    fi
     : > "$OOS_ACCEPTED_FILE"
 fi
 

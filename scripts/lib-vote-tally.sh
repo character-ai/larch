@@ -64,7 +64,12 @@ import re, sys
 text = open(sys.argv[1]).read()
 text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
 text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
+pattern = re.compile(
+    r'focus-area\s*=\s*security|'
+    r'^[ \t-]*\**focus-area\**[ \t]*:[ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)|'
+    r'^###[^\n]*(?:\[security\]|\bsecurity\b)',
+    re.IGNORECASE | re.MULTILINE,
+)
 sys.exit(0 if pattern.search(text_no_backtick) else 1)
 PYEOF
 }

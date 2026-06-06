@@ -30,7 +30,7 @@ _FILED_URL_LINE = re.compile(
     re.MULTILINE,
 )
 _OOS_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_|FINDING_\d+:\s*\[OUT_OF_SCOPE\])",
+    r"^###\s+(?:OOS_|FINDING_\d+:.*\[OUT_OF_SCOPE\])",
     re.MULTILINE,
 )
 _SECURITY_FOCUS_RE = re.compile(

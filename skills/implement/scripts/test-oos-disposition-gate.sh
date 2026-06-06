@@ -243,6 +243,24 @@ rc=$?
 set -e
 assert_rc "legacy tagged FINDING header without disposition fails" 1 "$rc"
 
+# --- Case: legacy tagged FINDING header with trailing tag also fails ---
+cat >"$TMP/legacy-trailing.md" <<'EOF'
+### FINDING_1: Legacy tagged header [OUT_OF_SCOPE]
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy-trailing.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy trailing-tag FINDING header without disposition fails" 1 "$rc"
+
 # --- Case: legacy tagged FINDING header with filed URL passes (#3550) ---
 set +e
 (

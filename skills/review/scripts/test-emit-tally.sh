@@ -4,7 +4,9 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 SCRIPT="$REPO_ROOT/skills/review/scripts/emit-tally.sh"
+TALLY_SCRIPT="$REPO_ROOT/skills/review/scripts/tally-code-votes.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-emit-tally.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
@@ -106,7 +108,61 @@ EOF
 printf '### FINDING_4: [OUT_OF_SCOPE] serialize me\n- **Description**: from oos.md.\n' > "$TMP/serialize0/oos.md"
 "$SCRIPT" --tally-file "$TMP/serialize0/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/serialize0/oos.md" --review-tmpdir "$TMP/serialize0" --round 1 --mode diff >/dev/null
 grep -Fq 'serialize me' "$TMP/serialize0/oos-accepted-review.md" || { echo "FAIL: count=0 path no longer serializes oos.md" >&2; exit 1; }
+grep -Eq '^### OOS_1:' "$TMP/serialize0/oos-accepted-review.md" || { echo "FAIL: count=0 path must normalize serialized header" >&2; exit 1; }
+if grep -Eq '^### FINDING_' "$TMP/serialize0/oos-accepted-review.md"; then
+    echo "FAIL: count=0 path emitted legacy FINDING header" >&2
+    exit 1
+fi
 echo "  ok   count=0 path still runs oos-serialize on oos.md"
+
+echo "# Case: OOS_ACCEPTED_COUNT=0 skips rejected tagged OOS from oos.md"
+mkdir -p "$TMP/serialize-rejected"
+cp "$TMP/serialize0/tally.env" "$TMP/serialize-rejected/tally.env"
+printf '### FINDING_5: [OUT_OF_SCOPE] rejected oos\n- **Description**: from oos.md.\nVote tally: YES=0 NO=3 EXON=0 JUDGE_ERROR=0 Result=rejected\n' > "$TMP/serialize-rejected/oos.md"
+"$SCRIPT" --tally-file "$TMP/serialize-rejected/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/serialize-rejected/oos.md" --review-tmpdir "$TMP/serialize-rejected" --round 1 --mode diff >/dev/null
+[[ ! -s "$TMP/serialize-rejected/oos-accepted-review.md" ]] || { echo "FAIL: rejected serialized OOS must not enter accepted sink" >&2; exit 1; }
+echo "  ok   rejected OOS is not serialized into accepted sink"
+
+echo "# Case: OOS_ACCEPTED_COUNT>0 with empty sink falls back to normalized serialize path"
+mkdir -p "$TMP/desync-rebuild"
+cat > "$TMP/desync-rebuild/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=1
+EOF
+: > "$TMP/desync-rebuild/oos-accepted-review.md"
+printf '### FINDING_6: title [OUT_OF_SCOPE]\n- **Description**: accepted in oos.md.\nVote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted\n' > "$TMP/desync-rebuild/oos.md"
+"$SCRIPT" --tally-file "$TMP/desync-rebuild/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/desync-rebuild/oos.md" --review-tmpdir "$TMP/desync-rebuild" --round 1 --mode diff >/dev/null 2>&1
+grep -Eq '^### OOS_1: title \[OUT_OF_SCOPE\]' "$TMP/desync-rebuild/oos-accepted-review.md" || { echo "FAIL: desynced preserve path did not rebuild normalized accepted sink" >&2; exit 1; }
+echo "  ok   desynced empty sink rebuilds from oos.md"
+
+echo "# Case: tally-code-votes output chains into emit-tally without losing accepted OOS"
+mkdir -p "$TMP/chained/round-1"
+cat > "$TMP/chained/round-1/ballot.md" <<'EOF'
+### FINDING_1: Chained accepted OOS [OUT_OF_SCOPE]
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Pre-existing thing.
+- **Suggested revision**: File it.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/chained/round-1/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/chained/round-1/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/chained/round-1/claude-vote-output.txt"
+"$TALLY_SCRIPT" --ballot-file "$TMP/chained/round-1/ballot.md" \
+    --voter-files "$TMP/chained/round-1/cursor-vote-output.txt" "$TMP/chained/round-1/codex-vote-output.txt" "$TMP/chained/round-1/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/chained/round-1" > "$TMP/chained/round-1/tally.out"
+"$SCRIPT" --tally-file "$TMP/chained/round-1/review-tally.env" \
+    --accepted-findings-file "$TMP/chained/round-1/accepted-findings.md" \
+    --oos-file "$TMP/chained/round-1/oos.md" \
+    --review-tmpdir "$TMP/chained/round-1" --round 1 --mode diff >/dev/null
+grep -Eq '^### OOS_1: Chained accepted OOS \[OUT_OF_SCOPE\]$' "$TMP/chained/round-1/oos-accepted-review.md" || { echo "FAIL: chained tally→emit path lost normalized OOS header" >&2; exit 1; }
+if grep -Eq '^### FINDING_' "$TMP/chained/round-1/oos-accepted-review.md"; then
+    echo "FAIL: chained tally→emit path emitted legacy FINDING header" >&2
+    exit 1
+fi
+got=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/chained/round-1/oos-accepted-review.md")
+[[ "$got" == "1" ]] || { echo "FAIL: chained tally→emit awk count got $got want 1" >&2; exit 1; }
+echo "  ok   chained tally→emit preserves normalized accepted OOS"
 
 echo "# Case: OOS_ACCEPTED_COUNT=0 with oos.md absent truncates to empty"
 mkdir -p "$TMP/truncate0"
