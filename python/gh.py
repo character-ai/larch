@@ -883,6 +883,97 @@ def run_rerun(
     return _gh(runner, argv, cwd=cwd)
 
 
+def run_log_read(
+    runner: Runner,
+    run_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Download the full combined log for a workflow run (gh run view --log)."""
+    return _gh(runner, ["run", "view", str(run_id), "--log", "--repo", repo], cwd=cwd)
+
+
+def run_list_successful_read(
+    runner: Runner,
+    *,
+    repo: str,
+    branch: str | None = None,
+    workflow: str | None = None,
+    limit: int = 5,
+    cwd: str | None = None,
+) -> CommandResult:
+    """List successful workflow runs with optional branch and workflow filters."""
+    argv = [
+        "run",
+        "list",
+        "--repo",
+        repo,
+        "--status",
+        "success",
+        "--limit",
+        str(limit),
+        "--json",
+        "databaseId,status,conclusion",
+    ]
+    if branch is not None:
+        argv.extend(["--branch", branch])
+    if workflow is not None:
+        argv.extend(["--workflow", workflow])
+    return _retry_read(runner, argv, cwd=cwd)
+
+
+def run_list_successful(
+    runner: Runner,
+    *,
+    repo: str,
+    branch: str | None = None,
+    workflow: str | None = None,
+    limit: int = 5,
+    cwd: str | None = None,
+) -> tuple[WorkflowRun, ...]:
+    """Return successful workflow runs (typed), optionally filtered by branch/workflow."""
+    result = run_list_successful_read(
+        runner, repo=repo, branch=branch, workflow=workflow, limit=limit, cwd=cwd
+    )
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="run list successful"),
+        context="run list successful",
+    )
+    runs: list[WorkflowRun] = []
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="run list successful row")
+        _require_json_keys(row, ("databaseId", "status"), context="run list successful")
+        runs.append(
+            WorkflowRun(
+                database_id=_as_int(
+                    row["databaseId"], context="run list successful", field="databaseId"
+                ),
+                status=str(row["status"]),
+                conclusion=_optional_str(row.get("conclusion")),
+            )
+        )
+    return tuple(runs)
+
+
+def workflow_dispatch(
+    runner: Runner,
+    workflow: str,
+    *,
+    repo: str,
+    ref: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Trigger a workflow_dispatch event on a branch (gh workflow run)."""
+    return _gh(
+        runner,
+        ["workflow", "run", workflow, "--repo", repo, "--ref", ref],
+        cwd=cwd,
+    )
+
+
 def issue_comments_list_read(
     runner: Runner,
     issue: str,

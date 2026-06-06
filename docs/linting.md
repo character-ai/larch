@@ -51,60 +51,36 @@ Local ordering changed: under `make test-harnesses` and therefore `make lint`, h
 
 ### Refreshing harness shard balance
 
-Capture timings from the emitted `LARCH_HARNESS_TIMING` rows:
+Use the `/rebalance-test-harnesses` dev skill (`.claude/skills/rebalance-test-harnesses/`):
 
 ```bash
-awk '/^test-harnesses-[1-9][0-9]*:/ {
-    for (i = 2; i <= NF; i++)
-      if ($i != "test-harness-shards-coverage") print $i
-  }' Makefile \
-  | while IFS= read -r target; do
-      log=/tmp/larch-harness-"$target".log
-      make "$target" >"$log" 2>&1
-      awk -F '\t' '
-        $1 == "LARCH_HARNESS_TIMING" {
-          gsub(/s$/, "", $3)
-          printf "%s %s\n", $2, $3
-        }
-      ' "$log"
-    done > /tmp/larch-harness-timings.txt
+python3 .claude/skills/rebalance-test-harnesses/scripts/rebalance.py
 ```
 
-Each wrapped `bash` invocation emits one row. Most targets produce one row;
-multi-bash targets emit multiple rows with the same target name, and those rows
-should be summed before rebalancing.
+The script fetches `LARCH_HARNESS_TIMING` rows from the last 5 successful CI
+runs on `main` via `gh run view --log`, computes per-target median wall times
+using `python/harness_ci_timing.py`, redistributes all targets across the 20
+shards with round-robin LPT (slowest-first) via `python/harness_shard_packer.py`,
+writes the new shard lines via `python/harness_makefile.py`, validates the
+partition with `bash scripts/test-harness-shards-coverage.sh`, creates a PR,
+triggers three verification CI runs, and prints a before/after comparison.
+Merge is left to the operator.
 
-The third tab-separated column is the parser contract from
-`scripts/harness-timer.md`: strip the trailing `s`, then parse the remaining
-value as decimal seconds. Current output is emitted with exactly two fractional
-digits (for example `0.34s` or `7.62s`), while older committed logs may still
-contain integer-only seconds.
+See `.claude/skills/rebalance-test-harnesses/SKILL.md` for flags and full
+workflow documentation.  Unit tests for the three Python libraries live in
+`python/test_harness_ci_timing.py`, `python/test_harness_makefile.py`, and
+`python/test_harness_shard_packer.py`; run with `make py-test`.
 
-If you are working on an older branch that predates `scripts/harness-timer.sh`,
-or debugging a wrapper-emission issue, the old manual `date +%s` loop remains a
-fallback only.
+**`LARCH_HARNESS_TIMING` format** (from `scripts/harness-timer.md`): each
+wrapped `bash` invocation emits one tab-separated row to stdout:
 
-Optional reference: a **full** greedy LPT bin-packer across all twenty shards (always assign the next-longest harness to the lightest bin by cumulative seconds) approximates a minimax-style spread of total wall time per shard. The **committed** shard lines instead follow the hybrid above (manual pins for shards 1–4, equal-count remainder). Use the snippet only if you are intentionally regenerating an all-shard LPT layout and will reconcile it with `test-harness-shards-coverage` placement and any pin decisions.
-
-```python
-import sys
-
-items = []
-for line in sys.stdin:
-    name, seconds = line.split()
-    items.append((float(seconds), name))
-
-bins = [(0.0, []) for _ in range(20)]
-for seconds, name in sorted(items, reverse=True):
-    total, names = min(bins, key=lambda item: item[0])
-    names.append(name)
-    bins[bins.index((total, names))] = (total + seconds, names)
-
-for index, (total, names) in enumerate(bins, 1):
-    print(f"test-harnesses-{index}: {' '.join(names)}  # {total:.2f}s")
+```
+LARCH_HARNESS_TIMING<TAB><test-name><TAB><N.NNs>
 ```
 
-Then update the `test-harnesses-N:` lines in `Makefile` and run `make test-harness-shards-coverage`.
+The trailing `s` suffix is stripped and the remainder parsed as decimal seconds.
+Current output uses exactly two fractional digits (e.g. `0.34s`, `7.62s`);
+older committed logs may contain integer-only seconds — both forms are accepted.
 
 ### Branch protection migration
 
