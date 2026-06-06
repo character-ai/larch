@@ -470,8 +470,16 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         else:
             print(f"⚠ Shard balance FAILED (spread {spread:.1f}s > {threshold}s threshold)")
 
+        # BEFORE: per-shard totals estimated from per-target baseline medians
         _print_shard_table("BEFORE (estimated from baseline medians):", current_shards, medians)
-        _print_shard_table("AFTER (median of verification runs):", new_shards, medians_verify)
+        # AFTER: per-shard totals measured directly from verification runs.
+        # medians_verify is {shard_int: total_float} — print it directly instead
+        # of routing through _print_shard_table (which expects {target: seconds}).
+        print(f"\nAFTER (measured median of {args.n_verify_runs} verification runs):")
+        print(f"  {'Shard':>6}  {'Total (s)':>10}")
+        for shard_n in sorted(medians_verify):
+            print(f"  {shard_n:>6}  {medians_verify[shard_n]:>10.1f}")
+        print(f"  Spread (max-min): {spread:.1f}s")
 
     # ------------------------------------------------------------------
     # Merge (COMMENTED OUT — operator must merge manually)
