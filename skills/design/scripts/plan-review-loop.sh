@@ -173,6 +173,13 @@ _materialize_scope_anchor() {
     case "$SCOPE_ANCHOR_FILE" in
         *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; return 2 ;;
     esac
+    local anchor_size
+    anchor_size=$(wc -c <"$SCOPE_ANCHOR_FILE" 2>/dev/null | awk '{print $1}' || printf '65537')
+    case "$anchor_size" in ''|*[!0-9]*) anchor_size=65537 ;; esac
+    if (( anchor_size > 65536 )); then
+        larch_err "plan-review-loop.sh: scope anchor exceeds 64KiB"
+        return 2
+    fi
 }
 _materialize_scope_anchor
 
@@ -1269,10 +1276,29 @@ def is_tagged(block):
 
 
 def problem_text(block):
+    candidate_lines = []
+    for line in re.sub(r"```.*?```", "", block, flags=re.S).splitlines():
+        stripped = line.strip()
+        for pattern in (
+            r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*(.*)$",
+            r"^-?\s*(?:\*\*)?Concern(?:\*\*)?:\s*(.*)$",
+            r"^\s*what:\s*(.*)$",
+        ):
+            m = re.match(pattern, stripped, re.I)
+            if m and m.group(1).strip():
+                candidate_lines.append(m.group(1).strip())
+    for cand in candidate_lines:
+        norm_cand = cand
+        while re.match(r"^\[[A-Za-z0-9_-]+\]\s*", norm_cand) and not re.match(r"^\[SCOPE-REDUCTION\]", norm_cand, re.I):
+            norm_cand = re.sub(r"^\[[A-Za-z0-9_-]+\]\s*", "", norm_cand)
+        if norm_cand.startswith("[SCOPE-REDUCTION]"):
+            return cand
     for label in ("Concern", "Description"):
         m = re.search(r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)" % label, block, re.S)
         if m and m.group(1).strip():
             return m.group(1).strip()
+    if candidate_lines:
+        return candidate_lines[0]
     head = block.splitlines()[0] if block.splitlines() else block
     return re.sub(r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*", "", head).strip() or block
 
@@ -1281,7 +1307,8 @@ def comparison_text(block):
     text = problem_text(block)
     text = re.sub(r"```.*?```", "", text, flags=re.S)
     text = re.sub(r"`[^`\n]*`", "", text)
-    text = re.sub(r"^\s*\[(?:important|nit|latent)\]\s*", "", text, flags=re.I)
+    while re.match(r"^\s*\[[A-Za-z0-9_-]+\]\s*", text) and not re.match(r"^\s*\[SCOPE-REDUCTION\]", text, re.I):
+        text = re.sub(r"^\s*\[[A-Za-z0-9_-]+\]\s*", "", text)
     text = re.sub(r"^\s*\[SCOPE-REDUCTION\]\s*", "", text, flags=re.I)
     return text
 
@@ -1500,6 +1527,7 @@ else
         --plan-file "$PLAN_FILE" \
         --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
         --input-mode plan \
+        --scope-anchor-file "$SCOPE_ANCHOR_FILE" \
         --allow-findings-outside-tmpdir true)
     AGGREGATED="false"
     REASON="ok"

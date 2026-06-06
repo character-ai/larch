@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11). Most modules still support the `scripts/ship-pr.sh` → Python cutover work, but `/report-tokens` is live now through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.12 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ now defaults to the Python ship driver (`python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -12,12 +12,13 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11). M
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py`, `report_tokens_render.py`, `report_tokens_plot.py`, `report_tokens_issue.py`, `report_tokens_cli.py` — live `/report-tokens` scan, pricing, render, plot-subprocess, issue-posting, and CLI pipeline.
-- `rebase.py` — Phase 3 port for CI-fix rebase decision and verification surfaces; dev/CI-only until Phase 7.
+- `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
-- `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal
-  (not wired into the live `/implement` path until Phase 7)
-- **Phase 5** (dev/CI-only until Phase 7): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
+- `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
+  the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
+  run the fixer waterfall, and return the GOTO-Rebase signal.
+- **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
   classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
@@ -52,7 +53,7 @@ for tests.
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`). `/report-tokens` is already cut over to Python; only the shell wrapper remains for skill compatibility and quiet-mode stream setup.
+The live `/implement` path defaults to `python/ship.py`; use `LARCH_SHIP_PR_IMPL=bash` only when you need the legacy shell driver. `/report-tokens` is already cut over to Python; only the shell wrapper remains for skill compatibility and quiet-mode stream setup.
 
 ## Pre-push conflict handoff scope
 
@@ -64,9 +65,19 @@ files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Bump-only or
 mixed conflicts, conflicts that remain after a tier reported success, and flag
 write failures all raise plain `Stalled` instead.
 
-Phase 7 driver wiring remains deferred: no Python path currently emits exit 4,
-writes `RESUME_PHASE` / `CALLER_KIND` state, emits `CONFLICT_FILES`, or parses
-`--resume-phase ship-pr-rrr-phase14`.
+`python/ship.py` now persists the handoff state for the default path. The
+`PrePushConflictHandoff` handler writes `RESUME_PHASE=ship-pr-rrr-phase14`,
+`CALLER_KIND=ship_pr_pre_push`, and `CONFLICT_FILES` to `ship-pr-state.sh`, then
+returns the normal stalled JSON/exit-4 contract. After the prompt-side
+`skills/implement/references/conflict-resolution.md` Phase 1-4 procedure
+succeeds, re-invoking the Python selector without `--resume-phase` sees
+`ship-pr-rrr-after-phase14.flag`, re-enters `run_rebase_rebump` through
+`rebase.rebase_and_push`, clears the flag plus resume tokens after a successful
+force-push, and continues CI/merge processing. If the resume tokens exist but
+the flag is absent, the Python path still returns
+`needs_user_reason=unsupported-rebase-continuation` so stale or partial handoffs
+fail closed. See `skills/implement/references/conflict-resolution.md` and issue
+`#3404` for the cross-driver handoff contract.
 
 ## Phase 1 wiring outside `python/`
 

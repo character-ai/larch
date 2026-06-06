@@ -1726,6 +1726,35 @@ grep -Fq '[SCOPE-REDUCTION] remove unrelated scope' "$PLAN_SCOPE/in.md" || fail 
 grep -Fq '### FINDING_2:' "$PLAN_SCOPE/in.md" || fail "combined plan findings were not sequentially renumbered"
 if grep -Fq '### FINDING_3:' "$PLAN_SCOPE/in.md"; then fail "expected tagged block to be appended after one merged untagged block"; fi
 
+echo "=== input-mode plan dedup recognizes scope-reduction what lines ==="
+PLAN_SCOPE_WHAT="$TMP/plan-scope-what"
+mkdir -p "$PLAN_SCOPE_WHAT"
+cat >"$PLAN_SCOPE_WHAT/in.md" <<'EOF'
+### FINDING_1:
+- **Reviewer(s)**: scope-slot
+- **Severity**: important
+what: [SCOPE-REDUCTION] remove unrelated what-scope
+- **Concern**: reviewer-specific wrapper
+- **Suggested revision**: remove it
+
+### FINDING_2:
+- **Reviewer(s)**: merge-a
+- **Severity**: important
+- **Concern**: ordinary plan concern
+- **Suggested revision**: fix it
+EOF
+cp "$PLAN_SCOPE/dispatch.sh" "$PLAN_SCOPE_WHAT/dispatch.sh"
+AGGREGATE_DISPATCH_SH="$PLAN_SCOPE_WHAT/dispatch.sh" \
+"$AGG" \
+    --findings-file "$PLAN_SCOPE_WHAT/in.md" \
+    --review-tmpdir "$PLAN_SCOPE_WHAT" \
+    --codex-present true \
+    --cursor-present false \
+    --mode description \
+    --input-mode plan \
+    --allow-findings-outside-tmpdir true >"$PLAN_SCOPE_WHAT/out.env"
+grep -Fq '[SCOPE-REDUCTION] remove unrelated what-scope' "$PLAN_SCOPE_WHAT/in.md" || fail "what-line scope marker was not preserved"
+
 echo "=== input-mode plan preserves plain Concern scope-reduction marker ==="
 PLAN_SCOPE_PLAIN="$TMP/plan-scope-plain"
 mkdir -p "$PLAN_SCOPE_PLAIN"
@@ -1777,7 +1806,7 @@ AGGREGATE_DISPATCH_SH="$PLAN_SCOPE_PLAIN/dispatch.sh" \
     --mode description \
     --input-mode plan \
     --allow-findings-outside-tmpdir true >"$PLAN_SCOPE_PLAIN/out.env"
-grep -Fq 'AGGREGATED=false' "$PLAN_SCOPE_PLAIN/out.env" || fail "plain Concern plan scope fallback did not preserve original input"
+grep -Fq 'AGGREGATED=true' "$PLAN_SCOPE_PLAIN/out.env" || fail "plain Concern plan scope marker should be withheld then recombined"
 grep -Fq '[SCOPE-REDUCTION] remove unrelated plain concern' "$PLAN_SCOPE_PLAIN/in.md" || fail "plain Concern scope marker was not preserved"
 
 echo "=== code mode does not apply plan scope-marker preservation ==="

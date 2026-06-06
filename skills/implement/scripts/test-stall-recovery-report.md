@@ -27,3 +27,5 @@ Case map:
 - Case 20 includes repeated-step6 terminal handling, missing-log fallback, in-memory-only classification, lint-over-transient precedence, broader network wording, standalone-auth unrecoverable classification, and sentinel coverage for `NOTE=` / bail-reason-only public-surface inputs.
 - Case 21 covers exit-code boundaries, malformed and symlinked state rejection, and rejection of out-of-tmpdir or symlinked classification/body/output files.
 - Case 22 covers clear/seed durability: keyed and keyless clear paths, symlink and malformed guards, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.
+
+The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns a non-`none` resume hint from the four-layer Step 18a evidence order.

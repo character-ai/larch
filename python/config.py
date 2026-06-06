@@ -139,7 +139,7 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "python-tests",
 })
 
-# Phase 5 — PR / merge / logging (dev/CI until Phase 7)
+# Phase 5 — PR / merge / logging (live/default Python driver)
 TRACKING_ISSUE_STATES: Final[tuple[str, ...]] = (
     "designing",
     "designed",

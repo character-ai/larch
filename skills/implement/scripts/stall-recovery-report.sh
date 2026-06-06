@@ -415,6 +415,18 @@ validate_tmpdir_write_file() {
     validate_tmpdir_path "$1" "$2" "$3" write "$4"
 }
 
+validate_optional_state_evidence_file() {
+    local path=$1 label=$2 size
+    [ -e "$path" ] || return 1
+    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: skipping symlinked optional evidence $label"; return 1; }
+    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: skipping non-regular optional evidence $label"; return 1; }
+    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: skipping unreadable optional evidence $label"; return 1; }
+    size=$(wc -c <"$path" 2>/dev/null | awk '{print $1}' || printf '65537')
+    case "$size" in ''|*[!0-9]*) size=65537 ;; esac
+    [ "$size" -le 65536 ] || { larch_err "stall-recovery-report.sh: skipping oversized optional evidence $label"; return 1; }
+    return 0
+}
+
 read_validated_failure_detail_log() {
     local tmpdir=$1 path=$2
     validate_tmpdir_local_file "$tmpdir" "$path" "--failure-detail-log" || return 1
@@ -605,13 +617,13 @@ cmd_classify() {
         fi
     fi
 
-    if [ -r "$finalize_file" ]; then
+    if validate_optional_state_evidence_file "$finalize_file" "finalize-state.sh"; then
         finalize_stall_step=$(kv_get "$finalize_file" STALL_STEP "")
         finalize_stall_tracking=$(kv_get "$finalize_file" STALL_TRACKING "false")
         finalize_exit_code=$(kv_get "$finalize_file" EXIT_CODE "")
     fi
 
-    if [ -r "$session_env" ]; then
+    if validate_optional_state_evidence_file "$session_env" "session-env.sh"; then
         session_stall_step=$(kv_get "$session_env" STALL_STEP "")
         session_phase=$(kv_get "$session_env" PHASE "")
         session_stall_tracking=$(kv_get "$session_env" STALL_TRACKING "false")
@@ -639,15 +651,15 @@ cmd_classify() {
             detail_log_valid=true
         fi
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$state_file" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$state_file" "ship-pr-state.sh"; then
         evidence="$evidence
 $(cat "$state_file")"
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$finalize_file" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$finalize_file" "finalize-state.sh"; then
         evidence="$evidence
 $(cat "$finalize_file")"
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$session_env" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$session_env" "session-env.sh"; then
         evidence="$evidence
 $(cat "$session_env")"
     fi

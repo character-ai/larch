@@ -98,16 +98,74 @@ grep -Fq 'caller_kind=step8b_rebase' "$SKILL_MD" \
 grep -Fq "NEVER call \`/release\` as a direct Skill invocation" "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #11 (orchestrator /release Skill pin)"
 # shellcheck disable=SC2016 # Intentional literal probe of SKILL.md content.
-grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then' "$SKILL_MD" \
-  || fail "SKILL.md Step 8+ Invoke fence must branch on LARCH_SHIP_PR_IMPL=python"
-grep -Fq "sys.version_info >= (3, 11)" "$SKILL_MD" \
-  || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.11 ship-driver guard"
+grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then' "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ Invoke fence must default to Python unless LARCH_SHIP_PR_IMPL=bash"
+grep -Fq "sys.version_info >= (3, 12)" "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.12 ship-driver guard"
 grep -Fq '"outcome":"STALLED"' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Python version guard must emit structured JSON on stdout"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
   || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
   && fail "SKILL.md must not use retired 8-pre-bump phantom-probe token"
+
+grep -Fq 'default `LARCH_SHIP_PR_IMPL=python` runs' "$SKILL_MD" \
+  || fail "SKILL.md must document Python ship driver as the default"
+grep -Fq 'Critical boundary: after the active Step 8+ driver (`python3 …/python/ship.py` unless `LARCH_SHIP_PR_IMPL=bash`) exits on the default Python path, route only from process exit code + JSON stdout per the Python driver selector' "$SKILL_MD" \
+  || fail "SKILL.md anti-halt reminder must pin default-Python JSON routing"
+grep -Fq 'Immediately before the active Step 8+ driver unless `LARCH_SHIP_PR_IMPL=bash` (then before `ship-pr.sh` first invocation): `--step 8-pre-ship` via `phantom-probe-with-warn.sh`.' "$SKILL_MD" \
+  || fail "Phantom Probe registry must name the active Step 8+ driver before bash opt-in"
+grep -Fq 'on the default path, `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` on terminal driver outcomes' "$SKILL_MD" \
+  || fail "SKILL.md NEVER #11 must pin default-Python finalize-state writer"
+grep -Fq 'When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte' "$SKILL_MD" \
+  || fail "SKILL.md must document bash as explicit opt-in"
+grep -Fq 'driven by the **Python driver selector** below' "$SKILL_MD" \
+  || fail "SKILL.md must route Step 8+ through the Python selector"
+grep -Fq 'Unless `LARCH_SHIP_PR_IMPL=bash`, do not run the fenced' "$SKILL_MD" \
+  || fail "SKILL.md must prohibit default-path fallthrough to bash fence"
+grep -Fq 'ship-pr-net-retries-python.count' "$SKILL_MD" \
+  || fail "SKILL.md must use the Python Exit 6 retry counter"
+if grep -Fq 'default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract' "$SKILL_MD"; then
+  fail "SKILL.md must not retain bash-default selector prose"
+fi
+python_selector_window=$(awk '
+  /\*\*Python driver selector:\*\*/ { in_region = 1 }
+  in_region && /^Invoke:[[:space:]]*$/ { exit }
+  in_region { print }
+' "$SKILL_MD")
+[[ -n "$python_selector_window" ]] || fail "missing Python driver selector window"
+printf '%s
+' "$python_selector_window" | grep -Fq 'python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"' \
+  || fail "Python selector window must include python/ship.py argv"
+printf '%s
+' "$python_selector_window" | grep -Fq -- '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"' \
+  || fail "Python selector window must include --state-file"
+printf '%s
+' "$python_selector_window" | grep -Fq 'needs_user_reason' \
+  || fail "Python selector window must include needs_user_reason routing"
+printf '%s
+' "$python_selector_window" | grep -Fq 'oos-filing' \
+  || fail "Python selector window must include oos-filing routing"
+printf '%s
+' "$python_selector_window" | grep -Fq '4th failure → treat as Exit 4 stall and seed stall keys with `stall-recovery-report.sh seed-terminal-state`' \
+  || fail "Python selector window must pin fourth Exit 6 stall-state persistence"
+
+bash_matrix_gate_window=$(awk '
+  /Apply the following exit matrix \*\*only when `LARCH_SHIP_PR_IMPL=bash`\*\*/ { in_region = 1 }
+  in_region { print }
+  in_region && /\*\*Exit 6\*\*/ { exit }
+' "$SKILL_MD")
+printf '%s
+' "$bash_matrix_gate_window" | grep -Fq 'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**' \
+  || fail "SKILL.md must gate bash exit matrix behind LARCH_SHIP_PR_IMPL=bash"
+printf '%s
+' "$bash_matrix_gate_window" | grep -Fq 'Phase 4 exit 0 re-invokes the active Step 8+ selector: default Python foreground argv including `--state-file`, no `--resume-phase`; only when `LARCH_SHIP_PR_IMPL=bash`, re-invoke `ship-pr.sh --resume-phase ship-pr-rrr-phase14`' \
+  || fail "SKILL.md Exit 4 ship_pr_pre_push handoff must document Python selector plus bash-only --resume-phase"
+if printf '%s
+' "$bash_matrix_gate_window" | grep -Fq 'Phase 4 exit 0 re-invokes `ship-pr.sh --resume-phase ship-pr-rrr-phase14`'; then
+  fail "SKILL.md Exit 4 must not make bash --resume-phase the sole Phase 4 resume instruction"
+fi
+
 
 grep -Fq 'scripts/larch-log.sh' "$SKILL_MD" \
   || fail "SKILL.md must reference scripts/larch-log.sh"
@@ -129,6 +187,26 @@ grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18b teardown heading"
 grep -Fq '⏩ 18a: stall recovery — no stall detected' "$SKILL_MD" \
   || fail "SKILL.md must retain the Step 18a no-stall fast-path line"
+step18_restore_window=$(awk '
+  /_restore_finalize=false/ { in_region = 1 }
+  in_region { print }
+  in_region && /implement-finalize.sh" teardown/ { exit }
+' "$SKILL_MD")
+printf '%s
+' "$step18_restore_window" | grep -Fq '_restore_finalize=false' \
+  || fail "SKILL.md Step 18 restore gate must initialize _restore_finalize"
+printf '%s
+' "$step18_restore_window" | grep -Fq '[ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]' \
+  || fail "SKILL.md Step 18 restore gate must retain bash-only restore qualifier"
+printf '%s
+' "$step18_restore_window" | grep -Fq '_ship_stall_truthy' \
+  || fail "SKILL.md Step 18 restore gate must evaluate truthy stall tracking"
+printf '%s
+' "$step18_restore_window" | grep -Fq '_ship_bail_truthy' \
+  || fail "SKILL.md Step 18 restore gate must evaluate truthy bail user-input"
+printf '%s
+' "$step18_restore_window" | grep -Fq '[ "$_ship_step" != "$_final_step" ]' \
+  || fail "SKILL.md Step 18 restore gate must restore on differing STALL_STEP"
 STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
 STALL_RECOVERY_HELPER_SH="$REPO_ROOT/skills/implement/scripts/stall-recovery-report.sh"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \
@@ -249,26 +327,34 @@ case "$step18_order_status" in
 esac
 
 # Python Step 8+ cutover contract pins (#3446).
-grep -Fq 'Python-path routing uses stdout JSON plus `finalize-state.sh` for stall/PR continuation keys when present; scoped `ship-pr-state.sh` reads remain valid for orchestrator-only keys (`PHASE` retry budgeting/gates, `RESUME_PHASE`, `CALLER_KIND`, `OOS_PENDING`, `FORKED_TARGET`, `REPO_UNAVAILABLE`).' "$SKILL_MD" \
-  || fail "SKILL.md must document Python JSON + finalize-state routing with scoped ship-pr-state reads"
-grep -Fq '`ship.py` does not consume `PHASE` from `ship-pr-state.sh` on startup; the orchestrator re-invokes the driver and uses persisted `PHASE` only for gates and retry budgeting.' "$SKILL_MD" \
-  || fail "SKILL.md must document PHASE as orchestrator-only for Python"
+grep -Fq 'Default-path routing uses only stdout JSON plus the process exit code; do not parse `ship-pr-state.sh` for driver continuation and do not apply the bash exit matrix.' "$SKILL_MD" \
+  || fail "SKILL.md must document JSON-only default-path continuation routing"
+grep -Fq 'Scoped `ship-pr-state.sh` reads remain valid for OOS checkpoint inputs and Exit 4 `ship_pr_pre_push` classification evidence after Python refreshed it via `--state-file`; for that Python Exit 4 handoff, read `CONFLICT_FILES` from `ship-pr-state.sh` after the merge.' "$SKILL_MD" \
+  || fail "SKILL.md must document scoped ship-pr-state reads for Python"
 grep -Fq 'Python-only exit `1` with `outcome=INTERNAL_ERROR` is a driver bug path' "$SKILL_MD" \
   || fail "SKILL.md must route Python INTERNAL_ERROR exit 1 as hard tool failure"
 grep -Fq 'on the Python path, dispatch on stdout JSON `needs_user_reason` and read JSON `failed_run_id` for autonomous CI-fix.' "$SKILL_MD" \
   || fail "SKILL.md must dispatch Python Exit 3 from JSON needs_user_reason and failed_run_id"
 grep -Fq 'on the Python path, read `STALL_TRACKING` and `STALL_STEP` from `finalize-state.sh` when present, with stdout JSON `detail` as the fallback when `finalize-state.sh` is absent (invalid-tmpdir JSON-only edge).' "$SKILL_MD" \
   || fail "SKILL.md must document Python Exit 4 finalize-state stall keys plus JSON-only fallback"
-grep -Fq 'Read `RESUME_PHASE` and `CALLER_KIND` from `ship-pr-state.sh` on both paths.' "$SKILL_MD" \
-  || fail "SKILL.md must document Exit 4 RESUME_PHASE/CALLER_KIND scoped ship-pr-state reads"
-grep -Fq 'Read `PHASE` from `ship-pr-state.sh` for orchestrator-side per-phase retry budgeting only; `ship.py` does not read `PHASE` on startup.' "$SKILL_MD" \
+grep -Fq 'Read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `ship-pr-state.sh` on both paths.' "$SKILL_MD" \
+  || fail "SKILL.md must document Exit 4 RESUME_PHASE/CALLER_KIND/CONFLICT_FILES scoped ship-pr-state reads"
+grep -Fq 'Read `PHASE` from `ship-pr-state.sh` for bash orchestrator-side per-phase retry budgeting only; `ship.py` does not read `PHASE` on startup.' "$SKILL_MD" \
   || fail "SKILL.md must document Exit 6 PHASE as orchestrator retry input only"
 grep -Fq 'On the Python path, read `OOS_PENDING`, `FORKED_TARGET`, and `REPO_UNAVAILABLE` from `ship-pr-state.sh`, then re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`; do not substitute `finalize-state.sh` for those OOS gate inputs.' "$SKILL_MD" \
   || fail "SKILL.md must document Python OOS checkpoint scoped ship-pr-state reads and no --resume-phase re-entry"
 grep -Fq 'on the Python path, re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`.' "$SKILL_MD" \
   || fail "SKILL.md must document Python Exit 0/OOS re-entry without --resume-phase"
+grep -Fq 'Restore finalize-state.sh only when required. Bash opt-in always restores from' "$SKILL_MD" \
+  || fail "SKILL.md must document conditional Step 18 restore gate"
+grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]; then' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover bash opt-in"
+grep -Fq 'elif [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover missing finalize-state on Python path"
+grep -Fq '[ -n "$_ship_step" ] && [ "$_ship_step" != "$_final_step" ]' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover stale finalize-state on Python path"
 python_fence=$(awk '
-  /if \[ "\$\{LARCH_SHIP_PR_IMPL:-bash\}" = "python" \]; then/ { in_py=1 }
+  /if \[ "\$\{LARCH_SHIP_PR_IMPL:-python\}" != "bash" \]; then/ { in_py=1 }
   in_py { print }
   in_py && /^else$/ { exit }
 ' "$SKILL_MD")
@@ -1000,7 +1086,7 @@ real_python3="$(command -v python3)"
 [[ -n "$real_python3" ]] || fail "python3 required for ship-driver guard runtime probe"
 cat > "$guard_tmp/python3" <<SHIM
 #!/usr/bin/env bash
-if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
   exit 1
 fi
 exec "$real_python3" "\$@"
@@ -1008,9 +1094,9 @@ SHIM
 chmod +x "$guard_tmp/python3"
 set +e
 PATH="$guard_tmp:$PATH" bash -c '
-if ! python3 -c '"'"'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'"'"' 2>/dev/null; then
-  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-  printf "%s\n" '"'"'{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'"'"'
+if ! python3 -c '"'"'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'"'"' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.12 or newer" >&2
+  printf "%s\n" '"'"'{"detail":"Python ship driver requires Python 3.12 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'"'"'
   exit 4
 fi
 exit 0
@@ -1018,10 +1104,10 @@ exit 0
 guard_rc=$?
 set -e
 [[ "$guard_rc" -eq 4 ]] \
-  || fail "ship-driver Python version guard must exit 4 when python3 is below 3.11 (got $guard_rc)"
+  || fail "ship-driver Python version guard must exit 4 when python3 is below 3.12 (got $guard_rc)"
 grep -Fq '"outcome":"STALLED"' "$guard_tmp/stdout.txt" \
   || fail "ship-driver Python version guard must emit STALLED JSON on stdout"
-grep -Fq 'Python ship driver requires Python 3.11 or newer' "$guard_tmp/stderr.txt" \
+grep -Fq 'Python ship driver requires Python 3.12 or newer' "$guard_tmp/stderr.txt" \
   || fail "ship-driver Python version guard must emit operator-visible stderr"
 rm -rf "$guard_tmp"
 

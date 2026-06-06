@@ -8,11 +8,11 @@ import sys
 
 
 def _version_supported(version_info: object) -> bool:
-    return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
+    return tuple(version_info) >= (3, 12)  # type: ignore[arg-type]
 
 
 if not _version_supported(sys.version_info):
-    _VERSION_ERROR = "Python ship driver requires Python 3.11 or newer"
+    _VERSION_ERROR = "Python ship driver requires Python 3.12 or newer"
     print(
         json.dumps(
             {
@@ -65,9 +65,55 @@ _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
 _PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
+_ALLOWED_SHIP_STATE_KEYS = frozenset({
+    "PHASE",
+    "BRANCH_NAME",
+    "ISSUE_NUMBER",
+    "RUN_ID",
+    "REPO",
+    "REPO_UNAVAILABLE",
+    "FORKED_TARGET",
+    "IMPLEMENT_TMPDIR",
+    "MANIFEST_PATH",
+    "MERGE",
+    "DRAFT",
+    "PR_CLOSED",
+    "PR_NUMBER",
+    "PR_URL",
+    "PR_TITLE",
+    "MERGE_RESULT",
+    "OOS_PENDING",
+    "CI_FIX_REBASE_PENDING",
+    "CI_FIX_REBASE_PENDING_HEAD",
+    "REBASE_COUNT",
+    "FIX_ATTEMPTS",
+    "ITERATION",
+    "TRANSIENT_RETRIES",
+    "RESUME_PHASE",
+    "CALLER_KIND",
+    "CONFLICT_FILES",
+    "STALL_TRACKING",
+    "STALL_STEP",
+    "EXIT_CODE",
+    "BAIL_REASON",
+    "BAIL_NEEDS_USER_INPUT",
+    "FAILED_RUN_ID",
+    "BAIL_FAILURE_DETAIL_LOG",
+    "EXPECTED_SESSION_ID",
+    "EXPECTED_TMPDIR_BASENAME_PREFIX",
+})
+_TERMINAL_ONLY_STATE_KEYS = frozenset({
+    "EXIT_CODE",
+    "BAIL_REASON",
+    "BAIL_NEEDS_USER_INPUT",
+    "FAILED_RUN_ID",
+    "BAIL_FAILURE_DETAIL_LOG",
+})
+_NON_STALL_STATE_KEYS = frozenset({"STALL_TRACKING", "STALL_STEP"})
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
+_PYTHON_TRANSIENT_STALL_ATTEMPT = 4
 
 
 @dataclass(frozen=True)
@@ -141,6 +187,36 @@ def _step_result_to_ship(
     )
 
 
+def _is_infrastructure_ship_error(exc: Exception) -> bool:
+    text = str(exc)
+    return any(
+        token in text
+        for token in (
+            "cannot read existing ship state",
+            "invalid ship state",
+            "invalid newline in ship state value",
+            "refusing to write symlinked ship state path",
+            "refusing to write symlinked finalize-state path",
+            "refusing to replace symlinked finalize-state path",
+            "refusing to write symlinked finalize-state temp path",
+            "finalize-state value",
+            "invalid finalize-state key",
+            "state_file",
+        )
+    )
+
+
+def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
+    if not ctx.state_file:
+        return False
+    resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
+    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
+    return (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+    )
+
+
 def _error_to_result(exc: Exception) -> ShipResult:
     if isinstance(exc, TransientNetworkError):
         return ShipResult(Outcome.TRANSIENT, detail=str(exc))
@@ -149,6 +225,8 @@ def _error_to_result(exc: Exception) -> ShipResult:
     if isinstance(exc, Stalled):
         return ShipResult(Outcome.STALLED, detail=str(exc))
     if isinstance(exc, ShipError):
+        if _is_infrastructure_ship_error(exc):
+            return ShipResult(Outcome.INTERNAL_ERROR, detail=str(exc))
         return ShipResult(Outcome.STALLED, detail=str(exc))
     raise exc
 
@@ -481,9 +559,19 @@ def _write_terminal_state(
     rebase_count: int = 0,
     fix_attempts: int = 0,
     transient_retries: int = 0,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
 ) -> None:
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return
     terminal_ctx = ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step)
-    finalize.write_finalize_state(terminal_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
+    _write_terminal_finalize_if_terminal(
+        terminal_ctx,
+        result,
+        step,
+        failed_run_id=failed_run_id,
+        bail_failure_detail_log=bail_failure_detail_log,
+    )
     phase = "done" if result is Outcome.OK else "stalled"
     _write_ship_state(
         terminal_ctx,
@@ -492,11 +580,64 @@ def _write_terminal_state(
         rebase_count=rebase_count,
         fix_attempts=fix_attempts,
         transient_retries=transient_retries,
+        terminal_outcome=result,
+        failed_run_id=failed_run_id,
+        bail_failure_detail_log=bail_failure_detail_log,
     )
 
 
 def _state_bool(*, value: bool) -> str:
     return "true" if value else "false"
+
+
+def _terminal_exit_code(result: Outcome) -> str:
+    return str(config.OUTCOME_EXIT_MAP.get(result, config.OUTCOME_EXIT_MAP[Outcome.STALLED]))
+
+
+def _terminal_overlay_fields(
+    ctx: RunContext,
+    result: Outcome,
+    step: str,
+    *,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
+) -> dict[str, str]:
+    return {
+        "EXIT_CODE": _terminal_exit_code(result),
+        "STALL_TRACKING": _state_bool(value=result is Outcome.STALLED),
+        "STALL_STEP": step if result is Outcome.STALLED else "",
+        "BAIL_REASON": ctx.final_bail_reason,
+        "BAIL_NEEDS_USER_INPUT": _state_bool(value=ctx.bail_needs_user_input),
+        "FAILED_RUN_ID": failed_run_id,
+        "BAIL_FAILURE_DETAIL_LOG": bail_failure_detail_log,
+    }
+
+
+def _write_terminal_finalize_if_terminal(
+    ctx: RunContext,
+    result: Outcome,
+    step: str,
+    *,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
+) -> None:
+    if result in {Outcome.TRANSIENT, Outcome.NEEDS_USER_INPUT}:
+        return
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return
+    path = Path(ctx.tmpdir) / "finalize-state.sh"
+    finalize.write_finalize_state(ctx, path)
+    data = finalize.read_finalize_state(path) if path.is_file() else {}
+    data.update(
+        _terminal_overlay_fields(
+            ctx,
+            result,
+            step,
+            failed_run_id=failed_run_id,
+            bail_failure_detail_log=bail_failure_detail_log,
+        ),
+    )
+    finalize.write_finalize_state_merged(path, data)
 
 
 def _valid_repo_slug(value: str) -> bool:
@@ -540,11 +681,19 @@ def _write_ship_state(
     caller_kind: str | None = None,
     extra_fields: dict[str, str] | None = None,
     ci_fix_rebase_pending_head: str = "",
+    terminal_outcome: Outcome | None = None,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
 ) -> None:
     if not ctx.state_file:
         return
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return
     path = Path(ctx.state_file)
     path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    if path.is_symlink() or tmp.is_symlink():
+        raise ShipError(f"refusing to write symlinked ship state path: {path}")
     if resume_phase is None:
         resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE") if path.is_file() else ""
     if caller_kind is None:
@@ -553,6 +702,7 @@ def _write_ship_state(
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
         caller_kind = ""
+    clear_handoff_keys = resume_phase == "" and caller_kind == ""
     run_id = run_logs.effective_run_id(ctx)
     if extra_fields:
         unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
@@ -567,10 +717,18 @@ def _write_ship_state(
                 if "=" not in line:
                     continue
                 key, _, value = line.partition("=")
-                if key and "\n" not in key and "\r" not in key:
+                if key in _ALLOWED_SHIP_STATE_KEYS and "\n" not in key and "\r" not in key:
                     fields[key] = value
-        except (OSError, UnicodeDecodeError):
-            fields = {}
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ShipError(f"cannot read existing ship state: {path}") from exc
+    if clear_handoff_keys:
+        _ = fields.pop("CONFLICT_FILES", None)
+    if terminal_outcome is None and phase != "done":
+        for key in _TERMINAL_ONLY_STATE_KEYS:
+            _ = fields.pop(key, None)
+        if not ctx.stall_tracking:
+            for key in _NON_STALL_STATE_KEYS:
+                _ = fields.pop(key, None)
     fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -605,19 +763,91 @@ def _write_ship_state(
             "STALL_TRACKING": "false",
             "STALL_STEP": "",
             "BAIL_REASON": "",
+            "BAIL_NEEDS_USER_INPUT": "false",
             "BAIL_FAILURE_DETAIL_LOG": "",
             "EXIT_CODE": "0",
+            "FAILED_RUN_ID": "",
         })
     else:
-        fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
-        fields["STALL_STEP"] = ctx.stall_step
+        if terminal_outcome is not None or ctx.stall_tracking or "STALL_TRACKING" not in fields:
+            fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
+        if terminal_outcome is not None or ctx.stall_step or "STALL_STEP" not in fields:
+            fields["STALL_STEP"] = ctx.stall_step
+    if terminal_outcome is not None:
+        fields.update(
+            _terminal_overlay_fields(
+                ctx,
+                terminal_outcome,
+                ctx.stall_step,
+                failed_run_id=failed_run_id,
+                bail_failure_detail_log=bail_failure_detail_log,
+            ),
+        )
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
         _validate_ship_state_value(key, str(value))
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
-    _ = tmp.replace(path)
+    with suppress(FileNotFoundError):
+        tmp.unlink()
+    data = "".join(f"{key}={value}\n" for key, value in fields.items())
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(tmp, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = None
+            _ = handle.write(data)
+        _ = tmp.replace(path)
+    except FileExistsError as exc:
+        raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+        with suppress(OSError):
+            if tmp.exists() and not tmp.is_symlink():
+                tmp.unlink()
+
+
+def _context_with_state_overlay(ctx: RunContext) -> RunContext:
+    state = _state_file_kv(ctx.state_file)
+    changes: dict[str, object] = {}
+    for key in ("BRANCH_NAME", "PR_URL"):
+        value = state.get(key, "")
+        if value:
+            _validate_ship_state_value(key, value)
+    for key, field in (
+        ("BRANCH_NAME", "branch_name"),
+        ("ISSUE_NUMBER", "issue_number"),
+        ("RUN_ID", "run_id"),
+        ("REPO", "repo"),
+        ("PR_URL", "pr_url"),
+        ("PR_TITLE", "pr_title"),
+        ("MERGE_RESULT", "merge_result"),
+        ("STALL_STEP", "stall_step"),
+    ):
+        value = state.get(key, "")
+        if value:
+            changes[field] = value
+    pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    if pr_number is not None:
+        changes["pr_number"] = pr_number
+    for key, field in (
+        ("FORKED_TARGET", "forked_target"),
+        ("REPO_UNAVAILABLE", "repo_unavailable"),
+        ("DRAFT", "draft"),
+        ("MERGE", "merge"),
+        ("STALL_TRACKING", "stall_tracking"),
+        ("BAIL_NEEDS_USER_INPUT", "bail_needs_user_input"),
+        ("PR_CLOSED", "pr_closed"),
+        ("OOS_PENDING", "oos_pending"),
+        ("CI_FIX_REBASE_PENDING", "ci_fix_rebase_pending"),
+    ):
+        value = state.get(key, "")
+        if value:
+            changes[field] = _truthy(value)
+    return ctx.with_(**changes) if changes else ctx
 
 
 def _try_current_branch(runner: Runner, *, cwd: str | None) -> str:
@@ -743,7 +973,17 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
-    if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE:
+    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
+    phase14_flag = Path(ctx.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    if (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+        and not phase14_flag.is_file()
+        and not phase14_flag.is_symlink()
+    ):
+        with suppress(OSError):
+            _ = phase14_flag.write_text("RESUME_PHASE=ship-pr-rrr-phase14\n", encoding="utf-8")
+    if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE and not phase14_flag.is_file():
         if not _valid_repo_slug(state_repo):
             state_repo = ctx.repo
         return _resume_from_state(
@@ -1097,15 +1337,21 @@ def run_postmerge_phase(
         stall_tracking=post.outcome is Outcome.STALLED,
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
-    finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
+    if post.outcome is Outcome.OK:
+        _write_terminal_finalize_if_terminal(state_ctx, Outcome.OK, "")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
         skip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
         if skip.skipped:
             _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
+            stall_ctx = state_ctx.with_(stall_tracking=True, stall_step="postmerge-flush")
+            _write_terminal_finalize_if_terminal(stall_ctx, Outcome.STALLED, "postmerge-flush")
+            _write_ship_state(stall_ctx, phase="postmerge", terminal_outcome=Outcome.STALLED)
+            return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
-        _write_ship_state(state_ctx, phase="postmerge")
+        _write_terminal_finalize_if_terminal(state_ctx, post.outcome, post.status)
+        _write_ship_state(state_ctx, phase="postmerge", terminal_outcome=post.outcome)
         return ShipResult(post.outcome, detail=post.detail or post.status)
-    _write_ship_state(state_ctx, phase="done")
+    _write_ship_state(state_ctx, phase="done", terminal_outcome=Outcome.OK)
     return ShipResult(
         Outcome.OK,
         pr_number=ctx.pr_number,
@@ -1145,8 +1391,10 @@ def run_ship(
                 detail=resume.detail,
             )
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
-            raise ShipError("invalid newline in ship state value: PR_URL")
+            raise Stalled("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
+            done_ctx = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
+            _write_terminal_finalize_if_terminal(done_ctx, Outcome.OK, "done")
             return ShipResult(
                 Outcome.OK,
                 pr_number=resume.pr_number,
@@ -1234,17 +1482,19 @@ def run_ship(
                     _breadcrumb("warning", f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
             if postbump.outcome is not Outcome.OK:
-                finalize.write_finalize_state(
-                    fresh_context.with_(stall_tracking=postbump.outcome is Outcome.STALLED, stall_step=postbump.status),
-                    Path(fresh_context.tmpdir) / "finalize-state.sh",
+                postbump_ctx = fresh_context.with_(
+                    stall_tracking=postbump.outcome is Outcome.STALLED,
+                    stall_step=postbump.status if postbump.outcome is Outcome.STALLED else "",
                 )
+                _write_terminal_finalize_if_terminal(postbump_ctx, postbump.outcome, postbump.status)
                 _write_ship_state(
-                    fresh_context,
+                    postbump_ctx,
                     phase=postbump.status,
                     iteration=resume.iteration,
                     rebase_count=resume.rebase_count,
                     fix_attempts=resume.fix_attempts,
                     transient_retries=resume.transient_retries,
+                    terminal_outcome=postbump.outcome,
                 )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
@@ -1305,7 +1555,7 @@ def run_ship(
             except ShipError as exc:
                 _breadcrumb("warning", str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:
-            finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+            _write_terminal_finalize_if_terminal(working, Outcome.OK, "")
             _write_ship_state(
                 working,
                 phase="done",
@@ -1313,6 +1563,7 @@ def run_ship(
                 rebase_count=resume.rebase_count,
                 fix_attempts=resume.fix_attempts,
                 transient_retries=resume.transient_retries,
+                terminal_outcome=Outcome.OK,
             )
             return ShipResult(
                 Outcome.OK,
@@ -1355,6 +1606,49 @@ def run_ship(
                 if working.ci_fix_rebase_pending
                 else "",
             )
+            phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+            if phase14_flag.is_file():
+                try:
+                    _ = rebase.rebase_and_push(
+                        runner,
+                        repo=working.repo,
+                        run_id=working.run_id,
+                        cwd=repo_root,
+                        tmpdir=working.tmpdir,
+                        base_remote=base_remote,
+                        base_ref=base_ref,
+                        allow_conflict_fix=True,
+                        enable_pre_push_handoff=True,
+                    )
+                    phase14_flag.unlink(missing_ok=True)
+                    rebase_count += 1
+                    _write_ship_state(
+                        working,
+                        phase="ci-initial",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                        resume_phase="",
+                        caller_kind="",
+                    )
+                    continue
+                except PrePushConflictHandoff as exc:
+                    _write_ship_state(
+                        working,
+                        phase="rebase",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                        resume_phase=exc.resume_phase,
+                        caller_kind=exc.caller_kind,
+                        extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+                    )
+                    raise
+                except Exception:
+                    phase14_flag.unlink(missing_ok=True)
+                    raise
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -1391,6 +1685,27 @@ def run_ship(
                     transient_retries=transient_retries,
                     monitor=monitor,
                 )
+                if (
+                    monitor.result.outcome is Outcome.TRANSIENT
+                    and persisted[3] >= _PYTHON_TRANSIENT_STALL_ATTEMPT
+                ):
+                    _write_terminal_state(
+                        working,
+                        Outcome.STALLED,
+                        "transient-retry-cap",
+                        iteration=persisted[0],
+                        rebase_count=persisted[1],
+                        fix_attempts=persisted[2],
+                        transient_retries=persisted[3],
+                        failed_run_id=monitor.failed_run_id or "",
+                    )
+                    return ShipResult(
+                        Outcome.STALLED,
+                        failed_run_id=monitor.failed_run_id or "",
+                        pr_number=working.pr_number,
+                        pr_url=working.pr_url,
+                        detail=monitor.result.detail or "transient retry cap",
+                    )
                 _write_terminal_state(
                     working,
                     monitor.result.outcome,
@@ -1399,6 +1714,7 @@ def run_ship(
                     rebase_count=persisted[1],
                     fix_attempts=persisted[2],
                     transient_retries=persisted[3],
+                    failed_run_id=monitor.failed_run_id or "",
                 )
                 return _step_result_to_ship(
                     monitor.result,
@@ -1521,9 +1837,14 @@ def run_ship(
                 transient_retries=transient_retries,
             )
             if merged.result == config.MERGE_RESULT_ERROR:
-                finalize.write_finalize_state(
+                _write_terminal_state(
                     working.with_(stall_tracking=True, stall_step="merge"),
-                    Path(working.tmpdir) / "finalize-state.sh",
+                    Outcome.STALLED,
+                    "merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
                 )
                 return ShipResult(
                     Outcome.STALLED,
@@ -1533,9 +1854,14 @@ def run_ship(
                     detail=merged.error,
                 )
             if merged.result not in config.POST_MERGE_MERGE_RESULTS:
-                finalize.write_finalize_state(
+                _write_terminal_state(
                     working.with_(stall_tracking=True, stall_step="merge"),
-                    Path(working.tmpdir) / "finalize-state.sh",
+                    Outcome.STALLED,
+                    "merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
                 )
                 return ShipResult(
                     Outcome.STALLED,
@@ -1563,7 +1889,14 @@ def run_ship(
                 detail=post.detail,
             )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
-        return _error_to_result(exc)
+        result = _error_to_result(exc)
+        if result.outcome is Outcome.STALLED and not isinstance(exc, PrePushConflictHandoff):
+            latest_ctx = _context_with_state_overlay(ctx)
+            if "\n" in latest_ctx.pr_url or "\r" in latest_ctx.pr_url:
+                latest_ctx = latest_ctx.with_(pr_url="")
+            step = latest_ctx.stall_step or _slug_from_detail(result.detail)
+            _write_terminal_state(latest_ctx.with_(stall_tracking=True, stall_step=step), Outcome.STALLED, step)
+        return result
 
 
 def _journal_path(ctx: RunContext) -> Path:
@@ -1631,6 +1964,8 @@ def build_parser() -> argparse.ArgumentParser:
 def _state_file_kv(path: str | None) -> dict[str, str]:
     if not path:
         return {}
+    if Path(path).is_symlink():
+        return {}
     try:
         return finalize.read_finalize_state(path)
     except ShipError:
@@ -1671,6 +2006,8 @@ def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:
 def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdir: Path) -> None:
     if result.outcome is not Outcome.STALLED:
         return
+    if _is_active_pre_push_handoff(ctx):
+        return
     if not _tmpdir_under_allowed_root(str(tmpdir)):
         return
     path = tmpdir / "finalize-state.sh"
@@ -1684,7 +2021,10 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         _fill_if_empty(data, "REPO", state.get("REPO"), ctx.repo)
         _fill_if_empty(data, "RUN_ID", state.get("RUN_ID"), ctx.run_id)
         _fill_if_empty(data, "PR_NUMBER", result.pr_number, state.get("PR_NUMBER"), ctx.pr_number)
-        _fill_if_empty(data, "PR_URL", result.pr_url, state.get("PR_URL"), ctx.pr_url)
+        state_pr_url = state.get("PR_URL", "")
+        if state_pr_url and not _valid_pr_url(state_pr_url):
+            state_pr_url = ""
+        _fill_if_empty(data, "PR_URL", result.pr_url, state_pr_url, ctx.pr_url)
         _fill_if_empty(data, "PR_TITLE", state.get("PR_TITLE"), ctx.pr_title)
         _fill_if_empty(data, "MERGE_RESULT", result.merge_result, state.get("MERGE_RESULT"), ctx.merge_result)
         _fill_if_empty(data, "FORKED_TARGET", state.get("FORKED_TARGET"), "true" if ctx.forked else "false")
@@ -1695,8 +2035,7 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         _fill_if_empty(data, "STALL_STEP", state.get("STALL_STEP"), ctx.stall_step, _slug_from_detail(result.detail))
         finalize.write_finalize_state_merged(path, data)
     except Exception as exc:
-        with suppress(Exception):
-            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+        logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
 
 
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
@@ -1730,7 +2069,10 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
             changes[field_name] = str(value).strip().lower() in {"1", "true", "yes", "on"}
     if args.no_logs_commit is not None:
         changes["no_logs_commit"] = str(args.no_logs_commit).strip().lower() in {"1", "true", "yes", "on"}
-    return env_ctx.with_(**changes)
+    ctx = env_ctx.with_(**changes)
+    if ctx.state_file:
+        ctx = _context_with_state_overlay(ctx)
+    return ctx
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1758,11 +2100,7 @@ def main(argv: list[str] | None = None) -> int:
             f"ship.py: internal error\n{traceback.format_exc()}",
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
-    try:
-        _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
-    except Exception as exc:
-        with suppress(Exception):
-            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+    _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

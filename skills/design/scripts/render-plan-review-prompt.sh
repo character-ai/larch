@@ -104,6 +104,36 @@ fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
+canonical_path() {
+    local path="$1" dir base
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    dir=$(cd "$dir" && pwd -P)
+    printf '%s/%s\n' "$dir" "$base"
+}
+
+validate_design_prompt_file() {
+    local path="$1" label="$2" canon size
+    case "$path" in
+        *$'\n'*|*$'\r'*) larch_err "render-plan-review-prompt.sh: $label path contains CR/LF"; exit 2 ;;
+    esac
+    [[ -f "$path" && ! -L "$path" && -r "$path" ]] || { larch_err "render-plan-review-prompt.sh: $label must be a readable regular non-symlink file"; exit 2; }
+    canon="$(canonical_path "$path")"
+    if [[ "$label" == "--feature-file" ]]; then
+        size=$(wc -c <"$canon" 2>/dev/null | awk '{print $1}' || printf '65537')
+        case "$size" in ''|*[!0-9]*) size=65537 ;; esac
+        [[ "$size" -le 65536 ]] || { larch_err "render-plan-review-prompt.sh: --feature-file exceeds 64KiB"; exit 2; }
+        printf '%s\n' "$canon"
+        return
+    fi
+    printf '%s\n' "$path"
+}
+
+PLAN_FILE="$(validate_design_prompt_file "$PLAN_FILE" "--plan-file")"
+if [[ -n "$FEATURE_FILE" ]]; then
+    FEATURE_FILE="$(validate_design_prompt_file "$FEATURE_FILE" "--feature-file")"
+fi
+
 redact_untrusted_stream() {
     "$REDACT_SECRETS_SH" | sed -E \
         -e 's/&/\&amp;/g' \

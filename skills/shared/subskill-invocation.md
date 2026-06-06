@@ -56,13 +56,15 @@ For every mandatory sub-skill call inside an orchestrator's step, pair the call 
 
 Canonical examples:
 
-- **`ship-pr.sh` stdout / state-file parse after Step 8+** — the orchestrator reads machine lines from the foreground `ship-pr.sh` invocation and cross-checks `$IMPLEMENT_TMPDIR/ship-pr-state.sh` before continuing:
+- **Step 8+ active-driver contract parse** — on the bash opt-in path, the orchestrator reads machine lines from the foreground `ship-pr.sh` invocation and cross-checks `$IMPLEMENT_TMPDIR/ship-pr-state.sh` before continuing; on the default Python path, it uses JSON stdout + exit code from `python/ship.py`, not `ship-pr-state.sh` continuation parsing:
 
   ```bash
   # Parse STATUS, PHASE, OOS_PENDING, STALL_TRACKING, STALL_STEP, RESUME_PHASE,
-  # CALLER_KIND, and CONFLICT_FILES (when present) from ship-pr stdout.
+  # CALLER_KIND, and CONFLICT_FILES (when present) from ship-pr stdout on the bash opt-in path.
+  # On the default Python path, parse JSON stdout first and read CONFLICT_FILES from
+  # $IMPLEMENT_TMPDIR/ship-pr-state.sh only for the scoped Exit 4 ship_pr_pre_push handoff.
   # On Exit 4 with RESUME_PHASE=ship-pr-rrr-phase14 and CALLER_KIND=ship_pr_pre_push,
-  # run conflict-resolution.md before re-invoking ship-pr.sh --resume-phase ship-pr-rrr-phase14.
+  # run conflict-resolution.md before re-invoking the active Step 8+ driver (Python selector by default; bash uses ship-pr.sh --resume-phase ship-pr-rrr-phase14).
   ```
 
   See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the exit-code matrix. Phase 1 (#3364) removed `/implement` `/release` gates on the ship path; use `/release` or manual `.claude/skills/release` when versioning is required outside implement.
