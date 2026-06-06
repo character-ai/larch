@@ -53,7 +53,6 @@ maybe_append_py_lint_target() {
     done
 
     if [ -n "$missing" ]; then
-        PY_LINT_SKIPPED=1
         if [ "${PY_LINT_SKIP_WARNED:-0}" -eq 0 ]; then
             echo "WARNING: Python lint tools not found on PATH ($missing) — skipping py-lint direct relevant target"
             PY_LINT_SKIP_WARNED=1
@@ -66,7 +65,6 @@ maybe_append_py_lint_target() {
 
 maybe_append_py_test_target() {
     if ! command -v python3.12 >/dev/null 2>&1 || ! python3.12 -m pytest --version >/dev/null 2>&1; then
-        PY_TEST_SKIPPED=1
         if [ "${PY_TEST_SKIP_WARNED:-0}" -eq 0 ]; then
             echo "WARNING: Python 3.12 pytest not found — skipping py-test direct relevant target"
             PY_TEST_SKIP_WARNED=1
@@ -82,9 +80,6 @@ run_direct_relevant_targets() {
     DIRECT_TARGETS=""
     PY_LINT_SKIP_WARNED=0
     PY_TEST_SKIP_WARNED=0
-    PY_LINT_SKIPPED=0
-    PY_TEST_SKIPPED=0
-    PYTHON_PY_CHANGED=0
     while IFS= read -r f; do
         case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
@@ -219,7 +214,6 @@ run_direct_relevant_targets() {
         esac
         case "$f" in
             python/*.py)
-                PYTHON_PY_CHANGED=1
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
