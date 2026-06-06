@@ -40,7 +40,7 @@ branch by:
    `.launch-stderr`, `.stderr-tail`; Claude: `.meta`, `.tsv`, `.launch-stderr`,
    `.stderr`, `.stderr-tail`, `.jsonl` — not Cursor/Codex `.stderr` or
    cursor/codex `.jsonl`, which have no producers), and diagnostics
-   (`claude-plan-*.prompt`, slot-named `*-collector.failure.log` patterns,
+   (`claude-plan-*.prompt`, `render-plan-*.prompt`, slot-named `*-collector.failure.log` patterns,
    `plan-review-collector.stderr`,
    `plan-review-slots.ndjson.output-files.dropped-slots`). Other
    `/implement`-specific deny patterns (`coder-output.log`, `coder-codex.log`,

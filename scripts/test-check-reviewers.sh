@@ -262,6 +262,10 @@ if [[ -f "$SCRATCH/t6e/larch-codex-env-key-present-${STAMP_USER}.stamp" ]] \
 else
     fail "codex env-key probe should write only env-key stamp (login decoy unchanged)"
 fi
+if grep -Fr 'sk-larch-probe-sentinel' "$SCRATCH/t6e" 2>/dev/null; then
+    fail "codex env-key login-decoy probe must not leak OPENAI_API_KEY sentinel into TMPDIR"
+fi
+assert_no_probe_homes "codex env-key login-decoy cleanup" "$SCRATCH/t6e"
 
 # --- Codex: probe forwards production model args ---
 SB6M="$SCRATCH/bin6m"
@@ -590,6 +594,10 @@ grep -Fq '[profiles.keep]' "$_legacy_capture" 2>/dev/null \
     || fail "legacy env-key strip must retain unrelated profiles in temp config"
 if grep -Fr 'sk-larch-legacy-strip-sentinel' "$SCRATCH/t-legacy-strip" 2>/dev/null; then
     fail "legacy env-key strip must not leak sentinel into case TMPDIR"
+fi
+if find "$SCRATCH/t-legacy-strip-home" -type f ! -path "$_legacy_fixture" \
+    -exec grep -Fl 'sk-larch-legacy-strip-sentinel' {} + 2>/dev/null | grep -q .; then
+    fail "legacy env-key strip must not leak sentinel into isolated HOME outside fixture"
 fi
 if cmp -s "$_legacy_fixture_copy" "$_legacy_fixture"; then
     :

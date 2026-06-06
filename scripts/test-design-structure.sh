@@ -1871,13 +1871,24 @@ assert_fence_write_before_pause() {
   fi
 }
 
+assert_qa_only_contiguous_prefix() {
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/qa-only-prefix.XXXXXX")
+  extract_bash_fence_after_marker "$SKILL_MD" 'Before the terminal already-planned hygiene' >"$tmp"
+  [[ -s "$tmp" ]] || fail '(21) Step 0b Q&A-only prefix fence missing'
+  assert_fence_write_before_pause "$tmp" 'step-1c' 'Step 0b Q&A-only prefix'
+  assert_fence_write_before_pause "$tmp" 'step-1d' 'Step 0b Q&A-only prefix'
+  assert_fence_write_before_pause "$tmp" 'step-1d.5' 'Step 0b Q&A-only prefix'
+  rm -f "$tmp"
+}
+
 assert_step_sentinel_inside_guard() {
   local fence_file="$1" step_token="$2" guard_pat="$3" label="$4"
   local guard_line closing_line sentinel_line sentinel
   sentinel=": > \"\$DESIGN_TMPDIR/.completed/${step_token}\""
   guard_line=$(grep -nF "$guard_pat" "$fence_file" | head -1 | cut -d: -f1 || true)
   sentinel_line=$(grep -nF "$sentinel" "$fence_file" | head -1 | cut -d: -f1 || true)
-  closing_line=$(awk -v start="${guard_line:-0}" 'NR > start && $0 == "fi" { line=NR } END { if (line) print line }' "$fence_file")
+  closing_line=$(awk -v start="${guard_line:-0}" 'NR > start && $0 ~ /^[[:space:]]*fi[[:space:]]*$/ { line=NR } END { if (line) print line }' "$fence_file")
   [[ -n "$guard_line" && -n "$sentinel_line" && -n "$closing_line" ]] \
     || fail "$label missing guard or ${step_token} sentinel for guard-scoped check"
   (( guard_line < sentinel_line && sentinel_line < closing_line )) \
@@ -1887,6 +1898,8 @@ assert_step_sentinel_inside_guard() {
 assert_folded_sentinel_writes() {
   local tmp
   tmp=$(mktemp "${TMPDIR:-/tmp}/folded-sentinel.XXXXXX")
+
+  assert_qa_only_contiguous_prefix
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:1d.5' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 1d.5 prelude fence missing'
@@ -1913,17 +1926,28 @@ assert_folded_sentinel_writes() {
 
   extract_bash_fence_after_marker "$SKILL_MD" '### 2a.5' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 2a.5 prelude fence missing'
+  grep -Fq 'if [ "$_design_classification" = HARD ]; then' "$tmp" \
+    || fail '(21) Step 2a.5 prelude must guard folded step-2a write to HARD'
   assert_fence_write_before_pause "$tmp" 'step-2a' 'Step 2a.5 prelude'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ "$_design_classification" = HARD ]; then' 'Step 2a.5 prelude'
 
   extract_bash_fence_after_marker "$SKILL_MD" 'zero-sketch degraded fence below' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) zero-sketch degraded fence missing'
+  grep -Fq 'if [ "$_design_classification" = HARD ]; then' "$tmp" \
+    || fail '(21) zero-sketch degraded fence must guard Step 2 markers to HARD'
   assert_fence_write_before_pause "$tmp" 'step-2a' 'zero-sketch degraded fence'
   assert_fence_write_before_pause "$tmp" 'step-2a.5' 'zero-sketch degraded fence'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ "$_design_classification" = HARD ]; then' 'zero-sketch degraded fence'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a.5' 'if [ "$_design_classification" = HARD ]; then' 'zero-sketch degraded fence'
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:2b —' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 2b prelude fence missing'
+  grep -Fq 'if [ "$_design_classification" = HARD ]; then' "$tmp" \
+    || fail '(21) Step 2b prelude must guard Step 2 repair writes to HARD'
   assert_fence_write_before_pause "$tmp" 'step-2a' 'Step 2b prelude'
   assert_fence_write_before_pause "$tmp" 'step-2a.5' 'Step 2b prelude'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ "$_design_classification" = HARD ]; then' 'Step 2b prelude'
+  assert_step_sentinel_inside_guard "$tmp" 'step-2a.5' 'if [ "$_design_classification" = HARD ]; then' 'Step 2b prelude'
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3.5' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 3.5 prelude fence missing'
@@ -1949,17 +1973,16 @@ assert_folded_sentinel_writes() {
 
   extract_bash_fence_containing "$SKILL_MD" 'design-publish.sh' '### 5c —' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 5c design-publish fence missing'
-  if grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp"; then
-    fail '(21) Step 5c design-publish fence must not write step-5c unconditionally (boundary-local PLAN_WRITE_OK gate)'
-  fi
-  step5c_line=$(grep -nF '### 5c —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-  step5d_line=$(grep -nF '### 5d —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-  [[ -n "$step5c_line" && -n "$step5d_line" ]] || fail '(21) Step 5c/5d anchors missing for PLAN_WRITE_OK gate pin'
-  step5c_block=$(sed -n "${step5c_line},$((step5d_line - 1))p" "$SKILL_MD")
-  grep -Fq 'PLAN_WRITE_OK=true' <<<"$step5c_block" \
-    || fail '(21) Step 5c block missing PLAN_WRITE_OK=true gate for step-5c'
-  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"' <<<"$step5c_block" \
-    || fail '(21) Step 5c block missing gated step-5c sentinel prose'
+  grep -Fq '[[ "${PLAN_WRITE_OK:-}" == true ]]' "$tmp" \
+    || fail '(21) Step 5c design-publish fence missing PLAN_WRITE_OK=true gate'
+  assert_step_sentinel_inside_guard "$tmp" 'step-5c' 'if [[ "${PLAN_WRITE_OK:-}" == true ]]; then' 'Step 5c design-publish fence'
+  parse_line=$(grep -nF 'done <<<"${_publish_out:-}"' "$tmp" | head -1 | cut -d: -f1 || true)
+  sentinel_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp" | head -1 | cut -d: -f1 || true)
+  pause_line=$(grep -nF 'design-pause-save.sh' "$tmp" | head -1 | cut -d: -f1 || true)
+  [[ -n "$parse_line" && -n "$sentinel_line" && -n "$pause_line" ]] \
+    || fail '(21) Step 5c design-publish fence missing parse/pause/sentinel line'
+  (( pause_line < parse_line && parse_line < sentinel_line )) \
+    || fail '(21) Step 5c sentinel must be after parse and inside publish fence'
 
   rm -f "$tmp"
 }
@@ -2056,6 +2079,11 @@ assert_backward_reentry_guards() {
     || fail '(21) Step 3 entry must restore step-2b bypass package'
   grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"' "$tmp" \
     || fail '(21) Step 3 entry must restore step-2b.5 bypass package'
+  grep -Fq 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' "$tmp" \
+    || fail '(21) Step 3 entry restore/clear block must be gated on explicit re-entry marker'
+  for step in step-2a step-2a.5 step-2b step-2b.5; do
+    assert_fence_write_before_pause "$tmp" "$step" 'Step 3 entry'
+  done
 
   rm -f "$tmp"
 }
@@ -2077,6 +2105,10 @@ assert_publish_fence_guards() {
     || fail '(21) design-publish fence pause-check must follow source-env'
   ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$tmp" \
     || fail '(21) design-publish fence must not write step-5b'
+  grep -Fq '[[ "${PLAN_WRITE_OK:-}" == true ]]' "$tmp" \
+    || fail '(21) design-publish fence missing PLAN_WRITE_OK=true step-5c guard'
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp" \
+    || fail '(21) design-publish fence must write step-5c after PLAN_WRITE_OK parse'
 
   extract_bash_fence_after_marker "$SKILL_MD" 'Mechanical Gate C plan emit' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Gate C preview fence missing'
@@ -2188,7 +2220,7 @@ grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
 # shellcheck disable=SC2016 # Markdown literal contains $DESIGN_TMPDIR and backticks intentionally.
-grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
+grep -Fq 'has already written `step-5c` under the `PLAN_WRITE_OK=true` gate' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
 grep -Fq 'result-env write failed (exit 3)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 3 result-env WARN prose"

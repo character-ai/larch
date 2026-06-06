@@ -101,7 +101,7 @@ Pause/resume helper coverage lives in
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
 | Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
-| Step 3 direct-review restore | Step 3 entry when Gate A ready-for-review after backward loop | restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5` before pause-check |
+| Step 3 direct-review restore | Step 3 entry only when `$DESIGN_TMPDIR/.step3-reentry` is present | clear stale downstream state and restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
 | Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block | pause-check retained |
@@ -639,7 +639,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 **Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), run the same post-rewrite sequence as `references/approval-gates.md` §Shared post-apply pipeline: before any direct replacement or dedup rewrite run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` (companion `.gate-b-optional-trailer-keys.values`); after the rewrite run `gate-b-dedup-plan.sh --dedup` (fail closed if snapshot missing — `--dedup` refreshes the values snapshot from the post-rewrite plan before mechanical dedup so explicitly recomputed estimates are allowed). Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. Only after the dedup breadcrumb run the same merged post-plan fence as `references/discussion-rounds.md` Round 2 (`design-postplan-emit.sh --with-plan-size` with the Step 2b thin-fence `case` arms). On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design discussion-round2`; on Override run retained Step 2b.5; on `_postplan_rc=0` write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before returning to Gate A.
 
-Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
+Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** writes `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
 `.completed/step-1e` is batch-written by both the Step 2a entry fence and the Step 3 entry fence before pause-check (covering normal and Gate A direct-review routes) — not at a Gate A success boundary.
 
@@ -648,25 +648,17 @@ Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or G
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-1c"
-: > "$DESIGN_TMPDIR/.completed/step-1d"
-_brainstorm_requested=false
-if [ -r "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-  case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
-    true) _brainstorm_requested=true ;;
-  esac
-fi
-if [ "$_brainstorm_requested" != true ]; then
-  : > "$DESIGN_TMPDIR/.completed/step-1d.5"
-fi
-: > "$DESIGN_TMPDIR/.completed/step-1d.7"
-: > "$DESIGN_TMPDIR/.completed/step-1e"
 if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
   exit 1
 fi
 _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_brainstorm_requested=false
+if command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _brainstorm_requested=true ;;
+  esac
+fi
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
@@ -681,6 +673,16 @@ if [ "$_design_classification" = SIMPLE ]; then
     printf '%s\n' '**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**' >&2
     exit 1
   fi
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-1c"
+: > "$DESIGN_TMPDIR/.completed/step-1d"
+if [ "$_brainstorm_requested" != true ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-1d.5"
+fi
+: > "$DESIGN_TMPDIR/.completed/step-1d.7"
+: > "$DESIGN_TMPDIR/.completed/step-1e"
+if [ "$_design_classification" = SIMPLE ]; then
   if [ "$_simple_artifacts_ok" != true ]; then
     printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
@@ -753,9 +755,12 @@ If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `c
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-2a"
-: > "$DESIGN_TMPDIR/.completed/step-2a.5"
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+if [ "$_design_classification" = HARD ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2a"
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ```
 
@@ -829,8 +834,11 @@ On HARD sketch paths, `.completed/step-2a` is written by the Step 2a.5 prelude f
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-2a"
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+if [ "$_design_classification" = HARD ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2a"
+fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
 ```
@@ -920,9 +928,12 @@ Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-mkdir -p "$DESIGN_TMPDIR/.completed"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+if [ "$_design_classification" = HARD ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
 ```
@@ -1079,18 +1090,21 @@ At the Step 2b.5 success boundary on any non-exiting return path, immediately ru
 
 Print: `> **🔶 /design 3: plan review**`
 
-When control arrives from Gate A **Ready for review** (direct-to-Step-3) or other backward review re-entry, the Step 3 entry fence clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and — when arriving after a backward discussion loop that cleared Step 2 markers — restores the direct-review bypass package before pause-check.
+When control arrives from Gate A **Ready for review** (direct-to-Step-3) or other backward review re-entry, set `$DESIGN_TMPDIR/.step3-reentry` before entering this step. The Step 3 entry fence clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package only while that explicit re-entry marker is present; first-time Step 3 entry only sources env, honors pause, and records timing.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-1e"
-# Direct-review after backward discussion loop only — restore Step 2 bypass package when Step 2 markers were cleared:
-[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
-[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
+  rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-1e"
+  # Direct-review after backward discussion loop only — restore Step 2 bypass package when Step 2 markers were cleared:
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
+  [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+  rm -f "$DESIGN_TMPDIR/.step3-reentry"
+fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
@@ -1464,7 +1478,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
   --variant gatec
 ```
 
-Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. When the review-round counter is below the tier cap, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or auto-applied prior feedback applied); the fresh review proceeds through Step 3.5, Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. When the review-round counter is below the tier cap, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or auto-applied prior feedback applied); the fresh review proceeds through Step 3.5, Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
@@ -1604,6 +1618,10 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
      printf '%s\n' "**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**" >&2
      exit 1
    fi
+   if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
+     mkdir -p "$DESIGN_TMPDIR/.completed"
+     : > "$DESIGN_TMPDIR/.completed/step-5c"
+   fi
    ```
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs the same `design-publish.sh` call; Override re-runs it with `--skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
@@ -1613,7 +1631,7 @@ When `_publish_rc=4`, execute **### Plan command validator failure (shared)** us
 **Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
 5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
-6. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true` **before** Step 5d. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
+6. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `design-publish.sh` fence above has already written `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
 7. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer

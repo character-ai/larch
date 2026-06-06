@@ -51,7 +51,8 @@ Only sanitized per-bucket usage rows in `larch-tokens-*.jsonl`, extracted via
 `claude-plan-*-output*.txt`), producer-backed sidecars (Claude `.stderr` /
 `.stderr-tail`, Cursor/Codex `.stderr-tail`, `.launch-stderr` for all tools,
 `.meta`, `.tsv`, `.cap-hit`, Cursor `.json`, Codex primary `.json`), generic
-Claude prompts (`claude-plan-*.prompt`), slot-named
+Claude prompts (`claude-plan-*.prompt`) and rendered plan-review prompts
+(`render-plan-*.prompt`), slot-named
 collector failure logs, dropped-slot diagnostics
 (`plan-review-slots.ndjson.output-files.dropped-slots`), and aggregate
 `plan-review-collector.stderr`; `findings.md` / `voting-tally.md` remain
