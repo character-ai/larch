@@ -645,10 +645,7 @@ def _write_ship_state(
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
         caller_kind = ""
-    if resume_phase == "" and caller_kind == "":
-        clear_handoff_keys = True
-    else:
-        clear_handoff_keys = False
+    clear_handoff_keys = resume_phase == "" and caller_kind == ""
     run_id = run_logs.effective_run_id(ctx)
     if extra_fields:
         unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
