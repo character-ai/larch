@@ -18,6 +18,9 @@ fail() { printf 'FAIL: %s\n' "$1"; FAIL=$((FAIL + 1)); }
 git_test_repo_identity() {
     git -C "$1" config user.email "larch-harness@users.noreply.github.com"
     git -C "$1" config user.name "Larch Harness"
+    # Prevent background gc/maintenance processes from racing with rm -rf cleanup.
+    git -C "$1" config gc.auto 0
+    git -C "$1" config maintenance.auto false
 }
 
 setup_plugin_stub() {
