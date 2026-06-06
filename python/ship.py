@@ -65,6 +65,13 @@ _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
 _PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
+_TERMINAL_ONLY_STATE_KEYS = frozenset({
+    "EXIT_CODE",
+    "BAIL_REASON",
+    "BAIL_NEEDS_USER_INPUT",
+    "FAILED_RUN_ID",
+    "BAIL_FAILURE_DETAIL_LOG",
+})
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
@@ -141,6 +148,21 @@ def _step_result_to_ship(
     )
 
 
+def _is_infrastructure_ship_error(exc: Exception) -> bool:
+    return isinstance(exc, ShipError) and str(exc).startswith("cannot read existing ship state")
+
+
+def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
+    if not ctx.state_file:
+        return False
+    resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
+    caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND")
+    return (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+    )
+
+
 def _error_to_result(exc: Exception) -> ShipResult:
     if isinstance(exc, TransientNetworkError):
         return ShipResult(Outcome.TRANSIENT, detail=str(exc))
@@ -149,6 +171,8 @@ def _error_to_result(exc: Exception) -> ShipResult:
     if isinstance(exc, Stalled):
         return ShipResult(Outcome.STALLED, detail=str(exc))
     if isinstance(exc, ShipError):
+        if _is_infrastructure_ship_error(exc):
+            return ShipResult(Outcome.INTERNAL_ERROR, detail=str(exc))
         return ShipResult(Outcome.STALLED, detail=str(exc))
     raise exc
 
@@ -621,6 +645,10 @@ def _write_ship_state(
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
         caller_kind = ""
+    if resume_phase == "" and caller_kind == "":
+        clear_handoff_keys = True
+    else:
+        clear_handoff_keys = False
     run_id = run_logs.effective_run_id(ctx)
     if extra_fields:
         unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
@@ -639,6 +667,11 @@ def _write_ship_state(
                     fields[key] = value
         except (OSError, UnicodeDecodeError) as exc:
             raise ShipError(f"cannot read existing ship state: {path}") from exc
+    if clear_handoff_keys:
+        fields.pop("CONFLICT_FILES", None)
+    if terminal_outcome is None and phase != "done":
+        for key in _TERMINAL_ONLY_STATE_KEYS:
+            fields.pop(key, None)
     fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -1427,7 +1460,7 @@ def run_ship(
             except ShipError as exc:
                 _breadcrumb("warning", str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:
-            finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+            _write_terminal_finalize_if_terminal(working, Outcome.OK, "")
             _write_ship_state(
                 working,
                 phase="done",
@@ -1435,6 +1468,7 @@ def run_ship(
                 rebase_count=resume.rebase_count,
                 fix_attempts=resume.fix_attempts,
                 transient_retries=resume.transient_retries,
+                terminal_outcome=Outcome.OK,
             )
             return ShipResult(
                 Outcome.OK,
@@ -1516,6 +1550,9 @@ def run_ship(
                         caller_kind=exc.caller_kind,
                         extra_fields={"CONFLICT_FILES": exc.conflict_csv},
                     )
+                    raise
+                except Exception:
+                    phase14_flag.unlink(missing_ok=True)
                     raise
             monitor = ci_monitor.monitor(
                 runner,
@@ -1851,6 +1888,8 @@ def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:
 def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdir: Path) -> None:
     if result.outcome is not Outcome.STALLED:
         return
+    if _is_active_pre_push_handoff(ctx):
+        return
     if not _tmpdir_under_allowed_root(str(tmpdir)):
         return
     path = tmpdir / "finalize-state.sh"
@@ -1876,7 +1915,6 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         finalize.write_finalize_state_merged(path, data)
     except Exception as exc:
         logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
-        raise
 
 
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
@@ -1938,11 +1976,7 @@ def main(argv: list[str] | None = None) -> int:
             f"ship.py: internal error\n{traceback.format_exc()}",
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
-    try:
-        _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
-    except Exception as exc:
-        logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
-        result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"stall metadata gap-fill failed: {exc}")
+    _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

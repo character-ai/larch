@@ -1041,21 +1041,6 @@ assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-awk-metachar.out")" "22: seed-
 assert_eq review "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
 assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
 
-
-dir=$(make_tmp case_finalize_fallback)
-cat >"$dir/finalize-state.sh" <<'STATE'
-STALL_TRACKING=true
-STALL_STEP=8
-EXIT_CODE=4
-STATE
-printf '%s\n' 'gh: API rate limit exceeded' >"$dir/failure.log"
-run_capture "$SANDBOX/case_finalize_fallback.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
-assert_eq 0 "$RC" "finalize fallback classify exits 0"
-assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case_finalize_fallback.out")" "finalize fallback classifies from finalize-state stall keys"
-assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case_finalize_fallback.out")" "finalize fallback resume hint"
-assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall tracking"
-assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall step"
-
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

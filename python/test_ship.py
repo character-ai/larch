@@ -1107,12 +1107,17 @@ def test_fresh_postmerge_stall_preserves_postmerge_phase(
     )
     monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
     monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.STALLED, "detail": "blocked", "status": "blocked"})())
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert "PHASE=postmerge\n" in state_file.read_text(encoding="utf-8")
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=postmerge\n" in state
+    assert "PHASE=done\n" not in state
+    assert "STALL_TRACKING=true\n" in state
+    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert finalize_state["STALL_TRACKING"] == "true"
+    assert finalize_state["EXIT_CODE"] == "4"
 
 
 def test_detached_head_resume_refuses(
@@ -1274,6 +1279,171 @@ def test_pre_push_conflict_handoff_persists_resume_tokens(
     assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
     assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
     assert "CONFLICT_FILES=a.txt\n" in state
+    assert not (tmp_path / "finalize-state.sh").exists()
+
+
+def _open_pr_merge_loop_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+
+
+def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    _ = flag.write_text("", encoding="utf-8")
+    _ = state_file.write_text(
+        f"PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n"
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n"
+        f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n"
+        "CONFLICT_FILES=a.txt\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    rebase_calls: list[bool] = []
+
+    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+        rebase_calls.append(True)
+
+    monitor_calls: list[bool] = []
+
+    def fake_monitor(*_args: object, **_kwargs: object) -> object:
+        monitor_calls.append(True)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+    monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
+    monkeypatch.setattr(ship.finalize, "postmerge", lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})())
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.OK
+    assert rebase_calls
+    assert monitor_calls
+    assert not flag.is_file()
+    assert "RESUME_PHASE=\n" in state
+    assert "CALLER_KIND=\n" in state
+    assert "CONFLICT_FILES=" not in state
+
+
+def test_phase14_flag_removed_on_non_handoff_rebase_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    _ = flag.write_text("", encoding="utf-8")
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+
+    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+        raise ShipError("rebase failed")
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert not flag.is_file()
+
+
+def test_main_pre_push_handoff_skips_finalize_gap_fill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n"
+        f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    monkeypatch.setattr(ship, "run_ship", lambda *_a, **_k: ship.ShipResult(Outcome.STALLED, detail="handoff"))
+
+    rc = ship.main([
+        "--tmpdir",
+        str(tmp_path),
+        "--manifest-path",
+        str(tmp_path / "manifest.json"),
+        "--state-file",
+        str(state_file),
+    ])
+    captured = capsys.readouterr()
+    assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
+    assert json.loads(captured.out)["outcome"] == "STALLED"
+    assert not (tmp_path / "finalize-state.sh").exists()
+
+
+def test_routine_state_write_clears_stale_terminal_keys(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "STALL_TRACKING=true\nEXPECTED_SESSION_ID=session-1\n"
+        "EXIT_CODE=4\nBAIL_REASON=stall\nBAIL_NEEDS_USER_INPUT=true\n"
+        "FAILED_RUN_ID=run-1\nBAIL_FAILURE_DETAIL_LOG=/tmp/log\n",
+        encoding="utf-8",
+    )
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        phase="ci-initial",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "EXPECTED_SESSION_ID=session-1\n" in state
+    assert "STALL_TRACKING=true\n" in state
+    assert "EXIT_CODE=" not in state
+    assert "BAIL_REASON=" not in state
+    assert "BAIL_NEEDS_USER_INPUT=" not in state
+    assert "FAILED_RUN_ID=" not in state
+    assert "BAIL_FAILURE_DETAIL_LOG=" not in state
+
+
+def test_run_ship_infrastructure_state_read_error_surfaces_internal_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("PHASE=ci-initial\nBRANCH_NAME=feat\n", encoding="utf-8")
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+
+    def raise_infra(*_args: object, **_kwargs: object) -> StepResult:
+        raise ShipError("cannot read existing ship state: /tmp/state")
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_infra)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.INTERNAL_ERROR
     assert not (tmp_path / "finalize-state.sh").exists()
 
 
@@ -1839,6 +2009,11 @@ def test_ship_error_maps_to_stalled_result() -> None:
     assert result.detail == "operational failure"
 
 
+def test_infrastructure_ship_error_maps_to_internal_error() -> None:
+    result = ship._error_to_result(ShipError("cannot read existing ship state: /tmp/state"))  # pyright: ignore[reportPrivateUsage]
+    assert result.outcome is Outcome.INTERNAL_ERROR
+
+
 def test_run_ship_catches_ship_error_as_stalled(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1915,7 +2090,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
 
 
 def _meets_python_ship_floor(major: int, minor: int) -> bool:
-    return (major, minor) >= (3, 11)
+    return (major, minor) >= (3, 12)
 
 
 def test_postmerge_should_flush_uses_state_file_run_id(tmp_path: Path) -> None:
@@ -2048,9 +2223,9 @@ def test_postmerge_flush_only_when_pr_closed(
 
 
 def test_python_ship_driver_version_guard_probe() -> None:
-    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
-    assert _meets_python_ship_floor(3, 11)
-    assert not _meets_python_ship_floor(3, 10)
+    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.12)."""
+    assert _meets_python_ship_floor(3, 12)
+    assert not _meets_python_ship_floor(3, 11)
 
 
 def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> None:
@@ -2062,7 +2237,7 @@ def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> No
     stub = stub_dir / "python3"
     _ = stub.write_text(
         f"""#!/usr/bin/env bash
-if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
   exit 1
 fi
 exec {real_python} "$@"
@@ -2071,9 +2246,9 @@ exec {real_python} "$@"
     )
     stub.chmod(0o755)
     script = """
-if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.12 or newer" >&2
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.12 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
   exit 4
 fi
 exit 0
@@ -2090,7 +2265,7 @@ exit 0
     )
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
-    assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
+    assert "Python ship driver requires Python 3.12 or newer" in completed.stderr
 
 
 def test_version_supported_gate() -> None:
@@ -2248,7 +2423,7 @@ def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> N
     assert data == {"STALL_TRACKING": "true", "STALL_STEP": "existing"}
 
 
-def test_main_stalled_metadata_write_failure_surfaces_internal_error(
+def test_main_stalled_metadata_write_failure_preserves_stalled_outcome(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2263,9 +2438,9 @@ def test_main_stalled_metadata_write_failure_surfaces_internal_error(
     rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json")])
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
-    assert rc == config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
-    assert payload["outcome"] == "INTERNAL_ERROR"
-    assert payload["detail"] == "stall metadata gap-fill failed: blocked"
+    assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
+    assert payload["outcome"] == "STALLED"
+    assert payload["detail"] == "ensure-pr"
 
 
 def test_main_ensure_pr_stall_creates_finalize_state(
