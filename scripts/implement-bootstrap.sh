@@ -30,6 +30,8 @@ ISSUE_NUMBER_OPT=""
 FORKED_TARGET=false
 EMERGENCY_REQUESTED=false
 EMERGENCY_REQUESTED_ARG_SEEN=false
+SELF_REVIEW_REQUESTED=false
+SELF_REVIEW_REQUESTED_ARG_SEEN=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
 PREFLIGHT_TMPDIR_OPT=""
@@ -75,7 +77,7 @@ coder=""
 coder_fallback=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--emergency-requested true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--emergency-requested true|false] [--self-review-requested true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
 }
 
 die_usage() {
@@ -187,6 +189,7 @@ persist_run_flags() {
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --no-issues false \
         --emergency-requested "$EMERGENCY_REQUESTED" \
+        --self-review-requested "$SELF_REVIEW_REQUESTED" \
         >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
         2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
     persist_rc=$?
@@ -207,6 +210,19 @@ restore_emergency_requested_from_run_flags_if_unset() {
         true) EMERGENCY_REQUESTED=true ;;
         false)
             [ "${EMERGENCY_REQUESTED_ARG_SEEN:-false}" = "true" ] || EMERGENCY_REQUESTED=false
+            ;;
+    esac
+}
+
+restore_self_review_requested_from_run_flags_if_unset() {
+    local prior_self_review=""
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
+    [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
+    prior_self_review=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key SELF_REVIEW_REQUESTED --default "")
+    case "$prior_self_review" in
+        true) SELF_REVIEW_REQUESTED=true ;;
+        false)
+            [ "${SELF_REVIEW_REQUESTED_ARG_SEEN:-false}" = "true" ] || SELF_REVIEW_REQUESTED=false
             ;;
     esac
 }
@@ -568,6 +584,7 @@ phase_infra() {
         IMPLEMENT_TMPDIR=$SESSION_TMPDIR
         export IMPLEMENT_TMPDIR
         restore_emergency_requested_from_run_flags_if_unset
+        restore_self_review_requested_from_run_flags_if_unset
 
         REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
         REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
@@ -714,6 +731,7 @@ phase_infra() {
     fi
 
     restore_emergency_requested_from_run_flags_if_unset
+    restore_self_review_requested_from_run_flags_if_unset
 
     if [ "$REPO_UNAVAILABLE" = "true" ]; then
         larch_err '**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**'
@@ -1179,6 +1197,16 @@ phase_coder_select() {
     "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — coder select" || true
     LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — coder select" || true
 
+    # --emergency forces the main agent to do the coding; external coders are
+    # skipped so the operator can bypass plan-adequacy gates without waiting
+    # for Codex/Cursor availability.
+    if [ "${EMERGENCY_REQUESTED:-false}" = "true" ]; then
+        larch_err "**⚠ /implement --emergency: forcing coder=claude (main agent). External implementers are bypassed in emergency mode.**"
+        coder=claude
+        emit_coder_breadcrumb
+        return 0
+    fi
+
     local codex_binary_found cursor_binary_found
     codex_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
     cursor_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
@@ -1368,6 +1396,7 @@ emit_final_tail() {
     emit_kv BRANCH_ACTION "${BRANCH_ACTION:-}"
     emit_kv PLAN_FILE "${PLAN_FILE:-}"
     emit_kv EMERGENCY_REQUESTED "${EMERGENCY_REQUESTED:-false}"
+    emit_kv SELF_REVIEW_REQUESTED "${SELF_REVIEW_REQUESTED:-false}"
     emit_kv coder "${coder:-}"
     emit_kv coder_fallback "${coder_fallback:-}"
     emit_kv IMPLEMENT_BAIL_REASON "${IMPLEMENT_BAIL_REASON:-}"
@@ -1404,6 +1433,14 @@ main() {
                 case "$2" in
                     true|false) EMERGENCY_REQUESTED=$2; EMERGENCY_REQUESTED_ARG_SEEN=true ;;
                     *) die_usage "--emergency-requested must be true or false" ;;
+                esac
+                shift 2
+                ;;
+            --self-review-requested)
+                [ $# -ge 2 ] || die_usage "--self-review-requested requires a value"
+                case "$2" in
+                    true|false) SELF_REVIEW_REQUESTED=$2; SELF_REVIEW_REQUESTED_ARG_SEEN=true ;;
+                    *) die_usage "--self-review-requested must be true or false" ;;
                 esac
                 shift 2
                 ;;

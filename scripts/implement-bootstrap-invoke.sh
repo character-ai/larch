@@ -67,6 +67,11 @@ case "${emergency_requested:-}" in
   true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
 esac
 
+_ib_self_review=()
+case "${self_review:-}" in
+  true|false) _ib_self_review+=(--self-review-requested "$self_review") ;;
+esac
+
 _phase_args=()
 case "$MODE" in
   initial)
@@ -79,7 +84,7 @@ case "$MODE" in
 esac
 
 set +e
-_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" "${_phase_args[@]}" "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_emergency[@]+"${_ib_emergency[@]}"}")
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" "${_phase_args[@]}" "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_emergency[@]+"${_ib_emergency[@]}"}" "${_ib_self_review[@]+"${_ib_self_review[@]}"}")
 _ib_rc=$?
 set -e
 
@@ -148,7 +153,7 @@ if [ "$_ib_rc" -ne 0 ]; then
   exit "$_ib_rc"
 fi
 
-_inv_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+_inv_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION SELF_REVIEW_REQUESTED'
 
 _inv_emit_routing_kv() {
   _inv_line=$1

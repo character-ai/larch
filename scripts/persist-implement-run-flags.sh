@@ -10,10 +10,12 @@
 # Usage:
 #   persist-implement-run-flags.sh --implement-tmpdir PATH \
 #       [--quick-mode true|false] [--emergency-requested true|false] \
+#       [--self-review-requested true|false] \
 #       --no-issues true|false
 #
 # When --quick-mode is omitted, QUICK_MODE=false is written. When
 # --emergency-requested is omitted, EMERGENCY_REQUESTED=false is written.
+# When --self-review-requested is omitted, SELF_REVIEW_REQUESTED=false is written.
 #
 # Exit 2 on validation failure.
 
@@ -25,6 +27,7 @@ IMPLEMENT_TMPDIR=""
 QUICK_MODE=""
 NO_ISSUES=""
 EMERGENCY_REQUESTED=""
+SELF_REVIEW_REQUESTED=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -48,6 +51,11 @@ while [[ $# -gt 0 ]]; do
             EMERGENCY_REQUESTED="$2"
             shift 2
             ;;
+        --self-review-requested)
+            [[ $# -ge 2 ]] || fail "--self-review-requested requires a value"
+            SELF_REVIEW_REQUESTED="$2"
+            shift 2
+            ;;
         *) fail "unknown option: $1" ;;
     esac
 done
@@ -56,8 +64,10 @@ done
 [[ -d "$IMPLEMENT_TMPDIR" ]] || fail "--implement-tmpdir not a directory"
 [[ -n "$QUICK_MODE" ]] || QUICK_MODE="false"
 [[ -n "$EMERGENCY_REQUESTED" ]] || EMERGENCY_REQUESTED="false"
+[[ -n "$SELF_REVIEW_REQUESTED" ]] || SELF_REVIEW_REQUESTED="false"
 case "$QUICK_MODE" in true|false) ;; *) fail "--quick-mode must be true or false" ;; esac
 case "$EMERGENCY_REQUESTED" in true|false) ;; *) fail "--emergency-requested must be true or false" ;; esac
+case "$SELF_REVIEW_REQUESTED" in true|false) ;; *) fail "--self-review-requested must be true or false" ;; esac
 case "$NO_ISSUES" in true|false) ;; *) fail "--no-issues must be true or false" ;; esac
 
 out="$IMPLEMENT_TMPDIR/run-flags.sh"
@@ -69,6 +79,7 @@ trap cleanup EXIT
     printf 'QUICK_MODE=%s\n' "$QUICK_MODE"
     printf 'NO_ISSUES=%s\n' "$NO_ISSUES"
     printf 'EMERGENCY_REQUESTED=%s\n' "$EMERGENCY_REQUESTED"
+    printf 'SELF_REVIEW_REQUESTED=%s\n' "$SELF_REVIEW_REQUESTED"
 } > "$tmp"
 
 mv "$tmp" "$out"
