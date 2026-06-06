@@ -167,15 +167,14 @@ def read_durable_flags(state_file: str | None, ctx: RunContext) -> DurableFlags:
 
 
 def parse_pr_number(state_file: str | None, ctx_pr_number: int | str | None) -> int | None:
-    """Parse a persisted PR number; fall back to ctx only when state is absent/empty."""
+    """Parse the persisted PR number; ignore stale context when state exists."""
     if not state_file:
         return None
     raw = _read_state_kv(state_file, "PR_NUMBER")
     if raw.strip():
         return _parse_positive_int(raw)
-    if ctx_pr_number is None:
-        return None
-    return _parse_positive_int(str(ctx_pr_number))
+    _ = ctx_pr_number
+    return None
 
 
 def manifest_status(ctx: RunContext) -> str:

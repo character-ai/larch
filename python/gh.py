@@ -363,9 +363,12 @@ def _validate_recovered_pr(
         if allow_unverified:
             return candidate
         return None
+    state = viewed.state.upper()
+    if state == "MERGED":
+        return viewed
     if viewed.head_ref != branch:
         return None
-    if viewed.state.upper() != "OPEN":
+    if state != "OPEN":
         return None
     return viewed
 

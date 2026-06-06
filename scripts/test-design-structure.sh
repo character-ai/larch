@@ -74,6 +74,124 @@ EOF_FIXTURE
   rm -rf "$tmp"
 }
 
+assert_design_route_pause_integration() {
+  local tmp plugin body route_out
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-route-pause.XXXXXX")
+  plugin="$tmp/plugin"
+  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts"
+  cp "$REPO_ROOT/scripts/lib-title-eligibility.sh" "$plugin/scripts/lib-title-eligibility.sh"
+  cp "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" "$plugin/skills/design/scripts/step-name-registry.tsv"
+  cat >"$plugin/scripts/lib-design-reentry-guard.sh" <<'EOF_FIXTURE'
+design_reentry_marker_hit() {
+  printf '%s\n' 'MARKER_HIT=false'
+  return 0
+}
+design_reentry_marker_path() {
+  printf '%s\n' '/tmp/no-reentry-marker'
+}
+EOF_FIXTURE
+  cat >"$plugin/scripts/design-pause-load.sh" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+case "${STUB_PAUSE_LOAD_MODE:-ok}" in
+  ok)
+    printf '%s\n' \
+      'LOAD_OK=true' \
+      'STEP=1d' \
+      'SESSION_ID=RUNTEST' \
+      'RUN_ID=RUNTEST' \
+      'TIER=SIMPLE' \
+      'BRAINSTORM_DONE=false' \
+      'MARKER_CLEARED=true'
+    ;;
+  stale)
+    printf '%s\n' \
+      'LOAD_OK=true' \
+      'STEP=1d' \
+      'SESSION_ID=RUNTEST' \
+      'RUN_ID=RUNTEST' \
+      'TIER=SIMPLE' \
+      'BRAINSTORM_DONE=false' \
+      'MARKER_CLEARED=false' \
+      'WARN=marker-delete-failed'
+    ;;
+  fail)
+    printf '%s\n' 'LOAD_OK=false' 'ERROR=missing-restored-artifact'
+    ;;
+  *)
+    printf '%s\n' 'LOAD_OK=false' 'ERROR=stub-unknown-mode'
+    ;;
+esac
+EOF_FIXTURE
+  chmod +x "$plugin/scripts/design-pause-load.sh"
+  cat >"$plugin/scripts/write-design-current-env.sh" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+exit 0
+EOF_FIXTURE
+  chmod +x "$plugin/scripts/write-design-current-env.sh"
+  body="$tmp/issue-body.txt"
+  printf '%s\n' 'fixture body' \
+    '<!-- larch:design-pause:start -->' \
+    'ISSUE_NUMBER=1' \
+    'RUN_ID=RUNTEST' \
+    'STEP=1d' \
+    '<!-- larch:design-pause:end -->' >"$body"
+  mkdir -p "$tmp/design-tmpdir"
+
+  if ! route_out=$(STUB_PAUSE_LOAD_MODE=ok CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
+    --design-tmpdir "$tmp/design-tmpdir" \
+    --issue 1 \
+    --issue-title "[DESIGNING] paused fixture" \
+    --issue-body-file "$body" \
+    --has-clarify-label false \
+    --claude-pid "$$" \
+    --session-id "test-session"); then
+    rm -rf "$tmp"
+    fail "design-route.sh pause-resume lifecycle fixture failed"
+  fi
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=resume@1d' \
+    || { rm -rf "$tmp"; fail "design-route.sh must resume on lifecycle title when pause load succeeds: $route_out"; }
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-title-filter' \
+    && { rm -rf "$tmp"; fail "design-route.sh must not title-filter when pause resume succeeds: $route_out"; }
+
+  mkdir -p "$tmp/design-tmpdir-stale"
+  if ! route_out=$(STUB_PAUSE_LOAD_MODE=stale CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
+    --design-tmpdir "$tmp/design-tmpdir-stale" \
+    --issue 1 \
+    --issue-title "[DESIGNING] stale marker" \
+    --issue-body-file "$body" \
+    --has-clarify-label false \
+    --claude-pid "$$" \
+    --session-id "test-session"); then
+    rm -rf "$tmp"
+    fail "design-route.sh stale-marker fixture failed"
+  fi
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-pause-load' \
+    || { rm -rf "$tmp"; fail "design-route.sh must cancel when MARKER_CLEARED=false: $route_out"; }
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=resume@' \
+    && { rm -rf "$tmp"; fail "design-route.sh must not resume when MARKER_CLEARED=false: $route_out"; }
+
+  mkdir -p "$tmp/design-tmpdir-fail"
+  if ! route_out=$(STUB_PAUSE_LOAD_MODE=fail CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
+    --design-tmpdir "$tmp/design-tmpdir-fail" \
+    --issue 1 \
+    --issue-title "[DESIGNING] load fail" \
+    --issue-body-file "$body" \
+    --has-clarify-label false \
+    --claude-pid "$$" \
+    --session-id "test-session"); then
+    rm -rf "$tmp"
+    fail "design-route.sh pause-load-fail fixture failed"
+  fi
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-pause-load' \
+    || { rm -rf "$tmp"; fail "design-route.sh must cancel when pause load fails: $route_out"; }
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=proceed' \
+    && { rm -rf "$tmp"; fail "design-route.sh must not proceed when pause marker load fails: $route_out"; }
+  printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-title-filter' \
+    && { rm -rf "$tmp"; fail "design-route.sh must not title-filter when pause load fails: $route_out"; }
+
+  rm -rf "$tmp"
+}
+
 contains() {
   local file="$1" needle="$2" label="$3"
   grep -Fq -- "$needle" "$file" || fail "$label"
@@ -1521,12 +1639,16 @@ printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "WARN=$_value"' \
 printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "ERROR=$_value"' \
   || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print ERROR breadcrumbs"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-printf '%s\n' "$step0b_block" | grep -Fq 'On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.' \
-  || fail "(FINDING_10) SKILL.md Step 0b missing LOAD_OK=false fallthrough breadcrumb prose"
+printf '%s\n' "$step0b_block" | grep -Fq 'When the driver emits `ROUTE=cancel-pause-load`' \
+  || fail "(FINDING_10) SKILL.md Step 0b missing cancel-pause-load breadcrumb prose"
 printf '%s\n' "$step0b_block" | grep -Fq '_route_warn_lines' \
   || fail "(FINDING_10) SKILL.md Step 0b missing route warning collection"
 printf '%s\n' "$step0b_block" | grep -Fq '_route_error_lines' \
   || fail "(FINDING_10) SKILL.md Step 0b missing route error collection"
+printf '%s\n' "$step0b_block" | grep -Fq 'BRAINSTORM_DONE|MARKER_CLEARED' \
+  || fail "(FINDING_1) SKILL.md Step 0b route allowlist must include MARKER_CLEARED"
+printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_CLEARED=${MARKER_CLEARED}' \
+  || fail "(FINDING_1) SKILL.md Step 0b resume breadcrumb must surface MARKER_CLEARED"
 printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_AGE=0' \
   || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_AGE before reentry guard branch"
 printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_TTL=300' \
@@ -1556,6 +1678,11 @@ if (( bare_devnull_count != 2 )); then
   fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null exactly twice"
 fi
 assert_cancel_route_stdout_kv_only
+assert_design_route_pause_integration
+grep -Fq 'pause-marker-not-cleared' "$DESIGN_ROUTE_SH" \
+  || fail "design-route.sh must cancel resume when MARKER_CLEARED=false"
+grep -Fq 'MARKER_CLEARED" == false' "$DESIGN_ROUTE_SH" \
+  || fail "design-route.sh must gate resume on MARKER_CLEARED=false"
 resume_refresh_fail_line=$(grep -nF 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
 resume_route_assign_line=$(grep -nF 'ROUTE="resume@' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
 [[ -n "$resume_refresh_fail_line" && -n "$resume_route_assign_line" ]] \

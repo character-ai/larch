@@ -100,9 +100,12 @@ Pause publishes differ in four ways:
 - Branch reuse: the script best-effort fetches an existing
   `origin/larch-log-design-<RUN_ID>` ref before creating the disposable worktree
   and pushes with `git push --force-with-lease`.
-- `.completed/`: any regular files under `$DESIGN_TMPDIR/.completed/` with
-  `step-*` basenames are staged to
+- `.completed/`: regular files under `$DESIGN_TMPDIR/.completed/` with
+  `step-*` basenames, plus the exact driver phase-sentinel basenames
+  `emit_plan`, `tally`, `finalize`, and `validate_plan_commands`, are staged to
   `larch-logs/design/<RUN_ID>/.completed/` through the normal redaction path.
+  The phase-sentinel list is sourced from `skills/design/scripts/design-driver.sh`
+  accepted actions and must stay in sync with that driver list.
 
 ## PR creation exception
 

@@ -374,7 +374,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
              printf -v "$_key" '%s' "$_value" ;;
            WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
            ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
@@ -385,7 +385,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
          [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
       WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
       ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
@@ -407,6 +407,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
        ;;
      resume@*)
        RESUME_STEP="${ROUTE#resume@}"
+       [[ -z "${MARKER_CLEARED:-}" ]] || printf '%s\n' "MARKER_CLEARED=${MARKER_CLEARED}"
        printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
    esac
    _route_valid=false
@@ -438,7 +439,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` directly (file-first; refuse symlinks) and parse only allowlisted `ROUTE=`. Do not rely on `_route_out` or merged stdout KVs after the fence. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
-   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
+   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
 3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).

@@ -22,15 +22,6 @@ usage() {
     larch_err "Usage: design-pause-load.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]"
 }
 
-emit_load_fail() {
-    if [[ "${2:-false}" == "true" ]]; then
-        clear_pause_marker
-    fi
-    emit_kv LOAD_OK false
-    emit_kv ERROR "$1"
-    exit 0
-}
-
 clear_pause_marker() {
     local clear_args=(
         "$SCRIPT_DIR/named-block-write.sh"
@@ -39,7 +30,28 @@ clear_pause_marker() {
         --issue "$ISSUE"
     )
     [[ -n "$REPO" ]] && clear_args+=(--repo "$REPO")
-    "${clear_args[@]}" >/dev/null 2>&1 || true
+    "${clear_args[@]}" >/dev/null 2>&1
+}
+
+load_fail_retryable() {
+    case "$1" in
+        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+emit_load_fail() {
+    local error="$1"
+    if ! load_fail_retryable "$error"; then
+        clear_pause_marker >/dev/null 2>&1 || true
+    fi
+    emit_kv LOAD_OK false
+    emit_kv ERROR "$error"
+    exit 0
 }
 
 kv_get() {
@@ -103,8 +115,9 @@ fi
 body_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-body.XXXXXX")
 payload_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-payload.XXXXXX")
 stripped_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-stripped.XXXXXX")
+enum_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-pause-ls-tree.XXXXXX")
 restore_tmp=$(mktemp -d "${TMPDIR:-/tmp}/design-pause-load-restore.XXXXXX")
-trap 'rm -f "$body_tmp" "$payload_tmp" "$stripped_tmp"; rm -rf "$restore_tmp"' EXIT
+trap 'rm -f "$body_tmp" "$payload_tmp" "$stripped_tmp" "$enum_tmp"; rm -rf "$restore_tmp"' EXIT
 
 if ! gh issue view "$ISSUE" "${gh_repo_args[@]}" --json body | jq -r '.body // ""' > "$body_tmp"; then
     emit_load_fail "issue-body-read-failed"
@@ -205,18 +218,18 @@ fi
 REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_TOP=""
 [[ -n "$REPO_TOP" ]] || emit_load_fail "not-git-worktree"
 
-archive_ref=""
+snapshot_ref=""
 if [[ -n "$LOG_RECOVERY_BRANCH" ]]; then
     if [[ "$LOG_RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
         if ! git -C "$REPO_TOP" show-ref --verify --quiet "refs/heads/$LOG_RECOVERY_BRANCH"; then
-            emit_load_fail "snapshot-not-found" true
+            emit_load_fail "snapshot-not-found"
         fi
-        archive_ref="$LOG_RECOVERY_BRANCH"
+        snapshot_ref="$LOG_RECOVERY_BRANCH"
     else
         if ! git -C "$REPO_TOP" fetch origin "$LOG_RECOVERY_BRANCH" >/dev/null 2>&1; then
-            emit_load_fail "snapshot-not-found" true
+            emit_load_fail "snapshot-not-found"
         fi
-        archive_ref="FETCH_HEAD"
+        snapshot_ref="FETCH_HEAD"
     fi
 else
     ORIGIN_DEFAULT=$(
@@ -225,14 +238,30 @@ else
     ) || ORIGIN_DEFAULT=""
     [[ -n "$ORIGIN_DEFAULT" ]] || ORIGIN_DEFAULT="main"
     if ! git -C "$REPO_TOP" fetch origin "$ORIGIN_DEFAULT" >/dev/null 2>&1; then
-        emit_load_fail "snapshot-not-found" true
+        emit_load_fail "snapshot-not-found"
     fi
-    archive_ref="origin/$ORIGIN_DEFAULT"
+    snapshot_ref="origin/$ORIGIN_DEFAULT"
 fi
 
-if ! git -C "$REPO_TOP" archive "$archive_ref" "larch-logs/design/$RUN_ID/" | tar -x --strip-components=3 -C "$restore_tmp"; then
-    emit_load_fail "snapshot-extract-failed" true
+snapshot_sha=$(git -C "$REPO_TOP" rev-parse --verify "${snapshot_ref}^{commit}" 2>/dev/null) || emit_load_fail "snapshot-not-found"
+snapshot_prefix="larch-logs/design/${RUN_ID}/"
+if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$snapshot_sha" -- "$snapshot_prefix" >"$enum_tmp"; then
+    emit_load_fail "snapshot-extract-failed"
 fi
+while IFS= read -r -d '' path; do
+    rel="${path#"$snapshot_prefix"}"
+    if [[ "$rel" == "$path" || -z "$rel" ]]; then
+        emit_load_fail "snapshot-extract-failed"
+    fi
+    case "$rel" in
+        /*|../*|*/../*|*/..|..) emit_load_fail "snapshot-extract-failed" ;;
+    esac
+    dest="$restore_tmp/$rel"
+    mkdir -p "$(dirname "$dest")" || emit_load_fail "snapshot-extract-failed"
+    if ! git -C "$REPO_TOP" show "$snapshot_sha:$path" >"$dest"; then
+        emit_load_fail "snapshot-extract-failed"
+    fi
+done <"$enum_tmp"
 
 plan_required=true
 if awk -F '\t' -v step="$STEP" '
@@ -244,10 +273,10 @@ if awk -F '\t' -v step="$STEP" '
 fi
 
 for required in manifest.json run-params.json pause-state.txt; do
-    [[ -f "$restore_tmp/$required" ]] || emit_load_fail "missing-restored-artifact" true
+    [[ -f "$restore_tmp/$required" ]] || emit_load_fail "missing-restored-artifact"
 done
 if [[ "$plan_required" == true ]]; then
-    [[ -f "$restore_tmp/plan.txt" ]] || emit_load_fail "missing-restored-artifact" true
+    [[ -f "$restore_tmp/plan.txt" ]] || emit_load_fail "missing-restored-artifact"
 fi
 
 RESTORED_DESIGN_CLASSIFICATION=$(jq -r '.design_classification // empty' "$restore_tmp/run-params.json" 2>/dev/null) || RESTORED_DESIGN_CLASSIFICATION=""
@@ -262,38 +291,40 @@ fi
 RESTORED_ISSUE=$(kv_get ISSUE_NUMBER "$restore_tmp/pause-state.txt")
 validate_plain_value restored-issue-number "$RESTORED_ISSUE"
 if [[ "$RESTORED_ISSUE" != "$ISSUE" ]]; then
-    emit_load_fail "restored-issue-mismatch" true
+    emit_load_fail "restored-issue-mismatch"
 fi
 
 RESTORED_RUN_ID=$(kv_get RUN_ID "$restore_tmp/pause-state.txt")
 validate_plain_value restored-run-id "$RESTORED_RUN_ID"
 if [[ "$RESTORED_RUN_ID" != "$RUN_ID" ]]; then
-    emit_load_fail "restored-run-id-mismatch" true
+    emit_load_fail "restored-run-id-mismatch"
 fi
 
 RESTORED_REPO=$(kv_get REPO "$restore_tmp/pause-state.txt")
 if [[ -n "$RESTORED_REPO" ]]; then
     validate_repo_value "$RESTORED_REPO"
     if [[ -n "$CURRENT_REPO" && "$RESTORED_REPO" != "$CURRENT_REPO" ]]; then
-        emit_load_fail "restored-repo-mismatch" true
+        emit_load_fail "restored-repo-mismatch"
     fi
 fi
 
-manifest_issue=$(jq -r '.issue_number // empty' "$restore_tmp/manifest.json" 2>/dev/null) || emit_load_fail "invalid-restored-manifest" true
+manifest_issue=$(jq -r '.issue_number // empty' "$restore_tmp/manifest.json" 2>/dev/null) || emit_load_fail "invalid-restored-manifest"
 if [[ -z "$manifest_issue" || "$manifest_issue" != "$ISSUE" ]]; then
-    emit_load_fail "restored-issue-mismatch" true
+    emit_load_fail "restored-issue-mismatch"
 fi
 
-manifest_run_id=$(jq -r '.run_id // empty' "$restore_tmp/manifest.json" 2>/dev/null) || emit_load_fail "invalid-restored-manifest" true
+manifest_run_id=$(jq -r '.run_id // empty' "$restore_tmp/manifest.json" 2>/dev/null) || emit_load_fail "invalid-restored-manifest"
 if [[ -z "$manifest_run_id" || "$manifest_run_id" != "$RUN_ID" ]]; then
-    emit_load_fail "restored-run-id-mismatch" true
+    emit_load_fail "restored-run-id-mismatch"
 fi
+
+rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
+
+: > "$restore_tmp/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
     emit_load_fail "restore-install-failed"
 fi
-
-: > "$DESIGN_TMPDIR/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 
 emit_kv LOAD_OK true
 emit_kv STEP "$STEP"
@@ -303,4 +334,10 @@ emit_kv TIER "${TIER:-unknown}"
 emit_kv BRAINSTORM_DONE "${BRAINSTORM_DONE:-false}"
 [[ -n "$CURRENT_REPO" ]] && emit_kv REPO "$CURRENT_REPO"
 [[ -n "$WARN_VALUE" ]] && emit_kv WARN "$WARN_VALUE"
+if ! clear_pause_marker; then
+    emit_kv MARKER_CLEARED false
+    emit_kv WARN marker-delete-failed
+else
+    emit_kv MARKER_CLEARED true
+fi
 exit 0

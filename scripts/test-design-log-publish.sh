@@ -613,18 +613,29 @@ export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSE1"
 unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE/design/.completed"
 printf 'p\n' >"$TMPPAUSE/design/plan.txt"
-printf 'done\n' >"$TMPPAUSE/design/.completed/step-1c"
+for sentinel in step-1c emit_plan finalize validate_plan_commands tally; do
+    printf 'done\n' >"$TMPPAUSE/design/.completed/$sentinel"
+done
 (
     cd "$clone_pause" || exit 1
     out_pause=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE/design" --run-id "RUNPAUSE1" --issue 42 --repo owner/repo)
     [[ "$out_pause" == *"PUBLISH_OK=true"* ]] || fail "pause PUBLISH_OK: $out_pause"
 )
 git -C "$clone_pause" pull -q origin main
-[[ -f "$clone_pause/larch-logs/design/RUNPAUSE1/.completed/step-1c" ]] || fail "pause .completed sentinel missing"
+for sentinel in step-1c emit_plan finalize validate_plan_commands tally; do
+    [[ -f "$clone_pause/larch-logs/design/RUNPAUSE1/.completed/$sentinel" ]] || fail "pause .completed sentinel missing: $sentinel"
+done
 jq -e '.paused == true' "$clone_pause/larch-logs/design/RUNPAUSE1/manifest.json" >/dev/null || fail "pause manifest missing paused=true"
 git -C "$clone_pause" fetch -q origin larch-log-design-RUNPAUSE1:larch-log-design-RUNPAUSE1
 pause_subject=$(git -C "$clone_pause" log -1 --format=%s larch-log-design-RUNPAUSE1)
 [[ "$pause_subject" == "chore(larch-logs): pause design run RUNPAUSE1" ]] || fail "pause commit subject mismatch: $pause_subject"
+
+printf 'bad\n' >"$TMPPAUSE/design/.completed/bogus"
+out_pause_bad=$(
+    (cd "$clone_pause" && bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE/design" --run-id "RUNPAUSEBAD1" --issue 42 --repo owner/repo) 2>&1 || true
+)
+[[ "$out_pause_bad" == *"PUBLISH_OK=false"* && "$out_pause_bad" == *"unexpected file under .completed: bogus"* ]] \
+    || fail "pause unexpected .completed basename should fail: $out_pause_bad"
 
 echo "=== pause publish accepts no-op when default branch already has snapshot ==="
 TMPPAUSE_NOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-noop.XXXXXX")

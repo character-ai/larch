@@ -90,20 +90,27 @@ outside the resolved `plan-review` root.
 `<!-- larch:design-pause -->` marker payload before a pause snapshot becomes
 resumable. `scripts/design-pause-load.sh` fails closed unless those bindings
 match the caller issue/repo, validates the remaining marker fields before any
-fetch, restores into a staging directory first, rejects extracted symlinks or
-escaped paths, verifies required artifacts, and deletes the marker before
-copying staged artifacts into the caller tmpdir. This prevents an edited issue
-body from silently retargeting resume to another run or leaving a
-partially-restored local state behind when marker deletion fails. When the
-loader hits an unrecoverable stale marker or missing snapshot (`invalid-*`,
-`snapshot-not-found`, extract failure, missing required artifact), it
-best-effort clears the marker so the operator can continue with a fresh
-`/design` run instead of looping on the same broken pause state. Supported
-recovery-branch prefixes are both `larch-log-design-<RUN_ID>` and
-`larch-log-design-recovery-<RUN_ID>`. Recovery-branch restore resolves the
-fetched commit object first and archives that immutable object id, rather than
-archiving from mutable `FETCH_HEAD`. Residual risk: collaborators with issue
-body edit rights can still redirect the marker to another snapshot for the same
+fetch, restores into a staging directory first with export-ignore-independent
+`git ls-tree -r -z` enumeration plus per-file `git show`, rejects paths outside
+the snapshot subtree, and verifies required artifacts before installing into the
+caller tmpdir. This prevents an edited issue body from silently retargeting
+resume to another run or leaving a partially-restored local state behind. The
+loader keeps the marker on retryable restore, extract, and snapshot-content
+failures such as `snapshot-not-found`, `snapshot-extract-failed`, and
+`missing-restored-artifact`; permanent validation or binding failures clear the
+marker before returning `LOAD_OK=false`. It deletes the marker only after a
+successful install and `.resume-loaded` write. A successful load also removes
+restored `$DESIGN_TMPDIR/.pause-requested` before resuming. A post-success
+marker deletion failure is non-fatal and surfaces as `MARKER_CLEARED=false` plus
+`WARN=marker-delete-failed` with `LOAD_OK=true`; `design-route.sh` refuses
+`resume@*` until the stale marker is removed manually. Successful marker deletion
+surfaces `MARKER_CLEARED=true`.
+Supported recovery-branch prefixes are both `larch-log-design-<RUN_ID>` and
+`larch-log-design-recovery-<RUN_ID>`. Remote recovery fetches the branch, then
+pins `FETCH_HEAD` to an immutable commit SHA via `git rev-parse --verify
+'<ref>^{commit}'` before `git ls-tree` / `git show` enumeration and extraction;
+the loader never passes mutable `FETCH_HEAD` directly into extraction. Recovery-branch restore reads committed blobs from the resolved commit with `git show`, rather than relying on `git archive`, so committed `larch-logs/ export-ignore` attributes do not hide pause snapshots from the loader. Residual risk: collaborators with issue body
+edit rights can still redirect the marker to another snapshot for the same
 issue, so resume surfaces a warning that the marker is collaborator-editable
 rather than claiming a stronger authenticity guarantee than GitHub issue
 metadata provides.

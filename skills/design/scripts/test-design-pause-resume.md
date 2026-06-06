@@ -1,8 +1,8 @@
 # test-design-pause-resume.sh contract
 
 Offline regression harness for `/design` pause/resume helpers. It stubs `gh`,
-`git fetch`, `git archive`, and `design-log-publish.sh` so the round-trip runs
-without network access.
+`git fetch`, `git ls-tree`, `git show`, and `design-log-publish.sh` so the
+round-trip runs without network access.
 
 Primary contracts live in:
 
@@ -25,3 +25,13 @@ Do not satisfy this case by calling `complete_design_steps … 3 3.5 3.6` or by 
 ## Recent contract coverage
 
 - Covers malformed and argv-precedence `--repo` failures, contradictory publish envelopes, and exit-1 recovery branches that remain resumable.
+- Covers real-git export-ignore restoration in a stub-free-PATH subshell that
+  `cd`s into the initialized repo so `git rev-parse` binds `REPO_TOP` to the
+  snapshot worktree.
+- Covers marker delete-on-success for round-trip and body-drift resumes,
+  restored `.pause-requested` cleanup, `MARKER_CLEARED=true|false`, and
+  `WARN=marker-delete-failed` when post-success marker deletion fails.
+- Covers marker keep-on-failure for late-step and deleted-subtree empty
+  enumeration `missing-restored-artifact` paths plus dedicated
+  `snapshot-extract-failed` fixtures for failed `ls-tree` and per-path
+  `git show`.
