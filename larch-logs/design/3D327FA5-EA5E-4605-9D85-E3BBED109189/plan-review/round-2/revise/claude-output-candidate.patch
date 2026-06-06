@@ -1,0 +1,157 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,9 +14,11 @@
+   `timing-ledger.sh mark`, `timing-ledger.sh record-vendor-task`, and
+   `timing-report.sh` invocation co-locates `LARCH_TIMING_SKILL=implement` on the
+-  same command line. Scanned set: `scripts/implement-bootstrap.sh`,
++  same command line. Match by basename (`timing-ledger.sh` / `timing-report.sh`)
++  not by a `scripts/` path prefix — production scripts invoke via `$SCRIPT_DIR`.
++  Scanned set: `scripts/implement-bootstrap.sh`,
+   `skills/implement/scripts/step2-implement.sh`,
+   `skills/implement/scripts/commit-implementation.sh`,
+   `skills/implement/scripts/commit-review-fixes.sh`,
+@@ -22,7 +24,8 @@
+   `scripts/run-step5-review.sh`, `scripts/run-relevant-checks-captured.sh`,
+-  `scripts/launch-codex-implement.sh`, `scripts/launch-cursor-implement.sh`.
++  `scripts/launch-codex-implement.sh`, `scripts/launch-cursor-implement.sh`,
++  `scripts/launch-codex-ci.sh`, `scripts/launch-cursor-ci.sh`.
+   Keep the existing literal `grep -qF` per-mark pins (Step 4 / Step 7 / Step 7a /
+   Step 0 etc.) — the scanner is additive so dropped pins in the known set fail CI,
+   and future implement timing emitters must be added to the scanner list.
+@@ -36,7 +40,10 @@
+   production implement code does not read a `workflow_path` key (stale values from
+-  pre-#3432 run-params are ignored). Pin exact tokens with `grep -Fq`/`! grep -Fq`.
++  pre-#3432 run-params are ignored). Scope the `workflow_path` read-assertion to
++  the same explicit production `.sh` set as the A1 scanner (exclude `test-*.sh`)
++  to avoid false-failures on fixture references. Pin exact tokens with
++  `grep -Fq`/`! grep -Fq`.
+ 
+ ### UPDATED: `scripts/launch-codex-implement.sh`
+@@ -51,6 +58,18 @@
+ Codex change per external-tool-launcher-parity. Do NOT touch
+ `scripts/launch-review.sh` `record-vendor-task` — it also serves `/review`, where
+ pinning `=implement` would mis-tag review usage (intentional exclusion).
++
++### UPDATED: `scripts/launch-codex-ci.sh`
++A2. Pin `emit_timing_record()`'s `record-vendor-task` call with the same inline
++prefix shape: `DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \`.
++Prevents a polluted ambient `LARCH_TIMING_SKILL=design` from tagging Codex
++CI-fix vendor rows as `design`.
++
++### UPDATED: `scripts/launch-cursor-ci.sh`
++A2. Same one-line pin on the Cursor CI launcher's `record-vendor-task` call,
++mirroring the Codex CI change. Keep `scripts/launch-review.sh` excluded (serves
++`/review`; pinning `=implement` there would mis-tag review-phase rows).
+ 
+ ### UPDATED: `python/test_ci_monitor.py`
+ B. Add a focused set (≈2–4) of monitor-level outcome tests, additive only,
+@@ -60,11 +79,13 @@
+ `evaluate_failure` suites. Candidates to confirm and cover:
+-- `decide()` `status="error"` → `bail` and its monitor-level terminal `Outcome`
+-  (assert the `MonitorResult.result.outcome` for the CI-status-error bail path).
+-- `monitor()` `already_merged` short-circuit → `Outcome.OK`.
+-- `decide()` fallthrough `wait` for an unknown status (rows the parity table omits).
+-The implementer verifies which `Outcome` each path yields and adds only the
+-genuinely-uncovered ones. Keep within the ~30–60 LOC the OOS scoped.
++- `monitor()` `already_merged` short-circuit → `Outcome.OK`.
++- `monitor()` consecutive status-gather error bail → `Outcome.STALLED` (assert
++  after three consecutive `status=error` failures exhaust the bail threshold; a
++  single `status=error` is rewritten to pending by `poll_ci` and does not reach
++  `decide()` directly).
++Drop the unknown-status wait candidate: `poll_ci` loops on `action==wait` and
++never surfaces unknown-status wait through `monitor()`; bash rejects unknown
++statuses rather than treating them as wait. The implementer verifies which
++`Outcome` each path yields and adds only the genuinely-uncovered ones. Keep
++within the ~30–60 LOC the OOS scoped.
+ 
+ ### UPDATED: `scripts/test-larch-log-write-round.sh`
+@@ -105,6 +127,13 @@
+ D3 prose-only clarification beside the `logging_util.py` description: Python quiet
+ logging mirrors bash quiet stream routing, but intentionally uses append-forensics
+ log opens rather than bash's truncate-per-initialization behavior.
++
++### UPDATED: `scripts/lib-quiet.md`
++D3. Add a surgical sentence to the quiet-log contract documenting that
++`larch_quiet_init` truncates the selected bash quiet log before redirecting
++stdout/stderr (truncate-per-initialization), contrasting with the Python
++append-forensics behavior documented in `python/logging_util.py` and
++`python/README.md`. Comment/docs only — no behavior change.
+ 
+ ### UPDATED: `SECURITY.md`
+@@ -119,7 +148,11 @@
+ 
+ - Treat each item as its own commit; keep edits surgical.
++- **A2 before A1**: A2 pins must be committed (same commit or a prior commit)
++  before A1 scanner lands. The scanner immediately flags any unpinned
++  `record-vendor-task` lines in the scanned set; committing A1 alone creates a
++  transiently failing CI tree until A2 is also in place.
+ - **C (already resolved — no edit)**: `skills/design/references/design-outline.md`
+@@ -131,8 +164,9 @@
+ - Keep sibling `.md` contracts in sync only where prose changes: update
+   `scripts/larch-log.md` for the dynamic-Codex retention rationale (D2/D4);
+-  update `python/README.md` for the documented quiet-log divergence (D3).
++  update `python/README.md` and `scripts/lib-quiet.md` for the documented
++  quiet-log divergence (D3 — Python append-forensics vs bash truncate-per-run).
+   `test-implement-structure.md`, `launch-codex-implement.md`,
+   `launch-cursor-implement.md`, `test-larch-log-write-round.md` need no contract
+   change for additive test/comment edits.
+@@ -139,11 +173,17 @@
+ ## Edge cases
+ 
++- A1 scanner must match timing invocations by basename (`timing-ledger.sh` /
++  `timing-report.sh`), not by a literal `scripts/` path prefix; production scripts
++  invoke via `$SCRIPT_DIR` and a prefix-required pattern silently misses those calls.
+ - A1 scanner must handle multi-line `record-vendor-task \` continuations: assert the
+   pin on the command's first line (the `timing-ledger.sh` line), not the flag lines.
+ - A1 scanner must not flag non-timing subcommands (e.g. `timing-ledger.sh dump`) or
+   `token-ledger.sh mark`; match only `mark`, `record-vendor-task`, `timing-report.sh`.
+-- A1 scanner must include the already-live implement timing emitters in Step 2,
+-  Step 5 review/resume, and captured relevant-checks paths so the invariant does
+-  not silently miss known production timing surfaces.
++- A1 scanner must include the CI-fix launchers (`scripts/launch-codex-ci.sh`,
++  `scripts/launch-cursor-ci.sh`) alongside the Step 2, Step 5 review/resume, and
++  captured relevant-checks timing emitters; no known production timing surface may
++  be silently missed.
++- A3 `workflow_path` read-assertion grep must be scoped to the same explicit
++  production `.sh` set as A1 (exclude `test-*.sh`) to avoid false failures on
++  fixture references.
+ - D1 fixtures must use a `codex-specialist-*-output.txt` basename so they hit the
+   static deny clause (not the dynamic `dyn-*` allow).
+@@ -157,9 +197,14 @@
+   the file set explicitly; reuse the proven `index()` shape from
+   `test-implement-timing-rehydration.sh`; the harness must pass on the tree only
+-  after the A2 pins are applied. Include the current Step 2, Step 5 review/resume,
+-  and captured relevant-checks timing emitters in that explicit set; if future
+-  implement timing emitters are added, update the scanner in the same change.
++  after the A2 pins are applied (including CI-launcher pins). Include Step 2,
++  Step 5 review/resume, captured relevant-checks, and CI-fix launcher emitters
++  in that explicit set; if future implement timing emitters are added, update the
++  scanner in the same change.
++- **A1/A2 commit ordering**: committing A1 before A2 creates a transiently
++  failing scanner (unpinned CI-launcher `record-vendor-task` lines are flagged).
++  Commit A2 in the same commit as A1, or apply A2 first. Earliest signal: scanner
++  fails on any tree that lacks the CI-launcher pins.
+ - **A2 pin breaks launcher quoting**: prepending the env prefix shifts the
+   `>/dev/null 2>&1 || true` tail or trips shellcheck. Signal: launcher harness or
+   `make lint` failure. Mitigation: copy the exact prefix shape from an existing
+-  pinned mark; run shellcheck + `test-codex-implementer.sh` / `test-cursor-implementer.sh`.
++  pinned mark; run shellcheck + `test-codex-implementer.sh` /
++  `test-cursor-implementer.sh` and `make lint` on the CI launchers.
+ - **C false no-op**: closing C while a stale reference hides in an unscanned
+@@ -175,10 +220,12 @@
+ - `bash scripts/test-implement-structure.sh` (A1, A3).
+-- `bash skills/implement/scripts/test-codex-implementer.sh` and
+-  `bash skills/implement/scripts/test-cursor-implementer.sh` (A2).
++- `bash skills/implement/scripts/test-codex-implementer.sh` and
++  `bash skills/implement/scripts/test-cursor-implementer.sh` (A2 implement
++  launchers); run `make lint` / shellcheck on `scripts/launch-codex-ci.sh` and
++  `scripts/launch-cursor-ci.sh` (A2 CI launchers).
+ - `make py-test` or `python -m pytest python/test_ci_monitor.py` (B).
+ - `bash scripts/test-larch-log-write-round.sh` (D1; D2/D4 script/doc prose is non-functional).
+ - `bash scripts/relevant-checks.sh` / `make lint` repo-wide (markdownlint for
+-  SECURITY.md and `.md` contract sync, bash 3.2 lint for any new awk/shell,
++  SECURITY.md and `.md` contract sync including `scripts/lib-quiet.md`, bash 3.2 lint for any new awk/shell,
+   shellcheck).
+ 
+-diff_lines: 205
++diff_lines: 225
