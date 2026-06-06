@@ -22,64 +22,89 @@ done
 [[ -n "$OUTPUT_FILE" ]] || { echo "oos-serialize.sh: --output-file is required" >&2; exit 2; }
 mkdir -p "$(dirname "$OUTPUT_FILE")"
 
-awk '
-# is_security_tagged: returns 1 when a security routing token exists outside
-# triple-backtick fences. Inline-code examples are ignored for prose tokens, but
-# dedicated focus-area fields may backtick-wrap their label or value.
-function is_security_tagged(line,    lower, normalized, i, fenced, c, result) {
-    lower = tolower(line)
-    # Check triple-backtick fencing on this line.
-    fenced = (line ~ /^[ \t]*```/)
-    if (fenced) return 0
-    # Scan for the token; skip occurrences inside inline backtick spans.
-    result = 0
-    i = 1
-    in_backtick = 0
-    while (i <= length(lower)) {
-        c = substr(lower, i, 1)
-        if (c == "`") { in_backtick = !in_backtick; i++; continue }
-        if (!in_backtick && substr(lower, i) ~ /^focus-area[ \t]*=[ \t]*security/) {
-            result = 1
-            break
-        }
-        i++
-    }
-    normalized = lower
-    gsub(/[`*]/, "", normalized)
-    if (!result && normalized ~ /^[ \t-]*focus-area[ \t]*[:=][ \t]*security([-a-z0-9 _]*)([ \t]|$|\(|#|\.|,)/) result = 1
-    if (!result && (lower ~ /^###[^\n]*`?\[security\]`?/ || lower ~ /^###[^\n]*`?<security>`?/)) result = 1
-    return result
-}
-BEGIN { in_block=0; block=""; security=0; oos=0; in_fence=0; seq=0 }
-function flush() {
-    if (!in_block) return
-    if (oos && security) held++
-    else if (oos && (block !~ /Result=/ || block ~ /Result=accepted/)) {
-        seq++
-        sub(/^###[[:space:]]+[A-Za-z]+_[0-9]+:/, "### OOS_" seq ":", block)
-        print block
-        accepted++
-    }
-}
-/^### FINDING_[0-9]+:/ {
-    flush()
-    in_block=1
-    in_fence=0
-    block=$0 "\n"
-    security=is_security_tagged($0)
-    oos=($0 ~ /\[OUT_OF_SCOPE\]/ || $0 ~ /\[OOS\]/)
-    next
-}
-in_block {
-    block=block $0 "\n"
-    # Track triple-backtick fence regions.
-    if ($0 ~ /^[ \t]*```/) in_fence = !in_fence
-    if (!in_fence && is_security_tagged($0)) security=1
-    if ($0 ~ /\[OUT_OF_SCOPE\]/ || $0 ~ /\[OOS\]/) oos=1
-}
-END { flush(); printf("OOS_ACCEPTED=%d\nOOS_HELD_SECURITY=%d\n", accepted + 0, held + 0) > "/dev/stderr" }
-' "$FINDINGS_FILE" > "$OUTPUT_FILE" 2> "$OUTPUT_FILE.env"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+NORMALIZE_OOS_HELPER="$DIR/normalize-oos-block-header.sh"
+TMPDIR_OOS=$(mktemp -d "${TMPDIR:-/tmp}/larch-oos-serialize.XXXXXX")
+cleanup() { rm -rf "$TMPDIR_OOS"; }
+trap cleanup EXIT
 
-cat "$OUTPUT_FILE.env"
-rm -f "$OUTPUT_FILE.env"
+is_security_tagged_block() {
+    local block="$1"
+    python3 - "$block" <<'PYEOF'
+import re
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
+canonical_token = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
+explicit_header = re.compile(
+    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
+    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
+    re.IGNORECASE,
+)
+field_value = re.compile(
+    r"^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
+    re.IGNORECASE,
+)
+found = bool(canonical_token.search(text_no_backtick))
+lines = text_no_fence.splitlines()
+if not found and lines and explicit_header.search(lines[0]):
+    found = True
+if not found:
+    for line in lines:
+        normalized = line.replace("`", "").replace("*", "").strip()
+        if field_value.search(normalized):
+            found = True
+            break
+sys.exit(0 if found else 1)
+PYEOF
+}
+
+flush_block() {
+    [[ "$in_block" == "1" ]] || return 0
+    if [[ "$oos" != "1" ]]; then
+        return 0
+    fi
+    block_file="$TMPDIR_OOS/block.md"
+    printf '%s' "$block" > "$block_file"
+    if is_security_tagged_block "$block_file"; then
+        held=$((held + 1))
+    elif [[ "$block" != *"Result="* || "$block" == *"Result=accepted"* ]]; then
+        seq=$((seq + 1))
+        "$NORMALIZE_OOS_HELPER" --seq "$seq" --block-file "$block_file" >> "$OUTPUT_FILE"
+        printf '\n' >> "$OUTPUT_FILE"
+        accepted=$((accepted + 1))
+    fi
+}
+
+: > "$OUTPUT_FILE"
+in_block=0
+block=""
+oos=0
+seq=0
+accepted=0
+held=0
+
+while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^###[[:space:]]+FINDING_[0-9]+: ]]; then
+        flush_block
+        in_block=1
+        block="${line}"$'\n'
+        oos=0
+        if [[ "$line" == *"[OUT_OF_SCOPE]"* || "$line" == *"[OOS]"* ]]; then
+            oos=1
+        fi
+        continue
+    fi
+    if [[ "$in_block" == "1" ]]; then
+        block+="${line}"$'\n'
+        if [[ "$line" == *"[OUT_OF_SCOPE]"* || "$line" == *"[OOS]"* ]]; then
+            oos=1
+        fi
+    fi
+done < "$FINDINGS_FILE"
+flush_block
+
+printf 'OOS_ACCEPTED=%d\nOOS_HELD_SECURITY=%d\n' "$accepted" "$held"
 : "$SESSION_ENV_PATH"

@@ -97,6 +97,17 @@ cp "$TMP/preserve2/oos-accepted-review.md" "$TMP/preserve2/expected.md"
 cmp -s "$TMP/preserve2/oos-accepted-review.md" "$TMP/preserve2/expected.md" || { echo "FAIL: preserve branch (oos.md absent) truncated tally output" >&2; exit 1; }
 echo "  ok   tally output preserved with oos.md absent (truncate skipped)"
 
+echo "# Case: OOS_ACCEPTED_COUNT>0 with empty sink and absent oos.md fails closed"
+mkdir -p "$TMP/absent-empty"
+cp "$TMP/preserve1/tally.env" "$TMP/absent-empty/tally.env"
+: > "$TMP/absent-empty/oos-accepted-review.md"
+set +e
+"$SCRIPT" --tally-file "$TMP/absent-empty/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/absent-empty/absent-oos.md" --review-tmpdir "$TMP/absent-empty" --round 1 --mode diff >/dev/null 2>&1
+absent_empty_rc=$?
+set -e
+[[ "$absent_empty_rc" -ne 0 ]] || { echo "FAIL: empty sink with missing oos.md must fail closed" >&2; exit 1; }
+echo "  ok   empty sink with missing oos.md fails closed"
+
 echo "# Case: OOS_ACCEPTED_COUNT=0 still serializes tagged OOS from oos.md"
 mkdir -p "$TMP/serialize0"
 cat > "$TMP/serialize0/tally.env" <<'EOF'
@@ -137,6 +148,37 @@ printf '### FINDING_6: title [OUT_OF_SCOPE]\n- **Description**: accepted in oos.
 grep -Eq '^### OOS_1: title \[OUT_OF_SCOPE\]' "$TMP/desync-rebuild/oos-accepted-review.md" || { echo "FAIL: desynced preserve path did not rebuild normalized accepted sink" >&2; exit 1; }
 echo "  ok   desynced empty sink rebuilds from oos.md"
 
+echo "# Case: OOS_ACCEPTED_COUNT>0 with partial sink fails closed when rebuild cannot recover"
+mkdir -p "$TMP/partial-fail"
+cat > "$TMP/partial-fail/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=2
+EOF
+printf '### OOS_1: Only one normalized block\n- **Description**: partial sink.\n' > "$TMP/partial-fail/oos-accepted-review.md"
+printf '### FINDING_7: bare scope drift\n- **Description**: no OOS tag for serializer.\n' > "$TMP/partial-fail/oos.md"
+set +e
+"$SCRIPT" --tally-file "$TMP/partial-fail/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/partial-fail/oos.md" --review-tmpdir "$TMP/partial-fail" --round 1 --mode diff >/dev/null 2>&1
+partial_rc=$?
+set -e
+[[ "$partial_rc" -ne 0 ]] || { echo "FAIL: partial accepted sink must fail closed when rebuild count mismatches tally" >&2; exit 1; }
+echo "  ok   partial accepted sink fails closed"
+
+echo "# Case: security-only accepted OOS count stays zero and emit leaves public sink empty"
+mkdir -p "$TMP/security-only"
+cat > "$TMP/security-only/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=0
+EOF
+: > "$TMP/security-only/oos-accepted-review.md"
+printf '### FINDING_8: [OUT_OF_SCOPE] [security] private\n- **Description**: held.\nVote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted\n' > "$TMP/security-only/oos.md"
+"$SCRIPT" --tally-file "$TMP/security-only/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/security-only/oos.md" --review-tmpdir "$TMP/security-only" --round 1 --mode diff >/dev/null
+[[ ! -s "$TMP/security-only/oos-accepted-review.md" ]] || { echo "FAIL: security-only OOS must not enter public accepted sink" >&2; exit 1; }
+echo "  ok   security-only accepted OOS leaves public sink empty"
+
 echo "# Case: tally-code-votes output chains into emit-tally without losing accepted OOS"
 mkdir -p "$TMP/chained/round-1"
 cat > "$TMP/chained/round-1/ballot.md" <<'EOF'
@@ -163,6 +205,30 @@ fi
 got=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/chained/round-1/oos-accepted-review.md")
 [[ "$got" == "1" ]] || { echo "FAIL: chained tally→emit awk count got $got want 1" >&2; exit 1; }
 echo "  ok   chained tally→emit preserves normalized accepted OOS"
+
+echo "# Case: scope-drift tally output chains into emit-tally without losing bare FINDING OOS"
+mkdir -p "$TMP/chained-drift/round-1"
+cat > "$TMP/chained-drift/round-1/ballot.md" <<'EOF'
+### FINDING_1: **Important** - `code-quality` - `docs/linting.md:22`
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Mentions docs/linting.md outside the changed scope.
+- **Suggested revision**: File it.
+EOF
+printf 'src/main.py\n' > "$TMP/chained-drift/scope.txt"
+printf 'FINDING_1: YES\n' > "$TMP/chained-drift/round-1/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/chained-drift/round-1/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/chained-drift/round-1/claude-vote-output.txt"
+"$TALLY_SCRIPT" --ballot-file "$TMP/chained-drift/round-1/ballot.md" \
+    --voter-files "$TMP/chained-drift/round-1/cursor-vote-output.txt" "$TMP/chained-drift/round-1/codex-vote-output.txt" "$TMP/chained-drift/round-1/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/chained-drift/round-1" --scope-files "$TMP/chained-drift/scope.txt" > "$TMP/chained-drift/round-1/tally.out"
+"$SCRIPT" --tally-file "$TMP/chained-drift/round-1/review-tally.env" \
+    --accepted-findings-file "$TMP/chained-drift/round-1/accepted-findings.md" \
+    --oos-file "$TMP/chained-drift/round-1/oos.md" \
+    --review-tmpdir "$TMP/chained-drift/round-1" --round 1 --mode diff >/dev/null
+grep -Eq '^### OOS_1: ' "$TMP/chained-drift/round-1/oos-accepted-review.md" || { echo "FAIL: chained scope-drift tally→emit path lost normalized OOS header" >&2; exit 1; }
+got=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/chained-drift/round-1/oos-accepted-review.md")
+[[ "$got" == "1" ]] || { echo "FAIL: chained scope-drift tally→emit awk count got $got want 1" >&2; exit 1; }
+echo "  ok   chained scope-drift tally→emit preserves normalized accepted OOS"
 
 echo "# Case: OOS_ACCEPTED_COUNT=0 with oos.md absent truncates to empty"
 mkdir -p "$TMP/truncate0"

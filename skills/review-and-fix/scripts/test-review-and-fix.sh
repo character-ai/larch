@@ -1457,17 +1457,23 @@ cat > "$out/accepted-findings.md" <<'EOF_FINDINGS'
 ### FINDING_2: Security skipped finding
 - **Concern**: Contains focus-area = security and must stay local.
 - **Suggested revision**: Skip for test.
+
+### FINDING_3: [security] Security skipped heading tag
+- **Concern**: Uses the structured heading tag and colon focus-area forms.
+- **focus-area**: `security-hardening`
+- **Suggested revision**: Skip for test.
 EOF_FINDINGS
 : > "$out/rejected-findings.md"
-printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":2,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":3,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
 printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
-printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=3\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
 EOF_CORE_SKIPPED
 chmod +x "$TMP/review-core-skipped-stub.sh"
 cat > "$work_skipped/implement/round-1-coder.log.seed" <<'EOF_LOG'
 SKIPPED: FINDING_1
 SKIPPED: FINDING_2
 SKIPPED: FINDING_2
+SKIPPED: FINDING_3
 SKIPPED: FINDING_999
 EOF_LOG
 cat > "$TMP/run-external-agent-skipped-stub.sh" <<'EOF_AGENT_SKIPPED'
@@ -1505,13 +1511,14 @@ out=$(
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 0 got $rc"; }
-grep -Fq 'SKIPPED_FINDING_COUNT=2' <<< "$out" || fail "skipped-routing count"
-grep -Fq 'FIX_COUNT=2' <<< "$out" || fail "skipped-routing fix count"
+grep -Fq 'SKIPPED_FINDING_COUNT=3' <<< "$out" || fail "skipped-routing count"
+grep -Fq 'FIX_COUNT=3' <<< "$out" || fail "skipped-routing fix count"
 grep -Fq 'Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing public skipped finding missing"
 if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; then
     fail "skipped-routing security finding leaked to public OOS"
 fi
 grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing security finding missing from local audit"
+grep -Fq 'Security skipped heading tag' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing heading-tag security finding missing from local audit"
 # #3550: skipped non-security block normalized to canonical ### OOS_<seq>: header.
 grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing header not normalized to canonical ### OOS_"
 if grep -Eq '^### FINDING_' "$implement_tmp/oos-accepted-review.md"; then

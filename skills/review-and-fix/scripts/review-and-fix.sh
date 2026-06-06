@@ -28,6 +28,9 @@ source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
 # shellcheck source=scripts/lib-implement-round-cap.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-implement-round-cap.sh"
+# shellcheck source=scripts/lib-vote-tally.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 usage() {
     larch_err "Usage:"
@@ -198,31 +201,6 @@ count_findings() {
     else
         printf '0\n'
     fi
-}
-
-is_security_block() {
-    local block="$1"
-    command -v python3 >/dev/null 2>&1 || return 2
-    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
-    python3 - "$block" <<'PYEOF'
-import re, sys
-try:
-    text = open(sys.argv[1], encoding="utf-8").read()
-except OSError as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-except Exception as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-try:
-    text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-    pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-    sys.exit(0 if pattern.search(text_no_backtick) else 1)
-except Exception as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-PYEOF
 }
 
 mirror_oos_markdown() {
@@ -1443,7 +1421,7 @@ _implement_round_body() {
         # round skipped OOS stay monotonic.
         OOS_WRITE_SEQ=0
         if [[ -s "$oos_markdown" ]]; then
-            OOS_WRITE_SEQ=$(awk '/^###[[:space:]]+(OOS_|FINDING_[0-9]+:)/ { n++ } END { print n + 0 }' "$oos_markdown" 2>/dev/null || printf '0')
+            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_markdown" 2>/dev/null || printf '0')
             case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
         fi
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do

@@ -34,9 +34,15 @@ _OOS_HEADER_RE = re.compile(
     re.MULTILINE,
 )
 _SECURITY_FOCUS_RE = re.compile(
-    r"^\s*-\s*\*\*focus-area\*\*\s*:\s*"
+    r"^\s*-\s*focus-area\s*[:=]\s*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
+)
+_SECURITY_HEADER_RE = re.compile(
+    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
+    r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
+    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
+    re.IGNORECASE,
 )
 _REJECTED_SECTION_RE = re.compile(
     r"(?:Rejected / Out-of-Scope|## Rejected)",
@@ -72,9 +78,10 @@ def _count_non_security_markdown(text: str) -> int:
             if in_block and not security:
                 count += 1
             in_block = True
-            security = False
+            security = bool(_SECURITY_HEADER_RE.match(line))
             continue
-        if in_block and _SECURITY_FOCUS_RE.match(line):
+        normalized = line.replace("`", "").replace("*", "")
+        if in_block and _SECURITY_FOCUS_RE.match(normalized):
             security = True
     if in_block and not security:
         count += 1

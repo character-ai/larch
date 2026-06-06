@@ -41,7 +41,7 @@ For multi-voter panels, `classify_result` applies exoneration after acceptance a
 
 ## Security tag
 
-`is_security_block` exits 0 when the block has a security routing token outside triple-backtick fences. Prose/code examples inside single-backtick spans do not count for the canonical `focus-area\s*=\s*security` token. Dedicated line-start `focus-area: security` / `focus-area = security` fields do count even when the label or value is backtick-wrapped, and explicit heading tags such as `[security]` / `<security>` count even when backtick-wrapped. Ordinary heading prose containing the bare word `security` does not count.
+`is_security_block` exits 0 when the block has a security routing token outside triple-backtick fences. Prose/code examples inside single-backtick spans do not count for the canonical `focus-area\s*=\s*security` token. Dedicated line-start `focus-area: security` / `focus-area = security` fields do count even when the label or value is backtick-wrapped. Explicit heading tags count only when the block-opening heading starts its title with `[security]` / `<security>` (optionally after `[OUT_OF_SCOPE]` / `[OOS]`); later body headings that merely cite `[security]` do not route the block. Ordinary heading prose containing the bare word `security` does not count.
 
 ## Callers (must be kept in sync)
 

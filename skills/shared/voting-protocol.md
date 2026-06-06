@@ -279,9 +279,10 @@ The scoreboard includes additional columns for OOS items:
 Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`tally-plan-review.sh`) and `/review` code review (`tally-code-votes.sh`) via `scripts/lib-vote-tally.sh::is_security_block`:
 
 - **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
-- **Match discrimination (false-positive guard)**: occurrences inside backtick or triple-backtick regions are fenced and do not count — only unfenced occurrences mark a finding as security-tagged.
-- **Security counter-invariant**: a real security finding MUST include at least one unfenced occurrence of the canonical token; otherwise it will not be held locally.
-- Accepted OOS items where the block matches are written ONLY to the local `oos-accepted-*.md` artifact and to the local-only artifact path; security-tagged findings (focus-area=security) are held locally and NEVER filed publicly — the canonical filing pipeline (`/implement` Step 9a.1 → `/issue` batch mode) is skipped for them.
+- **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.
+- **Heading tag token**: the block-opening heading may start its title with `[security]` or `<security>` (optionally after `[OUT_OF_SCOPE]` / `[OOS]`). Later `### ... [security] ...` headings inside prose are not routing tags.
+- **Match discrimination (false-positive guard)**: canonical-token occurrences inside backtick or triple-backtick regions are fenced and do not count — only unfenced occurrences mark a finding as security-tagged.
+- Accepted OOS items where the block matches are written ONLY to the local `oos-accepted-*.md` artifact and to the local-only artifact path; security-tagged findings are held locally and NEVER filed publicly — the canonical filing pipeline (`/implement` Step 9a.1 → `/issue` batch mode) is skipped for them.
 
 ### OOS Reporting
 

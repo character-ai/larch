@@ -453,7 +453,7 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
-got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "security OOS counted as accepted" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "security OOS excluded from public accepted count" "$got" "0"
 if [[ -s "$TMP/oos-accepted-review.md" ]]; then
     FAIL=1; printf '  FAIL oos-accepted-review.md should be empty for security-tagged item\n'
 else

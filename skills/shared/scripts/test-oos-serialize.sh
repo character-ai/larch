@@ -24,17 +24,22 @@ Vote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
 - **Concern**: Header tag must hold.
 ### FINDING_7: [OUT_OF_SCOPE] Backtick value
 - **focus-area**: `security-hardening`
+### FINDING_8: [OUT_OF_SCOPE] Cited security heading
+- **Concern**: This mentions a later example heading.
+### Example [security] policy
 EOF
 
 out=$("$DIR/oos-serialize.sh" --findings-file "$TMP/findings.md" --output-file "$TMP/oos.md")
-grep -Fq 'OOS_ACCEPTED=3' <<< "$out"
+grep -Fq 'OOS_ACCEPTED=4' <<< "$out"
 grep -Fq 'OOS_HELD_SECURITY=3' <<< "$out"
 grep -Fq 'Public cleanup' "$TMP/oos.md"
 grep -Fq 'Result accepted cleanup' "$TMP/oos.md"
 grep -Fq 'ordinary security cleanup' "$TMP/oos.md"
+grep -Fq 'Cited security heading' "$TMP/oos.md"
 grep -Eq '^### OOS_1:' "$TMP/oos.md"
 grep -Eq '^### OOS_2:' "$TMP/oos.md"
 grep -Eq '^### OOS_3:' "$TMP/oos.md"
+grep -Eq '^### OOS_4:' "$TMP/oos.md"
 if grep -Fq 'Secret issue' "$TMP/oos.md"; then
     echo "FAIL: security OOS item leaked" >&2
     exit 1

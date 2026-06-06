@@ -59,13 +59,23 @@ reviewer_for_block() {
 # their label or value.
 is_security_block() {
     local block="$1"
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
     python3 - "$block" <<'PYEOF'
 import re, sys
-text = open(sys.argv[1]).read()
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
 text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
 text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
 canonical_token = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-explicit_header = re.compile(r'^###[^\n]*(?:`?\[security\]`?|`?<security>`?)', re.IGNORECASE | re.MULTILINE)
+explicit_header = re.compile(
+    r'^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?'
+    r'`?(?:\[security\]|<security>)`?(?:\s|$|[:-])',
+    re.IGNORECASE | re.MULTILINE,
+)
 field_value = re.compile(
     r'^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)',
     re.IGNORECASE,

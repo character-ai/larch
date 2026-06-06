@@ -7,11 +7,15 @@
 # tokens (e.g. security-hardening), and allowing backtick-wrapped labels or
 # values. Avoids prose like "focus-area = security" inside **Description**
 # bodies (no line-start **focus-area** label).
+function is_security_header(line,    lower) {
+  lower = tolower(line)
+  return lower ~ /^###[[:space:]]+(oos_[0-9]+:|finding_[0-9]+:)[[:space:]]*(\[(out_of_scope|oos)\][[:space:]]*)?`?(\[security\]|<security>)`?([[:space:]]|$|[:-])/
+}
 BEGIN { n = 0; inblk = 0; sec = 0 }
 /^###[[:space:]]+OOS_/ || ($0 ~ /^###[[:space:]]+FINDING_[0-9]+:/ && index($0, "[OUT_OF_SCOPE]")) {
   if (inblk && !sec) n++
   inblk = 1
-  sec = 0
+  sec = is_security_header($0)
   next
 }
 inblk {

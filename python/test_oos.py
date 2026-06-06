@@ -240,3 +240,40 @@ def test_count_non_security_excludes_security_tagged_legacy_header(
         encoding="utf-8",
     )
     assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_backtick_unbold_security_focus_area(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Security item\n"
+        "- `focus-area`: `security-hardening`\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_structured_security_heading(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: [security] Security item\n"
+        "- **Description**: private routing.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_does_not_treat_body_security_heading_as_tag(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Public item\n"
+        "- **Concern**: cites a heading below.\n"
+        "### Example [security] policy\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
