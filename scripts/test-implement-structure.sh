@@ -100,8 +100,8 @@ grep -Fq "NEVER call \`/release\` as a direct Skill invocation" "$SKILL_MD" \
 # shellcheck disable=SC2016 # Intentional literal probe of SKILL.md content.
 grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Invoke fence must default to Python unless LARCH_SHIP_PR_IMPL=bash"
-grep -Fq "sys.version_info >= (3, 12)" "$SKILL_MD" \
-  || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.12 ship-driver guard"
+grep -Fq "sys.version_info >= (3, 11)" "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.11 ship-driver guard"
 grep -Fq '"outcome":"STALLED"' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Python version guard must emit structured JSON on stdout"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
@@ -1097,7 +1097,7 @@ real_python3="$(command -v python3)"
 [[ -n "$real_python3" ]] || fail "python3 required for ship-driver guard runtime probe"
 cat > "$guard_tmp/python3" <<SHIM
 #!/usr/bin/env bash
-if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
+if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
   exit 1
 fi
 exec "$real_python3" "\$@"
@@ -1105,9 +1105,9 @@ SHIM
 chmod +x "$guard_tmp/python3"
 set +e
 PATH="$guard_tmp:$PATH" bash -c '
-if ! python3 -c '"'"'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'"'"' 2>/dev/null; then
-  echo "ERROR: Python ship driver requires Python 3.12 or newer" >&2
-  printf "%s\n" '"'"'{"detail":"Python ship driver requires Python 3.12 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'"'"'
+if ! python3 -c '"'"'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'"'"' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf "%s\n" '"'"'{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'"'"'
   exit 4
 fi
 exit 0
@@ -1115,10 +1115,10 @@ exit 0
 guard_rc=$?
 set -e
 [[ "$guard_rc" -eq 4 ]] \
-  || fail "ship-driver Python version guard must exit 4 when python3 is below 3.12 (got $guard_rc)"
+  || fail "ship-driver Python version guard must exit 4 when python3 is below 3.11 (got $guard_rc)"
 grep -Fq '"outcome":"STALLED"' "$guard_tmp/stdout.txt" \
   || fail "ship-driver Python version guard must emit STALLED JSON on stdout"
-grep -Fq 'Python ship driver requires Python 3.12 or newer' "$guard_tmp/stderr.txt" \
+grep -Fq 'Python ship driver requires Python 3.11 or newer' "$guard_tmp/stderr.txt" \
   || fail "ship-driver Python version guard must emit operator-visible stderr"
 rm -rf "$guard_tmp"
 
