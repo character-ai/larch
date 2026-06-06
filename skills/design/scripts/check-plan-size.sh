@@ -11,6 +11,8 @@ larch_quiet_init
 source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 # shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
 source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
+# shellcheck source=skills/design/scripts/lib-drift-baseline.sh
+source "$SCRIPT_DIR/lib-drift-baseline.sh"
 
 DESIGN_TMPDIR=""
 PLAN_FILE=""
@@ -183,41 +185,90 @@ baseline_diff_lines="$diff_lines"
 baseline_plan_display="$baseline_plan_lines"
 baseline_diff_display="$baseline_diff_lines"
 drift_trigger=false
-_drift_baseline="$DESIGN_TMPDIR/drift-baseline.env"
+_drift_baseline="$(larch_drift_baseline_path "$DESIGN_TMPDIR")"
+_baseline_recovered=false
+
+_recover_baseline_from_plan() {
+    local _candidate="$1"
+    local _last _trailer_nr _meta _bp _bd _ml
+    [[ -f "$_candidate" && ! -L "$_candidate" ]] || return 1
+    _last=$(awk 'NF { line=$0 } END { print line }' "$_candidate" 2>/dev/null || true)
+    [[ -n "$_last" ]] || return 1
+    [[ "$_last" =~ ^diff_lines:\ [0-9]+$ ]] || return 1
+    _bd="${_last#diff_lines: }"
+    _trailer_nr=$(awk 'NF { nr=NR } END { print nr+0 }' "$_candidate" 2>/dev/null || true)
+    [[ -n "$_trailer_nr" && "$_trailer_nr" -gt 0 ]] || return 1
+    _meta=$(parse_plan_optional_metadata "$_candidate")
+    _ml=$(printf '%s\n' "$_meta" | sed -n '1p')
+    _bp=$(( _trailer_nr - 1 - _ml ))
+    (( _bp >= 0 )) || _bp=0
+    baseline_plan_lines="$_bp"
+    baseline_diff_lines="$_bd"
+    baseline_plan_display="$baseline_plan_lines"
+    baseline_diff_display="$baseline_diff_lines"
+    _baseline_recovered=true
+    return 0
+}
+
+_fail_closed_on_unreadable_baseline() {
+    emit_kv WARN "check-plan-size: drift baseline unreadable; failing closed on drift trigger"
+    if [[ "$_baseline_recovered" != true ]]; then
+        drift_trigger=true
+        return 0
+    fi
+    if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" \
+        || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+        drift_trigger=true
+    fi
+}
+
 _write_drift_baseline() {
-    local _baseline_tmp="${_drift_baseline}.tmp.$$"
-    if { printf 'BASELINE_PLAN_LINES=%s\n' "$plan_lines"; printf 'BASELINE_DIFF_LINES=%s\n' "$diff_lines"; } >"$_baseline_tmp" 2>/dev/null && mv -f "$_baseline_tmp" "$_drift_baseline" 2>/dev/null; then
+    if larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$plan_lines" "$diff_lines"; then
         baseline_plan_lines="$plan_lines"
         baseline_diff_lines="$diff_lines"
         baseline_plan_display="$baseline_plan_lines"
         baseline_diff_display="$baseline_diff_lines"
     else
-        rm -f "$_baseline_tmp" 2>/dev/null || true
         emit_kv WARN "check-plan-size: could not write drift baseline; proceeding without drift trigger"
     fi
 }
+
 if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
     _bp=$(awk -F= '$1 == "BASELINE_PLAN_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     _bd=$(awk -F= '$1 == "BASELINE_DIFF_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     if [[ "$_bp" == '' || "$_bp" == *[!0-9]* || "$_bd" == '' || "$_bd" == *[!0-9]* ]]; then
-        emit_kv WARN "check-plan-size: drift baseline unreadable; re-seeding from current plan"
-        _write_drift_baseline
+        if ! _recover_baseline_from_plan "$DESIGN_TMPDIR/plan.txt-original"; then
+            _fail_closed_on_unreadable_baseline
+        else
+            emit_kv WARN "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original"
+        fi
     else
         baseline_plan_lines=$((10#$_bp))
         baseline_diff_lines=$((10#$_bd))
         baseline_plan_display="$baseline_plan_lines"
         baseline_diff_display="$baseline_diff_lines"
     fi
-    if [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]] \
+    if [[ "$drift_trigger" != true ]] \
+        && [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]] \
         && [[ "$_bp" != '' && "$_bp" != *[!0-9]* && "$_bd" != '' && "$_bd" != *[!0-9]* ]]; then
+        if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+            drift_trigger=true
+        fi
+    elif [[ "$drift_trigger" != true && "$_baseline_recovered" == true ]]; then
         if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
             drift_trigger=true
         fi
     fi
 elif [[ -e "$_drift_baseline" || -L "$_drift_baseline" ]]; then
-    emit_kv WARN "check-plan-size: drift baseline unreadable; re-seeding from current plan"
     rm -f "$_drift_baseline" 2>/dev/null || true
-    _write_drift_baseline
+    if ! _recover_baseline_from_plan "$DESIGN_TMPDIR/plan.txt-original"; then
+        _fail_closed_on_unreadable_baseline
+    else
+        emit_kv WARN "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original"
+        if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+            drift_trigger=true
+        fi
+    fi
 else
     _write_drift_baseline
 fi

@@ -73,7 +73,11 @@ re-pause from stale local state. Pause snapshots may legitimately include
 load copies that snapshot into the live tmpdir, then deletes only the restored
 live `.pause-requested` sentinel before returning control. Other restored pause
 metadata (`pause-state.txt`, `.resume-loaded`, staged `.completed/*`, and plan
-artifacts) remains intact.
+artifacts) remains intact. When `.step3-reentry` is present at pause-save time,
+`design-pause-save.sh` runs `design-step3-state.sh --direct-review-pause-hygiene`
+before publish so stale downstream sentinels are cleared and the direct-review
+bypass package is restored while the marker remains for `STEP=3`; Step 3 entry
+consumes the marker via `--direct-review-entry`.
 
 `jq` is required for `manifest.json` validation. When it is unavailable, the
 loader fails closed with `LOAD_OK=false` `ERROR=jq-missing` instead of a shell

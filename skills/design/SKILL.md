@@ -88,7 +88,7 @@ Pause/resume helper coverage lives in
 |----------|---------------|----------|
 | `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2a entry (idempotent repair) | before pause-check |
 | `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
-| `step-1d.7`, `step-1e` | Step 2a entry; `step-1e` also Step 3 entry | before pause-check |
+| `step-1d.7`, `step-1e` | Step 2a entry; Step 3 writes `step-1e` only when `design-step3-state.sh --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
 | `step-2a`, `step-2a.5` | Step 2a entry SIMPLE guarded block; Step 2a.5 prelude (`step-2a`, HARD); zero-sketch degraded branch fence; Step 2b prelude (both, HARD repair) | before pause-check |
 | `step-3` | Step 3.5 prelude; `design-step3-state.sh --gate-b-bypass` on bypass paths | before pause-check / before Step 3b |
 | `step-3.5` | Step 3.6 entry | before pause-check |
@@ -635,7 +635,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** writes `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
-`.completed/step-1e` is batch-written by both the Step 2a entry fence and the Step 3 entry fence before pause-check (covering normal and Gate A direct-review routes) — not at a Gate A success boundary.
+`.completed/step-1e` is batch-written by the Step 2a entry fence and, on Gate A direct-review re-entry only, by `design-step3-state.sh --direct-review-entry` when `.step3-reentry` is present — not on first-time Step 3 entry.
 
 <!-- step:2a — Collaborative Approach Sketches -->
 ## Step 2a — Collaborative Approach Sketches

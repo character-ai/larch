@@ -1418,6 +1418,23 @@ out_z0=$(run_loop "$DZ0" 1 --round-cap 3)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "no collector OK should surface degraded-empty-collector"
 
 
+echo "=== single-pass: stale session-root review artifacts cleared before round ==="
+DCLEAR="$TMP/single-clear-artifacts"
+mkdir -p "$DCLEAR"
+printf 'plan\n\ndiff_lines: 1\n' >"$DCLEAR/plan.txt"
+printf 'feat\n' >"$DCLEAR/feature-description.txt"
+printf 'stale accepted findings\n' >"$DCLEAR/accepted-plan-findings.md"
+printf 'stale ballot\n' >"$DCLEAR/ballot.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_important
+write_voters_three
+out_clear=$(run_loop "$DCLEAR" 1 --round-cap 2)
+printf '%s\n' "$out_clear" | grep -q '^LOOP_STATUS=complete$' || fail "artifact clear path should complete"
+! grep -q 'stale accepted findings' "$DCLEAR/accepted-plan-findings.md" || fail "stale accepted-plan-findings.md was not cleared"
+! grep -q 'stale ballot' "$DCLEAR/ballot.txt" || fail "stale ballot.txt was not cleared"
+
+
 echo "=== single-pass: accepted OOS accumulation excludes rejected OOS ==="
 DOOS="$TMP/single-oos"
 mkdir -p "$DOOS"
@@ -1453,6 +1470,7 @@ DTM="$TMP/single-tally-error"
 mkdir -p "$DTM"
 printf 'plan\n\ndiff_lines: 1\n' >"$DTM/plan.txt"
 printf 'feat\n' >"$DTM/feature-description.txt"
+printf '### OOS_1: prior tally OOS\n- **Concern**: keep me\n' >"$DTM/oos-accepted-design.md"
 write_scout
 write_dispatch_one_slot
 write_collect_important
@@ -1461,6 +1479,27 @@ write_tally_error
 out_tm=$(run_loop "$DTM" 1 --round-cap 2)
 printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "tally-error should surface tally-error loop status"
 printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "tally-error should skip revise"
+grep -q 'prior tally OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should restore prior OOS content"
+! grep -q 'accepted OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should not merge failed round OOS"
+
+
+echo "=== single-pass: panel-failed restores prior OOS content ==="
+DPFOOS="$TMP/single-panel-failed-oos"
+mkdir -p "$DPFOOS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DPFOOS/plan.txt"
+printf 'feat\n' >"$DPFOOS/feature-description.txt"
+printf '### OOS_1: prior panel OOS\n- **Concern**: keep me\n' >"$DPFOOS/oos-accepted-design.md"
+write_scout
+write_dispatch_one_slot
+write_collect_empty_fail
+write_voters_three
+set +e
+out_pfoos=$(run_loop "$DPFOOS" 1 --round-cap 2)
+pfoos_rc=$?
+set -e
+[[ "$pfoos_rc" -eq 1 ]] || fail "panel-failed OOS restore should exit 1"
+printf '%s\n' "$out_pfoos" | grep -q '^LOOP_STATUS=panel-failed$' || fail "panel-failed OOS restore should surface panel-failed"
+grep -q 'prior panel OOS' "$DPFOOS/oos-accepted-design.md" || fail "panel-failed should restore prior OOS content"
 
 echo "=== stubbed driver: empty collector stdout fails closed (panel-failed) ==="
 DEMPTY="$TMP/collector-empty-fail"

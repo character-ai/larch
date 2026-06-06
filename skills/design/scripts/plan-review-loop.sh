@@ -499,7 +499,6 @@ _write_round_summary() {
         printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
         printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
         printf 'REVISE_STATUS=%s\n' "$revise_st"
-        printf 'REVISE_WINNING_TIER=%s\n' "${revise_winning_tier:-}"
         printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
         printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
         printf 'SCOPE_ANCHOR_FILE=%s\n' "${SCOPE_ANCHOR_FILE:-}"

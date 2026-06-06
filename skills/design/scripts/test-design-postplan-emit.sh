@@ -81,6 +81,7 @@ ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$FAKE_DESIGN/lib-plan-optional-trailers.awk"
+ln -sf "$SCRIPT_DIR/lib-drift-baseline.sh" "$FAKE_DESIGN/lib-drift-baseline.sh"
 
 cat >"$FAKE_DESIGN/design-driver.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -654,7 +655,7 @@ set +e
 run_subject "$D22" --with-plan-size
 rc=$?
 set -e
-assert_rc "merged plan-size rc2" 0 "$rc"
+assert_rc "merged plan-size rc2" 1 "$rc"
 assert_contains "$D22/stdout.txt" 'proceeding without threshold check' "merged rc2 warn display"
 assert_not_contains "$D22/stdout.txt" 'APPENDED=' "merged rc2 no APPENDED"
 [[ -f "$D22/check-plan-size.validation.log" ]] || fail "merged rc2 validation log"
@@ -723,7 +724,7 @@ set +e
 run_subject "$D27" --with-plan-size
 rc=$?
 set -e
-assert_rc "merged plan-size append failure is nonfatal" 0 "$rc"
+assert_rc "merged plan-size append failure is fatal" 1 "$rc"
 assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged append failure warning display"
 assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
 assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
@@ -837,6 +838,24 @@ set -e
 assert_rc "defects seed drift baseline rc" 10 "$rc"
 assert_file_kv "$D35/drift-baseline.env" BASELINE_PLAN_LINES 2 "defects seed drift baseline plan"
 assert_file_kv "$D35/drift-baseline.env" BASELINE_DIFF_LINES 12 "defects seed drift baseline diff"
+
+D36="$TMP/defects-drift-trigger"
+setup_design_tmp "$D36" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D36/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D36/plan.txt"
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D36" --with-plan-size >"$D36/stdout.txt" 2>"$D36/stderr.txt"
+rc=$?
+set -e
+assert_rc "defects drift trigger rc" 14 "$rc"
+assert_file_kv "$D36/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "defects drift trigger status"
+assert_contains "$D36/stdout.txt" '## Plan Size — Drift' "defects drift trigger section"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

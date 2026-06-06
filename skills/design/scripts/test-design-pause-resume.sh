@@ -1065,6 +1065,31 @@ for direct_step in 2a 2a.5 2b 2b.5; do
   [[ -f "$RESTORE_DIRECT/.completed/step-$direct_step" ]] || fail "direct-review restore missing step-$direct_step after load"
 done
 
+echo "=== direct-review pause preserves unconsumed marker and clears stale sentinels ==="
+DESIGN_DIRECT_PAUSE="$TMP/design-direct-review-pause"
+make_design_tmpdir "$DESIGN_DIRECT_PAUSE"
+complete_design_steps "$DESIGN_DIRECT_PAUSE" 0c 1c 1d 1d.5 1d.7
+printf 'direct review pause plan\n' >"$DESIGN_DIRECT_PAUSE/plan.txt"
+: >"$DESIGN_DIRECT_PAUSE/.step3-reentry"
+: >"$DESIGN_DIRECT_PAUSE/.completed/step-3"
+: >"$DESIGN_DIRECT_PAUSE/.completed/step-3.5"
+: >"$DESIGN_DIRECT_PAUSE/.pause-requested"
+printf 'issue body direct review pause\n' >"$BODY_FILE"
+out_direct_pause=$(bash "$SAVE" --design-tmpdir "$DESIGN_DIRECT_PAUSE" --issue 9 --repo owner/repo)
+[[ "$out_direct_pause" == *"PAUSE_OK=true"* && "$out_direct_pause" == *"STEP=3"* ]] || fail "direct-review pause should pause at Step 3: $out_direct_pause"
+[[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-reentry" ]] || fail "direct-review pause snapshot should preserve .step3-reentry"
+[[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-3" ]] || fail "direct-review pause snapshot should clear stale step-3"
+RESTORE_DIRECT_PAUSE="$TMP/restore-direct-review-pause"
+out_direct_pause_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --issue 9 --repo owner/repo)
+[[ "$out_direct_pause_load" == *"LOAD_OK=true"* && "$out_direct_pause_load" == *"STEP=3"* ]] || fail "direct-review pause load mismatch: $out_direct_pause_load"
+[[ -f "$RESTORE_DIRECT_PAUSE/.step3-reentry" ]] || fail "direct-review pause restore should keep .step3-reentry until Step 3 entry"
+STEP3_STATE="$("$REPO_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --direct-review-entry)"
+[[ "$STEP3_STATE" == *"STEP3_STATE=direct-review-entry"* ]] || fail "direct-review pause resume helper state missing: $STEP3_STATE"
+[[ ! -f "$RESTORE_DIRECT_PAUSE/.step3-reentry" ]] || fail "direct-review pause resume helper did not consume marker"
+for direct_step in 2a 2a.5 2b 2b.5; do
+  [[ -f "$RESTORE_DIRECT_PAUSE/.completed/step-$direct_step" ]] || fail "direct-review pause resume missing step-$direct_step"
+done
+
 echo "=== no-brainstorm Step 2a entry repairs step-1d.5 before pause-save ==="
 DESIGN_NO_BRAIN="$TMP/design-no-brainstorm"
 make_design_tmpdir "$DESIGN_NO_BRAIN"

@@ -50,6 +50,7 @@ jq -e '
   .design_classification_source == null and
   .sketch_budget == null and
   has("review_budget") == false and
+  (has("manual_gate_b") | not) and
   .workflow_path == null and
   .partition_requested == false and
   .brainstorm_requested == false
@@ -127,6 +128,11 @@ assert_rejected_with removed-review-budget 'unknown flag: --review-budget' \
     --classification SIMPLE \
     --review-budget full \
     --output "$TMPROOT/removed-review-budget.json"
+
+assert_rejected_with removed-manual-gate-b 'unknown flag: --manual-gate-b' \
+    --classification SIMPLE \
+    --manual-gate-b true \
+    --output "$TMPROOT/removed-manual-gate-b.json"
 
 assert_rejected_with bad-workflow-path 'invalid --workflow-path: MEDIUM' \
     --classification SIMPLE \

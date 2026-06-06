@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
+# shellcheck source=skills/design/scripts/lib-drift-baseline.sh
+source "$SCRIPT_DIR/lib-drift-baseline.sh"
 larch_quiet_init
 
 fail() {
@@ -305,14 +307,7 @@ _postplan_emit_drift_section() {
 _postplan_snapshot_drift_baseline() {
     [[ "$SNAPSHOT_ORIGINAL" == true ]] || return 0
     [[ -n "${PLAN_LINES:-}" && -n "${DIFF_LINES:-}" ]] || return 0
-    local _baseline="$DESIGN_TMPDIR/drift-baseline.env" _tmp
-    [[ ! -e "$_baseline" ]] || return 0
-    _tmp="${_baseline}.tmp.$$"
-    if { printf 'BASELINE_PLAN_LINES=%s\n' "$PLAN_LINES"; printf 'BASELINE_DIFF_LINES=%s\n' "$DIFF_LINES"; } >"$_tmp" 2>/dev/null; then
-        mv -f "$_tmp" "$_baseline" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
-    else
-        rm -f "$_tmp" 2>/dev/null || true
-    fi
+    larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$PLAN_LINES" "$DIFF_LINES" || true
 }
 
 _postplan_emit_partition_section() {
@@ -372,6 +367,11 @@ _postplan_run_plan_size() {
         TRIGGER_REASONS=""
         SOFT_ADVISORY=false
         rm -f "$_plan_size_stderr" 2>/dev/null || true
+        if [[ "$WITH_PLAN_SIZE" == true ]]; then
+            POSTPLAN_EMIT_STATUS=plan-size-failed
+            PLAN_SIZE_STATUS=failed
+            _postplan_exit_merged_failure
+        fi
         return 2
     fi
     rm -f "$_plan_size_stderr" 2>/dev/null || true
@@ -385,11 +385,11 @@ _postplan_run_plan_size() {
 
 _postplan_finish_merged_plan_size() {
     local _plan_size_rc=$1
-    if [[ "$_plan_size_rc" -eq 2 ]]; then
-        POSTPLAN_EMIT_STATUS=ok
-        PLAN_SIZE_STATUS="${PLAN_SIZE_STATUS:-unknown}"
-        _postplan_flush || exit 1
-        exit 0
+    local _defects_exit="${2:-}"
+    if [[ "$_plan_size_rc" -ne 0 ]]; then
+        POSTPLAN_EMIT_STATUS=plan-size-failed
+        PLAN_SIZE_STATUS=failed
+        _postplan_exit_merged_failure
     fi
     _postplan_emit_soft_advisory
     if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
@@ -412,6 +412,12 @@ _postplan_finish_merged_plan_size() {
         PLAN_SIZE_STATUS=drift-trigger
         _postplan_flush || exit 1
         exit 14
+    fi
+    if [[ -n "$_defects_exit" ]]; then
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=skipped-defects
+        _postplan_flush || exit 1
+        exit "$_defects_exit"
     fi
     POSTPLAN_EMIT_STATUS=ok
     PLAN_SIZE_STATUS=under-threshold
@@ -558,12 +564,13 @@ fi
 
 POSTPLAN_EMIT_STATUS=ok
 if [[ "$VALIDATE_STATUS" == defects-found ]]; then
-    if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
         _plan_size_run_rc=0
         _postplan_run_plan_size || _plan_size_run_rc=$?
         if [[ "$_plan_size_run_rc" -eq 0 ]]; then
             _postplan_snapshot_drift_baseline
         fi
+        _postplan_finish_merged_plan_size "$_plan_size_run_rc" 10
     fi
     PLAN_SIZE_STATUS=skipped-defects
     _postplan_flush || exit 1
