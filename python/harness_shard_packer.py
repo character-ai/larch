@@ -1,10 +1,9 @@
-"""Round-robin LPT (Longest-Processing-Time) bin packer for test harness shards.
+"""Greedy LPT (Longest-Processing-Time) bin packer for test harness shards.
 
 The classic LPT heuristic sorts jobs slowest-first and assigns each to the
-currently lightest bin.  For N shards that naturally degenerates to simple
-round-robin: slow[0]→shard[0], slow[1]→shard[1], …, slow[N-1]→shard[N-1],
-slow[N]→shard[0], …  This guarantees the two slowest tests are never in the
-same shard, and the spread is provably close to optimal for uniform machines.
+currently lightest bin (min-heap over cumulative shard totals).  This
+guarantees the two slowest tests are never in the same shard, and minimises
+the makespan (max shard total) across all heterogeneous job sizes.
 
 Public surface:
 
@@ -12,6 +11,8 @@ Public surface:
 """
 
 from __future__ import annotations
+
+import heapq
 
 
 def pack(
@@ -21,15 +22,18 @@ def pack(
     guard: str = "test-harness-shards-coverage",
     extras: list[str] | None = None,
 ) -> dict[int, list[str]]:
-    """Distribute test targets across *n_shards* using round-robin LPT.
+    """Distribute test targets across *n_shards* using greedy LPT.
 
     Algorithm
     ---------
     1. Sort all *measured* targets slowest-to-fastest by their median seconds.
-    2. Assign ``sorted_targets[i]`` to shard ``(i % n_shards) + 1`` (1-based).
-    3. Append *extras* (targets with no timing data) at the end, distributed
-       the same way — they act as 0-second items and fill the tail evenly.
-    4. Move *guard* to position 0 in whichever shard it lands in.  This
+    2. Maintain a min-heap of ``(cumulative_total, shard_id)`` initialised to
+       zero for every shard.
+    3. For each target (slowest first), pop the lightest shard, assign the
+       target to it, push ``(total + target_seconds, shard_id)`` back.
+    4. Append *extras* (targets with no timing data) using the same heap so
+       they fill the lightest shards rather than always landing at the tail.
+    5. Move *guard* to position 0 in whichever shard it lands in.  This
        satisfies the ``test-harness-shards-coverage`` first-prerequisite
        invariant enforced by the partition checker.
 
@@ -57,8 +61,14 @@ def pack(
     all_targets = sorted_targets + (extras or [])
 
     shards: dict[int, list[str]] = {i: [] for i in range(1, n_shards + 1)}
-    for i, target in enumerate(all_targets):
-        shards[(i % n_shards) + 1].append(target)
+    # heap entries: (cumulative_seconds, shard_id) — shard_id breaks ties
+    heap: list[tuple[float, int]] = [(0.0, i) for i in range(1, n_shards + 1)]
+    heapq.heapify(heap)
+
+    for target in all_targets:
+        total, shard_id = heapq.heappop(heap)
+        shards[shard_id].append(target)
+        heapq.heappush(heap, (total + medians.get(target, 0.0), shard_id))
 
     # Ensure guard is first in its assigned shard (structural invariant)
     if guard:

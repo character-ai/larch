@@ -287,6 +287,10 @@ grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
 grep -Fq 'SLOT_COUNT=8' <<< "$out"
 [[ -s "$TMP/hard-round2/codex-specialist-security-output.txt" ]]
 
+fi  # end section: core (panels)
+
+if section_runs core-dynamic; then
+
 seed_case_inputs "$TMP/dynamic4"
 export SCOUT_SCOUT_ARGV_LOG="$TMP/dynamic4/scout-argv.log"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
@@ -512,7 +516,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 [[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
-fi  # end section: core
+fi  # end section: core-dynamic
 
 if section_runs reuse; then
 seed_case_inputs "$TMP/round-reuse"
