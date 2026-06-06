@@ -5,6 +5,7 @@ set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR_BASE="$(mktemp -d -t launch-codex-exec-test.XXXXXX)"
