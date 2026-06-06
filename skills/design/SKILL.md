@@ -71,19 +71,40 @@ The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a w
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ```
 
+**Phase 7 exception**: pure-LLM Steps **1c**, **1d**, **1d.7**, and **1e** have no standalone prelude fences — their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work.
+
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.
 
 Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.md`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-write-design-current-env.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-write-design-current-env.md`.
 
-**Completion sentinels for pause/resume.** Step sentinels are written only after
-the step body succeeds, never at step entry. Each step section below carries
-its own boundary-local `mkdir -p "$DESIGN_TMPDIR/.completed"` / `: >
-"$DESIGN_TMPDIR/.completed/step-..."` write; do not satisfy this contract with
-a single shared reference block.
+**Completion sentinels for pause/resume.** Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash fences. **Folded contract**: every absorbed prior-step write must occur **after** `source-env` and **before** `design-pause-save.sh` pause-check in the host fence. Boundary-local writes that remain at step success boundaries (for example `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass triple writes, and in-fence `step-3.6` / `step-5c`) still follow the step-body-success rule. **Sole deliberate exception**: `step-6` is written **after** pause-check and **before** `cleanup-tmpdir.sh` in the Step 6 cleanup fence.
+
+**Tradeoff**: folding removes near-empty Bash turns but coarsens timing-ledger granularity and widens pause latency — a pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary, with folded sentinels written first so resume routes forward instead of replaying completed discussion.
 
 Pause/resume helper coverage lives in
 `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-pause-resume.sh` and
 `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-pause-resume.md`.
+
+| Sentinel | Host fence(s) | Ordering |
+|----------|---------------|----------|
+| `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2a entry (idempotent repair) | before pause-check |
+| `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
+| `step-1d.7`, `step-1e` | Step 2a entry; `step-1e` also Step 3 entry | before pause-check |
+| `step-2a`, `step-2a.5` | Step 2a entry SIMPLE guarded block; Step 2a.5 prelude (`step-2a`, HARD); zero-sketch degraded branch fence; Step 2b prelude (both, HARD repair) | before pause-check |
+| `step-3` | Step 3.5 prelude; Gate-B-bypass triple writes stay explicit | before pause-check |
+| `step-3.5` | Step 3.6 entry | before pause-check |
+| `step-3.6` | Step 3.6 in-fence (rc branches) | unchanged |
+| `step-4` | Step 4 success boundary | boundary-local |
+| `step-4b` | Step 5 prelude | before pause-check |
+| `step-5b` | Step 5b success boundary | boundary-local |
+| `step-5c` | `design-publish.sh` fence when `PLAN_WRITE_OK=true` | in-fence gated |
+| `step-5d` | Step 6 prelude | before pause-check |
+| `step-6` | Step 6 cleanup fence | **after** pause-check |
+| Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
+| Step 3 direct-review restore | Step 3 entry when Gate A ready-for-review after backward loop | restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5` before pause-check |
+| Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
+| Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
+| Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block | pause-check retained |
 
 ## Design Mindset
 
@@ -101,7 +122,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the primary SIMPLE-tier write site for `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers, with Step 2a.5 allowed to repair legacy or corrupted SIMPLE pauses before skipping. HARD always runs 4 personality sketches, and HARD's zero-sketch degraded path plus Step 2a / 2a.5 success-boundary marker writes remain valid. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
+1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the primary SIMPLE-tier write site for `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers (written in the guarded SIMPLE block **before** pause-check), with Step 2a.5 allowed to repair legacy or corrupted SIMPLE pauses before skipping. HARD always runs 4 personality sketches; HARD's `.completed/step-2a` is folded into the Step 2a.5 prelude, both `step-2a` and `step-2a.5` into the Step 2b prelude, and the zero-sketch degraded branch fence before jumping to Step 2b. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
 
@@ -113,7 +134,7 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 6. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
-7. **NEVER omit the pause-check line from the canonical Bash-block prelude (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every Bash block from Step 1c through Step 6 starts with the two-line prelude (source env, then pause-check). The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
+7. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, 1d.7, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -448,7 +469,18 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
+4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md`. Before the terminal already-planned hygiene / **Final summary block** / exit **0**, write the contiguous completion prefix through `.completed/step-1d.5` (not only the non-contiguous `step-1d.5` marker):
+
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   mkdir -p "$DESIGN_TMPDIR/.completed"
+   : > "$DESIGN_TMPDIR/.completed/step-1c"
+   : > "$DESIGN_TMPDIR/.completed/step-1d"
+   : > "$DESIGN_TMPDIR/.completed/step-1d.5"
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+   ```
+
+   Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
 5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; keep `manual_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
@@ -541,40 +573,38 @@ See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-s
 
 Before sketches, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
 
-After the Step 0c grep pass succeeds, write `mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-0c"` before continuing to Step 1c.
-
-<!-- step:1c — Clarifying Questions -->
+After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
+mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-0c"
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design folded discussion block" || true
 ```
+
+<!-- step:1c — Clarifying Questions -->
 
 Print: `> **🔶 /design 1c: questions**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
-At the Step 1c success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1c"` before continuing to Step 1d.
+`.completed/step-1c` is batch-written by the Step 1d.5 prelude fence (or Step 2a entry when brainstorm is off) before pause-check — not at a Step 1c success boundary.
 
 <!-- step:1d — Design Discussion (Round 1) -->
-
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
-```
 
 Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
-At the Step 1d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1d"` before continuing to Step 1d.5 or Step 1e.
+`.completed/step-1d` is batch-written by the Step 1d.5 prelude fence (or Step 2a entry when brainstorm is off) before pause-check — not at a Step 1d success boundary.
 
 <!-- step:1d.5 — Brainstorm Panel -->
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-1c"
+: > "$DESIGN_TMPDIR/.completed/step-1d"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.5 — brainstorm" || true
 ```
@@ -585,20 +615,18 @@ When Step 1d.5 finishes or is skipped by its entry guard, immediately run `mkdir
 
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.7 — outline" || true
-```
-
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard).
+
+`.completed/step-1d.7` is batch-written by the Step 2a entry fence before pause-check — not at a Step 1d.7 success boundary.
 
 <!-- step:1e — Discussion Mode Gate (Gate A) -->
 
+**Gate B(c) / Gate C(b) re-entry only** — when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1e — gate A" || true
 ```
 
 Print: `> **🔶 /design 1e: gate A**`
@@ -613,15 +641,27 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
-At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1e"` before continuing to Step 2a or Step 3.
+`.completed/step-1e` is batch-written by both the Step 2a entry fence and the Step 3 entry fence before pause-check (covering normal and Gate A direct-review routes) — not at a Gate A success boundary.
 
 <!-- step:2a — Collaborative Approach Sketches -->
 ## Step 2a — Collaborative Approach Sketches
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-1c"
+: > "$DESIGN_TMPDIR/.completed/step-1d"
+_brainstorm_requested=false
+if [ -r "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _brainstorm_requested=true ;;
+  esac
+fi
+if [ "$_brainstorm_requested" != true ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-1d.5"
+fi
+: > "$DESIGN_TMPDIR/.completed/step-1d.7"
+: > "$DESIGN_TMPDIR/.completed/step-1e"
 if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
   exit 1
@@ -646,10 +686,11 @@ if [ "$_design_classification" = SIMPLE ]; then
     printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
     : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
   fi
-  mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2a"
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
 Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
@@ -708,7 +749,15 @@ Collect and validate external sketch outputs using the shared collection script.
 
 If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
 
-**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the degraded no-sketches path: write `NO_SKETCHES_DEGRADED_HARD` to `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` to `contested-decisions.md`, and an empty `dialectic-resolutions.md`; log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then skip Step 2a.5 and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
+**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the degraded no-sketches path: write `NO_SKETCHES_DEGRADED_HARD` to `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` to `contested-decisions.md`, and an empty `dialectic-resolutions.md`; log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then run the zero-sketch degraded fence below, skip Step 2a.5, and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-2a"
+: > "$DESIGN_TMPDIR/.completed/step-2a.5"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+```
 
 **Regular mode** (4 external output files when both tools available):
 
@@ -773,12 +822,15 @@ Read all sketches that ran (fewer when an external tool was unavailable; if zero
    List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
 
 Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. Also print it under an `## Approach Synthesis` header.
-At the Step 2a success boundary, including the zero-sketch sentinel path, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2a"` before continuing to Step 2a.5 or Step 2b.
+
+On HARD sketch paths, `.completed/step-2a` is written by the Step 2a.5 prelude fence before pause-check — not at a Step 2a success boundary. SIMPLE skip-to-2b and the zero-sketch degraded fence above retain their entry-fence or branch-local marker writes.
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-2a"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
 ```
@@ -857,7 +909,8 @@ Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNT
 **Do NOT load `dialectic-execution.md` when the zero-externals guardrail fired (zero buckets queued in step 5 above)** — instead, jump directly to the final sub-step of `dialectic-execution.md` conceptually (emit only `bucket-skipped` / `over-cap` entries into `dialectic-resolutions.md`) without loading the full execution procedure. The dialectic-resolutions schema for these entries is documented in the **Write `$DESIGN_TMPDIR/dialectic-resolutions.md`** section of `dialectic-execution.md`; if the orchestrator already has the schema in context from a prior run, skip the load entirely. Otherwise, a one-time load of `dialectic-execution.md` is acceptable but the debate-execution mechanics inside it MUST NOT fire (no debaters, no judges, no ballot).
 
 Execute **steps 2** through final dialectic resolution writing as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end.
-At the Step 2a.5 success boundary, including no-contest and zero-externals skip paths, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2a.5"` before continuing to Step 2b.
+
+`.completed/step-2a.5` is written by the Step 2b prelude fence before pause-check — not at a Step 2a.5 success boundary.
 
 After each dialectic collection boundary (debate results and judge results), consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=dialectic-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>` flag so one logical boundary prompts once.
 
@@ -867,6 +920,9 @@ Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
 ```
@@ -1023,8 +1079,18 @@ At the Step 2b.5 success boundary on any non-exiting return path, immediately ru
 
 Print: `> **🔶 /design 3: plan review**`
 
+When control arrives from Gate A **Ready for review** (direct-to-Step-3) or other backward review re-entry, the Step 3 entry fence clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and — when arriving after a backward discussion loop that cleared Step 2 markers — restores the direct-review bypass package before pause-check.
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-1e"
+# Direct-review after backward discussion loop only — restore Step 2 bypass package when Step 2 markers were cleared:
+[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
+[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
@@ -1140,7 +1206,7 @@ If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, 
 
 If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4; Step 3.6 is skipped on those short-circuits (status-specific skip breadcrumbs in the branch matrix). Before every Gate-B-bypass jump, write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`) so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B or assessor work.
 
-At the Step 3 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3"` before entering Step 3.5. On Gate-B-bypass paths, also write `step-3.5` and `step-3.6` before entering Step 3b.
+`.completed/step-3` is written by the Step 3.5 prelude fence before pause-check on Gate B paths — not at a Step 3 success boundary. On Gate-B-bypass paths, also write `step-3.5` and `step-3.6` before entering Step 3b.
 
 > **Continue to Step 3.5 IMMEDIATELY when Step 3 actually produced fresh review artifacts.** The plan-review result is not terminal — proceed to the post-review chooser. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (see the post-loop branch matrix). Zero-findings paths still traverse Gate B's short-circuit and then Step 3.6 before Step 3b.
 
@@ -1148,6 +1214,8 @@ At the Step 3 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
 ```
@@ -1159,7 +1227,7 @@ Print: `> **🔶 /design 3.5: gate B**`
 **Optional trailer guard (Gate B post-apply)**: Before prompt-side `plan.txt` replacement or dedup, run `gate-b-dedup-plan.sh --snapshot-trailers`; after rewrite run `gate-b-dedup-plan.sh --dedup` (requires the snapshot file — never run `--dedup` alone). Preserve snapshotted optional trailer keys **and values** or explicitly recompute; empty snapshot forbids newly introduced optional trailers. See `approval-gates.md` §Shared post-apply pipeline.
 
 Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and Step 3 / `plan-review-loop.sh` plan-size-trigger handoffs. Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch. When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path (passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort) and any retained Step 2b.5 path has returned, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
-At the Step 3.5 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.5"` before entering Step 3.6.
+`.completed/step-3.5` is written by the Step 3.6 entry fence before pause-check — not at a Step 3.5 success boundary.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
 
@@ -1167,6 +1235,8 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3.5"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.6 — assessor" || true
 _design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
@@ -1271,9 +1341,22 @@ Print: `> **🔶 /design 3b: arch diagram**`
 
 Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`; write a zero-byte sentinel at `$DESIGN_TMPDIR/architecture-diagram.skipped`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY run the Step 3b completion boundary below, then Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
+If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`, then run the branch-local skip fence below, then IMMEDIATELY run the Step 3b completion boundary below, then Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
 
-**Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md"
+: > "$DESIGN_TMPDIR/architecture-diagram.skipped"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+```
+
+**Otherwise** (plan is architectural): before generation, sanitizer, or failure handling, run the architectural entry cleanup fence below, then generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md" "$DESIGN_TMPDIR/architecture-diagram.skipped"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+```
 
 **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
 
@@ -1364,12 +1447,6 @@ At the Step 4 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4b — gate C" || true
-```
-
 Print: `> **🔶 /design 4b: gate C**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e or 3.5).
@@ -1381,6 +1458,7 @@ Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the si
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4b — gate C" || true
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --variant gatec
@@ -1389,7 +1467,8 @@ Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the si
 Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. When the review-round counter is below the tier cap, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or auto-applied prior feedback applied); the fresh review proceeds through Step 3.5, Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
-At the Step 4b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-4b"` before entering Step 5.
+
+`.completed/step-4b` is written by the Step 5 prelude fence before pause-check — not at a Step 4b success boundary.
 
 <!-- step:5 — Finalize design (write plan + file OOS) -->
 
@@ -1397,6 +1476,8 @@ Print: `> **🔶 /design 5: finalize**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-4b"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — finalize" || true
 ```
@@ -1459,6 +1540,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
    set +e
    _publish_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
      --design-tmpdir "$DESIGN_TMPDIR" \
@@ -1560,7 +1642,8 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, th
 `➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
-At the Step 5d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5d"` before entering Step 6.
+
+`.completed/step-5d` is written by the Step 6 prelude fence before pause-check — not at a Step 5d success boundary.
 
 <!-- step:6 — Cleanup -->
 
@@ -1568,17 +1651,22 @@ Print: `> **🔶 /design 6: cleanup**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-5d"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
 Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
+
+**Sole deliberate after-pause sentinel placement**: on the happy path, `step-6` is written in the cleanup fence **after** pause-check and **before** `cleanup-tmpdir.sh`.
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-6"
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
-Before invoking `cleanup-tmpdir.sh` on the happy path, run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-6"`.
 
 ### Plan command validator failure (shared)
 

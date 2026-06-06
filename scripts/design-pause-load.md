@@ -68,7 +68,12 @@ fails, the load still reports success, emits `MARKER_CLEARED=false`, and emits
 marker is removed manually). A successful post-load marker delete emits
 `MARKER_CLEARED=true`. Successful load also removes restored
 `$DESIGN_TMPDIR/.pause-requested` so the resumed run does not immediately
-re-pause from stale local state.
+re-pause from stale local state. Pause snapshots may legitimately include
+`.pause-requested` because publish stages the tmpdir as-is at pause-save time;
+load copies that snapshot into the live tmpdir, then deletes only the restored
+live `.pause-requested` sentinel before returning control. Other restored pause
+metadata (`pause-state.txt`, `.resume-loaded`, staged `.completed/*`, and plan
+artifacts) remains intact.
 
 `jq` is required for `manifest.json` validation. When it is unavailable, the
 loader fails closed with `LOAD_OK=false` `ERROR=jq-missing` instead of a shell
