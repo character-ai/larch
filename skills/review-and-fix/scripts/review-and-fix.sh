@@ -28,6 +28,9 @@ source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
 # shellcheck source=scripts/lib-implement-round-cap.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-implement-round-cap.sh"
+# shellcheck source=scripts/lib-vote-tally.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 usage() {
     larch_err "Usage:"
@@ -198,31 +201,6 @@ count_findings() {
     else
         printf '0\n'
     fi
-}
-
-is_security_block() {
-    local block="$1"
-    command -v python3 >/dev/null 2>&1 || return 2
-    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
-    python3 - "$block" <<'PYEOF'
-import re, sys
-try:
-    text = open(sys.argv[1], encoding="utf-8").read()
-except OSError as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-except Exception as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-try:
-    text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-    text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-    pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-    sys.exit(0 if pattern.search(text_no_backtick) else 1)
-except Exception as exc:
-    print(f"is_security_block: {exc}", file=sys.stderr)
-    sys.exit(2)
-PYEOF
 }
 
 mirror_oos_markdown() {
@@ -1398,7 +1376,7 @@ _implement_round_body() {
     coder_rc=0
     if [[ "$accepted_count" -gt 0 && -s "$accepted_file" ]]; then
         in_scope_file="$round_dir/accepted-in-scope-findings.md"
-        awk '/^### FINDING_[0-9]+: \[OUT_OF_SCOPE\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[OUT_OF_SCOPE\]/{skip=0} !skip{print}' \
+        awk '/^### FINDING_[0-9]+:.*\[(OUT_OF_SCOPE|OOS)\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[(OUT_OF_SCOPE|OOS)\]/{skip=0} !skip{print}' \
             "$accepted_file" > "$in_scope_file" || true
         in_scope_count=$(count_findings "$in_scope_file")
         if (( in_scope_count > 0 )); then
@@ -1437,6 +1415,15 @@ _implement_round_body() {
         skipped_security_file="$round_dir/skipped-findings.security.md"
         : > "$skipped_file"
         : > "$skipped_security_file"
+        # #3550: coder-SKIPPED OOS blocks are normalized to canonical
+        # "### OOS_<seq>:" headers at append time; the sequence continues from
+        # the existing accumulated-oos.md non-security block count so multi-
+        # round skipped OOS stay monotonic.
+        OOS_WRITE_SEQ=0
+        if [[ -s "$oos_markdown" ]]; then
+            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk" "$oos_markdown" 2>/dev/null || printf '0')
+            case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
+        fi
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
             [[ -n "$skip_id" ]] || continue
             block_file="$round_dir/${skip_id}.skipped.md"
@@ -1455,7 +1442,9 @@ _implement_round_body() {
                 local sec_rc=0
                 is_security_block "$block_file" || sec_rc=$?
                 if [[ "$sec_rc" -eq 1 ]]; then
-                    cat "$block_file" >> "$skipped_file"
+                    OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
+                    "$PLUGIN_ROOT/skills/shared/scripts/normalize-oos-block-header.sh" \
+                        --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
                 elif [[ "$sec_rc" -eq 2 ]]; then
                     larch_err "review-and-fix.sh: security classifier failed for $skip_id"
@@ -1471,7 +1460,7 @@ _implement_round_body() {
             rm -f "$block_file"
         done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
 
-        if [[ -s "$skipped_file" ]]; then
+        if [[ "$classifier_loop_abort" -eq 0 && -s "$skipped_file" ]]; then
             jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \
                 '{round: $round, source: "code-review-skipped", body: $body}' >> "$oos_jsonl"
             [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"

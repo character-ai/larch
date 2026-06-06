@@ -53,19 +53,44 @@ reviewer_for_block() {
     printf '%s' "$reviewer"
 }
 
-# is_security_block: 0 (true) when the block has at least one UNFENCED occurrence
-# of the canonical `focus-area = security` token (case-insensitive, optional
-# whitespace around `=`). Occurrences inside triple-backtick or single-backtick
-# regions are stripped before matching.
+# is_security_block: 0 (true) when the block has at least one security routing
+# token outside triple-backtick fences. Prose/code examples inside inline
+# backticks are ignored, while dedicated focus-area fields may backtick-wrap
+# their label or value.
 is_security_block() {
     local block="$1"
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
     python3 - "$block" <<'PYEOF'
 import re, sys
-text = open(sys.argv[1]).read()
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
 text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
 text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-sys.exit(0 if pattern.search(text_no_backtick) else 1)
+canonical_token = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
+explicit_header = re.compile(
+    r'^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?'
+    r'`?(?:\[security\]|<security>)`?(?:\s|$|[:-])',
+    re.IGNORECASE,
+)
+field_value = re.compile(
+    r'^[ \t-]*focus-area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)',
+    re.IGNORECASE,
+)
+lines = text_no_fence.splitlines()
+found = bool(canonical_token.search(text_no_backtick))
+if not found and lines and explicit_header.search(lines[0]):
+    found = True
+if not found:
+    for line in lines:
+        normalized = line.replace('`', '').replace('*', '').strip()
+        if field_value.search(normalized):
+            found = True
+            break
+sys.exit(0 if found else 1)
 PYEOF
 }
 

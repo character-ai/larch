@@ -150,6 +150,27 @@ EOF
 if is_security_block "$block"; then sec_rc=0; else sec_rc=1; fi
 assert_exit "backtick-fenced security tag → not detected" "$sec_rc" "1"
 
+cat > "$block" <<'EOF'
+### FINDING_1: thing
+- **focus-area**: `security-hardening`
+EOF
+if is_security_block "$block"; then sec_rc=0; else sec_rc=1; fi
+assert_exit "backtick-wrapped focus-area value → detected" "$sec_rc" "0"
+
+cat > "$block" <<'EOF'
+### FINDING_1: ordinary security cleanup
+- **Concern**: Non-sensitive public cleanup.
+EOF
+if is_security_block "$block"; then sec_rc=0; else sec_rc=1; fi
+assert_exit "bare security in heading → not detected" "$sec_rc" "1"
+
+cat > "$block" <<'EOF'
+### FINDING_1: `[security]` private cleanup
+- **Concern**: Sensitive follow-up.
+EOF
+if is_security_block "$block"; then sec_rc=0; else sec_rc=1; fi
+assert_exit "backtick-wrapped explicit security header tag → detected" "$sec_rc" "0"
+
 cat > "$block" <<'BLOCK_END'
 ### FINDING_1: thing
 ```

@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-oos-pipeline","tool":"cursor","output":"<TMPDIR>/round-4/dyn-oos-pipeline-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-oos-pipeline-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-shell-portability","tool":"cursor","output":"<TMPDIR>/round-4/dyn-shell-portability-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-shell-portability-prompt.md","weight":1,"focus_area":"code-quality"}
+{"slot":"dyn-parser-parity","tool":"cursor","output":"<TMPDIR>/round-4/dyn-parser-parity-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-parser-parity-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-holdback-routing","tool":"cursor","output":"<TMPDIR>/round-4/dyn-holdback-routing-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-holdback-routing-prompt.md","weight":1,"focus_area":"security"}
+{"slot":"dyn-regression-harness","tool":"cursor","output":"<TMPDIR>/round-4/dyn-regression-harness-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-regression-harness-prompt.md","weight":1,"focus_area":"correctness"}

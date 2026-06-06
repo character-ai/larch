@@ -115,6 +115,21 @@ else
 fi
 [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]] && : > "$OOS_ACCEPTED_OUT"
 
+# Canonical accepted-OOS header rewrite (#3550): every non-security accepted
+# OOS block is normalized to "### OOS_<seq>:" before entering the accepted-OOS
+# sinks, regardless of its ballot header (tagged FINDING_, scope-drift bare
+# FINDING_, or a pre-existing OOS_ id being renumbered into the run sequence).
+NORMALIZE_OOS_HELPER="$SCRIPT_DIR/../../shared/scripts/normalize-oos-block-header.sh"
+OOS_SEQ_SEED_HELPER="$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk"
+OOS_WRITE_SEQ=0
+if [[ -n "$SESSION_ENV_PATH" ]]; then
+    accumulated_oos="$(dirname "$SESSION_ENV_PATH")/accumulated-oos.md"
+    if [[ -s "$accumulated_oos" ]]; then
+        OOS_WRITE_SEQ=$(awk -f "$OOS_SEQ_SEED_HELPER" "$accumulated_oos" 2>/dev/null || printf '0')
+        case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
+    fi
+fi
+
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-code-votes.XXXXXX")
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
@@ -505,7 +520,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         # Code review supports OOS_N headings and legacy FINDING_N headings
         # tagged with [OUT_OF_SCOPE].
         is_oos=false
-        if [[ "$id" == OOS_* ]] || head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
+        if [[ "$id" == OOS_* ]] || head -n1 "$block" | grep -Eq '\[(OUT_OF_SCOPE|OOS)\]'; then
             is_oos=true
         fi
         # Scope-fit gate: reclassify in-scope findings whose locations are all
@@ -529,8 +544,15 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         }' >> "$score_rows"
 
         security=false
-        if is_security_block "$block" 2>/dev/null; then
+        sec_rc=0
+        is_security_block "$block" || sec_rc=$?
+        if [[ "$sec_rc" -eq 0 ]]; then
             security=true
+        elif [[ "$sec_rc" -eq 1 ]]; then
+            security=false
+        else
+            larch_err "tally-code-votes.sh: security classifier failed for $id"
+            exit 2
         fi
 
         if [[ "$kind" == "finding" ]]; then
@@ -580,14 +602,19 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                     # Security-tagged accepted OOS: held locally only, never filed publicly.
                     :
                 else
-                    cat "$block" >> "$OOS_ACCEPTED_FILE"
+                    OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
+                    normalized_file="$REVIEW_TMPDIR/normalized-oos-${OOS_WRITE_SEQ}.md"
+                    "$NORMALIZE_OOS_HELPER" --seq "$OOS_WRITE_SEQ" --block-file "$block" > "$normalized_file"
+                    cat "$normalized_file" >> "$OOS_ACCEPTED_FILE"
                     printf '\n' >> "$OOS_ACCEPTED_FILE"
+                    # Mirror to the parent-tmpdir sink only when the paths
+                    # differ — standalone mode aliases both to the same file.
                     if [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]]; then
-                        cat "$block" >> "$OOS_ACCEPTED_OUT"
+                        cat "$normalized_file" >> "$OOS_ACCEPTED_OUT"
                         printf '\n' >> "$OOS_ACCEPTED_OUT"
                     fi
+                    OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))
                 fi
-                OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))
                 record_tally_outcome "$id" true accepted
             else
                 OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT + 1))

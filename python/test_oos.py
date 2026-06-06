@@ -182,3 +182,122 @@ def test_rejected_markers_ignore_tags_outside_section(tmp_path: Path) -> None:
         oos_issues_ndjson=str(ndjson),
     )
     assert result.rejected_markers == 1
+
+
+def test_count_non_security_counts_legacy_tagged_headers(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged block\n"
+        "- **Description**: dropped before #3550.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
+def test_count_non_security_counts_legacy_trailing_tagged_headers(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: Legacy tagged block [OUT_OF_SCOPE]\n"
+        "- **Description**: tag after title matches awk parity.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
+def test_count_non_security_counts_legacy_oos_shorthand_header(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OOS] Legacy shorthand block\n"
+        "- **Description**: tag after title matches awk parity.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
+def test_count_non_security_ignores_bare_finding_headers(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: bare in-scope finding\n- **Concern**: stays in scope.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_disposition_gap_for_legacy_header_blocks(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged block\n"
+        "- **Description**: no disposition coverage.\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+    )
+    assert not result.ok
+    assert result.non_security_count >= 1
+
+
+def test_count_non_security_excludes_security_tagged_legacy_header(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Security item\n"
+        "- **focus-area**: security\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_backtick_unbold_security_focus_area(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Security item\n"
+        "- `focus-area`: `security-hardening`\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_unbulleted_security_focus_area(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Security item\n"
+        "focus-area: security-hardening\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_excludes_structured_security_heading(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: [security] Security item\n"
+        "- **Description**: private routing.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_count_non_security_does_not_treat_body_security_heading_as_tag(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Public item\n"
+        "- **Concern**: cites a heading below.\n"
+        "### Example [security] policy\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1

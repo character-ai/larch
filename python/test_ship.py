@@ -321,6 +321,22 @@ def test_oos_gate_requires_ndjson_for_non_security_without_filed_evidence(tmp_pa
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
+def test_oos_gate_blocks_legacy_trailing_tag_without_filed_evidence(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### FINDING_1: Needs filing [OUT_OF_SCOPE]\n- **Description**: unresolved\n",
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is not None
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+
 def test_run_ship_proceeds_when_disposition_satisfied_with_non_empty_accepted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

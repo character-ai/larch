@@ -10,6 +10,7 @@ unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
     IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR RESEARCH_TMPDIR 2>/dev/null || true
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
+LEGACY_OPENER_AWK="$REPO_ROOT/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk"
 SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 
 fail() {
@@ -1270,6 +1271,22 @@ grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrubbed-out tool"
 grep -Fq 'CODER_STATUS=skipped' <<< "$out" || fail "scrubbed-out coder skipped"
 grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "scrubbed-out scrub count"
 
+cat > "$TMP/mixed-accepted-oos-filter.md" <<'EOF'
+### FINDING_1: In-scope fix
+- **Concern**: Apply me.
+
+### FINDING_2: [OOS] shorthand out of scope
+- **Concern**: Skip me.
+
+### FINDING_3: [OUT_OF_SCOPE] full tag out of scope
+- **Concern**: Skip me too.
+EOF
+awk '/^### FINDING_[0-9]+:.*\[(OUT_OF_SCOPE|OOS)\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[(OUT_OF_SCOPE|OOS)\]/{skip=0} !skip{print}' \
+    "$TMP/mixed-accepted-oos-filter.md" > "$TMP/in-scope-only.md"
+grep -Fq 'FINDING_1' "$TMP/in-scope-only.md" || fail "[OOS] filter must retain in-scope finding"
+grep -Fq 'FINDING_2' "$TMP/in-scope-only.md" && fail "[OOS] filter must drop [OOS] shorthand finding"
+grep -Fq 'FINDING_3' "$TMP/in-scope-only.md" && fail "[OOS] filter must drop [OUT_OF_SCOPE] finding"
+
 cat > "$TMP/scrub-fails-stub.sh" <<'EOF_SCRUB'
 #!/usr/bin/env bash
 printf 'SCRUB_OK=false\n'
@@ -1457,17 +1474,23 @@ cat > "$out/accepted-findings.md" <<'EOF_FINDINGS'
 ### FINDING_2: Security skipped finding
 - **Concern**: Contains focus-area = security and must stay local.
 - **Suggested revision**: Skip for test.
+
+### FINDING_3: [security] Security skipped heading tag
+- **Concern**: Uses the structured heading tag and colon focus-area forms.
+- **focus-area**: `security-hardening`
+- **Suggested revision**: Skip for test.
 EOF_FINDINGS
 : > "$out/rejected-findings.md"
-printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":2,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":3,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
 printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
-printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=3\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
 EOF_CORE_SKIPPED
 chmod +x "$TMP/review-core-skipped-stub.sh"
 cat > "$work_skipped/implement/round-1-coder.log.seed" <<'EOF_LOG'
 SKIPPED: FINDING_1
 SKIPPED: FINDING_2
 SKIPPED: FINDING_2
+SKIPPED: FINDING_3
 SKIPPED: FINDING_999
 EOF_LOG
 cat > "$TMP/run-external-agent-skipped-stub.sh" <<'EOF_AGENT_SKIPPED'
@@ -1505,13 +1528,55 @@ out=$(
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 0 got $rc"; }
-grep -Fq 'SKIPPED_FINDING_COUNT=2' <<< "$out" || fail "skipped-routing count"
-grep -Fq 'FIX_COUNT=2' <<< "$out" || fail "skipped-routing fix count"
+grep -Fq 'SKIPPED_FINDING_COUNT=3' <<< "$out" || fail "skipped-routing count"
+grep -Fq 'FIX_COUNT=3' <<< "$out" || fail "skipped-routing fix count"
 grep -Fq 'Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing public skipped finding missing"
 if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; then
     fail "skipped-routing security finding leaked to public OOS"
 fi
 grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing security finding missing from local audit"
+grep -Fq 'Security skipped heading tag' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing heading-tag security finding missing from local audit"
+# #3550: skipped non-security block normalized to canonical ### OOS_<seq>: header.
+grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing header not normalized to canonical ### OOS_"
+if awk -f "$LEGACY_OPENER_AWK" "$implement_tmp/oos-accepted-review.md"; then
+    fail "skipped-routing bare FINDING_ header survived in oos-accepted-review.md"
+fi
+jsonl_body=$(jq -r '.body' "$implement_tmp/accumulated-oos.jsonl")
+grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' <<< "$jsonl_body" || fail "skipped-routing jsonl body header not normalized"
+if awk -f "$LEGACY_OPENER_AWK" <<< "$jsonl_body"; then
+    fail "skipped-routing jsonl body retained bare FINDING_ header"
+fi
+oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
+[[ "$oos_awk_count" == "1" ]] || fail "skipped-routing awk non-security count expected 1 got $oos_awk_count"
+
+work_skipped_round2="$TMP/skipped-routing-round2"
+make_work_repo "$work_skipped_round2"
+implement_tmp="$work_skipped_round2/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$implement_tmp/accumulated-oos.md" <<'EOF_PRESEEDED_OOS'
+### OOS_1: Prior accepted OOS
+- **Concern**: Existing prior-round item.
+EOF_PRESEEDED_OOS
+cp "$implement_tmp/accumulated-oos.md" "$implement_tmp/oos-accepted-review.md"
+cat > "$work_skipped_round2/implement/round-1-coder.log.seed" <<'EOF_LOG_ROUND2'
+SKIPPED: FINDING_1
+EOF_LOG_ROUND2
+set +e
+out=$(
+    cd "$work_skipped_round2" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
+    REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 --session-env-path "$implement_tmp/session-env.sh"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "skipped-routing-round2 expected exit 0 got $rc"; }
+grep -Eq '^### OOS_2: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing-round2 new block not numbered OOS_2"
+oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
+[[ "$oos_awk_count" == "2" ]] || fail "skipped-routing-round2 awk non-security count expected 2 got $oos_awk_count"
 
 mkdir -p "$TMP/fail-python-bin"
 cat > "$TMP/fail-python-bin/python3" <<'EOF_PYFAIL'

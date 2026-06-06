@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 export CLAUDE_PLUGIN_ROOT
 SCRIPT="$SCRIPT_DIR/tally-code-votes.sh"
+LEGACY_OPENER_AWK="$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk"
 
 FAIL=0
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/test-tally-code-votes.XXXXXX")
@@ -72,6 +73,16 @@ grep -Fq $'FINDING_1\tCodex-Structure\taccepted\tYES\ttrue\tmajor\tgood\tfalse\t
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
+# #3550: accepted OOS header normalized to canonical ### OOS_<seq>:.
+grep -Eq '^### OOS_1: \[OUT_OF_SCOPE\] OOS observation$' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted header not normalized to ### OOS_1:\n'; }
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL oos-accepted-review.md still carries a FINDING_ header\n'
+else
+    printf '  ok   no FINDING_ headers in oos-accepted-review.md\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "awk non-security count sees normalized block (standalone dual-sink single write)" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env OOS_ACCEPTED_COUNT appended" "$got" "1"
 grep -Fq '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
 if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
     FAIL=1; printf '  FAIL clean 3-voter fixture should not emit degraded panel banner\n'
@@ -121,6 +132,51 @@ got=$(awk -F= '$1=="OOS_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_e
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
 grep -Fq $'OOS_1\tCursor-Testing\taccepted\tYES\ttrue\tminor\tadequate\tfalse\tYES\ttrue\tminor\tgood\tfalse\tNO\tpartially-true\tnit\tweak\tfalse' "$classification_file" \
     || { FAIL=1; printf '  FAIL classification TSV missing direct OOS_N row\n'; }
+
+echo "# Case: legacy [OOS] shorthand normalizes as accepted OOS"
+TMP="$WORKDIR/case_oos_shorthand"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: [OOS] shorthand follow-up
+- **Reviewer**: Cursor-Testing
+- **Concern**: Pre-existing issue.
+- **Suggested revision**: Track later.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$TMP/out.env"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/out.env"); assert_eq "[OOS] shorthand accepted count" "$got" "1"
+grep -Eq '^### OOS_1: \[OOS\] shorthand follow-up$' "$TMP/oos-accepted-review.md" \
+    || { FAIL=1; printf '  FAIL [OOS] shorthand header not normalized\n'; }
+
+echo "# Case: security classifier failure fails closed"
+TMP="$WORKDIR/case_security_classifier_failure"
+mkdir -p "$TMP" "$TMP/bin"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] security follow-up
+- **Reviewer**: Cursor-Security
+- **Concern**: focus-area = security
+- **Suggested revision**: Hold locally.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+cat > "$TMP/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$TMP/bin/python3"
+set +e
+PATH="$TMP/bin:$PATH" "$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$TMP/out.env" 2>"$TMP/err.log"
+rc=$?
+set -e
+assert_eq "security classifier failure rc" "$rc" "2"
+if [[ -s "$TMP/oos-accepted-review.md" ]]; then
+    FAIL=1; printf '  FAIL classifier failure wrote public accepted OOS sink\n'
+fi
 
 echo "# Case: parser failure emits WARN breadcrumb and records JUDGE_ERROR in TSV"
 TMP="$WORKDIR/case_parser_failure_warn"
@@ -372,12 +428,60 @@ assert_eq "round-shape-only standalone path keeps round-suffixed TSV" "$classifi
 echo "# Case: session-bound nested implement round uses flat classification filename"
 TMP="$WORKDIR/case4d_session_bound"
 mkdir -p "$TMP/round-2"
-mk_ballot "$TMP/round-2/ballot.md"
+cat > "$TMP/round-2/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Session mirrored OOS
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Pre-existing thing.
+- **Suggested revision**: Revision 1.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/round-2/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/claude-vote-output.txt"
 : > "$TMP/session.env"
+cat > "$TMP/accumulated-oos.md" <<'EOF'
+### OOS_1: Prior accepted OOS
+- **Concern**: Existing prior-round item.
+EOF
 out="$TMP/round-2/out.env"
-"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" \
+    --voter-files "$TMP/round-2/cursor-vote-output.txt" "$TMP/round-2/codex-vote-output.txt" "$TMP/round-2/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
 assert_eq "session-bound nested round uses flat TSV" "$classification_file" "$TMP/round-2/findings-classification.tsv"
+grep -Eq '^### OOS_2: \[OUT_OF_SCOPE\] Session mirrored OOS$' "$TMP/round-2/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound round sink missing continued normalized OOS\n'; }
+cmp -s "$TMP/round-2/oos-accepted-review.md" "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound parent OOS mirror differs from round sink\n'; }
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL session-bound parent OOS mirror has legacy FINDING header\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "session-bound parent OOS awk count=1" "$got" "1"
+
+echo "# Case: legacy bare FINDING in accumulated-oos seeds OOS_WRITE_SEQ without collision"
+TMP="$WORKDIR/case_legacy_accumulated"
+mkdir -p "$TMP/round-2"
+cat > "$TMP/round-2/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Continued OOS after legacy resume
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Pre-existing legacy item.
+- **Suggested revision**: File it.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/round-2/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/claude-vote-output.txt"
+: > "$TMP/session.env"
+cat > "$TMP/accumulated-oos.md" <<'EOF'
+### FINDING_1: Legacy bare header resume
+- **Concern**: Pre-normalization accumulated item.
+EOF
+out="$TMP/round-2/out.env"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" \
+    --voter-files "$TMP/round-2/cursor-vote-output.txt" "$TMP/round-2/codex-vote-output.txt" "$TMP/round-2/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+grep -Eq '^### OOS_2: \[OUT_OF_SCOPE\] Continued OOS after legacy resume$' "$TMP/round-2/oos-accepted-review.md" \
+    || { FAIL=1; printf '  FAIL legacy accumulated seed did not continue at OOS_2\n'; }
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/round-2/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL legacy accumulated seed left FINDING_ block opener in round sink\n'
+fi
 
 echo "# Case: --both-down true → main-agent-vote-required"
 TMP="$WORKDIR/case4e"
@@ -409,9 +513,10 @@ echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"
 mkdir -p "$TMP"
 cat > "$TMP/ballot.md" <<'EOF'
-### FINDING_1: [OUT_OF_SCOPE] Privilege escalation in setup
+### FINDING_1: [OUT_OF_SCOPE] security Privilege escalation in setup
 - **Reviewer**: Codex-Security
-- **Concern**: focus-area = security, this is sensitive.
+- **focus-area**: security
+- **Concern**: This is sensitive.
 - **Suggested revision**: redacted.
 EOF
 printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
@@ -421,7 +526,7 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
-got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "security OOS counted as accepted" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "security OOS excluded from public accepted count" "$got" "0"
 if [[ -s "$TMP/oos-accepted-review.md" ]]; then
     FAIL=1; printf '  FAIL oos-accepted-review.md should be empty for security-tagged item\n'
 else
@@ -459,6 +564,46 @@ else
     printf '  ok   docs/linting.md finding absent from accepted-findings.md\n'
 fi
 grep -Fq 'docs/linting.md' "$TMP/oos.md" || { FAIL=1; printf '  FAIL docs/linting.md finding missing from oos.md\n'; }
+
+echo "# Case: scope-drift accepted OOS is normalized to canonical ### OOS_ header"
+TMP="$WORKDIR/case6a_norm"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Usage CI bullet still documents harnesses-1 through harnesses-10 after eleven-way sharding.
+- **Suggested revision**: Update to reflect 11 shards.
+EOF
+printf 'scripts/dispatch-code-voters.sh\n' > "$TMP/scope-files.txt"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --scope-files "$TMP/scope-files.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "drift-norm: reclassified count=1" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "drift-norm: accepted OOS count=1" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "drift-norm: review-tally.env accepted OOS count=1" "$got" "1"
+grep -Eq '^### OOS_1: ' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL drift-norm: missing canonical ### OOS_1: header\n'; }
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL drift-norm: bare FINDING_ header survived normalization\n'
+else
+    printf '  ok   drift-norm: no FINDING_ header in oos-accepted-review.md\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "drift-norm: awk non-security count=1" "$got" "1"
+
+cat > "$TMP/body-citation-oos.md" <<'EOF'
+### OOS_1: Normalized title
+- **Concern**: See also ### FINDING_5: prior cited work.
+EOF
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/body-citation-oos.md"; then
+    FAIL=1; printf '  FAIL body FINDING citation false-positive as legacy opener\n'
+else
+    printf '  ok   body FINDING citation does not false-fail legacy opener check\n'
+fi
 
 echo "# Case: scope-fit gate — finding about file IN diff is NOT reclassified"
 TMP="$WORKDIR/case6b"

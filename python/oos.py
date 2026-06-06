@@ -29,11 +29,20 @@ _FILED_URL_LINE = re.compile(
     r"^\s*-\s+\*\*Filed URL\*\*:\s+https://",
     re.MULTILINE,
 )
-_OOS_HEADER_RE = re.compile(r"^###\s+OOS_", re.MULTILINE)
+_OOS_HEADER_RE = re.compile(
+    r"^###\s+(?:OOS_|FINDING_\d+:.*\[(?:OUT_OF_SCOPE|OOS)\])",
+    re.MULTILINE,
+)
 _SECURITY_FOCUS_RE = re.compile(
-    r"^\s*-\s*\*\*focus-area\*\*\s*:\s*"
+    r"^[ \t-]*focus-area[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
+)
+_SECURITY_HEADER_RE = re.compile(
+    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
+    r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
+    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
+    re.IGNORECASE,
 )
 _REJECTED_SECTION_RE = re.compile(
     r"(?:Rejected / Out-of-Scope|## Rejected)",
@@ -55,7 +64,12 @@ def _github_issue_url_pattern() -> re.Pattern[str]:
 
 
 def _count_non_security_markdown(text: str) -> int:
-    """Port oos-non-security-block-count.awk block counting."""
+    """Port oos-non-security-block-count.awk block counting.
+
+    Blocks start on canonical ``### OOS_`` headers and on legacy tagged
+    ``### FINDING_N: [OUT_OF_SCOPE]`` headers (tag required — bare
+    ``### FINDING_N:`` stays in-scope; #3550).
+    """
     count = 0
     in_block = False
     security = False
@@ -64,9 +78,10 @@ def _count_non_security_markdown(text: str) -> int:
             if in_block and not security:
                 count += 1
             in_block = True
-            security = False
+            security = bool(_SECURITY_HEADER_RE.match(line))
             continue
-        if in_block and _SECURITY_FOCUS_RE.match(line):
+        normalized = line.replace("`", "").replace("*", "")
+        if in_block and _SECURITY_FOCUS_RE.match(normalized):
             security = True
     if in_block and not security:
         count += 1

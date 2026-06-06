@@ -212,6 +212,25 @@ assert_eq "case 3 phase" "design" "$(get_value ITEM_1_PHASE "$out3")"
 assert_eq "case 3 body" "Simple description." "$(get_body_file_contents 1 "$out3")"
 
 # ---------------------------------------------------------------------------
+# Test case 3b — Accepted OOS sink shape from review tally normalization.
+# ---------------------------------------------------------------------------
+echo "Case 3b: normalized accepted OOS batch parses for filing"
+cat > "$TMPDIR_TEST/case3b.md" <<'EOF'
+### OOS_1: Normalized accepted review follow-up
+- **Description**: File this follow-up from the accepted OOS sink.
+- **Reviewer**: code-reviewer
+- **Vote tally**: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
+- **Phase**: review
+EOF
+out3b=$(run_parser "$TMPDIR_TEST/case3b.md")
+assert_eq "case 3b items total" "ITEMS_TOTAL=1" "$(grep '^ITEMS_TOTAL=' <<< "$out3b")"
+assert_eq "case 3b title" "Normalized accepted review follow-up" "$(get_value ITEM_1_TITLE "$out3b")"
+assert_eq "case 3b reviewer" "code-reviewer" "$(get_value ITEM_1_REVIEWER "$out3b")"
+assert_eq "case 3b vote tally" "YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted" "$(get_value ITEM_1_VOTE_TALLY "$out3b")"
+assert_eq "case 3b phase" "review" "$(get_value ITEM_1_PHASE "$out3b")"
+assert_eq "case 3b body" "File this follow-up from the accepted OOS sink." "$(get_body_file_contents 1 "$out3b")"
+
+# ---------------------------------------------------------------------------
 # Test case 4 — Baseline: well-formed generic item
 # ---------------------------------------------------------------------------
 echo "Case 4: well-formed generic baseline"

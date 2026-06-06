@@ -198,6 +198,32 @@ rc=$?
 set -e
 assert_rc "security-hardening focus-area passes without URLs" 0 "$rc"
 
+# --- Case: unbulleted focus-area field is security-routed (awk/python parity) ---
+cat >"$TMP/sec-unbulleted.md" <<'EOF'
+### OOS_1: Hardening item
+focus-area = security-hardening
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/sec-unbulleted.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "unbulleted security focus-area passes without URLs" 0 "$rc"
+
+awk_count=$(awk -f "$SCRIPT_DIR/oos-non-security-block-count.awk" "$TMP/sec-unbulleted.md")
+py_count=$(PYTHONPATH="$SCRIPT_DIR/../../../python" python3 -c 'import oos, sys; print(oos.count_non_security((sys.argv[1],)))' "$TMP/sec-unbulleted.md")
+if [ "$awk_count" = "$py_count" ]; then
+  pass "awk/python non-security counter parity for unbulleted security focus-area"
+else
+  fail "awk/python non-security counter parity expected same count, awk=$awk_count python=$py_count"
+fi
+
 # --- Case: non-security OOS + no URLs + no inline fails (isolated repo) ---
 cat >"$TMP/bad.md" <<'EOF'
 ### OOS_1: Orphan
@@ -224,6 +250,55 @@ set +e
 rc=$?
 set -e
 assert_rc "non-security OOS without disposition fails" 1 "$rc"
+
+# --- Case: legacy tagged FINDING header without disposition fails (#3550) ---
+cat >"$TMP/legacy.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Legacy tagged header
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy tagged FINDING header without disposition fails" 1 "$rc"
+
+# --- Case: legacy tagged FINDING header with trailing tag also fails ---
+cat >"$TMP/legacy-trailing.md" <<'EOF'
+### FINDING_1: Legacy tagged header [OUT_OF_SCOPE]
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy-trailing.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy trailing-tag FINDING header without disposition fails" 1 "$rc"
+
+# --- Case: legacy tagged FINDING header with filed URL passes (#3550) ---
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy.md" \
+    --filed-urls-file "$TMP/filed.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy tagged FINDING header with filed URL passes" 0 "$rc"
 
 # --- Case: invalid commit-range is exit 2 ---
 set +e
@@ -548,6 +623,34 @@ if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap/execution-issues.md" \
   pass "checkpoint disposition gap logs Tool Failures"
 else
   fail "checkpoint disposition gap missing Tool Failures log entry or gate stderr"
+fi
+
+# --- Case: checkpoint legacy tagged FINDING disposition gap (#3550) ---
+_impl_gap_legacy=$(mkitmp)
+cat >"$_impl_gap_legacy/oos-accepted-main-agent.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Legacy checkpoint orphan
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+printf 'run-gap-legacy\n' >"$_impl_gap_legacy/session-id"
+mkdir -p "$_impl_gap_legacy/larch-logs/implement/run-gap-legacy"
+: >"$_impl_gap_legacy/larch-logs/implement/run-gap-legacy/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_gap_legacy" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint legacy FINDING disposition gap exit 1" 1 "$rc"
+if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap_legacy/execution-issues.md" \
+  && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap_legacy/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap_legacy/execution-issues.md" \
+  && grep -Fq 'Tool Failures' "$_impl_gap_legacy/execution-issues.md" \
+  && [ -s "$_impl_gap_legacy/oos-disposition-gate.stderr.log" ]; then
+  pass "checkpoint legacy FINDING disposition gap logs Tool Failures"
+else
+  fail "checkpoint legacy FINDING disposition gap missing Tool Failures log entry or gate stderr"
 fi
 
 # --- Case: checkpoint fork-mode skip ---
