@@ -1,0 +1,81 @@
+Reviewing reference files to apply the accepted findings accurately.
+Producing the unified diff incorporating all four accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -6,6 +6,14 @@ Six `codex exec` surfaces bypass the shared auth helpers (`external_prepare_cod
+ 5. `scripts/lint-fix-loop.sh` — `run_codex()` (full-auto, via `launch-codex-exec.sh`)
+ 6. `scripts/run-negotiation-round.sh` — direct `codex exec` with stdin-piped prompt
+ 
++**Canonical post-PR `OPENAI_API_KEY` covered surfaces** (single inventory — every consumer-doc rewrite below must reproduce this merged set verbatim, not a partial delta):
++- **Prior dispatchers**: `scripts/launch-review.sh`, `scripts/launch-codex-ci.sh`, `scripts/launch-codex-implement.sh`, `scripts/check-reviewers.sh` (including the Codex health probe), `scripts/review-and-fix.sh`
++- **This PR — new launcher**: `scripts/launch-codex-exec.sh`
++- **This PR — swept fences/helpers**: `/research` research lanes (`skills/research/references/research-phase.md`), `/research` validation lane (`skills/research/references/validation-phase.md`), voter/judge fences (`skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`), `scripts/lint-fix-loop.sh`, `scripts/run-negotiation-round.sh` (inline stdin-pipe dispatch)
++
+ Per the approved outline: add one new shared launcher, `scripts/launch-codex-exec.sh`, modeled on `scripts/launch-codex-ci.sh` mechanics (ephemeral `CODEX_HOME` via `mktemp -d` + EXIT trap, `external_prepare_codex_auth` with loud failure, `external_codex_auth_config_args` argv splice, trust-config `-c` arg, model args via `agent-model-args.sh`, serial lock, auth-retry loop, `--json` events capture, usage recording, timing ledger) but with a caller-supplied prompt. Route sites 1–5 through it. Site 6 keeps its stdin-pipe + `--json` event-stream shape (incompatible with `run-external-agent.sh`, which redirects Codex stdin to `/dev/null` per issue #2962), so it gets inline per-site wiring mirroring `scripts/check-reviewers.sh:211-245` in full (config copy, trust `-c`, auth args).
+ 
+ Add a lint guard, `scripts/lint-codex-exec-auth.sh`, following the `scripts/lint-bare-grep-probe.sh` convention, so future raw `codex exec` call sites fail `make lint` / pre-commit unless wired or pragma-suppressed per line.
+@@ -133,15 +141,19 @@ Harness contract stub.
+ 
+ ### UPDATED: `docs/external-reviewers.md`
+ 
+-Rewrite the "Codex auth scope" paragraph (line ~12): expanded covered-path list including `/research` lanes, validation lane, voter/judge fences, `lint-fix-loop.sh`, `run-negotiation-round.sh`, and `launch-codex-exec.sh`. Do **not** edit negotiation exit-code prose here — that lives in `skills/shared/external-reviewers.md` (orchestrator-loaded), not in this consumer doc.
++Rewrite the "Codex auth scope" paragraph (line ~12): replace the partial pre-PR list and the "excluded unless separately wired" tail with the **canonical post-PR covered-surfaces bullet** from Approach (prior five dispatchers + health probe + `launch-codex-exec.sh` + all six swept fences/helpers). Do **not** edit negotiation exit-code prose here — that lives in `skills/shared/external-reviewers.md` (orchestrator-loaded), not in this consumer doc.
+ 
+ ### UPDATED: `skills/shared/external-reviewers.md`
+ 
+ Revise Negotiation Protocol exit-code prose (line ~114): exit **2** covers **Codex auth setup failure or** reviewer command (`cursor agent` / `codex exec`) failure; exit **3** remains Cursor `cursor_auth_preflight` only. Keep the auth-scope consumer-doc update in `docs/external-reviewers.md` limited to line ~12.
+ 
+ ### UPDATED: `docs/configuration-and-permissions.md`
+ 
+-Update the `OPENAI_API_KEY` section (lines ~177-181) to the expanded covered-path list.
++Update the `OPENAI_API_KEY` section (lines ~177-181): replace "covered Codex launch, health-probe, and review-fix paths" with the **same canonical post-PR covered-surfaces bullet** from Approach (full merged inventory — no partial enumeration).
+ 
+ ### UPDATED: `SECURITY.md`
+ 
+-Update the "Codex env-key auth" paragraph (line ~246) to the expanded surface list.
++Update the "Codex env-key auth" paragraph (line ~246): replace the three-launcher / health-probe / review-fix shorthand with the **same canonical post-PR covered-surfaces bullet** from Approach (full merged inventory — no partial enumeration).
+ 
+ ### UPDATED: `.claude/rules/external-tool-launcher-parity.md`
+ 
+@@ -149,6 +161,10 @@ Extend the "Codex env-key auth" bullet with `launch-codex-exec.sh`, `lint-fix-lo
+ 
++### UPDATED: `agent-lint.toml`
++
++Add dead-script exclusions mirroring `lint-bare-grep-probe.sh` / `launch-codex-implement.sh`: comment block citing Makefile/pre-commit-only reachability for `scripts/lint-codex-exec-auth.sh`, `scripts/lint-codex-exec-auth.md`, `scripts/test-lint-codex-exec-auth.sh`, `scripts/test-lint-codex-exec-auth.md`; separate comment block for `scripts/launch-codex-exec.sh` and `scripts/launch-codex-exec.md` citing markdown-fence `${CLAUDE_PLUGIN_ROOT}` indirection and `lint-fix-loop.sh` `run_codex()` routing (same G004 indirection pattern as `launch-codex-implement.sh`); separate comment block for `scripts/test-launch-codex-exec.sh` and `scripts/test-launch-codex-exec.md` (Makefile-only harness). Register all eight paths in the `dead_scripts` array alongside the existing lint-family entries.
++
+ ## Edge cases
+ 
+ - **`OPENAI_API_KEY` unset/empty/whitespace**: `external_prepare_codex_auth` symlinks `~/.codex/auth.json` into the ephemeral home and `external_codex_auth_config_args` appends nothing — login behavior preserved at every swept site.
+@@ -175,7 +191,7 @@ Extend the "Codex env-key auth" bullet with `launch-codex-exec.sh`, `lint-fix-lo
+ 2. **`lint-fix-loop.sh` sidecar rename breaks stderr-tail consumers**. Mitigation: update call sites and harness in same PR.
+ 2b. **`lint-fix-loop` treats launcher failure as success**. Mitigation: `LAUNCHER_EXIT` parse; harness stubs `LAUNCHER_EXIT=1` with wrapper exit 0.
+-3. **Negotiation exit-grammar / protocol drift**. Mitigation: auth-prep → exit 2; update `external-reviewers.md` and `run-negotiation-round.md`; harness pins trust `-c` and config copy.
++3. **Negotiation exit-grammar / protocol drift**. Mitigation: auth-prep → exit 2; update `skills/shared/external-reviewers.md:114` (orchestrator exit grammar) and `run-negotiation-round.md`; keep `docs/external-reviewers.md` auth-scope-only per Approach canonical bullet; harness pins trust `-c` and config copy.
+ 4. **`test-implement-structure.sh` pin breaks CI**. Mitigation: repoint lint-fix-loop assertion to `launch-codex-exec.sh` in same PR.
+ 5. **Linter allowlist too broad or file-scope helper exemption hides raw exec**. Mitigation: explicit six-path basename allowlist only (not helper-presence); harness proves allowlisted launchers pass, helper-plus-raw-exec still fails, negotiation uses per-line pragma.
+ 6. **Negotiation exit-code doc updated in wrong file**. Mitigation: `skills/shared/external-reviewers.md:114` for orchestrator prose; `docs/external-reviewers.md` auth-scope only.
+@@ -183,8 +199,9 @@ Extend the "Codex env-key auth" bullet with `launch-codex-exec.sh`, `lint-fix-lo
+ ## Testing strategy
+ 
+ - New harnesses: `test-launch-codex-exec.sh`, `test-lint-codex-exec-auth.sh` (coverage above, including bad output path, model-args preflight, inner-sentinel retry, env-assignment-prefixed violation).
+-- Extended: `test-lint-fix-loop.sh`, `test-run-negotiation-round.sh`, **`test-implement-structure.sh`**.
++- Extended: `test-lint-fix-loop.sh`, `test-run-negotiation-round.sh`, **`test-implement-structure.sh`**, **`agent-lint.toml` dead-script exclusions** (verify `make lint` / `pre-commit run agent-lint` no longer flags new Makefile/pre-commit-only surfaces).
++- **`test-lint-fix-loop.sh` harness migration** (required alongside `run_codex` launcher routing): drop the structural pin at lines 14–15 requiring `run_codex` to forward `--stderr-sink` to `run-external-agent.sh`; introduce a `LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH` stub hook (mirror `LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH` or document real-launcher + stub-`codex` path) and route case fixtures through it; retarget case0a / case0a.1 / case0b artifact assertions from `codex.events.jsonl` / `codex.wrapper.log` to `${run_dir}/codex.log.events.jsonl` and `${run_dir}/codex.log.sidecar`; update case0a.2 sidecar/wrapper split checks to the launcher stem; assert non-zero `run_codex` return when stub launcher emits `LAUNCHER_EXIT=1` with wrapper shell exit 0.
+ - Run `make lint-codex-exec-auth` against the swept tree — zero violations expected.
+ - `test-lint-codex-exec-auth.sh`: allowlisted canonical launcher fixture passes; helper-plus-unrelated-raw-exec fixture fails.
+ - `test-launch-codex-exec.sh`: collect retry from launcher-written `.meta` with `--add-dir` in `CMD_JSON`.
+@@ -198,6 +215,6 @@ Extend the "Codex env-key auth" bullet with `launch-codex-exec.sh`, `lint-fix-lo
+ - Cursor-side auth (`lib-cursor-auth.sh`).
+ - Fixing the pre-existing collector-retry `CODEX_HOME` env loss.
+ 
+-diff_added: 1475
++diff_added: 1535
+ diff_deleted: 140
+-diff_lines: 1615
++diff_lines: 1675
+@@ -118,7 +118,12 @@ Document the Codex auth contract addition (config copy, trust `-c`, auth args), a
+ 
+ ### UPDATED: `scripts/test-lint-fix-loop.sh`
+ 
+-Update Codex-path assertions: stub `launch-codex-exec.sh` (or stub `codex` + real launcher) and assert routing, `--add-dir` pair, usage label, sidecar-derived stderr-tail stem, and **non-zero `run_codex` return when stub launcher emits `LAUNCHER_EXIT=1` with wrapper exit 0**.
++Migrate Codex-path harness to launcher routing: **remove** the lines 14–15 structural pin requiring `run_codex` to pass `--stderr-sink` to `run-external-agent.sh`; add `LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH` override (parallel to `LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH`) with stub fixtures that emit `LAUNCHER_EXIT` on stdout and write `${run_dir}/codex.log.events.jsonl` / `${run_dir}/codex.log.sidecar`; **retarget** case0a / case0a.1 / case0a.2 / case0b from `codex.events.jsonl` / `codex.wrapper.log` / `codex.sidecar` to the `${run_dir}/codex.log.*` launcher stem; assert routing (`--add-dir` pair, usage label `codex_lint_fix`), sidecar-derived stderr-tail stem, token-ledger rows unchanged, and **non-zero `run_codex` return when stub launcher emits `LAUNCHER_EXIT=1` with wrapper shell exit 0**.

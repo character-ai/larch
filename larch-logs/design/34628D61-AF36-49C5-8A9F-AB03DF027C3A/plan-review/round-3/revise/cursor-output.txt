@@ -1,0 +1,90 @@
+Reviewing the codebase to verify the findings and produce an accurate revised plan diff.
+Checking the plan's linter section and docs update wording for precise edits:
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,8 +24,9 @@
+ - **Research/voter/judge lanes gain serial-lock spawn protection and `--json` usage recording** as side effects of routing through the launcher.
+ - **`lint-fix-loop.sh` gains standard model args** (`agent-model-args.sh`) as a side effect; today `run_codex()` passes none. Deliberate alignment, noted in its `.md`.
+ - **Collect-managed launcher calls always include `--add-dir`** (default `--add-dir "$workdir"` inside the launcher when the caller passes none) so `collect-agent-results.sh` retry validation (`cmd_has_token "--add-dir"`) accepts reconstructed `.meta` `CMD_JSON`.
+-- **Linter requires per-line pragma for raw `codex exec`** — no file-scope exemption via `external_prepare_codex_auth` presence; only `# lint-codex-exec-auth: ok <reason>` on the violating line suppresses. Shell scanner strips leading `VAR=…` env assignments before matching the `codex exec` command word.
+-- Covered sites (`launch-review.sh`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, `check-reviewers.sh`, `review-and-fix.sh`) are untouched.
++- **Linter uses an explicit basename allowlist plus per-line pragma** — no file-scope exemption via `external_prepare_codex_auth` presence. Shell scanner strips leading `VAR=…` env assignments before matching the `codex exec` command word. Violations in non-allowlisted files require `# lint-codex-exec-auth: ok <reason>` on the violating line (e.g. the inline stdin-pipe dispatch in `run-negotiation-round.sh`). Allowlisted basenames (canonical auth-wired dispatchers that remain functionally untouched): `launch-review.sh`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, `check-reviewers.sh`, `review-and-fix.sh`, `launch-codex-exec.sh`.
++- Covered sites (`launch-review.sh`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, `check-reviewers.sh`, `review-and-fix.sh`) are untouched functionally; they pass `make lint-codex-exec-auth` via the explicit basename allowlist, not per-line pragmas.
+ 
+ ## Files to modify/create
+ 
+@@ -52,9 +53,9 @@
+ 
+ ### NEW: `scripts/lint-codex-exec-auth.sh`
+ 
+-Static guard, scaffold copied from `lint-bare-grep-probe.sh` (`--root`, git ls-files + find-walk parity, exit 2 on usage errors). Two rules: (a) **shell** — for `scripts/*.sh` and `skills/*/scripts/*.sh` (excluding `test-*.sh`, `larch-logs/`), a non-comment line whose command word is `codex exec` violates unless the line carries a trailing `# lint-codex-exec-auth: ok <reason>` pragma; scanner **skips leading `NAME=value` env assignments** (e.g. `CODEX_HOME=… codex exec`) before matching; **no file-scope exemption** for files that merely reference `external_prepare_codex_auth`; (b) **markdown** — for `skills/**/*.md`, `.claude/skills/**/*.md`, `.claude/rules/*.md`, any `codex exec` line inside a `bash`/`sh`/`shell` fence violates unless pragma-suppressed (after this sweep, fences route through `launch-codex-exec.sh`). Report `file:line` per violation; non-zero exit on any violation.
++Static guard, scaffold copied from `lint-bare-grep-probe.sh` (`--root`, git ls-files + find-walk parity, exit 2 on usage errors). Two rules: (a) **shell** — for `scripts/*.sh` and `skills/*/scripts/*.sh` (excluding `test-*.sh`, `larch-logs/`), a non-comment line whose command word is `codex exec` violates unless **(i)** the file's basename is in the explicit wired-path allowlist (`launch-review.sh`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, `check-reviewers.sh`, `review-and-fix.sh`, `launch-codex-exec.sh`) **or (ii)** the line carries a trailing `# lint-codex-exec-auth: ok <reason>` pragma; scanner **skips leading `NAME=value` env assignments** (e.g. `CODEX_HOME=… codex exec`) before matching; **no file-scope exemption** for files that merely reference `external_prepare_codex_auth` (a helper-referencing file with an unrelated raw `codex exec` still fails); (b) **markdown** — for `skills/**/*.md`, `.claude/skills/**/*.md`, `.claude/rules/*.md`, any `codex exec` line inside a `bash`/`sh`/`shell` fence violates unless pragma-suppressed (after this sweep, fences route through `launch-codex-exec.sh`). Report `file:line` per violation; non-zero exit on any violation.
+ 
+ ### NEW: `scripts/lint-codex-exec-auth.md`
+ 
+-Sibling contract: rules, scope, **per-line-only pragma grammar** (no file-scope helper exemption), env-assignment skip behavior, Makefile/pre-commit wiring, harness pointer.
++Sibling contract: rules, scope, **explicit basename allowlist** for canonical auth-wired dispatchers (distinct from the forbidden file-scope `external_prepare_codex_auth` exemption), **per-line-only pragma grammar** for all other paths (including `run-negotiation-round.sh` inline dispatch), env-assignment skip behavior, Makefile/pre-commit wiring, harness pointer.
+ 
+ ### NEW: `scripts/test-lint-codex-exec-auth.sh`
+ 
+-Harness with fixture trees: clean tree passes; unwired shell `codex exec` fails; **helper-referencing file with unrelated raw `codex exec` still fails** (proves no file-scope exemption); pragma suppression passes; comment-only mention passes; **`CODEX_HOME=… codex exec` without pragma fails**; markdown fence violation fails; markdown prose mention passes; out-of-scope paths (`docs/`, `test-*.sh`, `larch-logs/`) pass; invalid `--root` exits 2. Registered in Makefile + shard.
++Harness with fixture trees: clean tree passes; unwired shell `codex exec` fails; **helper-referencing file with unrelated raw `codex exec` still fails** (proves no file-scope exemption); **allowlisted canonical launcher fixture passes without per-line pragma**; **non-allowlisted file with auth helper present still fails** on raw `codex exec`; pragma suppression passes; comment-only mention passes; **`CODEX_HOME=… codex exec` without pragma fails** outside allowlist; markdown fence violation fails; markdown prose mention passes; out-of-scope paths (`docs/`, `test-*.sh`, `larch-logs/`) pass; invalid `--root` exits 2. Registered in Makefile + shard.
+ 
+ ### NEW: `scripts/test-lint-codex-exec-auth.md`
+ 
+@@ -88,6 +89,9 @@
+ 
+ Inline wiring in the `codex)` branch (before the serial lock), mirroring **`check-reviewers.sh:211-245`**: create `codex_home=$(mktemp -d /tmp/larch-codex-negotiation-home-XXXXXX)` with cleanup trap; **`if [[ -f ~/.codex/config.toml ]]; then cp ~/.codex/config.toml "$codex_home/config.toml"; fi`**; `external_prepare_codex_auth "$codex_home"` — on failure `larch_err` env-key-aware reason, `emit_kv RESPONSE_FILE`, exit 2; `project_key` / `trust_config_arg` from `$WORKSPACE`; `CODEX_AUTH_ARGS=()` + `external_codex_auth_config_args CODEX_AUTH_ARGS`; launch as `CODEX_HOME="$codex_home" codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} -c "$trust_config_arg" ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} --output-last-message "$OUTPUT_FILE" --json -- - < "$PROMPT_FILE"` preserving stdin pipe, events/sidecar, and usage recording.
+ 
++Add `# lint-codex-exec-auth: ok inline stdin-pipe dispatch; auth wired per check-reviewers.sh:211-245` on the `CODEX_HOME=… codex exec` launch line so the linter passes without adding negotiation to the basename allowlist.
++
+ ### UPDATED: `scripts/run-negotiation-round.md`
+ 
+ Document the Codex auth contract addition (config copy, trust `-c`, auth args), and that **exit 2** covers Codex auth setup failure **or** reviewer `codex exec` command failure.
+@@ -130,9 +134,12 @@
+ 
+ ### UPDATED: `docs/external-reviewers.md`
+ 
+-Rewrite the "Codex auth scope" paragraph (line ~12): expanded covered-path list including `/research` lanes, validation lane, voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`; name `launch-codex-exec.sh`. **Update Negotiation Protocol exit-code prose (line ~114)**: exit **2** covers **Codex auth setup failure or** reviewer command (`cursor agent` / `codex exec`) failure; exit **3** remains Cursor `cursor_auth_preflight` only.
++Rewrite the "Codex auth scope" paragraph (line ~12): expanded covered-path list including `/research` lanes, validation lane, voter/judge fences, `lint-fix-loop.sh`, `run-negotiation-round.sh`, and `launch-codex-exec.sh`. Do **not** edit negotiation exit-code prose here — that lives in `skills/shared/external-reviewers.md` (orchestrator-loaded), not in this consumer doc.
++
++### UPDATED: `skills/shared/external-reviewers.md`
++
++Revise Negotiation Protocol exit-code prose (line ~114): exit **2** covers **Codex auth setup failure or** reviewer command (`cursor agent` / `codex exec`) failure; exit **3** remains Cursor `cursor_auth_preflight` only. Keep the auth-scope consumer-doc update in `docs/external-reviewers.md` limited to line ~12.
+ 
+ ### UPDATED: `docs/configuration-and-permissions.md`
+ 
+@@ -155,7 +162,7 @@
+ - **Negotiation trust/config under ephemeral home**: `config.toml` copied before prepare strips credentials; trust `-c` applied before auth `-c` overrides — matches `check-reviewers.sh`.
+ - **ARG_MAX**: negotiation keeps stdin pipe; other sites use argv as today.
+-- **Lint false positives**: comment lines stripped; env-assignment prefix skipped; per-line pragma only.
++- **Lint false positives**: comment lines stripped; env-assignment prefix skipped; basename allowlist for canonical dispatchers; per-line pragma for inline exceptions (negotiation).
+ 
+ ## Failure modes
+ 
+@@ -168,7 +175,8 @@
+ 2b. **`lint-fix-loop` treats launcher failure as success**. Mitigation: `LAUNCHER_EXIT` parse; harness stubs `LAUNCHER_EXIT=1` with wrapper exit 0.
+ 3. **Negotiation exit-grammar / protocol drift**. Mitigation: auth-prep → exit 2; update `external-reviewers.md` and `run-negotiation-round.md`; harness pins trust `-c` and config copy.
+ 4. **`test-implement-structure.sh` pin breaks CI**. Mitigation: repoint lint-fix-loop assertion to `launch-codex-exec.sh` in same PR.
+-5. **Linter file-scope exemption hides raw exec**. Mitigation: per-line pragma only; harness proves helper file with unrelated `codex exec` fails.
++5. **Linter allowlist too broad or file-scope helper exemption hides raw exec**. Mitigation: explicit six-path basename allowlist only (not helper-presence); harness proves allowlisted launchers pass, helper-plus-raw-exec still fails, negotiation uses per-line pragma.
++6. **Negotiation exit-code doc updated in wrong file**. Mitigation: `skills/shared/external-reviewers.md:114` for orchestrator prose; `docs/external-reviewers.md` auth-scope only.
+ 
+ ## Testing strategy
+ 
+@@ -176,6 +184,7 @@
+ - Extended: `test-lint-fix-loop.sh`, `test-run-negotiation-round.sh`, **`test-implement-structure.sh`**.
+ - Run `make lint-codex-exec-auth` against the swept tree — zero violations expected.
++- `test-lint-codex-exec-auth.sh`: allowlisted canonical launcher fixture passes; helper-plus-unrelated-raw-exec fixture fails.
+ - `test-launch-codex-exec.sh`: collect retry from launcher-written `.meta` with `--add-dir` in `CMD_JSON`.
+ - Per `.claude/rules/verify-external-tool-invocations.md`: probe new `codex exec` argv shapes locally before commit.
+ - `bash scripts/relevant-checks.sh` for markdown/doc edits; `make lint-bash32` for new/edited scripts.
+@@ -188,6 +197,6 @@
+ - Fixing the pre-existing collector-retry `CODEX_HOME` env loss.
+ 
+-diff_added: 1385
++diff_added: 1475
+ diff_deleted: 140
+-diff_lines: 1525
++diff_lines: 1615
+
