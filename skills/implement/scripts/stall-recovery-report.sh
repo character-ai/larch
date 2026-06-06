@@ -817,12 +817,14 @@ root_cause_template() {
 }
 
 safe_step_value() {
-    case "${1:-}" in
-        2|3|5|6|8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*)
-            printf '%s\n' "$1"
-            ;;
-        *) printf 'unknown\n' ;;
-    esac
+    local value=${1:-}
+    if [ "$value" = "bump-branch-guard" ]; then
+        printf '%s\n' "$value"
+    elif [[ "$value" =~ ^(2|3|5|6|8|9|10|11|12|13|14|15)([[:lower:]][[:digit:]]?|-[[:lower:][:digit:]]+(-[[:lower:][:digit:]]+)*)?$ ]]; then
+        printf '%s\n' "$value"
+    else
+        printf 'unknown\n'
+    fi
 }
 
 safe_phase_value() {

@@ -223,6 +223,18 @@ grep -Fq '[--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]' "$STALL_R
 # shellcheck disable=SC2016
 grep -Fq -- '--bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must coalesce IMPLEMENT_BAIL_REASON and FINAL_BAIL_REASON for classify"
+stall_step4_window=$(awk '
+  /^4\. \*\*First-detection issue filing\.\*\*/ { in_step = 1 }
+  /^5\. \*\*Dispatch on `RESUME_HINT`\.\*\*/ { in_step = 0 }
+  in_step { print }
+' "$STALL_RECOVERY_MD")
+[[ -n "$stall_step4_window" ]] || fail "stall-recovery.md must retain Step 4 first-detection issue filing"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-report.sh is-larch-dev-clone' \
+  || fail "stall-recovery.md Step 4 must preserve the dev-clone discriminator"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'issue-input-file' \
+  || fail "stall-recovery.md Step 4 must compose the heading-bearing issue input file"
+printf '%s\n' "$stall_step4_window" | grep -Eq '/larch:issue --input-file.*stall-recovery-issue-input\.md' \
+  || fail "stall-recovery.md Step 4 must file stall-recovery-issue-input.md via /larch:issue --input-file"
 # shellcheck disable=SC2016
 grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"

@@ -687,6 +687,42 @@ cp "$SANDBOX/case1.out" "$dir/class.env"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
 assert_eq "### [Bug] /implement stall: transient-infra at 8" "$first_line" "20: issue input title shape"
+run_capture "$dir/parse-input.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv INPUT_FILE "$dir/input.out")" --output-dir "$dir/parsed-input"
+assert_eq 0 "$RC" "20: parse-input accepts issue input file"
+assert_eq 1 "$(kv ITEMS_TOTAL "$dir/parse-input.out")" "20: headed issue input parses as one item"
+run_capture "$dir/parse-body.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv BODY_FILE "$dir/body.out")" --output-dir "$dir/parsed-body"
+assert_eq 0 "$RC" "20: parse-input accepts raw bug body"
+assert_eq 0 "$(kv ITEMS_TOTAL "$dir/parse-body.out")" "20: heading-less bug body parses as zero items"
+
+while IFS= read -r step_token; do
+    [ -n "$step_token" ] || continue
+    safe_name=$(printf '%s' "$step_token" | tr -c '[:alnum:]' '_')
+    token_dir=$(make_tmp "case20-token-$safe_name")
+    cat >"$token_dir/class.env" <<EOF
+FAILURE_CLASS=transient-infra
+STALL_STEP=$step_token
+EOF
+    printf 'body for %s\n' "$step_token" >"$token_dir/body.md"
+    "$SCRIPT" issue-input-file --implement-tmpdir "$token_dir" --classification-file "$token_dir/class.env" --body-file "$token_dir/body.md" >"$token_dir/input.out"
+    first_line=$(sed -n '1p' "$(kv INPUT_FILE "$token_dir/input.out")")
+    assert_eq "### [Bug] /implement stall: transient-infra at $step_token" "$first_line" "20: production step token preserved: $step_token"
+done <<'EOF'
+10-max-retries
+12d
+10-detached-head
+bump-branch-guard
+EOF
+
+dir=$(make_tmp case20-unsafe-step)
+cat >"$dir/class.env" <<'EOF'
+FAILURE_CLASS=transient-infra
+STALL_STEP=8a<script>
+EOF
+printf 'unsafe body fixture\n' >"$dir/body.md"
+"$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$dir/body.md" >"$dir/input.out"
+first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
+assert_eq "### [Bug] /implement stall: transient-infra at unknown" "$first_line" "20: unsafe step token becomes unknown"
+assert_not_contains "8a<script>" "$first_line" "20: unsafe step token is absent from issue title"
 
 dir=$(make_tmp case20c)
 write_state "$dir" 8 ci-initial
