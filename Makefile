@@ -33,6 +33,8 @@ py-lint:
 	cd python && ruff check . && pylint . && pyright
 
 py-test:
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+		|| (printf '%s\n' "ERROR: make py-test requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
 	cd python && $(PYTHON) -m pytest
 
 lint-only:
