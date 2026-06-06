@@ -492,11 +492,16 @@ printf 'launch stderr\n' >"$TMP/design/cursor-plan-arch-output.txt.launch-stderr
 printf 'launch stderr\n' >"$TMP/design/codex-primary-plan-arch-output.txt.launch-stderr"
 printf 'launch stderr\n' >"$TMP/design/claude-plan-generic-output.txt.launch-stderr"
 printf 'tsv row\n' >"$TMP/design/cursor-plan-arch-output.txt.tsv"
+printf 'tsv row\n' >"$TMP/design/codex-primary-plan-arch-output.txt.tsv"
+printf 'tsv row\n' >"$TMP/design/claude-plan-generic-output.txt.tsv"
 printf 'meta row\n' >"$TMP/design/codex-primary-plan-arch-output.txt.meta"
 printf 'cap hit\n' >"$TMP/design/cursor-plan-arch-output.txt.cap-hit"
 printf 'cap hit\n' >"$TMP/design/codex-primary-plan-arch-output.txt.cap-hit"
 # Diagnostic surfaces:
 printf 'generic claude prompt\n' >"$TMP/design/claude-plan-generic.prompt"
+printf 'render cursor prompt\n' >"$TMP/design/render-plan-cursor-arch.prompt"
+printf 'render codex prompt\n' >"$TMP/design/render-plan-codex-arch.prompt"
+printf 'render dyn prompt\n' >"$TMP/design/render-plan-cursor-dyn-foo.prompt"
 printf 'collector fail\n' >"$TMP/design/cursor-plan-arch-collector.failure.log"
 printf 'collector fail\n' >"$TMP/design/codex-plan-arch-collector.failure.log"
 printf 'collector fail\n' >"$TMP/design/dyn-cursor-plan-foo-collector.failure.log"
@@ -573,10 +578,15 @@ for denied in \
     "codex-primary-plan-arch-output.txt.launch-stderr" \
     "claude-plan-generic-output.txt.launch-stderr" \
     "cursor-plan-arch-output.txt.tsv" \
+    "codex-primary-plan-arch-output.txt.tsv" \
+    "claude-plan-generic-output.txt.tsv" \
     "codex-primary-plan-arch-output.txt.meta" \
     "cursor-plan-arch-output.txt.cap-hit" \
     "codex-primary-plan-arch-output.txt.cap-hit" \
     "claude-plan-generic.prompt" \
+    "render-plan-cursor-arch.prompt" \
+    "render-plan-codex-arch.prompt" \
+    "render-plan-cursor-dyn-foo.prompt" \
     "cursor-plan-arch-collector.failure.log" \
     "codex-plan-arch-collector.failure.log" \
     "dyn-cursor-plan-foo-collector.failure.log" \
