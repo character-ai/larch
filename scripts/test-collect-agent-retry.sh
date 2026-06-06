@@ -708,6 +708,18 @@ prepare_outer_candidate "$OUT_R2"
 write_outer_meta "$OUT_R2" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_R2}.prompt" ""
 assert_fail_closed "case-r2" "$OUT_R2" "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR"
 
+OUT_R3="$TMPROOT/codex-r3.txt"
+prepare_outer_candidate "$OUT_R3"
+write_outer_meta "$OUT_R3" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_R3}.prompt" "$WORKDIR_Q" \
+    'TOOL=codex' \
+    'OUTER_LAUNCHER_KIND=codex-exec' \
+    'OUTER_LAUNCHER_SANDBOX=write-everywhere' \
+    'OUTER_LAUNCHER_WITH_EFFORT=false' \
+    'OUTER_LAUNCHER_USAGE_LABEL=codex_exec_retry_test' \
+    'OUTER_LAUNCHER_TIMING_KIND=codex-exec' \
+    "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$WORKDIR_Q\"]"
+assert_fail_closed "case-r3-codex-sandbox" "$OUT_R3" "Retry metadata invalid: OUTER_LAUNCHER_SANDBOX invalid"
+
 OUT_S1="$TMPROOT/cursor-s1.txt"
 prepare_outer_candidate "$OUT_S1"
 write_outer_meta "$OUT_S1" "$REPO_ROOT/scripts/../scripts/launch-review.sh" "${OUT_S1}.prompt" "$WORKDIR_Q"
@@ -732,6 +744,34 @@ EVIL_PROMPT="$TMPROOT/evil-prompt.txt"
 printf 'evil\n' > "$EVIL_PROMPT"
 write_outer_meta "$OUT_U1" "$REPO_ROOT/scripts/launch-review.sh" "$EVIL_PROMPT" "$WORKDIR_Q"
 assert_fail_closed "case-u1" "$OUT_U1" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar"
+
+OUT_U1_CODEX="$TMPROOT/codex-u1.txt"
+prepare_outer_candidate "$OUT_U1_CODEX"
+write_outer_meta "$OUT_U1_CODEX" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX}.prompt" "$WORKDIR_Q" \
+    'TOOL=codex' \
+    'OUTER_LAUNCHER_KIND=codex-exec' \
+    'OUTER_LAUNCHER_SANDBOX=read-only' \
+    'OUTER_LAUNCHER_WITH_EFFORT=false' \
+    'OUTER_LAUNCHER_TIMING_KIND=codex-exec' \
+    "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$WORKDIR_Q\"]"
+assert_fail_closed "case-u1-codex-usage-label" "$OUT_U1_CODEX" "Retry metadata invalid: missing OUTER_LAUNCHER_USAGE_LABEL"
+
+OUT_U1_CODEX_JQ="$TMPROOT/codex-u1-jq.txt"
+prepare_outer_candidate "$OUT_U1_CODEX_JQ"
+WORKDIR_U1_CODEX_JQ="$TMPROOT/workdir-u1-codex-jq"
+EXTRA_U1_CODEX_JQ="$TMPROOT/extra-u1-codex-jq"
+mkdir -p "$WORKDIR_U1_CODEX_JQ" "$EXTRA_U1_CODEX_JQ"
+write_outer_meta "$OUT_U1_CODEX_JQ" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_JQ}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+    'TOOL=codex' \
+    'OUTER_LAUNCHER_KIND=codex-exec' \
+    'OUTER_LAUNCHER_SANDBOX=read-only' \
+    'OUTER_LAUNCHER_WITH_EFFORT=false' \
+    'OUTER_LAUNCHER_USAGE_LABEL=codex_exec_retry_test' \
+    'OUTER_LAUNCHER_TIMING_KIND=codex-exec' \
+    "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$WORKDIR_U1_CODEX_JQ\",\"$EXTRA_U1_CODEX_JQ\"]"
+RESULT_U1_CODEX_JQ=$(LARCH_TEST_FORCE_NO_JQ=1 run_collector bash "$OUT_U1_CODEX_JQ" "$TMPROOT/case-u1-codex-jq.stderr")
+assert_line "case U1 codex jq-less status" "STATUS=EMPTY_OUTPUT" "$RESULT_U1_CODEX_JQ"
+assert_line "case U1 codex jq-less reason" "FAILURE_REASON=Retry metadata invalid: jq unavailable for multi add-dir retry metadata" "$RESULT_U1_CODEX_JQ"
 
 OUT_U2="$TMPROOT/cursor-u2.txt"
 write_empty_candidate "$OUT_U2"

@@ -16,6 +16,7 @@ export TMPDIR="$TMPROOT/collector-tmp"
 mkdir -p "$TMPDIR"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMPROOT/execution-issues.md"
+export LARCH_TIMING_LEDGER="$TMPDIR/timing-ledger.tsv"
 trap 'rm -rf "$TMPROOT" 2>/dev/null' EXIT
 
 PASS=0
@@ -282,10 +283,25 @@ printf 'Review prompt\n' > "${OUT_T1_CODEX}.prompt"
 RESULT_T1_CODEX=$(CODEX_STUB_ARGV_LOG="$ARGV_T1_CODEX" run_collector 5 "$OUT_T1_CODEX")
 assert_line "C_T1_CODEX retry file" "REVIEWER_FILE=${OUT_T1_CODEX%.txt}-retry.txt" "$RESULT_T1_CODEX"
 assert_line "C_T1_CODEX status" "STATUS=OK" "$RESULT_T1_CODEX"
-if grep -Fxq -- '--output-last-message' "$ARGV_T1_CODEX" && ! grep -Fxq -- 'raw' "$ARGV_T1_CODEX"; then
+if grep -Fxq -- '--output-last-message' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- '--sandbox' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- 'read-only' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- '--add-dir' "$ARGV_T1_CODEX" && \
+    grep -Fxq -- "$WORKDIR_T1_CODEX" "$ARGV_T1_CODEX" && \
+    ! grep -Fxq -- 'raw' "$ARGV_T1_CODEX"; then
     ok "C_T1_CODEX re-entered launch-codex-exec without CMD_JSON replay"
 else
     fail "C_T1_CODEX did not preserve codex-exec retry routing"
+fi
+if grep -Fq 'codex_exec_test' "${OUT_T1_CODEX%.txt}-retry.txt.token-record" 2>/dev/null; then
+    ok "C_T1_CODEX preserved usage label"
+else
+    fail "C_T1_CODEX did not preserve usage label"
+fi
+if grep -Fq 'codex-exec' "$LARCH_TIMING_LEDGER" 2>/dev/null; then
+    ok "C_T1_CODEX preserved timing kind"
+else
+    fail "C_T1_CODEX did not preserve timing kind"
 fi
 
 # C_T2: transient initial FAILED retries, but retry failure is reported as EMPTY_OUTPUT.

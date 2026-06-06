@@ -52,6 +52,11 @@ rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -eq 0 ]]; then echo "PASS pragma suppression"; PASS=$((PASS+1)); else echo "FAIL pragma suppression"; FAIL=$((FAIL+1)); fi
 
 reset_tree
+write_file "$TMPROOT/scripts/embedded-pragma.sh" 'printf "%s\n" "# lint-codex-exec-auth: ok fixture"; codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS embedded pragma does not suppress"; PASS=$((PASS+1)); else echo "FAIL embedded pragma does not suppress"; FAIL=$((FAIL+1)); fi
+
+reset_tree
 write_file "$TMPROOT/scripts/mixed-auth.sh" '#!/bin/bash' '/repo/scripts/launch-codex-exec.sh --output /tmp/out --timeout 60 --prompt ok' 'codex exec --full-auto -C . hi'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS mixed helper plus raw exec fails"; PASS=$((PASS+1)); else echo "FAIL mixed helper plus raw exec fails"; FAIL=$((FAIL+1)); fi
@@ -80,6 +85,16 @@ reset_tree
 write_file "$TMPROOT/scripts/env-prefix.sh" '#!/bin/bash' 'CODEX_HOME=/tmp/codex codex exec --full-auto -C . hi'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS env prefix raw codex fails"; PASS=$((PASS+1)); else echo "FAIL env prefix raw codex fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/env-prefix-multi.sh" '#!/bin/bash' 'CODEX_HOME=/tmp/codex OTHER=1 codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS multi env prefix raw codex fails"; PASS=$((PASS+1)); else echo "FAIL multi env prefix raw codex fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/negotiation-pragma.sh" '#!/bin/bash' "CODEX_HOME=\"\$codex_home\" codex exec --full-auto -C \"\$workspace\" -c \"projects.\\\"\$workspace\\\".trust_level=\\\"trusted\\\"\" --output-last-message \"\$output\" --json -- \"\$prompt\" # lint-codex-exec-auth: ok auth prepared by external_prepare_codex_auth"
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS negotiation pragma suppression"; PASS=$((PASS+1)); else echo "FAIL negotiation pragma suppression"; FAIL=$((FAIL+1)); fi
 
 reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' "codex \\" '  exec --full-auto -C . hi' '```'

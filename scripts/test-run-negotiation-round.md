@@ -4,6 +4,8 @@ Purpose: regression-test the Darwin serial-lock spawn guards in `scripts/run-neg
 
 Covers:
 - Codex branch acquires the per-tool lock before `codex exec` and still emits the `RESPONSE_FILE=` stdout envelope.
+- Codex env-key auth passes provider overrides, login-mode auth omits those overrides, and both branches clean temp `CODEX_HOME`.
+- Codex auth-prep and model-args failures propagate the expected exit contract and clean temp `CODEX_HOME`.
 - Cursor branch acquires the per-tool lock before `cursor agent`, preserves the `RESPONSE_FILE=` stdout envelope, and passes `--api-key` when `CURSOR_API_KEY` is set.
 
 Primary caller: `make test-run-negotiation-round`.

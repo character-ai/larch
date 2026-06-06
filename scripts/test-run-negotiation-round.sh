@@ -171,7 +171,8 @@ CODEX_ENV_KEY_ARGV="$TMPROOT/codex-env-key.argv"
 CODEX_ENV_KEY_HOME="$TMPROOT/codex-env-key.home"
 CODEX_ENV_KEY_LOCK_SEEN="$TMPROOT/codex-env-key.lock-seen"
 rm -rf "$CODEX_LOCK_PATH"
-PATH="$STUB_BIN:$PATH" \
+env -u OPENAI_API_KEY \
+    PATH="$STUB_BIN:$PATH" \
     TMPDIR="$TMPROOT" \
     USER="$CODEX_LOCK_USER" \
     OPENAI_API_KEY="stub-key" \
@@ -200,6 +201,73 @@ else
     fail "codex env-key branch should remove temp CODEX_HOME"
 fi
 rm -rf "$CODEX_LOCK_PATH"
+
+CODEX_LOGIN_OUTPUT="$TMPROOT/codex-login.out"
+CODEX_LOGIN_STDOUT="$TMPROOT/codex-login.stdout"
+CODEX_LOGIN_ARGV="$TMPROOT/codex-login.argv"
+CODEX_LOGIN_HOME_LOG="$TMPROOT/codex-login.home"
+CODEX_LOGIN_LOCK_SEEN="$TMPROOT/codex-login.lock-seen"
+HOME_LOGIN="$TMPROOT/home-login"
+mkdir -p "$HOME_LOGIN/.codex"
+printf '{"tokens":"stub"}\n' > "$HOME_LOGIN/.codex/auth.json"
+rm -rf "$CODEX_LOCK_PATH"
+env -u OPENAI_API_KEY \
+    PATH="$STUB_BIN:$PATH" \
+    TMPDIR="$TMPROOT" \
+    HOME="$HOME_LOGIN" \
+    USER="$CODEX_LOCK_USER" \
+    CODEX_STUB_ARGV_LOG="$CODEX_LOGIN_ARGV" \
+    CODEX_STUB_HOME_LOG="$CODEX_LOGIN_HOME_LOG" \
+    CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
+    CODEX_STUB_LOCK_SEEN_FILE="$CODEX_LOGIN_LOCK_SEEN" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+    "$REPO_ROOT/scripts/run-negotiation-round.sh" \
+    --tool codex \
+    --prompt-file "$PROMPT_FILE" \
+    --output "$CODEX_LOGIN_OUTPUT" \
+    --workspace "$REPO_ROOT" \
+    > "$CODEX_LOGIN_STDOUT"
+assert_file_equals "codex login stdout envelope" "RESPONSE_FILE=$CODEX_LOGIN_OUTPUT" "$CODEX_LOGIN_STDOUT"
+if grep -Fq 'openai-larch-env' "$CODEX_LOGIN_ARGV"; then
+    fail "codex login branch should omit env-key provider argv"
+else
+    pass
+fi
+codex_login_home_dir=$(cat "$CODEX_LOGIN_HOME_LOG" 2>/dev/null || true)
+if [[ -n "$codex_login_home_dir" && ! -e "$codex_login_home_dir" ]]; then
+    pass
+else
+    fail "codex login branch should remove temp CODEX_HOME"
+fi
+rm -rf "$CODEX_LOCK_PATH"
+
+CODEX_AUTH_FAIL_OUTPUT="$TMPROOT/codex-auth-fail.out"
+CODEX_AUTH_FAIL_STDOUT="$TMPROOT/codex-auth-fail.stdout"
+HOME_AUTH_FAIL="$TMPROOT/home-auth-fail"
+mkdir -p "$HOME_AUTH_FAIL/.codex"
+printf 'api_key = "literal-secret"\n' > "$HOME_AUTH_FAIL/.codex/config.toml"
+chmod 400 "$HOME_AUTH_FAIL/.codex/config.toml"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    TMPDIR="$TMPROOT" \
+    HOME="$HOME_AUTH_FAIL" \
+    "$REPO_ROOT/scripts/run-negotiation-round.sh" \
+    --tool codex \
+    --prompt-file "$PROMPT_FILE" \
+    --output "$CODEX_AUTH_FAIL_OUTPUT" \
+    --workspace "$REPO_ROOT" \
+    > "$CODEX_AUTH_FAIL_STDOUT"
+CODEX_AUTH_FAIL_RC=$?
+set -e
+chmod 600 "$HOME_AUTH_FAIL/.codex/config.toml"
+assert_eq "codex auth-prep failure exits 2" "2" "$CODEX_AUTH_FAIL_RC"
+assert_file_equals "codex auth-prep failure stdout envelope" "RESPONSE_FILE=$CODEX_AUTH_FAIL_OUTPUT" "$CODEX_AUTH_FAIL_STDOUT"
+if find "$TMPROOT" -maxdepth 1 -type d -name 'larch-codex-negotiation-home-*' | grep -q .; then
+    fail "codex auth-prep failure should clean temp CODEX_HOME"
+else
+    pass
+fi
 
 CODEX_UNSET_ROOT_OUTPUT="$TMPROOT/codex-unset-root.out"
 CODEX_UNSET_ROOT_STDOUT="$TMPROOT/codex-unset-root.stdout"

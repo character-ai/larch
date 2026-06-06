@@ -74,6 +74,11 @@ json_array_from_args() {
     printf ']'
 }
 
+launcher_jq_available() {
+    [[ "${LARCH_TEST_FORCE_NO_JQ:-}" == "1" ]] && return 1
+    command -v jq >/dev/null 2>&1
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) [ $# -ge 2 ] || die "--output requires a value"; OUTPUT=$2; shift 2 ;;
@@ -237,7 +242,7 @@ codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR
 
 _add_dirs_json="[]"
 if [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
-    if command -v jq >/dev/null 2>&1; then
+    if launcher_jq_available; then
         _add_dirs_json=$(printf '%s\n' "${ADD_DIRS[@]}" | jq -R . | jq -s -c .)
     elif ! _add_dirs_json=$(json_array_from_args "${ADD_DIRS[@]}"); then
         larch_err "launch-codex-exec.sh: warning: failed to serialize --add-dir metadata without jq; recording workdir-only retry metadata"

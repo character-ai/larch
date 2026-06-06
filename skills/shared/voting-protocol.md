@@ -68,13 +68,13 @@ Non-accepted tie-breaks (after the acceptance-threshold check fails), in order:
 
 **For plan review** (`/design` Step 3):
 - **Voter 1**: Claude Code Reviewer subagent — launched as a fresh Agent tool invocation (subagent_type: `larch:code-reviewer`) with a focused voting prompt (separate from the reviewer subagents)
-- **Voter 2**: Codex — via `run-external-agent.sh`
-- **Voter 3**: Cursor — via `run-external-agent.sh`
+- **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
+- **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 
 **For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches all three voters every round:
 - **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched)
-- **Voter 2**: Codex — via `launch-codex-exec.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
-- **Voter 3**: Cursor — via `run-external-agent.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
+- **Voter 2**: Codex — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
+- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 

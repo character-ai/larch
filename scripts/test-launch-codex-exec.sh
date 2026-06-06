@@ -101,6 +101,22 @@ else
     fail "round-trips repeated add-dir metadata"
 fi
 
+OUT_ADD_DEGRADED="$TMPDIR_BASE/exec-add-degraded-out.txt"
+ADD_DIR_TAB="$TMPDIR_BASE/add-dir-with-tab"$'\t'"suffix"
+mkdir -p "$ADD_DIR_TAB"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_TEST_FORCE_NO_JQ=1 \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_ADD_DEGRADED" --timeout 60 --workdir "$REPO_ROOT" --add-dir "$ADD_DIR_TAB" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-add-degraded.stdout" 2>"$TMPDIR_BASE/launcher-add-degraded.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]" "${OUT_ADD_DEGRADED}.meta" && grep -Fq 'recording workdir-only retry metadata' "$TMPDIR_BASE/launcher-add-degraded.stderr"; then
+    ok "degrades unsafe add-dir metadata to workdir-only"
+else
+    fail "degrades unsafe add-dir metadata to workdir-only"
+fi
+
 PROMPT_FILE="$TMPDIR_BASE/prompt-file.md"
 OUT_PROMPT_FILE="$TMPDIR_BASE/exec-prompt-file-out.txt"
 printf 'hello from file\n' > "$PROMPT_FILE"
@@ -138,6 +154,51 @@ if [[ -n "$codex_home_dir" && ! -e "$codex_home_dir" ]]; then
     ok "removes temp CODEX_HOME after env-key run"
 else
     fail "removes temp CODEX_HOME after env-key run"
+fi
+
+OUT_LOGIN="$TMPDIR_BASE/exec-login-out.txt"
+ARGV_LOGIN="$TMPDIR_BASE/login.argv"
+HOME_LOGIN="$TMPDIR_BASE/home-login"
+HOME_LOGIN_OBSERVED="$TMPDIR_BASE/login.home"
+mkdir -p "$HOME_LOGIN/.codex"
+printf '{"tokens":"stub"}\n' > "$HOME_LOGIN/.codex/auth.json"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" HOME="$HOME_LOGIN" \
+    CODEX_STUB_ARGV_LOG="$ARGV_LOGIN" CODEX_STUB_HOME_LOG="$HOME_LOGIN_OBSERVED" \
+    env -u OPENAI_API_KEY bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_LOGIN" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-login.stdout" 2>"$TMPDIR_BASE/launcher-login.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && ! grep -Fq 'openai-larch-env' "$ARGV_LOGIN"; then
+    ok "login auth omits env-key provider argv"
+else
+    fail "login auth omits env-key provider argv"
+fi
+codex_login_home_dir=$(cat "$HOME_LOGIN_OBSERVED" 2>/dev/null || true)
+if [[ -n "$codex_login_home_dir" && ! -e "$codex_login_home_dir" ]]; then
+    ok "removes temp CODEX_HOME after login run"
+else
+    fail "removes temp CODEX_HOME after login run"
+fi
+
+OUT_AUTH_FAIL="$TMPDIR_BASE/exec-auth-fail-out.txt"
+HOME_AUTH_FAIL="$TMPDIR_BASE/home-auth-fail"
+mkdir -p "$HOME_AUTH_FAIL/.codex"
+printf 'api_key = "literal-secret"\n' > "$HOME_AUTH_FAIL/.codex/config.toml"
+chmod 400 "$HOME_AUTH_FAIL/.codex/config.toml"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" HOME="$HOME_AUTH_FAIL" \
+    env -u OPENAI_API_KEY bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_AUTH_FAIL" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-auth-fail.stdout" 2>"$TMPDIR_BASE/launcher-auth-fail.stderr"
+rc=$?
+set -e
+chmod 600 "$HOME_AUTH_FAIL/.codex/config.toml"
+if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=1' "$TMPDIR_BASE/launcher-auth-fail.stdout" && grep -Fq 'codex auth setup failed' "${OUT_AUTH_FAIL}.diag" && [[ -f "${OUT_AUTH_FAIL}.meta" && -f "${OUT_AUTH_FAIL}.done" ]]; then
+    ok "auth-prep failure writes preflight bundle"
+else
+    fail "auth-prep failure writes preflight bundle"
 fi
 
 OUT_MODEL_FAIL="$TMPDIR_BASE/exec-model-fail-out.txt"

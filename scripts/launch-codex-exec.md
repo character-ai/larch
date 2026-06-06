@@ -29,7 +29,7 @@ The launcher prepares a temp `CODEX_HOME`, applies the shared Codex auth setup, 
 - `${output}.prompt` for retry prompt replay
 - `${output}.meta` with `OUTER_LAUNCHER_KIND=codex-exec`, sandbox, effort, usage label, timing kind, and `OUTER_LAUNCHER_ADD_DIRS_JSON`
 
-`--add-dir` metadata is serialized without relying on `jq`; if serialization cannot be represented safely, the launcher emits a preflight failure bundle instead of writing lossy `[]` metadata. After post-processing, `${output}.inner.done` is promoted to `${output}.done` and stdout emits `LAUNCHER_EXIT=<codex-exit>` plus `OUTPUT=<path>`.
+`--add-dir` metadata is serialized without relying on `jq`; if serialization cannot be represented safely without `jq`, the launcher logs a warning and records workdir-only retry metadata so replay does not write lossy `[]` metadata. After post-processing, `${output}.inner.done` is promoted to `${output}.done` and stdout emits `LAUNCHER_EXIT=<codex-exit>` plus `OUTPUT=<path>`.
 
 ## Harness
 

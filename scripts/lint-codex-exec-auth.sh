@@ -126,8 +126,11 @@ scan_shell_file() {
             printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch without auth wiring; use launch-codex-exec.sh or # lint-codex-exec-auth: ok <reason>\n", rel, nr) > "/dev/stderr"
             violations = 1
         }
+        function has_trailing_pragma(line) {
+            return line ~ /[[:space:]]#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)/
+        }
         function scan(line, nr, stripped) {
-            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) return
+            if (has_trailing_pragma(line)) return
             if (line ~ /^[[:space:]]*#/) return
             if (line ~ /codex[[:space:]]+exec/) {
                 report(nr)
@@ -177,8 +180,11 @@ scan_markdown_file() {
             printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch in bash fence; use launch-codex-exec.sh\n", rel, nr) > "/dev/stderr"
             violations = 1
         }
+        function has_trailing_pragma(line) {
+            return line ~ /[[:space:]]#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)/
+        }
         function scan(line, nr, stripped) {
-            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) return
+            if (has_trailing_pragma(line)) return
             if (line ~ /^[[:space:]]*#/) return
             if (line ~ /codex[[:space:]]+exec/) {
                 report(nr)

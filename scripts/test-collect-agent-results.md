@@ -18,6 +18,9 @@ Cases:
   once and recovers.
 - **C_T5**: `STATUS=SENTINEL_TIMEOUT` without a transient diagnostic remains a
   timeout and creates no retry artifact.
+- **C_T1_CODEX_EXEC**: codex-exec outer retry metadata re-enters
+  `launch-codex-exec.sh` instead of replaying raw `CMD_JSON`, and preserves
+  sandbox, `--add-dir`, usage label, and timing-kind metadata.
 - **C_NSR**: narrative-only output (detected as `STATUS=NOT_SUBSTANTIVE` by the
   substantive validator) with a valid `.meta` triggers a section 3.7 retry
   attempt; the test verifies `STATUS=NOT_SUBSTANTIVE` is emitted and the retry
