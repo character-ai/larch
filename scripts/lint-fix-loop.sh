@@ -4,7 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
@@ -378,7 +377,7 @@ run_codex() {
     launcher_rc=$?
     set -e
     parsed_exit=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$launcher_stdout")
-    [[ -n "$parsed_exit" ]] || parsed_exit=1
+    [[ -n "$parsed_exit" ]] || parsed_exit="$launcher_rc"
     rm -f "$launcher_stdout"
     if (( parsed_exit != 0 )); then
         if [[ -s "${run_dir}/codex.log.sidecar" ]]; then
