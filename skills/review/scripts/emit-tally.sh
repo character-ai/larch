@@ -79,6 +79,8 @@ fi
 case "$accepted" in ''|*[!0-9]*) accepted=0 ;; esac
 case "$rejected" in ''|*[!0-9]*) rejected=0 ;; esac
 case "$exonerated" in ''|*[!0-9]*) exonerated=0 ;; esac
+oos_accepted_count=$(count_from_tally OOS_ACCEPTED_COUNT)
+case "$oos_accepted_count" in ''|*[!0-9]*) oos_accepted_count=0 ;; esac
 if (( exonerated > rejected )); then
     larch_err "emit-tally.sh: invariant violated: exonerated_count ($exonerated) > rejected_count ($rejected)"
     exit 1
@@ -150,7 +152,14 @@ jq -n \
     }' \
     > "$REVIEW_SUMMARY_FILE"
 
-if [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
+if (( oos_accepted_count > 0 )); then
+    # #3550: tally-code-votes.sh already wrote normalized accepted OOS to
+    # $OOS_ACCEPTED_FILE — preserve it. oos-serialize.sh re-derives from
+    # oos.md and cannot recover scope-drift blocks (bare ### FINDING_N:
+    # without [OUT_OF_SCOPE]/[OOS] tags), and the missing-oos.md truncate
+    # would wipe tally output; both branches are skipped.
+    :
+elif [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
     oos_args=(--findings-file "$OOS_FILE" --output-file "$OOS_ACCEPTED_FILE")
     [[ -n "$SESSION_ENV_PATH" ]] && oos_args+=(--session-env-path "$SESSION_ENV_PATH")
     "$SHARED_DIR/oos-serialize.sh" "${oos_args[@]}" >/dev/null || true

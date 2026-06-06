@@ -115,6 +115,13 @@ else
 fi
 [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]] && : > "$OOS_ACCEPTED_OUT"
 
+# Canonical accepted-OOS header rewrite (#3550): every non-security accepted
+# OOS block is normalized to "### OOS_<seq>:" before entering the accepted-OOS
+# sinks, regardless of its ballot header (tagged FINDING_, scope-drift bare
+# FINDING_, or a pre-existing OOS_ id being renumbered into the run sequence).
+NORMALIZE_OOS_HELPER="$SCRIPT_DIR/../../shared/scripts/normalize-oos-block-header.sh"
+OOS_WRITE_SEQ=0
+
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-code-votes.XXXXXX")
 cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
@@ -580,10 +587,14 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                     # Security-tagged accepted OOS: held locally only, never filed publicly.
                     :
                 else
-                    cat "$block" >> "$OOS_ACCEPTED_FILE"
+                    OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
+                    normalized=$("$NORMALIZE_OOS_HELPER" --seq "$OOS_WRITE_SEQ" --block-file "$block")
+                    printf '%s\n' "$normalized" >> "$OOS_ACCEPTED_FILE"
                     printf '\n' >> "$OOS_ACCEPTED_FILE"
+                    # Mirror to the parent-tmpdir sink only when the paths
+                    # differ — standalone mode aliases both to the same file.
                     if [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]]; then
-                        cat "$block" >> "$OOS_ACCEPTED_OUT"
+                        printf '%s\n' "$normalized" >> "$OOS_ACCEPTED_OUT"
                         printf '\n' >> "$OOS_ACCEPTED_OUT"
                     fi
                 fi

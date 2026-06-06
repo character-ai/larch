@@ -225,6 +225,37 @@ rc=$?
 set -e
 assert_rc "non-security OOS without disposition fails" 1 "$rc"
 
+# --- Case: legacy tagged FINDING header without disposition fails (#3550) ---
+cat >"$TMP/legacy.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Legacy tagged header
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy tagged FINDING header without disposition fails" 1 "$rc"
+
+# --- Case: legacy tagged FINDING header with filed URL passes (#3550) ---
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/legacy.md" \
+    --filed-urls-file "$TMP/filed.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "legacy tagged FINDING header with filed URL passes" 0 "$rc"
+
 # --- Case: invalid commit-range is exit 2 ---
 set +e
 (

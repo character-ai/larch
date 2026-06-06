@@ -182,3 +182,49 @@ def test_rejected_markers_ignore_tags_outside_section(tmp_path: Path) -> None:
         oos_issues_ndjson=str(ndjson),
     )
     assert result.rejected_markers == 1
+
+
+def test_count_non_security_counts_legacy_tagged_headers(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged block\n"
+        "- **Description**: dropped before #3550.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 1
+
+
+def test_count_non_security_ignores_bare_finding_headers(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: bare in-scope finding\n- **Concern**: stays in scope.\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0
+
+
+def test_disposition_gap_for_legacy_header_blocks(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged block\n"
+        "- **Description**: no disposition coverage.\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+    )
+    assert not result.ok
+    assert result.non_security_count >= 1
+
+
+def test_count_non_security_excludes_security_tagged_legacy_header(
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### FINDING_1: [OUT_OF_SCOPE] Security item\n"
+        "- **focus-area**: security\n",
+        encoding="utf-8",
+    )
+    assert oos.count_non_security((str(accepted),)) == 0

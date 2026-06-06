@@ -1512,6 +1512,13 @@ if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; 
     fail "skipped-routing security finding leaked to public OOS"
 fi
 grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing security finding missing from local audit"
+# #3550: skipped non-security block normalized to canonical ### OOS_<seq>: header.
+grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing header not normalized to canonical ### OOS_"
+if grep -Eq '^### FINDING_' "$implement_tmp/oos-accepted-review.md"; then
+    fail "skipped-routing bare FINDING_ header survived in oos-accepted-review.md"
+fi
+oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")
+[[ "$oos_awk_count" == "1" ]] || fail "skipped-routing awk non-security count expected 1 got $oos_awk_count"
 
 mkdir -p "$TMP/fail-python-bin"
 cat > "$TMP/fail-python-bin/python3" <<'EOF_PYFAIL'

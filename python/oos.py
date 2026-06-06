@@ -29,7 +29,10 @@ _FILED_URL_LINE = re.compile(
     r"^\s*-\s+\*\*Filed URL\*\*:\s+https://",
     re.MULTILINE,
 )
-_OOS_HEADER_RE = re.compile(r"^###\s+OOS_", re.MULTILINE)
+_OOS_HEADER_RE = re.compile(
+    r"^###\s+(?:OOS_|FINDING_\d+:\s*\[OUT_OF_SCOPE\])",
+    re.MULTILINE,
+)
 _SECURITY_FOCUS_RE = re.compile(
     r"^\s*-\s*\*\*focus-area\*\*\s*:\s*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
@@ -55,7 +58,12 @@ def _github_issue_url_pattern() -> re.Pattern[str]:
 
 
 def _count_non_security_markdown(text: str) -> int:
-    """Port oos-non-security-block-count.awk block counting."""
+    """Port oos-non-security-block-count.awk block counting.
+
+    Blocks start on canonical ``### OOS_`` headers and on legacy tagged
+    ``### FINDING_N: [OUT_OF_SCOPE]`` headers (tag required — bare
+    ``### FINDING_N:`` stays in-scope; #3550).
+    """
     count = 0
     in_block = False
     security = False

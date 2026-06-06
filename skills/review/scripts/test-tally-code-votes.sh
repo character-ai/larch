@@ -72,6 +72,16 @@ grep -Fq $'FINDING_1\tCodex-Structure\taccepted\tYES\ttrue\tmajor\tgood\tfalse\t
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
+# #3550: accepted OOS header normalized to canonical ### OOS_<seq>:.
+grep -Eq '^### OOS_1: \[OUT_OF_SCOPE\] OOS observation$' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted header not normalized to ### OOS_1:\n'; }
+if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL oos-accepted-review.md still carries a FINDING_ header\n'
+else
+    printf '  ok   no FINDING_ headers in oos-accepted-review.md\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "awk non-security count sees normalized block (standalone dual-sink single write)" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env OOS_ACCEPTED_COUNT appended" "$got" "1"
 grep -Fq '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
 if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
     FAIL=1; printf '  FAIL clean 3-voter fixture should not emit degraded panel banner\n'
@@ -459,6 +469,35 @@ else
     printf '  ok   docs/linting.md finding absent from accepted-findings.md\n'
 fi
 grep -Fq 'docs/linting.md' "$TMP/oos.md" || { FAIL=1; printf '  FAIL docs/linting.md finding missing from oos.md\n'; }
+
+echo "# Case: scope-drift accepted OOS is normalized to canonical ### OOS_ header"
+TMP="$WORKDIR/case6a_norm"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Usage CI bullet still documents harnesses-1 through harnesses-10 after eleven-way sharding.
+- **Suggested revision**: Update to reflect 11 shards.
+EOF
+printf 'scripts/dispatch-code-voters.sh\n' > "$TMP/scope-files.txt"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --scope-files "$TMP/scope-files.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "drift-norm: reclassified count=1" "$got" "1"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "drift-norm: accepted OOS count=1" "$got" "1"
+grep -Eq '^### OOS_1: ' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL drift-norm: missing canonical ### OOS_1: header\n'; }
+if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL drift-norm: bare FINDING_ header survived normalization\n'
+else
+    printf '  ok   drift-norm: no FINDING_ header in oos-accepted-review.md\n'
+fi
+got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
+assert_eq "drift-norm: awk non-security count=1" "$got" "1"
 
 echo "# Case: scope-fit gate — finding about file IN diff is NOT reclassified"
 TMP="$WORKDIR/case6b"

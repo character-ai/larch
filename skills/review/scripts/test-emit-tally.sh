@@ -71,4 +71,49 @@ set -e
 [[ "$bad_rc" -ne 0 ]] || { echo "FAIL: expected emit-tally to exit non-zero on invariant violation" >&2; exit 1; }
 [[ ! -f "$TMP/bad-out/review-summary.json" ]] || { echo "FAIL: review-summary.json must not be written on invariant failure" >&2; exit 1; }
 
+echo "# Case: OOS_ACCEPTED_COUNT>0 preserves tally-written oos-accepted-review.md (oos.md present)"
+mkdir -p "$TMP/preserve1"
+cat > "$TMP/preserve1/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=1
+EOF
+printf '### OOS_1: Normalized by tally\n- **Description**: keep me.\n' > "$TMP/preserve1/oos-accepted-review.md"
+cp "$TMP/preserve1/oos-accepted-review.md" "$TMP/preserve1/expected.md"
+printf '### FINDING_9: [OUT_OF_SCOPE] raw oos.md content\nVote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted\n' > "$TMP/preserve1/oos.md"
+"$SCRIPT" --tally-file "$TMP/preserve1/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/preserve1/oos.md" --review-tmpdir "$TMP/preserve1" --round 1 --mode diff >/dev/null
+cmp -s "$TMP/preserve1/oos-accepted-review.md" "$TMP/preserve1/expected.md" || { echo "FAIL: preserve branch (oos.md present) rewrote tally output" >&2; exit 1; }
+echo "  ok   tally output preserved with oos.md present (serialize skipped)"
+
+echo "# Case: OOS_ACCEPTED_COUNT>0 with oos.md ABSENT skips the truncate branch"
+mkdir -p "$TMP/preserve2"
+cp "$TMP/preserve1/tally.env" "$TMP/preserve2/tally.env"
+printf '### OOS_1: Normalized by tally\n- **Description**: keep me.\n' > "$TMP/preserve2/oos-accepted-review.md"
+cp "$TMP/preserve2/oos-accepted-review.md" "$TMP/preserve2/expected.md"
+"$SCRIPT" --tally-file "$TMP/preserve2/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/preserve2/absent-oos.md" --review-tmpdir "$TMP/preserve2" --round 1 --mode diff >/dev/null
+cmp -s "$TMP/preserve2/oos-accepted-review.md" "$TMP/preserve2/expected.md" || { echo "FAIL: preserve branch (oos.md absent) truncated tally output" >&2; exit 1; }
+echo "  ok   tally output preserved with oos.md absent (truncate skipped)"
+
+echo "# Case: OOS_ACCEPTED_COUNT=0 still serializes tagged OOS from oos.md"
+mkdir -p "$TMP/serialize0"
+cat > "$TMP/serialize0/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=0
+EOF
+printf '### FINDING_4: [OUT_OF_SCOPE] serialize me\n- **Description**: from oos.md.\n' > "$TMP/serialize0/oos.md"
+"$SCRIPT" --tally-file "$TMP/serialize0/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/serialize0/oos.md" --review-tmpdir "$TMP/serialize0" --round 1 --mode diff >/dev/null
+grep -Fq 'serialize me' "$TMP/serialize0/oos-accepted-review.md" || { echo "FAIL: count=0 path no longer serializes oos.md" >&2; exit 1; }
+echo "  ok   count=0 path still runs oos-serialize on oos.md"
+
+echo "# Case: OOS_ACCEPTED_COUNT=0 with oos.md absent truncates to empty"
+mkdir -p "$TMP/truncate0"
+cp "$TMP/serialize0/tally.env" "$TMP/truncate0/tally.env"
+printf 'stale content\n' > "$TMP/truncate0/oos-accepted-review.md"
+"$SCRIPT" --tally-file "$TMP/truncate0/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/truncate0/absent-oos.md" --review-tmpdir "$TMP/truncate0" --round 1 --mode diff >/dev/null
+[[ ! -s "$TMP/truncate0/oos-accepted-review.md" ]] || { echo "FAIL: count=0 absent-oos.md path must truncate to empty" >&2; exit 1; }
+echo "  ok   count=0 absent-oos.md path truncates to empty"
+
 echo "All assertions passed."

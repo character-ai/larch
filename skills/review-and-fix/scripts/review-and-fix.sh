@@ -1437,6 +1437,15 @@ _implement_round_body() {
         skipped_security_file="$round_dir/skipped-findings.security.md"
         : > "$skipped_file"
         : > "$skipped_security_file"
+        # #3550: coder-SKIPPED OOS blocks are normalized to canonical
+        # "### OOS_<seq>:" headers at append time; the sequence continues from
+        # the existing accumulated-oos.md non-security block count so multi-
+        # round skipped OOS stay monotonic.
+        OOS_WRITE_SEQ=0
+        if [[ -s "$oos_markdown" ]]; then
+            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_markdown" 2>/dev/null || printf '0')
+            case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
+        fi
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
             [[ -n "$skip_id" ]] || continue
             block_file="$round_dir/${skip_id}.skipped.md"
@@ -1455,7 +1464,9 @@ _implement_round_body() {
                 local sec_rc=0
                 is_security_block "$block_file" || sec_rc=$?
                 if [[ "$sec_rc" -eq 1 ]]; then
-                    cat "$block_file" >> "$skipped_file"
+                    OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
+                    "$PLUGIN_ROOT/skills/shared/scripts/normalize-oos-block-header.sh" \
+                        --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
                 elif [[ "$sec_rc" -eq 2 ]]; then
                     larch_err "review-and-fix.sh: security classifier failed for $skip_id"
