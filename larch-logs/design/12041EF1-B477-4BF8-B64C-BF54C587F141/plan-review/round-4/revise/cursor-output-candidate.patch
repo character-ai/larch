@@ -1,0 +1,142 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,12 +1,12 @@
+ ## Plan
+ 
+ Close the six scope-anchor coverage and delimiter-hygiene gaps from issue #3547.
+ 
+ **Hard dependency**: Post-merge main after PR #3548 (issue #3511). #3548 owns staged `plan-review-scope-anchor.txt` materialization, loop-level `SCOPE_ANCHOR_FILE` propagation through scout/panel/voters/revise, `run-step3-review.sh` relay, Step 3 handoff allowlists, MainAgent pre-vote scope-anchor render, and most Step 3 result-env wiring. Do not start `/implement` before #3548 merges. This plan covers **remaining deltas only** — verify post-#3548 surfaces first; edit only when a harness or manual read proves a gap.
+ 
+ **Status discovered during design** (branch tip `0dc974f1e`; re-verify on post-#3548 main):
+ - Item 3 (revise waterfall): **verify-first** — `compose_prompt()` may still `sed`-cat raw bytes into `<plan>` / `<findings>` / `<feature>` on some tips; migrate to `emit_untrusted_file_block` when absent, then add untrusted framing prose (FINDING_1).
+ - Item 4 (marker script): `scripts/check-scope-reduction-marker.sh` may be absent until #3548 lands — treat consolidation as **verify-first**; skip Item 4 when the helper is still missing (FINDING_2).
+-- Item 5 (Claude subprocess): content redact/escape/framing may ship on the branch; **path attribute escaping and regression coverage are still open**.
++- Item 5 (Claude subprocess): **verify-first** for context bodies and path attributes — post-#3548 read may show raw context append; migrate content through `redact-secrets.sh`, `<>&` escape, and untrusted framing before path-attribute work when absent; path attribute escaping and regression coverage remain open when content hardening is already present.
+ - Step 3.6 assessor prompts on main still render `FEATURE_FILE` raw; must match the literal-redacted escaped scope-anchor contract before `SECURITY.md` claims assessor coverage.
+ 
+ ### Files to modify/create
+@@ -18,52 +18,40 @@
+ ### UPDATED: `skills/design/scripts/test-assess-plan-round.sh`
+ Add: staged anchor present → dispatch stub records `--feature-file` = anchor path (reuse `feature-path-seen.txt`). Add: empty anchor file → legacy fallback wins. (~20 lines)
+ 
+-### UPDATED: `skills/design/scripts/tally-plan-review.sh`
+-Item 2. Add optional `--scope-anchor-file PATH`; reject CR/LF in value (usage error). When non-empty, `emit_kv SCOPE_ANCHOR_FILE "$PATH"` on `ok` and `main-agent-vote-required` only; omit on `tally-error`. (~12 lines)
+-
+-### UPDATED: `skills/design/scripts/tally-plan-review.md`
+-Document `--scope-anchor-file` and `SCOPE_ANCHOR_FILE` KV emission terminals. (~5 lines)
+-
+-### UPDATED: `skills/design/scripts/test-tally-plan-review.sh`
+-Add: flag provided → `SCOPE_ANCHOR_FILE` on `ok` and `main-agent-vote-required`; absent → KV absent; CR/LF → usage error. (~20 lines)
+-
+ ### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+-Item 2 downstream (narrow delta — post-#3548 owns materialization and most env writes). When a non-empty staged anchor path is available, pass `--scope-anchor-file "$_STAGED_SCOPE_ANCHOR"` to `tally-plan-review.sh`. **Do not reuse the same variable for input and parsed output** (FINDING_8): bind tally input from staged materialization (`_STAGED_SCOPE_ANCHOR`); parse tally stdout into `_PARSED_SCOPE_ANCHOR_FILE` in the existing `_tally_raw` parse `case`; only include `_PARSED_SCOPE_ANCHOR_FILE` in `emit_loop_kvs` / `write_step3_result_env` when tally status is `ok` or `main-agent-vote-required` and stdout carried the KV — never persist staged input on `tally-error`. Do not synthesize an anchor from raw `feature-description.txt` when staged materialization is absent. (~8–12 lines, not a re-description of #3548 loop plumbing)
++Item 2 downstream (narrow delta — post-#3548 owns materialization, env-sourced `SCOPE_ANCHOR_FILE` propagation, and tally argv rejection per #3548). **Verify-first**: read post-#3548 `write_step3_result_env`, `emit_loop_kvs`, and `_tally_raw` parse arms; patch **only proven gaps** among durable handoff writers and loop stdout parse/persist. **Do not add `--scope-anchor-file` to tally** (FINDING_3). When #3548 leaves parse/persist incomplete: bind loop input from env-sourced staged materialization (`_LOOP_SCOPE_ANCHOR_IN` from existing `SCOPE_ANCHOR_FILE` / materialization — not tally argv); parse any loop/tally stdout `SCOPE_ANCHOR_FILE` KV into `_PARSED_SCOPE_ANCHOR_FILE` in the existing `_tally_raw` parse `case`; unset `_PARSED_SCOPE_ANCHOR_FILE` before parsing; only include parsed value in `emit_loop_kvs` / `write_step3_result_env` when terminal status is `ok` or `main-agent-vote-required` and stdout carried the KV — never persist input env or staged path on `tally-error` or missing stdout KV. Reject CR/LF in any path written to result env. Do not synthesize an anchor from raw `feature-description.txt` when staged materialization is absent. (~6–10 lines when gaps exist; omit when #3548 handoff is complete)
++
++### UPDATED: `skills/design/scripts/plan-review-loop.md`
++**Verify-first** when loop delta lands: document durable `SCOPE_ANCHOR_FILE` handoff schema (env-sourced propagation, parse/persist terminals `ok` / `main-agent-vote-required` only; omit on `tally-error` and non-terminal statuses). (~4 lines when needed)
+ 
+ ### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+-Replace `=== brainstorm context merges into feature file before dispatch ===`: assert `plan-review-scope-anchor.txt` is the binding dispatch path to scout/panel/voter/revise stubs; brainstorm content stays in `plan-review-feature-context.txt` only (or is omitted from binding argv); `feature-file-seen.txt` must **not** require brainstorm header/content (FINDING_10). Add tally passthrough: non-empty staged anchor → tally stub receives `--scope-anchor-file`, stdout contains `SCOPE_ANCHOR_FILE`, result env persists parsed value on **`ok` and `main-agent-vote-required`** (FINDING_7). Add absent/stale case: seed a stale `SCOPE_ANCHOR_FILE` in the harness environment, loop stub omits the KV on `tally-error` or absent path → assert stdout and `.step3-plan-review-result.env` do not contain the stale key/value (FINDING_12). (~40 lines)
++Replace `=== brainstorm context merges into feature file before dispatch ===`: assert `plan-review-scope-anchor.txt` is the binding dispatch path to scout/panel/voter/revise stubs; brainstorm content stays in `plan-review-feature-context.txt` only (or is omitted from binding argv); `feature-file-seen.txt` must **not** require brainstorm header/content (FINDING_10). **Verify-first** post-#3548: when loop parse/persist gaps are patched, assert `SCOPE_ANCHOR_FILE` appears in stdout and `.step3-plan-review-result.env` on **`ok` and `main-agent-vote-required`** only (no `--scope-anchor-file` tally argv assertions — FINDING_3). Add stale-seed case: seed a stale `SCOPE_ANCHOR_FILE` in the harness environment, loop stub omits the KV on `tally-error` or absent path → assert stdout and `.step3-plan-review-result.env` do not contain the stale key/value (FINDING_7, FINDING_12). (~35 lines)
+ 
+ ### UPDATED: `skills/design/scripts/run-step3-review.sh`
+-**Verify-first post-#3548** (FINDING_8): confirm all three surfaces exist — inner/outer parse allowlists, normalized `emit_kv` stdout relay, and `.step3-review-result.env` writes (including early panel-failed with empty value). Patch **only the proven missing surface(s)** among those three; omit edits when all three already thread `SCOPE_ANCHOR_FILE`. (~0–18 lines)
++**Verify-first post-#3548**: confirm inner/outer parse allowlists, normalized `emit_kv` stdout relay, and `.step3-review-result.env` writes thread `SCOPE_ANCHOR_FILE`. Patch **only proven missing surface(s)**; omit when complete. **Do not write or emit `SCOPE_ANCHOR_FILE` on `panel-failed` or other non-terminal statuses** (FINDING_6): initialize/unset local relay state before parse; write/emit the key only when parsed from inner loop output/result env with status `ok` or `main-agent-vote-required`. (~0–15 lines)
+ 
+ ### UPDATED: `skills/design/scripts/test-run-step3-review.sh`
+-**Verify-first post-#3548** unless gap: confirm loop-stub relay of `SCOPE_ANCHOR_FILE` through parse, stdout `emit_kv`, and `.step3-review-result.env`. If any surface is missing, add the matching assertion; if relay is complete, add stale-seed case — exported stale value, stub omits KV → stdout and `.step3-review-result.env` must not leak stale key/value (FINDING_12). (~0–22 lines)
++**Verify-first post-#3548**: confirm loop-stub relay of `SCOPE_ANCHOR_FILE` through parse, stdout `emit_kv`, and `.step3-review-result.env` on `ok` / `main-agent-vote-required` only. If any surface is missing, add the matching assertion. **Always** add stale-seed case (after any relay patch or when relay already complete): exported stale value, inner stub omits KV on `tally-error` or non-terminal path → stdout and `.step3-review-result.env` must not leak stale key/value (FINDING_7, FINDING_12). Assert `panel-failed` path does not write `SCOPE_ANCHOR_FILE` (FINDING_6). (~0–25 lines)
++
++### UPDATED: `skills/design/scripts/run-step3-review.md`
++**Verify-first** when relay delta lands: add `SCOPE_ANCHOR_FILE` to normalized result-env key list; note forwarded from inner plan-review result on `ok` / `main-agent-vote-required` only; omit on `panel-failed`. (~4 lines when needed)
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+-Item 2 + FINDING_6 — **verify-first post-#3548** for surfaces #3548 owns:
+-- **Step 3 handoff parse allowlists** and **MainAgent pre-vote scope-anchor render**: confirm `SCOPE_ANCHOR_FILE` is already on both `.step3-review-result.env` / stdout fallback `case` arms and that pre-vote untrusted scope render runs before ballot adjudication; patch only if a post-merge read proves a gap.
+-- **MainAgent re-tally (net-new delta)**: when non-empty, pass `--scope-anchor-file "$SCOPE_ANCHOR_FILE"`; parse `SCOPE_ANCHOR_FILE` from re-tally stdout; write parsed value into both refreshed `.step3-plan-review-result.env` and `.step3-review-result.env`. Remove prose-only “preserve existing value” language. (~8–12 changed lines)
++Item 2 — **verify-first post-#3548** for surfaces #3548 owns:
++- **Step 3 handoff parse allowlists** and **MainAgent pre-vote scope-anchor render**: confirm `SCOPE_ANCHOR_FILE` is already on `.step3-review-result.env` / stdout fallback `case` arms and pre-vote untrusted scope render runs before ballot adjudication; patch only if post-merge read proves a gap.
++- **MainAgent re-tally (net-new delta, env-sourced — no tally argv per #3548 / FINDING_3)**: bind input from existing env `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"` (or unset when empty); **do not pass `--scope-anchor-file` to tally/re-tally**. Unset `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` before parsing re-tally stdout; persist **only** non-empty parsed KV into refreshed `.step3-plan-review-result.env` and `.step3-review-result.env` on `ok` — omit on `tally-error` or missing stdout KV; never persist input or exported stale value (FINDING_5). Remove prose-only “preserve existing value” language. (~8–12 changed lines)
+ 
+ ### UPDATED: `skills/design/references/approval-gates.md`
+-Mirror SKILL.md verify-first split: confirm existing Step 3 handoff binding and pre-vote scope render; document conditional re-tally `--scope-anchor-file`, parse, and dual env refresh as the net-new delta. (~6 lines)
++Mirror SKILL.md verify-first split: confirm existing Step 3 handoff binding and pre-vote scope render; document re-tally env-sourced input, stdout parse with input/output separation (`_RETALLY_SCOPE_ANCHOR_IN` / `_RETALLY_PARSED_SCOPE_ANCHOR_FILE`), and dual env refresh as the net-new delta — no `--scope-anchor-file` argv (FINDING_3, FINDING_5). (~6 lines)
+ 
+ ### UPDATED: `skills/design/references/plan-review.md`
+-Item 2 / FINDING_7. Document staged scope-anchor voter input and optional durable `SCOPE_ANCHOR_FILE` handoff (path-only KV sourced from loop/tally on `ok` / `main-agent-vote-required`; inline content render is a separate consumer surface). (~6 lines)
++Item 2. Document staged scope-anchor voter input and durable env-sourced `SCOPE_ANCHOR_FILE` handoff (path-only KV through loop result env / Step 3 relay on `ok` / `main-agent-vote-required` only; tally does not accept scope-anchor argv per #3548; inline content render is a separate consumer surface). (~6 lines)
+ 
+ ### UPDATED: `skills/design/scripts/test-step3-orchestrator-fence.sh`
+-**Verify-first** post-#3548: retain existing pins for `SCOPE_ANCHOR_FILE` allowlist arms and MainAgent pre-vote scope-anchor prose only when SKILL.md still lacks them after merge. Add pins for MainAgent re-tally `--scope-anchor-file` argv, stdout parse, and dual env refresh. Include approval-gates mirror when the harness already checks that duplicate. (~8 lines)
++**Verify-first** post-#3548: retain existing pins for `SCOPE_ANCHOR_FILE` allowlist arms and MainAgent pre-vote scope-anchor prose only when SKILL.md still lacks them after merge. Add pins for MainAgent re-tally env-sourced input (no `--scope-anchor-file` argv), stdout parse with input/output separation, and dual env refresh. Add stale-seed pin: exported stale `SCOPE_ANCHOR_FILE`, re-tally omits KV → neither refreshed env file nor prompt-side persist carries stale value (FINDING_7). Include approval-gates mirror when harness already checks duplicate. (~10 lines)
+ 
+ ### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.sh`
+ Item 3 — **verify-first** (FINDING_1). In `compose_prompt()`:
+@@ -88,10 +76,11 @@
+ ### UPDATED: `Makefile`
+ Item 4 / FINDING_3. Register `test-check-scope-reduction-marker` with `.PHONY`, recipe (`bash scripts/test-check-scope-reduction-marker.sh`), and shard entry (e.g. `test-harnesses-18` alongside `test-revise-plan-with-waterfall`) so CI runs the marker harness when the script exists. (~5 lines)
+ 
+ ### UPDATED: `scripts/launch-claude-subprocess.sh`
+-Item 5 / FINDING_2. Escape `path="%s"` attribute values for `&`, `<`, `>`, and `"` before interpolation (or omit path attribute if escaping is impractical — prefer escape). Content path already redacts/escapes on the branch; this closes the delimiter-in-filename framing break. (~8 lines)
++Item 5 — **verify-first** (FINDING_1). Read post-#3548 main before patching:
++1. **Context bodies**: when the `<context_file_N>` append path still raw-cats file bytes, migrate through `redact-secrets.sh`, escape `<>&`, and add untrusted framing prose (reuse `emit_untrusted_file_block` / `render-specialist-prompt.sh` pattern); skip content edits only when harness read proves hardening already present.
++2. **Path attributes**: escape `path="%s"` values for `&`, `<`, `>`, and `"` before interpolation (or omit path attribute if escaping is impractical — prefer escape). (~15–25 lines when content migration needed; ~8 when content already hardened)
+ 
+ ### UPDATED: `scripts/test-launch-claude-subprocess.sh`
+-Item 5 coverage. Case with context file containing secret-like token, `<tag>` line, and `&`: assert `&lt;` / `&amp;` present, raw secret absent, **raw `<tag>` line absent** while `&lt;tag&gt;` present (FINDING_4), untrusted framing inside `<context_file_1 ...>`. Second case: context file whose **basename** contains `"`, `<`, `>`, or `&` — assert rendered prompt attribute does not break framing (escaped or path omitted). (~30 lines)
++Item 5 coverage — **verify-first gated** (FINDING_1): add content-body cases (secret-like token, `<tag>`, `&`, framing, `encoding="literal-redacted"`) only when post-merge read proves context bodies still need migration; always add path-attribute basename case with `"`, `<`, `>`, or `&` — assert rendered prompt attribute does not break framing (escaped or path omitted). (~30 lines when content gap proven; ~12 path-only when content already hardened)
+ 
+ ### UPDATED: `SECURITY.md`
+ Item 6 / FINDING_4 + FINDING_5 + FINDING_9. Add `### Plan-review scope-anchor pipeline` under `## Trust Model` with **two surfaces**:
+@@ -99,7 +88,8 @@
+    - **Scope-anchor consumers** (scout/reviewer/voter prompts, MainAgent pre-vote render, Step 3.6 assessor feature block when reading staged anchor): provenance is issue body → `larch:plan` strip → `redact-secrets.sh` → staged `plan-review-scope-anchor.txt`; must use literal-redacted escaped blocks with untrusted framing prose.
+-   - **Other inline untrusted blocks** (revise waterfall plan/findings, arbitrary Claude subprocess context bodies, assessor feature block on **legacy fallback** when staged anchor is empty/absent and `feature-description.txt` is read directly): source-specific file contents that still require `redact-secrets.sh`, `<>&` escaping, and untrusted framing — do **not** claim staged-anchor provenance for these inputs.
++   - **Other inline untrusted blocks** (revise waterfall plan/findings/**feature** blocks, arbitrary Claude subprocess context bodies, assessor feature block on **legacy fallback** when staged anchor is empty/absent and `feature-description.txt` is read directly): source-specific file contents that still require `redact-secrets.sh`, `<>&` escaping, and untrusted framing — do **not** claim staged-anchor provenance for these inputs. Revise **feature** block uses staged-anchor provenance only when `--feature-file` is the staged anchor path; otherwise source-specific provenance (FINDING_8). Subprocess context-body coverage in this section applies only after verify-first read confirms hardening (or documents post-implement gap — FINDING_1).
+ 2. **Path-only handoffs** (`SCOPE_ANCHOR_FILE` KV through loop / tally / Step 3 result env / MainAgent re-tally argv): durable staged tmpdir **path** only — consumers that render content must read the file through surface (1); KV relay does not inline anchor bytes. (~28 lines)
+ 
+ ### UPDATED: `skills/shared/scripts/render-assessor-prompt.sh`
+@@ -114,28 +104,28 @@
+ 
+ ## Approach
+ 
+-Post-#3548 follow-up with minimal churn. **Verify-first** default for `run-step3-review.sh`, `SKILL.md` allowlist/pre-vote surfaces, `revise-plan-with-waterfall.sh` block emission, and `check-scope-reduction-marker.sh` presence. Net-new script work concentrates on: assessor anchor preference, tally `--scope-anchor-file` argv/KV, narrow loop tally parse with **input/output variable separation**, SKILL **re-tally-only** argv/parse/dual-env refresh, revise block migration+framing when needed, marker consolidation when helper exists, subprocess path escape, assessor render hardening, `SECURITY.md` two-surface + source-specific provenance, `plan-review.md` sync, and Makefile registration for marker tests. Reuse branch primitives (`emit_untrusted_file_block`, `emit_kv`, `render-main-agent-scope-anchor.sh` when present). Prefer-with-fallback for assessor anchor so degraded sessions never hard-fail.
++Post-#3548 follow-up with minimal churn. **Verify-first** default for `run-step3-review.sh`, `SKILL.md` allowlist/pre-vote surfaces, `plan-review-loop.sh` durable handoff parse/persist, `revise-plan-with-waterfall.sh` block emission, `launch-claude-subprocess.sh` context bodies, and `check-scope-reduction-marker.sh` presence. **Do not reintroduce tally/re-tally `--scope-anchor-file` argv** — #3548 owns env-sourced propagation (FINDING_3). Net-new script work concentrates on: assessor anchor preference, narrow loop parse/persist with **input/output variable separation**, SKILL **re-tally-only** env-sourced parse/dual-env refresh (no tally argv), revise block migration+framing when needed, marker consolidation when helper exists, subprocess content+path hardening when needed, assessor render hardening, `SECURITY.md` two-surface + source-specific provenance (including revise feature block), `plan-review.md` sync, and Makefile registration for marker tests. Reuse branch primitives (`emit_untrusted_file_block`, `emit_kv`, `render-main-agent-scope-anchor.sh` when present). Prefer-with-fallback for assessor anchor so degraded sessions never hard-fail.
+ 
+ ## Edge cases
+ 
+ - Anchor file exists but empty → treat as absent (`-s`); legacy fallback for assessor; loop already errors upstream on empty materialization.
+-- `--scope-anchor-file ''` → unset; no KV emitted.
+-- Anchor path with CR/LF → tally usage error.
+-- `tally-error` → omit `SCOPE_ANCHOR_FILE` from loop KVs and result env even if `_STAGED_SCOPE_ANCHOR` was passed in; never write staged input as parsed output (FINDING_8).
+-- Missing `SCOPE_ANCHOR_FILE` in re-tally stdout → refreshed envs omit it; do not carry stale exported values (FINDING_12).
++- Anchor path with CR/LF → reject before result-env write (loop handoff).
++- `tally-error` → omit `SCOPE_ANCHOR_FILE` from loop KVs and result env even if `_LOOP_SCOPE_ANCHOR_IN` was set in env; never write input env as parsed output.
++- `panel-failed` → omit `SCOPE_ANCHOR_FILE` from run-step3 relay and outer result env (FINDING_6).
++- Missing `SCOPE_ANCHOR_FILE` in re-tally stdout → refreshed envs omit it; unset `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` before parse; do not carry stale exported or input values (FINDING_5, FINDING_12).
+ - `main-agent-vote-required` must relay `SCOPE_ANCHOR_FILE` same as `ok` (FINDING_7).
+ - Revise `compose_prompt` still on raw `sed` → migrate blocks before framing-only edits (FINDING_1).
++- Subprocess context still raw-cat → migrate content before path-attribute-only patch or SECURITY.md subprocess claim (FINDING_1).
+ - Marker script absent post-#3548 → skip Item 4 consolidation entirely (FINDING_2).
+ - Context filename with quote/angle/ampersand bytes → path attribute escaped or omitted; content still literal-redacted.
+ - Assessor delimiter-like feature text → escaped literal evidence; safe content must survive redaction (FINDING_11).
+ - Brainstorm case must not assert merged feature-file binding after #3548 anchor semantics (FINDING_10).
+ 
+ ## Failure modes
+ 
+ 1. Re-describing #3548 handoff as net-new edits → merge conflicts and regressions. Mitigation: verify-first default for `run-step3-review`, SKILL allowlist/pre-vote, and orchestrator-fence pins; narrow loop delta to tally argv + separated parse/persist; SKILL patch limited to re-tally refresh.
+-2. `SCOPE_ANCHOR_FILE` input/output reuse on tally error → stale anchor in result env. Mitigation: `_STAGED_SCOPE_ANCHOR` vs `_PARSED_SCOPE_ANCHOR_FILE`; persist only from tally stdout on `ok` / `main-agent-vote-required`; stale-seed harness (FINDING_12).
++2. `SCOPE_ANCHOR_FILE` input/output reuse on tally error or re-tally → stale anchor in result env. Mitigation: `_LOOP_SCOPE_ANCHOR_IN` / `_PARSED_SCOPE_ANCHOR_FILE` and `_RETALLY_SCOPE_ANCHOR_IN` / `_RETALLY_PARSED_SCOPE_ANCHOR_FILE`; persist only from parsed stdout on `ok` / `main-agent-vote-required`; stale-seed harness on loop, run-step3 relay, and re-tally paths (FINDING_7, FINDING_12).
+ 3. Framing-only revise change on raw `sed` blocks → delimiter injection persists. Mitigation: verify-first migration to `emit_untrusted_file_block` (FINDING_1).
+ 4. Marker consolidation against absent script → implement failure. Mitigation: verify-first skip when helper missing; Makefile target gated on script presence (FINDING_2, FINDING_3).
+ 5. `SECURITY.md` overstates trust boundary → false assurance. Mitigation: scope-anchor vs source-specific inline provenance; explicit assessor legacy-fallback note (FINDING_4, FINDING_5, FINDING_9).
+-6. `run-step3-review` patches allowlist only while emit/env relay missing → stale handoff. Mitigation: patch exact missing surface among parse, `emit_kv`, and result-env write (FINDING_8).
++6. `run-step3-review` patches allowlist only while emit/env relay missing, or writes empty `SCOPE_ANCHOR_FILE` on `panel-failed` → stale or widened handoff. Mitigation: patch exact missing surface among parse, `emit_kv`, and result-env write; terminal-gated emit only (FINDING_6).
++7. Reintroducing tally `--scope-anchor-file` rejected by #3548 → merge conflict and dead plumbing. Mitigation: env-sourced propagation only; loop/re-tally verify-first parse/persist gaps (FINDING_3).
+ 
+ ## Testing strategy
+ 
+-Extend: `test-assess-plan-round`, `test-tally-plan-review`, `test-plan-review-loop` (brainstorm rewrite + tally `ok`/`main-agent-vote-required` + stale cases), `test-run-step3-review` (verify relay surfaces or stale-seed), `test-revise-plan-with-waterfall`, `test-check-scope-reduction-marker` (when helper exists), `test-launch-claude-subprocess`, `test-render-assessor-prompt`, `test-step3-orchestrator-fence` (re-tally pins), `test-design-structure`. Register `test-check-scope-reduction-marker` in `Makefile` (FINDING_3). Run `make test-assess-plan-round test-tally-plan-review test-plan-review-loop test-run-step3-review test-revise-plan-with-waterfall test-check-scope-reduction-marker test-launch-claude-subprocess test-render-assessor-prompt test-step3-orchestrator-fence test-design-structure` plus `bash scripts/relevant-checks.sh`. Update `SECURITY.md` per AGENTS.md.
++Extend: `test-assess-plan-round`, `test-plan-review-loop` (brainstorm rewrite + terminal-gated `SCOPE_ANCHOR_FILE` persist + stale cases), `test-run-step3-review` (verify relay surfaces, `panel-failed` omit, stale-seed), `test-revise-plan-with-waterfall`, `test-launch-claude-subprocess` (content cases verify-first gated), `test-render-assessor-prompt`, `test-step3-orchestrator-fence` (re-tally env-sourced + stale pins), `test-design-structure`. Register `test-check-scope-reduction-marker` in `Makefile` when helper exists (FINDING_2). Run `make test-assess-plan-round test-plan-review-loop test-run-step3-review test-revise-plan-with-waterfall test-launch-claude-subprocess test-render-assessor-prompt test-step3-orchestrator-fence test-design-structure` plus `make test-check-scope-reduction-marker` **only when** `scripts/check-scope-reduction-marker.sh` and the Makefile target exist; then `bash scripts/relevant-checks.sh`. Update `SECURITY.md` per AGENTS.md.
+ 
+-diff_lines: 365
++diff_lines: 380

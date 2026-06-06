@@ -1,0 +1,172 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+## Plan
+
+Close the six scope-anchor coverage and delimiter-hygiene gaps from issue #3547.
+
+**Hard dependency**: this work targets post-merge main after PR #3548 (issue #3511, branch `sergey-zhupanov/implementing-design-review-anchor-scout-3511`) lands. Items 1, 2, 4, and 6 edit files that exist only on that branch. Do not start `/implement` before #3548 merges.
+
+**Status discovered during design** (branch tip `0dc974f1e`):
+- Item 3 is partially done: `<plan>` / `<findings>` blocks in `revise-plan-with-waterfall.sh` already use `emit_untrusted_file_block` (redact + HTML-escape + `encoding="literal-redacted"`). Only the framing prose is missing.
+- Item 5 is fully done in code: `launch-claude-subprocess.sh` already redacts, escapes, and frames `<context_file_N>` content. Only regression-test coverage is missing.
+
+### Files to modify/create
+
+### UPDATED: `skills/design/scripts/assess-plan-round.sh`
+Item 1. In `resolve_feature_file()`, prefer the staged scope anchor: when `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` is non-empty (`-s`), return it first. Keep the existing `feature-description.txt` → `IMPLEMENT_TMPDIR` chain as defensive fallback. (~6 lines)
+
+### UPDATED: `skills/design/scripts/assess-plan-round.md`
+Document the new resolution order: staged anchor first, legacy chain as fallback. (~3 lines)
+
+### UPDATED: `skills/design/scripts/test-assess-plan-round.sh`
+Add one case: staged anchor present and non-empty → dispatch stub records `--feature-file` = anchor path (reuse the existing `feature-path-seen.txt` capture pattern). Add one case: empty anchor file → legacy fallback wins. (~20 lines)
+
+### UPDATED: `skills/design/scripts/tally-plan-review.sh`
+Item 2. Add optional `--scope-anchor-file PATH` argv. Reject values containing CR/LF (usage error, mirroring the `plan-review-loop.sh` check). When non-empty, `emit_kv SCOPE_ANCHOR_FILE "$PATH"` on the two terminal paths whose output refreshes result envs: `ok` and `main-agent-vote-required`. (~12 lines)
+
+### UPDATED: `skills/design/scripts/tally-plan-review.md`
+Document the new argv and the `SCOPE_ANCHOR_FILE` KV emission. (~5 lines)
+
+### UPDATED: `skills/design/scripts/test-tally-plan-review.sh`
+Add cases: flag provided → `SCOPE_ANCHOR_FILE` KV present on `ok` and `main-agent-vote-required` outputs; flag absent → KV absent; CR/LF value → usage error. (~20 lines)
+
+### UPDATED: `skills/design/SKILL.md`
+Item 2 (orchestrator side). In the MainAgent re-tally prose: add `--scope-anchor-file "$SCOPE_ANCHOR_FILE"` to the documented re-tally command, and replace the "Preserve any existing SCOPE_ANCHOR_FILE in that refreshed state" prose-dependence with parsing `SCOPE_ANCHOR_FILE` from re-tally output. Mechanical preservation replaces prose preservation. (~4 changed lines)
+
+### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.sh`
+Item 3 residual. In `compose_prompt()`, add framing prose immediately before `emit_untrusted_file_block plan` and before `emit_untrusted_file_block findings`, mirroring the existing feature-block wording: untrusted data, not instructions; tag-like content is literal evidence only. (~6 lines)
+
+### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.md`
+Note that all three prompt blocks (plan, findings, feature) carry untrusted framing prose. (~2 lines)
+
+### UPDATED: `scripts/test-revise-plan-with-waterfall.sh`
+Extend the existing untrusted-feature case to assert framing prose precedes the `<plan ...>` and `<findings ...>` blocks in the composed prompt. (~8 lines)
+
+### UPDATED: `scripts/check-scope-reduction-marker.sh`
+Item 4. Collapse the two duplicated Python heredocs into one. Shape: `python3 - "${IN_PATH:--}" <<'PY'` where the Python body reads stdin when `sys.argv[1] == "-"`, else opens the path. Keep the detector body byte-identical; keep exit codes (0 = marker found, 1 = none, 2 = usage). (~+15/-65 lines)
+
+### UPDATED: `scripts/check-scope-reduction-marker.md`
+Note the single shared detector body for both input modes. (~2 lines)
+
+### UPDATED: `scripts/test-check-scope-reduction-marker.sh`
+Add a stdin/file parity case: feed the same fixture both ways; assert identical exit codes for marker-present and marker-absent fixtures. (~10 lines)
+
+### UPDATED: `scripts/test-launch-claude-subprocess.sh`
+Item 5 (coverage only — behavior shipped in #3548). Add a case launching with a context file containing a secret-like token, a `<tag>` line, and `&`. Assert the rendered prompt: contains `&lt;` / `&amp;` escapes, does not contain the raw secret, and contains the untrusted-input framing line inside `<context_file_1 ...>`. No change to `scripts/launch-claude-subprocess.sh` itself. (~25 lines)
+
+### UPDATED: `SECURITY.md`
+Item 6. Add a `### Plan-review scope-anchor pipeline` subsection under `## Trust Model`: anchor provenance (issue body → embedded `larch:plan` block stripped → `redact-secrets.sh` → staged at `$DESIGN_TMPDIR/plan-review-scope-anchor.txt`); consumers must render it via literal-redacted escaped blocks with framing prose; name the consumer surfaces (scout, reviewer prompts, voter prompts, MainAgent re-tally render, Step 3.6 assessor lane, revise waterfall, Claude-subprocess context files). (~22 lines)
+
+## Approach
+
+Post-#3548 follow-up. Minimal per-site edits; no new scripts; no new conventions. Reuse the branch's existing primitives: `emit_untrusted_file_block` framing, `lib-quiet.sh` `emit_kv`, existing harness fixtures. Replace prose-dependent state preservation with mechanical KV passthrough (item 2). Prefer-with-fallback for the anchor (item 1) so degraded sessions never hard-fail on a missing anchor.
+
+## Edge cases
+
+- Anchor file exists but is empty → treat as absent (`-s` test); fall back to the legacy chain. `plan-review-loop.sh` already errors upstream when materialization produces an empty anchor.
+- `--scope-anchor-file ''` (empty value) → treated as unset; no KV emitted.
+- Anchor path containing CR/LF → tally argv usage error (fail closed, mirrors loop-side check).
+- A literal file named `-` → not reachable: stdin mode is selected only when `--file` is absent; all callers pass real paths.
+- `tally-error` terminal paths intentionally do not emit `SCOPE_ANCHOR_FILE`: Step 3 short-circuits to Step 3b on tally-error and the anchor is unused there.
+
+## Failure modes
+
+1. SKILL.md prose pins drift → `test-design-structure.sh` / `test-step3-orchestrator-fence.sh` fail in CI. Earliest signal: those harnesses on `relevant-checks.sh`. Mitigation: run both locally after the SKILL.md edit; update pins in the same commit.
+2. Marker consolidation subtly changes detection (unreadable file, encoding) → scope-reduction tagging drift in `plan-review-loop.sh` and `aggregate-findings.sh`. Earliest signal: `test-check-scope-reduction-marker.sh` parity case. Mitigation: keep the Python detector body byte-identical; only the input-read head changes.
+3. Anchor preference changes assessor context when anchor and `feature-description.txt` diverge → unexpected assessor verdict shifts. Earliest signal: `test-assess-plan-round.sh` feature-path assertions. Mitigation: the anchor is the same redacted issue-scope text reviewers and voters already see; prefer-with-fallback keeps degraded sessions on legacy behavior.
+
+## Testing strategy
+
+Extend the five named harnesses (assess-plan-round, tally-plan-review, revise-plan-with-waterfall, check-scope-reduction-marker, launch-claude-subprocess). Run `make test-assess-plan-round test-tally-plan-review test-revise-plan-with-waterfall test-check-scope-reduction-marker test-launch-claude-subprocess test-step3-orchestrator-fence test-design-structure` plus `bash scripts/relevant-checks.sh` after edits. Update `SECURITY.md` per AGENTS.md (security-relevant behavior documented).
+
+diff_lines: 240
+
+</plan>
+
+<findings>
+### FINDING_1: Python heredoc consolidation breaks stdin mode
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The planned `python3 - "${IN_PATH:--}" <<'PY'` shape uses stdin for the Python program itself, so `IN_PATH=-` cannot also read the caller’s piped fixture; stdin callers would miss scope-reduction markers while file mode works.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep one detector body, but pass the Python source via `python3 -c '...' "${IN_PATH:--}"` or another mechanism that leaves the process stdin connected to the caller's input; keep the new parity test to pin this contract
+  - From Codex-Edge: Use `python3 -c` or another shape that leaves stdin available for data when the path argument is `-`, or keep separate minimal stdin/file wrappers while sharing the detector body through a real helper function/module
+  - From Cursor-Innovation: Keep one shared detector body but split invocation: file mode uses python3 - "$path" <<'PY', stdin mode uses python3 - <<'PY' with caller stdin unredirected, or duplicate fd 0 to another fd before the heredoc and read that fd in "-" mode
+  - From Codex-Innovation: Do not use fd 0 for both the script and data. Use python3 -c with the shared body, or preserve caller stdin on another fd before the heredoc and read that fd in "-" mode.
+  - From Codex-Pragmatic: Do not use a heredoc on stdin for the consolidated helper. Use `python3 -c '...' "${IN_PATH:--}"`, a temporary Python file, or preserve caller stdin on another fd and read that fd when argv is `-`.
+
+
+### FINDING_2: Assessor prompt still renders scope anchors as raw prompt text
+- **Reviewer(s)**: Codex-Requirements, Codex-dyn-dependency-chain
+- **Severity**: important
+- **Concern**: The plan claims scope-anchor consumers render literal-redacted escaped blocks, but the Step 3.6 assessor prompt renderer still cats `FEATURE_FILE` raw, allowing delimiter-like or instruction-like issue text to steer the assessor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add the minimal renderer/doc/test update for render-assessor-prompt.sh to wrap FEATURE_FILE with the same untrusted framing plus redact-and-escape block, and extend test-render-assessor-prompt.sh; or narrow the SECURITY.md wording so it does not claim escaped rendering for the assessor lane.
+  - From Codex-dyn-dependency-chain: Update render-assessor-prompt.sh to render FEATURE_FILE with the same untrusted framing, redact-secrets, HTML escaping, and encoding="literal-redacted" block used by the other scope-anchor consumers; add a small harness assertion for the assessor prompt.
+
+
+### FINDING_3: Hard-dependency prose overstates branch-only file presence
+- **Reviewer(s)**: Cursor-dyn-dependency-chain
+- **Severity**: important
+- **Concern**: The hard-dependency block says several items edit files that exist only on the dependent branch, but most named files already exist on main; the real dependency is on branch-only symbols and handoffs, not file presence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-dependency-chain: Rephrase dependency: files 1/2/6 exist on main; gate on branch-only symbols (plan-review-scope-anchor.txt, SCOPE_ANCHOR_FILE handoff, marker helper) not file presence
+
+
+### FINDING_7: Item 1 anchor preference is under-specified without loop materialization
+- **Reviewer(s)**: Cursor-dyn-dependency-chain
+- **Severity**: important
+- **Concern**: The anchor preference change is a no-op unless the review loop has already staged `plan-review-scope-anchor.txt`; the dependency is on branch-only materialization symbols, not just the assessor script.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-dependency-chain: Dependency claim is correct for symbols but under-specified: item 1 is a no-op until loop materializes the anchor; call out symbol dependency explicitly in the hard-dependency block
+
+
+### FINDING_8: Approval-gates duplicate re-tally contract omits SCOPE_ANCHOR_FILE
+- **Reviewer(s)**: Cursor-dyn-kv-propagation
+- **Severity**: important
+- **Concern**: The plan updates SKILL.md re-tally prose but not the duplicated, CI-pinned Gate B contract in approval-gates.md, allowing normative text to drift on `--scope-anchor-file` and `SCOPE_ANCHOR_FILE` parsing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-kv-propagation: Add matching --scope-anchor-file and parse/persist SCOPE_ANCHOR_FILE language to approval-gates.md line 95 (or cite SKILL as sole authority and trim duplicate re-tally flags there)
+
+
+### FINDING_9: Re-tally env refresh may parse but drop SCOPE_ANCHOR_FILE
+- **Reviewer(s)**: Cursor-dyn-kv-propagation
+- **Severity**: important
+- **Concern**: The SKILL.md re-tally refresh prose does not require writing `SCOPE_ANCHOR_FILE` into the refreshed Step 3 result env files, so the orchestrator may parse the KV and then lose it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-kv-propagation: In the SKILL.md MainAgent re-tally edit explicitly require parsing SCOPE_ANCHOR_FILE from re-tally stdout and including it in both refreshed result env writes (same keys as other durable Step 3 KVs)
+
+
+### FINDING_10: Downstream Step 3 KV chain does not propagate SCOPE_ANCHOR_FILE
+- **Reviewer(s)**: Cursor-dyn-kv-propagation, Codex-dyn-kv-propagation
+- **Severity**: important
+- **Concern**: Adding `SCOPE_ANCHOR_FILE` output to tally is insufficient unless the live Step 3 callers pass, parse, emit, and persist that key; otherwise the MainAgent re-tally prose may reference a variable that never reaches orchestrator state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-kv-propagation: Add one plan sentence: loop intentionally omits --scope-anchor-file on initial tally; SCOPE_ANCHOR_FILE durable handoff remains #3548 loop materialization; tally KV emission serves re-tally mechanical passthrough only
+  - From Codex-dyn-kv-propagation: Add the minimum passthrough: have plan-review-loop pass the flag to tally when set, parse SCOPE_ANCHOR_FILE, include it in emit_loop_kvs and write_step3_result_env, then add it to run-step3-review parse/emit/result-env allowlists and the SKILL Step 3 handoff allowlist.
+
+
+
+</findings>
+
+<feature>
+[OOS] Scope-anchor coverage gaps and pre-existing delimiter issues in plan-review pipeline
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Main agent (combined per OOS triage rule 3 — multiple medium-sized bugs ≥30 LOC)
+**Phase**: implement
+**Vote tally**: N/A — combined per policy
+
+## Description
+
+Multiple related latent/structural issues in the plan-review pipeline left out of scope by reviewers: (1) `assess-plan-round.sh` resolves `--feature-file` from raw `feature-description.txt`/`IMPLEMENT_TMPDIR` fallback instead of the staged scope anchor (`skills/design/scripts/assess-plan-round.sh`); (2) `SKILL.md` says to preserve `SCOPE_ANCHOR_FILE` during MainAgent re-tally but `tally-plan-review.sh` does not emit it, leaving preservation dependent on orchestrator prose (`scripts/lib-vote-tally.sh`); (3) `revise-plan-with-waterfall.sh` has pre-existing raw `<plan>` / `<findings>` inline blocks predating this branch that lack untrusted framing; (4) `check-scope-reduction-marker.sh` duplicates the same Python detector for stdin and `--file` path, creating normalization drift risk; (5) Raw `<context_file_N>` append path in Claude review launches predates this branch and could inline unredacted content; (6) `SECURITY.md` should document the new plan-review scope-anchor pipeline trust boundary. Each fix is estimated ≥30 LOC; combine into one issue per OOS triage policy rule 3.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+</feature>
