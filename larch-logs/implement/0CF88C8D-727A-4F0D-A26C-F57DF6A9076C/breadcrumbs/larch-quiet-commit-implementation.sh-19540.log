@@ -1,0 +1,6 @@
+[sergey-zhupanov/implementing-bug-urgent-oos-gate-silentl-3550 a8c26b6a3] Fixes #3550: file accepted [OUT_OF_SCOPE] review findings instead of silently dropping them
+ 19 files changed, 348 insertions(+), 13 deletions(-)
+ create mode 100644 skills/shared/scripts/normalize-oos-block-header.md
+ create mode 100755 skills/shared/scripts/normalize-oos-block-header.sh
+ create mode 100644 skills/shared/scripts/test-normalize-oos-block-header.md
+ create mode 100755 skills/shared/scripts/test-normalize-oos-block-header.sh

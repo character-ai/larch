@@ -1,0 +1,4 @@
+[sergey-zhupanov/implementing-bug-urgent-oos-gate-silentl-3550 934023e31] Address code review feedback
+ 3 files changed, 23 insertions(+), 1 deletion(-)
+ create mode 100644 skills/implement/scripts/oos-accumulated-seq-seed.awk
+ create mode 100644 skills/implement/scripts/oos-has-legacy-finding-block-opener.awk
