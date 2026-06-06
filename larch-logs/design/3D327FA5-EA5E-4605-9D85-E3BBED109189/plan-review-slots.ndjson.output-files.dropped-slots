@@ -1,0 +1,9 @@
+codex-plan-arch	codex	collector-failure	STATUS=FAILED
+cursor-plan-edge	cursor	collector-failure	STATUS=FAILED
+codex-plan-edge	codex	collector-failure	STATUS=FAILED
+codex-plan-innovation	codex	collector-failure	STATUS=FAILED
+codex-plan-pragmatic	codex	collector-failure	STATUS=FAILED
+codex-plan-requirements	codex	collector-failure	STATUS=FAILED rm: /tmp/larch-codex-review-home-mqSGOf/.tmp/plugins-clone-EABAXC/plugins: Permission denied rm: /tmp/larch-codex-review-home-mqSGOf/.tmp/plugins-clone-EABAXC: Permission denied rm: /tmp/larch-codex-r
+dyn-cursor-plan-script-corpus	cursor	collector-failure	STATUS=FAILED
+dyn-codex-plan-script-corpus	codex	collector-failure	STATUS=FAILED
+dyn-codex-plan-python-stub-fit	codex	collector-failure	STATUS=FAILED rm: /tmp/larch-codex-review-home-hCexnG/.tmp/plugins-clone-3oI14q/plugins: Permission denied rm: /tmp/larch-codex-review-home-hCexnG/.tmp/plugins-clone-3oI14q: Permission denied rm: /tmp/larch-codex-r

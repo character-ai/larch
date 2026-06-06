@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	scripts/launch-claude-ci.sh:1-6	Plan section `### NEW: scripts/launch-claude-ci.sh` contradicts repo state and scope-files.txt	`scripts/launch-claude-ci.sh` already exists (217-line production CI-fix launcher with unpinned `record-vendor-task` at line 192); `staged-context/scope-files.txt` line 6 lists it as a modify target, not a create	Retitle the plan block to `### UPDATED: scripts/launch-claude-ci.sh (A2 pin only)`; keep the one-line `LARCH_TIMING_SKILL=implement` pin as proposed
+
+**1. [correctness]** `scripts/launch-claude-ci.sh:1-6` — Plan labels `launch-claude-ci.sh` as **NEW**, but the file already exists and is a full production launcher (`#!/usr/bin/env bash`, header documents `/implement` CI-fix sibling role). `scope-files.txt` line 6 correctly lists it among files to modify. Only the A2 pin is missing (`record-vendor-task` at `scripts/launch-claude-ci.sh:192` lacks `LARCH_TIMING_SKILL=implement` on that line). **Suggested revision:** change `### NEW:` to `### UPDATED:`; no file creation step.
+
+**Verified (no finding):**
+
+- All **15 A1 scanner scripts** exist at the paths named in the plan and each contains at least one target timing invocation (`mark`, `record-vendor-task`, or `timing-report.sh`).
+- **Exclusions are correct:** `scripts/launch-review.sh:94,671` and `scripts/launch-claude-subprocess.sh:237` emit `record-vendor-task` for review/design paths (`TIMING_TASK_KIND` defaults `claude-review`; task kinds like `cursor-review`/`codex-review`). Pinning `LARCH_TIMING_SKILL=implement` there would mis-tag non-implement usage, matching the plan rationale.
+- **A2 gap is acknowledged:** the five launcher `record-vendor-task` lines (`launch-codex-implement.sh:230`, `launch-cursor-implement.sh:169`, `launch-codex-ci.sh:247`, `launch-cursor-ci.sh:230`, `launch-claude-ci.sh:192`) are unpinned today; the plan's A2 sections address all five before A1 lands.

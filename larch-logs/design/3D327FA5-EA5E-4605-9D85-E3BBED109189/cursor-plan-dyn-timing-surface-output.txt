@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/launch-claude-ci.sh:192-199	A1/A2 omit the third /implement CI-fix launcher that emits record-vendor-task	ship-pr.sh rotates launch-cursor-ci.sh launch-codex-ci.sh and launch-claude-ci.sh for CI-fix subwork; only the Claude launcher stays unpinned and outside the A1 scanned set so polluted LARCH_TIMING_SKILL=design can tag claude-ci-fix vendor rows as design and the new scanner never fails	Add scripts/launch-claude-ci.sh to the A1 scanned set and mirror the A2 one-line DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement prefix on its record-vendor-task call; keep launch-review.sh and launch-claude-subprocess.sh excluded
+
+1. **correctness** `scripts/launch-claude-ci.sh:192-199` — The plan’s A1 explicit production set and A2 pin list include `launch-codex-ci.sh` and `launch-cursor-ci.sh` but omit `launch-claude-ci.sh`, even though it is a sibling `/implement` CI-fix launcher with the same unpinned `record-vendor-task` surface (`scripts/launch-claude-ci.sh:192-199`). `scripts/ship-pr.sh:1771-1774` dispatches all three CI tiers in production. After A1 lands, CI rows from Codex/Cursor will be guarded while Claude CI-fix rows can still inherit ambient `LARCH_TIMING_SKILL=design`, and the scanner will not catch the gap. **Suggested revision:** Add `scripts/launch-claude-ci.sh` to the A1 scanner list and apply the same A2 inline prefix as the other CI launchers; keep `scripts/launch-review.sh` and `scripts/launch-claude-subprocess.sh` out of scope (review-only paths).
+
+**code-quality** — EXONERATE. Basename matching, continuation-line handling, and subcommand scoping in the plan align with how production scripts invoke `$SCRIPT_DIR`/`$PLUGIN_ROOT` paths.
+
+**risk-integration** — Covered by finding 1: the missing launcher is on the live CI-fix waterfall, not a dormant path.
+
+**architecture** — EXONERATE aside from finding 1. The codex/cursor/claude CI launcher trio is already treated as peers elsewhere (`scripts/test-implement-structure.sh:363-369`); the plan should extend that parity to timing pins/scanner coverage.
+
+**security** — EXONERATE. Mis-tagged timing rows are observability/reporting drift, not a security boundary failure.

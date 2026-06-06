@@ -1,0 +1,53 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:78-79	Consecutive status-gather bail is specified as Outcome.STALLED but monitor() classifies that bail_reason as transient	poll_ci emits bail_reason "ci-status.sh returned no valid output 3 times consecutively" (python/ci_monitor.py:414-416); monitor() routes bail through retry.is_transient_net_signature() (python/ci_monitor.py:1537-1544); python/retry.py:53-54 and python/test_retry.py:44 treat the substring "no valid output 3 times" as transient. A test asserting Outcome.STALLED fails; an implementer might wrongly change monitor() instead of the assertion	In plan section B, change the consecutive-error candidate to assert Outcome.TRANSIENT with detail containing "3 times consecutively". Reuse the RecordingRunner stub from python/test_ci_monitor.py:330-351 (gh pr view rc=1). Optionally note this is intentional bash parity (scripts/lib-net.sh), not a stall path
+
+1. **(correctness)** `plan.txt:78-79` — The plan says consecutive status-gather errors through `monitor()` should yield `Outcome.STALLED`. In the current code, that path yields `Outcome.TRANSIENT` instead.
+
+`poll_ci` bails with:
+
+```414:416:python/ci_monitor.py
+                    Decision(
+                        action="bail",
+                        bail_reason="ci-status.sh returned no valid output 3 times consecutively",
+```
+
+`monitor()` then checks the bail reason against the transient classifier before the STALLED fallback:
+
+```1536:1562:python/ci_monitor.py
+    if decision.action == "bail":
+        if decision.bail_reason and retry.is_transient_net_signature(decision.bail_reason):
+            return _base_result(
+                did_fixing=False,
+                goto=False,
+                step=StepResult(
+                    outcome=Outcome.TRANSIENT,
+                    detail=decision.bail_reason,
+                ),
+            )
+        ...
+        return _base_result(
+            ...
+            step=StepResult(
+                outcome=Outcome.STALLED,
+                detail=decision.bail_reason or "bail",
+            ),
+        )
+```
+
+The classifier explicitly matches that message:
+
+```53:54:python/retry.py
+    if "no valid output 3 times" in text:
+        return True
+```
+
+**Suggested revision:** Assert `Outcome.TRANSIENT` (and a detail containing `"3 times consecutively"`), matching `test_poll_ci_three_consecutive_errors_bail`’s stub and bash parity in `scripts/lib-net.sh`.
+
+---
+
+**Exonerated on review:**
+
+- **`already_merged` → `Outcome.OK`:** Genuinely uncovered at `monitor()` level. `test_decide_parity_table` and `test_gather_status_merged_short_circuit` stop at `decide()` / `gather_status()`; no `test_monitor_*` uses `merged=True` (`python/test_ci_monitor.py:1538-1548` only covers `merge`).
+- **RecordingRunner / parity conventions:** `_status(merged=True)` for the merged case and the `gh pr view` rc=1 pattern from `test_poll_ci_three_consecutive_errors_bail` fit existing helpers.
+- **No `evaluate_failure` duplication:** Proposed tests stay in the `poll_ci` → `monitor()` driver layer, separate from the `evaluate_failure` suite.
+- **Dropped unknown-status candidate:** Correct; `poll_ci` loops on `wait` and does not surface unknown statuses through `monitor()`.

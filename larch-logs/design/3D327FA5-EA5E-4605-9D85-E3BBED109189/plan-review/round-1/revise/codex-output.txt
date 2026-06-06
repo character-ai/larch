@@ -1,0 +1,101 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,18 +10,20 @@
+ ### UPDATED: `scripts/test-implement-structure.sh`
+ A1 + A3 harness extension.
+ 
+-- **A1 (general timing-pin invariant)**: add one awk-based scanner that enumerates
+-  the implement production scripts that emit timing calls and asserts every
++- **A1 (general timing-pin invariant)**: add one awk-based scanner that enumerates
++  the known implement production scripts that emit timing calls and asserts every
+   `timing-ledger.sh mark`, `timing-ledger.sh record-vendor-task`, and
+   `timing-report.sh` invocation co-locates `LARCH_TIMING_SKILL=implement` on the
+   same command line. Scanned set: `scripts/implement-bootstrap.sh`,
++  `skills/implement/scripts/step2-implement.sh`,
+   `skills/implement/scripts/commit-implementation.sh`,
+   `skills/implement/scripts/commit-review-fixes.sh`,
+   `skills/implement/scripts/step-7a.sh`, `scripts/refresh-run-logs.sh`,
+   `scripts/implement-finalize.sh`, `scripts/step-telemetry-mark.sh`,
++  `scripts/run-step5-review.sh`, `scripts/run-relevant-checks-captured.sh`,
+   `scripts/launch-codex-implement.sh`, `scripts/launch-cursor-implement.sh`.
+   Keep the existing literal `grep -qF` per-mark pins (Step 4 / Step 7 / Step 7a /
+-  Step 0 etc.) — the scanner is additive so new or dropped pins fail CI.
++  Step 0 etc.) — the scanner is additive so dropped pins in the known set fail CI,
++  and future implement timing emitters must be added to the scanner list.
+   Model the scanner on the same-line index() approach already in
+   `test-implement-timing-rehydration.sh` Invariant B.
+ - **A3 (workflow-free Step 2 + stale-path-ignored)**: extend the existing
+@@ -84,6 +86,13 @@
+   retained families rely on the documented pattern-based redaction posture (see
+   `SECURITY.md`). No logic change.
+ 
++### UPDATED: `scripts/larch-log.md`
++D2 + D4 prose-only sync with `scripts/larch-log.sh`: align the write-round contract
++to say the explicit dynamic-Codex clause pins the known
++`dyn-*-codex-output.txt` / `dyn-*-codex-output-phase*.txt` families and their
++`.meta`/`.json`/`.cap-hit` sidecars; other/future output shapes may still fall
++through to the broad `*-output*` allow; retry outputs remain explicitly denied.
++Cross-reference the same documented pattern-based redaction posture in `SECURITY.md`.
++
+ ### UPDATED: `python/logging_util.py`
+ D3. Add a comment at the quiet-log open site in `quiet_init()` (the `path.open("a")`
+ + `os.O_APPEND` lines) documenting that Python quiet logs append for crash/retry
+@@ -91,6 +100,11 @@
+ behavior. Comment only — do NOT change the open mode.
+ 
++### UPDATED: `python/README.md`
++D3 prose-only clarification beside the `logging_util.py` description: Python quiet
++logging mirrors bash quiet stream routing, but intentionally uses append-forensics
++log opens rather than bash's truncate-per-initialization behavior.
++
+ ### UPDATED: `SECURITY.md`
+ D4. Add a short cross-reference in the run-log redaction section noting that the
+ dynamic-Codex output families explicitly retained by #3504 (the
+@@ -117,10 +131,10 @@
+ - A1/A2 compose: the A1 general scanner covers the `record-vendor-task` lines A2
+   pins, so the new pins are enforced by the same guard.
+ - Keep sibling `.md` contracts in sync only where prose changes: update
+-  `scripts/larch-log.md` if it restates the dynamic-Codex retention rationale
+-  (D2/D4); `test-implement-structure.md`, `launch-codex-implement.md`,
+-  `launch-cursor-implement.md`, `test-larch-log-write-round.md` need no contract
+-  change for additive test/comment edits. `python/` files have no `.md` sibling rule.
++  `scripts/larch-log.md` for the dynamic-Codex retention rationale (D2/D4);
++  update `python/README.md` for the documented quiet-log divergence (D3).
++  `test-implement-structure.md`, `launch-codex-implement.md`,
++  `launch-cursor-implement.md`, `test-larch-log-write-round.md` need no contract
++  change for additive test/comment edits.
+ 
+ ## Edge cases
+ 
+@@ -130,6 +144,8 @@
+   `token-ledger.sh mark`; match only `mark`, `record-vendor-task`, `timing-report.sh`.
++- A1 scanner must include the already-live implement timing emitters in Step 2,
++  Step 5 review/resume, and captured relevant-checks paths so the invariant does
++  not silently miss known production timing surfaces.
+ - D1 fixtures must use a `codex-specialist-*-output.txt` basename so they hit the
+   static deny clause (not the dynamic `dyn-*` allow).
+ - B tests must use the existing `RecordingRunner` stub so no real `gh`/`git` runs.
+@@ -142,7 +158,9 @@
+   the harness fails (or passes with an obviously unpinned line). Mitigation: scope
+   the file set explicitly; reuse the proven `index()` shape from
+   `test-implement-timing-rehydration.sh`; the harness must pass on the tree only
+-  after the A2 pins are applied.
++  after the A2 pins are applied. Include the current Step 2, Step 5 review/resume,
++  and captured relevant-checks timing emitters in that explicit set; if future
++  implement timing emitters are added, update the scanner in the same change.
+ - **A2 pin breaks launcher quoting**: prepending the env prefix shifts the
+   `>/dev/null 2>&1 || true` tail or trips shellcheck. Signal: launcher harness or
+   `make lint` failure. Mitigation: copy the exact prefix shape from an existing
+@@ -159,8 +177,9 @@
+ - `bash skills/implement/scripts/test-codex-implementer.sh` and
+   `bash skills/implement/scripts/test-cursor-implementer.sh` (A2).
+ - `make py-test` or `python -m pytest python/test_ci_monitor.py` (B).
+-- `bash scripts/test-larch-log-write-round.sh` (D1, D2 comment is non-functional).
++- `bash scripts/test-larch-log-write-round.sh` (D1; D2/D4 script/doc prose is non-functional).
+ - `bash scripts/relevant-checks.sh` / `make lint` repo-wide (markdownlint for
+-  SECURITY.md, bash 3.2 lint for any new awk/shell, shellcheck).
++  SECURITY.md and `.md` contract sync, bash 3.2 lint for any new awk/shell,
++  shellcheck).
+ 
+-diff_lines: 180
++diff_lines: 205
