@@ -237,6 +237,8 @@ printf '%s\n' "$stall_step4_window" | grep -Fq 'issue-input-file' \
   || fail "stall-recovery.md Step 4 must compose the heading-bearing issue input file"
 printf '%s\n' "$stall_step4_window" | grep -Eq '/larch:issue --input-file.*stall-recovery-issue-input\.md' \
   || fail "stall-recovery.md Step 4 must file stall-recovery-issue-input.md via /larch:issue --input-file"
+printf '%s\n' "$stall_step4_window" | grep -Fq 'Skill tool' \
+  || fail "stall-recovery.md Step 4 must describe /larch:issue as a Skill tool invocation"
 printf '%s\n' "$stall_step4_window" | grep -Fq 'stall-recovery-issue.stdout' \
   || fail "stall-recovery.md Step 4 must capture /larch:issue stdout to stall-recovery-issue.stdout"
 printf '%s\n' "$stall_step4_window" | grep -Fq 'normalize-issue-env' \
@@ -251,9 +253,18 @@ stall_step4_dev_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print inde
 stall_step4_bug_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "bug-body")}')
 stall_step4_input_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "issue-input-file")}')
 stall_step4_issue_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "/larch:issue --input-file")}')
+stall_step4_stdout_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "stall-recovery-issue.stdout")}')
+stall_step4_normalize_pos=$(printf '%s\n' "$stall_step4_order_line" | awk '{print index($0, "normalize-issue-env")}')
 if [ "$stall_step4_dev_pos" -le 0 ] || [ "$stall_step4_bug_pos" -le 0 ] || [ "$stall_step4_input_pos" -le 0 ] || [ "$stall_step4_issue_pos" -le 0 ] \
   || [ "$stall_step4_dev_pos" -ge "$stall_step4_bug_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_input_pos" ] || [ "$stall_step4_dev_pos" -ge "$stall_step4_issue_pos" ]; then
     fail "stall-recovery.md Step 4 must run is-larch-dev-clone before report composition and /larch:issue filing"
+fi
+if [ "$stall_step4_bug_pos" -ge "$stall_step4_input_pos" ] || [ "$stall_step4_input_pos" -ge "$stall_step4_issue_pos" ]; then
+    fail "stall-recovery.md Step 4 must compose bug-body before issue-input-file and issue-input-file before /larch:issue filing"
+fi
+if [ "$stall_step4_stdout_pos" -le 0 ] || [ "$stall_step4_normalize_pos" -le 0 ] \
+  || [ "$stall_step4_issue_pos" -ge "$stall_step4_stdout_pos" ] || [ "$stall_step4_stdout_pos" -ge "$stall_step4_normalize_pos" ]; then
+    fail "stall-recovery.md Step 4 must capture /larch:issue stdout before normalize-issue-env"
 fi
 # shellcheck disable=SC2016
 grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \

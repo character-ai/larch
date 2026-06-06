@@ -1089,7 +1089,8 @@ cmd_normalize_issue_env() {
             sub(/\r$/, "")
             key = $0
             sub(/=.*/, "", key)
-            if (key ~ /^ISSUES_(CREATED|FAILED|DEDUPLICATED)$/ || key ~ /^ISSUE_1_[A-Z0-9_]+$/) {
+            if (key ~ /^ISSUES_(CREATED|FAILED|DEDUPLICATED)$/ ||
+                key ~ /^ISSUE_1_(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL)$/) {
                 print
             }
         }
@@ -1128,8 +1129,13 @@ cmd_normalize_issue_env() {
     duplicate_url=$(kv_get "$filtered" ISSUE_1_DUPLICATE_OF_URL "")
 
     if { truthy "$duplicate" || [ -z "$issue_number" ]; } && [ -n "$duplicate_number" ]; then
-        issue_number=$duplicate_number
-        issue_url=$duplicate_url
+        if issue_value_is_url "$duplicate_url"; then
+            issue_number=$duplicate_number
+            issue_url=$duplicate_url
+        elif ! issue_value_is_url "$issue_url"; then
+            issue_number=$duplicate_number
+            issue_url=$duplicate_url
+        fi
     fi
 
     case "$issue_number" in
@@ -1148,7 +1154,6 @@ cmd_normalize_issue_env() {
     content=$({
         printf 'ISSUE_NUMBER=%s\n' "$issue_number"
         printf 'ISSUE_URL=%s\n' "$issue_url"
-        cat "$filtered"
     })
     rm -f "$filtered"
     if ! atomic_write_text "$out_file" "$content"; then

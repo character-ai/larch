@@ -744,7 +744,9 @@ EOF
     "$SCRIPT" issue-input-file --implement-tmpdir "$token_dir" --classification-file "$token_dir/class.env" --body-file "$token_dir/body.md" >"$token_dir/input.out"
     first_line=$(sed -n '1p' "$(kv INPUT_FILE "$token_dir/input.out")")
     assert_eq "### [Bug] /implement stall: transient-infra at unknown" "$first_line" "20: invalid exact-only step token becomes unknown: $step_token"
+    assert_not_contains "$step_token" "$first_line" "20: invalid exact-only step token absent from issue title: $step_token"
 done <<'EOF'
+8aevil
 2a
 3a
 5-max-retries
@@ -765,7 +767,8 @@ assert_eq 0 "$RC" "20: normalize create exits 0"
 assert_eq true "$(kv NORMALIZED "$SANDBOX/case20m-normalize-create.out")" "20: normalize create emits true"
 assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize create writes canonical ISSUE_NUMBER"
 assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize create writes canonical ISSUE_URL"
-assert_eq "created title with spaces" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create preserves raw ISSUE_1 metadata"
+assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create strips raw ISSUE_1 metadata"
+assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_URL --default "")" "20: normalize create strips source ISSUE_1_URL"
 
 dir=$(make_tmp case20n-normalize-dedup)
 cat >"$dir/issue.out" <<'EOF'
@@ -780,6 +783,41 @@ run_capture "$SANDBOX/case20n-normalize-dedup.out" "$SCRIPT" normalize-issue-env
 assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n-normalize-dedup.out")" "20: normalize dedup emits true"
 assert_eq 456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize dedup writes duplicate canonical ISSUE_NUMBER"
 assert_eq https://github.com/example/repo/issues/456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize dedup writes duplicate canonical ISSUE_URL"
+
+dir=$(make_tmp case20n2-normalize-dedup-invalid-url-keeps-create)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1
+ISSUE_1_NUMBER=123
+ISSUE_1_URL=https://github.com/example/repo/issues/123
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=456
+ISSUE_1_DUPLICATE_OF_URL=not-a-url
+EOF
+run_capture "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out")" "20: normalize invalid dedup URL keeps valid create metadata"
+assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize invalid dedup URL keeps create ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize invalid dedup URL keeps create ISSUE_URL"
+
+dir=$(make_tmp case20n3-normalize-dedup-missing-url)
+printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=0
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=456
+ISSUE_1_DUPLICATE_OF_URL=not-a-url
+EOF
+run_capture "$SANDBOX/case20n3-normalize-dedup-missing-url.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq false "$(kv NORMALIZED "$SANDBOX/case20n3-normalize-dedup-missing-url.out")" "20: normalize dedup without valid URL emits false"
+assert_eq issue-url-missing "$(kv REASON "$SANDBOX/case20n3-normalize-dedup-missing-url.out")" "20: normalize dedup without valid URL reports missing URL"
+if [ ! -e "$dir/stall-recovery-issue.env" ]; then
+    pass "20: normalize dedup without valid URL removes stale env"
+else
+    fail "20: normalize dedup without valid URL removes stale env" "$(cat "$dir/stall-recovery-issue.env")"
+fi
 
 dir=$(make_tmp case20o-normalize-failure)
 printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
