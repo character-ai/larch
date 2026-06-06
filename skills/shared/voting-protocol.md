@@ -73,7 +73,7 @@ Non-accepted tie-breaks (after the acceptance-threshold check fails), in order:
 
 **For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches all three voters every round:
 - **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched)
-- **Voter 2**: Codex — via `run-external-agent.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
+- **Voter 2**: Codex — via `launch-codex-exec.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
 - **Voter 3**: Cursor — via `run-external-agent.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
@@ -158,8 +158,7 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 **Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
 ```bash
-# Same temp-file pattern as the Cursor block above — propagate
-# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
+# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
 "${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "<tmpdir>/codex-vote-output.txt" \
   --timeout 1200 \

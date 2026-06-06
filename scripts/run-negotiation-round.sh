@@ -75,6 +75,7 @@ case "$TOOL" in
             rm -rf "${codex_home:-}"
         }
         codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-negotiation-home-XXXXXX")
+        trap '_negotiation_codex_cleanup' EXIT
         if [[ -f ~/.codex/config.toml ]]; then
             cp ~/.codex/config.toml "$codex_home/config.toml"
         fi
@@ -89,7 +90,6 @@ case "$TOOL" in
         else
             rc=$?
             _negotiation_codex_cleanup
-            emit_kv RESPONSE_FILE "$OUTPUT_FILE"
             exit "$rc"
         fi
         CODEX_MODEL_ARGS=()

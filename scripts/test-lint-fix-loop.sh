@@ -700,6 +700,27 @@ case0b_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0b_out")
 grep -Fq 'RAW=codex_lint_fix' "$case0b_run_dir/codex.log.token-record" \
     || fail "case0b expected failed Codex token record"
 
+# Case 0b.1: launcher reports LAUNCHER_EXIT=1 while its wrapper exits 0;
+# run_codex must treat the launcher key as authoritative.
+CASE0B1="$TMPROOT/case0b1"
+REPO0B1="$CASE0B1/repo"
+SCRIPTS0B1="$CASE0B1/scripts"
+SESSION0B1="$CASE0B1/session"
+CHECKS0B1="$CASE0B1/checks.log"
+WRAPPER0B1="$CASE0B1/wrapper.sh"
+make_repo "$REPO0B1"
+make_fixture_scripts "$SCRIPTS0B1"
+make_session "$SESSION0B1"
+printf 'synthetic checks failure\n' > "$CHECKS0B1"
+write_wrapper_codex_telemetry "$WRAPPER0B1"
+
+case0b1_result=$(TEST_CODEX_RC=1 run_case "$SCRIPTS0B1" "$REPO0B1" "$SESSION0B1" "$CHECKS0B1" "$WRAPPER0B1")
+case0b1_rc=$(printf '%s\n' "$case0b1_result" | sed -n '1p')
+case0b1_out=$(printf '%s\n' "$case0b1_result" | sed -n '2,$p')
+[[ "$case0b1_rc" == "0" ]] || fail "case0b1 expected rc 0 (#3207 waterfall to main-agent), got $case0b1_rc"
+assert_contains "$case0b1_out" 'LINT_FIX_STATUS=main-agent-required' "case0b1 treats LAUNCHER_EXIT=1 as Codex failure"
+assert_contains "$case0b1_out" 'FAILURE_REASON=dispatch-failed' "case0b1 retains dispatch-failed diagnostic"
+
 # Case 1: external coder commits on the same clean branch; lint-fix-loop accepts it.
 CASE1="$TMPROOT/case1"
 REPO1="$CASE1/repo"

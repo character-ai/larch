@@ -49,11 +49,17 @@ cat >"$stub_bin/codex" <<'EOF'
 out=""
 last=""
 for arg in "$@"; do
+    if [[ -n "${CODEX_STUB_ARGV_LOG:-}" ]]; then
+        printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"
+    fi
     if [[ "$last" == "--output-last-message" ]]; then
         out="$arg"
     fi
     last="$arg"
 done
+if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
+fi
 [[ -n "$out" ]] || exit 9
 printf 'stub transcript\n' > "$out"
 printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
@@ -93,6 +99,60 @@ if [[ "$rc" -eq 0 ]] && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$TMPDIR_BASE\"
     ok "round-trips repeated add-dir metadata"
 else
     fail "round-trips repeated add-dir metadata"
+fi
+
+PROMPT_FILE="$TMPDIR_BASE/prompt-file.md"
+OUT_PROMPT_FILE="$TMPDIR_BASE/exec-prompt-file-out.txt"
+printf 'hello from file\n' > "$PROMPT_FILE"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_PROMPT_FILE" --timeout 60 --workdir "$REPO_ROOT" --prompt-file "$PROMPT_FILE") \
+    >"$TMPDIR_BASE/launcher-prompt-file.stdout" 2>"$TMPDIR_BASE/launcher-prompt-file.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq 'hello from file' "${OUT_PROMPT_FILE}.prompt"; then
+    ok "accepts prompt-file and writes prompt sidecar"
+else
+    fail "accepts prompt-file and writes prompt sidecar"
+fi
+
+OUT_ENV_KEY="$TMPDIR_BASE/exec-env-key-out.txt"
+ARGV_ENV_KEY="$TMPDIR_BASE/env-key.argv"
+HOME_ENV_KEY="$TMPDIR_BASE/env-key.home"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    OPENAI_API_KEY="stub-key" CODEX_STUB_ARGV_LOG="$ARGV_ENV_KEY" CODEX_STUB_HOME_LOG="$HOME_ENV_KEY" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_ENV_KEY" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-env-key.stdout" 2>"$TMPDIR_BASE/launcher-env-key.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_ENV_KEY"; then
+    ok "env-key auth passes provider config by argv"
+else
+    fail "env-key auth passes provider config by argv"
+fi
+codex_home_dir=$(cat "$HOME_ENV_KEY" 2>/dev/null || true)
+if [[ -n "$codex_home_dir" && ! -e "$codex_home_dir" ]]; then
+    ok "removes temp CODEX_HOME after env-key run"
+else
+    fail "removes temp CODEX_HOME after env-key run"
+fi
+
+OUT_MODEL_FAIL="$TMPDIR_BASE/exec-model-fail-out.txt"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    LARCH_CODEX_MODEL="   " \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_MODEL_FAIL" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-model-fail.stdout" 2>"$TMPDIR_BASE/launcher-model-fail.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=1' "$TMPDIR_BASE/launcher-model-fail.stdout" && grep -Fq 'agent-model-args.sh failed' "${OUT_MODEL_FAIL}.diag"; then
+    ok "model-args failure writes preflight bundle"
+else
+    fail "model-args failure writes preflight bundle"
 fi
 
 echo "Results: $PASS passed, $FAIL failed"

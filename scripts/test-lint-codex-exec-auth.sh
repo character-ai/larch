@@ -52,6 +52,16 @@ rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -eq 0 ]]; then echo "PASS pragma suppression"; PASS=$((PASS+1)); else echo "FAIL pragma suppression"; FAIL=$((FAIL+1)); fi
 
 reset_tree
+write_file "$TMPROOT/scripts/mixed-auth.sh" '#!/bin/bash' '/repo/scripts/launch-codex-exec.sh --output /tmp/out --timeout 60 --prompt ok' 'codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS mixed helper plus raw exec fails"; PASS=$((PASS+1)); else echo "FAIL mixed helper plus raw exec fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/comment-only.sh" '#!/bin/bash' '# codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS shell comments ignored"; PASS=$((PASS+1)); else echo "FAIL shell comments ignored"; FAIL=$((FAIL+1)); fi
+
+reset_tree
 write_file "$TMPROOT/scripts/continued.sh" '#!/bin/bash' "codex \\" '  exec --full-auto -C . hi'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS shell continuation fails"; PASS=$((PASS+1)); else echo "FAIL shell continuation fails"; FAIL=$((FAIL+1)); fi
@@ -75,6 +85,18 @@ reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' "codex \\" '  exec --full-auto -C . hi' '```'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS markdown continuation fails"; PASS=$((PASS+1)); else echo "FAIL markdown continuation fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' 'codex exec --full-auto -C . hi' '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS one-line markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL one-line markdown fence fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+mkdir -p "$TMPROOT/docs" "$TMPROOT/hooks"
+write_file "$TMPROOT/docs/out-of-scope.md" '```bash' 'codex exec --full-auto -C . hi' '```'
+write_file "$TMPROOT/hooks/out-of-scope.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS out-of-scope paths ignored"; PASS=$((PASS+1)); else echo "FAIL out-of-scope paths ignored"; FAIL=$((FAIL+1)); fi
 
 set +e
 bash "$LINT" --root /no/such 2>"$stderr_file"

@@ -64,6 +64,9 @@ done
 if [[ -d "$CODEX_STUB_LOCK_PATH" ]]; then
     printf 'present' > "$CODEX_STUB_LOCK_SEEN_FILE"
 fi
+if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
+fi
 printf 'codex negotiation final\n' > "$output"
 printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
 printf 'codex sidecar diagnostic\n' >&2
@@ -155,6 +158,47 @@ if grep -Fxq -- '--' "$CODEX_ARGV"; then
 else
     fail "codex argv should include -- separator"
 fi
+if grep -Fxq -- '-c' "$CODEX_ARGV" && grep -Fq 'trust_level="trusted"' "$CODEX_ARGV"; then
+    pass
+else
+    fail "codex argv should include trusted workspace config"
+fi
+rm -rf "$CODEX_LOCK_PATH"
+
+CODEX_ENV_KEY_OUTPUT="$TMPROOT/codex-env-key.out"
+CODEX_ENV_KEY_STDOUT="$TMPROOT/codex-env-key.stdout"
+CODEX_ENV_KEY_ARGV="$TMPROOT/codex-env-key.argv"
+CODEX_ENV_KEY_HOME="$TMPROOT/codex-env-key.home"
+CODEX_ENV_KEY_LOCK_SEEN="$TMPROOT/codex-env-key.lock-seen"
+rm -rf "$CODEX_LOCK_PATH"
+PATH="$STUB_BIN:$PATH" \
+    TMPDIR="$TMPROOT" \
+    USER="$CODEX_LOCK_USER" \
+    OPENAI_API_KEY="stub-key" \
+    CODEX_STUB_ARGV_LOG="$CODEX_ENV_KEY_ARGV" \
+    CODEX_STUB_HOME_LOG="$CODEX_ENV_KEY_HOME" \
+    CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
+    CODEX_STUB_LOCK_SEEN_FILE="$CODEX_ENV_KEY_LOCK_SEEN" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+    "$REPO_ROOT/scripts/run-negotiation-round.sh" \
+    --tool codex \
+    --prompt-file "$PROMPT_FILE" \
+    --output "$CODEX_ENV_KEY_OUTPUT" \
+    --workspace "$REPO_ROOT" \
+    > "$CODEX_ENV_KEY_STDOUT"
+assert_file_equals "codex env-key stdout envelope" "RESPONSE_FILE=$CODEX_ENV_KEY_OUTPUT" "$CODEX_ENV_KEY_STDOUT"
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$CODEX_ENV_KEY_ARGV"; then
+    pass
+else
+    fail "codex env-key branch should pass provider env_key config"
+fi
+codex_env_key_home_dir=$(cat "$CODEX_ENV_KEY_HOME" 2>/dev/null || true)
+if [[ -n "$codex_env_key_home_dir" && ! -e "$codex_env_key_home_dir" ]]; then
+    pass
+else
+    fail "codex env-key branch should remove temp CODEX_HOME"
+fi
 rm -rf "$CODEX_LOCK_PATH"
 
 CODEX_UNSET_ROOT_OUTPUT="$TMPROOT/codex-unset-root.out"
@@ -225,6 +269,29 @@ if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiati
     pass
 else
     fail "failing codex should still record token ledger row"
+fi
+
+CODEX_MODEL_FAIL_OUTPUT="$TMPROOT/codex-model-fail.txt"
+CODEX_MODEL_FAIL_STDOUT="$TMPROOT/codex-model-fail.stdout"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    TMPDIR="$TMPROOT" \
+    OPENAI_API_KEY="stub-key" \
+    LARCH_CODEX_MODEL="   " \
+    "$REPO_ROOT/scripts/run-negotiation-round.sh" \
+    --tool codex \
+    --prompt-file "$PROMPT_FILE" \
+    --output "$CODEX_MODEL_FAIL_OUTPUT" \
+    --workspace "$REPO_ROOT" \
+    > "$CODEX_MODEL_FAIL_STDOUT"
+CODEX_MODEL_FAIL_RC=$?
+set -e
+assert_eq "codex model-args failure propagates rc" "1" "$CODEX_MODEL_FAIL_RC"
+assert_file_equals "codex model-args failure stdout has no response envelope" "" "$CODEX_MODEL_FAIL_STDOUT"
+if find "$TMPROOT" -maxdepth 1 -type d -name 'larch-codex-negotiation-home-*' | grep -q .; then
+    fail "codex model-args failure should clean temp CODEX_HOME"
+else
+    pass
 fi
 
 CURSOR_LOCK_USER="larch-test-neg-cursor-$$"

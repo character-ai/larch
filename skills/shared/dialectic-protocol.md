@@ -226,7 +226,6 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex judge** (if `judge_codex_available`):
 
 ```bash
-# Same temp-file pattern as the Cursor block above — propagate
 # launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
 "${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
