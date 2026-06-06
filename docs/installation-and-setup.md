@@ -299,4 +299,4 @@ These tools enhance the workflow but are not required. Fallback behavior varies 
 ### Contributor development
 
 - **pre-commit** — `pip install pre-commit` for local linting (`make setup` installs git hooks)
-- **Python 3.12+** — required by pre-commit
+- **Python 3.11+** — required by pre-commit

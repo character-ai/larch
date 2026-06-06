@@ -655,8 +655,8 @@ phase_infra() {
         ingest_kv_block "$setup_out"
 
         if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then
-            if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
-                larch_err "ERROR: Python ship driver requires Python 3.12 or newer"
+            if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+                larch_err "ERROR: Python ship driver requires Python 3.11 or newer"
                 larch_err "Set LARCH_SHIP_PR_IMPL=bash to use the legacy bash ship-pr.sh path"
                 emit_kv STEP_FAILED python-version
                 exit 2
