@@ -1,0 +1,33 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -27,7 +27,7 @@
+ - Minimum touch sites:
+   - §2.1.5 envelope-invalid: set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid` alongside `FINAL_BAIL_REASON=orchestrator-envelope-invalid`.
+-  - §2.2 `STATUS=bailed`: add/clarify a bullet that mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, sets `STALL_TRACKING=true` if needed, then routes to Step 12d.
++  - §2.2 `STATUS=bailed`: add/clarify a bullet that mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, sets `STALL_TRACKING=true` unconditionally, then routes to Step 12d.
+   - Any other §2.2 hard-bail branch that already names `FINAL_BAIL_REASON`: mirror into `IMPLEMENT_BAIL_REASON`.
+ - Do not persist these values with prompt-side `session-env.sh` writes.
+ 
+@@ -145,5 +145,6 @@
+ 
+ - Assert `SKILL.md` §2.1.5 mirrors `orchestrator-envelope-invalid` into `IMPLEMENT_BAIL_REASON`.
+ - Assert §2.2 `STATUS=bailed` prose mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON` before Step 12d routing.
++- Assert §2.2 `STATUS=bailed` prose sets `STALL_TRACKING=true` unconditionally (not conditioned on "if needed").
+ 
+ ## Approach
+@@ -172,5 +173,6 @@
+ 4. Step-2 bail reason not reaching Step 18a → caught by structure and handoff tests.
+ 5. Accidentally making `--bail-reason` report-only → caught by preserved case 7b and wrapper-validation argv-only regression.
++6. `STALL_TRACKING` omitted on `STATUS=bailed` hard-bail → stall report skipped, bail reason never surfaced → caught by structure test asserting unconditional `STALL_TRACKING=true`.
+ 
+ ## Testing strategy
+ 
+@@ -189,5 +191,5 @@
+ - Exposing raw dispatch evidence.
+ 
+-diff_added: 154
+-diff_deleted: 24
+-diff_lines: 178
++diff_added: 156
++diff_deleted: 25
++diff_lines: 181

@@ -1,0 +1,35 @@
+Verifying the cited SKILL.md site and structure-test pins so the plan diff matches the repo.
+--- a/plan.txt
++++ b/plan.txt
+@@ -25,6 +25,7 @@
+ - Minimum touch sites:
+   - §2.1.5 envelope-invalid: set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid` alongside `FINAL_BAIL_REASON=orchestrator-envelope-invalid`.
+   - §2.2 `STATUS=bailed`: add/clarify a bullet that mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, sets `STALL_TRACKING=true` unconditionally, then routes to Step 12d.
++  - §2.2 post-dispatch branch mismatch (`skills/implement/SKILL.md` ~line 630): set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch` alongside existing `FINAL_BAIL_REASON=main-branch-post-dispatch` and `STALL_TRACKING=true` before Step 12d.
+   - Any other §2.2 hard-bail branch that already names `FINAL_BAIL_REASON`: mirror into `IMPLEMENT_BAIL_REASON`.
+ - Do not persist these values with prompt-side `session-env.sh` writes.
+ 
+@@ -118,6 +119,7 @@
+ - Assert `SKILL.md` §2.1.5 mirrors `orchestrator-envelope-invalid` into `IMPLEMENT_BAIL_REASON`.
+ - Assert §2.2 `STATUS=bailed` prose mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON` before Step 12d routing.
+ - Assert §2.2 `STATUS=bailed` prose sets `STALL_TRACKING=true` unconditionally (not conditioned on "if needed").
++- Assert `SKILL.md` post-dispatch branch mismatch prose (~line 630) sets `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch` adjacent to existing `FINAL_BAIL_REASON=main-branch-post-dispatch`.
+ 
+ ## Approach
+ 
+@@ -141,7 +143,7 @@
+ 1. Allowlist drift → lint/test parity failure.
+ 2. Hidden numeric consumer of stall `EXIT_CODE` → risk limited because only empty/non-numeric values become `unknown`.
+ 3. Unsanitized bail reason leak → mitigated by closed enum plus body redaction.
+-4. Step-2 bail reason not reaching Step 18a → caught by structure and handoff tests.
++4. Step-2 bail reason not reaching Step 18a (including post-dispatch `main-branch-post-dispatch`) → caught by structure and handoff tests.
+ 5. Accidentally making `--bail-reason` report-only → caught by preserved case 7b and wrapper-validation argv-only regression.
+ 6. `STALL_TRACKING` omitted on `STATUS=bailed` hard-bail → stall report skipped, bail reason never surfaced → caught by structure test asserting unconditional `STALL_TRACKING=true`.
+ 
+@@ -161,5 +163,5 @@
+ 
+ diff_added: 156
+ diff_deleted: 25
+-diff_lines: 181
++diff_lines: 185
+

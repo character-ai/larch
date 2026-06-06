@@ -1,0 +1,70 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -6,7 +6,7 @@ Improve the auto-filed `/implement` stall report for issue #3563 / #3550 with re
+ 1. Render an uncaptured or malformed exit code as `unknown` instead of misleading `0`, while preserving real numeric values including `0`.
+ 2. Surface the already-sanitized `BAIL_REASON` in the public report table so dispatch failures can name `orchestrator-envelope-invalid` / `wrapper-validation-failure`.
+-3. Wire Step-2 hard-bail reasons through the existing in-memory `IMPLEMENT_BAIL_REASON` / `FINAL_BAIL_REASON` handoff into Step 18a.
++3. Wire Step-2 hard-bail reasons through the existing in-memory `IMPLEMENT_BAIL_REASON` / `FINAL_BAIL_REASON` handoff into Step 18a, and require unconditional `STALL_TRACKING=true` on every Step-2 hard-bail path so Step 18a cannot fast-path without emitting the stall report.
+ 4. **Accepted reviewer revision:** do **not** make `--bail-reason` report-only. Preserve the existing contract that argv `--bail-reason` may participate in `classify_from_evidence` routing, including existing argv-only transient-infra coverage. The new tests must explicitly keep that case green.
+ 
+ No classifier branch tables (`retry_cap_for`, `resume_hint_for`, dispatch-failure rules) are changed. Sanitization remains closed-enum via `safe_bail_reason_value`.
+@@ -16,6 +16,7 @@ No classifier branch tables (`retry_cap_for`, `resume_hint_for`, dispatch-failu
+ - `BAIL_REASON` is already sanitized by `safe_bail_reason_value` and emitted by `classify`; it is currently not rendered.
+ - Existing tests rely on argv-only `--bail-reason "network timeout while posting issue"` as classification evidence. Preserve that behavior.
+ - Some Step-2 hard-bail paths may only carry dispatcher reason in memory. Therefore the coalesced Step-18a `--bail-reason` value must remain classification evidence, not merely report decoration.
++- Step 18a stall recovery gates on `STALL_TRACKING` in any layer; bail reasons alone do not trigger the stall-report path when in-memory/disk stall flags stay false.
+ 
+ ## Files to modify/create
+ 
+@@ -23,11 +24,13 @@ No classifier branch tables (`retry_cap_for`, `resume_hint_for`, dispatch-failu
+ 
+ - At every Step-2 site that sets `FINAL_BAIL_REASON=…` and `STALL_TRACKING=true` before routing to Step 12d, also set `IMPLEMENT_BAIL_REASON` to the same token in memory.
+ - Minimum touch sites:
+-  - §2.1.5 envelope-invalid: set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid` alongside `FINAL_BAIL_REASON=orchestrator-envelope-invalid`.
+-  - §2.2 `STATUS=bailed`: add/clarify a bullet that mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, sets `STALL_TRACKING=true` if needed, then routes to Step 12d.
+-  - Any other §2.2 hard-bail branch that already names `FINAL_BAIL_REASON`: mirror into `IMPLEMENT_BAIL_REASON`.
++  - §2.1.5 envelope-invalid: set `IMPLEMENT_BAIL_REASON=orchestrator-envelope-invalid` alongside existing `FINAL_BAIL_REASON=orchestrator-envelope-invalid` and `STALL_TRACKING=true`.
++  - §2.2 `STATUS=bailed`: add a dedicated bullet (currently missing) that logs `Step 2 — $TOOL_LABEL bailed: $REASON` to `Warnings`, maps dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON` (allowlisted tokens verbatim; non-allowlisted dispatcher reasons follow existing sanitize/redact behavior), sets **`STALL_TRACKING=true` unconditionally** (match §2.1.5:616 and `main-branch-post-dispatch`:630 — not optional / not "if needed"), then routes to Step 12d.
++  - Any other §2.2 hard-bail branch that already sets `FINAL_BAIL_REASON` (e.g. `main-branch-post-dispatch`, `recovery-out-of-scope`): mirror the same token into `IMPLEMENT_BAIL_REASON` and ensure `STALL_TRACKING=true` is set unconditionally before Step 12d routing.
++  - Step 2 entry preconditions matrix `bailed` row: extend permitted next-actions to name bail-reason mirroring plus unconditional `STALL_TRACKING=true` before Step 12d (align matrix with the new §2.2 bullet).
+ - Do not persist these values with prompt-side `session-env.sh` writes.
+ 
+ ### UPDATED: `skills/implement/references/stall-recovery.md`
+@@ -118,6 +121,7 @@ Add/adjust tests:
+ - Empty bail reason renders `none`.
+ - Non-allowlisted bail reason renders `redacted`.
+ - Allowlisted Step-2 tokens render verbatim.
++- `STATUS=bailed` hard-bail must always set `STALL_TRACKING=true`; omitting it lets Step 18a fast-path with `no stall detected` even when bail reasons are populated.
+ - Argv-only bail reason remains valid classification evidence.
+ 
+ ## Failure modes
+@@ -126,7 +130,8 @@ Add/adjust tests:
+ 2. Hidden numeric consumer of stall `EXIT_CODE` → risk limited because only empty/non-numeric values become `unknown`.
+ 3. Unsanitized bail reason leak → mitigated by closed enum plus body redaction.
+ 4. Step-2 bail reason not reaching Step 18a → caught by structure and handoff tests.
+-5. Accidentally making `--bail-reason` report-only → caught by preserved case 7b and wrapper-validation argv-only regression.
++5. `STALL_TRACKING` omitted on Step-2 hard-bail (especially `STATUS=bailed`) → Step 18a fast-path suppresses the stall report; mitigated by unconditional `STALL_TRACKING=true` on every Step-2 hard-bail bullet plus structure grep.
++6. Accidentally making `--bail-reason` report-only → caught by preserved case 7b and wrapper-validation argv-only regression.
+ 
+ ## Testing strategy
+ 
+@@ -145,6 +150,6 @@ Run:
+ - Recovering the already-stuck #3550 run.
+ - Exposing raw dispatch evidence.
+ 
+-diff_added: 154
+-diff_deleted: 24
+-diff_lines: 178
++diff_added: 168
++diff_deleted: 26
++diff_lines: 194
+@@ -108,6 +113,7 @@ Add/adjust tests:
+ 
+ - Assert `stall-recovery.md` contains:
+ 
+   `--bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}"`
+ 
+ - Assert `SKILL.md` §2.1.5 mirrors `orchestrator-envelope-invalid` into `IMPLEMENT_BAIL_REASON`.
+-- Assert §2.2 `STATUS=bailed` prose mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON` before Step 12d routing.
++- Assert §2.2 `STATUS=bailed` prose mirrors dispatcher `REASON` into both `FINAL_BAIL_REASON` and `IMPLEMENT_BAIL_REASON`, sets `STALL_TRACKING=true` unconditionally (grep must not match optional `if needed` wording), before Step 12d routing.
++- Assert Step 2 entry preconditions matrix `bailed` row names unconditional `STALL_TRACKING=true` alongside bail routing to Step 12d.
