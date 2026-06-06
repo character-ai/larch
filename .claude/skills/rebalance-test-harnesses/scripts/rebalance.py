@@ -107,44 +107,123 @@ def _validate_partition() -> bool:
     return result.returncode == 0
 
 
+def _git_checkout_branch(branch: str) -> bool:
+    """Switch to *branch*; return True on success."""
+    result = _RUNNER.run(["git", "checkout", branch], cwd=str(_REPO_ROOT))
+    if result.returncode != 0:
+        print(
+            f"ERROR: 'git checkout {branch}' failed (rc={result.returncode}):\n"
+            f"{result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def _wait_for_completed_run(
     runner: _ProcRunner,
     *,
     repo: str,
     branch: str,
+    workflow: str,
     exclude: list[int],
     timeout_s: int = 1800,
     poll_s: int = 30,
 ) -> int:
     """Poll until a successful completed run appears that is not in *exclude*.
 
-    Returns the ``databaseId`` of the new run, or raises ``TimeoutError``.
+    Bug fixes vs original:
+    - Check immediately on entry (don't sleep first).
+    - Exit early and raise if a non-success run is found (avoids 30-min timeout on CI failure).
+    - Print progress on each poll so the operator sees what's happening.
+    - Pass --workflow to gh run list to avoid picking up unrelated workflow runs.
+
+    Returns the ``databaseId`` of the new run, or raises ``TimeoutError`` /
+    ``RuntimeError`` (on CI failure).
     """
     exclude_set = set(exclude)
     deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        time.sleep(poll_s)
+    start = time.monotonic()
+
+    while True:
+        elapsed = int(time.monotonic() - start)
         result = runner.run(
             [
                 "gh", "run", "list",
                 "--repo", repo,
                 "--branch", branch,
+                "--workflow", workflow,
                 "--limit", "15",
                 "--json", "databaseId,status,conclusion",
             ],
             cwd=str(_REPO_ROOT),
         )
-        if result.returncode != 0:
-            continue
-        runs = json.loads(result.stdout or "[]")
-        for run in runs:
-            rid = int(run["databaseId"])
-            if rid in exclude_set:
-                continue
-            if run.get("status") == "completed" and run.get("conclusion") == "success":
-                return rid
+        if result.returncode == 0:
+            runs = json.loads(result.stdout or "[]")
+            for run in runs:
+                rid = int(run["databaseId"])
+                if rid in exclude_set:
+                    continue
+                status = run.get("status", "")
+                conclusion = run.get("conclusion") or ""
+                if status == "completed":
+                    if conclusion == "success":
+                        return rid
+                    # CI finished but did not succeed — fail fast
+                    msg = (
+                        f"Run {rid} completed with conclusion={conclusion!r} "
+                        f"on branch {branch!r}"
+                    )
+                    raise RuntimeError(msg)
+            in_progress = [
+                r["databaseId"]
+                for r in runs
+                if int(r["databaseId"]) not in exclude_set and r.get("status") != "completed"
+            ]
+            if in_progress:
+                print(f"    [{elapsed}s] {len(in_progress)} run(s) in progress …", flush=True)
+            else:
+                print(f"    [{elapsed}s] no runs visible yet …", flush=True)
+        else:
+            print(f"    [{elapsed}s] gh run list failed (rc={result.returncode}); retrying …", flush=True)
+
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(poll_s)
+
     msg = f"No new successful CI run appeared within {timeout_s}s on branch {branch!r}"
     raise TimeoutError(msg)
+
+
+def _trigger_and_wait(
+    runner: _ProcRunner,
+    *,
+    repo: str,
+    branch: str,
+    workflow: str,
+    exclude: list[int],
+    run_label: str,
+) -> int:
+    """Trigger a workflow_dispatch run and wait for it to complete successfully."""
+    print(f"  {run_label}: triggering workflow_dispatch on {branch!r} …")
+    dispatch_result = gh.workflow_dispatch(runner, workflow, repo=repo, ref=branch)
+    if dispatch_result.returncode != 0:
+        msg = (
+            f"workflow_dispatch failed (rc={dispatch_result.returncode}): "
+            f"{dispatch_result.stderr.strip()}"
+        )
+        raise RuntimeError(msg)
+    # Give GitHub a moment to register the new run
+    time.sleep(20)
+    run_id = _wait_for_completed_run(
+        runner,
+        repo=repo,
+        branch=branch,
+        workflow=workflow,
+        exclude=exclude,
+    )
+    print(f"    Completed run {run_id} ✓")
+    return run_id
 
 
 def _collect_log_rows(runner: _ProcRunner, run_id: int, *, repo: str) -> list[TimingRow]:
@@ -201,8 +280,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch_name = f"{args.branch_prefix}-{timestamp}"
 
-    print(f"Repo : {repo}")
-    print(f"Branch: {branch_name}")
+    # Remember starting branch so we can restore it at the end
+    original_branch = git.try_current_branch(_RUNNER, cwd=str(_REPO_ROOT)) or "main"
+
+    print(f"Repo   : {repo}")
+    print(f"Branch : {branch_name}")
 
     # ------------------------------------------------------------------
     # Step 1: Read current shard layout
@@ -222,19 +304,19 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         f"\n[2/9] Fetching timing from last {args.n_runs} successful CI runs "
         f"on {args.baseline_branch!r} …"
     )
-    baseline_rows = gh.run_list_successful(
+    baseline_runs = gh.run_list_successful(
         _RUNNER,
         repo=repo,
         branch=args.baseline_branch,
         workflow=args.workflow,
         limit=args.n_runs,
     )
-    if not baseline_rows:
+    if not baseline_runs:
         print("ERROR: no successful CI runs found on main. Cannot compute baseline.", file=sys.stderr)
         return 1
 
     all_timing_rows: list[TimingRow] = []
-    for run in baseline_rows:
+    for run in baseline_runs:
         print(f"  Fetching log for run {run.database_id} …")
         rows = _collect_log_rows(_RUNNER, run.database_id, repo=repo)
         all_timing_rows.extend(rows)
@@ -259,7 +341,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     # Step 3: Pack shards with round-robin LPT
     # ------------------------------------------------------------------
     print(f"\n[3/9] Packing {n_shards} shards with round-robin LPT …")
-    # Only pack targets that are actually in the current shard layout
     measured = {t: medians[t] for t in medians if t in all_shard_targets}
     new_shards = pack(measured, n_shards, guard=_GUARD, extras=extras)
 
@@ -283,16 +364,37 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     # Step 6: Commit and push
     # ------------------------------------------------------------------
     print(f"\n[6/9] Creating branch {branch_name!r} and pushing …")
-    git.branch(_RUNNER, branch_name, cwd=str(_REPO_ROOT))
-    # git.branch doesn't check out; check out manually
-    _RUNNER.run(["git", "checkout", branch_name], cwd=str(_REPO_ROOT))
+    res = git.branch(_RUNNER, branch_name, cwd=str(_REPO_ROOT))
+    if res.returncode != 0:
+        print(f"ERROR: git branch failed: {res.stderr.strip()}", file=sys.stderr)
+        git.checkout_paths(_RUNNER, "Makefile", cwd=str(_REPO_ROOT))
+        return 1
+
+    if not _git_checkout_branch(branch_name):
+        git.checkout_paths(_RUNNER, "Makefile", cwd=str(_REPO_ROOT))
+        _git_checkout_branch(original_branch)
+        return 1
+
     git.add(_RUNNER, "Makefile", cwd=str(_REPO_ROOT))
-    git.commit(
+    res = git.commit(
         _RUNNER,
         "chore: rebalance test harness shards via round-robin LPT",
         cwd=str(_REPO_ROOT),
     )
-    git.push_set_upstream(_RUNNER, "origin", branch_name, cwd=str(_REPO_ROOT))
+    if res.returncode != 0:
+        print(f"ERROR: git commit failed: {res.stderr.strip()}", file=sys.stderr)
+        _git_checkout_branch(original_branch)
+        return 1
+
+    res = git.push_set_upstream(_RUNNER, "origin", branch_name, cwd=str(_REPO_ROOT))
+    if res.returncode != 0:
+        print(f"ERROR: git push failed: {res.stderr.strip()}", file=sys.stderr)
+        _git_checkout_branch(original_branch)
+        return 1
+
+    # Switch back to the original branch — CI work is done via gh CLI, not git
+    print(f"  Switching back to {original_branch!r} …")
+    _git_checkout_branch(original_branch)
 
     # ------------------------------------------------------------------
     # Step 7: Create PR
@@ -322,34 +424,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
     print(f"  PR #{pr.number}: {pr.url} ({'created' if created else 'existing'})")
 
     # ------------------------------------------------------------------
-    # Step 8: Wait for 3 CI verification runs
+    # Step 8: Trigger and wait for N verification CI runs
+    # Note: we always use workflow_dispatch — do NOT rely on the pull_request
+    # event auto-triggering CI, which is unreliable in some org configurations.
     # ------------------------------------------------------------------
-    print(f"\n[8/9] Waiting for {args.n_verify_runs} verification CI runs …")
+    print(f"\n[8/9] Triggering {args.n_verify_runs} verification CI runs via workflow_dispatch …")
     verify_run_ids: list[int] = []
     for i in range(args.n_verify_runs):
-        if i == 0:
-            print(f"  Run {i + 1}/{args.n_verify_runs}: waiting for PR-push-triggered run …")
-        else:
-            print(f"  Run {i + 1}/{args.n_verify_runs}: triggering via workflow_dispatch …")
-            # Small delay so GitHub registers the previous run before we trigger another
-            time.sleep(15)
-            gh.workflow_dispatch(
-                _RUNNER, args.workflow, repo=repo, ref=branch_name
-            )
-            time.sleep(15)
-
         try:
-            run_id = _wait_for_completed_run(
+            run_id = _trigger_and_wait(
                 _RUNNER,
                 repo=repo,
                 branch=branch_name,
+                workflow=args.workflow,
                 exclude=verify_run_ids,
+                run_label=f"Run {i + 1}/{args.n_verify_runs}",
             )
-        except TimeoutError as exc:
+        except (TimeoutError, RuntimeError) as exc:
             print(f"  ERROR: {exc}", file=sys.stderr)
+            print(f"  PR is at {pr.url} — investigate CI failure before retrying.", file=sys.stderr)
             return 1
-
-        print(f"    Completed run {run_id} ✓")
         verify_run_ids.append(run_id)
 
     # ------------------------------------------------------------------
@@ -376,7 +470,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
         else:
             print(f"⚠ Shard balance FAILED (spread {spread:.1f}s > {threshold}s threshold)")
 
-        # After/before comparison
         _print_shard_table("BEFORE (estimated from baseline medians):", current_shards, medians)
         _print_shard_table("AFTER (median of verification runs):", new_shards, medians_verify)
 
