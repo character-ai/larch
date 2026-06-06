@@ -2130,7 +2130,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
 
 
 def _meets_python_ship_floor(major: int, minor: int) -> bool:
-    return (major, minor) >= (3, 12)
+    return (major, minor) >= (3, 11)
 
 
 def test_postmerge_should_flush_uses_state_file_run_id(tmp_path: Path) -> None:
@@ -2263,9 +2263,9 @@ def test_postmerge_flush_only_when_pr_closed(
 
 
 def test_python_ship_driver_version_guard_probe() -> None:
-    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.12)."""
-    assert _meets_python_ship_floor(3, 12)
-    assert not _meets_python_ship_floor(3, 11)
+    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
+    assert _meets_python_ship_floor(3, 11)
+    assert not _meets_python_ship_floor(3, 10)
 
 
 def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> None:
@@ -2277,7 +2277,7 @@ def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> No
     stub = stub_dir / "python3"
     _ = stub.write_text(
         f"""#!/usr/bin/env bash
-if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
+if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
   exit 1
 fi
 exec {real_python} "$@"
@@ -2286,9 +2286,9 @@ exec {real_python} "$@"
     )
     stub.chmod(0o755)
     script = """
-if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
-  echo "ERROR: Python ship driver requires Python 3.12 or newer" >&2
-  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.12 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
   exit 4
 fi
 exit 0
@@ -2305,12 +2305,12 @@ exit 0
     )
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
-    assert "Python ship driver requires Python 3.12 or newer" in completed.stderr
+    assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
 
 
 def test_version_supported_gate() -> None:
-    assert ship._version_supported((3, 12))  # pylint: disable=protected-access
-    assert not ship._version_supported((3, 11))  # pylint: disable=protected-access
+    assert ship._version_supported((3, 11))  # pylint: disable=protected-access
+    assert not ship._version_supported((3, 10))  # pylint: disable=protected-access
 
 
 def test_main_argparse_failure_emits_internal_error(capsys: pytest.CaptureFixture[str]) -> None:

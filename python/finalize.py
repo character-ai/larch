@@ -634,10 +634,6 @@ def cache_sessions_root() -> Path:
 _FINALIZE_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
-def _shell_single_quote(value: object) -> str:
-    text = str(value)
-    return "'" + text.replace("'", "'\\''") + "'"
-
 
 def read_finalize_state(path: str | Path) -> dict[str, str]:
     target = Path(path)
@@ -673,7 +669,7 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
     target = Path(path)
     _write_finalize_text_safely(
         target,
-        "".join(f"{key}={_shell_single_quote(data[key])}\n" for key in sorted(data)),
+        "".join(f"{key}={data[key]}\n" for key in sorted(data)),
     )
 
 
@@ -800,5 +796,5 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
     target = Path(path)
     _write_finalize_text_safely(
         target,
-        "".join(f"{key}={_shell_single_quote(value)}\n" for key, value in data.items()),
+        "".join(f"{key}={value}\n" for key, value in data.items()),
     )

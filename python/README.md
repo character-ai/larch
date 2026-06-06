@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.12 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ now defaults to the Python ship driver (`python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ now defaults to the Python ship driver (`python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 

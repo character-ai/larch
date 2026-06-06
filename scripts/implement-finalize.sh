@@ -154,7 +154,13 @@ read_state() {
     local key=$1 default=${2-}
     awk -F= -v k="$key" -v d="$default" '
         $1 == k {
-            print substr($0, index($0, "=") + 1)
+            v = substr($0, index($0, "=") + 1)
+            if (length(v) >= 2 &&
+                ((substr(v,1,1) == "'"'"'" && substr(v,length(v),1) == "'"'"'") ||
+                 (substr(v,1,1) == "\"" && substr(v,length(v),1) == "\""))) {
+                v = substr(v, 2, length(v) - 2)
+            }
+            print v
             found = 1
             exit
         }

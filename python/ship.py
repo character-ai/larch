@@ -8,11 +8,11 @@ import sys
 
 
 def _version_supported(version_info: object) -> bool:
-    return tuple(version_info) >= (3, 12)  # type: ignore[arg-type]
+    return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
 
 
 if not _version_supported(sys.version_info):
-    _VERSION_ERROR = "Python ship driver requires Python 3.12 or newer"
+    _VERSION_ERROR = "Python ship driver requires Python 3.11 or newer"
     print(
         json.dumps(
             {

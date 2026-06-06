@@ -507,6 +507,10 @@ rename_to_implementing() {
             --category "Tool Failures" \
             --output-file "$rename_log" \
             --redact || true
+    else
+        local new_title
+        new_title=$(kv_value_from_block NEW_TITLE "$rename_out")
+        larch_err "→ step0: issue #${issue} renamed to: ${new_title:-[IMPLEMENTING] ...}"
     fi
     return 0
 }
