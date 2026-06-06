@@ -119,7 +119,12 @@ while [[ $# -gt 0 ]]; do
         --output) output="$2"; shift 2 ;;
         --timeout) timeout="$2"; shift 2 ;;
         --prompt-file) prompt_file="$2"; shift 2 ;;
-        --workdir|--add-dir|--usage-label|--sandbox|--timing-task-kind) shift 2 ;;
+        --workdir|--add-dir|--usage-label|--sandbox|--timing-task-kind)
+            if [[ -n "${LINT_FIX_STUB_ARGV_LOG:-}" ]]; then
+                printf '%s\n' "$1" >> "$LINT_FIX_STUB_ARGV_LOG"
+                printf '%s\n' "$2" >> "$LINT_FIX_STUB_ARGV_LOG"
+            fi
+            shift 2 ;;
         --with-effort) shift ;;
         *) shift ;;
     esac
@@ -583,6 +588,7 @@ run_case() {
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
         LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$fixture_scripts/launch-codex-exec.sh" \
         LARCH_TOKEN_LEDGER="${LARCH_TOKEN_LEDGER:-}" \
+        LINT_FIX_STUB_ARGV_LOG="${LINT_FIX_STUB_ARGV_LOG:-}" \
         bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1
     ) || rc=$?
     printf '%s\n%s\n' "$rc" "$out"
@@ -596,13 +602,14 @@ SESSION0A="$CASE0A/session"
 CHECKS0A="$CASE0A/checks.log"
 WRAPPER0A="$CASE0A/wrapper.sh"
 LEDGER0A="$CASE0A/token-ledger.jsonl"
+ARGV0A="$CASE0A/launcher.argv"
 make_repo "$REPO0A"
 make_fixture_scripts "$SCRIPTS0A"
 make_session "$SESSION0A"
 printf 'synthetic checks failure\n' > "$CHECKS0A"
 write_wrapper_codex_telemetry "$WRAPPER0A"
 
-case0a_result=$(LARCH_TOKEN_LEDGER="$LEDGER0A" run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A")
+case0a_result=$(LINT_FIX_STUB_ARGV_LOG="$ARGV0A" LARCH_TOKEN_LEDGER="$LEDGER0A" run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A")
 case0a_rc=$(printf '%s\n' "$case0a_result" | sed -n '1p')
 case0a_out=$(printf '%s\n' "$case0a_result" | sed -n '2,$p')
 [[ "$case0a_rc" == "0" ]] || fail "case0a expected rc 0, got $case0a_rc"
@@ -618,6 +625,17 @@ grep -Fq 'RAW=codex_lint_fix' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected codex_lint_fix token record"
 grep -Fq 'TOTAL=1050' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected token total"
+if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0A" >/dev/null; then
+    :
+else
+    fail "case0a expected codex_lint_fix token ledger row"
+fi
+grep -Fxq -- '--add-dir' "$ARGV0A" || fail "case0a expected --add-dir routing"
+grep -Fq "$case0a_run_dir" "$ARGV0A" || fail "case0a expected run_dir add-dir path"
+repo0a_canon=$(cd "$REPO0A" && pwd -P)
+grep -Fq "$repo0a_canon" "$ARGV0A" || fail "case0a expected repo add-dir path"
+grep -Fxq -- '--usage-label' "$ARGV0A" || fail "case0a expected --usage-label routing"
+grep -Fxq -- 'codex_lint_fix' "$ARGV0A" || fail "case0a expected codex_lint_fix usage label"
 
 # Case 0a.1: unset CLAUDE_PLUGIN_ROOT still records Codex telemetry through the script-dir fallback.
 CASE0A1="$TMPROOT/case0a1"

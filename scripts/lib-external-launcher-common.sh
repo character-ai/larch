@@ -739,6 +739,23 @@ external_prepare_codex_auth() {
     fi
 }
 
+json_array_from_args() {
+    local sep="" item
+    printf '['
+    for item in "$@"; do
+        case "$item" in
+            *$'\n'*|*$'\r'*|*$'\t'*)
+                return 1
+                ;;
+        esac
+        item=${item//\\/\\\\}
+        item=${item//\"/\\\"}
+        printf '%s"%s"' "$sep" "$item"
+        sep=","
+    done
+    printf ']'
+}
+
 external_codex_auth_config_args() {
     local __array_name="$1"
     case "$__array_name" in

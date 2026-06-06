@@ -168,6 +168,14 @@ PASS=$((PASS + 3))
 
 # ---------- Check 10: Codex auth-wired launcher pins ----------
 
+for stem in codex-research-arch-output.txt codex-research-edge-output.txt codex-research-ext-output.txt codex-research-sec-output.txt; do
+  if grep -Fq "$stem" "$RESEARCH_MD"; then
+    PASS=$((PASS + 1))
+  else
+    fail "[codex launcher] research-phase.md must pin expected output stem '$stem'"
+  fi
+done
+
 for pair in \
   "$RESEARCH_MD:codex-research-arch-output.txt" \
   "$VALIDATION_MD:codex-validation-output.txt" \

@@ -57,23 +57,6 @@ write_preflight_bundle() {
     exit 0
 }
 
-json_array_from_args() {
-    local sep="" item
-    printf '['
-    for item in "$@"; do
-        case "$item" in
-            *$'\n'*|*$'\r'*|*$'\t'*)
-                return 1
-                ;;
-        esac
-        item=${item//\\/\\\\}
-        item=${item//\"/\\\"}
-        printf '%s"%s"' "$sep" "$item"
-        sep=","
-    done
-    printf ']'
-}
-
 launcher_jq_available() {
     [[ "${LARCH_TEST_FORCE_NO_JQ:-}" == "1" ]] && return 1
     command -v jq >/dev/null 2>&1
@@ -245,8 +228,7 @@ if [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
     if launcher_jq_available; then
         _add_dirs_json=$(printf '%s\n' "${ADD_DIRS[@]}" | jq -R . | jq -s -c .)
     elif ! _add_dirs_json=$(json_array_from_args "${ADD_DIRS[@]}"); then
-        larch_err "launch-codex-exec.sh: warning: failed to serialize --add-dir metadata without jq; recording workdir-only retry metadata"
-        _add_dirs_json=$(json_array_from_args "$WORKDIR")
+        write_preflight_bundle 1 "failed to serialize --add-dir metadata without jq"
     fi
 fi
 codex_launcher_append_codex_exec_outer_meta \

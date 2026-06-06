@@ -104,7 +104,25 @@ if [[ "$rc" -ne 0 ]]; then echo "PASS markdown continuation fails"; PASS=$((PASS
 reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' 'codex exec --full-auto -C . hi' '```'
 rc="$(run_lint "$stderr_file")"
-if [[ "$rc" -ne 0 ]]; then echo "PASS one-line markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL one-line markdown fence fails"; FAIL=$((FAIL+1)); fi
+if [[ "$rc" -ne 0 ]]; then echo "PASS one-line markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL one-line markdown fence fails"; FAIL=$((PASS+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" \
+    '```bash' \
+    'echo "outer"' \
+    '```bash' \
+    'echo "inner"' \
+    '```' \
+    'codex exec --full-auto -C . hi' \
+    '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS nested markdown fence still catches trailing raw exec"; PASS=$((PASS+1)); else echo "FAIL nested markdown fence still catches trailing raw exec"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/scripts/launch-codex-exec.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
+chmod +x "$TMPROOT/skills/foo/scripts/launch-codex-exec.sh"
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS skills copy of allowlisted basename is not exempt"; PASS=$((PASS+1)); else echo "FAIL skills copy of allowlisted basename is not exempt"; FAIL=$((FAIL+1)); fi
 
 reset_tree
 mkdir -p "$TMPROOT/docs" "$TMPROOT/hooks"

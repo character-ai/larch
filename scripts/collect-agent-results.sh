@@ -103,6 +103,9 @@ source "$SCRIPT_DIR/lib-net.sh" || { echo "collect-agent-results.sh: failed to s
 source "$SCRIPT_DIR/lib-quiet.sh" || { echo "collect-agent-results.sh: failed to source lib-quiet.sh" >&2; exit 1; }
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
 source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { echo "collect-agent-results.sh: failed to source lib-failed-agent-stderr-tail.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-external-launcher-common.sh" || { echo "collect-agent-results.sh: failed to source lib-external-launcher-common.sh" >&2; exit 1; }
 
 normalize_exit_code_or_99() {
     local raw="$1"
@@ -578,23 +581,6 @@ validate_retry_timeout_or_mark() {
     fi
     META_TIMEOUT=$((10#$timeout_value))
     return 0
-}
-
-json_array_from_args() {
-    local sep="" item
-    printf '['
-    for item in "$@"; do
-        case "$item" in
-            *$'\n'*|*$'\r'*|*$'\t'*)
-                return 1
-                ;;
-        esac
-        item=${item//\\/\\\\}
-        item=${item//\"/\\\"}
-        printf '%s"%s"' "$sep" "$item"
-        sep=","
-    done
-    printf ']'
 }
 
 retry_jq_available() {

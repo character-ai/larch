@@ -67,6 +67,18 @@ fi
 if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
     printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
 fi
+if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
+fi
+if [[ -n "${CODEX_STUB_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" ]]; then
+    if [[ -L "$CODEX_HOME/auth.json" ]]; then
+        readlink "$CODEX_HOME/auth.json" > "$CODEX_STUB_AUTH_LINK_FILE"
+    elif [[ -e "$CODEX_HOME/auth.json" ]]; then
+        printf 'not-symlink\n' > "$CODEX_STUB_AUTH_LINK_FILE"
+    else
+        : > "$CODEX_STUB_AUTH_LINK_FILE"
+    fi
+fi
 printf 'codex negotiation final\n' > "$output"
 printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
 printf 'codex sidecar diagnostic\n' >&2
@@ -169,15 +181,21 @@ CODEX_ENV_KEY_OUTPUT="$TMPROOT/codex-env-key.out"
 CODEX_ENV_KEY_STDOUT="$TMPROOT/codex-env-key.stdout"
 CODEX_ENV_KEY_ARGV="$TMPROOT/codex-env-key.argv"
 CODEX_ENV_KEY_HOME="$TMPROOT/codex-env-key.home"
+CODEX_ENV_KEY_CONFIG="$TMPROOT/codex-env-key.config.toml"
 CODEX_ENV_KEY_LOCK_SEEN="$TMPROOT/codex-env-key.lock-seen"
+HOME_ENV_KEY_CFG="$TMPROOT/home-env-key-cfg"
+mkdir -p "$HOME_ENV_KEY_CFG/.codex"
+printf 'api_key = "literal-secret"\n' > "$HOME_ENV_KEY_CFG/.codex/config.toml"
 rm -rf "$CODEX_LOCK_PATH"
 env -u OPENAI_API_KEY \
     PATH="$STUB_BIN:$PATH" \
     TMPDIR="$TMPROOT" \
+    HOME="$HOME_ENV_KEY_CFG" \
     USER="$CODEX_LOCK_USER" \
     OPENAI_API_KEY="stub-key" \
     CODEX_STUB_ARGV_LOG="$CODEX_ENV_KEY_ARGV" \
     CODEX_STUB_HOME_LOG="$CODEX_ENV_KEY_HOME" \
+    CODEX_STUB_CONFIG_FILE="$CODEX_ENV_KEY_CONFIG" \
     CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
     CODEX_STUB_LOCK_SEEN_FILE="$CODEX_ENV_KEY_LOCK_SEEN" \
     LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
@@ -194,8 +212,13 @@ if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$CODEX_
 else
     fail "codex env-key branch should pass provider env_key config"
 fi
+if [[ -f "$CODEX_ENV_KEY_CONFIG" ]] && ! grep -Fq 'literal-secret' "$CODEX_ENV_KEY_CONFIG" 2>/dev/null; then
+    pass
+else
+    fail "codex env-key branch should strip literal credentials from temp config.toml"
+fi
 codex_env_key_home_dir=$(cat "$CODEX_ENV_KEY_HOME" 2>/dev/null || true)
-if [[ -n "$codex_env_key_home_dir" && ! -e "$codex_env_key_home_dir" ]]; then
+if [[ -n "$codex_env_key_home_dir" ]] && [[ ! -e "$codex_env_key_home_dir" ]]; then
     pass
 else
     fail "codex env-key branch should remove temp CODEX_HOME"
@@ -206,10 +229,18 @@ CODEX_LOGIN_OUTPUT="$TMPROOT/codex-login.out"
 CODEX_LOGIN_STDOUT="$TMPROOT/codex-login.stdout"
 CODEX_LOGIN_ARGV="$TMPROOT/codex-login.argv"
 CODEX_LOGIN_HOME_LOG="$TMPROOT/codex-login.home"
+CODEX_LOGIN_CONFIG="$TMPROOT/codex-login.config.toml"
+CODEX_LOGIN_AUTH_LINK="$TMPROOT/codex-login.auth-link"
 CODEX_LOGIN_LOCK_SEEN="$TMPROOT/codex-login.lock-seen"
 HOME_LOGIN="$TMPROOT/home-login"
 mkdir -p "$HOME_LOGIN/.codex"
 printf '{"tokens":"stub"}\n' > "$HOME_LOGIN/.codex/auth.json"
+printf '%s\n' \
+    '[model_providers.openai-larch-env]' \
+    'name = "strip stale env provider"' \
+    '[model_providers.keep]' \
+    'name = "keep provider"' \
+    'model_provider = "openai-larch-env"' > "$HOME_LOGIN/.codex/config.toml"
 rm -rf "$CODEX_LOCK_PATH"
 env -u OPENAI_API_KEY \
     PATH="$STUB_BIN:$PATH" \
@@ -218,6 +249,8 @@ env -u OPENAI_API_KEY \
     USER="$CODEX_LOCK_USER" \
     CODEX_STUB_ARGV_LOG="$CODEX_LOGIN_ARGV" \
     CODEX_STUB_HOME_LOG="$CODEX_LOGIN_HOME_LOG" \
+    CODEX_STUB_CONFIG_FILE="$CODEX_LOGIN_CONFIG" \
+    CODEX_STUB_AUTH_LINK_FILE="$CODEX_LOGIN_AUTH_LINK" \
     CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
     CODEX_STUB_LOCK_SEEN_FILE="$CODEX_LOGIN_LOCK_SEEN" \
     LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
@@ -234,8 +267,21 @@ if grep -Fq 'openai-larch-env' "$CODEX_LOGIN_ARGV"; then
 else
     pass
 fi
+if [[ -s "$CODEX_LOGIN_CONFIG" ]] && grep -Fq 'name = "keep provider"' "$CODEX_LOGIN_CONFIG" \
+    && ! grep -Fq 'strip stale env provider' "$CODEX_LOGIN_CONFIG" \
+    && ! grep -Fq 'model_provider = "openai-larch-env"' "$CODEX_LOGIN_CONFIG"; then
+    pass
+else
+    fail "codex login branch should strip larch env provider from temp config.toml"
+fi
+expected_login_auth=$(cd "$HOME_LOGIN/.codex" && pwd)/auth.json
+if [[ "$(cat "$CODEX_LOGIN_AUTH_LINK" 2>/dev/null || true)" == "$expected_login_auth" ]]; then
+    pass
+else
+    fail "codex login branch should symlink auth.json into temp CODEX_HOME"
+fi
 codex_login_home_dir=$(cat "$CODEX_LOGIN_HOME_LOG" 2>/dev/null || true)
-if [[ -n "$codex_login_home_dir" && ! -e "$codex_login_home_dir" ]]; then
+if [[ -n "$codex_login_home_dir" ]] && [[ ! -e "$codex_login_home_dir" ]]; then
     pass
 else
     fail "codex login branch should remove temp CODEX_HOME"

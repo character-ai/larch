@@ -30,6 +30,18 @@ is_allowed_basename() {
     return 1
 }
 
+is_allowed_shell_file() {
+    local rel="$1"
+    case "$rel" in
+        skills/review-and-fix/scripts/review-and-fix.sh) return 0 ;;
+        scripts/*)
+            is_allowed_basename "$(basename "$rel")"
+            return $?
+            ;;
+    esac
+    return 1
+}
+
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --root)
@@ -116,8 +128,7 @@ scan_shell_file() {
     local base rc
 
     [[ -f "$path" && ! -L "$path" ]] || return 0
-    base=$(basename "$rel")
-    if is_allowed_basename "$base"; then
+    if is_allowed_shell_file "$rel"; then
         return 0
     fi
     set +e
@@ -175,7 +186,7 @@ scan_markdown_file() {
     [[ -f "$path" && ! -L "$path" ]] || return 0
     set +e
     awk -v rel="$rel" '
-        BEGIN { in_fence = 0; violations = 0 }
+        BEGIN { fence_depth = 0; violations = 0 }
         function report(nr) {
             printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch in bash fence; use launch-codex-exec.sh\n", rel, nr) > "/dev/stderr"
             violations = 1
@@ -203,15 +214,15 @@ scan_markdown_file() {
         {
             line = $0
             if (line ~ /^[[:space:]]*```[[:space:]]*(bash|sh|shell)[[:space:]]*$/) {
-                in_fence = 1
+                fence_depth++
                 next
             }
-            if (in_fence && line ~ /^[[:space:]]*```[[:space:]]*$/) {
+            if (fence_depth > 0 && line ~ /^[[:space:]]*```[[:space:]]*$/) {
                 flush_pending()
-                in_fence = 0
+                fence_depth--
                 next
             }
-            if (!in_fence) next
+            if (fence_depth == 0) next
             if (pending != "") {
                 line = pending line
                 nr = pending_nr

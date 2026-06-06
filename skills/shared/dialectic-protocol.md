@@ -139,7 +139,7 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 | Slot | Primary | Replacement (when primary unavailable) |
 |---|---|---|
 | 1 | Cursor (via `run-external-agent.sh --tool cursor --capture-stdout`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
-| 2 | Codex (via `run-external-agent.sh --tool codex`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
+| 2 | Codex (via `launch-codex-exec.sh`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
 | 3 | Claude Code Reviewer subagent (Agent tool, always inline) | — |
 
 The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See `skills/design/references/dialectic-execution.md` step **5** (per-side waterfall retry).

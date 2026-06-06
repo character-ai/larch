@@ -101,20 +101,136 @@ else
     fail "round-trips repeated add-dir metadata"
 fi
 
-OUT_ADD_DEGRADED="$TMPDIR_BASE/exec-add-degraded-out.txt"
+OUT_ADD_FAIL="$TMPDIR_BASE/exec-add-fail-out.txt"
 ADD_DIR_TAB="$TMPDIR_BASE/add-dir-with-tab"$'\t'"suffix"
 mkdir -p "$ADD_DIR_TAB"
 set +e
 (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_TEST_FORCE_NO_JQ=1 \
     bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
-    --output "$OUT_ADD_DEGRADED" --timeout 60 --workdir "$REPO_ROOT" --add-dir "$ADD_DIR_TAB" --prompt "hello") \
-    >"$TMPDIR_BASE/launcher-add-degraded.stdout" 2>"$TMPDIR_BASE/launcher-add-degraded.stderr"
+    --output "$OUT_ADD_FAIL" --timeout 60 --workdir "$REPO_ROOT" --add-dir "$ADD_DIR_TAB" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-add-fail.stdout" 2>"$TMPDIR_BASE/launcher-add-fail.stderr"
 rc=$?
 set -e
-if [[ "$rc" -eq 0 ]] && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]" "${OUT_ADD_DEGRADED}.meta" && grep -Fq 'recording workdir-only retry metadata' "$TMPDIR_BASE/launcher-add-degraded.stderr"; then
-    ok "degrades unsafe add-dir metadata to workdir-only"
+if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=1' "$TMPDIR_BASE/launcher-add-fail.stdout" && grep -Fq 'failed to serialize --add-dir metadata without jq' "${OUT_ADD_FAIL}.diag"; then
+    ok "fails closed when add-dir metadata cannot be serialized"
 else
-    fail "degrades unsafe add-dir metadata to workdir-only"
+    fail "fails closed when add-dir metadata cannot be serialized"
+fi
+
+OUT_READONLY="$TMPDIR_BASE/exec-readonly-out.txt"
+ARGV_READONLY="$TMPDIR_BASE/readonly.argv"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CODEX_STUB_ARGV_LOG="$ARGV_READONLY" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_READONLY" --timeout 60 --workdir "$REPO_ROOT" --sandbox read-only --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-readonly.stdout" 2>"$TMPDIR_BASE/launcher-readonly.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fxq -- '--sandbox' "$ARGV_READONLY" && grep -Fxq -- 'read-only' "$ARGV_READONLY" && ! grep -Fxq -- '--full-auto' "$ARGV_READONLY"; then
+    ok "read-only sandbox maps to codex argv"
+else
+    fail "read-only sandbox maps to codex argv"
+fi
+
+OUT_FULLAUTO="$TMPDIR_BASE/exec-fullauto-out.txt"
+ARGV_FULLAUTO="$TMPDIR_BASE/fullauto.argv"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CODEX_STUB_ARGV_LOG="$ARGV_FULLAUTO" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_FULLAUTO" --timeout 60 --workdir "$REPO_ROOT" --sandbox full-auto --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-fullauto.stdout" 2>"$TMPDIR_BASE/launcher-fullauto.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fxq -- '--full-auto' "$ARGV_FULLAUTO" && ! grep -Fxq -- '--sandbox' "$ARGV_FULLAUTO"; then
+    ok "full-auto sandbox maps to codex argv"
+else
+    fail "full-auto sandbox maps to codex argv"
+fi
+
+AUTH_RETRY_COUNT="$TMPDIR_BASE/auth-retry-count.txt"
+AUTH_RETRY_PREMATURE="$TMPDIR_BASE/auth-retry-premature.txt"
+printf '0' > "$AUTH_RETRY_COUNT"
+rm -f "$AUTH_RETRY_PREMATURE"
+cat >"$stub_bin/codex-auth-retry" <<'EOF'
+#!/usr/bin/env bash
+: "${CODEX_STUB_COUNT_FILE:?}"
+count=0
+[[ -f "$CODEX_STUB_COUNT_FILE" ]] && count=$(cat "$CODEX_STUB_COUNT_FILE")
+count=$((count + 1))
+printf '%s' "$count" > "$CODEX_STUB_COUNT_FILE"
+out=""
+last=""
+for arg in "$@"; do
+    if [[ -n "${CODEX_STUB_ARGV_LOG:-}" ]]; then
+        printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"
+    fi
+    if [[ "$last" == "--output-last-message" ]]; then
+        out="$arg"
+    fi
+    last="$arg"
+done
+if (( count == 1 )); then
+    [[ -n "$out" && -f "${out}.done" && ! -f "${out}.inner.done" ]] && \
+        printf 'premature\n' > "${CODEX_STUB_PREMATURE_CHECK:-/dev/null}"
+    printf 'authentication failed\n' >&2
+    exit 1
+fi
+[[ -n "$out" ]] || exit 9
+printf 'stub transcript\n' > "$out"
+printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+exit 0
+EOF
+chmod +x "$stub_bin/codex-auth-retry"
+OUT_AUTH_RETRY="$TMPDIR_BASE/exec-auth-retry-out.txt"
+ln -sf "$stub_bin/codex-auth-retry" "$stub_bin/codex"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    CODEX_STUB_COUNT_FILE="$AUTH_RETRY_COUNT" \
+    CODEX_STUB_PREMATURE_CHECK="$AUTH_RETRY_PREMATURE" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_AUTH_RETRY" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-auth-retry.stdout" 2>"$TMPDIR_BASE/launcher-auth-retry.stderr"
+rc=$?
+set -e
+cat >"$stub_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+out=""
+last=""
+for arg in "$@"; do
+    if [[ -n "${CODEX_STUB_ARGV_LOG:-}" ]]; then
+        printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"
+    fi
+    if [[ "$last" == "--output-last-message" ]]; then
+        out="$arg"
+    fi
+    last="$arg"
+done
+if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
+fi
+[[ -n "$out" ]] || exit 9
+printf 'stub transcript\n' > "$out"
+printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+exit 0
+EOF
+chmod +x "$stub_bin/codex"
+if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=0' "$TMPDIR_BASE/launcher-auth-retry.stdout" && [[ "$(cat "$AUTH_RETRY_COUNT" 2>/dev/null)" == "2" ]]; then
+    ok "auth-retry succeeds on second attempt"
+else
+    fail "auth-retry succeeds on second attempt"
+fi
+if [[ ! -f "$AUTH_RETRY_PREMATURE" ]]; then
+    ok "auth-retry does not promote .done before loop completes"
+else
+    fail "auth-retry does not promote .done before loop completes"
+fi
+if [[ -f "${OUT_AUTH_RETRY}.done" && ! -f "${OUT_AUTH_RETRY}.inner.done" ]]; then
+    ok "auth-retry promotes inner sentinel after loop completes"
+else
+    fail "auth-retry promotes inner sentinel after loop completes"
 fi
 
 PROMPT_FILE="$TMPDIR_BASE/prompt-file.md"

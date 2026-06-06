@@ -207,7 +207,7 @@ Synthesis MUST write `$RESEARCH_TMPDIR/research-report.txt` so Step 2 and Step 3
 
 ### Pre-synthesis lane-output persistence
 
-The synthesis subagent's prompts reference each lane's output by file path under `<lane_N_output_path>` tags. External Codex lanes are already on disk via `run-external-agent.sh`. For each Claude `Agent` fallback (pre-launch or runtime), the orchestrator MUST persist the Agent return value to the corresponding slot file path via the `Write` tool BEFORE invoking the synthesis subagent: `codex-research-arch-output.txt` / `codex-research-edge-output.txt` / `codex-research-ext-output.txt` / `codex-research-sec-output.txt`.
+The synthesis subagent's prompts reference each lane's output by file path under `<lane_N_output_path>` tags. External Codex lanes are already on disk via `launch-codex-exec.sh`. For each Claude `Agent` fallback (pre-launch or runtime), the orchestrator MUST persist the Agent return value to the corresponding slot file path via the `Write` tool BEFORE invoking the synthesis subagent: `codex-research-arch-output.txt` / `codex-research-edge-output.txt` / `codex-research-ext-output.txt` / `codex-research-sec-output.txt`.
 
 ### Reduced-diversity banner preamble
 
