@@ -175,6 +175,14 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     exit 0
     ;;
+  new-file-and-caller:codex)
+    printf 'new lib content\n' > lib-new.sh
+    printf 'source lib-new.sh\n' >> src/main.py
+    printf 'APPLIED: FINDING_1\n' > "$last_message"
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+    exit 0
+    ;;
   outside-manifest-break-carryover:codex)
     printf 'modified by codex stub\n' >> src/main.py
     # Keep other.txt out of the auto-built manifest (add + worktree restore) but
@@ -490,8 +498,30 @@ out_untracked_only=$(TEST_AGENT_BEHAVIOR=untracked-only run_review_and_fix "$wor
     --session-env-path "$implement_untracked_only/session-env.sh" --run-id untracked-only-run)
 rc_untracked_only=$?
 set -e
-[[ "$rc_untracked_only" -eq 2 ]] || { echo "$out_untracked_only" >&2; fail "untracked-only-dirty expected exit 2 got $rc_untracked_only"; }
-grep -Fq 'CODER_STATUS=failed' <<< "$out_untracked_only" || fail "untracked-only-dirty coder failed"
+[[ "$rc_untracked_only" -eq 0 ]] || { echo "$out_untracked_only" >&2; fail "untracked-only expected exit 0 got $rc_untracked_only"; }
+grep -Fq 'CODER_STATUS=applied' <<< "$out_untracked_only" || fail "untracked-only coder not applied"
+git -C "$work_untracked_only" show --name-only HEAD | command grep -Fq 'brand-new.txt' \
+    || fail "untracked-only brand-new.txt not in round commit"
+pass "untracked-only"
+
+work_new_file_and_caller="$TMP/new-file-and-caller"
+make_work_repo "$work_new_file_and_caller"
+implement_nfc="$work_new_file_and_caller/implement"
+mkdir -p "$implement_nfc"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_nfc/session-env.sh"
+set +e
+out_nfc=$(TEST_AGENT_BEHAVIOR=new-file-and-caller run_review_and_fix "$work_new_file_and_caller" \
+    --implement-tmpdir "$implement_nfc" --mode diff --round-num 1 \
+    --session-env-path "$implement_nfc/session-env.sh" --run-id new-file-and-caller-run)
+rc_nfc=$?
+set -e
+[[ "$rc_nfc" -eq 0 ]] || { echo "$out_nfc" >&2; fail "new-file-and-caller expected exit 0 got $rc_nfc"; }
+grep -Fq 'CODER_STATUS=applied' <<< "$out_nfc" || fail "new-file-and-caller coder not applied"
+git -C "$work_new_file_and_caller" show --name-only HEAD | command grep -Fq 'lib-new.sh' \
+    || fail "new-file-and-caller lib-new.sh not in round commit"
+git -C "$work_new_file_and_caller" show --name-only HEAD | command grep -Fq 'src/main.py' \
+    || fail "new-file-and-caller src/main.py not in round commit"
+pass "new-file-and-caller"
 
 work_manifest_outside="$TMP/manifest-outside-guard"
 make_work_repo "$work_manifest_outside"

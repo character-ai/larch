@@ -386,6 +386,11 @@ capture_round_tracked_paths() {
     } | awk 'NF && !seen[$0]++ { print }'
 }
 
+capture_round_untracked_paths() {
+    git status --porcelain 2>/dev/null \
+        | awk '$1 == "??" { sub(/^\?\?[[:space:]]*/, ""); print }'
+}
+
 pre_coder_snapshot_dir() {
     local round_dir="$1"
     local parent_abs pwd_abs t hash
@@ -408,12 +413,14 @@ pre_coder_snapshot_dir() {
 clear_stale_pre_coder_snapshot_artifacts() {
     local snap_dir="$1"
     rm -f "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir/pre-coder-untracked-paths.txt" \
         "$snap_dir"/pre-coder-path-diffs/*.patch 2>/dev/null || true
 }
 
 harden_pre_coder_snapshot_perms() {
     local snap_dir="$1"
     chmod 0444 "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir/pre-coder-untracked-paths.txt" \
         "$snap_dir"/pre-coder-path-diffs/*.patch 2>/dev/null || true
 }
 
@@ -440,6 +447,7 @@ snapshot_pre_coder_tracked_state() {
     paths_file="$snap_dir/pre-coder-tracked-paths.txt"
     mkdir -p "$snap_dir/pre-coder-path-diffs"
     capture_round_tracked_paths > "$paths_file"
+    capture_round_untracked_paths > "$snap_dir/pre-coder-untracked-paths.txt"
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         git diff "$pre_head" -- "$path" > "$(pre_coder_path_diff_file "$round_dir" "$path")" 2>/dev/null || true
@@ -493,6 +501,22 @@ round_coder_delta_paths() {
     done | awk 'NF && !seen[$0]++ { print }' > "$paths_file"
 }
 
+round_coder_untracked_delta_paths() {
+    local round_dir="$1" paths_file="$2"
+    local snap_dir pre_untracked path
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    pre_untracked="$snap_dir/pre-coder-untracked-paths.txt"
+    # Tracked and untracked paths are mutually exclusive sets, so no dedup against
+    # paths_file is needed here — append only paths absent from the pre-coder snapshot.
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        if [[ -s "$pre_untracked" ]] && grep -Fxq "$path" "$pre_untracked"; then
+            continue
+        fi
+        printf '%s\n' "$path" >> "$paths_file"
+    done < <(capture_round_untracked_paths)
+}
+
 collect_round_stage_paths() {
     local round_dir="$1"
     local paths_file="$round_dir/coder-stage-paths.txt"
@@ -504,6 +528,7 @@ collect_round_stage_paths() {
     else
         capture_round_tracked_paths | awk 'NF && !seen[$0]++ { print }' > "$paths_file"
     fi
+    round_coder_untracked_delta_paths "$round_dir" "$paths_file"
 }
 
 stage_round_dirty_paths() {
@@ -549,6 +574,24 @@ round_tracked_dirty_outside_manifest() {
         fi
         return 0
     done < <(capture_round_tracked_paths)
+    return 1
+}
+
+round_untracked_outside_manifest() {
+    local manifest="$1" round_dir="${2:-}" path snap_dir pre_untracked=""
+    if [[ -n "$round_dir" ]]; then
+        snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+        pre_untracked="$snap_dir/pre-coder-untracked-paths.txt"
+    fi
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        # Skip if the file was already untracked before the coder (not a new file)
+        if [[ -n "$pre_untracked" && -s "$pre_untracked" ]] && grep -Fxq "$path" "$pre_untracked"; then
+            continue
+        fi
+        grep -Fxq "$path" "$manifest" 2>/dev/null && continue
+        return 0
+    done < <(capture_round_untracked_paths)
     return 1
 }
 
@@ -701,6 +744,11 @@ apply_findings_with_coder() {
         fi
         if round_tracked_dirty_outside_manifest "$stage_manifest" "$round_dir"; then
             larch_err "⚠ review-and-fix: round $round_num dirty paths outside coder delta; refusing to commit"
+            write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
+            return 2
+        fi
+        if round_untracked_outside_manifest "$stage_manifest" "$round_dir"; then
+            larch_err "⚠ review-and-fix: round $round_num untracked files outside coder delta; refusing to commit"
             write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
