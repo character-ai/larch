@@ -349,8 +349,8 @@ external_launcher_mirror_quota_from_events() {
         return 0
     fi
     if external_is_quota_failure "codex" "$events_file"; then
-        printf 'codex-quota: usage limit / quota reported on the --json events stream (%s); see that file for the reset time\n' \
-            "$events_file" >> "$sidecar" 2>/dev/null || true
+        printf 'codex-quota: usage limit / quota reported on the codex exec --json events stream (%s); see that file for the reset time\n' \
+            "$events_file" >> "$sidecar" 2>/dev/null || true # lint-codex-exec-auth: ok quota-mirror sidecar message text pinned by test-launch-review.sh and test-launch-codex-ci.sh; not a dispatch site
     fi
     return 0
 }
