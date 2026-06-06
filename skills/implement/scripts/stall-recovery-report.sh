@@ -514,6 +514,12 @@ classify_from_evidence() {
         printf 'dispatch-failure\n'
         return 0
     fi
+    case "$bail" in
+        branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|dirty-state-after-timeout|interactive-subprocess-unsupported|main-branch-post-dispatch|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty)
+            printf 'dispatch-failure\n'
+            return 0
+            ;;
+    esac
     if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network/auth issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5[0-9][0-9]'; then
         printf 'transient-infra\n'
         return 0
@@ -537,12 +543,19 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|dirty-tree|first-fixer-non-health|orchestrator-envelope-invalid|qa-loop-exceeded|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure)
+        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|dirty-state-after-timeout|dirty-tree|first-fixer-non-health|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure)
             printf '%s\n' "$1"
             ;;
         *)
             printf 'redacted\n'
             ;;
+    esac
+}
+
+safe_exit_code_value() {
+    case "${1:-}" in
+        ""|*[!0-9]*) printf 'unknown\n' ;;
+        *) printf '%s\n' "$1" ;;
     esac
 }
 
@@ -576,10 +589,10 @@ latest_attempt_signature() {
 }
 
 cmd_classify() {
-    local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file=""
+    local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file="" stall_step_arg="" phase_arg=""
     local state_file finalize_file session_env evidence="" detail_log_valid=false
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
-    local finalize_stall_step="" finalize_stall_tracking="" finalize_exit_code=""
+    local finalize_stall_step="" finalize_phase="" finalize_stall_tracking="" finalize_bail_reason="" finalize_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
     local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
 
@@ -587,6 +600,8 @@ cmd_classify() {
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --in-memory-stall-tracking) [ $# -ge 2 ] || die_argv "--in-memory-stall-tracking requires a value"; in_memory=$2; shift 2 ;;
+            --stall-step) [ $# -ge 2 ] || die_argv "--stall-step requires a value"; stall_step_arg=$2; shift 2 ;;
+            --phase) [ $# -ge 2 ] || die_argv "--phase requires a value"; phase_arg=$2; shift 2 ;;
             --bail-reason) [ $# -ge 2 ] || die_argv "--bail-reason requires a value"; bail_arg=$2; shift 2 ;;
             --failure-detail-log) [ $# -ge 2 ] || die_argv "--failure-detail-log requires a value"; detail_log=$2; shift 2 ;;
             --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
@@ -619,7 +634,9 @@ cmd_classify() {
 
     if validate_optional_state_evidence_file "$finalize_file" "finalize-state.sh"; then
         finalize_stall_step=$(kv_get "$finalize_file" STALL_STEP "")
+        finalize_phase=$(kv_get "$finalize_file" PHASE "")
         finalize_stall_tracking=$(kv_get "$finalize_file" STALL_TRACKING "false")
+        finalize_bail_reason=$(kv_get "$finalize_file" BAIL_REASON "")
         finalize_exit_code=$(kv_get "$finalize_file" EXIT_CODE "")
     fi
 
@@ -631,9 +648,9 @@ cmd_classify() {
         session_exit_code=$(kv_get "$session_env" EXIT_CODE "")
     fi
 
-    stall_step=$(first_nonempty "$state_stall_step" "$finalize_stall_step" "$session_stall_step")
-    phase=$(first_nonempty "$state_phase" "$session_phase")
-    bail_reason=$(first_nonempty "$bail_arg" "$state_bail_reason" "$session_bail_reason")
+    stall_step=$(first_nonempty "$stall_step_arg" "$state_stall_step" "$finalize_stall_step" "$session_stall_step")
+    phase=$(first_nonempty "$phase_arg" "$state_phase" "$finalize_phase" "$session_phase")
+    bail_reason=$(first_nonempty "$bail_arg" "$state_bail_reason" "$finalize_bail_reason" "$session_bail_reason")
     exit_code=$(first_nonempty "$state_exit_code" "$finalize_exit_code" "$session_exit_code")
     stall_tracking=false
     if truthy "$in_memory"; then
@@ -680,9 +697,7 @@ $(cat "$session_env")"
         fi
     fi
 
-    case "$exit_code" in
-        ""|*[!0-9]*) exit_code=0 ;;
-    esac
+    exit_code=$(safe_exit_code_value "$exit_code")
 
     emit_kv FAILURE_CLASS "$failure_class"
     emit_kv FAILURE_SIGNATURE "$signature"
@@ -880,15 +895,16 @@ load_classification_arg() {
 
 compose_body_content() {
     local class_file=$1 attempts_file=${2:-} comment_mode=${3:-false}
-    local failure_class signature step phase exit_code attempt_count final_class final_sig
+    local failure_class signature step phase bail_reason exit_code attempt_count final_class final_sig
     failure_class=$(safe_class_value "$(load_classification_arg "$class_file" FAILURE_CLASS "unrecoverable")")
     signature=$(safe_signature_value "$(load_classification_arg "$class_file" FAILURE_SIGNATURE "$(printf '%s' "$failure_class" | hash_text)")")
     step=$(safe_step_value "$(load_classification_arg "$class_file" STALL_STEP "")")
     phase=$(safe_phase_value "$(load_classification_arg "$class_file" PHASE "")")
-    exit_code=$(load_classification_arg "$class_file" EXIT_CODE "0")
+    bail_reason=$(safe_bail_reason_value "$(load_classification_arg "$class_file" BAIL_REASON "")")
+    [ -n "$bail_reason" ] || bail_reason=none
+    exit_code=$(safe_exit_code_value "$(load_classification_arg "$class_file" EXIT_CODE "")")
     final_class=$failure_class
     final_sig=$signature
-    case "$exit_code" in ""|*[!0-9]*) exit_code=0 ;; esac
     {
         printf '<!-- larch-stall:signature=%s -->\n\n' "$signature"
         printf '## Sanitized stall report\n\n'
@@ -897,6 +913,7 @@ compose_body_content() {
         printf "| Failing step | \`%s\` |\n" "$step"
         printf "| Failing phase | \`%s\` |\n" "$phase"
         printf "| Failure class | \`%s\` |\n" "$failure_class"
+        printf "| Bail reason | \`%s\` |\n" "$bail_reason"
         printf "| Exit code | \`%s\` |\n" "$exit_code"
         printf "| Signature hash | \`%s\` |\n\n" "$signature"
         printf '## Inferred root cause\n\n%s\n\n' "$(root_cause_template "$failure_class")"
@@ -1014,6 +1031,7 @@ code_allowlist_lines() {
 bug-body	failing_step
 bug-body	failing_phase
 bug-body	failure_class
+bug-body	bail_reason
 bug-body	exit_code
 bug-body	signature_hash
 bug-body	inferred_root_cause
@@ -1021,6 +1039,7 @@ bug-body	suggested_mitigation
 bug-comment	failing_step
 bug-comment	failing_phase
 bug-comment	failure_class
+bug-comment	bail_reason
 bug-comment	exit_code
 bug-comment	signature_hash
 bug-comment	inferred_root_cause
@@ -1034,6 +1053,7 @@ issue-input-file	body
 chat-print	failing_step
 chat-print	failing_phase
 chat-print	failure_class
+chat-print	bail_reason
 chat-print	exit_code
 chat-print	signature_hash
 chat-print	inferred_root_cause

@@ -4,12 +4,13 @@
 
 ## Subcommands
 
-- `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
+- `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--stall-step <N>] [--phase <token>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
   - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress finalize-state or session-env stalls.
   - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
-  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `tracking-init-failed`) plus empty; every other value is emitted as `redacted`.
+  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `dirty-state-after-timeout`, `dirty-tree`, `first-fixer-non-health`, `main-branch-post-dispatch`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`.
+  - `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only. Argv-only bail reasons can still route transient-infra and dispatch-failure classifications when their text matches classifier evidence.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
   - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
@@ -57,14 +58,16 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 | bug-body | failing_step | STALL_STEP | enum |
 | bug-body | failing_phase | PHASE | enum |
 | bug-body | failure_class | FAILURE_CLASS | enum |
-| bug-body | exit_code | EXIT_CODE | integer |
+| bug-body | bail_reason | BAIL_REASON | enum |
+| bug-body | exit_code | EXIT_CODE | integer-or-unknown |
 | bug-body | signature_hash | FAILURE_SIGNATURE | hex |
 | bug-body | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
 | bug-body | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
 | bug-comment | failing_step | STALL_STEP | enum |
 | bug-comment | failing_phase | PHASE | enum |
 | bug-comment | failure_class | FAILURE_CLASS | enum |
-| bug-comment | exit_code | EXIT_CODE | integer |
+| bug-comment | bail_reason | BAIL_REASON | enum |
+| bug-comment | exit_code | EXIT_CODE | integer-or-unknown |
 | bug-comment | signature_hash | FAILURE_SIGNATURE | hex |
 | bug-comment | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
 | bug-comment | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
@@ -77,7 +80,8 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 | chat-print | failing_step | STALL_STEP | enum |
 | chat-print | failing_phase | PHASE | enum |
 | chat-print | failure_class | FAILURE_CLASS | enum |
-| chat-print | exit_code | EXIT_CODE | integer |
+| chat-print | bail_reason | BAIL_REASON | enum |
+| chat-print | exit_code | EXIT_CODE | integer-or-unknown |
 | chat-print | signature_hash | FAILURE_SIGNATURE | hex |
 | chat-print | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
 | chat-print | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
@@ -88,7 +92,7 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 - `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or, when no validated detail log is available, the persisted state/session evidence. Standalone auth-failure wording is not treated as transient.
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
-- `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
+- `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, orchestrator-envelope-invalid evidence, or a known Step-2 dispatcher bail token.
 - `ci-fix-exhausted`: `BAIL_REASON=ci-fix-exhausted` together with a readable validated failure-detail log. The CI fix loop exhausted its retry budget, but the surfaced failing job and redacted log tail are actionable, so the main agent applies an inline fix and re-ships (`RESUME_HINT=step8-shippr`). The evidence-specific classes above (test/lint/dispatch/transient) still win when the log matches a more precise signature; without a readable detail log the stall stays `unrecoverable`.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
 - `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.
@@ -124,6 +128,10 @@ For `transient-infra`, the emitted retry delay means "sleep this command between
 
 Missing `ship-pr-state.sh` is never exit 3. Without other recoverable evidence it is classified as a bounded `unrecoverable` outcome; `session-env.sh` plus a recoverable bail/detail signal can still produce a recoverable class.
 
+Rendered report `exit_code` values use the `integer-or-unknown` transform: empty or non-numeric persisted values render as `unknown`, and captured numeric values, including `0`, render unchanged.
+
+Rendered report `bail_reason` values are closed-enum sanitized before publication. Allowlisted `BAIL_REASON` values render verbatim in the public `Bail reason` row, an empty value renders as `none`, and every non-allowlisted value renders as `redacted`.
+
 ## `--failure-detail-log` Validation
 
 The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Step 18a should source the canonical path from `BAIL_FAILURE_DETAIL_LOG` in `ship-pr-state.sh` when that key is populated, then pass it through `--failure-detail-log` after validation; classification validates and reads the file through one helper so the public classifier does not re-open the path after validation. Invalid logs are ignored and classification continues from the remaining persisted evidence. The offline harness covers the oversize rejection path in addition to relative/outside/symlink/non-regular validation.
@@ -138,4 +146,4 @@ Failure signatures are always SHA-256 digests. The helper uses `shasum -a 256`, 
 
 ## Security
 
-All public surfaces are composed from the allowlists above using classifier enums, hashes, integers, and fixed prose templates. Raw stdout, stderr, failure-detail logs, local paths, branch names, issue bodies, and plan text are excluded. Every body/comment surface is still piped through `scripts/redact-secrets.sh` as a secrets-family backstop. See `SECURITY.md` "Stall recovery sanitization".
+All public surfaces are composed from the allowlists above using classifier enums, hashes, integers or `unknown`, and fixed prose templates. Raw stdout, stderr, failure-detail logs, local paths, branch names, issue bodies, and plan text are excluded. Every body/comment surface is still piped through `scripts/redact-secrets.sh` as a secrets-family backstop. See `SECURITY.md` "Stall recovery sanitization".
