@@ -16,6 +16,30 @@ fail() {
     FAIL=1
 }
 
+assert_no_probe_homes() {
+    local label="$1" tmpdir="$2"
+    local survivors
+    survivors=$(find "$tmpdir" -maxdepth 1 -name 'larch-codex-probe-home.*' 2>/dev/null || true)
+    if [[ -z "$survivors" ]]; then
+        :
+    else
+        fail "$label: probe temp homes survived: $survivors"
+    fi
+}
+
+assert_argv_immediately_after_c() {
+    local label="$1" argv_file="$2" config_value="$3"
+    if awk -v want="$config_value" '
+        NR > 1 && $0 == want && prev == "-c" { ok = 1; exit }
+        { prev = $0 }
+        END { exit ok ? 0 : 1 }
+    ' "$argv_file" 2>/dev/null; then
+        :
+    else
+        fail "$label: expected -c immediately before '$config_value'"
+    fi
+}
+
 assert_line() {
     local label="$1" expected="$2" output="$3"
     if grep -Fxq "$expected" <<< "$output"; then
@@ -204,6 +228,14 @@ out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex ok" "CODEX_PRESENT=true" "$out"
 assert_line "codex ok binary" "CODEX_BINARY_FOUND=true" "$out"
+assert_no_probe_homes "codex ok cleanup" "$SCRATCH/t6"
+if [[ -f "$SCRATCH/t6/larch-codex-login-present-${STAMP_USER}.stamp" ]] \
+   && [[ "$(cat "$SCRATCH/t6/larch-codex-login-present-${STAMP_USER}.stamp" 2>/dev/null)" == "true" ]] \
+   && [[ ! -f "$SCRATCH/t6/larch-codex-env-key-present-${STAMP_USER}.stamp" ]]; then
+    :
+else
+    fail "codex login probe should write only login stamp"
+fi
 
 SB6E="$SCRATCH/bin6e"
 mkdir -p "$SB6E" "$SCRATCH/t6e"
@@ -223,6 +255,13 @@ out=$(run_cr_with_env "$SCRATCH/t6e" env PATH="$SB6E:/usr/bin:/bin" LARCH_PROBE_
     OPENAI_API_KEY=sk-larch-probe-sentinel \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex env-key ignores fresh login false stamp" "CODEX_PRESENT=true" "$out"
+if [[ -f "$SCRATCH/t6e/larch-codex-env-key-present-${STAMP_USER}.stamp" ]] \
+   && [[ "$(cat "$SCRATCH/t6e/larch-codex-env-key-present-${STAMP_USER}.stamp" 2>/dev/null)" == "true" ]] \
+   && [[ "$(cat "$SCRATCH/t6e/larch-codex-login-present-${STAMP_USER}.stamp" 2>/dev/null)" == "false" ]]; then
+    :
+else
+    fail "codex env-key probe should write only env-key stamp (login decoy unchanged)"
+fi
 
 # --- Codex: probe forwards production model args ---
 SB6M="$SCRATCH/bin6m"
@@ -263,6 +302,7 @@ out=$(run_cr "$SCRATCH/t7" env PATH="$SB7:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex non-auth" "CODEX_PRESENT=false" "$out"
 assert_line "codex non-auth binary" "CODEX_BINARY_FOUND=true" "$out"
+assert_no_probe_homes "codex non-auth cleanup" "$SCRATCH/t7"
 
 SB7A="$SCRATCH/bin7a"
 mkdir -p "$SB7A" "$SCRATCH/t7a-home/.codex"
@@ -284,6 +324,7 @@ out=$(run_cr "$SCRATCH/t7a" env PATH="$SB7A:/usr/bin:/bin" HOME="$SCRATCH/t7a-ho
 chmod u+w "$SCRATCH/t7a-home/.codex/config.toml" 2>/dev/null || true
 assert_line "codex auth-prep failure non-aborting" "CODEX_PRESENT=false" "$out"
 assert_line "codex auth-prep failure still emits cursor" "CURSOR_PRESENT=false" "$out"
+assert_no_probe_homes "codex auth-prep failure cleanup" "$SCRATCH/t7a"
 
 SB8="$SCRATCH/bin8"
 mkdir -p "$SB8"
@@ -308,6 +349,7 @@ out=$(run_cr "$SCRATCH/t8" env PATH="$SB8:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_TEST_CODEX_STATE="$SCRATCH/t8/c" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=5 "$CR")
 assert_line "codex auth retry" "CODEX_PRESENT=true" "$out"
+assert_no_probe_homes "codex auth retry cleanup" "$SCRATCH/t8"
 
 SB9="$SCRATCH/bin9"
 mkdir -p "$SB9"
@@ -326,6 +368,7 @@ out=$(run_cr "$SCRATCH/t9" env PATH="$SB9:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=2 "$CR")
 assert_line "codex auth exhaust" "CODEX_PRESENT=false" "$out"
 assert_line "codex auth exhaust binary" "CODEX_BINARY_FOUND=true" "$out"
+assert_no_probe_homes "codex auth exhaust cleanup" "$SCRATCH/t9"
 
 mkdir -p "$SCRATCH/t10"
 SB10="$SCRATCH/bin10"
@@ -399,6 +442,19 @@ assert_line "codex env-key false stamp retries live probe" "CODEX_PRESENT=true" 
 if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$SCRATCH/t10-env-key-false/codex-argv.log" 2>/dev/null; then
     fail "codex env-key false stamp should invoke live env-key probe"
 fi
+_project_key=${REPO_ROOT//\\/\\\\}
+_project_key=${_project_key//\"/\\\"}
+_trust_expected="projects.\"${_project_key}\".trust_level=\"trusted\""
+assert_argv_immediately_after_c "codex env-key false trusted-project -c adjacency" \
+    "$SCRATCH/t10-env-key-false/codex-argv.log" "$_trust_expected"
+assert_argv_immediately_after_c "codex env-key false model_provider -c adjacency" \
+    "$SCRATCH/t10-env-key-false/codex-argv.log" 'model_provider="openai-larch-env"'
+assert_argv_immediately_after_c "codex env-key false env_key -c adjacency" \
+    "$SCRATCH/t10-env-key-false/codex-argv.log" 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"'
+if grep -Fr 'sk-larch-probe-sentinel' "$SCRATCH/t10-env-key-false" 2>/dev/null; then
+    fail "codex env-key false probe must not leak OPENAI_API_KEY sentinel into TMPDIR"
+fi
+assert_no_probe_homes "codex env-key false cleanup" "$SCRATCH/t10-env-key-false"
 
 mkdir -p "$SCRATCH/t11"
 SB11="$SCRATCH/bin11"
@@ -483,6 +539,104 @@ if ((_probe_to_el > 30)); then
 fi
 assert_line "probe timeout codex" "CODEX_PRESENT=false" "$out"
 assert_line "probe timeout cursor" "CURSOR_PRESENT=false" "$out"
+assert_no_probe_homes "probe timeout codex cleanup" "$SCRATCH/t-probe-to"
+
+# --- Legacy env-key strip via probe temp config capture ---
+mkdir -p "$SCRATCH/t-legacy-strip-home/.codex"
+printf '%s\n' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    'api_key = "sk-larch-legacy-strip-sentinel"' \
+    '[profiles.keep]' \
+    'model = "ok"' > "$SCRATCH/t-legacy-strip-home/.codex/config.toml"
+_legacy_fixture="$SCRATCH/t-legacy-strip-home/.codex/config.toml"
+_legacy_fixture_copy="$SCRATCH/t-legacy-strip-fixture-copy.toml"
+cp "$_legacy_fixture" "$_legacy_fixture_copy"
+SB_LEGACY="$SCRATCH/bin-legacy-strip"
+mkdir -p "$SB_LEGACY"
+cat > "$SB_LEGACY/codex" <<'STUB'
+#!/usr/bin/env bash
+if [[ -n "${LARCH_TEST_CODEX_CONFIG_CAPTURE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$LARCH_TEST_CODEX_CONFIG_CAPTURE"
+fi
+exit 0
+STUB
+chmod +x "$SB_LEGACY/codex"
+cat > "$SB_LEGACY/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB_LEGACY/cursor"
+_legacy_capture="$SCRATCH/t-legacy-strip/captured-config.toml"
+out=$(run_cr_with_env "$SCRATCH/t-legacy-strip" env PATH="$SB_LEGACY:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-legacy-strip-home" LARCH_PROBE_TTL_SECONDS=0 \
+    OPENAI_API_KEY=sk-larch-legacy-strip-sentinel \
+    LARCH_TEST_CODEX_CONFIG_CAPTURE="$_legacy_capture" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "legacy env-key strip probe ok" "CODEX_PRESENT=true" "$out"
+assert_no_probe_homes "legacy env-key strip cleanup" "$SCRATCH/t-legacy-strip"
+if [[ -f "$_legacy_capture" ]]; then
+    :
+else
+    fail "legacy env-key strip must capture temp CODEX_HOME config"
+fi
+grep -Fq 'model_provider = "openai-larch-env"' "$_legacy_capture" 2>/dev/null \
+    && fail "legacy env-key strip must remove larch selector from temp config"
+grep -Fq 'env_key = "OPENAI_API_KEY"' "$_legacy_capture" 2>/dev/null \
+    && fail "legacy env-key strip must remove env_key from temp config"
+grep -Fq 'sk-larch-legacy-strip-sentinel' "$_legacy_capture" 2>/dev/null \
+    && fail "legacy env-key strip must remove literal credential from temp config"
+grep -Fq '[profiles.keep]' "$_legacy_capture" 2>/dev/null \
+    || fail "legacy env-key strip must retain unrelated profiles in temp config"
+if grep -Fr 'sk-larch-legacy-strip-sentinel' "$SCRATCH/t-legacy-strip" 2>/dev/null; then
+    fail "legacy env-key strip must not leak sentinel into case TMPDIR"
+fi
+if cmp -s "$_legacy_fixture_copy" "$_legacy_fixture"; then
+    :
+else
+    fail "legacy env-key strip must leave fixture HOME config unchanged"
+fi
+
+# --- Stamp decoy: fresh env-key stamp must not satisfy login-mode probe ---
+mkdir -p "$SCRATCH/t-stamp-login-decoy-home/.codex"
+printf '{"token":"login-decoy"}\n' > "$SCRATCH/t-stamp-login-decoy-home/.codex/auth.json"
+printf 'model = "ok"\n' > "$SCRATCH/t-stamp-login-decoy-home/.codex/config.toml"
+SB_DECOY="$SCRATCH/bin-stamp-login-decoy"
+mkdir -p "$SB_DECOY"
+cat > "$SB_DECOY/codex" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${LARCH_TEST_CODEX_ARGV_LOG:?}"
+exit 0
+STUB
+chmod +x "$SB_DECOY/codex"
+cat > "$SB_DECOY/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB_DECOY/cursor"
+mkdir -p "$SCRATCH/t-stamp-login-decoy"
+_decoy_stamp="$SCRATCH/t-stamp-login-decoy/larch-codex-env-key-present-${STAMP_USER}.stamp"
+printf 'true\n' >"$_decoy_stamp"
+touch "$_decoy_stamp"
+_decoy_argv="$SCRATCH/t-stamp-login-decoy/codex-argv.log"
+out=$(run_cr "$SCRATCH/t-stamp-login-decoy" env PATH="$SB_DECOY:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-stamp-login-decoy-home" LARCH_PROBE_TTL_SECONDS=3600 \
+    LARCH_TEST_CODEX_ARGV_LOG="$_decoy_argv" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=1 "$CR")
+assert_line "stamp login decoy probe ok" "CODEX_PRESENT=true" "$out"
+grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$_decoy_argv" 2>/dev/null \
+    && fail "stamp login decoy must not emit env-key argv overrides"
+grep -Fq 'model_provider="openai-larch-env"' "$_decoy_argv" 2>/dev/null \
+    && fail "stamp login decoy must not emit env-key model_provider override"
+if [[ -f "$SCRATCH/t-stamp-login-decoy/larch-codex-login-present-${STAMP_USER}.stamp" ]] \
+   && [[ "$(cat "$SCRATCH/t-stamp-login-decoy/larch-codex-login-present-${STAMP_USER}.stamp" 2>/dev/null)" == "true" ]] \
+   && [[ -f "$_decoy_stamp" ]] \
+   && [[ "$(cat "$_decoy_stamp" 2>/dev/null)" == "true" ]]; then
+    :
+else
+    fail "stamp login decoy should write login stamp true and leave env-key decoy unchanged"
+fi
+assert_no_probe_homes "stamp login decoy cleanup" "$SCRATCH/t-stamp-login-decoy"
 
 set +e
 (cd "$REPO_ROOT" && TMPDIR="$SCRATCH/probe-arg-tmp" LARCH_QUIET_DISABLE=1 "$CR" --probe >/dev/null 2>"$SCRATCH/unknown.stderr")

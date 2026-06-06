@@ -88,6 +88,9 @@ if [[ "$tool" == "codex" ]]; then
   if [[ -n "${TEST_AGENT_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$TEST_AGENT_CODEX_CONFIG_FILE"
   fi
+  if [[ -n "${TEST_AGENT_CODEX_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" && -L "$CODEX_HOME/auth.json" ]]; then
+    readlink "$CODEX_HOME/auth.json" > "$TEST_AGENT_CODEX_AUTH_LINK_FILE"
+  fi
   inner=("$@")
   i=0
   while [[ $i -lt ${#inner[@]} ]]; do
@@ -1844,6 +1847,143 @@ if jq -e '.manifest_basename == "scout-round1-manifest.json" and .yield_tsv_base
 else
     fail "review-scout-manifest basenames should come from non-empty KVs: $(cat "$scout_missing_files_batch" 2>/dev/null)"
 fi
+
+# --- Codex auth-prep failure (login mode): cursor fallback, no codex argv, no temp-home survivors ---
+work_rf_auth_prep_fail="$TMP/rf-codex-auth-prep-fail"
+make_work_repo "$work_rf_auth_prep_fail"
+rf_auth_prep_impl="$work_rf_auth_prep_fail/implement"
+mkdir -p "$rf_auth_prep_impl"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$rf_auth_prep_impl/session-env.sh"
+rf_auth_prep_case_tmp="$TMP/rf-codex-auth-prep-fail-case-tmp"
+mkdir -p "$rf_auth_prep_case_tmp"
+rf_auth_prep_fixture="$TMP/rf-codex-auth-prep-fail-home"
+mkdir -p "$rf_auth_prep_fixture/.codex"
+printf 'model_provider = "openai-larch-env"\n' > "$rf_auth_prep_fixture/.codex/config.toml"
+printf '{"token":"login"}\n' > "$rf_auth_prep_fixture/.codex/auth.json"
+rf_auth_prep_bin="$TMP/rf-codex-auth-prep-fail-bin"
+mkdir -p "$rf_auth_prep_bin"
+cat > "$rf_auth_prep_bin/mv" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *larch-codex-review-fix-home.*)
+    exit 99
+    ;;
+esac
+exec /bin/mv "$@"
+EOF
+chmod +x "$rf_auth_prep_bin/mv"
+rf_auth_prep_before=$(find "$rf_auth_prep_case_tmp" -maxdepth 1 -name 'larch-codex-review-fix-home.*' 2>/dev/null | LC_ALL=C sort || true)
+rf_auth_prep_argv="$TMP/rf-codex-auth-prep-fail-argv.txt"
+: >"$rf_auth_prep_argv"
+mkdir -p "$rf_auth_prep_case_tmp"
+set +e
+out_rf_auth_prep=$(
+    OPENAI_API_KEY='' \
+    TMPDIR="$rf_auth_prep_case_tmp" \
+    PATH="$rf_auth_prep_bin:$PATH" \
+    HOME="$rf_auth_prep_fixture" \
+    TEST_AGENT_BEHAVIOR=cursor-success \
+    TEST_AGENT_ARGV_FILE="$rf_auth_prep_argv" \
+    run_review_and_fix "$work_rf_auth_prep_fail" \
+        --implement-tmpdir "$rf_auth_prep_impl" --mode diff --round-num 1 \
+        --session-env-path "$rf_auth_prep_impl/session-env.sh" --run-id rf-auth-prep-fail-run
+)
+rc_rf_auth_prep=$?
+set -e
+[[ "$rc_rf_auth_prep" -eq 0 ]] || { echo "$out_rf_auth_prep" >&2; fail "rf auth-prep failure expected exit 0 got $rc_rf_auth_prep"; }
+grep -Fq 'CODER_TOOL=cursor' <<< "$out_rf_auth_prep" || fail "rf auth-prep failure should fall back to cursor"
+grep -Fq 'codex-auth-setup: failed to prepare Codex auth material' "$rf_auth_prep_impl/round-1/coder-codex.wrapper.log" \
+    || fail "rf auth-prep failure wrapper log missing auth setup breadcrumb"
+[[ ! -s "$rf_auth_prep_argv" ]] || fail "rf auth-prep failure must not invoke codex argv capture"
+rf_auth_prep_after=$(find "$rf_auth_prep_case_tmp" -maxdepth 1 -name 'larch-codex-review-fix-home.*' 2>/dev/null | LC_ALL=C sort || true)
+while IFS= read -r _rf_home; do
+    [[ -z "$_rf_home" ]] && continue
+    if ! grep -Fxq "$_rf_home" <<< "$rf_auth_prep_before"; then
+        fail "rf auth-prep failure left new review-fix temp home: $_rf_home"
+    fi
+done <<< "$rf_auth_prep_after"
+pass "rf codex auth-prep failure cursor fallback and cleanup"
+
+# --- Codex login fallback with fixture auth.json symlink ---
+work_rf_login_fallback="$TMP/rf-codex-login-fallback"
+make_work_repo "$work_rf_login_fallback"
+rf_login_impl="$work_rf_login_fallback/implement"
+mkdir -p "$rf_login_impl"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$rf_login_impl/session-env.sh"
+rf_login_fixture="$TMP/rf-codex-login-fallback-home"
+mkdir -p "$rf_login_fixture/.codex"
+printf '{"token":"login"}\n' > "$rf_login_fixture/.codex/auth.json"
+printf 'model = "ok"\n' > "$rf_login_fixture/.codex/config.toml"
+rf_login_argv="$TMP/rf-codex-login-fallback-argv.txt"
+rf_login_link="$TMP/rf-codex-login-fallback-auth-link.txt"
+set +e
+out_rf_login=$(
+    OPENAI_API_KEY='' \
+    HOME="$rf_login_fixture" \
+    TEST_AGENT_BEHAVIOR=codex-success \
+    TEST_AGENT_ARGV_FILE="$rf_login_argv" \
+    TEST_AGENT_CODEX_AUTH_LINK_FILE="$rf_login_link" \
+    run_review_and_fix "$work_rf_login_fallback" \
+        --implement-tmpdir "$rf_login_impl" --mode diff --round-num 1 \
+        --session-env-path "$rf_login_impl/session-env.sh" --run-id rf-login-fallback-run
+)
+rc_rf_login=$?
+set -e
+[[ "$rc_rf_login" -eq 0 ]] || { echo "$out_rf_login" >&2; fail "rf login fallback expected exit 0 got $rc_rf_login"; }
+grep -Fq 'CODER_TOOL=codex' <<< "$out_rf_login" || fail "rf login fallback should use codex"
+_rf_login_link_target=$(cat "$rf_login_link" 2>/dev/null || true)
+_rf_login_auth_real=$(cd "$rf_login_fixture/.codex" && pwd)/auth.json
+if [[ "$_rf_login_link_target" == "$_rf_login_auth_real" ]] \
+   || [[ "$_rf_login_link_target" == "$rf_login_fixture/.codex/auth.json" ]]; then
+    :
+else
+    fail "rf login fallback auth symlink target (got '$_rf_login_link_target' want '$_rf_login_auth_real')"
+fi
+grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$rf_login_argv" 2>/dev/null \
+    && fail "rf login fallback must not emit env-key argv overrides"
+pass "rf codex login fallback with fixture auth"
+
+# --- Codex env-key dispatch failure breadcrumb and temp-home cleanup ---
+work_rf_env_key_fail="$TMP/rf-codex-env-key-dispatch-fail"
+make_work_repo "$work_rf_env_key_fail"
+rf_env_key_impl="$work_rf_env_key_fail/implement"
+mkdir -p "$rf_env_key_impl"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$rf_env_key_impl/session-env.sh"
+rf_env_key_argv="$TMP/rf-codex-env-key-dispatch-fail-argv.txt"
+rf_env_key_home_capture="$TMP/rf-codex-env-key-dispatch-fail-home.txt"
+set +e
+out_rf_env_key=$(
+    OPENAI_API_KEY=sk-larch-rf-env-key-sentinel \
+    TEST_AGENT_BEHAVIOR=cursor-success \
+    TEST_AGENT_ARGV_FILE="$rf_env_key_argv" \
+    TEST_AGENT_CODEX_HOME_FILE="$rf_env_key_home_capture" \
+    run_review_and_fix "$work_rf_env_key_fail" \
+        --implement-tmpdir "$rf_env_key_impl" --mode diff --round-num 1 \
+        --session-env-path "$rf_env_key_impl/session-env.sh" --run-id rf-env-key-dispatch-fail-run
+)
+rc_rf_env_key=$?
+set -e
+[[ "$rc_rf_env_key" -eq 0 ]] || { echo "$out_rf_env_key" >&2; fail "rf env-key dispatch failure expected exit 0 got $rc_rf_env_key"; }
+grep -Fq 'CODER_TOOL=cursor' <<< "$out_rf_env_key" || fail "rf env-key dispatch failure should fall back to cursor"
+grep -Fq 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path' \
+    "$rf_env_key_impl/round-1/coder-codex.wrapper.log" \
+    || fail "rf env-key dispatch failure wrapper log breadcrumb"
+grep -Fq 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path' \
+    "$rf_env_key_impl/round-1/coder-codex.sidecar" \
+    || fail "rf env-key dispatch failure sidecar breadcrumb"
+grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_impl/round-1/coder-codex.wrapper.log" 2>/dev/null \
+    && fail "rf env-key dispatch failure wrapper log leaked sentinel"
+grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_impl/round-1/coder-codex.sidecar" 2>/dev/null \
+    && fail "rf env-key dispatch failure sidecar leaked sentinel"
+grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_argv" 2>/dev/null \
+    && fail "rf env-key dispatch failure argv leaked sentinel"
+grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_impl/round-1/coder-codex.events.jsonl" 2>/dev/null \
+    && fail "rf env-key dispatch failure events.jsonl leaked sentinel"
+rf_env_key_home=$(cat "$rf_env_key_home_capture" 2>/dev/null || true)
+if [[ -n "$rf_env_key_home" && -e "$rf_env_key_home" ]]; then
+    fail "rf env-key dispatch failure should remove temp CODEX_HOME ($rf_env_key_home)"
+fi
+pass "rf codex env-key dispatch failure breadcrumb and cleanup"
 
 fi  # end section: dispatch
 

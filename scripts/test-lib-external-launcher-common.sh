@@ -131,6 +131,24 @@ if [[ -L "$TMPDIR_ROOT/login-home/auth.json" ]]; then
 else
     fail "codex login path must symlink auth.json"
 fi
+if [[ -f "$TMPDIR_ROOT/login-home/config.toml" ]]; then
+    pass
+else
+    fail "codex login post-table: login-home/config.toml must exist before grep counts"
+fi
+_login_provider_count=$(grep -Fxc 'model_provider = "openai-larch-env"' "$TMPDIR_ROOT/login-home/config.toml" 2>/dev/null || true)
+if [[ "$_login_provider_count" -eq 0 ]]; then
+    pass
+else
+    fail "codex login post-table: expected zero exact model_provider selector lines, got $_login_provider_count"
+fi
+_login_envkey_count=$(grep -Fxc 'env_key = "OPENAI_API_KEY"' "$TMPDIR_ROOT/login-home/config.toml" 2>/dev/null || true)
+if [[ "$_login_envkey_count" -eq 0 ]]; then
+    pass
+else
+    fail "codex login post-table: expected zero exact env_key lines, got $_login_envkey_count"
+fi
+assert_file_not_line "codex login post-table removes nested other selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
 
 printf '%s\n' \
     "model_provider='openai-larch-env'" \
@@ -164,6 +182,43 @@ assert_file_contains "codex login strip preserves nested selector text" "$TMPDIR
 assert_file_contains "codex login strip ignores triple quote in inline comment" "$TMPDIR_ROOT/strip-edge-config.toml" 'title = "keep after inline comment"'
 assert_file_contains "codex login strip recovers after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" '[model_providers.after]'
 assert_file_contains "codex login strip preserves table after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep after malformed skipped table"'
+
+printf '%s\n' \
+    'title = "keep after inline dq comment"' \
+    'model_provider = "openai-larch-env" # note """ must not enter multiline mode' \
+    '[model_providers.openai-larch-env]' \
+    'name = "strip dq comment fixture"' > "$TMPDIR_ROOT/multiline-dq-comment.toml"
+external_strip_codex_larch_env_provider "$TMPDIR_ROOT/multiline-dq-comment.toml"
+assert_file_contains "multiline dq comment fixture keeps title" "$TMPDIR_ROOT/multiline-dq-comment.toml" 'title = "keep after inline dq comment"'
+assert_file_not_contains "multiline dq comment fixture strips selector" "$TMPDIR_ROOT/multiline-dq-comment.toml" 'model_provider = "openai-larch-env"'
+assert_file_not_contains "multiline dq comment fixture strips larch table" "$TMPDIR_ROOT/multiline-dq-comment.toml" 'strip dq comment fixture'
+
+printf '%s\n' \
+    "body = '''" \
+    '[model_providers.openai-larch-env]' \
+    'model_provider = "openai-larch-env"' \
+    "'''" \
+    '[profiles.keep]' \
+    'model = "ok"' > "$TMPDIR_ROOT/multiline-sq-body.toml"
+external_strip_codex_larch_env_provider "$TMPDIR_ROOT/multiline-sq-body.toml"
+assert_file_contains "multiline sq body fixture retains header line" "$TMPDIR_ROOT/multiline-sq-body.toml" '[model_providers.openai-larch-env]'
+assert_file_contains "multiline sq body fixture retains selector text" "$TMPDIR_ROOT/multiline-sq-body.toml" 'model_provider = "openai-larch-env"'
+assert_file_contains "multiline sq body fixture retains profiles" "$TMPDIR_ROOT/multiline-sq-body.toml" '[profiles.keep]'
+
+printf '%s\n' \
+    'preamble = """closed on same line"""' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    '[model_providers.openai-larch-env]' \
+    'name = "strip same-line close"' \
+    '[profiles.keep]' \
+    'model = "ok"' > "$TMPDIR_ROOT/multiline-dq-same-line-close.toml"
+external_strip_codex_larch_env_provider "$TMPDIR_ROOT/multiline-dq-same-line-close.toml"
+assert_file_contains "multiline same-line close keeps preamble" "$TMPDIR_ROOT/multiline-dq-same-line-close.toml" 'preamble = """closed on same line"""'
+assert_file_not_contains "multiline same-line close strips selector" "$TMPDIR_ROOT/multiline-dq-same-line-close.toml" 'model_provider = "openai-larch-env"'
+assert_file_not_contains "multiline same-line close strips env_key" "$TMPDIR_ROOT/multiline-dq-same-line-close.toml" 'env_key = "OPENAI_API_KEY"'
+assert_file_not_contains "multiline same-line close strips larch table" "$TMPDIR_ROOT/multiline-dq-same-line-close.toml" 'strip same-line close'
+assert_file_contains "multiline same-line close keeps profiles" "$TMPDIR_ROOT/multiline-dq-same-line-close.toml" '[profiles.keep]'
 
 _strip_fail_home="$TMPDIR_ROOT/strip-fail-home"
 mkdir -p "$_strip_fail_home" "$TMPDIR_ROOT/no-mv"
