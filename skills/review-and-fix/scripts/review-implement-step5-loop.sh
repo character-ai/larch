@@ -336,6 +336,9 @@ run_implement_loop() {
                             if [[ "$STEP5_CHK_RELEVANT_CHECKS_SKIPPED" == "true" || "$STEP5_CHK_RELEVANT_CHECKS_OK" == "true" ]]; then
                                 break
                             fi
+                            if [[ "$STEP5_CHK_STATUS" != "fail" ]]; then
+                                break
+                            fi
                             step5_surface_lint_stderr_tail
                             _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                             step5_emit_final_envelope stall true lint-fix-attempt-cap "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"

@@ -203,8 +203,8 @@ dir=$(make_tmp case7m)
 write_state "$dir" 5 review
 log_a="$dir/failure-a.log"
 log_b="$dir/failure-b.log"
-printf 'make: test-check-contains-pins FAILED\n' >"$log_a"
-printf 'python: unsatisfied local gate FAILED\n' >"$log_b"
+printf 'shellcheck: SC2034 unused variable in hooks.sh\n' >"$log_a"
+printf 'markdownlint MD038 failed in SKILL.md\n' >"$log_b"
 run_capture "$SANDBOX/case7m-a.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log_a"
 run_capture "$SANDBOX/case7m-b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log_b"
 sig_a=$(kv FAILURE_SIGNATURE "$SANDBOX/case7m-a.out")
