@@ -490,7 +490,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --classification "$design_classification" \
      --partition-requested "$partition_requested" \
      --brainstorm-requested "$brainstorm_requested" \
-     \
+     --manual-requested "$manual_requested" \
      ${REPO:+--repo "$REPO"})
    _init_rc=$?
    set -e
