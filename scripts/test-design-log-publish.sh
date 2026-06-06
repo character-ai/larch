@@ -477,11 +477,16 @@ printf 'cursor dyn transcript\n' >"$TMP/design/cursor-plan-dyn-foo-output.txt"
 printf 'codex dyn transcript\n' >"$TMP/design/codex-primary-plan-dyn-foo-output.txt"
 printf 'codex phased transcript\n' >"$TMP/design/codex-primary-plan-arch-output-phase2.txt"
 printf 'codex phased3 transcript\n' >"$TMP/design/codex-primary-plan-arch-output-phase3.txt"
+printf 'cursor phased transcript\n' >"$TMP/design/cursor-plan-arch-output-phase2.txt"
 # Producer-backed sidecars on transcript bases:
 printf 'CMD_JSON=[]\n' >"$TMP/design/claude-plan-generic-output.txt.meta"
 printf 'stderr body\n' >"$TMP/design/claude-plan-generic-output.txt.stderr"
 printf 'stderr tail\n' >"$TMP/design/claude-plan-generic-output.txt.stderr-tail"
 printf '{"x":1}\n' >"$TMP/design/cursor-plan-arch-output.txt.json"
+printf '{"x":1}\n' >"$TMP/design/codex-primary-plan-arch-output-phase2.txt.json"
+printf 'meta row\n' >"$TMP/design/cursor-plan-arch-output.txt.meta"
+printf 'stderr tail\n' >"$TMP/design/cursor-plan-arch-output.txt.stderr-tail"
+printf 'stderr tail\n' >"$TMP/design/codex-primary-plan-arch-output.txt.stderr-tail"
 printf '{"event":1}\n' >"$TMP/design/claude-plan-generic-output.txt.jsonl"
 printf 'launch stderr\n' >"$TMP/design/cursor-plan-arch-output.txt.launch-stderr"
 printf 'launch stderr\n' >"$TMP/design/codex-primary-plan-arch-output.txt.launch-stderr"
@@ -554,10 +559,15 @@ for denied in \
     "codex-primary-plan-dyn-foo-output.txt" \
     "codex-primary-plan-arch-output-phase2.txt" \
     "codex-primary-plan-arch-output-phase3.txt" \
+    "cursor-plan-arch-output-phase2.txt" \
     "claude-plan-generic-output.txt.meta" \
     "claude-plan-generic-output.txt.stderr" \
     "claude-plan-generic-output.txt.stderr-tail" \
     "cursor-plan-arch-output.txt.json" \
+    "codex-primary-plan-arch-output-phase2.txt.json" \
+    "cursor-plan-arch-output.txt.meta" \
+    "cursor-plan-arch-output.txt.stderr-tail" \
+    "codex-primary-plan-arch-output.txt.stderr-tail" \
     "claude-plan-generic-output.txt.jsonl" \
     "cursor-plan-arch-output.txt.launch-stderr" \
     "codex-primary-plan-arch-output.txt.launch-stderr" \

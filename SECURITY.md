@@ -49,8 +49,9 @@ Only sanitized per-bucket usage rows in `larch-tokens-*.jsonl`, extracted via
 `design-log-publish.sh` also excludes raw plan-review transcripts
 (`cursor-plan-*-output*.txt`, `codex-primary-plan-*-output*.txt`,
 `claude-plan-*-output*.txt`), producer-backed sidecars (Claude `.stderr` /
-`.stderr-tail`, `.launch-stderr` for all tools, `.meta`, `.tsv`, `.cap-hit`,
-Cursor `.json`), generic Claude prompts (`claude-plan-*.prompt`), slot-named
+`.stderr-tail`, Cursor/Codex `.stderr-tail`, `.launch-stderr` for all tools,
+`.meta`, `.tsv`, `.cap-hit`, Cursor `.json`, Codex primary `.json`), generic
+Claude prompts (`claude-plan-*.prompt`), slot-named
 collector failure logs, dropped-slot diagnostics
 (`plan-review-slots.ndjson.output-files.dropped-slots`), and aggregate
 `plan-review-collector.stderr`; `findings.md` / `voting-tally.md` remain

@@ -35,10 +35,10 @@ branch by:
    exclusions (#3534) deny raw transcripts (`cursor-plan-*-output*.txt`,
    `codex-primary-plan-*-output*.txt`, `claude-plan-*-output*.txt`; phased
    `-output-phase2.txt` / dynamic slugs match `*-output*.txt`), producer-backed
-   sidecars (Cursor: `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`;
-   Codex primary: `.meta`, `.cap-hit`, `.tsv`, `.launch-stderr`; Claude:
-   `.meta`, `.tsv`, `.launch-stderr`, `.stderr`, `.stderr-tail`, `.jsonl` —
-   not Cursor/Codex `.stderr` / `.stderr-tail`, codex `.json`, or
+   sidecars (Cursor: `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`,
+   `.stderr-tail`; Codex primary: `.meta`, `.json`, `.cap-hit`, `.tsv`,
+   `.launch-stderr`, `.stderr-tail`; Claude: `.meta`, `.tsv`, `.launch-stderr`,
+   `.stderr`, `.stderr-tail`, `.jsonl` — not Cursor/Codex `.stderr` or
    cursor/codex `.jsonl`, which have no producers), and diagnostics
    (`claude-plan-*.prompt`, slot-named `*-collector.failure.log` patterns,
    `plan-review-collector.stderr`,
