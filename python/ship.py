@@ -665,10 +665,10 @@ def _write_ship_state(
         except (OSError, UnicodeDecodeError) as exc:
             raise ShipError(f"cannot read existing ship state: {path}") from exc
     if clear_handoff_keys:
-        fields.pop("CONFLICT_FILES", None)
+        _ = fields.pop("CONFLICT_FILES", None)
     if terminal_outcome is None and phase != "done":
         for key in _TERMINAL_ONLY_STATE_KEYS:
-            fields.pop(key, None)
+            _ = fields.pop(key, None)
     fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
