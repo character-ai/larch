@@ -57,6 +57,7 @@ make_wait_barrier_plugin_root() {
     cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
 #!/usr/bin/env bash
 printf 'stub voter prompt\n'
+printf 'Read the ballot from this path: /stub/ballot\n'
 STUB_RENDER
     chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
     cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
@@ -120,6 +121,7 @@ make_voter1_delayed_done_plugin_root() {
     cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
 #!/usr/bin/env bash
 printf 'stub voter prompt\n'
+printf 'Read the ballot from this path: /stub/ballot\n'
 STUB_RENDER
     chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
     cat > "$root/scripts/launch-claude-review.sh" <<'STUB_CLAUDE'

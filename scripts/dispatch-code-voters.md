@@ -10,6 +10,10 @@ Family B writer.
 
 The `dispatch-with-waterfall.sh` invocation is wrapped with `set +e`/`set -e` so a non-zero exit (e.g. when a reviewer launcher exits abnormally mid-run) does not abort the dispatch before the voter tally step. A non-zero waterfall exit is logged via `larch_err` and treated as an empty waterfall result; the post-wait size checks then classify individual voters as failed or launched based on file presence.
 
+## Prompt integrity
+
+`make_voter_prompt_file` checks the exit code of `render-voter-prompt.sh` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
+
 ## Inputs
 
 - `--ballot-file FILE`: required markdown ballot path.

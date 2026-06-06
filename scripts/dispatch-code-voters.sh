@@ -51,11 +51,18 @@ mkdir -p "$REVIEW_TMPDIR"
 make_voter_prompt_file() {
     local label="$1"
     local prompt_file="$REVIEW_TMPDIR/${label}-vote-prompt.txt"
-    "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
-        --ballot-file "$BALLOT_FILE" \
-        --panel-role "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted" \
-        --id-grammar finding-oos \
-        --verification-context code > "$prompt_file"
+    if ! "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+            --ballot-file "$BALLOT_FILE" \
+            --panel-role "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted" \
+            --id-grammar finding-oos \
+            --verification-context code > "$prompt_file"; then
+        larch_err "dispatch-code-voters.sh: render-voter-prompt.sh failed for $label voter; aborting"
+        exit 2
+    fi
+    if ! grep -qF 'Read the ballot from this path' "$prompt_file"; then
+        larch_err "dispatch-code-voters.sh: render-voter-prompt.sh output for $label voter is missing ballot pointer; aborting"
+        exit 2
+    fi
     printf '%s' "$prompt_file"
 }
 
