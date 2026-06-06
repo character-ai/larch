@@ -200,11 +200,12 @@ assert_contains "lint-fix PROHIBITION via lib" \
 plan_review_out="$TMP/render-plan-review-prompt.txt"
 design_tmpdir="$TMP/design-tmpdir"
 mkdir -p "$design_tmpdir"
+cp "$plan_file" "$design_tmpdir/plan.txt"
 printf '{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}\n' > "$design_tmpdir/run-params.json"
 "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" \
     --archetype arch \
     --vendor codex \
-    --plan-file "$plan_file" \
+    --plan-file "$design_tmpdir/plan.txt" \
     --design-tmpdir "$design_tmpdir" > "$plan_review_out"
 
 assert_contains "plan-reviewer TSV header literal" \

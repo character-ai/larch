@@ -1230,6 +1230,17 @@ grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-p
   || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/check-plan-size.sh" \
   || fail "(3175) check-plan-size.sh must source shared optional-trailer lib"
+[[ -f "$REPO_ROOT/scripts/lib-untrusted-block.sh" ]] \
+  || fail "scripts/lib-untrusted-block.sh must ship in plugin tree"
+[[ -f "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" ]] \
+  || fail "scripts/lib-scope-anchor-handoff.sh must ship in plugin tree"
+grep -Fq 'lib-untrusted-block' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
+  || grep -Fq 'lib-scope-anchor-handoff' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
+  || fail "plan-review-loop.sh must source scope-anchor handoff library"
+grep -Fq 'lib-untrusted-block' "$REPO_ROOT/scripts/launch-claude-subprocess.sh" \
+  || fail "launch-claude-subprocess.sh must source lib-untrusted-block.sh"
+grep -Fq 'lib-untrusted-block' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
+  || fail "revise-plan-with-waterfall.sh must source lib-untrusted-block.sh"
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"
@@ -1935,7 +1946,7 @@ contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md mi
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
-contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist both `.step3-plan-review-result.env` and `.step3-review-result.env` from the re-tally so Gate B and later Step 3 logic do not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
+contains "$SKILL_MD" 'so both `.step3-plan-review-result.env` and `.step3-review-result.env` are refreshed through `larch_scope_anchor_retally_handoff_value` before entering Gate B' 'SKILL.md missing MainAgent re-tally state refresh pin'
 # shellcheck disable=SC2016 # $ tokens are literal markdown pins
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins

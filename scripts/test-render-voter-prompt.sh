@@ -118,6 +118,18 @@ case_scope_anchor_file() {
         --id-grammar finding-oos \
         --verification-context plan) \
         || { echo "FAIL: no-flag voter prompt changed between renders" >&2; exit 1; }
+    cache_root="$tmp/cache"
+    cache_anchor="$cache_root/larch/sessions/session-1/plan-review-scope-anchor.txt"
+    mkdir -p "$(dirname "$cache_anchor")"
+    printf '%s\n' 'Cache-backed issue scope.' >"$cache_anchor"
+    XDG_CACHE_HOME="$cache_root" "$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role "test panel role" \
+        --id-grammar finding-oos \
+        --verification-context plan \
+        --scope-anchor-file "$cache_anchor" >"$tmp/cache-out.txt"
+    grep -Fq 'Cache-backed issue scope.' "$tmp/cache-out.txt" \
+        || { echo "FAIL: cache-backed scope anchor not accepted" >&2; exit 1; }
     rm -rf "$tmp"
 }
 

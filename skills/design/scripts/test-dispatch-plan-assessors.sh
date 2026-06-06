@@ -18,6 +18,11 @@ mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/shared/scripts" "$PLUGIN_ST
 
 cp "$ROOT/skills/shared/scripts/render-assessor-prompt.sh" "$PLUGIN_STUB/skills/shared/scripts/"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
+cp "$ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_STUB/scripts/"
+cp "$ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_STUB/scripts/"
+# lib-untrusted-block.sh resolves redact-secrets.sh via CLAUDE_PLUGIN_ROOT/sibling
+# fallbacks (fail-closed) — the stub plugin must carry it for prompt renders.
+cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 chmod +x "$PLUGIN_STUB/skills/shared/scripts/render-assessor-prompt.sh"
 
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
@@ -127,13 +132,18 @@ grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing mani
 grep -Fq -- '--no-fallback' "$PLAN_ASSESSOR_WF_ARGS_LOG" || fail 'assessor waterfall must pass --no-fallback'
 
 mkdir -p "$TMP/codex-only" "$TMP/cursor-only" "$TMP/both-absent"
+# Feature files live inside each per-case design tmpdir: render-assessor-prompt.sh
+# enforces --feature-file containment under DESIGN_TMPDIR / IMPLEMENT_TMPDIR.
+printf 'feature\n' >"$TMP/codex-only/feature.txt"
+printf 'feature\n' >"$TMP/cursor-only/feature.txt"
+printf 'feature\n' >"$TMP/both-absent/feature.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP/codex-only" \
   --round-num 2 \
   --plan-original "$TMP/o.txt" \
   --plan-prev "$TMP/p.txt" \
   --plan-current "$TMP/c.txt" \
-  --feature-file "$TMP/feature.txt" \
+  --feature-file "$TMP/codex-only/feature.txt" \
   --codex-present true \
   --cursor-present false)
 [[ "$(grep -c . "$TMP/codex-only/plan-assessor-slots.ndjson" || true)" == "1" ]] || fail 'codex-only assessor manifest should have one row'
@@ -145,7 +155,7 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --plan-original "$TMP/o.txt" \
   --plan-prev "$TMP/p.txt" \
   --plan-current "$TMP/c.txt" \
-  --feature-file "$TMP/feature.txt" \
+  --feature-file "$TMP/cursor-only/feature.txt" \
   --codex-present false \
   --cursor-present true)
 [[ "$(grep -c . "$TMP/cursor-only/plan-assessor-slots.ndjson" || true)" == "1" ]] || fail 'cursor-only assessor manifest should have one row'
@@ -157,7 +167,7 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --plan-original "$TMP/o.txt" \
   --plan-prev "$TMP/p.txt" \
   --plan-current "$TMP/c.txt" \
-  --feature-file "$TMP/feature.txt" \
+  --feature-file "$TMP/both-absent/feature.txt" \
   --codex-present false \
   --cursor-present false)
 [[ ! -s "$TMP/both-absent/plan-assessor-slots.ndjson" ]] || fail 'both-absent assessor manifest must be empty'

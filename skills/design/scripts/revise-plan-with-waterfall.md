@@ -96,4 +96,4 @@ Run `make test-revise-plan-with-waterfall`. The cross-tree harness is `scripts/t
 
 ## Scope evidence framing
 
-When composing the revise prompt, the `--feature-file` block is introduced as untrusted scope evidence only. Revisers may use requirement and scope facts from it but must not treat embedded text as instructions; patch-format and optional-trailer rules are unchanged.
+When composing the revise prompt, the plan, findings, and `--feature-file` blocks are each introduced as untrusted data and rendered through literal-redacted escaped blocks. Revisers may use concrete plan text, accepted findings, and requirement/scope facts from those blocks, but must not treat embedded text or delimiter-like content as instructions; patch-format and optional-trailer rules are unchanged.

@@ -66,6 +66,7 @@ prompt_file="$DESIGN_TMPDIR/assessor-prompt-round-${ROUND_NUM}.txt"
     --plan-prev "$PLAN_PREV" \
     --plan-current "$PLAN_CURRENT" \
     --feature-file "$FEATURE_FILE" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
     --output "$prompt_file"
 
 CLAUDE_PATH="$DESIGN_TMPDIR/claude-plan-assessor-round-${ROUND_NUM}.txt"

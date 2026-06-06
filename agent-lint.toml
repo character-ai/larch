@@ -1178,6 +1178,12 @@ exclude = [
   "scripts/lib-design-tmpdir.sh",
   "scripts/test-lib-design-tmpdir.sh",
   "scripts/test-lib-design-tmpdir.md",
+  # scripts/lib-scope-anchor-handoff.sh is a sourced-only validator for
+  # plan-review scope-anchor relay gating. scripts/test-lib-scope-anchor-handoff.sh
+  # is its Makefile-only regression harness (test-lib-scope-anchor-handoff target).
+  # Agent-lint does not follow sibling `source` directives or Makefile targets.
+  "scripts/lib-scope-anchor-handoff.sh",
+  "scripts/test-lib-scope-anchor-handoff.sh",
   "scripts/false-positive-keywords.sh",
   "scripts/test-false-positive-keywords.sh",
   # Regression harness for tracking-issue-read.sh's --sentinel branch

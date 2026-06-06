@@ -81,12 +81,17 @@ append_warning() {
 }
 
 resolve_feature_file() {
+    local staged_anchor="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
     local design_feature="$DESIGN_TMPDIR/feature-description.txt"
-    if [[ -f "$design_feature" ]]; then
+    if [[ -s "$staged_anchor" ]]; then
+        printf '%s' "$staged_anchor"
+        return 0
+    fi
+    if [[ -s "$design_feature" ]]; then
         printf '%s' "$design_feature"
         return 0
     fi
-    if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "$IMPLEMENT_TMPDIR/feature-description.txt" ]]; then
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "$IMPLEMENT_TMPDIR/feature-description.txt" ]]; then
         printf '%s' "$IMPLEMENT_TMPDIR/feature-description.txt"
         return 0
     fi
@@ -154,8 +159,11 @@ plan_original="$DESIGN_TMPDIR/plan.txt-original"
 plan_prev="$DESIGN_TMPDIR/plan-after-round-$((ROUND_NUM - 1)).txt"
 plan_current="$DESIGN_TMPDIR/plan.txt"
 feature_file="$(resolve_feature_file)"
+if [[ ! -s "$feature_file" && -n "${IMPLEMENT_TMPDIR:-}" && -s "$IMPLEMENT_TMPDIR/feature-description.txt" ]]; then
+    feature_file="$IMPLEMENT_TMPDIR/feature-description.txt"
+fi
 
-for missing in "$plan_original" "$plan_prev" "$plan_current" "$feature_file"; do
+for missing in "$plan_original" "$plan_prev" "$plan_current"; do
     if [[ ! -f "$missing" ]]; then
         emit "**⚠ assessor: missing input snapshot ($missing); skipped"
         cap=$(mktemp "${TMPDIR:-/tmp}/assessor-missing.XXXXXX")
@@ -166,6 +174,15 @@ for missing in "$plan_original" "$plan_prev" "$plan_current" "$feature_file"; do
         exit 0
     fi
 done
+if [[ ! -s "$feature_file" ]]; then
+    emit "**⚠ assessor: missing input snapshot ($feature_file); skipped"
+    cap=$(mktemp "${TMPDIR:-/tmp}/assessor-missing.XXXXXX")
+    printf '%s\n' "missing=$feature_file" >"$cap"
+    append_warning "$cap" 0
+    rm -f "$cap"
+    emit_assessor_kv missing-snapshot skipped 0 "" ""
+    exit 0
+fi
 
 rm -f \
     "$DESIGN_TMPDIR/claude-plan-assessor-round-${ROUND_NUM}.txt" \

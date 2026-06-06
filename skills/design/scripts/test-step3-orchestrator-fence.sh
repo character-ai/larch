@@ -315,6 +315,46 @@ else
     fail "SCOPE_ANCHOR_FILE expected $D_SCOPE/plan-review-scope-anchor.txt got ${SCOPE_ANCHOR_FILE:-}"
 fi
 
+echo "=== scope-anchor re-tally prose pins ==="
+SKILL_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/SKILL.md"
+APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates.md"
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks and shell syntax.
+if command grep -Fq 'preserve `SCOPE_ANCHOR_FILE` from the Step 3 result state as `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"`' "$SKILL_FILE"; then
+    pass 'SKILL pins re-tally input/output separation'
+else
+    fail 'SKILL missing re-tally input/output separation prose'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if command grep -Fq 'without `--scope-anchor-file`' "$SKILL_FILE"; then
+    pass 'SKILL pins no re-tally scope-anchor argv'
+else
+    fail 'SKILL missing no re-tally scope-anchor argv prose'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if command grep -Fq 'fall back to `_RETALLY_SCOPE_ANCHOR_IN` if non-empty and CR/LF-clean' "$SKILL_FILE"; then
+    pass 'SKILL pins re-tally ok fallback'
+else
+    fail 'SKILL missing re-tally ok fallback prose'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks and shell syntax.
+if command grep -Fq 'bind `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"` before launch, unset `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` before parsing stdout' "$APPROVAL_GATES_FILE"; then
+    pass 'approval gates mirror re-tally input/output separation'
+else
+    fail 'approval gates missing re-tally input/output separation'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if command grep -Fq 'Do not persist stale exported `SCOPE_ANCHOR_FILE` on `tally-error`.' "$SKILL_FILE"; then
+    pass 'SKILL pins stale scope anchor error omission'
+else
+    fail 'SKILL missing stale scope anchor error omission prose'
+fi
+# shellcheck disable=SC2016 # Literal documentation probe contains backticks.
+if command grep -Fq 'Raw tally stdout `SCOPE_ANCHOR_FILE=` lines are stripped before relay' "$APPROVAL_GATES_FILE" "$SKILL_FILE" "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review.md" >/dev/null; then
+    pass 'scope anchor raw tally strip documented'
+else
+    fail 'missing raw tally strip documentation'
+fi
+
 echo "=== later-KV-wins with no safe env ==="
 D_LATER="$TMP/later-kv-wins"
 mkdir -p "$D_LATER"
