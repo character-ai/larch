@@ -87,8 +87,8 @@ out=$(env -u LARCH_QUIET_PID \
         --feature-file "$TMP/design/feature-description.txt" \
         --codex-present true \
         --cursor-present true \
-        --round-num 1 \
-        --round-cap 3)
+        --round-num 1
+        )
 
 printf '%s\n' "$out" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete from single-pass integration loop"
 printf '%s\n' "$out" | grep -q '^REVISE_STATUS=skipped$' || fail "single-pass loop must not auto-revise"

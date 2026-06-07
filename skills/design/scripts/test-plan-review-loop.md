@@ -17,7 +17,7 @@ FD 2 and `plan-review-collector.stderr` (guards the `plan-review-loop.sh` tee).
 
 ## Additional coverage (single-pass status mapping)
 
-- `--round-cap` remains accepted for compatibility but the loop runs one pass only.
+- The removed round-cap flag is rejected as an unknown flag.
 - Accepted findings are surfaced to Gate B without revising `plan.txt`.
 - Zero accepted findings with zero successful collectors maps to `degraded-empty-collector`; a degraded non-empty panel maps to `zero-findings-degraded-panel`.
 - Panel failures and tally errors preserve their terminal statuses before collector fallback logic.

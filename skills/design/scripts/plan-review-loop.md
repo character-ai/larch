@@ -1,6 +1,6 @@
 # plan-review-loop.sh
 
-**Consumer**: `/design` Step 3 — single-pass plan-review driver. `--round-cap` is accepted for compatibility and validation only.
+**Consumer**: `/design` Step 3 — single-pass plan-review driver.
 
 **Primary callers**: `skills/design/scripts/run-step3-review.sh` (invoked from `skills/design/SKILL.md` Step 3).
 
@@ -25,7 +25,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 ## Argv
 
-`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (round label; default 1), optional `--round-cap N` (validated but inert), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
+`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (round label; default 1), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
 
 The script always runs one pass and never invokes the revision waterfall; Gate B is the apply point.
 
@@ -53,7 +53,7 @@ The script always runs one pass and never invokes the revision waterfall; Gate B
 
 ## Single-pass status mapping
 
-The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. `--round-cap` is accepted and positive-integer validated but inert. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
+The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
 
 ## Durable handoff: `.step3-plan-review-result.env`
 

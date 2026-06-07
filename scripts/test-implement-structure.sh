@@ -471,14 +471,15 @@ awk '
 ' "$SKILL_MD" >"$step5_fence_tmp"
 [[ -s "$step5_fence_tmp" ]] || fail "SKILL.md Step 5 telemetry fence missing"
 for needle in \
-  '--count-prior-degraded "$IMPLEMENT_TMPDIR" 1' \
   "printf 'DYNAMIC_ARCHETYPES_CAP=%s\\n'" \
-  "printf 'PRIOR_DEGRADED_ROUNDS=%s\\n'" \
-  "printf 'ROUND_CAP=%s\\n'" \
-  "printf 'EFFECTIVE_ROUND_CAP=%s\\n'"
+  "printf 'ROUND_CAP=%s\\n'"
 do
   grep -Fq -- "$needle" "$step5_fence_tmp" || fail "Step 5 telemetry fence missing: $needle"
 done
+removed_round_cap_lib='lib-implement-'"round-cap"
+if grep -Fq "$removed_round_cap_lib" "$step5_fence_tmp"; then
+  fail "Step 5 telemetry fence must not reference removed round-cap helper library"
+fi
 if grep -Fq 'dynamic_archetypes_value' "$step5_fence_tmp"; then
   fail "Step 5 telemetry fence must not read dead dynamic_archetypes_value state"
 fi

@@ -635,18 +635,20 @@ contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
 contains "$RUN_STEP3_SH" 'review-round-count.txt' 'run-step3-review.sh missing review-round counter'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pass round-cap to plan-review-loop'
+# shellcheck disable=SC2016 # Removed flag must not be forwarded to the inner loop.
+_removed_round_cap_flag='--round-'"cap"
+absent "$RUN_STEP3_SH" "$_removed_round_cap_flag" 'run-step3-review.sh must not mention removed round-cap flag'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 absent "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must NOT forward convergence-threshold to plan-review-loop'
 absent "$SKILL_MD" '--convergence-threshold' 'SKILL.md must NOT pass convergence-threshold to run-step3-review.sh'
 absent "$SKILL_MD" 'LARCH_DESIGN_CONVERGENCE_THRESHOLD' 'SKILL.md must NOT reference LARCH_DESIGN_CONVERGENCE_THRESHOLD'
-# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
+# shellcheck disable=SC2016 # Removed env var must not remain in Step 3 launch fence.
+_removed_design_cap_var='LARCH_DESIGN_'"ROUND_CAP"
+absent "$SKILL_MD" "$_removed_design_cap_var" 'SKILL must not reference removed design round-cap env var'
 TR_RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/test-run-step3-review.sh"
 contains "$TR_RUN_STEP3_SH" 'driver argv matches plan-review-loop contract' \
   'test-run-step3-review.sh missing plan-review-loop integration-seam case'
-_plan_forward_flags=(--design-tmpdir --plan-file --feature-file --codex-present --cursor-present --round-num --round-cap)
+_plan_forward_flags=(--design-tmpdir --plan-file --feature-file --codex-present --cursor-present --round-num)
 for _pf in "${_plan_forward_flags[@]}"; do
   grep -Fq -- "$_pf" "$PLAN_LOOP_SH" \
     || fail "plan-review-loop.sh missing $_pf in argv parser"
@@ -714,7 +716,7 @@ absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must n
 
 contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
 contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path and no force flag.' 'flags.md missing unconditional validator contract'
-contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
+contains "$APPROVAL_MD" 'Cap: 5 (both tiers).' 'approval-gates.md missing flat cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.' 'approval-gates.md missing canonical boundary-qualified Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'auto-applying N accepted finding(s)' 'approval-gates.md missing Gate B auto-apply default breadcrumb'
 contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --approve explicit Gate B option wording'
@@ -1051,7 +1053,6 @@ assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
 assert_no_direct_step3b_step4_routes 'configuration-and-permissions.md' "$CONFIG_MD"
 contains "$RUN_STEP3_SH" 'skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'run-step3-review.sh missing boundary-qualified cap breadcrumb'
 contains "$FLAGS_MD" 'proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'flags.md missing boundary-qualified panel-failed route'
-contains "$CONFIG_MD" 'proceeds through Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'configuration docs missing boundary-qualified round-cap route'
 contains "$SKILL_MD" 'repair pre-existing paused SIMPLE runs' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
 contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.

@@ -35,7 +35,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 3. **NEVER use the `ours`/`theirs` git labels when describing conflict sides during rebase.** **Why**: during rebase their semantics are inverted vs. merge (`--ours` = base being rebased onto = upstream main); labels cause silent resolution errors. **How to apply**: always use "upstream (main)" and "feature branch commit" in Phase 1 commentary and user prompts.
 
-4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --mode loop` once per Step 5 entry on the standard path; the launcher forwards session-env + tmpdir context to `review-and-fix.sh` **without** any `--panel` token (see `scripts/run-step5-review.md`). `run-step5-review.sh` uses the conventional `$IMPLEMENT_TMPDIR/plan.txt` path and a fixed base `--round-cap` of **5** (not pre-inflated in loop mode); degraded-round inflation is disk-derived inside `review-and-fix.sh` via `scripts/lib-implement-round-cap.sh`. The **hard** review panel is applied only inside `review-and-fix.sh` → `review-core.sh`. **`--self-review` exception**: when `self_review=true`, Step 5 skips `run-step5-review.sh` and the main agent performs a thorough inline self-review instead — review still runs, just by a different reviewer.
+4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --mode loop` once per Step 5 entry on the standard path; the launcher forwards session-env + tmpdir context to `review-and-fix.sh` **without** any `--panel` token (see `scripts/run-step5-review.md`). `run-step5-review.sh` uses the conventional `$IMPLEMENT_TMPDIR/plan.txt` path and a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget). The **hard** review panel is applied only inside `review-and-fix.sh` → `review-core.sh`. **`--self-review` exception**: when `self_review=true`, Step 5 skips `run-step5-review.sh` and the main agent performs a thorough inline self-review instead — review still runs, just by a different reviewer.
 
 5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the larch-log OOS update.** **Why**: idempotency recovery MUST write the recovered accepted-OOS URLs to the `oos-issues` log batch and refresh the terminal summary content; silent skip breaks the committed run-log contract. **How to apply**: the idempotent-rerun branch in Step 9a.1 performs only `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch oos-issues` using URLs recovered from `oos-issues-created.md`, plus terminal-summary refresh when applicable. `run-statistics` remains owned by the post-checkpoint Step 8+ block after `oos-disposition-checkpoint.sh` exit 0 (NEVER #14). **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and larch-log Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
 
@@ -791,20 +791,10 @@ case "$dynamic_archetypes_cap" in
   [0-3]) ;;
   *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s\n' "$dynamic_archetypes_cap" >&2; exit 2 ;;
 esac
-# Base Step 5 round cap; degraded rounds only inflate the banner hint.
+# Fixed Step 5 round cap.
 round_cap=5
-if ! prior_degraded_rounds="$("${CLAUDE_PLUGIN_ROOT}/scripts/lib-implement-round-cap.sh" --count-prior-degraded "$IMPLEMENT_TMPDIR" 1)"; then
-  printf 'ERROR: Step 5 banner failed to count prior degraded rounds\n' >&2
-  exit 2
-fi
-case "$prior_degraded_rounds" in
-  ''|*[!0-9]*) printf 'ERROR: Step 5 banner prior_degraded_rounds is non-integer: %s\n' "$prior_degraded_rounds" >&2; exit 2 ;;
-esac
-effective_round_cap=$((round_cap + prior_degraded_rounds))
 printf 'DYNAMIC_ARCHETYPES_CAP=%s\n' "$dynamic_archetypes_cap"
-printf 'PRIOR_DEGRADED_ROUNDS=%s\n' "$prior_degraded_rounds"
 printf 'ROUND_CAP=%s\n' "$round_cap"
-printf 'EFFECTIVE_ROUND_CAP=%s\n' "$effective_round_cap"
 ```
 
 ### Self-review mode (`--self-review`)
@@ -842,15 +832,15 @@ git add -A
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** foreground `run-step5-review.sh` Bash tool call that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a **base** `--round-cap` of **5** (not pre-inflated; degraded-round inflation happens inside `review-and-fix.sh`), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** foreground `run-step5-review.sh` Bash tool call that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix.sh` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `3` (implement mode default, valid up to 3). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
+Use the `DYNAMIC_ARCHETYPES_CAP` and `ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix.sh` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `3` (implement mode default, valid up to 3). For the Step 5 banner, `round_cap` is the fixed hard ceiling **5**. Treat a non-zero fence exit as a hard Step 5 preflight failure and log it to `Warnings`.
 
 Print once before the `run-step5-review.sh` invocation:
 
-`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 4 specialists per vendor (Cursor + Codex); dynamic-archetypes cap=$dynamic_archetypes_cap**`
+`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 4 specialists per vendor (Cursor + Codex); dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"

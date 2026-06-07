@@ -10,7 +10,6 @@ TMP_BASE=$(mktemp -d "${TMPDIR:-/tmp}/larch-step5-loop-timing-test.XXXXXX")
 trap 'rm -rf "$TMP_BASE"' EXIT
 
 flush_review_batches() { return 0; }
-count_prior_degraded_rounds() { printf '0\n'; }
 
 # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
 . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"

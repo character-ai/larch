@@ -4,9 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-# shellcheck source=scripts/lib-implement-round-cap.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-implement-round-cap.sh"
 
 fail() {
     printf 'run-step5-review.sh: %s\n' "$1" >&2
@@ -179,7 +176,7 @@ case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
 
-# Fixed base Step 5 round cap; review-and-fix.sh owns panel selection.
+# Fixed hard Step 5 round cap; review-and-fix.sh owns panel selection.
 ROUND_CAP_BASE="5"
 
 case "$STEP5_MODE" in
@@ -197,20 +194,11 @@ case "$STEP5_MODE" in
         )
         ;;
     single)
-        DEGRADED_ROUNDS="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM")"
-        case "$DEGRADED_ROUNDS" in
-            ''|*[!0-9]*) fail "degraded round count must be numeric, got: ${DEGRADED_ROUNDS:-<empty>}" ;;
-        esac
-        ROUND_CAP_INFLATED="$((ROUND_CAP_BASE + DEGRADED_ROUNDS))"
-        if [[ "$ROUND_NUM" == "1" ]]; then
-            printf "run-step5-review.sh: base Step 5 review round cap is %s; degraded prior rounds extend the effective cap (this round: %s).\n" \
-                "$ROUND_CAP_BASE" "$ROUND_CAP_INFLATED" >&2
-        fi
         REVIEW_AND_FIX_ARGS=(
             --implement-tmpdir "$IMPLEMENT_TMPDIR"
             --mode diff
             --round-num "$ROUND_NUM"
-            --round-cap "$ROUND_CAP_INFLATED"
+            --round-cap "$ROUND_CAP_BASE"
             --session-env-path "$SESSION_ENV_PATH"
             --codex-available "$CODEX_PRESENT"
             --cursor-available "$CURSOR_PRESENT"

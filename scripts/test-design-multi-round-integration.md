@@ -14,7 +14,7 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `skills/design/s
 
 ## Coverage
 
-- Single-pass loop with `--round-cap 3` still runs one round and reaches a terminal status without revising `plan.txt`
+- Single-pass loop still runs one round and reaches a terminal status without revising `plan.txt`
 - `round-summary.env` materialized under `plan-review/round-1/` with the single-pass terminal status
 - Raw reviewer outputs remain excluded from `round-N/` snapshots
 - `findings-classification.tsv` survives terminal round snapshots
