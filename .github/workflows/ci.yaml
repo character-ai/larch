@@ -470,3 +470,22 @@ jobs:
         run: pip install -r python/requirements-test.txt
       - name: Run Python tests
         run: make py-test
+
+  # Bash 3.2 conformance check. macOS ships /bin/bash at 3.2.57 (Apple
+  # keeps the GPLv2-era bash frozen). Runs bash -n (syntax-only, no
+  # execution) on every .sh file so parser-level 3.2 incompatibilities
+  # surface in CI before they break developer machines. Complements the
+  # static lint-bash32 grep in lint-local, which catches known 4+ tokens
+  # but cannot catch subtler parser differences.
+  bash32-check:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Syntax-check all scripts under bash 3.2
+        run: |
+          set -euo pipefail
+          max_parallel="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)"
+          find scripts skills .claude -name "*.sh" \
+            -not -path "*/larch-logs/*" -print0 \
+            | xargs -0 -n 1 -P "$max_parallel" /bin/bash -n --
