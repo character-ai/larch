@@ -61,6 +61,15 @@ The canonical OOS problem-vs-solution clause exists in **six** logical places:
 
 The drift harness `case_canonical_text_drift_guard` greps a **shared substring** (identical tail of both grammar variants) across the four Markdown / SKILL locations (2–5). When you change OOS wording, update all six locations and run `make test-render-voter-prompt`.
 
+The necessity-gate rubric exists in **four** sync locations:
+
+1. `skills/shared/review-acceptance-rubric.md` — canonical source (body embedded in voter prompt at runtime via `awk`).
+2. This helper — necessity framing printed before the rubric body; canonical sentence `the feature would be incomplete, broken, unverifiable, or regressed without it` must appear in rendered output.
+3. `skills/shared/reviewer-templates.md` — Necessity gate subsection in all four archetype sections (and propagated to generated agents / pre-rendered bodies).
+4. `scripts/render-specialist-prompt.sh` — competition notice embeds the canonical sentence inline.
+
+The drift harness `case_rubric_sync_guard` in `scripts/test-render-voter-prompt.sh` verifies items 1–4 plus the rendered voter prompt output. Run `make test-render-voter-prompt` when the rubric changes.
+
 ## Scope anchor option
 
 `--scope-anchor-file <path>` is plan-review-only (`--verification-context plan`) and defaults off, preserving byte-compatible prompts when omitted. When supplied, the renderer inlines the staged scope anchor as untrusted evidence, instructs voters to evaluate proportionality against the originating issue scope rather than the finding text alone, treats leading `[SCOPE-REDUCTION]` findings problem-first, states that non-leading tag mentions are not markers, and confirms normal quorum/threshold behavior remains unchanged.

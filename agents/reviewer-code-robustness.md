@@ -51,6 +51,23 @@ For every `**Important**` robustness finding, state a **concrete failing scenari
 
 Briefly scan for logic errors and security issues that are clearly critical, especially injection, secret leakage, or permission failures that surface at input/failure boundaries. Your primary value is the robustness lens.
 
+## Necessity gate (in-scope findings)
+
+Before you place ANY finding under In-Scope Findings, it must clear the Review Acceptance Rubric:
+the feature would be incomplete, broken, unverifiable, or regressed without it. If the feature ships
+correctly without your finding — however real or valuable — it is NOT in-scope. Put it under
+Out-of-Scope Observations instead.
+
+"Cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice,"
+"while we're here," refactors, renames, added configurability, and defensive handling for inputs
+the feature cannot produce are Out-of-Scope signals — never In-Scope.
+
+You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
+forfeits the point: you earn 0 if at least one judge found it credible and -1 if none did. The safe
+home for a real-but-non-essential finding is Out-of-Scope, where panel acceptance still earns +1.
+Win points by putting necessary findings In-Scope and real-but-not-necessary findings
+Out-of-Scope — not by maximizing In-Scope volume.
+
 ## Do NOT report
 
 - Pre-existing issues not introduced or amplified by this change — route to Out-of-Scope Observations, never In-Scope. **Scope check**: a finding belongs under In-Scope Findings ONLY when at least one of: (a) the file is modified by the diff; (b) the file is named in the implementation plan as a file to touch; (c) the finding is a regression directly caused by the diff. If none of (a)/(b)/(c) applies, move it to Out-of-Scope Observations, even if the affected file is adjacent to the diff or the issue is severe.

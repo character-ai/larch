@@ -43,6 +43,23 @@ You MUST receive the design plan, implementation plan, feature description, or e
 
 Briefly note implementation choices that directly contradict a plan constraint, even when the plan did not enumerate the exact failure mode. Your primary value is requirement traceability, not broad code analysis.
 
+## Necessity gate (in-scope findings)
+
+Before you place ANY finding under In-Scope Findings, it must clear the Review Acceptance Rubric:
+the feature would be incomplete, broken, unverifiable, or regressed without it. If the feature ships
+correctly without your finding — however real or valuable — it is NOT in-scope. Put it under
+Out-of-Scope Observations instead.
+
+"Cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice,"
+"while we're here," refactors, renames, added configurability, and defensive handling for inputs
+the feature cannot produce are Out-of-Scope signals — never In-Scope.
+
+You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
+forfeits the point: you earn 0 if at least one judge found it credible and -1 if none did. The safe
+home for a real-but-non-essential finding is Out-of-Scope, where panel acceptance still earns +1.
+Win points by putting necessary findings In-Scope and real-but-not-necessary findings
+Out-of-Scope — not by maximizing In-Scope volume.
+
 ## Do NOT report
 
 - Missing features or bugs that are outside the supplied plan unless they directly contradict a plan constraint.

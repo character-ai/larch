@@ -360,6 +360,8 @@ TAGGING_DESCRIPTION
     printf '\n'
     cat <<'COMPETITION'
 **Competition notice**: Your findings will be voted on by a 3-voter primary panel. A finding accepted by 2+ YES votes earns you +1 point. Findings with at least 1 YES but below the acceptance threshold earn 0 points. Findings with 0 YES cost you -1 point. Focus on high-quality, actionable findings. Out-of-scope observations use the same scoring shape: accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues, neutral OOS items (≥1 YES, not accepted) score 0, and rejected OOS items (0 YES) cost -1 point.
+
+The voting panel applies the **Review Acceptance Rubric** (`skills/shared/review-acceptance-rubric.md`): voters vote YES only if the feature would be incomplete, broken, unverifiable, or regressed without it. "Legitimate but not necessary" is a NO — route it to Out-of-Scope instead, where panel acceptance still earns +1. Win points by putting necessary findings In-Scope and real-but-not-necessary findings Out-of-Scope — not by maximizing In-Scope volume.
 COMPETITION
     if [[ -n "$COMPETITION_NOTICE_FILE" ]]; then
       printf '\n'

@@ -12,4 +12,4 @@ Run with `bash scripts/test-dispatch-plan-voters.sh` or `make test-dispatch-plan
 
 Also asserts `VOTER_PATHS_FILE` KV and `plan-voter-paths.txt` contents on absent-tools and healthy stub paths.
 
-When `CLAUDE_PLUGIN_ROOT` points at the harness stub root, the harness copies `skills/shared/scripts/render-voter-prompt.sh` into that stub so `dispatch-plan-voters.sh` can execute the shared renderer. The healthy-path assertions grep the composed prompts for the canonical finding-oos OOS clause, the informational-fix guardrail, and both `FINDING_N` / `OOS_N` example lines.
+When `CLAUDE_PLUGIN_ROOT` points at the harness stub root, the harness copies `skills/shared/scripts/render-voter-prompt.sh` and `skills/shared/review-acceptance-rubric.md` into that stub so `dispatch-plan-voters.sh` can execute the shared renderer (which embeds the rubric body at runtime). The healthy-path assertions grep the composed prompts for the canonical finding-oos OOS clause, the informational-fix guardrail, and both `FINDING_N` / `OOS_N` example lines.

@@ -223,11 +223,44 @@ case_argument_validation() {
         || { echo "FAIL: scope anchor with code context must still contain ballot pointer" >&2; exit 1; }
 }
 
+# Distinctive sentence shared between the rubric file, the voter prompt output,
+# reviewer-templates.md, and external-reviewer renderers.
+CANONICAL_RUBRIC_DRIFT_MARK='the feature would be incomplete, broken, unverifiable, or regressed without it'
+
+case_rubric_sync_guard() {
+    # 1. Rubric file itself must contain the canonical sentence.
+    command grep -Fq "$CANONICAL_RUBRIC_DRIFT_MARK" \
+        "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" \
+        || { echo "FAIL: rubric sync — canonical sentence missing from skills/shared/review-acceptance-rubric.md" >&2; exit 1; }
+    # 2. Rendered voter prompt must embed the rubric body.
+    local out
+    out=$("$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role "rubric sync test role" \
+        --id-grammar finding-only \
+        --verification-context code)
+    command grep -Fq "$CANONICAL_RUBRIC_DRIFT_MARK" <<< "$out" \
+        || { echo "FAIL: rubric sync — canonical sentence missing from render-voter-prompt.sh output" >&2; exit 1; }
+    # 3. Reviewer template must contain the Necessity gate subsection.
+    command grep -Fq "$CANONICAL_RUBRIC_DRIFT_MARK" \
+        "$REPO_ROOT/skills/shared/reviewer-templates.md" \
+        || { echo "FAIL: rubric sync — canonical sentence missing from skills/shared/reviewer-templates.md" >&2; exit 1; }
+    # 4. External plan-review renderer must reference the rubric file (it reads it at runtime).
+    command grep -Fq 'review-acceptance-rubric.md' \
+        "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" \
+        || { echo "FAIL: rubric sync — render-plan-review-prompt.sh does not reference review-acceptance-rubric.md" >&2; exit 1; }
+    # 5. External code-review renderer (competition notice) must reference the rubric framing.
+    command grep -Fq "$CANONICAL_RUBRIC_DRIFT_MARK" \
+        "$REPO_ROOT/scripts/render-specialist-prompt.sh" \
+        || { echo "FAIL: rubric sync — canonical sentence missing from render-specialist-prompt.sh" >&2; exit 1; }
+}
+
 case_finding_only
 case_finding_oos
 case_scope_anchor_file
 case_scope_anchor_delimiter_breakout
 case_canonical_text_drift_guard
+case_rubric_sync_guard
 case_executable_bit
 case_lib_quiet_isolation
 case_argument_validation
