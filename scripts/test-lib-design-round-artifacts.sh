@@ -39,7 +39,7 @@ assert_included oos.md
 # Canonical pin for issue #3143 group A (oos-accepted-design.md allowlist coverage).
 assert_included oos-accepted-design.md
 assert_included oos-accepted-design.before.md
-assert_excluded ballot.txt
+assert_included ballot.txt
 assert_included voting-tally.md
 assert_included plan-review-slots.ndjson
 assert_included plan-voter-slots.ndjson
