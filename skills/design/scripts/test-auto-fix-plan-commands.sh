@@ -261,4 +261,191 @@ out9=$(AUTOFIX_TEST_MODE=fix-first LARCH_AUTOFIX_VALIDATE_PLAN_SH="$INFRA_VALIDA
 [[ "$(kv "$out9" FINAL_VALIDATE_STATUS)" == "validator-infra-failed" ]] || fail "case9 final status: $out9"
 [[ -f "$(kv "$out9" REVALIDATE_LOG_FILE)" ]] || fail "case9 missing revalidate log: $out9"
 
+# ─── Per-vendor launcher seam tests (coverage for #3640 items a/b/c) ────────
+# Cases C10-C12: exercise dispatch_vendor_fix codex branch via
+# LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH so exit-parsing code runs (no DISPATCH_SH
+# bypass); Cases C13: cursor branch via LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH
+# with stubbed cursor libs; Case C14: repo-root parity; Case C15: re-invocation.
+
+CODEX_LAUNCHER_STUB="$TMP/codex-launcher-stub.sh"
+cat >"$CODEX_LAUNCHER_STUB" <<'STUB'
+#!/usr/bin/env bash
+# Stub for LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH.  Emits LAUNCHER_EXIT=N to
+# stdout (captured by auto-fix-plan-commands.sh into launcher_stdout).
+workdir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --workdir) workdir="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "${AUTOFIX_CODEX_LAUNCHER_MODE:-}" in
+  exit0-fix)
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$workdir/plan.txt"
+    printf 'LAUNCHER_EXIT=0\n'
+    ;;
+  exit1)
+    printf 'LAUNCHER_EXIT=1\n'
+    ;;
+  no-exit-kv)
+    printf 'launcher ran but emitted no exit kv on stdout\n'
+    ;;
+esac
+STUB
+chmod +x "$CODEX_LAUNCHER_STUB"
+
+run_codex_seam() {
+  local d="$1"; shift
+  LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH="$CODEX_LAUNCHER_STUB" \
+  LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
+  "$SUBJECT" --design-tmpdir "$d" --plan-file "$d/plan.txt" "$@" 2>/dev/null
+}
+
+# Case C10: LAUNCHER_EXIT=0 + plan fix → AUTOFIX_STATUS=ok.
+DC10="$TMP/dc10"; mk_design "$DC10"
+outC10=$(AUTOFIX_CODEX_LAUNCHER_MODE=exit0-fix run_codex_seam "$DC10" --codex-present true --cursor-present false)
+[[ "$(kv "$outC10" AUTOFIX_STATUS)" == "ok" ]] || fail "caseC10 expected ok: $outC10"
+[[ "$(kv "$outC10" FIXED_BY)" == "codex" ]] || fail "caseC10 expected FIXED_BY=codex: $outC10"
+[[ "$(kv "$outC10" ATTEMPTS)" == "1" ]] || fail "caseC10 expected 1 attempt: $outC10"
+
+# Case C11: LAUNCHER_EXIT=1 → parsed_exit=1, dispatch fails → exhausted.
+DC11="$TMP/dc11"; mk_design "$DC11"
+outC11=$(AUTOFIX_CODEX_LAUNCHER_MODE=exit1 run_codex_seam "$DC11" --codex-present true --cursor-present false)
+[[ "$(kv "$outC11" AUTOFIX_STATUS)" == "exhausted" ]] || fail "caseC11 expected exhausted: $outC11"
+[[ "$(kv "$outC11" ATTEMPTS)" == "1" ]] || fail "caseC11 expected 1 attempt: $outC11"
+
+# Case C12: no LAUNCHER_EXIT on stdout → fallback parsed_exit=1 → exhausted.
+DC12="$TMP/dc12"; mk_design "$DC12"
+outC12=$(AUTOFIX_CODEX_LAUNCHER_MODE=no-exit-kv run_codex_seam "$DC12" --codex-present true --cursor-present false)
+[[ "$(kv "$outC12" AUTOFIX_STATUS)" == "exhausted" ]] || fail "caseC12 expected exhausted: $outC12"
+[[ "$(kv "$outC12" ATTEMPTS)" == "1" ]] || fail "caseC12 expected 1 attempt: $outC12"
+
+# Case C13: Cursor dispatch via LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH (offline:
+# stub cursor libs via CLAUDE_PLUGIN_ROOT; no-op GATE_B to avoid dedup-plan-lines.py
+# lookup against the fake root).
+CURSOR_FAKE_ROOT="$TMP/cursor-fake-root"
+mkdir -p "$CURSOR_FAKE_ROOT/scripts"
+cp "$ROOT/scripts/lib-quiet.sh" "$CURSOR_FAKE_ROOT/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/lib-design-tmpdir.sh" "$CURSOR_FAKE_ROOT/scripts/lib-design-tmpdir.sh"
+cat >"$CURSOR_FAKE_ROOT/scripts/lib-external-launcher-common.sh" <<'STUB'
+# shellcheck shell=bash
+if [[ -n "${LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED:-}" ]]; then return 0; fi
+LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED=1
+external_serial_lock_acquire() { return 0; }
+external_serial_lock_release_after() { return 0; }
+external_launcher_promote_inner_done() { return 0; }
+external_launcher_append_outer_meta() { return 0; }
+external_launcher_append_codex_exec_outer_meta() { return 0; }
+STUB
+cat >"$CURSOR_FAKE_ROOT/scripts/lib-cursor-launcher-common.sh" <<'STUB'
+# shellcheck shell=bash
+if [[ -n "${LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED:-}" ]]; then return 0; fi
+LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED=1
+source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
+cursor_launcher_load_model_args() { MODEL_ARGS=(); return 0; }
+cursor_launcher_setup_auth_argv() { return 0; }
+cursor_launcher_append_outer_meta() { return 0; }
+cursor_launcher_promote_inner_done() { return 0; }
+cursor_launcher_setup_private_config_dir() { return 0; }
+STUB
+cat >"$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s' "${1:-}"
+STUB
+chmod +x "$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh"
+cat >"$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh"
+
+CURSOR_RUN_STUB="$TMP/cursor-run-stub.sh"
+cat >"$CURSOR_RUN_STUB" <<'STUB'
+#!/usr/bin/env bash
+# DESIGN_TMPDIR is exported by auto-fix-plan-commands.sh.
+case "${AUTOFIX_CURSOR_RUN_MODE:-}" in
+  exit0-fix)
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"${DESIGN_TMPDIR:?}/plan.txt"
+    exit 0
+    ;;
+  exit1)
+    exit 1
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+STUB
+chmod +x "$CURSOR_RUN_STUB"
+
+GATE_B_NOOP_STUB="$TMP/gate-b-noop.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$GATE_B_NOOP_STUB"
+chmod +x "$GATE_B_NOOP_STUB"
+
+run_cursor_seam() {
+  local d="$1"; shift
+  CLAUDE_PLUGIN_ROOT="$CURSOR_FAKE_ROOT" \
+  LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH="$CURSOR_RUN_STUB" \
+  LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
+  LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH="$GATE_B_NOOP_STUB" \
+  "$SUBJECT" --design-tmpdir "$d" --plan-file "$d/plan.txt" "$@" 2>/dev/null
+}
+
+# Case C13: run-external-agent.sh exit0 + plan fix → AUTOFIX_STATUS=ok.
+DC13="$TMP/dc13"; mk_design "$DC13"
+outC13=$(AUTOFIX_CURSOR_RUN_MODE=exit0-fix run_cursor_seam "$DC13" --codex-present false --cursor-present true)
+[[ "$(kv "$outC13" AUTOFIX_STATUS)" == "ok" ]] || fail "caseC13 expected ok: $outC13"
+[[ "$(kv "$outC13" FIXED_BY)" == "cursor" ]] || fail "caseC13 expected FIXED_BY=cursor: $outC13"
+[[ "$(kv "$outC13" ATTEMPTS)" == "1" ]] || fail "caseC13 expected 1 attempt: $outC13"
+
+# Case C14: repo-root parity — --repo-root is forwarded to revalidate().
+REPO_ROOT_VALIDATE_STUB="$TMP/validate-repo-root.sh"
+REPO_ROOT_LOG="$TMP/repo-root-capture.log"
+FAKE_REPO_ROOT="$TMP/fake-repo-root"
+mkdir -p "$FAKE_REPO_ROOT"
+cat >"$REPO_ROOT_VALIDATE_STUB" <<'STUB'
+#!/usr/bin/env bash
+plan_file=""
+repo_root=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --plan-file) plan_file="$2"; shift 2 ;;
+    --repo-root) repo_root="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'REPO_ROOT_ARG=%s\n' "$repo_root" >>"${AUTOFIX_REPO_ROOT_LOG:?}"
+if grep -Fq 'autofix fixed' "$plan_file" 2>/dev/null; then
+  printf 'VALIDATE_STATUS=ok\n'
+else
+  printf 'VALIDATE_STATUS=defects-found\n'
+fi
+exit 0
+STUB
+chmod +x "$REPO_ROOT_VALIDATE_STUB"
+
+DC14="$TMP/dc14"; mk_design "$DC14"
+: >"$REPO_ROOT_LOG"
+AUTOFIX_TEST_MODE=fix-first \
+LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" \
+LARCH_AUTOFIX_VALIDATE_PLAN_SH="$REPO_ROOT_VALIDATE_STUB" \
+AUTOFIX_REPO_ROOT_LOG="$REPO_ROOT_LOG" \
+"$SUBJECT" --design-tmpdir "$DC14" --plan-file "$DC14/plan.txt" \
+  --codex-present true --cursor-present false --repo-root "$FAKE_REPO_ROOT" \
+  >/dev/null 2>/dev/null
+FAKE_REPO_ROOT_CANON="$(cd "$FAKE_REPO_ROOT" && pwd -P)"
+grep -Fq "REPO_ROOT_ARG=$FAKE_REPO_ROOT_CANON" "$REPO_ROOT_LOG" \
+  || fail "caseC14 repo-root not forwarded to revalidator"
+
+# Case C15: sequential invocations — second call starts with fresh attempt
+# counts independent of prior plan-autofix/ artifacts.
+DC15="$TMP/dc15"; mk_design "$DC15"
+outC15a=$(AUTOFIX_TEST_MODE=fix-first run_subject "$DC15" --codex-present true --cursor-present true)
+[[ "$(kv "$outC15a" AUTOFIX_STATUS)" == "ok" ]] || fail "caseC15a first call expected ok: $outC15a"
+# Reset plan to defect state; second invocation must use fresh attempt counts.
+printf 'plan body\ndiff_lines: 3\n' >"$DC15/plan.txt"
+outC15b=$(AUTOFIX_TEST_MODE=never-fix run_subject "$DC15" --codex-present true --cursor-present true)
+[[ "$(kv "$outC15b" AUTOFIX_STATUS)" == "exhausted" ]] || fail "caseC15b second call expected exhausted: $outC15b"
+[[ "$(kv "$outC15b" ATTEMPTS)" == "2" ]] || fail "caseC15b second call must have 2 fresh attempts: $outC15b"
+
 pass 'auto-fix-plan-commands harness'

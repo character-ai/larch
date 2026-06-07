@@ -68,7 +68,7 @@ Update together: `skills/design/SKILL.md` **### Plan command validator failure (
 
 ## External-binary verification
 
-The live Codex/Cursor dispatch reuses already-verified `launch-codex-exec.sh` / `run-external-agent.sh` argv shapes (per `.claude/rules/external-tool-launcher-parity.md`). The end-to-end live cross-vendor fix path is exercised only against real vendors; the offline harness covers loop/alternation/re-validation/KV logic through the dispatch seam. Live verification belongs to CI / manual runs.
+The live Codex/Cursor dispatch reuses already-verified `launch-codex-exec.sh` / `run-external-agent.sh` argv shapes (per `.claude/rules/external-tool-launcher-parity.md`). The offline harness covers loop/alternation/re-validation/KV logic through the full dispatch seam (`LARCH_AUTOFIX_DISPATCH_SH`) and also exercises the per-vendor exit-parsing code paths via the narrower `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` and `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` seams (with stubbed cursor libs via `CLAUDE_PLUGIN_ROOT`). Full end-to-end live cross-vendor fix paths require real vendors; live verification belongs to CI / manual runs.
 
 ## Harness
 
