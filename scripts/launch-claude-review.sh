@@ -30,6 +30,7 @@ TIMEOUT="1800"
 TIMING_TASK_KIND="claude-review"
 ROLE="reviewer"
 MODEL=""
+READ_TOOLS_ADD_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --role) ROLE="${2:?--role requires a value}"; shift 2 ;;
         --model) MODEL="${2:?--model requires a value}"; shift 2 ;;
+        --read-tools-add-dir) READ_TOOLS_ADD_DIR="${2:?--read-tools-add-dir requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
@@ -164,6 +166,9 @@ SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX
 set +e
 _subprocess_args=(--prompt-file "$PROMPT_FILE" --output-file "$OUTPUT" --timeout "$TIMEOUT" --timing-task-kind "$TIMING_TASK_KIND")
 [[ -n "$MODEL" ]] && _subprocess_args+=(--model "$MODEL")
+if [[ -n "$READ_TOOLS_ADD_DIR" ]]; then
+    _subprocess_args+=(--read-tools --read-tools-add-dir "$READ_TOOLS_ADD_DIR")
+fi
 "$SCRIPT_DIR/launch-claude-subprocess.sh" \
     "${_subprocess_args[@]}" \
     ${allow_root_args[@]+"${allow_root_args[@]}"} \

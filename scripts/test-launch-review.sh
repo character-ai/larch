@@ -1124,8 +1124,8 @@ assert_grep "SL-transient-retry-codex-7 ledger records output bucket" '"output":
 assert_grep "SL-transient-retry-codex-7 ledger records total bucket" '"total":11' "$SL_TRANSIENT_CODEX7_LEDGER"
 rm -f "$SL_TRANSIENT_CODEX7_COUNT"
 
-# Case SL-transient-retry-exhausted: stub exits 7 with empty output on all 3
-# attempts. Launcher must give up after 2 retries (3 total attempts) and exit non-zero.
+# Case SL-transient-retry-exhausted: stub exits 7 with empty output on all 5
+# attempts. Launcher must give up after 4 retries (5 total attempts) and exit non-zero.
 SL_TRANSIENT_EXHAUSTED_COUNT="$TMPDIR/sl-transient-exhausted-count.txt"
 printf '0' > "$SL_TRANSIENT_EXHAUSTED_COUNT"
 cat > "$STUB_BIN/codex-transient-exhausted" <<STUB_TRANSIENT_EXHAUSTED
@@ -1147,7 +1147,7 @@ RC_TRANSIENT_EXHAUSTED=$?
 set -e
 assert_eq "SL-transient-retry-exhausted exits non-zero after exhausting retries" "7" "$RC_TRANSIENT_EXHAUSTED"
 SL_TRANSIENT_EXHAUSTED_ATTEMPTS=$(cat "$SL_TRANSIENT_EXHAUSTED_COUNT" 2>/dev/null || echo "0")
-assert_eq "SL-transient-retry-exhausted stub invoked exactly 3 times (2 retries)" "3" "$SL_TRANSIENT_EXHAUSTED_ATTEMPTS"
+assert_eq "SL-transient-retry-exhausted stub invoked exactly 5 times (4 retries)" "5" "$SL_TRANSIENT_EXHAUSTED_ATTEMPTS"
 rm -f "$SL_TRANSIENT_EXHAUSTED_COUNT"
 
 # Case SL-transient-vs-auth-precedence: stub exits 7 but writes an auth-error
@@ -1376,8 +1376,8 @@ rm -f "$SL_TRANSIENT_NOAPPLY_COUNT"
 # exhausts all retries, the execution-issues header contains the exact retry
 # counters (auth-retries=M, transient-retries=N). Uses IMPLEMENT_TMPDIR so
 # append_launch_failure actually writes to execution-issues.md.
-# With MAX_TRANSIENT_RETRIES=2: start=1, +1 for retry1=2, +1 for retry2=3, then
-# 3>2 → break → TRANSIENT_ATTEMPT=3 at failure time.
+# With MAX_TRANSIENT_RETRIES=4: start=1, +1 for retry1=2, ..., +1 for retry4=5,
+# then 5>4 → break → TRANSIENT_ATTEMPT=5 at failure time.
 SL_OBS_EXHAUSTED_COUNT="$TMPDIR/sl-obs-exhausted-count.txt"
 printf '0' > "$SL_OBS_EXHAUSTED_COUNT"
 cat > "$STUB_BIN/codex-obs-exhausted" <<STUB_OBS_EXHAUSTED
@@ -1404,7 +1404,7 @@ assert_eq "SL-transient-obs-exhausted exits non-zero after exhausting retries" "
 EI_OBS_EXHAUSTED="$IMPL_TMPDIR_OBS_EXHAUSTED/execution-issues.md"
 OBS_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — codex-review failed' "$EI_OBS_EXHAUSTED" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-exhausted execution-issues has one failure entry" "1" "$OBS_EXHAUSTED_ENTRY_COUNT"
-assert_regex "SL-transient-obs-exhausted exact retry header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_EXHAUSTED"
+assert_regex "SL-transient-obs-exhausted exact retry header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — non-auth — auth-retries=1, transient-retries=5\)\*\*:$' "$EI_OBS_EXHAUSTED"
 rm -f "$SL_OBS_EXHAUSTED_COUNT"
 
 # Case SL-transient-obs-fired: verify that when the transient-retry fires and
@@ -3086,7 +3086,7 @@ assert_equals "SL-cursor-empty-retry-success stub invoked exactly 2 times" "2" "
 assert_equals "SL-cursor-empty-retry-success final output is valid result" $'schema_version=1\nFINDING_1: YES' "$(cat "$OUT_CURSOR_EMPTY_OK")"
 rm -f "$SL_CURSOR_EMPTY_OK_COUNT"
 
-# Case SL-cursor-empty-retry-exhausted: empty .result on every attempt.
+# Case SL-cursor-empty-retry-exhausted: empty .result on every attempt (5 total with MAX_TRANSIENT_RETRIES=4).
 SL_CURSOR_EMPTY_EXH_COUNT="$TMPDIR/sl-cursor-empty-exh-count.txt"
 printf '0' > "$SL_CURSOR_EMPTY_EXH_COUNT"
 cat > "$STUB_BIN/cursor-empty-retry-exh" <<STUB_CURSOR_EMPTY_EXH
@@ -3112,7 +3112,7 @@ RC_CURSOR_EMPTY_EXH=$?
 set -e
 assert_equals "SL-cursor-empty-retry-exhausted exits 0 with empty marker" "0" "$RC_CURSOR_EMPTY_EXH"
 SL_CURSOR_EMPTY_EXH_ATTEMPTS=$(cat "$SL_CURSOR_EMPTY_EXH_COUNT" 2>/dev/null || echo "0")
-assert_equals "SL-cursor-empty-retry-exhausted stub invoked exactly 3 times" "3" "$SL_CURSOR_EMPTY_EXH_ATTEMPTS"
+assert_equals "SL-cursor-empty-retry-exhausted stub invoked exactly 5 times (4 retries)" "5" "$SL_CURSOR_EMPTY_EXH_ATTEMPTS"
 assert_equals "SL-cursor-empty-retry-exhausted output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_CURSOR_EMPTY_EXH")"
 assert_grep "SL-cursor-empty-retry-exhausted diag cursor-empty-result" "cursor-empty-result" "${OUT_CURSOR_EMPTY_EXH}.diag"
 assert_grep "SL-cursor-empty-retry-exhausted diag is_error" "is_error=true" "${OUT_CURSOR_EMPTY_EXH}.diag"
@@ -3337,7 +3337,7 @@ rm -f "$SL_QUOTA_CURSOR_COUNT"
 
 # Case SL-transient-obs-exhausted-cursor: verify that cursor failure logging
 # preserves both auth and transient counters when the transient-retry loop
-# exhausts all retries.
+# exhausts all retries (5 total: 1 initial + 4 retries with MAX_TRANSIENT_RETRIES=4).
 SL_OBS_CURSOR_EXHAUSTED_COUNT="$TMPDIR/sl-obs-cursor-exhausted-count.txt"
 printf '0' > "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
 cat > "$STUB_BIN/cursor-obs-exhausted" <<STUB_OBS_CURSOR_EXHAUSTED
@@ -3365,11 +3365,11 @@ RC_OBS_CURSOR_EXHAUSTED=$?
 set -e
 assert_equals "SL-transient-obs-exhausted-cursor exits non-zero after exhausting retries" "8" "$RC_OBS_CURSOR_EXHAUSTED"
 SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS=$(cat "$SL_OBS_CURSOR_EXHAUSTED_COUNT" 2>/dev/null || echo "0")
-assert_equals "SL-transient-obs-exhausted-cursor stub invoked exactly 3 times (2 retries)" "3" "$SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS"
+assert_equals "SL-transient-obs-exhausted-cursor stub invoked exactly 5 times (4 retries)" "5" "$SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS"
 EI_OBS_CURSOR_EXHAUSTED="$IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED/execution-issues.md"
 OBS_CURSOR_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — cursor-review failed' "$EI_OBS_CURSOR_EXHAUSTED" 2>/dev/null || echo 0)
 assert_equals "SL-transient-obs-exhausted-cursor execution-issues has one failure entry" "1" "$OBS_CURSOR_EXHAUSTED_ENTRY_COUNT"
-assert_regex "SL-transient-obs-exhausted-cursor exact retry header" '^-\s\*\*Step review Step 2 — cursor-review failed \(exit 8 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_CURSOR_EXHAUSTED"
+assert_regex "SL-transient-obs-exhausted-cursor exact retry header" '^-\s\*\*Step review Step 2 — cursor-review failed \(exit 8 — non-auth — auth-retries=1, transient-retries=5\)\*\*:$' "$EI_OBS_CURSOR_EXHAUSTED"
 rm -f "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
 
 # Restore normal cursor stub for remaining tests.

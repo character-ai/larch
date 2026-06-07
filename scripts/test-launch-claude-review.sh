@@ -355,4 +355,21 @@ grep -Fq 'sk-ant-api03' "$TMPROOT/fail-stderr-tail.stderr" \
 grep -Fq '<REDACTED-TOKEN>' "${fail_out}.stderr-tail" \
     || { echo "FAIL: .stderr-tail sidecar not redacted" >&2; exit 1; }
 
+# --read-tools-add-dir: voter with explicit read-tools scope grant (ballot dir).
+# The output dir == TMPROOT, so SESSION_ROOT == TMPROOT and TMPROOT is under itself.
+rt_voter_prompt="$TMPROOT/rt-voter-prompt.txt"
+printf 'vote on this with read tools\n' > "$rt_voter_prompt"
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/rt-voter-out.txt" \
+    --prompt-file "$rt_voter_prompt" \
+    --mode description \
+    --role voter \
+    --read-tools-add-dir "$TMPROOT" \
+    --timeout 5 >/dev/null
+[[ "$(cat "$TMPROOT/rt-voter-out.txt")" == "claude review ok" ]] \
+    || { echo "FAIL: --read-tools-add-dir voter output passthrough" >&2; exit 1; }
+grep -Fq 'vote on this with read tools' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: --read-tools-add-dir voter prompt missing in stdin log" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"
