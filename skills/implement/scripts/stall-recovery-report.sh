@@ -544,7 +544,7 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|dirty-state-after-timeout|dirty-tree|first-fixer-non-health|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure)
+        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|ci-fix-exhausted|dirty-state-after-timeout|dirty-tree|first-fixer-non-health|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|recovery-out-of-scope|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure)
             printf '%s\n' "$1"
             ;;
         *)
@@ -1179,36 +1179,36 @@ cmd_normalize_issue_env() {
 
 code_allowlist_lines() {
     cat <<'EOF'
-bug-body	failing_step
-bug-body	failing_phase
-bug-body	failure_class
-bug-body	bail_reason
-bug-body	exit_code
-bug-body	signature_hash
-bug-body	inferred_root_cause
-bug-body	suggested_mitigation
-bug-comment	failing_step
-bug-comment	failing_phase
-bug-comment	failure_class
-bug-comment	bail_reason
-bug-comment	exit_code
-bug-comment	signature_hash
-bug-comment	inferred_root_cause
-bug-comment	suggested_mitigation
-bug-comment	attempt_count
-bug-comment	attempt_table
-bug-comment	final_class
-bug-comment	final_signature
-issue-input-file	title
-issue-input-file	body
-chat-print	failing_step
-chat-print	failing_phase
-chat-print	failure_class
-chat-print	bail_reason
-chat-print	exit_code
-chat-print	signature_hash
-chat-print	inferred_root_cause
-chat-print	suggested_mitigation
+bug-body	failing_step	STALL_STEP	enum
+bug-body	failing_phase	PHASE	enum
+bug-body	failure_class	FAILURE_CLASS	enum
+bug-body	bail_reason	BAIL_REASON	enum
+bug-body	exit_code	EXIT_CODE	integer-or-unknown
+bug-body	signature_hash	FAILURE_SIGNATURE	hex
+bug-body	inferred_root_cause	FAILURE_CLASS	fixed-prose-template
+bug-body	suggested_mitigation	FAILURE_CLASS	fixed-prose-template
+bug-comment	failing_step	STALL_STEP	enum
+bug-comment	failing_phase	PHASE	enum
+bug-comment	failure_class	FAILURE_CLASS	enum
+bug-comment	bail_reason	BAIL_REASON	enum
+bug-comment	exit_code	EXIT_CODE	integer-or-unknown
+bug-comment	signature_hash	FAILURE_SIGNATURE	hex
+bug-comment	inferred_root_cause	FAILURE_CLASS	fixed-prose-template
+bug-comment	suggested_mitigation	FAILURE_CLASS	fixed-prose-template
+bug-comment	attempt_count	attempts-file	integer
+bug-comment	attempt_table	attempts-file	allowlisted-attempt-fields
+bug-comment	final_class	FAILURE_CLASS	enum
+bug-comment	final_signature	FAILURE_SIGNATURE	hex
+issue-input-file	title	FAILURE_CLASS+STALL_STEP	synthesized-heading
+issue-input-file	body	bug-body	body-file
+chat-print	failing_step	STALL_STEP	enum
+chat-print	failing_phase	PHASE	enum
+chat-print	failure_class	FAILURE_CLASS	enum
+chat-print	bail_reason	BAIL_REASON	enum
+chat-print	exit_code	EXIT_CODE	integer-or-unknown
+chat-print	signature_hash	FAILURE_SIGNATURE	hex
+chat-print	inferred_root_cause	FAILURE_CLASS	fixed-prose-template
+chat-print	suggested_mitigation	FAILURE_CLASS	fixed-prose-template
 EOF
 }
 
@@ -1220,7 +1220,7 @@ doc_allowlist_lines() {
             gsub(/^[[:space:]]*\|[[:space:]]*/, "")
             gsub(/[[:space:]]*\|[[:space:]]*$/, "")
             n = split($0, f, /[[:space:]]*\|[[:space:]]*/)
-            if (n >= 2 && f[1] != "---" && f[1] != "surface") print f[1] "\t" f[2]
+            if (n >= 4 && f[1] != "---" && f[1] != "surface") print f[1] "\t" f[2] "\t" f[3] "\t" f[4]
         }
     ' "$CONTRACT_MD"
 }
@@ -1251,7 +1251,7 @@ code_retry_policy_lines() {
 }
 
 tsv_allowlist_lines() {
-    awk 'NR > 1 { print $1 "\t" $2 }' "$ALLOWLIST_TSV"
+    awk 'NR > 1 { print $1 "\t" $2 "\t" $3 "\t" $4 }' "$ALLOWLIST_TSV"
 }
 
 cmd_lint() {

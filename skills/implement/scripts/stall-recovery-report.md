@@ -9,7 +9,7 @@
   - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
-  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `dirty-state-after-timeout`, `dirty-tree`, `first-fixer-non-health`, `main-branch-post-dispatch`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`.
+  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `ci-fix-exhausted`, `dirty-state-after-timeout`, `dirty-tree`, `first-fixer-non-health`, `main-branch-post-dispatch`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `recovery-out-of-scope`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`. `recovery-out-of-scope` is set unconditionally alongside `STALL_TRACKING=true` on the Step 2 manifest-schema-invalid recovery sub-branch (no reclassification — stays `unrecoverable`).
   - `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only. Argv-only bail reasons can still route transient-infra and dispatch-failure classifications when their text matches classifier evidence.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
@@ -56,7 +56,7 @@
 
 `clear-stall` and `seed-terminal-state` compose no public report text. The `## Surface Allowlists` table, TSV, and `lint` parity checks are unchanged — only classification/report subcommands participate in allowlisted surfaces.
 
-The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint` subcommand, and this table must remain byte-equivalent at the `surface + field_key` level.
+The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint` subcommand, and this table must remain byte-equivalent at the `surface + field_key + source + transform` level.
 
 <!-- stall-recovery-allowlist:begin -->
 | surface | field_key | source | transform |
