@@ -369,14 +369,16 @@ grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=8' <<< "$out"
 
-# parse-failed and claude-failed fixtures are single-tier (--codex-available false).
+# parse-failed and claude-failed fixtures are single-tier (--cursor-available false
+# — #3704 flipped the scout waterfall to Cursor → Claude, so the claude-only path
+# now requires Cursor absent; Codex presence is scout-irrelevant API parity).
 seed_case_inputs "$TMP/dynamic-fail"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_FAIL=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic-fail/review.diff" \
     --review-tmpdir "$TMP/dynamic-fail" \
-    --codex-available false \
-    --cursor-available true \
+    --codex-available true \
+    --cursor-available false \
     --panel hard \
     --plan-file "$TMP/dynamic-fail/plan.md" \
     --dynamic-archetypes 3)
@@ -421,8 +423,8 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" SCOUT_DYNA
     --mode diff \
     --diff-file "$TMP/dynamic-parse-failed/review.diff" \
     --review-tmpdir "$TMP/dynamic-parse-failed" \
-    --codex-available false \
-    --cursor-available true \
+    --codex-available true \
+    --cursor-available false \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed/plan.md" \
     --dynamic-archetypes 3)
@@ -446,8 +448,8 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$warn_log" SCOUT_DYNAMI
     --mode diff \
     --diff-file "$TMP/dynamic-parse-failed-warn/review.diff" \
     --review-tmpdir "$TMP/dynamic-parse-failed-warn" \
-    --codex-available false \
-    --cursor-available true \
+    --codex-available true \
+    --cursor-available false \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed-warn/plan.md" \
     --dynamic-archetypes 3)
@@ -474,8 +476,8 @@ fi
         --mode diff \
         --diff-file "$prod_tmp/review/review.diff" \
         --review-tmpdir "$prod_tmp/review" \
-        --codex-available false \
-        --cursor-available true \
+        --codex-available true \
+        --cursor-available false \
         --panel hard \
         --plan-file "$prod_tmp/review/plan.md" \
         --dynamic-archetypes 3)
