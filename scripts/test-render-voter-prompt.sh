@@ -112,6 +112,12 @@ case_scope_anchor_file() {
         || { echo "FAIL: normal threshold instruction missing" >&2; exit 1; }
     grep -Fq 'originating issue scope, not merely to the finding text' <<< "$withflag" \
         || { echo "FAIL: anchored proportionality override missing" >&2; exit 1; }
+    grep -Fq 'Read the ballot from this path' <<< "$withflag" \
+        || { echo "FAIL: scope anchor prompt missing ballot pointer" >&2; exit 1; }
+    grep -Fq 'FINDING_N: YES' <<< "$withflag" \
+        || { echo "FAIL: scope anchor prompt missing vote grammar FINDING_N: YES" >&2; exit 1; }
+    grep -Fq 'OOS_N: YES' <<< "$withflag" \
+        || { echo "FAIL: scope anchor prompt missing vote grammar OOS_N: YES" >&2; exit 1; }
     cmp -s <(printf '%s\n' "$noflag") <("$RENDER" \
         --ballot-file "$BALLOT" \
         --panel-role "test panel role" \

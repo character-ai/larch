@@ -556,7 +556,7 @@ else
 fi
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
-MAX_TRANSIENT_RETRIES=2
+MAX_TRANSIENT_RETRIES=4
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
 TRANSIENT_ATTEMPT=1
@@ -624,6 +624,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
         else
             _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
+            (( _backoff < 10 )) && _backoff=10
             _jitter=$(( RANDOM % 2 ))
             sleep $(( _backoff + _jitter )) || true
         fi
@@ -1006,7 +1007,7 @@ fi
 cursor_launcher_setup_private_config_dir
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
-MAX_TRANSIENT_RETRIES=2
+MAX_TRANSIENT_RETRIES=4
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
 TRANSIENT_ATTEMPT=1
@@ -1032,6 +1033,7 @@ _cursor_transient_backoff() {
         if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
     else
         _backoff=$(( 1 << _attempt ))
+        (( _backoff < 10 )) && _backoff=10
         _jitter=$(( RANDOM % 2 ))
         sleep $(( _backoff + _jitter )) || true
     fi

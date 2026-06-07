@@ -8,7 +8,7 @@
 ## Voter 1 (Claude)
 
 - Prompt from `skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-oos`, `--verification-context plan`), same renderer family as Voters 2–3.
-- Invokes `"$SCRIPT_DIR/launch-claude-review.sh"` with `--role voter`, `--timing-task-kind claude-plan-voter`, `--timeout 1200`, output at `$DESIGN_TMPDIR/claude-vote-output.txt`.
+- Invokes `"$SCRIPT_DIR/launch-claude-review.sh"` with `--role voter`, `--read-tools-add-dir "$DESIGN_TMPDIR"`, `--timing-task-kind claude-plan-voter`, `--timeout 1200`, output at `$DESIGN_TMPDIR/claude-vote-output.txt`. The `--read-tools-add-dir` grants Claude an explicit scoped read-only tool grant (`--allowedTools Read --permission-mode plan`) for the session directory containing the ballot, replacing reliance on default-tool permissions.
 - On launcher failure or empty output, writes `voter1-diag.txt` and may append via `append-tool-failure.sh` (same pattern as code-review voter diagnostics).
 
 ## Voters 2–3 (externals + waterfall)

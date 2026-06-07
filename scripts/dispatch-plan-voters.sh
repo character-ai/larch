@@ -96,6 +96,7 @@ set +e
     --prompt-file "$claude_prompt" \
     --mode description \
     --role voter \
+    --read-tools-add-dir "$DESIGN_TMPDIR" \
     --timeout 1200 \
     --timing-task-kind claude-plan-voter \
     >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"

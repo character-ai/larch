@@ -112,8 +112,15 @@ external_launch_health_gate_timeout() {
 
 external_launch_health_gate() {
     local tool="$1"
+    local _probe_diag_var="${2:-}"
     local timeout_seconds="" script_dir="" skip_arg="" present_key=""
     local probe_out="" probe_rc=0 timeout_bin=""
+    local _probe_stderr_tmp="" _probe_present=""
+    local _refresh_out="" _refresh_rc=0 _refresh_present=""
+
+    if [[ -n "$_probe_diag_var" ]]; then
+        printf -v "$_probe_diag_var" '%s' ""
+    fi
 
     case "$tool" in
         codex)
@@ -139,30 +146,101 @@ external_launch_health_gate() {
         timeout_bin="gtimeout"
     fi
 
+    _probe_stderr_tmp=$(mktemp "${TMPDIR:-/tmp}/health-gate-stderr.XXXXXX") || _probe_stderr_tmp=""
+
     if [[ -n "$timeout_bin" ]]; then
-        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
-            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
-            probe_rc=0
+        if [[ -n "$_probe_stderr_tmp" ]]; then
+            if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
+                "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                probe_rc=0
+            else
+                probe_rc=$?
+            fi
         else
-            probe_rc=$?
+            if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
+                "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                probe_rc=0
+            else
+                probe_rc=$?
+            fi
         fi
     else
-        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
-            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
-            probe_rc=0
+        if [[ -n "$_probe_stderr_tmp" ]]; then
+            if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
+                "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                probe_rc=0
+            else
+                probe_rc=$?
+            fi
         else
-            probe_rc=$?
+            if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
+                "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                probe_rc=0
+            else
+                probe_rc=$?
+            fi
         fi
     fi
 
     case "$probe_rc" in
-        124|143) return 1 ;;
+        124|143)
+            [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+            if [[ -n "$_probe_diag_var" ]]; then
+                printf -v "$_probe_diag_var" '%s' "health-probe timed out after ${timeout_seconds}s"
+            fi
+            return 1
+            ;;
     esac
 
-    case "$(printf '%s\n' "$probe_out" | awk -F= -v key="$present_key" '$1 == key {print $2; exit}')" in
-        false) return 1 ;;
-        true) return 0 ;;
-        *) return 0 ;;
+    _probe_present=$(printf '%s\n' "$probe_out" | awk -F= -v key="$present_key" '$1 == key {print $2; exit}')
+    case "$_probe_present" in
+        false)
+            # Best-effort mid-run refresh: retry once with stamp cache bypassed
+            # to recover from a stale cached-false stamp (e.g. after auth expiry
+            # during a long implementation step where Codex was healthy at Step 0).
+            if [[ -n "$timeout_bin" ]]; then
+                if _refresh_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
+                    "$timeout_bin" "$timeout_seconds" \
+                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    _refresh_rc=0
+                else
+                    _refresh_rc=$?
+                fi
+            else
+                if _refresh_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
+                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    _refresh_rc=0
+                else
+                    _refresh_rc=$?
+                fi
+            fi
+            case "$_refresh_rc" in 0) ;; *) _refresh_out="" ;; esac
+            _refresh_present=$(printf '%s\n' "$_refresh_out" | awk -F= -v key="$present_key" '$1 == key {print $2; exit}')
+            case "$_refresh_present" in
+                true)
+                    [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+                    return 0
+                    ;;
+            esac
+            if [[ -n "$_probe_diag_var" ]]; then
+                local _diag_body
+                _diag_body="probe output: $(printf '%s\n' "$probe_out" | head -c 500)"
+                if [[ -n "$_probe_stderr_tmp" && -s "$_probe_stderr_tmp" ]]; then
+                    _diag_body="${_diag_body}; probe stderr: $(head -c 300 "$_probe_stderr_tmp" 2>/dev/null || true)"
+                fi
+                printf -v "$_probe_diag_var" '%s' "$_diag_body"
+            fi
+            [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+            return 1
+            ;;
+        true)
+            [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+            return 0
+            ;;
+        *)
+            [[ -n "$_probe_stderr_tmp" ]] && rm -f "$_probe_stderr_tmp"
+            return 0
+            ;;
     esac
 }
 

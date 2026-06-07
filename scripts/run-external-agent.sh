@@ -206,15 +206,23 @@ fi
 
 case "$TOOL_NAME" in
     codex|cursor)
-        if ! external_launch_health_gate "$TOOL_NAME"; then
+        _gate_probe_diag=""
+        if ! external_launch_health_gate "$TOOL_NAME" _gate_probe_diag; then
             : > "$OUTPUT_FILE"
-            echo "health-probe fast-fail: ${TOOL_NAME} unhealthy before launch" >> "${OUTPUT_FILE}.diag"
+            {
+                printf 'health-probe fast-fail: %s unhealthy before launch\n' "$TOOL_NAME"
+                if [[ -n "$_gate_probe_diag" ]]; then
+                    printf '%s\n' "$_gate_probe_diag"
+                fi
+            } >> "${OUTPUT_FILE}.diag"
+            unset _gate_probe_diag
             case "$TOOL_NAME" in
                 codex) EXIT_CODE=7 ;;
                 cursor) EXIT_CODE=8 ;;
             esac
             exit "$EXIT_CODE"
         fi
+        unset _gate_probe_diag
         ;;
 esac
 

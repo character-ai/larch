@@ -119,7 +119,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   `${OUTPUT}.diag`, or the raw `$OUTPUT` envelope, the launcher treats the
   response as transient and re-runs the same `cursor agent` invocation after
   backoff. Empty-result retries share the same `TRANSIENT_ATTEMPT` counter as
-  exit-code transients (bounded by `MAX_TRANSIENT_RETRIES=2`, so at most three
+  exit-code transients (bounded by `MAX_TRANSIENT_RETRIES=4`, so at most five
   total `cursor agent` backend calls per auth pass across both failure modes).
   This does **not** apply when `.result` is the legitimate no-findings
   sentinel `{"no_issues_found": true}` (non-empty string) or any other
