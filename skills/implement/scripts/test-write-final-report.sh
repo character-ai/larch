@@ -728,9 +728,11 @@ cat > "$impl_zero/larch-logs/implement/run-zero/token-report.json" <<'JSON'
   "claude": {"totals": {"total": 0}},
   "codex": {"totals": {"total": 0}},
   "cursor": {"totals": {"total": 0}},
+  "claude_sub": {"totals": {"total": 0}},
   "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0},
   "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
-  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0},
+  "BUCKETS_claude_sub": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0}
 }
 JSON
 zero_stderr="$TMP_ROOT/corrupt-zero.stderr"
@@ -741,6 +743,38 @@ assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**'
 assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-zero.md")" 'corrupt-zero warning appears in tracking summary body'
 assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$zero_stderr")" 'corrupt-zero warning appears on stderr'
 assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$zero_stdout" 'corrupt-zero token-report omits misleading zero-dollar breakdown'
+
+impl_sub_nonzero="$TMP_ROOT/impl-sub-nonzero"; mkdir -p "$impl_sub_nonzero/larch-logs/implement/run-sub-nonzero"
+printf 'ISSUE_NUMBER=23\nRUN_ID=run-sub-nonzero\nADOPTED=true\n' > "$impl_sub_nonzero/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_sub_nonzero/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_sub_nonzero/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_sub_nonzero/finalize-state.sh"
+cat > "$impl_sub_nonzero/larch-logs/implement/run-sub-nonzero/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 0}},
+  "codex": {"totals": {"total": 0}},
+  "cursor": {"totals": {"total": 0}},
+  "claude_sub": {"totals": {"total": 100}},
+  "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0},
+  "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0},
+  "BUCKETS_claude_sub": {"input": 50, "cache_read": 10, "cache_create_5m": 20, "cache_create_1h": 0, "output": 20}
+}
+JSON
+sub_nonzero_stderr="$TMP_ROOT/sub-nonzero.stderr"
+sub_nonzero_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-sub-nonzero.md" \
+      "$HELPER" --implement-tmpdir "$impl_sub_nonzero" --print-stdout 2>"$sub_nonzero_stderr")
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$sub_nonzero_stdout" 'claude_sub nonzero token-report omits corrupt warning from stdout summary'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-sub-nonzero.md")" 'claude_sub nonzero token-report omits corrupt warning from tracking summary body'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$sub_nonzero_stderr")" 'claude_sub nonzero token-report omits corrupt warning on stderr'
 
 impl_claude_zero="$TMP_ROOT/impl-claude-zero"; mkdir -p "$impl_claude_zero/larch-logs/implement/run-claude-zero"
 printf 'ISSUE_NUMBER=23\nRUN_ID=run-claude-zero\nADOPTED=true\n' > "$impl_claude_zero/parent-issue.md"

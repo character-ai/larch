@@ -482,6 +482,8 @@ render_jq() {
           | (($s.vendor | map(select(.vendor == "claude_sub"))) as $cx | {
               input: sumfield($cx; "input"),
               cache_read: sumfield($cx; "cache_read"),
+              cache_write_5m: sumfield($cx; "cache_create"),
+              cache_write_1h: 0,
               output: sumfield($cx; "output")
             }) as $csb
           | {
@@ -728,7 +730,7 @@ else
         c_raw=$(jq -r '((.claude.input//0)+(.claude.cache_read//0)+(.claude.cache_write_5m//0)+(.claude.cache_write_1h//0)+(.claude.output//0))' <<<"$report")
         d_raw=$(jq -r '((.codex.input//0)+(.codex.cached_input//0)+(.codex.output//0))' <<<"$report")
         u_raw=$(jq -r '((.cursor.input//0)+(.cursor.cache_read//0)+(.cursor.output//0))' <<<"$report")
-        cs_raw=$(jq -r '((.claude_sub.input//0)+(.claude_sub.cache_read//0)+(.claude_sub.output//0))' <<<"$report")
+        cs_raw=$(jq -r '((.claude_sub.input//0)+(.claude_sub.cache_read//0)+(.claude_sub.cache_write_5m//0)+(.claude_sub.cache_write_1h//0)+(.claude_sub.output//0))' <<<"$report")
         ck=$(tok_to_k "$c_raw")
         dk=$(tok_to_k "$d_raw")
         uk=$(tok_to_k "$u_raw")

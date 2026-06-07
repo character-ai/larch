@@ -327,7 +327,63 @@ grep -Fq '"total":165' "$json_ledger" || fail "claude_sub json path: total token
 # cache_creation_input_tokens folds into the single cache_create bucket.
 grep -Fq '"cache_create":5' "$json_ledger" || fail "claude_sub json path: cache_create not folded from cache_creation_input_tokens"
 
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+empty_json_out="$TMP/out-empty-json.txt"
+empty_json_ledger="$TMP/claude-empty-json-ledger.jsonl"
+if LARCH_TOKEN_LEDGER="$empty_json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$empty_json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/empty-json-stdout" 2>"$TMP/empty-json-err"; then
+    fail "claude_sub empty JSON result path should fail closed"
+fi
+grep -Fq 'CLAUDE_JSON_RESULT_INVALID' "$empty_json_out" || fail "claude_sub empty JSON result path: output sentinel missing"
+grep -Fq 'claude JSON envelope missing non-empty string result' "${empty_json_out}.stderr" || fail "claude_sub empty JSON result path: stderr diagnostic missing"
+[[ "$(cat "$empty_json_out.done")" = "99" ]] || fail "claude_sub empty JSON result path: .done should record 99"
+[[ ! -f "$empty_json_ledger" ]] || grep -Fvq 'claude_sub' "$empty_json_ledger" || fail "claude_sub empty JSON result path: ledger row recorded despite failed promotion"
+
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"error_max_turns","is_error":true,"result":"failed","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+error_json_out="$TMP/out-error-json.txt"
+error_json_ledger="$TMP/claude-error-json-ledger.jsonl"
+if LARCH_TOKEN_LEDGER="$error_json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$error_json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/error-json-stdout" 2>"$TMP/error-json-err"; then
+    fail "claude_sub is_error JSON path should fail closed"
+fi
+grep -Fq 'CLAUDE_JSON_RESULT_INVALID' "$error_json_out" || fail "claude_sub is_error JSON path: output sentinel missing"
+grep -Fq 'claude JSON envelope reported is_error=true' "${error_json_out}.stderr" || fail "claude_sub is_error JSON path: stderr diagnostic missing"
+[[ ! -f "$error_json_ledger" ]] || grep -Fvq 'claude_sub' "$error_json_ledger" || fail "claude_sub is_error JSON path: ledger row recorded despite failed promotion"
+
 # Provenance varies by timing-task-kind: voter -> claude_vote.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"spawned claude review prose","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
 vote_ledger="$TMP/claude-vote-ledger.jsonl"
 LARCH_TOKEN_LEDGER="$vote_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
     --prompt-file "$prompt" \

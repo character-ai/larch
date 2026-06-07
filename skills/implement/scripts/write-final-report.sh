@@ -242,15 +242,18 @@ if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1
     read -r CLAUDE_T CODEX_T CURSOR_T CLAUDE_SUB_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0), (.claude_sub.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\n')
     TOKEN_CODEX_PRESENT=false
     TOKEN_CURSOR_PRESENT=false
+    TOKEN_CLAUDE_SUB_PRESENT=false
     jq -e '.codex' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CODEX_PRESENT=true
     jq -e '.cursor' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CURSOR_PRESENT=true
+    jq -e '.claude_sub' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CLAUDE_SUB_PRESENT=true
     # guard against silent zero costs
-    if jq -e --argjson codex_present "$TOKEN_CODEX_PRESENT" --argjson cursor_present "$TOKEN_CURSOR_PRESENT" '
+    if jq -e --argjson codex_present "$TOKEN_CODEX_PRESENT" --argjson cursor_present "$TOKEN_CURSOR_PRESENT" --argjson claude_sub_present "$TOKEN_CLAUDE_SUB_PRESENT" '
       (.claude.totals? != null)
       and ((.claude.totals.total // 0) == 0)
       and (if $codex_present then ((.codex.totals.total // 0) == 0) else true end)
       and (if $cursor_present then ((.cursor.totals.total // 0) == 0) else true end)
-      and ($codex_present or $cursor_present)
+      and (if $claude_sub_present then ((.claude_sub.totals.total // 0) == 0) else true end)
+      and ($codex_present or $cursor_present or $claude_sub_present)
     ' "$TOKEN_JSON" >/dev/null 2>&1; then
         TOKEN_REPORT_CORRUPT_ZERO=true
         larch_err "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"

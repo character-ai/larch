@@ -72,7 +72,8 @@ if printf '%s' "$json_out" | jq -e '
   (.cursor.totals.total == 10) and
   (.BUCKETS_claude.total == 110) and
   (.BUCKETS_codex.total == 100) and
-  (.BUCKETS_cursor.total == 10)
+  (.BUCKETS_cursor.total == 10) and
+  (.BUCKETS_claude_sub.total == 0)
 ' >/dev/null; then
     pass
 else
@@ -530,6 +531,7 @@ contains "summary Tokens prefix" "Tokens:" "$summary"
 contains "summary Claude k" "Claude:" "$summary"
 contains "summary Codex k" "Codex:" "$summary"
 contains "summary Cursor k" "Cursor:" "$summary"
+contains "summary Claude subprocess k" "Claude (subprocess):" "$summary"
 
 # Case 2: zero-vendor run — still emits Tokens summary (no dollar line).
 SUMMARY_NO_VENDOR_LEDGER="$TMP/summary-no-vendor-ledger.jsonl"
@@ -539,6 +541,7 @@ JSONL
 summary_no_vendor=$("$SCRIPT" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --transcript "$TRANSCRIPT" --summary)
 absent "summary zero-vendor no dollar cost" "💰 Cost:" "$summary_no_vendor"
 contains "summary zero-vendor Tokens" "Tokens:" "$summary_no_vendor"
+contains "summary zero-vendor Claude subprocess lane" "Claude (subprocess):" "$summary_no_vendor"
 
 # Case 3: no-marks ledger — prints unavailable warning and exits 0.
 # Reuse LEDGER_NO_MARKS (vendor-only rows, no marks).
@@ -549,7 +552,7 @@ contains "summary no-marks unavailable" "Token report unavailable:" "$no_marks_s
 # MANDATORY no-double-count regression: the transcript-derived `claude` lane and
 # the ledger-derived `claude_sub` lane come from disjoint sources and must never
 # share usage. Fixture: a transcript claude row (total 300) plus a ledger
-# claude_sub row (total 165); the report keeps them separate and folds the
+# claude_sub row (total 660); the report keeps them separate and folds the
 # single ledger cache_create into the 5m bucket. token_total sums the transcript
 # claude lane and all vendor lanes (codex + claude_sub).
 CS_LEDGER="$TMP/claude-sub-ledger.jsonl"
@@ -557,7 +560,7 @@ CS_TRANSCRIPT="$TMP/claude-sub-transcript.jsonl"
 cat > "$CS_LEDGER" <<'JSONL'
 {"type":"mark","step":"Step 5 - review","ts":"2026-05-06T00:00:00Z"}
 {"type":"vendor","vendor":"codex","input":300,"output":60,"total":360,"ts":"2026-05-06T00:00:40Z","raw":"codex_review"}
-{"type":"vendor","vendor":"claude_sub","input":100,"output":50,"cache_read":10,"cache_create":5,"total":165,"ts":"2026-05-06T00:01:00Z","raw":"claude_review"}
+{"type":"vendor","vendor":"claude_sub","input":100,"output":50,"cache_read":10,"cache_create":500,"total":660,"ts":"2026-05-06T00:01:00Z","raw":"claude_review"}
 {"type":"mark","step":"Step 18 - done","ts":"2026-05-06T00:02:00Z"}
 JSONL
 cat > "$CS_TRANSCRIPT" <<'JSONL'
@@ -567,14 +570,14 @@ cs_json=$("$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --full -
 if printf '%s' "$cs_json" | jq -e '
   (.vendors | index("claude_sub") != null) and
   (.claude.totals.total == 300) and
-  (.claude_sub.totals.total == 165) and
+  (.claude_sub.totals.total == 660) and
   (.claude.totals.total != .claude_sub.totals.total) and
   (.BUCKETS_claude_sub.input == 100) and
   (.BUCKETS_claude_sub.cache_read == 10) and
-  (.BUCKETS_claude_sub.cache_create_5m == 5) and
+  (.BUCKETS_claude_sub.cache_create_5m == 500) and
   (.BUCKETS_claude_sub.cache_create_1h == 0) and
   (.BUCKETS_claude_sub.output == 50) and
-  (.BUCKETS_claude_sub.total == 165) and
+  (.BUCKETS_claude_sub.total == 660) and
   (.BUCKETS_claude.total == 300)
 ' >/dev/null; then
     pass
@@ -590,14 +593,15 @@ contains "claude_sub heading" "### Claude (subprocess)" "$cs_md"
 
 cs_summary=$("$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --summary)
 contains "summary claude_sub lane" "Claude (subprocess):" "$cs_summary"
-# token_total = claude(300) + codex(360) + claude_sub(165) = 825 -> rounds to 1k.
+# token_total = claude(300) + codex(360) + claude_sub(660) = 1320 -> rounds to 1k.
 cs_token_total=$(printf '%s' "$cs_summary" | sed -n 's/.*Tokens: \([0-9]*\)k.*/\1/p')
-eq "summary token_total includes claude_sub (825 -> 1k)" "1" "$cs_token_total"
+eq "summary token_total includes claude_sub (1320 -> 1k)" "1" "$cs_token_total"
+contains "summary claude_sub cache-create included" "Claude (subprocess): 1k" "$cs_summary"
 
 # --buckets claude_sub extraction (CI helper). LARCH_QUIET_DISABLE forces the
 # direct-stdout path so the captured output is deterministic in quiet contexts.
 cs_buckets=$(LARCH_QUIET_DISABLE=1 "$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --buckets --vendor claude_sub)
-contains "buckets claude_sub" "INPUT=100 CACHE_READ=10 CACHE_WRITE_5M=5 CACHE_WRITE_1H=0 OUTPUT=50" "$cs_buckets"
+contains "buckets claude_sub" "INPUT=100 CACHE_READ=10 CACHE_WRITE_5M=500 CACHE_WRITE_1H=0 OUTPUT=50" "$cs_buckets"
 
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then

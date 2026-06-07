@@ -229,6 +229,64 @@ ISSUES
 } || fail "happy-path: exception"
 
 # ---------------------------------------------------------------------------
+# a1) Token refresh includes post-CI-fix claude_sub ledger rows.
+# ---------------------------------------------------------------------------
+{
+    tmp=$(mktemp -d)
+
+    git -C "$tmp" init -q
+    git_test_repo_identity "$tmp"
+    git -C "$tmp" commit -q --allow-empty -m "init"
+    git -C "$tmp" checkout -q -b feature-refresh-claude-sub
+
+    impl_tmpdir="$tmp/impl"
+    mkdir -p "$impl_tmpdir/larch-logs"
+    state_file="$impl_tmpdir/ship-pr-state.sh"
+    run_id="TEST-RUN-CLAUDE-SUB-$(date +%s)"
+    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\nMERGE=false\nDRAFT=false\nSTALL_TRACKING=false\nFORKED_TARGET=false\nPR_NUMBER=0\n' "$run_id" > "$state_file"
+    printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
+    printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
+    transcript_source="$impl_tmpdir/claude-source.env"
+    transcript_raw="$impl_tmpdir/raw-transcript.jsonl"
+    cat > "$transcript_source" <<EOF
+TRANSCRIPT_PATH=$transcript_raw
+EOF
+    cat > "$transcript_raw" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0},"content":[{"type":"text","text":"ok"}]}}
+EOF
+    token_session_id="refresh-ci-claude-sub"
+    cat > "$impl_tmpdir/session-env.sh" <<EOF
+REPO=owner/repo
+REPO_UNAVAILABLE=false
+LARCH_TOKEN_SESSION_ID=$token_session_id
+LARCH_CLAUDE_SOURCE_FILE=$transcript_source
+EOF
+    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" "$SCRIPT_DIR/token-ledger.sh" mark "Step 8 - ci-fix" >/dev/null
+    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
+        input=200 output=80 cache_read=20 cache_create=10 total=310 raw=claude_ci >/dev/null
+
+    plugin_root="$tmp/plugin"
+    setup_plugin_stub "$plugin_root"
+
+    out=$(cd "$tmp" && CLAUDE_PLUGIN_ROOT="$plugin_root" TRACKING_CONTENT_LOG="$tmp/final-summary-content.md" "$HELPER" \
+        --state-file "$state_file" \
+        --implement-tmpdir "$impl_tmpdir" 2>/dev/null || true)
+
+    token_report="$impl_tmpdir/larch-logs/implement/$run_id/token-report.json"
+    if printf '%s\n' "$out" | grep -q '^REFRESH_COMMITTED='; then
+        pass "claude_sub refresh: REFRESH_COMMITTED key present"
+    else
+        fail "claude_sub refresh: unexpected output — $out"
+    fi
+    if [ -s "$token_report" ] && jq -e '(.claude_sub.totals.total == 310) and (.BUCKETS_claude_sub.cache_create_5m == 10)' "$token_report" >/dev/null; then
+        pass "claude_sub refresh: token-report includes CI-fix claude_sub row"
+    else
+        fail "claude_sub refresh: token-report missing CI-fix claude_sub row: $(cat "$token_report" 2>/dev/null)"
+    fi
+    rm -rf "$tmp"
+} || fail "claude_sub refresh: exception"
+
+# ---------------------------------------------------------------------------
 # a2) Step 7a skip still unlocks later pre-push execution-issues flush
 # ---------------------------------------------------------------------------
 {

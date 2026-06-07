@@ -235,36 +235,44 @@ mv "$OUTPUT_TMP" "$OUTPUT_CANON"
 mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
 
 # --- Spawned-Claude token capture (issue #3637) ---
-# The CLI now runs with --output-format json, so $OUTPUT_CANON holds a JSON
-# envelope. Mirror the Cursor reviewer sidecar pattern (scripts/launch-review.sh):
-# copy the raw JSON aside, install the extracted .result over $OUTPUT_CANON so
-# downstream collectors keep seeing byte-identical prose, and fold the reported
-# .usage into the claude_sub ledger lane (priced at Claude rates). Best-effort:
-# a missing jq, malformed JSON, or non-zero exit leaves $OUTPUT_CANON as the raw
-# bytes and skips the ledger update — never a hard failure. The .usage schema
-# (input_tokens / output_tokens / cache_read_input_tokens /
-# cache_creation_input_tokens) was verified on the dev host; the single
-# cache_creation field folds into one cache_create bucket (priced at the 5m rate
-# downstream).
-if [[ "$exit_code" -eq 0 ]] && command -v jq >/dev/null 2>&1; then
+# The CLI runs with --output-format json, so successful JSON envelopes must
+# promote a non-empty string .result before the run can count as successful.
+# Usage accounting is recorded only after that prose promotion succeeds.
+if [[ "$exit_code" -eq 0 ]]; then
     rm -f "${OUTPUT_CANON}.json"
-    if cp "$OUTPUT_CANON" "${OUTPUT_CANON}.json" 2>/dev/null \
+    if command -v jq >/dev/null 2>&1 \
+        && cp "$OUTPUT_CANON" "${OUTPUT_CANON}.json" 2>/dev/null \
         && [[ -s "${OUTPUT_CANON}.json" ]] \
         && jq -e . "${OUTPUT_CANON}.json" >/dev/null 2>&1; then
         _claude_extract="${OUTPUT_CANON}.extract.$$"
-        if jq -re '.result // ""' "${OUTPUT_CANON}.json" > "$_claude_extract" 2>/dev/null \
-            && [[ -s "$_claude_extract" ]]; then
+        _claude_json_reason=""
+        if jq -e '(.is_error // false) == true' "${OUTPUT_CANON}.json" >/dev/null 2>&1; then
+            _claude_json_reason="claude JSON envelope reported is_error=true"
+        elif jq -er 'if (.result | type) == "string" and (.result | length) > 0 then .result else empty end' \
+            "${OUTPUT_CANON}.json" > "$_claude_extract" 2>/dev/null && [[ -s "$_claude_extract" ]]; then
             mv -f "$_claude_extract" "$OUTPUT_CANON"
+            read -r _cl_in _cl_out _cl_cr _cl_cc < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "${OUTPUT_CANON}.json" 2>/dev/null || echo "0 0 0 0")
+            if [[ "$_cl_in" =~ ^[0-9]+$ && "$_cl_out" =~ ^[0-9]+$ && "$_cl_cr" =~ ^[0-9]+$ && "$_cl_cc" =~ ^[0-9]+$ ]]; then
+                _cl_total=$((_cl_in + _cl_out + _cl_cr + _cl_cc))
+                "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
+                    input="$_cl_in" output="$_cl_out" cache_read="$_cl_cr" \
+                    cache_create="$_cl_cc" total="$_cl_total" raw="$TOKEN_RAW" >/dev/null 2>&1 || true
+            fi
         else
+            _claude_json_reason="claude JSON envelope missing non-empty string result"
+        fi
+        if [[ -n "$_claude_json_reason" ]]; then
             rm -f "$_claude_extract"
+            printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT_CANON"
+            printf '%s\n' "$_claude_json_reason" >> "${OUTPUT_CANON}.stderr"
+            exit_code=99
+            status="ERROR"
         fi
-        read -r _cl_in _cl_out _cl_cr _cl_cc < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "${OUTPUT_CANON}.json" 2>/dev/null || echo "0 0 0 0")
-        if [[ "$_cl_in" =~ ^[0-9]+$ && "$_cl_out" =~ ^[0-9]+$ && "$_cl_cr" =~ ^[0-9]+$ && "$_cl_cc" =~ ^[0-9]+$ ]]; then
-            _cl_total=$((_cl_in + _cl_out + _cl_cr + _cl_cc))
-            "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
-                input="$_cl_in" output="$_cl_out" cache_read="$_cl_cr" \
-                cache_create="$_cl_cc" total="$_cl_total" raw="$TOKEN_RAW" >/dev/null 2>&1 || true
-        fi
+    elif [[ -s "$OUTPUT_CANON" && "$(LC_ALL=C head -c 1 "$OUTPUT_CANON" 2>/dev/null || true)" == "{" ]]; then
+        printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT_CANON"
+        printf '%s\n' "claude JSON envelope could not be parsed" >> "${OUTPUT_CANON}.stderr"
+        exit_code=99
+        status="ERROR"
     fi
     rm -f "${OUTPUT_CANON}.json"
 fi
