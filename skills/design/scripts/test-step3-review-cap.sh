@@ -6,6 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 LAUNCHER="$ROOT/skills/design/scripts/run-step3-review.sh"
+CONTINUATION="$ROOT/skills/design/scripts/plan-review-continuation.sh"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -27,9 +28,15 @@ grep -Fq 'review-round cap (${_round_cap}) reached for ${_tier}' "$ROOT/skills/d
     || fail 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/design/scripts/run-step3-review.sh" \
     || fail 'run-step3-review.sh missing symlinked plan-review cleanup warning'
+grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
+    || fail 'SKILL missing explicit --approve continuation stop contract'
+[[ -x "$CONTINUATION" ]] || fail 'plan-review-continuation.sh must be executable'
 
-mkdir -p "${HOME}/.cache/larch/sessions"
-TMPROOT="$(mktemp -d "${HOME}/.cache/larch/sessions/larch-step3-cap-test.XXXXXX")"
+TMP_PARENT="${TMPDIR:-/tmp}"
+if mkdir -p "${HOME}/.cache/larch/sessions" 2>/dev/null && [[ -w "${HOME}/.cache/larch/sessions" ]]; then
+    TMP_PARENT="${HOME}/.cache/larch/sessions"
+fi
+TMPROOT="$(mktemp -d "${TMP_PARENT%/}/larch-step3-cap-test.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
 
 write_common_inputs() {
@@ -170,5 +177,54 @@ grep -Fq 'STEP3_REVIEW_CAP_REACHED=true' "$D5/.step3-review-cap.env" || fail 'ex
 driver_out=$(run_driver "$D5" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected HARD cap-reached loop status'
 [[ "$(cat "$D5/review-round-count.txt")" == "5" ]] || fail 'HARD cap path must leave counter unchanged'
+
+run_continuation() {
+    local design_tmpdir="$1" approve="$2"
+    CLAUDE_PLUGIN_ROOT="$ROOT" "$CONTINUATION" --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
+}
+
+echo "=== continuation helper stops before cap cleanup ==="
+DCAP="$TMPROOT/continuation-cap"
+write_common_inputs "$DCAP" SIMPLE
+printf '5\n' >"$DCAP/review-round-count.txt"
+cat >"$DCAP/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: important issue
+EOF
+cont_out=$(run_continuation "$DCAP" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'continuation cap should stop'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=cap-reached$' || fail 'continuation cap reason missing'
+
+echo "=== continuation helper honors explicit approve ==="
+DAPP="$TMPROOT/continuation-approve"
+write_common_inputs "$DAPP" SIMPLE
+printf '1\n' >"$DAPP/review-round-count.txt"
+cp "$DCAP/accepted-plan-findings.md" "$DAPP/accepted-plan-findings.md"
+cont_out=$(run_continuation "$DAPP" true)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'explicit approve should stop auto-continuation'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=explicit-approve$' || fail 'explicit approve reason missing'
+
+echo "=== continuation helper recomputes high fallback from disk ==="
+DHIGH="$TMPROOT/continuation-high"
+write_common_inputs "$DHIGH" SIMPLE
+printf '1\n' >"$DHIGH/review-round-count.txt"
+cat >"$DHIGH/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Missing contract
+- **Concern**: Missing required documentation contract violates a stated invariant in the plan.
+EOF
+cont_out=$(run_continuation "$DHIGH" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'high fallback should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'high fallback reason missing'
+
+echo "=== continuation helper continues on degraded zero-findings ==="
+DDEG="$TMPROOT/continuation-degraded"
+write_common_inputs "$DDEG" SIMPLE
+printf '1\n' >"$DDEG/review-round-count.txt"
+: >"$DDEG/accepted-plan-findings.md"
+printf 'DEGRADED_PANEL=1\n' >"$DDEG/.step3-review-result.env"
+cont_out=$(run_continuation "$DDEG" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'degraded round should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=degraded-panel$' || fail 'degraded reason missing'
 
 echo "PASS: test-step3-review-cap.sh"

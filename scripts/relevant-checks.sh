@@ -129,6 +129,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/plan-review-continuation.sh|skills/design/scripts/plan-review-continuation.md|skills/design/scripts/test-step3-review-cap.sh|skills/design/scripts/test-step3-review-cap.md)
+                append_target_once test-step3-review-cap
+                ;;
+        esac
+        case "$f" in
             skills/design/scripts/render-final-summary.sh|skills/design/scripts/render-final-summary.md|skills/design/scripts/test-render-final-summary.sh|skills/design/scripts/test-render-final-summary.md|scripts/test-render-final-summary-bash32.sh|scripts/test-render-final-summary-bash32.md)
                 append_target_once test-render-final-summary
                 append_target_once test-render-final-summary-bash32

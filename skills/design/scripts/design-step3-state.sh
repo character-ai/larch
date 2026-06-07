@@ -69,6 +69,7 @@ case "$ACTION" in
         : >"$DESIGN_TMPDIR/.completed/step-2b"
         : >"$DESIGN_TMPDIR/.completed/step-2b.5"
         if [[ "$ACTION" == direct-review-entry ]]; then
+            rm -f "$DESIGN_TMPDIR/accepted-plan-findings-all.md" "$DESIGN_TMPDIR/.accepted-plan-findings-all.prev.md"
             rm -f "$DESIGN_TMPDIR/.step3-reentry"
         fi
         printf '%s\n' "STEP3_STATE=$ACTION"

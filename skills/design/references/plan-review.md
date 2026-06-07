@@ -47,14 +47,15 @@ Step 3 **may** extend the fixed 10-slot static panel with up to 3 scout-proposed
 
 ## Single-pass review
 
-`plan-review-loop.sh` runs exactly one review pass per Step 3 entry: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never calls `revise-plan-with-waterfall.sh`, never applies findings to `plan.txt`, and never loops internally. The outer Step 3 driver (`run-step3-review.sh`) owns the Gate-C review-round cap via `review-round-count.txt`.
+`plan-review-loop.sh` runs exactly one review pass per Step 3 entry: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never calls `revise-plan-with-waterfall.sh`, never applies findings to `plan.txt`, and never loops internally. The outer Step 3 driver (`run-step3-review.sh`) owns the flattened review-round cap of 5 via `review-round-count.txt`.
 
 Terminal `LOOP_STATUS` values are limited to `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, and `main-agent-vote-required`; the outer driver may also surface `cap-reached` before launching the loop. Gate B is the sole apply point for accepted findings.
 
 - **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero accepted findings with a degraded but non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
 - **Tally failures**: `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before Gate B and preserves the current plan.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
-- **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` still appends accepted OOS findings before successful terminal status mapping so cumulative OOS survives single-pass reruns. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C re-run behavior only).
+- **`accepted-plan-findings-all.md` cumulation**: `_accumulate_round_accepted_all` appends the current round's accepted in-scope findings across automatic continuation rounds before Gate C. Gate B still reads only `accepted-plan-findings.md` for the current apply set; final-summary rendering prefers the cumulative file when present.
+- **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` still appends accepted OOS findings before successful terminal status mapping so cumulative OOS survives automatic single-pass reruns. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across manual review runs** covers cross-Gate-C re-run behavior only).
 - **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the rule used by Gate B presentation.
 - **Artifacts**: per-entry forensics are stored under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B reads the active accepted/rejected/OOS artifacts, not a passive post-apply summary.
 
