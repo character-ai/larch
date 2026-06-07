@@ -333,38 +333,116 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 1,
-          "cache_read": 283042,
-          "cache_create": 379,
-          "cache_create_5m": 379,
+          "input": 20,
+          "cache_read": 5566706,
+          "cache_create": 283947,
+          "cache_create_5m": 283947,
           "cache_create_1h": 0,
-          "output": 1156,
-          "total": 284578
+          "output": 8231,
+          "total": 5858904
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 20,
+              "cache_read": 5566706,
+              "cache_create": 283947,
+              "cache_create_5m": 283947,
+              "cache_create_1h": 0,
+              "output": 8231,
+              "total": 5858904
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 15,
+          "cache_read": 4580827,
+          "cache_create": 8751,
+          "cache_create_5m": 8751,
+          "cache_create_1h": 0,
+          "output": 3635,
+          "total": 4593228
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 15,
+              "cache_read": 4580827,
+              "cache_create": 8751,
+              "cache_create_5m": 8751,
+              "cache_create_1h": 0,
+              "output": 3635,
+              "total": 4593228
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 6,
+          "cache_read": 1245413,
+          "cache_create": 1489,
+          "cache_create_5m": 1489,
+          "cache_create_1h": 0,
+          "output": 1258,
+          "total": 1248166
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 6,
+              "cache_read": 1245413,
+              "cache_create": 1489,
+              "cache_create_5m": 1489,
+              "cache_create_1h": 0,
+              "output": 1258,
+              "total": 1248166
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 1,
+          "cache_read": 312204,
+          "cache_create": 501,
+          "cache_create_5m": 501,
+          "cache_create_1h": 0,
+          "output": 1100,
+          "total": 313806
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
               "input": 1,
-              "cache_read": 283042,
-              "cache_create": 379,
-              "cache_create_5m": 379,
+              "cache_read": 312204,
+              "cache_create": 501,
+              "cache_create_5m": 501,
               "cache_create_1h": 0,
-              "output": 1156,
-              "total": 284578
+              "output": 1100,
+              "total": 313806
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 148,
-      "cache_read": 30527032,
-      "cache_create": 176971,
-      "cache_create_5m": 176971,
+      "input": 189,
+      "cache_read": 41949140,
+      "cache_create": 471280,
+      "cache_create_5m": 471280,
       "cache_create_1h": 0,
-      "output": 88293,
-      "total": 30792444
+      "output": 101361,
+      "total": 42521970
     }
   },
   "claude_sub": {
@@ -496,6 +574,30 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -505,12 +607,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 148,
-    "cache_read": 30527032,
-    "cache_create_5m": 176971,
+    "input": 189,
+    "cache_read": 41949140,
+    "cache_create_5m": 471280,
     "cache_create_1h": 0,
-    "output": 88293,
-    "total": 30792444
+    "output": 101361,
+    "total": 42521970
   },
   "BUCKETS_codex": {
     "input": 0,
