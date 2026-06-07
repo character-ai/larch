@@ -8,23 +8,21 @@ Each finding's vote outcome determines the points awarded to the reviewer(s) who
 
 | Vote Result | Points | Description |
 |---|---|---|
-| **Accepted** (2+ YES) | +1 | The finding was validated by the voting panel |
-| **Neutral** (exactly 1 YES) | 0 | Insufficient support, but not dismissed |
-| **Exonerated** (0 YES, 1+ EXONERATE) | 0 | Legitimate concern, but not actionable in this PR |
-| **Rejected** (0 YES, 0 EXONERATE) | -1 | Finding was unanimously dismissed by the panel |
+| **Accepted** (meets YES threshold for the tier) | +1 | The finding was validated by the voting panel |
+| **Neutral** (≥1 YES, not accepted) | 0 | Insufficient support, but not dismissed |
+| **Rejected** (0 YES) | -1 | Finding was unanimously dismissed by the panel |
 
 If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), all contributing reviewers receive the same points for that finding.
 
 ## Out-of-Scope Scoring
 
-Out-of-scope (OOS) observations use the same score shape as in-scope findings: accepted OOS earns +1, neutral or exonerated OOS earns 0, and rejected OOS costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
+Out-of-scope (OOS) observations use the same score shape as in-scope findings: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) earns 0, and rejected OOS (0 YES) costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
 
 | OOS Vote Result | Points | Description |
 |---|---|---|
-| **OOS Accepted** (2+ YES) | +1 | Reviewer surfaced an issue worth tracking as a GitHub issue |
-| **OOS Neutral** (exactly 1 YES) | 0 | Insufficient support, but not dismissed |
-| **OOS Exonerated** (0 YES, 1+ EXONERATE) | 0 | Legitimate observation, but not worth filing an issue |
-| **OOS Rejected** (0 YES, 0 EXONERATE) | -1 | Observation was unanimously dismissed by the panel |
+| **OOS Accepted** (meets YES threshold for the tier) | +1 | Reviewer surfaced an issue worth tracking as a GitHub issue |
+| **OOS Neutral** (≥1 YES, not accepted) | 0 | Insufficient support, but not dismissed |
+| **OOS Rejected** (0 YES) | -1 | Observation was unanimously dismissed by the panel |
 
 ## OOS Issue Filing
 
@@ -37,8 +35,8 @@ OOS_1: [OUT_OF_SCOPE] Code — <description>
 Voters decide whether each OOS item deserves a GitHub issue:
 
 - **2+ YES** -> Accepted: filed as a GitHub issue by `/implement` for future attention, reviewer earns +1
-- **Exactly 1 YES or 0 YES with 1+ EXONERATE** -> Not accepted: remains an observation reported in the PR body, reviewer earns 0
-- **0 YES and 0 EXONERATE** -> Rejected: remains an observation reported in the PR body, reviewer loses 1 point
+- **≥1 YES below acceptance threshold** -> Neutral: remains an observation reported in the PR body, reviewer earns 0
+- **0 YES** -> Rejected: remains an observation reported in the PR body, reviewer loses 1 point
 
 **OOS items are never implemented in the current PR.** Accepted OOS items result in GitHub issue creation only — this cleanly separates "fix now" (in-scope findings) from "fix later" (OOS observations).
 
@@ -46,19 +44,19 @@ Voters decide whether each OOS item deserves a GitHub issue:
 
 After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses 11 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`); `/design` uses 3 players (`Code`, `Codex`, `Cursor`). One row per independent reviewer:
 
-| Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |
-|----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|------------------|--------------|-------|
-| Structure | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Correctness | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | +2 |
-| Testing | 2 | 1 | 0 | 1 | 0 | 1 | 1 | 0 | 0 | +2 |
-| Security | 4 | 2 | 0 | 1 | 1 | 1 | 0 | 0 | 1 | 0 |
-| Edge-cases | 3 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | +1 |
-| Codex-Structure | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Codex-Correctness | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Codex-Testing | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Codex-Security | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Codex-Edge-cases | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
-| Claude-Generic | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Reviewer | Findings | Accepted | Neutral (≥1 YES) | Rejected (0 YES) | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | Score |
+|----------|----------|----------|------------------|-----------------|--------------|--------------|-------------|--------------|-------|
+| Structure | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Correctness | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | +2 |
+| Testing | 2 | 1 | 1 | 0 | 1 | 1 | 0 | 0 | +2 |
+| Security | 4 | 2 | 1 | 1 | 1 | 0 | 0 | 1 | 0 |
+| Edge-cases | 3 | 2 | 0 | 1 | 0 | 0 | 0 | 0 | +1 |
+| Codex-Structure | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Codex-Correctness | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Codex-Testing | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Codex-Security | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Codex-Edge-cases | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Claude-Generic | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
 
 ## Future Plans
 

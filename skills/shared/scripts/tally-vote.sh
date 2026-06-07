@@ -31,22 +31,20 @@ idx=1
 while [[ "$idx" -le "$count" ]]; do
     yes=0
     no=0
-    exon=0
     for vf in "${VOTER_FILES[@]}"; do
         [[ -f "$vf" ]] || continue
         vote=$(awk -v n="$idx" '
             BEGIN { vote="" }
             $0 ~ ("^FINDING_" n "([^0-9]|$)") {
-                if ($0 ~ /EXONERATE/) vote="EXONERATE";
-                else if ($0 ~ /YES/) vote="YES";
+                if ($0 ~ /YES/) vote="YES";
                 else if ($0 ~ /NO/) vote="NO";
+                else if ($0 ~ /EXONERATE/) vote="NO";
             }
             END { print vote }
         ' "$vf")
         case "$vote" in
             YES) yes=$((yes + 1)) ;;
             NO) no=$((no + 1)) ;;
-            EXONERATE) exon=$((exon + 1)) ;;
         esac
     done
     accepted=false
@@ -57,12 +55,12 @@ while [[ "$idx" -le "$count" ]]; do
     elif [[ "$yes" -ge 2 ]]; then
         accepted=true
     fi
-    # tally-vote.sh only reports raw YES/NO/EXONERATE counts; callers own
+    # tally-vote.sh only reports raw YES/NO counts; callers own
     # panel composition and any higher-level threshold handling.
+    # Stray EXONERATE tokens are tolerated and counted as NO.
     printf 'FINDING_%s_ACCEPTED=%s\n' "$idx" "$accepted"
     printf 'FINDING_%s_VOTES_YES=%s\n' "$idx" "$yes"
     printf 'FINDING_%s_VOTES_NO=%s\n' "$idx" "$no"
-    printf 'FINDING_%s_VOTES_EXONERATE=%s\n' "$idx" "$exon"
     idx=$((idx + 1))
 done
 printf 'FINDING_COUNT=%s\n' "$count"

@@ -27,7 +27,7 @@ append_oos() {
         printf '### OOS_%s: %s\n' "$n" "$title"
         printf -- '- **Description**: %s\n' "$description"
         printf -- '- **Reviewer**: Test\n'
-        printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+        printf -- '- **Vote tally**: YES=2 NO=0\n'
         printf -- '- **Phase**: implement\n\n'
     } >> "$file"
 }
@@ -148,7 +148,7 @@ append_oos "$input" 1 "First" "Touches skills/foo/bar.sh"
 {
     printf '### OOS_2: Malformed\n'
     printf -- '- **Reviewer**: Test\n'
-    printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+    printf -- '- **Vote tally**: YES=2 NO=0\n'
     printf -- '- **Phase**: implement\n\n'
 } >> "$input"
 append_oos "$input" 3 "Third" "Touches skills/foo/bar.sh"

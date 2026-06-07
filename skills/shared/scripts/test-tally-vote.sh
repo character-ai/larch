@@ -21,6 +21,7 @@ printf 'FINDING_1 YES\nFINDING_2 EXONERATE\n' > "$TMP/v2.txt"
 out=$("$DIR/tally-vote.sh" --ballot-file "$TMP/ballot.md" --voter-files "$TMP/v1.txt" "$TMP/v2.txt")
 grep -Fq 'FINDING_1_ACCEPTED=true' <<< "$out"
 grep -Fq 'FINDING_2_ACCEPTED=false' <<< "$out"
-grep -Fq 'FINDING_2_VOTES_EXONERATE=1' <<< "$out"
+# EXONERATE is tolerated and counted as NO; VOTES_NO should be 2 (1 explicit + 1 mapped)
+grep -Fq 'FINDING_2_VOTES_NO=2' <<< "$out"
 
 echo "All assertions passed."

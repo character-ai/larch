@@ -93,7 +93,7 @@ The regression harnesses are `make test-tally-plan-review` and
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stubs, missing-ballot abort tally stubs, and exactly-once `tally-error` emission across ballot/voter/argv validation failures after `--design-tmpdir` is known.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stubs, missing-ballot abort tally stubs, and exactly-once `tally-error` emission across ballot/voter/argv validation failures after `--design-tmpdir` is known. Stray EXONERATE tokens from old voter output are tolerated and mapped to NO.
 
 `test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing

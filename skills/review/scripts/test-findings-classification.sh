@@ -152,7 +152,7 @@ F="$TMP/f"
 mkdir -p "$F"
 cat > "$F/votes.txt" <<'EOF'
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
 EOF
 # shellcheck source=scripts/lib-vote-tally.sh
 source "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
@@ -179,7 +179,7 @@ import csv, sys
 with open(sys.argv[1], newline="") as fh:
     rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
 r = rows["FINDING_1"]
-assert r["voting_result"] == "rejected", r
+assert r["voting_result"] == "neutral", r  # 1 YES, 1 JERR, unanimous-2 → not accepted, YES>0 → neutral
 assert r["v2_vote"] == "JUDGE_ERROR", r
 assert r["v2_correctness"] == "", r
 assert r["v2_severity"] == "", r
@@ -217,7 +217,7 @@ OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
 EOF
 cat > "$G/v2.txt" <<'EOF'
 FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
-OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
 EOF
 out="$G/out.env"
 IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$G/ballot.md" --review-tmpdir "$G" --round-num 1 --voter-files "$G/v1.txt" "$G/v2.txt" > "$out"
@@ -225,8 +225,8 @@ class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
 python3 - "$class_file" <<'PY'
 import csv, sys
 allowed = {
-    "voting_result": {"accepted", "rejected", "exonerated", "neutral"},
-    "vote": {"", "YES", "NO", "EXONERATE", "JUDGE_ERROR"},
+    "voting_result": {"accepted", "neutral", "rejected"},
+    "vote": {"", "YES", "NO", "JUDGE_ERROR"},  # EXONERATE tolerated and mapped to NO
     "correctness": {"", "true", "partially-true", "false-positive", "uncertain"},
     "severity": {"", "blocker", "major", "minor", "nit", "uncertain"},
     "quality": {"", "excellent", "good", "adequate", "weak", "no-fix", "uncertain"},

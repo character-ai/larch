@@ -147,7 +147,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-untrusted-block.sh"
 classification=$("$SCRIPT_DIR/../../../scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")
 case "$classification" in
     SIMPLE)
-        tier_emphasis="**Tier emphasis: SIMPLE.** This is a minimum-change review lane. Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Accept YES only for findings that keep or restore that minimum-change contract. Prefer EXONERATE on nits, style concerns, and forward-looking issues. When in doubt, EXONERATE."
+        tier_emphasis="**Tier emphasis: SIMPLE.** This is a minimum-change review lane. Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Accept YES only for findings that keep or restore that minimum-change contract. Vote NO on nits, style concerns, and forward-looking issues that are not worth tracking."
         ;;
     HARD|*)
         tier_emphasis="**Tier emphasis: HARD.** Bias your findings toward **thoroughness**. Flag missed considerations, edge cases, and architectural concerns. Request additions when warranted. Engage seriously with all findings."

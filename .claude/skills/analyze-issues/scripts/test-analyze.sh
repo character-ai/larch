@@ -76,7 +76,7 @@ assert_contains "$out" "#2 and #6: bug fix: crash in foo" "duplicate title pair"
 assert_contains "$out" "W3 [STALLED] issues: 1 total" "stalled issue count"
 
 assert_contains "$out" "Design-phase vote findings:" "vote findings heading"
-assert_contains "$out" "#7: codex / generic (YES=2 NO=1 EXONERATE=0)" "vote tally row"
+assert_contains "$out" "#7: codex / generic (YES=2 NO=1)" "vote tally row"
 assert_contains "$out" "codex: 1 findings" "codex aggregate"
 assert_contains "$out" "codex / generic: 1 findings" "codex generic pair"
 assert_not_contains "$out" "- code: 1 findings" "codex not collapsed to code aggregate"

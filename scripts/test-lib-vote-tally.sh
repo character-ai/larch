@@ -65,7 +65,7 @@ FINDING_10: YES
 EOF
 got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 → YES" "$got" "YES"
 got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 → NO" "$got" "NO"
-got=$(vote_for_id FINDING_3 "$voter_file"); assert_eq "FINDING_3 → EXONERATE" "$got" "EXONERATE"
+got=$(vote_for_id FINDING_3 "$voter_file"); assert_eq "FINDING_3 EXONERATE → NO (tolerated)" "$got" "NO"
 got=$(vote_for_id FINDING_10 "$voter_file"); assert_eq "FINDING_10 → YES" "$got" "YES"
 got=$(vote_for_id FINDING_4 "$voter_file"); assert_eq "FINDING_4 absent → JUDGE_ERROR" "$got" "JUDGE_ERROR"
 # Substring guard: FINDING_1 must not match FINDING_10's line.
@@ -78,7 +78,7 @@ FINDING_1: NO -- yes this matters
 FINDING_2: EXONERATE -- yes but minor
 EOF
 got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 NO with yes prose → NO" "$got" "NO"
-got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 EXONERATE with yes prose → EXONERATE" "$got" "EXONERATE"
+got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 EXONERATE with yes prose → NO (tolerated)" "$got" "NO"
 # Regression: voter file with zero parseable FINDING_N: lines must yield JUDGE_ERROR, never NEUTRAL.
 cat > "$voter_file" <<'EOF'
 This voter produced prose without any structured vote lines.
@@ -284,28 +284,28 @@ fi
 
 echo "# classify_result"
 got=$(classify_result 2 0 0 3); assert_eq "2Y/3 → accepted" "$got" "accepted"
-got=$(classify_result 1 1 0 3); assert_eq "1Y/1N (3 elig) → neutral" "$got" "neutral"
-got=$(classify_result 1 0 1 3); assert_eq "1Y/1E (3 elig) → exonerated" "$got" "exonerated"
-got=$(classify_result 1 0 1 2); assert_eq "1Y/1E (2 elig) → exonerated" "$got" "exonerated"
+got=$(classify_result 1 1 0 3); assert_eq "1Y/1N (3 elig) → neutral (YES > 0)" "$got" "neutral"
+got=$(classify_result 1 0 1 3); assert_eq "1Y/0N/1E (3 elig) → neutral (YES > 0, exon ignored)" "$got" "neutral"
+got=$(classify_result 1 0 1 2); assert_eq "1Y/0N/1E (2 elig) → neutral (YES > 0)" "$got" "neutral"
 got=$(classify_result 0 1 0 3); assert_eq "0Y/1N → rejected" "$got" "rejected"
 got=$(classify_result 1 0 0 1); assert_eq "1Y/1 → accepted" "$got" "accepted"
 got=$(classify_result 0 1 0 1); assert_eq "1N/1 → rejected" "$got" "rejected"
-got=$(classify_result 0 0 1 1); assert_eq "1E/1 → exonerated" "$got" "exonerated"
+got=$(classify_result 0 0 1 1); assert_eq "0Y/0N/1E (1 elig) → rejected (YES == 0)" "$got" "rejected"
 got=$(classify_result 0 0 0 1); assert_eq "1 neutral abstain → rejected" "$got" "rejected"
-got=$(classify_result 0 0 3 3); assert_eq "0Y/0N/3E (3 elig) → exonerated" "$got" "exonerated"
-got=$(classify_result 0 1 1 3); assert_eq "0Y/1N/1E (3 elig) → exonerated" "$got" "exonerated"
-got=$(classify_result 0 1 2 3); assert_eq "0Y/1N/2E (3 elig) → exonerated" "$got" "exonerated"
-got=$(classify_result 0 2 1 3); assert_eq "0Y/2N/1E (3 elig, NO > EXON) → rejected" "$got" "rejected"
-got=$(classify_result 1 2 3 3); assert_eq "1Y/2N/3E (3 elig) → exonerated" "$got" "exonerated"
-got=$(classify_result 0 0 2 2); assert_eq "0Y/0N/2E (2 elig, unanimous EXON) → exonerated" "$got" "exonerated"
-got=$(classify_result 0 1 1 2); assert_eq "0Y/1N/1E (2 elig, mixed NO/EXON) → exonerated" "$got" "exonerated"
+got=$(classify_result 0 0 3 3); assert_eq "0Y/0N/3E (3 elig) → rejected (YES == 0)" "$got" "rejected"
+got=$(classify_result 0 1 1 3); assert_eq "0Y/1N/1E (3 elig) → rejected (YES == 0)" "$got" "rejected"
+got=$(classify_result 0 1 2 3); assert_eq "0Y/1N/2E (3 elig) → rejected (YES == 0)" "$got" "rejected"
+got=$(classify_result 0 2 1 3); assert_eq "0Y/2N/1E (3 elig) → rejected (YES == 0)" "$got" "rejected"
+got=$(classify_result 1 2 3 3); assert_eq "1Y/2N/3E (3 elig) → neutral (YES > 0)" "$got" "neutral"
+got=$(classify_result 0 0 2 2); assert_eq "0Y/0N/2E (2 elig) → rejected (YES == 0)" "$got" "rejected"
+got=$(classify_result 0 1 1 2); assert_eq "0Y/1N/1E (2 elig) → rejected (YES == 0)" "$got" "rejected"
 
-if grep -Fq 'exonerate > 0 && (no == 0 || (exonerate >= no && exonerate > yes))' "$LIB"; then
+if command grep -Fq 'elif (( yes > 0 )); then' "$LIB"; then
     got=ok
 else
     got=missing
 fi
-assert_eq "classify_result multi-voter exoneration condition pinned in lib" "$got" "ok"
+assert_eq "classify_result simplified yes>0 neutral condition present in lib" "$got" "ok"
 
 echo "# panel_tier"
 got=$(panel_tier 3); assert_eq "3 → full-3" "$got" "full-3"

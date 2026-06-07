@@ -259,7 +259,7 @@ EOF_FINDING
 # Review Round 1
 
 - Mode: `diff`
-- 1 accepted, 4 rejected (0 exonerated)
+- 1 accepted, 4 rejected (0 neutral)
 EOF_SUMMARY
     cat > "$out/accepted-findings.md" <<'EOF_ACCEPTED'
 ### FINDING_1: First accepted
@@ -1144,7 +1144,7 @@ grep -Fq 'TOTAL_ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout tota
 grep -Fq 'TOTAL_REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout total rejected kv matches composed tally"
 [[ "$(jq -c 'select(.phase == "code-review" and .outcome == "accepted")' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.jsonl" | wc -l | tr -d ' ')" == "3" ]] \
     || fail "tally-fidelity accepted record count"
-grep -Fq -- '1 accepted, 4 rejected (0 exonerated)' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round outcome line"
+grep -Fq -- '1 accepted, 4 rejected (0 neutral)' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round outcome line"
 if grep -Fq -- '- Accepted findings:' "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json"; then
     fail "tally-fidelity tally body must omit stale per-round count lines"
 fi

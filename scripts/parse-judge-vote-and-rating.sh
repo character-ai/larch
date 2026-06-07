@@ -48,6 +48,7 @@ parsed=$(
         if (match(upper, /^(YES|NO|EXONERATE)([[:space:]-]|$)/)) {
           vote=substr(upper, RSTART, RLENGTH)
           sub(/([[:space:]-]).*$/, "", vote)
+          if (vote == "EXONERATE") vote="NO"
         }
         n=split(scoped, parts, /[[:space:]]+/)
         for (i = 1; i <= n; i++) {

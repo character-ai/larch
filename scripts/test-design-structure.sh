@@ -804,7 +804,7 @@ contains "$APPROVAL_MD" 'offer this option only when the current review-round co
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$PLAN_REVIEW_MD" 'Step 3 always runs the full panel via `plan-review-loop.sh`' 'plan-review.md missing full-panel consumer line'
 contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
-contains "$PLAN_REVIEW_MD" 'When in doubt between YES and EXONERATE, prefer EXONERATE.' 'plan-review.md missing voter-bias proportionality pin'
+contains "$PLAN_REVIEW_MD" 'vote YES or NO on proposed modifications' 'plan-review.md missing voter YES/NO instruction line'
 contains "$PLAN_REVIEW_MD" 'Treat any suggested remedy in the item body as *informational only*' 'plan-review.md missing OOS remedy informational-only pin'
 contains "$PLAN_REVIEW_MD" 'Security-tagged findings are held locally and NEVER written to this public OOS issue artifact' 'plan-review.md missing SECURITY.md OOS exclusion pin'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -1401,26 +1401,27 @@ grep -Fq 'Step 1d sprawl returns to the pre-plan path that re-enters Step 1d.7 o
 echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 
 # Check 21 (#2930): removed manual flag; always-explicit Gate B is pinned above.
-# Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
-CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
+# FINDING_2678 removed: YES↔EXONERATE phrase no longer valid after EXONERATE removal (PR #3647).
+
+# Check: voter YES/NO-only instructions pinned in plan-review.md + renderer.
 RENDER_VOTER_SH="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
 
 voter1_line=$(grep -n '^- \*\*Voter 1\*\*' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$voter1_line" ]] || fail "(FINDING_2678) plan-review.md missing '- **Voter 1**' prompt anchor"
+[[ -n "$voter1_line" ]] || fail "plan-review.md missing '- **Voter 1**' prompt anchor"
 voter1_text=$(sed -n "${voter1_line}p" "$PLAN_REVIEW_MD")
-grep -Fq "$CANONICAL_PHRASE" <<< "$voter1_text" \
-  || fail "(FINDING_2678) plan-review.md Voter 1 prompt missing canonical phrase: $CANONICAL_PHRASE"
+grep -Fq 'YES or NO on proposed modifications' <<< "$voter1_text" \
+  || fail "plan-review.md Voter 1 prompt missing YES/NO-only instruction"
 
 shared_line=$(grep -n '^For Codex, Cursor, and their Claude replacement voters' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$shared_line" ]] || fail "(FINDING_2678) plan-review.md missing shared-voter-prompt anchor"
+[[ -n "$shared_line" ]] || fail "plan-review.md missing shared-voter-prompt anchor"
 shared_text=$(sed -n "${shared_line}p" "$PLAN_REVIEW_MD")
-grep -Fq "$CANONICAL_PHRASE" <<< "$shared_text" \
-  || fail "(FINDING_2678) plan-review.md shared Voter 2/3 prompt missing canonical phrase: $CANONICAL_PHRASE"
+grep -Fq 'Vote YES for findings' <<< "$shared_text" \
+  || fail "plan-review.md shared Voter 2/3 prompt missing YES/NO-only instruction"
 
-grep -Fq "$CANONICAL_PHRASE" "$RENDER_VOTER_SH" \
-  || fail "(FINDING_2678) render-voter-prompt.sh missing canonical phrase: $CANONICAL_PHRASE"
+grep -Fq 'Vote NO only when the stated problem is not real or not worth raising' "$RENDER_VOTER_SH" \
+  || fail "render-voter-prompt.sh missing voter NO-only guard instruction"
 
-echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (plan-review.md + renderer)"
+echo "PASS: voter YES/NO-only instructions pinned in plan-review.md + renderer"
 
 # Check 19 (#2672): decomposition panel replaces Split-path stub.
 DECOMP_REF="$REPO_ROOT/skills/design/references/decompose-panel.md"

@@ -4,8 +4,8 @@
 
 Primary caller: `skills/review/scripts/tally-votes.sh`.
 
-Inputs: `--ballot-file` plus optional `--voter-files`. Voter files are plain text and may contain lines like `FINDING_1 YES`, `FINDING_1 NO`, or `FINDING_1 EXONERATE`.
+Inputs: `--ballot-file` plus optional `--voter-files`. Voter files are plain text and may contain lines like `FINDING_1 YES` or `FINDING_1 NO`. Stray `EXONERATE` tokens are tolerated and counted as `NO`.
 
-Stdout is `KEY=value` only with per-finding accepted status and YES/NO/EXONERATE counts.
+Stdout is `KEY=value` only with per-finding accepted status and YES/NO counts.
 
 Harness: `skills/shared/scripts/test-tally-vote.sh`, wired through `make test-tally-vote`.

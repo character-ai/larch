@@ -185,7 +185,7 @@ kv_value() {
 
 sanitize_vote_cell() {
     case "${1:-}" in
-        YES|NO|EXONERATE|JUDGE_ERROR) printf '%s' "$1" ;;
+        YES|NO|JUDGE_ERROR) printf '%s' "$1" ;;
         *) printf '' ;;
     esac
 }
@@ -220,7 +220,7 @@ sanitize_uncertain_cell() {
 
 sanitize_result_cell() {
     case "${1:-}" in
-        accepted|rejected|exonerated|neutral) printf '%s' "$1" ;;
+        accepted|rejected|neutral) printf '%s' "$1" ;;
         *) printf '' ;;
     esac
 }
@@ -403,7 +403,6 @@ record_tally_outcome() {
         case "$outcome" in
             rejected) printf '%s_%s_REJECTED_SUBTYPE=true_rejected\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
             neutral) printf '%s_%s_REJECTED_SUBTYPE=neutral\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
-            exonerated) printf '%s_%s_REJECTED_SUBTYPE=exonerated\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
             *)
                 larch_err "tally-code-votes.sh: record_tally_outcome: unexpected outcome for $id: $outcome"
                 exit 2
@@ -492,8 +491,8 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% JUDGE_ERROR) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
     fi
     printf '## Per-finding vote breakdown\n\n'
-    printf '| Item | YES | NO | EXON | JERR | Result |\n'
-    printf '|---|---:|---:|---:|---:|---|\n'
+    printf '| Item | YES | NO | JERR | Result |\n'
+    printf '|---|---:|---:|---:|---|\n'
 
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
@@ -512,20 +511,19 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
             case "$vote" in
                 YES) yes=$((yes + 1)) ;;
                 NO) no=$((no + 1)) ;;
-                EXONERATE) exonerate=$((exonerate + 1)) ;;
                 *) judge_error=$((judge_error + 1)) ;;
             esac
         done
 
         result=$(classify_result "$yes" "$no" "$exonerate" "$EFFECTIVE_VOTERS")
         case "$result" in
-            accepted|rejected|exonerated|neutral) ;;
+            accepted|rejected|neutral) ;;
             *)
                 larch_err "tally-code-votes.sh: unknown classify_result outcome for $id: $result"
                 exit 2
                 ;;
         esac
-        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
+        printf '| %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$judge_error" "$result"
 
         reviewer=$(reviewer_for_block "$block")
         write_classification_tsv_row "$id" "$reviewer" "$result" "${classification_cells[@]+"${classification_cells[@]}"}"
@@ -580,27 +578,18 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                     rejected)
                         {
                             printf '### [rejected] %s\n\n' "$id"
-                            printf '%s\n\n' "**Rejected subtype:** dismissed (no acceptance threshold met)"
+                            printf '%s\n\n' "**Rejected subtype:** dismissed (0 YES)"
                             cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
-                        } >> "$REJECTED_FINDINGS_FILE"
-                        ;;
-                    exonerated)
-                        EXONERATED_COUNT=$((EXONERATED_COUNT + 1))
-                        {
-                            printf '### [rejected] %s\n\n' "$id"
-                            printf '%s\n\n' "**Rejected subtype:** exonerated (concern noted, not implemented in this PR)"
-                            cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
+                            printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
                         } >> "$REJECTED_FINDINGS_FILE"
                         ;;
                     neutral)
                         NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
                         {
                             printf '### [rejected] %s\n\n' "$id"
-                            printf '%s\n\n' "**Rejected subtype:** split panel (YES votes did not clear NO votes; not accepted)"
+                            printf '%s\n\n' "**Rejected subtype:** neutral (YES below acceptance threshold)"
                             cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
+                            printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
                         } >> "$REJECTED_FINDINGS_FILE"
                         ;;
                 esac
@@ -609,7 +598,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         else
             # OOS item
             cat "$block" >> "$OOS_FILE"
-            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error" "$result" >> "$OOS_FILE"
+            printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s Result=%s\n\n' "$yes" "$no" "$judge_error" "$result" >> "$OOS_FILE"
             if [[ "$result" == "accepted" ]]; then
                 if [[ "$security" == "true" ]]; then
                     # Security-tagged accepted OOS: held locally only, never filed publicly.
@@ -637,7 +626,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |\n'
+    printf '| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |\n'
     printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n'
     awk -F '\t' '
       {
@@ -646,12 +635,12 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         if (kind == "finding") {
           proposed[reviewer]++
           if (result == "accepted") accepted[reviewer]++
-          else if (result == "neutral" || result == "exonerated") neutral[reviewer]++
+          else if (result == "neutral") neutral[reviewer]++
           else rejected[reviewer]++
         } else {
           oos_proposed[reviewer]++
           if (result == "accepted") oos_accepted[reviewer]++
-          else if (result == "neutral" || result == "exonerated") oos_neutral[reviewer]++
+          else if (result == "neutral") oos_neutral[reviewer]++
           else oos_rejected[reviewer]++
         }
       }
@@ -672,7 +661,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
 # Append zero-count rows for manifest entries that produced no score_rows, including
 # narrative-only NOT_SUBSTANTIVE slots and dynamic/other manifest slots that had no
-# accepted, scoreboard-neutral/exonerated, rejected, or OOS findings. Missing collector metadata falls
+# accepted, scoreboard-neutral, rejected, or OOS findings. Missing collector metadata falls
 # back to STATUS=OK.
 # Uses awk (not bash arrays) for bash 3.2 portability.
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
@@ -767,7 +756,7 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
         if ($3 == "accepted") {
           total[base]++
           accepted[base]++
-        } else if ($3 == "neutral" || $3 == "exonerated") {
+        } else if ($3 == "neutral") {
           total[base]++
         } else if ($3 == "rejected") {
           total[base]++
