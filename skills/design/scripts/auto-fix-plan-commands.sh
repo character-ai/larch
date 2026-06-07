@@ -30,6 +30,7 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 VALIDATE_PLAN_SH="${LARCH_AUTOFIX_VALIDATE_PLAN_SH:-$SCRIPT_DIR/validate-plan.sh}"
 LAUNCH_CODEX_EXEC_SH="${LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH:-$PLUGIN_ROOT/scripts/launch-codex-exec.sh}"
 RUN_EXTERNAL_AGENT_SH="${LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
+GATE_B_DEDUP_PLAN_SH="${LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH:-$SCRIPT_DIR/gate-b-dedup-plan.sh}"
 # Full per-vendor dispatch override: when set, replaces the real launcher path so
 # the offline harness can simulate a vendor edit deterministically.
 DISPATCH_SH="${LARCH_AUTOFIX_DISPATCH_SH:-}"
@@ -84,6 +85,11 @@ MAX_ATTEMPTS=$((10#$MAX_ATTEMPTS))
 [[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PLUGIN_ROOT"
 [[ -d "$REPO_ROOT" ]] || { larch_err "auto-fix-plan-commands.sh: --repo-root must be a directory"; exit 2; }
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
+TARGET_REL="${PLAN_FILE#"$DESIGN_TMPDIR"/}"
+SITE_KEY=$(printf '%s' "$SITE" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_//; s/_$//')
+TARGET_KEY=$(printf '%s' "$(basename "$PLAN_FILE")" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_//; s/_$//')
+[[ -n "$SITE_KEY" ]] || SITE_KEY=site
+[[ -n "$TARGET_KEY" ]] || TARGET_KEY=target
 
 # Build the cross-vendor alternation order (Codex first when present).
 VENDOR_ORDER=()
@@ -99,13 +105,99 @@ if [[ "${#VENDOR_ORDER[@]}" -eq 0 ]]; then
     larch_err "→ auto-fix [$SITE]: no external vendor available; deferring to operator prompt"
     exit 0
 fi
+if (( MAX_ATTEMPTS > ${#VENDOR_ORDER[@]} )); then
+    MAX_ATTEMPTS=${#VENDOR_ORDER[@]}
+fi
 
 WORK_DIR="$DESIGN_TMPDIR/plan-autofix"
 mkdir -p "$WORK_DIR"
-ORIGINAL_VALIDATE_LOG="$WORK_DIR/original-validate-plan-commands.log"
-if [[ -f "$DESIGN_TMPDIR/validate-plan-commands.log" && ! -f "$ORIGINAL_VALIDATE_LOG" ]]; then
+ORIGINAL_VALIDATE_LOG="$WORK_DIR/original-validate-plan-commands-${SITE_KEY}-${TARGET_KEY}.log"
+if [[ -f "$DESIGN_TMPDIR/validate-plan-commands.log" ]]; then
     cp -p "$DESIGN_TMPDIR/validate-plan-commands.log" "$ORIGINAL_VALIDATE_LOG" 2>/dev/null || true
 fi
+
+sha_file() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        sha256sum "$1" | awk '{print $1}'
+    fi
+}
+
+tmpdir_guard_manifest() {
+    local out="$1" rel
+    : >"$out"
+    (cd "$DESIGN_TMPDIR" && find . -type f ! -path './plan-autofix/*' ! -path "./$TARGET_REL" -print) \
+        | LC_ALL=C sort \
+        | while IFS= read -r rel || [[ -n "$rel" ]]; do
+            rel="${rel#./}"
+            printf '%s\t%s\n' "$(sha_file "$DESIGN_TMPDIR/$rel")" "$rel" >>"$out"
+        done
+}
+
+tmpdir_guard_backup() {
+    local manifest="$1" backup_dir="$2" rel
+    mkdir -p "$backup_dir"
+    while IFS="$(printf '\t')" read -r _hash rel || [[ -n "$rel" ]]; do
+        [[ -n "$rel" ]] || continue
+        mkdir -p "$backup_dir/$(dirname "$rel")"
+        cp -p "$DESIGN_TMPDIR/$rel" "$backup_dir/$rel"
+    done <"$manifest"
+}
+
+tmpdir_guard_restore() {
+    local before_manifest="$1" after_manifest="$2" backup_dir="$3" rel
+    awk -F '\t' '{print $2}' "$before_manifest" | LC_ALL=C sort >"$backup_dir/.before-paths"
+    awk -F '\t' '{print $2}' "$after_manifest" | LC_ALL=C sort >"$backup_dir/.after-paths"
+    comm -13 "$backup_dir/.before-paths" "$backup_dir/.after-paths" \
+        | while IFS= read -r rel || [[ -n "$rel" ]]; do
+            [[ -n "$rel" ]] || continue
+            rm -f "$DESIGN_TMPDIR/$rel"
+        done
+    while IFS="$(printf '\t')" read -r _hash rel || [[ -n "$rel" ]]; do
+        [[ -n "$rel" ]] || continue
+        mkdir -p "$DESIGN_TMPDIR/$(dirname "$rel")"
+        cp -p "$backup_dir/$rel" "$DESIGN_TMPDIR/$rel"
+    done <"$before_manifest"
+}
+
+git_status_snapshot() {
+    local out="$1"
+    if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$REPO_ROOT" status --porcelain=v1 -z >"$out"
+    else
+        : >"$out"
+    fi
+}
+
+check_repo_dirty_delta() {
+    local before="$1" after="$2" log_file="$3"
+    cmp -s "$before" "$after" && return 0
+    {
+        printf '%s\n' 'auto-fix vendor changed repository dirty-tree state'
+        printf '%s\n' '--- before status -z (NULs shown as newlines) ---'
+        tr '\0' '\n' <"$before"
+        printf '%s\n' '--- after status -z (NULs shown as newlines) ---'
+        tr '\0' '\n' <"$after"
+    } >"$log_file"
+    return 1
+}
+
+snapshot_plan_trailers() {
+    case "$TARGET_REL" in
+        plan.txt)
+            "$GATE_B_DEDUP_PLAN_SH" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers
+            ;;
+    esac
+}
+
+dedup_and_validate_plan_trailers() {
+    case "$TARGET_REL" in
+        plan.txt)
+            "$GATE_B_DEDUP_PLAN_SH" --design-tmpdir "$DESIGN_TMPDIR" --dedup
+            ;;
+    esac
+}
 
 render_fix_prompt() {
     local attempt="$1" vendor="$2" out="$3" validate_log="$ORIGINAL_VALIDATE_LOG"
@@ -133,8 +225,9 @@ render_fix_prompt() {
 
 # Re-run the validator on the target plan file; echo the resolved VALIDATE_STATUS.
 revalidate() {
-    local out rc status=""
-    out=$(set +e; "$VALIDATE_PLAN_SH" --plan-file "$PLAN_FILE" --repo-root "$REPO_ROOT" 2>/dev/null; printf '\nRC=%s' "$?")
+    local log_file="$1" out rc status=""
+    out=$(set +e; "$VALIDATE_PLAN_SH" --plan-file "$PLAN_FILE" --repo-root "$REPO_ROOT" 2>&1; printf '\nRC=%s' "$?")
+    printf '%s\n' "$out" >"$log_file"
     rc="${out##*RC=}"
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
@@ -143,7 +236,7 @@ revalidate() {
     done <<<"$out"
     [[ -n "$status" ]] || status="error"
     printf '%s' "$status"
-    [[ "$rc" == "0" ]] || return 0
+    [[ "$rc" == "0" && "$status" != "error" ]] || return 1
     return 0
 }
 
@@ -218,7 +311,18 @@ dispatch_vendor_fix() {
 attempts=0
 fixed_by=""
 final_status="defects-found"
+validator_infra_log_file=""
 declare -a sequence=()
+
+snapshot_plan_trailers || {
+    emit_kv AUTOFIX_STATUS failed
+    emit_kv VENDOR_SEQUENCE ""
+    emit_kv ATTEMPTS 0
+    emit_kv FIXED_BY ""
+    emit_kv FINAL_VALIDATE_STATUS trailer-snapshot-failed
+    emit_kv ORIGINAL_VALIDATE_LOG_FILE "$ORIGINAL_VALIDATE_LOG"
+    exit 0
+}
 
 idx=0
 while (( attempts < MAX_ATTEMPTS )); do
@@ -231,10 +335,41 @@ while (( attempts < MAX_ATTEMPTS )); do
     prompt_file="$run_dir/prompt.md"
     render_fix_prompt "$attempts" "$vendor" "$prompt_file"
     larch_err "→ auto-fix [$SITE]: attempt ${attempts} vendor=${vendor}"
+    tmpdir_before="$run_dir/tmpdir-before.manifest"
+    tmpdir_after="$run_dir/tmpdir-after.manifest"
+    tmpdir_backup="$run_dir/tmpdir-backup"
+    repo_before="$run_dir/repo-before.status-z"
+    repo_after="$run_dir/repo-after.status-z"
+    tmpdir_guard_manifest "$tmpdir_before"
+    tmpdir_guard_backup "$tmpdir_before" "$tmpdir_backup"
+    git_status_snapshot "$repo_before"
     dispatch_rc=0
     dispatch_vendor_fix "$vendor" "$run_dir" "$prompt_file" || dispatch_rc=$?
+    git_status_snapshot "$repo_after"
+    tmpdir_guard_manifest "$tmpdir_after"
+    if ! check_repo_dirty_delta "$repo_before" "$repo_after" "$run_dir/repo-dirty-delta.log"; then
+        dispatch_rc=90
+    fi
+    if ! cmp -s "$tmpdir_before" "$tmpdir_after"; then
+        tmpdir_guard_restore "$tmpdir_before" "$tmpdir_after" "$tmpdir_backup" || true
+        dispatch_rc=91
+    fi
     larch_err "→ auto-fix: attempt ${attempts} vendor=${vendor} dispatch-rc=${dispatch_rc}"
-    final_status="$(revalidate)"
+    if [[ "$dispatch_rc" -ne 0 ]]; then
+        final_status="dispatch-failed"
+        continue
+    fi
+    if ! dedup_and_validate_plan_trailers >"$run_dir/dedup.log" 2>&1; then
+        final_status="trailer-dedup-failed"
+        continue
+    fi
+    revalidate_rc=0
+    final_status="$(revalidate "$run_dir/revalidate.log")" || revalidate_rc=$?
+    if [[ "$revalidate_rc" -ne 0 && "$final_status" != "defects-found" ]]; then
+        validator_infra_log_file="$run_dir/revalidate.log"
+        final_status="validator-infra-failed"
+        break
+    fi
     larch_err "→ auto-fix: attempt ${attempts} vendor=${vendor} validate=${final_status}"
     if [[ "$final_status" == "ok" ]]; then
         fixed_by="$vendor"
@@ -253,4 +388,5 @@ emit_kv ATTEMPTS "$attempts"
 emit_kv FIXED_BY "$fixed_by"
 emit_kv FINAL_VALIDATE_STATUS "$final_status"
 emit_kv ORIGINAL_VALIDATE_LOG_FILE "$ORIGINAL_VALIDATE_LOG"
+[[ -n "$validator_infra_log_file" ]] && emit_kv REVALIDATE_LOG_FILE "$validator_infra_log_file"
 exit 0

@@ -967,7 +967,7 @@ grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
 grep -Fq 'auto-fix-plan-commands.sh' "$SKILL_MD" \
   || fail "(FINDING_14) SKILL.md missing validator auto-fix helper invocation"
-grep -Fq '.plan-command-autofix-${_autofix_site_key:-site}.attempted' "$SKILL_MD" \
+grep -Fq '.plan-command-autofix-${_autofix_cycle_key:-site}.attempted' "$SKILL_MD" \
   || fail "(FINDING_23) SKILL.md missing durable auto-fix cycle cap sentinel"
 grep -Fq 'ORIGINAL_VALIDATE_LOG_FILE' "$SKILL_MD" \
   || fail "(FINDING_11) SKILL.md missing original validator evidence handoff"

@@ -86,6 +86,35 @@ restore_review_artifacts_after_revert() {
         "$DESIGN_TMPDIR/cursor-plan-assessor-round-${round}.txt.meta"
 }
 
+clear_post_revert_state() {
+    rm -f \
+        "$DESIGN_TMPDIR/.design-postplan-emit-result.env" \
+        "$DESIGN_TMPDIR/.gate-b-optional-trailer-keys" \
+        "$DESIGN_TMPDIR/.gate-b-optional-trailer-keys.values" \
+        "$DESIGN_TMPDIR/validate-plan-commands.log" \
+        "$DESIGN_TMPDIR/check-plan-size.validation.log" \
+        "$DESIGN_TMPDIR/.step3-entry-plan-printed"
+    rm -f "$DESIGN_TMPDIR"/.plan-command-autofix-*.attempted
+    rm -f \
+        "$DESIGN_TMPDIR/.completed/finalize" \
+        "$DESIGN_TMPDIR/.completed/step-3b" \
+        "$DESIGN_TMPDIR/.completed/step-4" \
+        "$DESIGN_TMPDIR/.completed/step-4b" \
+        "$DESIGN_TMPDIR/.completed/step-5b" \
+        "$DESIGN_TMPDIR/.completed/step-5c" \
+        "$DESIGN_TMPDIR/.completed/step-5d" \
+        "$DESIGN_TMPDIR/.completed/step-6"
+    if diff_line=$(awk -F': *' '$1=="diff_lines"{value=$2} END{if (value ~ /^[0-9]+$/) print value}' "$DESIGN_TMPDIR/plan.txt"); then
+        if [[ -n "$diff_line" ]]; then
+            printf '%s\n' "$diff_line" >"$DESIGN_TMPDIR/diff-lines.txt"
+        else
+            rm -f "$DESIGN_TMPDIR/diff-lines.txt"
+        fi
+    else
+        rm -f "$DESIGN_TMPDIR/diff-lines.txt"
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         write-original|write-after|read-cursor|write-cursor|revert-round)
@@ -157,11 +186,12 @@ case "$SUBCMD" in
         else
             restore_src="$DESIGN_TMPDIR/plan.txt-original"
         fi
-        [[ -f "$restore_src" ]] || { larch_err "snapshot-plan-round.sh: revert-round source missing: ${restore_src##*/}"; exit 2; }
+        [[ -f "$restore_src" && ! -L "$restore_src" ]] || { larch_err "snapshot-plan-round.sh: revert-round source missing or unsafe: ${restore_src##*/}"; exit 2; }
         atomic_copy_plan "$restore_src" "$DESIGN_TMPDIR/plan.txt" ".revert-plan" \
             || { larch_err "snapshot-plan-round.sh: revert-round copy-back failed"; exit 1; }
         rm -f "$DESIGN_TMPDIR/plan-after-round-${ROUND}.txt"
         restore_review_artifacts_after_revert "$ROUND"
+        clear_post_revert_state
         printf '%s\n' "$((ROUND - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
         cursor_file="$DESIGN_TMPDIR/plan-review-round-cursor.txt"
         tmp=$(mktemp "$DESIGN_TMPDIR/.cursor.XXXXXX")

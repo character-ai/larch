@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` shared **### Plan command validator failure (shared)** handler in `SKILL.md` (Step 2b, Gate B / Step 3.5, discussion-round2, Step 5c).
 
-**Contract**: cross-vendor auto-repair loop for plan-command validator defects (#3628 Component D). On `VALIDATE_STATUS=defects-found`, the shared handler calls this helper **before** escalating to the operator. It spawns an external vendor (Codex/Cursor) to edit the target plan file in place, re-validates, and alternates vendors across bounded attempts. The operator `Fix-and-retry` / `Override` / `Cancel` prompt fires only when this helper returns `exhausted` or `unavailable`.
+**Contract**: cross-vendor auto-repair loop for plan-command validator defects (#3628 Component D). On `VALIDATE_STATUS=defects-found`, the shared handler calls this helper **before** escalating to the operator. It spawns an external vendor (Codex/Cursor) to edit the target plan file in place, re-validates with durable diagnostics, and alternates vendors across bounded attempts capped to the number of available vendors. The operator `Fix-and-retry` / `Override` / `Cancel` prompt fires only when this helper returns `exhausted` or `unavailable`.
 
 **When to load**: before wiring the shared validator handler's auto-repair step, or when editing the helper.
 
@@ -21,7 +21,7 @@
 
 ## Vendor attribution / alternation
 
-"The vendor that introduced the defect" is not attributable — plan text is applied by the orchestrator from mixed-vendor findings — so the pragmatic default is **cross-vendor alternation**: attempt 1 = Codex (when present) else Cursor; attempt 2 = the other vendor. With `--max-attempts 2` and both vendors present, each vendor gets exactly one attempt. Unavailable vendors are dropped from the order; with neither present the helper returns `AUTOFIX_STATUS=unavailable` without dispatching.
+"The vendor that introduced the defect" is not attributable — plan text is applied by the orchestrator from mixed-vendor findings — so the pragmatic default is **cross-vendor alternation**: attempt 1 = Codex (when present) else Cursor; attempt 2 = the other vendor. With `--max-attempts 2` and both vendors present, each vendor gets exactly one attempt. Unavailable vendors are dropped from the order, and `--max-attempts` is clamped to the resulting vendor count so a single-vendor run cannot burn duplicate attempts on the same tool; with neither present the helper returns `AUTOFIX_STATUS=unavailable` without dispatching.
 
 ## Dispatch reuse
 
@@ -30,29 +30,35 @@ Reuses the verified launcher primitives (same argv grammar as `scripts/lint-fix-
 - **Codex** → `scripts/launch-codex-exec.sh --workdir "$DESIGN_TMPDIR" --add-dir "$DESIGN_TMPDIR" --prompt-file … --usage-label codex_plan_autofix --timing-task-kind codex-plan-autofix` (parses `LAUNCHER_EXIT`).
 - **Cursor** → `scripts/run-external-agent.sh --tool cursor --capture-stdout -- cursor agent -p --trust ${MODEL_ARGS} --workspace "$DESIGN_TMPDIR" "<wrapped-prompt>"` with `lib-cursor-launcher-common.sh` model/auth/serial-lock glue and `cursor-wrap-prompt.sh`; the helper records a best-effort `cursor-plan-autofix` timing row around this dispatch.
 
-The agent edits the plan file IN PLACE; `revalidate()` (re-running `validate-plan.sh`) is the authoritative success signal, not the launcher exit code. The fix prompt wraps the plan content and validator log as **untrusted data** (trust-boundary preserved) and instructs minimal, defect-only edits preserving plan prose, structure, and the trailing metadata block. The helper copies the original validator log to `plan-autofix/original-validate-plan-commands.log` before revalidation can overwrite the live log; if `redact-secrets.sh` fails while rendering the prompt, the raw validator log is withheld and a fixed placeholder is included instead.
+The agent edits the plan file IN PLACE; `revalidate()` (re-running `validate-plan.sh`) is the authoritative success signal, not the launcher exit code. Nonzero launcher exits, repository dirty-tree deltas, non-target `$DESIGN_TMPDIR` mutations, and optional-trailer guard failures are treated as failed attempts and cannot be converted into success by a passing revalidation. The fix prompt wraps the plan content and validator log as **untrusted data** (trust-boundary preserved) and instructs minimal, defect-only edits preserving plan prose, structure, and the trailing metadata block. The helper copies the original validator log to a site/target-specific `plan-autofix/original-validate-plan-commands-*.log` before revalidation can overwrite the live log; if `redact-secrets.sh` fails while rendering the prompt, the raw validator log is withheld and a fixed placeholder is included instead. Each revalidation writes `attempt-*/revalidate.log`; validator infrastructure failures stop the loop immediately and emit that path as `REVALIDATE_LOG_FILE`.
+
+## Mutation guards
+
+Before each dispatch the helper snapshots all session files except the target file and `plan-autofix/**`, plus the repository dirty-tree status under `--repo-root`. After dispatch it restores any non-target session-file changes, rejects repo dirty-tree changes introduced by the vendor, then runs `gate-b-dedup-plan.sh --dedup` for `plan.txt` targets before revalidation. This makes auto-fix a target-file-only repair path; logs and prompts remain confined to `plan-autofix/**`.
 
 ## Hermetic seams
 
 - `LARCH_AUTOFIX_VALIDATE_PLAN_SH` — default `validate-plan.sh`; re-validation driver.
 - `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` — default `scripts/launch-codex-exec.sh`.
 - `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` — default `scripts/run-external-agent.sh`.
+- `LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH` — default `gate-b-dedup-plan.sh`; optional-trailer snapshot/dedup guard for `plan.txt`.
 - `LARCH_AUTOFIX_DISPATCH_SH` — full per-vendor dispatch override (`--vendor`, `--run-dir`, `--prompt-file`, `--plan-file`, `--design-tmpdir`); replaces the real launcher path so the harness simulates a vendor edit deterministically.
 
 ## Machine output (FD 3 KVs)
 
-- `AUTOFIX_STATUS` = `ok` (validator passed) | `exhausted` (attempts spent, still `defects-found`) | `unavailable` (no vendor present)
+- `AUTOFIX_STATUS` = `ok` (validator passed) | `exhausted` (attempts spent or stopped on validator infrastructure failure) | `unavailable` (no vendor present)
 - `VENDOR_SEQUENCE` = comma-separated vendors attempted, in order
 - `ATTEMPTS` = integer attempts made
 - `FIXED_BY` = vendor that produced the passing plan, or empty
 - `FINAL_VALIDATE_STATUS` = last `VALIDATE_STATUS` observed
 - `ORIGINAL_VALIDATE_LOG_FILE` = preserved original validator evidence copied before revalidation, when available
+- `REVALIDATE_LOG_FILE` = durable revalidation stdout/stderr when validator infrastructure failed
 
 Exit `0` on every loop outcome (status is in the KVs); exit `2` only on argv/setup errors.
 
 ## Orchestrator handoff
 
-The shared handler runs this helper once per validator site using a durable `.plan-command-autofix-*.attempted` sentinel, parses `AUTOFIX_STATUS`, and treats nonzero helper exits or missing/unknown status as `failed`. On `ok`, continue the success path (validation now passes) and append a `Warnings` entry recording the auto-correction (vendor + defect count) using `ORIGINAL_VALIDATE_LOG_FILE` where present. On `exhausted` / `unavailable` / `failed` / `skipped-cycle-cap`, fall through to the existing `Fix-and-retry` / `Override` / `Cancel` `AskUserQuestion`. **A `Warnings` entry is always logged whenever defects occurred**, even when auto-corrected (operator decision 6 on #3628).
+The shared handler runs this helper once per site/target/evidence cycle using a durable `.plan-command-autofix-*.attempted` sentinel, parses `AUTOFIX_STATUS`, and treats nonzero helper exits or missing/unknown status as `failed`. On `ok`, continue the success path (validation now passes) and append a `Warnings` entry recording the auto-correction (vendor + defect count) using `ORIGINAL_VALIDATE_LOG_FILE` where present. On `exhausted` / `unavailable` / `failed` / `skipped-cycle-cap`, fall through to the existing `Fix-and-retry` / `Override` / `Cancel` `AskUserQuestion`. **A `Warnings` entry is always logged whenever defects occurred**, even when auto-corrected (operator decision 6 on #3628).
 
 ## Edit in sync
 

@@ -15,12 +15,19 @@ bash -n "$SUBJECT" || fail 'bash -n failed'
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tafpc.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
-# Validator stub: ok once the dispatch stub has written the .autofix-fixed marker,
-# defects-found otherwise. Reads DESIGN_TMPDIR from the env exported by the subject.
+# Validator stub: ok once the dispatch stub has updated the target plan file,
+# defects-found otherwise.
 VALIDATE_STUB="$TMP/validate-stub.sh"
 cat >"$VALIDATE_STUB" <<'STUB'
 #!/usr/bin/env bash
-if [ -f "$DESIGN_TMPDIR/.autofix-fixed" ]; then
+plan_file=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --plan-file) plan_file="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -Fq 'autofix fixed' "$plan_file"; then
   printf 'VALIDATE_STATUS=ok\n'
 else
   printf 'VALIDATE_STATUS=defects-found\n'
@@ -36,21 +43,28 @@ chmod +x "$VALIDATE_STUB"
 DISPATCH_STUB="$TMP/dispatch-stub.sh"
 cat >"$DISPATCH_STUB" <<'STUB'
 #!/usr/bin/env bash
-vendor=""; design_tmpdir=""
+vendor=""; plan_file=""; run_dir=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --vendor) vendor="$2"; shift 2 ;;
-    --design-tmpdir) design_tmpdir="$2"; shift 2 ;;
+    --plan-file) plan_file="$2"; shift 2 ;;
+    --run-dir) run_dir="$2"; shift 2 ;;
+    --design-tmpdir) shift 2 ;;
     *) shift ;;
   esac
 done
-printf '%s\n' "$vendor" >>"$design_tmpdir/.autofix-vendor-calls"
+printf '%s\n' "$vendor" >>"$run_dir/autofix-vendor-calls"
 case "${AUTOFIX_TEST_MODE:-}" in
-  fix-first) : >"$design_tmpdir/.autofix-fixed"; exit 0 ;;
+  fix-first) printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"; exit 0 ;;
   never-fix) exit 0 ;;
   codex-fail-cursor-fix)
     if [ "$vendor" = codex ]; then exit 1; fi
-    : >"$design_tmpdir/.autofix-fixed"; exit 0 ;;
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"; exit 0 ;;
+  mutate-tmpdir)
+    printf 'bad mutation\n' >"$(dirname "$plan_file")/accepted-plan-findings.md"
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"
+    exit 0
+    ;;
   *) exit 0 ;;
 esac
 STUB
@@ -76,7 +90,7 @@ D1="$TMP/d1"; mk_design "$D1"
 out1=$(run_subject "$D1" --codex-present false --cursor-present false)
 [[ "$(kv "$out1" AUTOFIX_STATUS)" == "unavailable" ]] || fail "case1 expected unavailable: $out1"
 [[ "$(kv "$out1" ATTEMPTS)" == "0" ]] || fail "case1 expected 0 attempts"
-[[ ! -f "$D1/.autofix-vendor-calls" ]] || fail "case1 must not dispatch any vendor"
+[[ ! -d "$D1/plan-autofix" ]] || fail "case1 must not dispatch any vendor"
 
 # Case 2: codex fixes on first attempt → ok, FIXED_BY=codex, 1 attempt.
 D2="$TMP/d2"; mk_design "$D2"
@@ -102,9 +116,10 @@ out4=$(AUTOFIX_TEST_MODE=codex-fail-cursor-fix run_subject "$D4" --codex-present
 [[ "$(kv "$out4" FIXED_BY)" == "cursor" ]] || fail "case4 expected FIXED_BY=cursor: $out4"
 [[ "$(kv "$out4" VENDOR_SEQUENCE)" == "codex,cursor" ]] || fail "case4 expected codex,cursor: $out4"
 
-# Case 5: only cursor present → sequence starts with cursor.
+# Case 5: only cursor present → sequence starts with cursor and does not duplicate
+# the sole vendor even when max-attempts is higher.
 D5="$TMP/d5"; mk_design "$D5"
-out5=$(AUTOFIX_TEST_MODE=never-fix run_subject "$D5" --codex-present false --cursor-present true --max-attempts 1)
+out5=$(AUTOFIX_TEST_MODE=never-fix run_subject "$D5" --codex-present false --cursor-present true --max-attempts 3)
 [[ "$(kv "$out5" VENDOR_SEQUENCE)" == "cursor" ]] || fail "case5 expected cursor: $out5"
 [[ "$(kv "$out5" ATTEMPTS)" == "1" ]] || fail "case5 expected 1 attempt: $out5"
 
@@ -153,8 +168,33 @@ if grep -Fq 'raw-secret-token' "$prompt7"; then
   fail 'case7 prompt must not include raw validator log after redaction failure'
 fi
 orig_log7="$(kv "$out7" ORIGINAL_VALIDATE_LOG_FILE)"
-[[ "$orig_log7" == "$D7_CANON/plan-autofix/original-validate-plan-commands.log" ]] \
+[[ "$orig_log7" == "$D7_CANON/plan-autofix/original-validate-plan-commands-design_plan-command_auto-fix-plan.txt.log" ]] \
   || fail "case7 original log path drifted: $out7"
 grep -Fq 'raw-secret-token' "$orig_log7" || fail 'case7 original validator evidence copy missing'
+
+# Case 8: non-target tmpdir mutation is restored and cannot be treated as success
+# even when the plan file itself was fixed.
+D8="$TMP/d8"; mk_design "$D8"
+printf 'trusted accepted\n' >"$D8/accepted-plan-findings.md"
+out8=$(AUTOFIX_TEST_MODE=mutate-tmpdir run_subject "$D8" --codex-present true --cursor-present false --max-attempts 1)
+[[ "$(kv "$out8" AUTOFIX_STATUS)" == "exhausted" ]] || fail "case8 expected exhausted after guard failure: $out8"
+[[ "$(cat "$D8/accepted-plan-findings.md")" == "trusted accepted" ]] || fail 'case8 trusted artifact mutation must be restored'
+
+# Case 9: validator infrastructure failure stops after the first attempt and
+# leaves a durable revalidation log path.
+INFRA_VALIDATE="$TMP/validate-infra.sh"
+cat >"$INFRA_VALIDATE" <<'STUB'
+#!/usr/bin/env bash
+printf 'validator crashed\n' >&2
+exit 2
+STUB
+chmod +x "$INFRA_VALIDATE"
+D9="$TMP/d9"; mk_design "$D9"
+out9=$(AUTOFIX_TEST_MODE=fix-first LARCH_AUTOFIX_VALIDATE_PLAN_SH="$INFRA_VALIDATE" \
+  LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" "$SUBJECT" --design-tmpdir "$D9" --plan-file "$D9/plan.txt" \
+  --codex-present true --cursor-present true 2>/dev/null)
+[[ "$(kv "$out9" AUTOFIX_STATUS)" == "exhausted" ]] || fail "case9 expected exhausted after infra failure: $out9"
+[[ "$(kv "$out9" FINAL_VALIDATE_STATUS)" == "validator-infra-failed" ]] || fail "case9 final status: $out9"
+[[ -f "$(kv "$out9" REVALIDATE_LOG_FILE)" ]] || fail "case9 missing revalidate log: $out9"
 
 pass 'auto-fix-plan-commands harness'
