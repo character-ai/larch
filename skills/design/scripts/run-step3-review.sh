@@ -209,24 +209,6 @@ fi
 REVIEW_ROUND_COUNT="$_round_count"
 ROUND_NUM=""
 
-if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; then
-    _pr_phys=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || _pr_phys=""
-    if [[ -n "$_pr_phys" ]]; then
-        for _child in "$_pr_phys"/round-[0-9]*; do
-            [[ -d "$_child" ]] || continue
-            if [[ -L "$_child" ]]; then
-                emit_kv WARN "Step 3: refusing to remove symlinked round artifact $(basename "$_child")"
-                continue
-            fi
-            rm -rf "$_child"
-        done
-    else
-        emit_kv WARN 'Step 3: plan-review directory could not be resolved; skipping round cleanup'
-    fi
-elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
-    emit_kv WARN 'Step 3: refusing to clean symlinked plan-review directory'
-fi
-
 if [[ "$STEP3_REVIEW_CAP_REACHED" == true ]]; then
     for _stale_review_artifact in accepted-plan-findings.md rejected-findings.md oos.md voting-tally.md findings-classification.tsv ballot.txt; do
         rm -f "$DESIGN_TMPDIR/$_stale_review_artifact"
@@ -280,6 +262,23 @@ else
                 fi
                 ROUND_NUM=$_next_cursor
             fi
+        fi
+        if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; then
+            _pr_phys=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || _pr_phys=""
+            if [[ -n "$_pr_phys" && "${ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+                _active_round="$_pr_phys/round-${ROUND_NUM}"
+                if [[ -e "$_active_round" ]]; then
+                    if [[ -L "$_active_round" ]]; then
+                        emit_kv WARN "Step 3: refusing to remove symlinked round artifact round-${ROUND_NUM}"
+                    elif [[ -d "$_active_round" ]]; then
+                        rm -rf "$_active_round"
+                    fi
+                fi
+            else
+                emit_kv WARN 'Step 3: plan-review directory could not be resolved; skipping round cleanup'
+            fi
+        elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
+            emit_kv WARN 'Step 3: refusing to clean symlinked plan-review directory'
         fi
         if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$ROUND_COUNT_FILE"

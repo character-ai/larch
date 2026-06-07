@@ -409,7 +409,7 @@ assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'skipped-c
 grep -Fq 'LOOP_STATUS=cap-reached' "$D1/.step3-review-result.env" || fail 'result env cap-reached'
 [[ "$(cat "$D1/review-round-count.txt")" == "5" ]] || fail 'cap-reached leaves counter unchanged'
 
-echo "=== cap-reached cleans stale round forensics ==="
+echo "=== cap-reached preserves round forensics while clearing top-level stale artifacts ==="
 D1B="$TMP/cap-cleanup"
 write_common_inputs "$D1B" SIMPLE
 printf '5\n' >"$D1B/review-round-count.txt"
@@ -433,8 +433,8 @@ if [[ "$rc" -eq 0 ]]; then
 else
     fail "cap-reached cleanup rc=$rc"
 fi
-[[ ! -e "$D1B/plan-review/round-1" ]] || fail 'cap-reached should remove stale round-1'
-[[ ! -e "$D1B/plan-review/round-2" ]] || fail 'cap-reached should remove stale round-2'
+[[ -e "$D1B/plan-review/round-1/stale.txt" ]] || fail 'cap-reached should preserve stale round-1 forensics'
+[[ -e "$D1B/plan-review/round-2/stale.txt" ]] || fail 'cap-reached should preserve stale round-2 forensics'
 [[ ! -e "$D1B/accepted-plan-findings.md" ]] || fail 'cap-reached should clear stale accepted findings'
 [[ ! -e "$D1B/rejected-findings.md" ]] || fail 'cap-reached should clear stale rejected findings'
 [[ ! -e "$D1B/oos.md" ]] || fail 'cap-reached should clear stale round OOS'
@@ -445,17 +445,17 @@ grep -Fq 'cumulative oos' "$D1B/oos-accepted-design.md" || fail 'cap-reached sho
 echo "=== symlinked plan-review round dir skipped during cleanup ==="
 D1S="$TMP/symlink-round"
 write_common_inputs "$D1S" SIMPLE
-mkdir -p "$D1S/plan-review/round-1" "$D1S/plan-review/round-keeper"
-printf 'stale\n' >"$D1S/plan-review/round-1/stale.txt"
+mkdir -p "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-2"
 printf 'keep-me\n' >"$D1S/plan-review/round-keeper/stale.txt"
-ln -s "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-2"
+printf 'inactive\n' >"$D1S/plan-review/round-2/stale.txt"
+ln -s "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-1"
 stub="$(write_loop_stub "$D1S" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D1S")"
-assert_contains "$out" 'refusing to remove symlinked round artifact round-2' 'symlinked round cleanup warning'
-[[ ! -e "$D1S/plan-review/round-1" ]] || fail 'non-symlink round-1 should be removed during cleanup'
-[[ -f "$D1S/plan-review/round-keeper/stale.txt" ]] || fail 'symlinked round-2 target must survive cleanup'
-[[ -L "$D1S/plan-review/round-2" ]] || fail 'symlinked round-2 link should remain'
+assert_contains "$out" 'refusing to remove symlinked round artifact round-1' 'symlinked round cleanup warning'
+[[ -f "$D1S/plan-review/round-keeper/stale.txt" ]] || fail 'symlinked round-1 target must survive cleanup'
+[[ -L "$D1S/plan-review/round-1" ]] || fail 'symlinked round-1 link should remain'
+[[ -f "$D1S/plan-review/round-2/stale.txt" ]] || fail 'inactive non-symlink round-2 should be preserved'
 
 echo "=== non-numeric review-round-count treated as zero ==="
 D1C="$TMP/bad-count"

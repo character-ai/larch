@@ -82,15 +82,15 @@ Step 3 no longer runs a loop-internal post-apply pipeline, so plan-size and vali
 - `aggregate-findings.md` — `--allow-findings-outside-tmpdir true`
 - `tally-plan-review.md`, `dispatch-plan-voters.md`
 
-## Cross-entry forensic limitation
+## Cross-entry forensics
 
-Each Step 3 entry clears `plan-review/round-*/` before launch (SKILL.md); prior Step 3 entry forensics are not retained across Gate C re-runs.
+`run-step3-review.sh` clears only the active `plan-review/round-<N>/` slot before launch. Earlier automatic continuation rounds remain in place for diagnostics and cumulative summaries; a later manual Gate C re-run may overwrite the active round slot it is about to produce.
 
 ## Makefile
 
 `make test-plan-review-loop` — see `skills/design/scripts/test-plan-review-loop.sh`.
 
-`make test-design-multi-round-integration` — cross-script single-pass/log-publish harness (historical target name).
+`make test-design-multi-round-integration` — cross-script per-entry/log-publish and automatic continuation harness.
 
 ## Edit-in-sync
 

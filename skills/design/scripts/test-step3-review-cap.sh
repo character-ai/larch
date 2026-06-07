@@ -32,6 +32,10 @@ grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --approve continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
     || fail 'SKILL missing Gate B postapply resume continuation guard'
+grep -Fq 'snapshot-plan-round.sh write-after' "$SKILL_MD" \
+    || fail 'SKILL missing Gate B round snapshot handoff'
+grep -Fq 'Step 3 prelude before launching the next review' "$SKILL_MD" \
+    || fail 'SKILL missing auto-continuation Step 3 prelude contract'
 [[ -x "$CONTINUATION" ]] || fail 'plan-review-continuation.sh must be executable'
 
 TMP_PARENT="${TMPDIR:-/tmp}"
@@ -125,7 +129,7 @@ printf '%s\n' "$driver_out" | grep -q 'missing or invalid LOOP_STATUS' || fail '
 [[ "$(cat "$DP/review-round-count.txt")" == "1" ]] || fail 'removed converged status should still consume round 1'
 [[ -f "$DP/plan-review/round-1/new.txt" ]] || fail 'fresh round-1 artifact missing after first entry'
 [[ ! -e "$DP/plan-review/round-1/stale.txt" ]] || fail 'stale round-1 artifact should be cleaned before launch'
-[[ ! -e "$DP/plan-review/round-2/stale.txt" ]] || fail 'stale round-2 artifact should be cleaned before launch'
+[[ -e "$DP/plan-review/round-2/stale.txt" ]] || fail 'inactive round-2 artifact should be preserved before launch'
 stub="$(write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-2\"; printf 'fresh\n' >\"$DP/plan-review/round-2/new.txt\"; printf 'LOOP_STATUS=cap-hit\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 driver_out=$(run_driver "$DP" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'removed cap-hit status should normalize to panel-failed'
@@ -219,6 +223,19 @@ cont_out=$(run_continuation "$DHIGH" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'high fallback should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'high fallback reason missing'
 
+echo "=== continuation helper recognizes structured important severity ==="
+DIMP="$TMPROOT/continuation-structured-important"
+write_common_inputs "$DIMP" SIMPLE
+printf '1\n' >"$DIMP/review-round-count.txt"
+cat >"$DIMP/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Important structured
+- **Severity**: important
+- **Concern**: structured important issue
+EOF
+cont_out=$(run_continuation "$DIMP" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured important should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured important reason missing'
+
 echo "=== continuation helper stops on small clean SIMPLE round ==="
 DSMALL="$TMPROOT/continuation-small-clean"
 write_common_inputs "$DSMALL" SIMPLE
@@ -262,6 +279,19 @@ cont_out=$(run_continuation "$DSTRUCT" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'first-round structural HARD should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=structural-or-large-change$' || fail 'structural reason missing'
 
+echo "=== continuation helper stops on nit-only structural HARD ==="
+DNIT="$TMPROOT/continuation-structural-nit"
+write_common_inputs "$DNIT" HARD
+printf '1\n' >"$DNIT/review-round-count.txt"
+cat >"$DNIT/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Nit structural
+- **Severity**: nit
+- **Concern**: spelling cleanup
+EOF
+cont_out=$(run_continuation "$DNIT" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'nit-only structural HARD should stop'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'nit-only structural reason should be small-clean'
+
 echo "=== continuation helper ignores stale workflow_path when design_classification is SIMPLE ==="
 DSTALE="$TMPROOT/continuation-stale-workflow"
 write_common_inputs "$DSTALE" SIMPLE
@@ -282,14 +312,66 @@ cont_out=$(run_continuation "$DINVALID" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'invalid classification should default HARD and continue'
 printf '%s\n' "$cont_out" | grep -q '^STRUCTURAL_OR_LARGE_CHANGE=true$' || fail 'invalid classification should mark structural'
 
-echo "=== continuation helper continues on degraded zero-findings ==="
-DDEG="$TMPROOT/continuation-degraded"
+echo "=== continuation helper stops on degraded zero-findings ==="
+DDEG="$TMPROOT/continuation-degraded-zero"
 write_common_inputs "$DDEG" SIMPLE
 printf '1\n' >"$DDEG/review-round-count.txt"
 : >"$DDEG/accepted-plan-findings.md"
 printf 'DEGRADED_PANEL=1\n' >"$DDEG/.step3-review-result.env"
 cont_out=$(run_continuation "$DDEG" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'degraded round should continue'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=degraded-panel$' || fail 'degraded reason missing'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'degraded zero-findings round should stop'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'degraded zero-findings reason missing'
+
+echo "=== continuation helper ignores stale degraded flag after successful retally ==="
+DDEG_STALE="$TMPROOT/continuation-degraded-stale-retally"
+write_common_inputs "$DDEG_STALE" SIMPLE
+printf '1\n' >"$DDEG_STALE/review-round-count.txt"
+: >"$DDEG_STALE/accepted-plan-findings.md"
+cat >"$DDEG_STALE/.step3-review-result.env" <<'EOF'
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+LOOP_STATUS=complete
+EOF
+cont_out=$(run_continuation "$DDEG_STALE" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'successful retally stale degraded should stop'
+printf '%s\n' "$cont_out" | grep -q '^DEGRADED_PANEL=0$' || fail 'successful retally should clear degraded output'
+
+echo "=== chained continuation launches second review and preserves round-1 artifacts ==="
+DCHAIN="$TMPROOT/continuation-chain"
+write_common_inputs "$DCHAIN" HARD
+chain_stub="$DCHAIN/chain-loop-stub.sh"
+cat >"$chain_stub" <<'STUBEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+round_num=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --round-num) round_num="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+mkdir -p "${DESIGN_TMPDIR:?}/plan-review/round-${round_num}"
+printf 'launched\n' >"${DESIGN_TMPDIR}/plan-review/round-${round_num}/launched.txt"
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
+STUBEOF
+chmod +x "$chain_stub"
+run_driver "$DCHAIN" "$chain_stub" >/dev/null
+printf 'prior round artifact\n' >"$DCHAIN/plan-review/round-1/keep.txt"
+cat >"$DCHAIN/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: second review needed
+EOF
+cont_out=$(run_continuation "$DCHAIN" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'chain first continuation should continue'
+state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DCHAIN" --auto-continuation-entry)
+printf '%s\n' "$state_out" | grep -q '^STEP3_STATE=auto-continuation-entry$' || fail 'chain auto-continuation state missing'
+printf 'round1 applied plan\n' >"$DCHAIN/plan-after-round-1.txt"
+CLAUDE_PLUGIN_ROOT="$ROOT" "$ROOT/skills/design/scripts/snapshot-plan-round.sh" write-cursor --design-tmpdir "$DCHAIN" --value 2 >/dev/null
+run_driver "$DCHAIN" "$chain_stub" >/dev/null
+[[ "$(cat "$DCHAIN/review-round-count.txt")" == "2" ]] || fail 'chain second review should consume round 2'
+[[ -f "$DCHAIN/plan-review/round-1/keep.txt" ]] || fail 'chain should preserve prior round artifact'
+[[ -f "$DCHAIN/plan-review/round-2/launched.txt" ]] || fail 'chain should launch second review round'
+[[ ! -f "$DCHAIN/.completed/step-3.5" ]] || fail 'chain should defer Gate C by not writing step-3.5'
 
 echo "PASS: test-step3-review-cap.sh"

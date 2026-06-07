@@ -59,6 +59,8 @@ REVIEW_ROUND_COUNT=$((10#$REVIEW_ROUND_COUNT))
 
 DEGRADED_PANEL="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" DEGRADED_PANEL)"
 case "$DEGRADED_PANEL" in 1|true) DEGRADED_PANEL=1 ;; *) DEGRADED_PANEL=0 ;; esac
+TALLY_PLAN_REVIEW_STATUS="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" TALLY_PLAN_REVIEW_STATUS)"
+LOOP_STATUS="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" LOOP_STATUS)"
 
 ACCEPTED_FILE="$DESIGN_TMPDIR/accepted-plan-findings.md"
 PLAN_FILE="$DESIGN_TMPDIR/plan.txt"
@@ -168,11 +170,14 @@ done <<<"$stats"
 
 CONTINUE=false
 REASON=small-clean
+if [[ "$TALLY_PLAN_REVIEW_STATUS" == ok && "$LOOP_STATUS" == complete ]]; then
+    DEGRADED_PANEL=0
+fi
 if [[ "$APPROVE_REQUESTED" == true ]]; then
     REASON=explicit-approve
 elif (( REVIEW_ROUND_COUNT >= ROUND_CAP )); then
     REASON=cap-reached
-elif (( DEGRADED_PANEL != 0 )); then
+elif (( DEGRADED_PANEL != 0 && ACCEPTED_COUNT > 0 )); then
     CONTINUE=true
     REASON=degraded-panel
 elif (( HIGH_ACCEPTED_COUNT > 0 )); then
@@ -181,7 +186,7 @@ elif (( HIGH_ACCEPTED_COUNT > 0 )); then
 elif (( NON_NIT_ACCEPTED_COUNT > 5 )); then
     CONTINUE=true
     REASON=non-nit-accepted
-elif [[ "$STRUCTURAL_OR_LARGE_CHANGE" == true ]] && (( ACCEPTED_COUNT > 0 && REVIEW_ROUND_COUNT < 2 )); then
+elif [[ "$STRUCTURAL_OR_LARGE_CHANGE" == true ]] && (( NON_NIT_ACCEPTED_COUNT > 0 && REVIEW_ROUND_COUNT < 2 )); then
     CONTINUE=true
     REASON=structural-or-large-change
 fi
