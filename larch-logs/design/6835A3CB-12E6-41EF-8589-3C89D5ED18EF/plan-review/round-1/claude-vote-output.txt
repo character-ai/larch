@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- failure mode is always-eligible (safe over-inclusion), not wrong pruning; plan's fallback doesn't apply when collector IS supplied but Claude fallback outputs absent, yet feature ships correctly for primary path
@@ -11,5 +12,3 @@ FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_11: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- concern depends on implementation choosing substring over token equality; plan's label-by-output-basename scheme is specific enough to make the concern uncertain; default-deny
 FINDING_12: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- phase2/phase3 collector mismatch produces collected=false, making slots always-eligible (safe over-inclusion); accepted_count attribution is separately correct; no wrong pruning path
 FINDING_13: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan makes explicit stated design decision (collected-only history); differs from spec's literal "last 2 rounds" but feature ships with chosen semantics; not a plan gap
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

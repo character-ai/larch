@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES — `rebase-push.sh` and `append-execution-issue.sh` both call `larch_quiet_init` and use `emit_kv` which writes to FD3 (not stderr); the plan's stderr-based parsing contract for `REBASE_ERROR` and `PHANTOM_APPEND_WARN_ERROR` is concretely wrong and will yield empty values.
 FINDING_2: YES — `test-implement-rebase-macro.sh` invariant (E) at line 115 greps for the literal `Apply the Rebase Checkpoint Macro with` string for 7.r; after the SKILL.md edit replaces that Apply line with a `rebase-checkpoint-probe.sh 7.r` fence, the grep returns nothing and (E) fails.
 FINDING_3: YES — The existing SKILL.md has post-macro "run the Phantom Untracked Probe" paragraphs at Steps 4.r/7.r/7a.r; the plan's Region 2 omits explicit bullets to delete them, leaving a double-invocation of `check-phantom-dirty.sh`.
@@ -17,4 +18,3 @@ FINDING_16: YES — The plan's "5 sites total" count in the SKILL.md pointer pro
 FINDING_17: EXONERATE — The missing `STATUS=tracked-only` case in the combined harness is a coverage gap nit; the standalone harness already covers it and the plan notes the combined harness can defer to it; not worth a plan amendment.
 FINDING_18: EXONERATE — Alphabetical ordering of DENYLIST entries is a pure style concern with zero functional impact; the "alphabetical-ish" claim can be silently dropped by the implementer without a plan amendment.
 FINDING_19: EXONERATE — Nested fence examples in plan text are an authoring clarity concern; the implementer will write correct non-nested SKILL.md fences regardless of how the plan's example is formatted; no functional plan revision needed.
-OOS_1: YES — The `skills/shared/topology.tsv` is CI-validated and the new script surfaces could require new topology rows if referenced from SKILL.md rule-paths; filing as a follow-up issue is appropriate.

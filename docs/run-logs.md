@@ -15,7 +15,7 @@ larch-logs/
   design/
     <RUN_ID>/
       manifest.json
-      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
+      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
           findings-classification.tsv

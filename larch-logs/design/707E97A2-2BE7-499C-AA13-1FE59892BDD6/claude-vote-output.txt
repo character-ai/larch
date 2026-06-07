@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
@@ -23,8 +24,3 @@ FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
 FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sharing parser adds a new script dependency; two-parser approach is acceptable for a stable two-marker registry
 FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit; a doc note in plan-block-write.md is sufficient without adding wrapper complexity
 FINDING_25: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
-OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
-OOS_5: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

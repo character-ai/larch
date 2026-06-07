@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
@@ -28,7 +29,3 @@ FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate U
 FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_30: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redundant aggregator grep is harmless optional cleanup
-OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- non-adoption is explicit issue scope not a defect
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- opt-in dispatcher gate is intentional per-caller boundary

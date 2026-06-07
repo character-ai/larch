@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES
 FINDING_2: YES
 FINDING_3: YES
@@ -16,9 +17,3 @@ FINDING_15: YES
 FINDING_16: YES
 FINDING_17: YES
 FINDING_18: YES
-OOS_1: NO -- topology.tsv update for a new batch slug is routine doc maintenance, not worth a standalone issue
-OOS_2: EXONERATE -- the redaction posture question is legitimate but the TSV cells are enum tokens after Finding 8/9 policy is settled; worth a note but not a standalone GitHub issue
-OOS_3: NO -- the description itself says "not required if all publish paths already copy from REVIEW_TMPDIR" which is the existing design; speculative
-OOS_4: YES -- the scout-archetype-yield.tsv omission from round_artifact_included is a real pre-existing gap with a concrete failure mode (yield bytes not committed to round dirs)
-OOS_5: NO -- explicitly speculative future requirement with no current evidence of org policy change
-OOS_6: EXONERATE -- the plan already says "+ sibling .md" for item 3; this OOS is already covered and not worth a separate issue

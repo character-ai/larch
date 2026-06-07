@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
 FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The distinction is real, but the plan already describes the existing root guard versus new mid-tree/race checks clearly enough.
@@ -20,7 +21,3 @@ FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
 FINDING_21: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
 FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The test gap is real, but it is weak as a separate follow-up issue compared with the symlink hardening gaps.
-OOS_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false

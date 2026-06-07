@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Post-commit deferred emission intentionally includes handoff wall time; Step 7 mark skew is a telemetry-boundary tradeoff, not a functional bug.
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Plan reads round-local review-tally.env but does not require MAV re-tally with --review-tmpdir pinned to the current round directory.
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- emit-tally.sh writes grep -n lines like 10:FINDING_1_OUTCOME=rejected but the planned fallback regex rejects them.

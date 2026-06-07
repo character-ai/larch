@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already targets Step 3 entry/prelude before pause-check with an assert_folded host row; extra first-fence pinning is incremental over that contract
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Step 5c design-publish fence sources env but has no pause-check before publish work, and the plan does not require adding one
 FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=weak UNCERTAIN=true -- step-1e at Step 3 entry plus pause-resume regression addresses the stated direct-review case; downstream sentinel reset/re-entry markers add disproportionate complexity

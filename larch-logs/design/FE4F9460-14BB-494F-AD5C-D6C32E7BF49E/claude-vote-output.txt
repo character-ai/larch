@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
@@ -13,4 +14,3 @@ FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=fals
 FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_14: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true -- set -euo pipefail is standard for this repo; if harness carries it, expected-exit-2 call aborts before stderr and cmp assertions run; plan does not specify guarded invocation pattern
 FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

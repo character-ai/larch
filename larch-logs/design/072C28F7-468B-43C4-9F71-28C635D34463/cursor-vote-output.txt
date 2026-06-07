@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
@@ -20,7 +21,3 @@ FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=fals
 FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
 FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-OOS_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- known plan-review parity gap; separate hardening issue only if pursuing beyond mirror
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

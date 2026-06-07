@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- pr-3548 (now merged) already uses emit_untrusted_file_block at lines 157/159/163; plan explicitly documents this; the conditional "if sed-cats raw bytes" is false
 FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- scripts/check-scope-reduction-marker.sh exists on pr-3548 branch (now merged); plan's hard dependency on post-#3548 main ensures it will be present
 FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- test-check-scope-reduction-marker is registered in pr-3548 Makefile (lines 212-213) and the test script exists there; concern is moot post-merge
