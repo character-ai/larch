@@ -57,4 +57,53 @@ grep -Fqx "SCOPE_ANCHOR_FILE=$DESIGN_CANON/plan-review-scope-anchor.txt" "$TMP/.
 grep -Fqx "SCOPE_ANCHOR_FILE=$DESIGN_CANON/plan-review-scope-anchor.txt" "$TMP/.step3-review-result.env" \
     || fail 'ok re-tally should persist parsed scope anchor to review env'
 
+cat >"$TMP/accepted-plan-findings-all.md" <<'EOF'
+### FINDING_1: Prior accepted
+- **Concern**: prior
+EOF
+cat >"$TMP/accepted-plan-findings.md" <<'EOF'
+### FINDING_2: MainAgent accepted
+- **Concern**: current
+EOF
+
+"$SUBJECT" \
+    --design-tmpdir "$TMP" \
+    --retally-stdout-file "$TMP/retally-ok.txt" \
+    --retally-input-anchor "$TMP/stale-scope-anchor.txt" \
+    --tally-plan-review-status ok \
+    --loop-status complete
+
+grep -Fq '### FINDING_1: Prior accepted' "$TMP/accepted-plan-findings-all.md" \
+    || fail 'ok re-tally should preserve prior cumulative accepted findings'
+grep -Fq '### FINDING_2: MainAgent accepted' "$TMP/accepted-plan-findings-all.md" \
+    || fail 'ok re-tally should append current MainAgent accepted findings'
+
+"$SUBJECT" \
+    --design-tmpdir "$TMP" \
+    --retally-stdout-file "$TMP/retally-ok.txt" \
+    --retally-input-anchor "$TMP/stale-scope-anchor.txt" \
+    --tally-plan-review-status ok \
+    --loop-status complete
+[[ "$(grep -c '^### FINDING_2:' "$TMP/accepted-plan-findings-all.md")" -eq 1 ]] \
+    || fail 'ok re-tally cumulative merge should be idempotent'
+
+cat >"$TMP/accepted-plan-findings-all.md" <<'EOF'
+### FINDING_1: Prior accepted
+- **Concern**: prior
+EOF
+cat >"$TMP/accepted-plan-findings.md" <<'EOF'
+### FINDING_3: Tally-error accepted should not merge
+- **Concern**: current
+EOF
+
+"$SUBJECT" \
+    --design-tmpdir "$TMP" \
+    --retally-stdout-file "$TMP/retally-stdout.txt" \
+    --retally-input-anchor "$TMP/stale-scope-anchor.txt" \
+    --tally-plan-review-status tally-error \
+    --loop-status complete
+
+grep -Fq '### FINDING_3:' "$TMP/accepted-plan-findings-all.md" \
+    && fail 'tally-error re-tally must not merge current accepted findings'
+
 pass 'persist-retally-step3-env harness'

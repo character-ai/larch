@@ -65,6 +65,42 @@ design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)" || exit 2
 export TALLY_PLAN_REVIEW_STATUS LOOP_STATUS
 _scope_handoff="$(larch_scope_anchor_retally_handoff_value "$design_canon" "${_PARSED_SCOPE_ANCHOR_FILE:-}" "${RETALLY_INPUT:-}")"
 
+_merge_retally_accepted_all() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "ok" ]] || return 0
+    local accepted="$DESIGN_TMPDIR/accepted-plan-findings.md"
+    local cumulative="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+    [[ -s "$accepted" ]] || return 0
+    python3 - "$cumulative" "$accepted" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+cumulative_path = Path(sys.argv[1])
+accepted_path = Path(sys.argv[2])
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+def blocks(text: str):
+    return [m.group(0).strip() for m in re.finditer(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text)]
+
+existing = blocks(read(cumulative_path))
+seen = set(existing)
+out = list(existing)
+for block in blocks(read(accepted_path)):
+    if block in seen:
+        continue
+    seen.add(block)
+    out.append(block)
+
+if out:
+    cumulative_path.write_text("\n\n".join(out) + "\n\n", encoding="utf-8")
+PY
+}
+
 _rewrite_env_file() {
     local path="$1"
     local -a kvs=()
@@ -96,6 +132,7 @@ _rewrite_env_file() {
     phase_driver_write_result_env "$path" "${kvs[@]}"
 }
 
+_merge_retally_accepted_all
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-plan-review-result.env"
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-review-result.env"
 exit 0

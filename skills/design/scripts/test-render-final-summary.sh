@@ -87,6 +87,12 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_all" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'plan review line must prefer cumulative accepted findings when present'
 pass 'plan review counts cumulative accepted findings'
+rm -f "$D/voting-tally.md"
+std_all_without_tally="$TMP/std-cumulative-no-tally.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE-NO-TALLY" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_all_without_tally" 2>/dev/null
+grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'missing voting tally must not zero cumulative accepted findings'
+pass 'plan review counts cumulative accepted findings without voting tally'
 rm -f "$D/accepted-plan-findings-all.md"
 : >"$D/oos-accepted-design.md"
 cat >"$D/accepted-plan-findings.md" <<'EOF'
@@ -94,6 +100,9 @@ cat >"$D/accepted-plan-findings.md" <<'EOF'
 - **Reviewer**: Codex-Pragmatic
 - **Focus area**: correctness
 - **Concern**: example
+EOF
+cat >"$D/voting-tally.md" <<'EOF'
+# Tally
 EOF
 
 pre_std="$TMP/std-pre.log"

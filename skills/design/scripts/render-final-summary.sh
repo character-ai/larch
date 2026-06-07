@@ -253,21 +253,18 @@ refresh_issue_counts
 
 # --- Plan review line ---
 PLAN_LINE="0 findings"
-if [ ! -f "$DESIGN_TMPDIR/voting-tally.md" ]; then
+apf="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+if [ ! -s "$apf" ]; then
+    apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
+fi
+oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
+if { [ ! -f "$apf" ] || [ ! -s "$apf" ]; } && { [ ! -f "$oaf" ] || [ ! -s "$oaf" ]; }; then
     PLAN_LINE="0 findings"
 else
-    apf="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
-    if [ ! -s "$apf" ]; then
-        apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
-    fi
-    oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
-    if { [ ! -f "$apf" ] || [ ! -s "$apf" ]; } && { [ ! -f "$oaf" ] || [ ! -s "$oaf" ]; }; then
-        PLAN_LINE="0 findings"
-    else
-        plan_review_count_inputs=()
-        [ -s "$apf" ] && plan_review_count_inputs+=("$apf")
-        [ -s "$oaf" ] && plan_review_count_inputs+=("$oaf")
-        read -r acnt xc yc zc wc < <(awk '
+    plan_review_count_inputs=()
+    [ -s "$apf" ] && plan_review_count_inputs+=("$apf")
+    [ -s "$oaf" ] && plan_review_count_inputs+=("$oaf")
+    read -r acnt xc yc zc wc < <(awk '
           function bump(fa,   a) {
             a = tolower(fa)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", a)
@@ -291,12 +288,11 @@ else
             if (n < total) { lw += (total - n); n = total }
             print n, cx+0, hy+0, md+0, lw+0
           }
-        ' "${plan_review_count_inputs[@]}" 2>/dev/null || echo "0 0 0 0 0")
-        if [ "${acnt:-0}" -eq 0 ] 2>/dev/null; then
-            PLAN_LINE="0 findings"
-        else
-            PLAN_LINE="${acnt} accepted (${xc} critical / ${yc} high / ${zc} medium / ${wc} low)"
-        fi
+    ' "${plan_review_count_inputs[@]}" 2>/dev/null || echo "0 0 0 0 0")
+    if [ "${acnt:-0}" -eq 0 ] 2>/dev/null; then
+        PLAN_LINE="0 findings"
+    else
+        PLAN_LINE="${acnt} accepted (${xc} critical / ${yc} high / ${zc} medium / ${wc} low)"
     fi
 fi
 

@@ -30,6 +30,8 @@ grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/desig
     || fail 'run-step3-review.sh missing symlinked plan-review cleanup warning'
 grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --approve continuation stop contract'
+grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
+    || fail 'SKILL missing Gate B postapply resume continuation guard'
 [[ -x "$CONTINUATION" ]] || fail 'plan-review-continuation.sh must be executable'
 
 TMP_PARENT="${TMPDIR:-/tmp}"

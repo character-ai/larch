@@ -100,7 +100,11 @@ independent of `PLAN_WRITE_OK` (publish/rename remain gated separately in SKILL.
 
 The Plan review line counts `### FINDING_N:` blocks in `accepted-plan-findings-all.md` when present, otherwise `accepted-plan-findings.md`, and `### OOS_N:` blocks in `oos-accepted-design.md` directly (header presence, not `focus-area` text matching). Missing optional files are omitted from the awk input list rather than passed as unreadable paths. Per-bucket breakdown uses `- **Focus area**: <value>` (bold, capital F, colon) when present; blocks without a matching Focus area line fall to the `low` bucket via an end-of-awk fallback. Prior to this fix the regex matched `- focus-area = <value>` which never appeared in production artifacts, causing the count to always be 0.
 
+Counting is not gated on `voting-tally.md`; cap-reached cleanup can remove the
+round-local tally while leaving cumulative accepted artifacts intact, and the
+final summary must still report those accepted findings.
+
 ## Recent contract coverage
 
 - `publish-skipped` is an accepted outcome with an explicit Outcome bullet, a skipped-publish note, no failed-publish recovery prose, and `Run logs` left as `N/A`.
-- Plan review line now counts cumulative `### FINDING_N:` / `### OOS_N:` headers directly with `- **Focus area**: <value>` buckets; `test-render-final-summary.sh` covers non-zero accepted sets, missing optional OOS artifacts, and cumulative accepted sets.
+- Plan review line now counts cumulative `### FINDING_N:` / `### OOS_N:` headers directly with `- **Focus area**: <value>` buckets; `test-render-final-summary.sh` covers non-zero accepted sets, missing optional OOS artifacts, cumulative accepted sets, and cumulative accepted sets after `voting-tally.md` removal.
