@@ -270,11 +270,11 @@ else
             if (a == "architecture" || a == "code-quality") { md++; return }
             lw++
           }
-          BEGIN { cx=0; hy=0; md=0; lw=0; inf=0 }
+          BEGIN { cx=0; hy=0; md=0; lw=0; inf=0; total=0 }
           FNR == 1 { inf=0 }
-          /^### (FINDING_|OOS_)/ { inf=1; next }
-          inf && /^- focus-area[[:space:]]*=[[:space:]]*/ {
-            sub(/^- focus-area[[:space:]]*=[[:space:]]*/, "")
+          /^### (FINDING_|OOS_)[0-9]/ { inf=1; total++; next }
+          inf && /^- \*\*Focus area\*\*:[[:space:]]*/ {
+            sub(/^- \*\*Focus area\*\*:[[:space:]]*/, "")
             bump($0)
             inf=0
             next
@@ -282,6 +282,7 @@ else
           /^### / { inf=0 }
           END {
             n = cx+hy+md+lw
+            if (n < total) { lw += (total - n); n = total }
             print n, cx+0, hy+0, md+0, lw+0
           }
         ' "$apf" "$oaf" 2>/dev/null || echo "0 0 0 0 0")

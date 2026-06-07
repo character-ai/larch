@@ -23,8 +23,8 @@ EOF
 cat >"$D/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Example
 - **Reviewer**: Codex-Pragmatic
-- focus-area = correctness
-- Concern: example
+- **Focus area**: correctness
+- **Concern**: example
 EOF
 : >"$D/oos-accepted-design.md"
 : >"$D/execution-issues.md"
@@ -37,7 +37,41 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'missing Cost bullet'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing sentinel'
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
+# Plan review line must report non-zero when accepted-plan-findings.md has FINDING_ blocks.
+if grep -Fq -- '- **Plan review**: 0 findings' "$D/final-summary.md"; then
+    fail 'plan review line must not show 0 findings when accepted-plan-findings.md has accepted blocks'
+fi
+grep -q -- '- \*\*Plan review\*\*: [1-9]' "$D/final-summary.md" || fail 'plan review line must show non-zero finding count'
 pass 'approved happy path + cmp'
+
+# Regression: plan review with OOS block also counts correctly.
+cat >"$D/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Security gap
+- **Reviewer**: Cursor-Pragmatic
+- **Focus area**: security
+- **Concern**: missing auth check
+EOF
+cat >"$D/oos-accepted-design.md" <<'EOF'
+### OOS_1: Extra cleanup
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: code-quality
+- **Concern**: unused var
+EOF
+std_oos="$TMP/std-with-oos.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-OOS" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_oos" 2>/dev/null
+if grep -Fq -- '- **Plan review**: 0 findings' "$D/final-summary.md"; then
+    fail 'plan review must not show 0 findings when FINDING_+OOS_ blocks exist'
+fi
+grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'plan review line must count FINDING_+OOS_ blocks (expected 2)'
+pass 'plan review counts FINDING_+OOS_ blocks with bold Focus area format'
+: >"$D/oos-accepted-design.md"
+cat >"$D/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Example
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: correctness
+- **Concern**: example
+EOF
 
 pre_std="$TMP/std-pre.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-PRE" \
