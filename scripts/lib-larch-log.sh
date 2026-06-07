@@ -401,7 +401,7 @@ larch_log_publish_breadcrumbs_stage_file() {
 larch_log_publish_breadcrumbs_shared() {
     local source_hint_dir="$1" dest_dir="$2" on_error="$3"
     local staging_parent staging_dir f base found_any=false
-    local session_root
+    local session_root quiet_log
 
     [ -n "$source_hint_dir" ] || return 0
     session_root="$(dirname "$source_hint_dir")"
@@ -420,6 +420,7 @@ larch_log_publish_breadcrumbs_shared() {
         "$on_error" "cannot create breadcrumbs staging directory"
         return 1
     }
+    quiet_log="$staging_dir/quiet.log"
 
     for f in "$session_root"/larch-quiet-*-*.log; do
         [ -e "$f" ] || continue
@@ -428,10 +429,24 @@ larch_log_publish_breadcrumbs_shared() {
             larch-quiet-*-*.log) ;;
             *) continue ;;
         esac
+        # Stage per-file to staging_dir/$base for redaction validation, then
+        # append with a header line into the consolidated quiet.log.
         if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
             return 1
         fi
         [ -e "$staging_dir/$base" ] || continue
+        printf '=== %s ===\n' "$base" >> "$quiet_log" || {
+            rm -rf "$staging_parent"
+            "$on_error" "cannot write breadcrumbs header for $base"
+            return 1
+        }
+        cat "$staging_dir/$base" >> "$quiet_log" || {
+            rm -rf "$staging_parent"
+            "$on_error" "cannot append breadcrumbs content for $base"
+            return 1
+        }
+        printf '\n' >> "$quiet_log" || true
+        rm -f "$staging_dir/$base"
         found_any=true
     done
 

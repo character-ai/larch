@@ -879,13 +879,17 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
     if timing_path.is_file():
         timing_sidecars.append(("refresh", timing_path))
     if not has_canonical_sidecars:
-        for path in (token_path, timing_path):
-            if not path.is_file():
-                continue
-            dest = batch_dir / path.name
-            _ = dest.write_text(
-                _redact_batch_payload(path.read_text(encoding="utf-8")),
-                encoding="utf-8",
+        # No per-tool sidecars; refresh JSONs served as the only input — write
+        # them as the canonical report and return.  Do NOT copy the -refresh.json
+        # files themselves into batch_dir: they are volatile in-loop snapshots and
+        # are byte-identical to token-report.json / timing-report.json in nearly
+        # all runs (issue #3708 Phase 1).
+        if token_path.is_file():
+            _ = tokens.scrape_run(
+                sidecar_paths=(("refresh", token_path),),
+                timing_sidecar_paths=(("refresh", timing_path),) if timing_path.is_file() else (),
+                output_path=batch_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson",
+                timing_output_path=batch_dir / f"{config.RUN_LOG_BATCH_TIMING_REPORT}.ndjson",
             )
         return
     _ = tokens.scrape_run(
@@ -894,14 +898,8 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
         output_path=batch_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson",
         timing_output_path=batch_dir / f"{config.RUN_LOG_BATCH_TIMING_REPORT}.ndjson",
     )
-    for path in (token_path, timing_path):
-        if not path.is_file():
-            continue
-        dest = batch_dir / path.name
-        _ = dest.write_text(
-            _redact_batch_payload(path.read_text(encoding="utf-8")),
-            encoding="utf-8",
-        )
+    # Do NOT copy the -refresh.json files into batch_dir: they are volatile
+    # in-loop snapshots that duplicate the canonical NDJSON written above.
 
 
 def capture_session_transcript(
@@ -944,19 +942,13 @@ def capture_session_transcript(
             ],
             cwd=str(_REPO_ROOT),
         )
+    # The canonical session-transcript.jsonl batch is written by the
+    # capture-session-transcript.sh call above via larch-log.sh write.
+    # Do NOT copy session-transcript-refresh.txt into the run tree: it is a
+    # volatile in-loop snapshot that duplicates the canonical batch in nearly
+    # all runs (issue #3708 Phase 1).
     out = Path(ctx.tmpdir) / "session-transcript-refresh.txt"
-    run_dir = _run_log_dir(ctx)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    dest = run_dir / "session-transcript-refresh.txt"
-    if out.is_file() and out.stat().st_size > 0:
-        raw = out.read_text(encoding="utf-8")
-        if raw.strip():
-            _ = dest.write_text(_redact_batch_payload(raw), encoding="utf-8")
-    elif dest.is_file() and dest.stat().st_size > 0:
-        pass
-    elif not dest.is_file():
-        _ = dest.write_text("", encoding="utf-8")
-    return out if out.is_file() else dest
+    return out if out.is_file() else None
 
 
 def _read_finalize_kv(tmpdir: Path, key: str) -> str:

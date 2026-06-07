@@ -22,16 +22,24 @@ Inputs:
 [--accepted N]
 [--rejected N]
 [--exonerated N]
---body-file PATH
+[--body-file PATH]   # required for plan-review; optional for code-review (body field omitted)
 ```
 
 Optional deprecated argv (two ASCII hyphens + literal neutral + N): accepted for CLI compatibility but ignored (not forwarded to the composer).
 
 The phase determines the target batch: `plan-review` maps to
 `plan-review-tally`, and `code-review` maps to `code-review-tally`. Count flags
-default to `0`. The body file must be a regular non-symlink file. `python3` is required whenever `--phase code-review` is used because that phase runs header validation before writing the batch. For `--phase code-review`, the body
-file is additionally validated: real ATX Markdown headings (`#` through `######`
-followed by a space) must be one of these allowed forms:
+default to `0`. For `--phase plan-review`, `--body-file` is required and the body
+file must be a regular non-symlink file. For `--phase code-review`, `--body-file`
+is optional; when provided it is validated but **not forwarded** to the composer
+(the `body` field is omitted from `code-review-tally.json` — rejected-findings
+prose is already canonical in `round-N/rejected-findings-full.md` and
+`review-findings-full.jsonl`).
+
+`python3` is required whenever `--phase code-review` is used with a body file
+because that path runs header validation. For `--phase code-review` with a body
+file, the body file is additionally validated: real ATX Markdown headings
+(`#` through `######` followed by a space) must be one of these allowed forms:
 
 - `# Rejected Findings`
 - `## Accepted Findings`

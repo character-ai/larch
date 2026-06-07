@@ -336,17 +336,22 @@ def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
     assert manifest.steps_ran.get("recovered") is True
 
 
-def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
+def test_token_batch_refresh_json_not_written_to_batch_dir(tmp_path: Path) -> None:
+    # Refresh JSON files are volatile in-loop snapshots and must NOT be copied
+    # into the committed run tree (issue #3708 Phase 1).  This test verifies
+    # the PEM-containing edge case: even with bad content in the refresh file,
+    # nothing is written to batch_dir under the refresh basename.
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     pem = "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIB\n"
     _ = (tmp_path / "token-report-refresh.json").write_text(pem, encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
-    with pytest.raises(ShipError, match="redaction failed"):
-        run_logs._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
-            ctx,
-            tmp_path / "larch-logs",
-        )
+    run_logs._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        tmp_path / "larch-logs",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    assert not (run_dir / "token-report-refresh.json").exists()
 
 
 def test_copytree_rejects_symlinks_escaping_run_dir(
@@ -436,7 +441,8 @@ def test_publish_run_tree_copies_run_id_pathspec(
     assert (repo / rel / "token-report-refresh.json").is_file()
 
 
-def test_refresh_only_sidecars_do_not_render_canonical_batches(tmp_path: Path) -> None:
+def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
+    # Refresh JSON files must NOT be written to batch_dir (issue #3708 Phase 1).
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "token-report-refresh.json").write_text("{}", encoding="utf-8")
@@ -446,10 +452,8 @@ def test_refresh_only_sidecars_do_not_render_canonical_batches(tmp_path: Path) -
         tmp_path / "larch-logs",
     )
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-    assert (run_dir / "token-report-refresh.json").is_file()
-    assert (run_dir / "timing-report-refresh.json").is_file()
-    assert not (run_dir / "token-report.ndjson").exists()
-    assert not (run_dir / "timing-report.ndjson").exists()
+    assert not (run_dir / "token-report-refresh.json").exists()
+    assert not (run_dir / "timing-report-refresh.json").exists()
 
 
 def test_flush_logs_pre_happy_path_commits(

@@ -68,10 +68,15 @@ round_artifact_included() {
     local name="$1"
     case "$name" in
         # Excluded raw per-specialist reviewer outputs and their sidecars
-        # (findings.md is the canonical aggregate). Phased static Cursor/Codex
-        # fallback outputs and their sidecars remain included via the broad
-        # *-output* allow below.
+        # (findings.md is the canonical aggregate). Exact-form deny; phase/retry
+        # variants are denied in the next branch.
         cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
+            return 1
+            ;;
+        # Phase and retry specialist outputs: previously fell through to the
+        # broad *-output* allow; denied here. *-ns-retry*.txt files are kept
+        # via the broad *-output-*.txt allow below (ns-retry-sidecars audit scan).
+        cursor-specialist-*-output-phase*.txt|cursor-specialist-*-output-phase*.txt.*|cursor-specialist-*-output-retry.txt|cursor-specialist-*-output-retry.txt.*|codex-specialist-*-output-phase*.txt|codex-specialist-*-output-phase*.txt.*|codex-specialist-*-output-retry.txt|codex-specialist-*-output-retry.txt.*)
             return 1
             ;;
         *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
@@ -92,6 +97,17 @@ round_artifact_included() {
         skipped-findings.security.md|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder-commit.log)
             return 1
             ;;
+        # Dynamic reviewer prompt files: each re-embeds the full diff, plan,
+        # and feature description; only the archetype section differs and is
+        # already captured by the committed reviewer-dyn-*.md definition (~2 KB).
+        dyn-*-prompt.md)
+            return 1
+            ;;
+        # Raw scout manifests: byte-identical to the cooked .json in nearly all
+        # committed runs; the cooked .json is canonical.
+        scout-round*-manifest.json.raw)
+            return 1
+            ;;
         # Pin the known Dynamic Codex forensics families and sidecars here:
         # dyn-*-codex-output.txt and dyn-*-codex-output-phase*.txt plus
         # .meta/.json/.cap-hit. Retry outputs are denied above; other/future
@@ -107,7 +123,7 @@ round_artifact_included() {
         cursor-ci-stall-*.json)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-vote-output-first-pass.txt|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json|scout-round*-manifest.json.raw|reviewer-dyn-*.md|dyn-*-prompt.md)
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-vote-output-first-pass.txt|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json|reviewer-dyn-*.md)
             return 0
             ;;
         *)
@@ -346,6 +362,14 @@ case "$cmd" in
             round_artifact_included "$name" || continue
             [ -f "$src" ] || continue
             [ ! -L "$src" ] || continue
+            # Skip aggregator output when byte-identical to findings.md (the staged
+            # aggregate); avoids committing a third copy of the same content.
+            case "$name" in
+                aggregator-output.txt)
+                    _agg_findings="${src%/*}/findings.md"
+                    [ -f "$_agg_findings" ] && cmp -s "$src" "$_agg_findings" && continue
+                    ;;
+            esac
             prev_src="$(awk -F '\t' -v target="$name" '$1 == target { print $2; exit }' "$seen_round_artifacts")"
             if [ -n "$prev_src" ]; then
                 larch_log_fail 2 "duplicate round artifact basename '$name' from $src and $prev_src"

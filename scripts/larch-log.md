@@ -23,11 +23,12 @@ Primary verbs:
   raw `.meta` / JSON sidecars for retry state, but committed `round-<N>/`
   artifacts always use the trimmed form and fail closed if trimming fails. It
   writes only to the log root; `commit` later picks up the round directory.
-  Raw static specialist outputs are excluded for both Cursor
-  (`cursor-specialist-*-output.txt`) and Codex
-  (`codex-specialist-*-output.txt`), including their unphased `.meta`, `.json`,
-  and `.cap-hit` sidecars; phased static Cursor/Codex fallback outputs remain
-  included. Dynamic Codex twins (`dyn-*-codex-output.txt` and
+  Raw static specialist outputs are excluded for both Cursor and Codex,
+  including their exact (`-output.txt`), phased (`-output-phase*.txt`),
+  retry (`-output-retry.txt`), and sidecar (`.meta`, `.json`, `.cap-hit`)
+  forms. NS-retry sidecar files (`*-ns-retry*.txt`) remain committed — the
+  `ns-retry-sidecars` audit scan reads them as an anomaly signal.
+  Dynamic Codex twins (`dyn-*-codex-output.txt` and
   `dyn-*-codex-output-phase*.txt`) and their unphased/phased `.meta`, `.json`,
   and `.cap-hit` sidecars follow the same retention path as dynamic Cursor
   outputs. `round_artifact_included()` mirrors this retention path with an
@@ -40,16 +41,23 @@ Primary verbs:
   `*-vote-prompt.txt`, and unphased `.events.jsonl` sidecars remain excluded
   (phased Dynamic Codex does not produce `.events.jsonl` in real runs). The
   retained dynamic Codex families rely on the documented pattern-based redaction
-  posture in [SECURITY.md](../SECURITY.md). Only unphased static
-  `codex-specialist-*-output.txt` raw transcripts remain excluded.
+  posture in [SECURITY.md](../SECURITY.md).
+  Dynamic reviewer prompt files (`dyn-*-prompt.md`) are excluded — each
+  re-embeds the full diff, plan, and feature description; only the archetype
+  section differs and is already captured by the committed `reviewer-dyn-*.md`
+  definition. Raw scout manifests (`scout-round*-manifest.json.raw`) are
+  excluded — byte-identical to the cooked `.json` in nearly all committed runs;
+  the cooked `.json` is canonical.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
-  `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
-  `scout-archetype-yield.tsv`), dynamic-archetype files
-  (`reviewer-dyn-*.md`, `dyn-*-prompt.md`), voter parse-retry first-pass sidecars
-  (`*-vote-output-first-pass.txt`), and NS-retry specialist first-pass sidecars
-  (`*-output-first-pass.txt`). Files under `dynamic-archetypes/`
+  `scout-round*-manifest.json`, `scout-archetype-yield.tsv`),
+  dynamic-archetype files (`reviewer-dyn-*.md`), voter parse-retry first-pass
+  sidecars (`*-vote-output-first-pass.txt`), and NS-retry specialist first-pass
+  sidecars (`*-output-first-pass.txt`). Files under `dynamic-archetypes/`
   inside `--source-dir` are walked one level deep and flattened to the round
   root (no nested `dynamic-archetypes/` directory in committed output).
+  `aggregator-output.txt` is skipped when byte-identical to `findings.md`
+  in the same source directory (avoids committing a duplicate of the staged
+  aggregate).
   Raw `*.events.jsonl` files remain excluded by design, including local Codex
   telemetry inputs such as `codex.events.jsonl`, `coder-codex.events.jsonl`, and
   `<output-base>.events.jsonl`; they may contain prompts, responses, repo
@@ -120,12 +128,15 @@ exactly the current run's directory regardless of symlink resolution differences
 
 **Breadcrumb commit artifact**: `commit` treats `breadcrumbs/` as a commit-only
 artifact class owned by the shared `larch_log_publish_breadcrumbs_shared` helper
-in `scripts/lib-larch-log.sh`, not by the batch table. The helper stages
-session-root `larch-quiet-<script>-<pid>.log` files (derived via `dirname` of
+in `scripts/lib-larch-log.sh`, not by the batch table. The helper redacts each
+session-root `larch-quiet-<script>-<pid>.log` file (derived via `dirname` of
 the breadcrumbs source path from `LARCH_BREADCRUMB_SOURCE_DIR` or the log-root
 parent's `breadcrumbs/`) through
-`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
-before atomically publishing `larch-logs/<skill>/<run-id>/breadcrumbs/`.
+`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`,
+then **concatenates** all redacted content into a single
+`larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` file (with per-source-file
+header lines `=== <basename> ===`) instead of publishing individual files.
+This reduces file count significantly for sessions with many scripts.
 Legacy `*.ndjson` stream files are not published.
 
 A session root with zero accepted quiet logs is a successful no-op when nothing
