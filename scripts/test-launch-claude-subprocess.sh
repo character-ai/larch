@@ -394,6 +394,20 @@ LARCH_TOKEN_LEDGER="$vote_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
     || fail "claude_sub voter path launch failed (stderr: $(cat "$TMP/vote-err"))"
 grep -Fq '"raw":"claude_vote"' "$vote_ledger" || fail "claude_sub voter path: raw provenance not claude_vote"
 
+# Plan voters/assessors map to claude_vote via substring patterns, not the
+# review fallback (issue #3637 FINDING_10).
+for vote_kind in claude-plan-voter claude-plan-assessor claude-phase2-plan-assessor; do
+    vk_ledger="$TMP/claude-vote-$vote_kind-ledger.jsonl"
+    LARCH_TOKEN_LEDGER="$vk_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$TMP/out-$vote_kind.txt" \
+        --timeout 5 \
+        --timing-task-kind "$vote_kind" \
+        >/dev/null 2>"$TMP/$vote_kind-err" \
+        || fail "claude_sub $vote_kind launch failed (stderr: $(cat "$TMP/$vote_kind-err"))"
+    grep -Fq '"raw":"claude_vote"' "$vk_ledger" || fail "claude_sub $vote_kind: raw provenance not claude_vote"
+done
+
 # scout -> claude_scout.
 scout_ledger="$TMP/claude-scout-ledger.jsonl"
 LARCH_TOKEN_LEDGER="$scout_ledger" PATH="$BIN:$PATH" "$SCRIPT" \

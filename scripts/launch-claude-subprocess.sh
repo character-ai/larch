@@ -110,14 +110,17 @@ case "$TIMING_TASK_KIND" in ""|--*) fail "--timing-task-kind requires a non-empt
 
 # claude_sub ledger provenance (raw=) derived from the timing task kind so the
 # spawned-Claude token rows are attributed by role (review/vote/scout) within
-# the single claude_sub lane. Unknown kinds fall back to claude_review; the raw
-# value is provenance metadata only and never changes which lane the tokens land
-# in (issue #3637).
+# the single claude_sub lane. Substring patterns keep the attribution accurate
+# across the family of voter/assessor/scout kinds that flow through this launcher
+# (e.g. claude-code-voter, claude-plan-voter, claude-plan-assessor,
+# claude-phase{1,2,3}-plan-assessor, scout-dynamic-archetypes) rather than
+# mislabeling every non-exact kind as review. Unknown kinds fall back to
+# claude_review. The raw value is provenance metadata only and never changes
+# which lane the tokens land in (issue #3637).
 case "$TIMING_TASK_KIND" in
-    claude-review)            TOKEN_RAW=claude_review ;;
-    claude-code-voter)        TOKEN_RAW=claude_vote ;;
-    scout-dynamic-archetypes) TOKEN_RAW=claude_scout ;;
-    *)                        TOKEN_RAW=claude_review ;;
+    *scout*)             TOKEN_RAW=claude_scout ;;
+    *voter*|*assessor*)  TOKEN_RAW=claude_vote ;;
+    *)                   TOKEN_RAW=claude_review ;;
 esac
 
 PROMPT_CANON=$(canonical_existing_file "$PROMPT_FILE") || fail "invalid --prompt-file"
