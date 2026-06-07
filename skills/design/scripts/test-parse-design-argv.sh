@@ -53,7 +53,7 @@ assert_kv() {
 
 assert_no_flag_kvs() {
     local label="$1"
-    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
+    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
         fail "$label emitted success KVs on validation failure"
     else
         pass "$label emitted no success KVs"
@@ -62,7 +62,7 @@ assert_no_flag_kvs() {
 
 assert_success_kv_count() {
     local label="$1" want="$2" got
-    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
+    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
     if [ "$got" = "$want" ]; then
         pass "$label success KV count"
     else
@@ -75,6 +75,7 @@ assert_common_false() {
     assert_kv "$label" HARD_REQUESTED false
     assert_kv "$label" PARTITION_REQUESTED false
     assert_kv "$label" BRAINSTORM_REQUESTED false
+    assert_kv "$label" APPROVE_REQUESTED false
     assert_kv "$label" NO_DEDUP_REQUESTED false
     assert_kv "$label" RUN_ID ""
 }
@@ -82,7 +83,7 @@ assert_common_false() {
 # bare numeric tail
 run_case 3249
 assert_rc 'numeric tail' 0
-assert_success_kv_count 'numeric tail' 7
+assert_success_kv_count 'numeric tail' 8
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
@@ -116,6 +117,19 @@ assert_kv '--partition' PARTITION_REQUESTED true
 run_case --brainstorm
 assert_rc '--brainstorm' 0
 assert_kv '--brainstorm' BRAINSTORM_REQUESTED true
+
+run_case --approve
+assert_rc '--approve' 0
+assert_kv '--approve' APPROVE_REQUESTED true
+assert_kv '--approve' POSITIONAL_KIND none
+
+# --approve composes with an issue tail and leaves other booleans false
+run_case --approve 3249
+assert_rc '--approve issue' 0
+assert_kv '--approve issue' APPROVE_REQUESTED true
+assert_kv '--approve issue' HARD_REQUESTED false
+assert_kv '--approve issue' POSITIONAL_KIND issue
+assert_kv '--approve issue' POSITIONAL_VALUE 3249
 
 run_case --manual
 assert_rc '--manual' 3

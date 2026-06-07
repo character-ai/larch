@@ -14,11 +14,12 @@ Before invoking the Step 0-pre fence, substitute `<PUBLIC_ARGV_WORDS>` with thos
 
 ## Machine output
 
-On success, stdout contains exactly these seven KVs, one per line:
+On success, stdout contains exactly these eight KVs, one per line:
 
 - `HARD_REQUESTED=true|false`
 - `PARTITION_REQUESTED=true|false`
 - `BRAINSTORM_REQUESTED=true|false`
+- `APPROVE_REQUESTED=true|false`
 - `NO_DEDUP_REQUESTED=true|false`
 - `RUN_ID=<value>` (empty when absent)
 - `POSITIONAL_KIND=issue|verbal|none`

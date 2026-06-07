@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Two-tier design flow (SIMPLE/HARD) with full plan review and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--approve] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -9,13 +9,14 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with the **full** panel on both tiers (10 static reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the full plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
+**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--approve`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--hard` | `false` | Opt into HARD (default is SIMPLE): 4 sketches, dialectic when contested, full review panel, 5 total review runs |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
+| `--approve` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
@@ -177,6 +178,7 @@ set -e
 hard_requested=false
 partition_requested=false
 brainstorm_requested=false
+approve_requested=false
 no_dedup_requested=false
 run_id=""
 POSITIONAL_KIND=none
@@ -185,6 +187,7 @@ VALIDATION_ERROR=""
 _seen_HARD_REQUESTED=false
 _seen_PARTITION_REQUESTED=false
 _seen_BRAINSTORM_REQUESTED=false
+_seen_APPROVE_REQUESTED=false
 _seen_NO_DEDUP_REQUESTED=false
 _seen_RUN_ID=false
 _seen_POSITIONAL_KIND=false
@@ -198,6 +201,7 @@ while IFS= read -r _line || [ -n "$_line" ]; do
     HARD_REQUESTED) hard_requested="$_value"; _seen_HARD_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     PARTITION_REQUESTED) partition_requested="$_value"; _seen_PARTITION_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     BRAINSTORM_REQUESTED) brainstorm_requested="$_value"; _seen_BRAINSTORM_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    APPROVE_REQUESTED) approve_requested="$_value"; _seen_APPROVE_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     NO_DEDUP_REQUESTED) no_dedup_requested="$_value"; _seen_NO_DEDUP_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     RUN_ID) run_id="$_value"; _seen_RUN_ID=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     POSITIONAL_KIND) POSITIONAL_KIND="$_value"; _seen_POSITIONAL_KIND=true; _success_kv_count=$((_success_kv_count + 1)) ;;
@@ -233,10 +237,11 @@ if [ "${_argv_rc:-0}" -ne 0 ]; then
   printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
   exit 1
 fi
-if [ "$_success_kv_count" -ne 7 ] \
+if [ "$_success_kv_count" -ne 8 ] \
   || [ "$_seen_HARD_REQUESTED" != true ] \
   || [ "$_seen_PARTITION_REQUESTED" != true ] \
   || [ "$_seen_BRAINSTORM_REQUESTED" != true ] \
+  || [ "$_seen_APPROVE_REQUESTED" != true ] \
   || [ "$_seen_NO_DEDUP_REQUESTED" != true ] \
   || [ "$_seen_RUN_ID" != true ] \
   || [ "$_seen_POSITIONAL_KIND" != true ] \
@@ -476,7 +481,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    ```
 
    Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`. No `AskUserQuestion` on this sub-step.
+5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
    ```bash
@@ -490,6 +495,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --classification "$design_classification" \
      --partition-requested "$partition_requested" \
      --brainstorm-requested "$brainstorm_requested" \
+     --approve-requested "$approve_requested" \
      ${REPO:+--repo "$REPO"})
    _init_rc=$?
    set -e
@@ -1216,15 +1222,26 @@ mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-3"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
+_approve_requested=false
+if command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _approve_requested=true ;;
+  esac
+elif grep -Eq '"approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _approve_requested=true
+fi
+printf 'APPROVE_REQUESTED=%s\n' "$_approve_requested"
 ```
 
 Print: `> **🔶 /design 3.5: gate B**`
+
+Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's apply UX branches on it (default `false` → auto-apply; `true` → explicit per-round prompt) per `approval-gates.md` §Gate B.
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
 **Optional trailer guard (Gate B post-apply)**: Before prompt-side `plan.txt` replacement or dedup, run `gate-b-dedup-plan.sh --snapshot-trailers`; after rewrite run `gate-b-dedup-plan.sh --dedup` (requires the snapshot file — never run `--dedup` alone). Preserve snapshotted optional trailer keys **and values** or explicitly recompute; empty snapshot forbids newly introduced optional trailers. See `approval-gates.md` §Shared post-apply pipeline.
 
-Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B always prompts explicitly: Apply all, Go through each, or Switch to discussion mode. Revision only happens when the operator explicitly chooses an apply option. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
+Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--approve` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
 `.completed/step-3.5` is written by the Step 3.6 entry fence before pause-check — not at a Step 3.5 success boundary.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
@@ -1262,7 +1279,7 @@ else
   if [ "${_assessor_rc:-1}" -eq 10 ]; then # 10 = Step 3.6 WORSE-majority action branch
     _assessor_last_marker_line=$(printf '%s\n' "${_assessor_out:-}" | awk -v m="$_assessor_marker" '$0==m {n=NR} END {print n+0}')
     if [ "${_assessor_last_marker_line:-0}" -le 0 ]; then
-      printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Stop.**" >&2
+      printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Revert/Stop.**" >&2
       exit 1
     fi
     _assessor_display=$(printf '%s\n' "${_assessor_out:-}" | awk -v n="$_assessor_last_marker_line" 'NR<n {print}')
@@ -1284,7 +1301,7 @@ else
 $_assessor_trailers
 EOF
     if [ "$_assessor_round_count" -ne 1 ] || [ "$_assessor_round_invalid" = true ] || [ -z "$_assessor_round_num" ]; then
-      printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Stop.**" >&2
+      printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Revert/Stop.**" >&2
       exit 1
     fi
   fi
@@ -1303,8 +1320,8 @@ EOF
       exit 1
       ;;
     10) # 10 = Step 3.6 WORSE-majority action branch
-      printf '%s\n' "**⏸ Step 3.6: assessor WORSE-majority requires Continue/Stop before Step 3b.**"
-      # Do not write step-3.6 here; the Continue branch below writes it only after operator confirmation.
+      printf '%s\n' "**⏸ Step 3.6: assessor WORSE-majority requires Continue/Revert/Stop before Step 3b.**"
+      # Do not write step-3.6 here; the Continue and Revert branches below write it only after operator confirmation.
       ;;
     11)
       exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
@@ -1317,7 +1334,34 @@ EOF
 fi
 ```
 
-For `ASSESSOR_RC=10`, the displayed WORSE block above is already driver-rendered and the parser-only `LARCH_ASSESSOR_*` trailer lines have been filtered from chat. This is a pending operator decision, not settled completion: do not proceed to Step 3b, do not write `step-3.6`, and do not run any completion/finalization path until `AskUserQuestion` returns. Fire `AskUserQuestion` (**Continue** / **Stop**) without re-rendering verdict files. On **Continue**: immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`, then proceed to Step 3b. On **Stop**: use only the trusted numeric `ASSESSOR_ROUND_NUM` parsed after the last exact trailer marker; export `SUMMARY_OUTCOME=cancelled-assessor-worse` and `ASSESSOR_ROUND_NUM`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip the Step 3.6 success marker, skip every Step 3b+ action, skip `[DESIGNED]` rename, and skip design-log publish. Invalid/missing rc=10 trailers abort fail-closed before the prompt and before Final summary.
+For `ASSESSOR_RC=10`, the displayed WORSE block above is already driver-rendered and the parser-only `LARCH_ASSESSOR_*` trailer lines have been filtered from chat. This is a pending operator decision, not settled completion: do not proceed to Step 3b, do not write `step-3.6`, and do not run any completion/finalization path until `AskUserQuestion` returns. Fire `AskUserQuestion` with exactly three options — **Continue** / **Revert this round's findings & proceed** / **Stop** — without re-rendering verdict files. In every branch, use only the trusted numeric `ASSESSOR_ROUND_NUM` parsed after the last exact trailer marker.
+
+- **Continue**: keep the applied plan. Immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`, then proceed to Step 3b.
+- **Revert this round's findings & proceed**: roll back round `ASSESSOR_ROUND_NUM`'s applied findings to the pre-round plan, then continue to Step 3b with the reverted plan (not a cancellation). Run the fenced bash below: on `REVERT_STATUS=ok`, `snapshot-plan-round.sh revert-round` restored `plan.txt` to the pre-round snapshot and rolled the cursor / `review-round-count.txt` back; on a non-zero helper exit (missing snapshot or copy failure) keep the applied plan instead (Continue semantics) — warn but do not abort. The fence logs a `Warnings` entry and writes the Step 3.6 marker in both sub-cases, then control proceeds to Step 3b.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+_revert_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" revert-round --design-tmpdir "$DESIGN_TMPDIR" --round "$ASSESSOR_ROUND_NUM" 2>&1)
+_revert_rc=$?
+set -e
+printf '%s\n' "$_revert_out"
+if [ "${_revert_rc:-1}" -eq 0 ] && printf '%s\n' "$_revert_out" | grep -Fq 'REVERT_STATUS=ok'; then
+  printf '%s\n' "ℹ 3.6: assessor WORSE — reverted round ${ASSESSOR_ROUND_NUM} findings; continuing to Step 3b with the pre-round plan."
+  "$CLAUDE_PLUGIN_ROOT/scripts/append-execution-issue.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --category Warnings --entry "Step 3.6 — assessor WORSE-majority (round ${ASSESSOR_ROUND_NUM}): operator chose Revert; plan.txt restored to the pre-round snapshot and review-round state rolled back." || true
+else
+  printf '%s\n' "**⚠ 3.6: assessor WORSE Revert failed (exit ${_revert_rc}); keeping the applied plan and continuing to Step 3b.**"
+  "$CLAUDE_PLUGIN_ROOT/scripts/append-execution-issue.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --category Warnings --entry "Step 3.6 — assessor WORSE-majority (round ${ASSESSOR_ROUND_NUM}): operator chose Revert but snapshot-plan-round.sh revert-round exited ${_revert_rc}; applied plan kept." || true
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3.6"
+```
+
+  After the fence returns, proceed to Step 3b with the now-current `plan.txt` (reverted on success, applied on Revert-failure fallback).
+- **Stop**: export `SUMMARY_OUTCOME=cancelled-assessor-worse` and `ASSESSOR_ROUND_NUM`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip the Step 3.6 success marker, skip every Step 3b+ action, skip `[DESIGNED]` rename, and skip design-log publish.
+
+Invalid/missing rc=10 trailers abort fail-closed before the prompt and before Final summary.
 
 Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
 
@@ -1672,7 +1716,33 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 
 ### Plan command validator failure (shared)
 
-When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
+When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, first attempt **cross-vendor auto-repair** before prompting the operator (#3628 Component D). This applies at every shared caller site (Step 2b, Gate B / Step 3.5, discussion-round2, Step 5c).
+
+**Auto-repair (runs before the operator prompt).** Bind `_validator_target_file` to the file the failing validator pass targeted — `$DESIGN_TMPDIR/plan.txt` for Step 2b / Gate B / discussion-round2, `$DESIGN_TMPDIR/composed-plan.md` for Step 5c — then invoke `auto-fix-plan-commands.sh`, forwarding the Step 0 `$CODEX_PRESENT` / `$CURSOR_PRESENT` mental booleans. It spawns an external vendor (Codex/Cursor) to edit the target file in place, re-validates, and alternates vendors across bounded attempts; vendor attribution is unavailable so it alternates (attempt 1 = Codex when present else Cursor; attempt 2 = the other). See `auto-fix-plan-commands.md`.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+_autofix_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/auto-fix-plan-commands.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --plan-file "$_validator_target_file" \
+  --codex-present "$CODEX_PRESENT" \
+  --cursor-present "$CURSOR_PRESENT" \
+  --site "<SITE>")
+_autofix_rc=$?
+set -e
+printf '%s\n' "$_autofix_out"
+_autofix_status=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="AUTOFIX_STATUS"{print $2; exit}')
+_autofix_fixed_by=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="FIXED_BY"{print $2; exit}')
+```
+
+Branch on `_autofix_status` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c`):
+
+- **`ok`** — the target file now passes the validator. Append a `Warnings` entry recording the auto-correction via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact`, then **continue the surrounding success path without prompting**. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-postplan-emit.sh --with-plan-size ...` fence (same site flags) so plan-size + validation re-run against the fixed plan; for Step 5c, re-invoke `design-publish.sh`.
+- **`exhausted` or `unavailable`** — auto-repair did not resolve the defects (vendors failed/exhausted) or no external vendor was available. **Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them (same `append-tool-failure.sh` call, `--tool "validate-plan-commands(auto-fix-${_autofix_status})"`), then fall through to the operator `AskUserQuestion` below.
+
+When auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
 
 - **Fix-and-retry** — The operator edits `plan.txt` or `composed-plan.md` (whichever file the failing validator pass targeted) to resolve the defect. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-postplan-emit.sh --with-plan-size ...` fence with the same site flags (`--snapshot-original` only for initial Step 2b; no snapshot for Gate B or discussion) so retries preserve plan-size rc mapping and result-env reads. Raw `ACTION=EMIT_PLAN` / `ACTION=VALIDATE_PLAN_COMMANDS` retries are reserved for Step 5c composed-plan validation. Loop until `VALIDATE_STATUS=ok` or the operator picks another option.
 - **Override** — The operator accepts proceeding despite defects. Append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` using `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c` as appropriate). Then continue the surrounding success path; `defects-found` is **not** a driver `STEP_FAILED`.
@@ -1684,6 +1754,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/auto-fix-plan-commands.sh` — cross-vendor auto-repair loop run by **### Plan command validator failure (shared)** on `VALIDATE_STATUS=defects-found` before the operator prompt (Codex/Cursor alternation, re-validate, `AUTOFIX_STATUS` contract). Sibling: `auto-fix-plan-commands.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-auto-fix-plan-commands.sh` (Makefile target `test-auto-fix-plan-commands`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh` — Step 2b / re-emit post-plan phase driver; wraps `ACTION=EMIT_PLAN`, the optional HARD snapshot, and `invoke-plan-validator.sh` with one result-env contract. Sibling: `design-postplan-emit.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh` — Step 3.6 HARD-only plan-quality assessor phase driver; wraps `snapshot-plan-round.sh` post-Gate-B `write-after`, round rollback, and `assess-plan-round.sh` with one result-env contract (`.step3.6-assessor.env`). Sibling: `design-plan-quality-assessor.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns unconditional validation for `plan.txt`; Step 5c still guards composed-plan validation prompt-side. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).

@@ -75,4 +75,47 @@ after_tmp_count=$(find "$TMP" -maxdepth 1 -name '.snapshot-after.*' | wc -l | tr
 [[ ! -e "$TMP/plan-after-round-3.txt" ]] || fail 'rename failure must not leave destination snapshot'
 [[ "$before_tmp_count" == "$after_tmp_count" ]] || fail 'rename failure must clean temporary snapshot file'
 
+# revert-round (#3628): WORSE-majority Revert restores pre-round plan + rolls back cursor/counter.
+REV=$(mktemp -d "${TMPDIR:-/tmp}/tspr-rev.XXXXXX")
+
+# Round-2 revert restores from plan-after-round-1.txt.
+printf 'orig\n' >"$REV/plan.txt-original"
+printf 'after round1\n' >"$REV/plan-after-round-1.txt"
+printf 'after round2\n' >"$REV/plan-after-round-2.txt"
+printf 'round2 applied\n' >"$REV/plan.txt"
+printf '2\n' >"$REV/plan-review-round-cursor.txt"
+printf '2\n' >"$REV/review-round-count.txt"
+rev2=$("$SUBJECT" revert-round --design-tmpdir "$REV" --round 2 2>&1) || fail 'revert-round N=2 failed'
+printf '%s\n' "$rev2" | grep -Fq 'REVERT_STATUS=ok' || fail 'revert-round N=2 missing REVERT_STATUS=ok'
+[[ "$(cat "$REV/plan.txt")" == "after round1" ]] || fail 'revert-round N=2 must restore plan-after-round-1'
+[[ ! -e "$REV/plan-after-round-2.txt" ]] || fail 'revert-round N=2 must drop round-2 snapshot'
+[[ "$(cat "$REV/plan-review-round-cursor.txt")" == "2" ]] || fail 'revert-round N=2 cursor must be 2'
+[[ "$(cat "$REV/review-round-count.txt")" == "1" ]] || fail 'revert-round N=2 count must be 1'
+
+# Round-1 revert restores from plan.txt-original; counter rolls to 0.
+printf 'orig\n' >"$REV/plan.txt-original"
+printf 'after round1\n' >"$REV/plan-after-round-1.txt"
+printf 'round1 applied\n' >"$REV/plan.txt"
+printf '1\n' >"$REV/plan-review-round-cursor.txt"
+printf '1\n' >"$REV/review-round-count.txt"
+rev1=$("$SUBJECT" revert-round --design-tmpdir "$REV" --round 1 2>&1) || fail 'revert-round N=1 failed'
+printf '%s\n' "$rev1" | grep -Fq 'RESTORED_FROM=plan.txt-original' || fail 'revert-round N=1 must restore from original'
+[[ "$(cat "$REV/plan.txt")" == "orig" ]] || fail 'revert-round N=1 must restore plan.txt-original'
+[[ ! -e "$REV/plan-after-round-1.txt" ]] || fail 'revert-round N=1 must drop round-1 snapshot'
+[[ "$(cat "$REV/plan-review-round-cursor.txt")" == "1" ]] || fail 'revert-round N=1 cursor must be 1'
+[[ "$(cat "$REV/review-round-count.txt")" == "0" ]] || fail 'revert-round N=1 count must be 0'
+
+# Missing restore source → exit 2, plan.txt untouched (orchestrator keeps applied plan).
+printf 'round5 applied\n' >"$REV/plan.txt"
+if "$SUBJECT" revert-round --design-tmpdir "$REV" --round 5 >/tmp/larch-snapshot-rev-src.out 2>&1; then
+  fail 'revert-round with missing source snapshot must fail closed'
+fi
+[[ "$(cat "$REV/plan.txt")" == "round5 applied" ]] || fail 'revert-round failure must not mutate plan.txt'
+
+# Missing --round → exit 2.
+if "$SUBJECT" revert-round --design-tmpdir "$REV" >/tmp/larch-snapshot-rev-argv.out 2>&1; then
+  fail 'revert-round without --round must fail closed'
+fi
+rm -rf "$REV"
+
 pass 'snapshot-plan-round harness'

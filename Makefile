@@ -11,7 +11,7 @@ PYTHON ?= python3
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
-.PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
+.PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-run-analysis-quiet test-parse-bootstrap-routing-envelope
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
@@ -89,7 +89,7 @@ test-harnesses-4: test-review-and-fix-dispatch test-refresh-run-logs test-design
 
 test-harnesses-5: test-launch-review-cursor-core test-assess-plan-round test-dispatch-code-voters-regressions-r3-codex test-ci-wait test-local-cleanup test-mermaid-fragments test-redact test-step0b-router-flag-recovery test-design-driver test-compose-collector-failure-log test-render-cost-line-callsites test-render-cost-line-realism test-step3-orchestrator-fence test-quick-mode-docs-sync test-implement-step2-routing test-implement-step8-exit3-first-fixer
 
-test-harnesses-6: test-dispatch-panel-core-dynamic test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step3-review test-generate-topology-docs test-render-run-summary test-larch-logs-batches test-block-submodule test-ship-pr-rebase test-ci-behind-count test-snapshot-plan-round test-check-stale-plugin test-plan-block-strip-body test-extract-plan-scope-paths test-run-step2-dispatch test-tally-vote test-render-final-summary-bash32
+test-harnesses-6: test-dispatch-panel-core-dynamic test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step3-review test-generate-topology-docs test-render-run-summary test-larch-logs-batches test-block-submodule test-ship-pr-rebase test-ci-behind-count test-snapshot-plan-round test-auto-fix-plan-commands test-check-stale-plugin test-plan-block-strip-body test-extract-plan-scope-paths test-run-step2-dispatch test-tally-vote test-render-final-summary-bash32
 
 test-harnesses-7: test-plan-review-loop test-tally-plan-review test-check-contains-pins test-dispatch-code-voters-retry-codex-success test-release-prepare test-release-finish test-tracking-issue-read-sentinel test-run-research-planner test-trailer-helpers test-ci-failed-jobs test-references-headers test-ship-pr-oos-pr-prep test-run-external-agent-args test-gh-run-logs test-slack-issue-announce test-implement-anti-halt test-fetch-combinable-issues-filter
 
@@ -497,6 +497,9 @@ test-check-plan-size:
 
 test-snapshot-plan-round:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-snapshot-plan-round.sh
+
+test-auto-fix-plan-commands:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-auto-fix-plan-commands.sh
 
 test-dispatch-plan-assessors:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-dispatch-plan-assessors.sh

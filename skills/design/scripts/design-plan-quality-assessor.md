@@ -35,11 +35,11 @@ Every `read-cursor`, `write-after`, rollback `write-cursor`, and assessor-round 
 6. `write-after` success → `assess-plan-round.sh`. Non-zero assess child exit → `append-tool-failure.sh`, `ASSESSOR_STATUS=assess-failed`, `WARN=` with assess exit code, write+emit, exit `0` (do not treat empty stdout as intentional skip). On assess exit `0`, parse assessor KVs; when `ASSESSOR_VERDICT=not-worse` and `EFFECTIVE_ASSESSORS=0`, append the 0/3 `WARN=` line; write+emit, exit `0`.
 7. Non-zero `read-cursor` on the HARD lane → `ASSESSOR_STATUS=cursor-read-failed`, `WARN=` + `append-tool-failure.sh`, skip `write-after` and assess. Non-HARD skip still uses `ROUND_NUM=1` when read-cursor fails. On `write-after` failure rollback: decrement `review-round-count.txt` to `ROUND_NUM-1`, then best-effort `write-cursor --value ROUND_NUM`; `write-cursor` failure adds `WARN=` without restoring the count.
 
-Stops before the WORSE Continue/Stop `AskUserQuestion` (LLM boundary in `SKILL.md`).
+Stops before the WORSE Continue/Revert/Stop `AskUserQuestion` (LLM boundary in `SKILL.md`).
 
 ## Result env (`.step3.6-assessor.env`)
 
-Driver result-env for audit and settled-path state only. It is not a control input for the WORSE Continue/Stop branch, which uses the trusted trailer frame in driver stdout.
+Driver result-env for audit and settled-path state only. It is not a control input for the WORSE Continue/Revert/Stop branch, which uses the trusted trailer frame in driver stdout.
 
 Result-env allowlist (not stdout):
 
@@ -73,9 +73,9 @@ Prompt-side `SKILL.md` Step 3.6 fence:
 
 1. Cheap `design_classification` pre-read. When `_design_classification=HARD`, invoke the driver; the driver renders `> **🔶 /design 3.6: assessor**`. When non-HARD, print `⏩ 3.6: assessor — design_classification=…; skipped` and write the Step 3.6 sentinel without invoking the driver.
 2. `set +e` capture to `_assessor_out` / `_assessor_rc` via `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"` (qualified path — never bare script name).
-3. For rc `10`, parse only the final exact `LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN` frame from driver stdout. Filter that frame from chat, require exactly one numeric `LARCH_ASSESSOR_ROUND_NUM`, and abort fail-closed before Continue/Stop if validation fails.
+3. For rc `10`, parse only the final exact `LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN` frame from driver stdout. Filter that frame from chat, require exactly one numeric `LARCH_ASSESSOR_ROUND_NUM`, and abort fail-closed before Continue/Revert/Stop if validation fails.
 4. Print filtered driver-rendered display text and diagnostic `ASSESSOR_RC=` / trusted `ASSESSOR_ROUND_NUM=` scalars for the prompt-side branch. Do not source or route from `.step3.6-assessor.env`.
-5. rc=`0` writes the Step 3.6 sentinel and continues to Step 3b; rc=`2` aborts as configuration error; rc=`10` fires the Continue/Stop prompt using the trusted trailer scalar; any unexpected rc aborts.
+5. rc=`0` writes the Step 3.6 sentinel and continues to Step 3b; rc=`2` aborts as configuration error; rc=`10` fires the Continue/Revert/Stop prompt using the trusted trailer scalar; any unexpected rc aborts. The trusted numeric `LARCH_ASSESSOR_ROUND_NUM` is the **revert anchor**: on **Revert** the orchestrator passes it to `snapshot-plan-round.sh revert-round --round N`, which restores the pre-round plan and rolls the cursor/counter back (see `assessor.md` §Operator UX and `snapshot-plan-round.md` §`revert-round`).
 6. On rc `11`, `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`. The paused result env is audit data only; it must not be treated as a settled skip.
 
 ## Edit in sync
@@ -92,4 +92,4 @@ Cross-links: `assessor.md`, `assess-plan-round.md`, `snapshot-plan-round.md`, `l
 
 Exit codes are now: `0` settled (including `missing-snapshot` fail-open/degraded statuses), `2` argv/configuration error, `10` WORSE-majority action branch, and `11` pause-save handoff. Exit `1` is reserved. The driver writes paused state and exits `11`; the prompt-side orchestrator executes `design-pause-save.sh`.
 
-The driver renders the HARD banner, warnings, paused note, and WORSE-majority display via `emit`. On rc=`10`, it appends a trusted trailer frame after display text; the orchestrator filters trailer lines from chat, parses only the last exact marker frame, and requires a numeric `LARCH_ASSESSOR_ROUND_NUM` before Continue/Stop. General machine KVs stay in `.step3.6-assessor.env` as audit/settled-path state and are not emitted on FD 3 or used for Continue/Stop control.
+The driver renders the HARD banner, warnings, paused note, and WORSE-majority display via `emit`. On rc=`10`, it appends a trusted trailer frame after display text; the orchestrator filters trailer lines from chat, parses only the last exact marker frame, and requires a numeric `LARCH_ASSESSOR_ROUND_NUM` before Continue/Revert/Stop. General machine KVs stay in `.step3.6-assessor.env` as audit/settled-path state and are not emitted on FD 3 or used for Continue/Revert/Stop control.

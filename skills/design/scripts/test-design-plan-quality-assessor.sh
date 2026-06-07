@@ -231,7 +231,7 @@ apply_step3_6_handoff() {
     if [[ "${_assessor_rc:-1}" -eq 10 ]]; then
         _assessor_last_marker_line=$(printf '%s\n' "${_assessor_out:-}" | awk -v m="$_assessor_marker" '$0==m {n=NR} END {print n+0}')
         if [[ "${_assessor_last_marker_line:-0}" -le 0 ]]; then
-            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Revert/Stop.**" >>"$d/handoff.stderr"
             return 1
         fi
         _assessor_display=$(printf '%s\n' "${_assessor_out:-}" | awk -v n="$_assessor_last_marker_line" 'NR<n {print}')
@@ -249,7 +249,7 @@ apply_step3_6_handoff() {
             esac
         done <<<"$_assessor_trailers"
         if [[ "$_assessor_round_count" -ne 1 || "$_assessor_round_invalid" == true || -z "$_assessor_round_num" ]]; then
-            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Revert/Stop.**" >>"$d/handoff.stderr"
             return 1
         fi
     fi

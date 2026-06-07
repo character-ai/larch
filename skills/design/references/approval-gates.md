@@ -4,13 +4,13 @@
 
 **Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
 
-**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A is the **post-plan re-entry** discussion prompt, Gate C is the final approval prompt, and Gate B always uses a 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) before applying accepted in-scope findings. Gate A and Gate C use `AskUserQuestion` on their reachable paths; Gate B also always uses `AskUserQuestion` on its reachable non-empty-findings path. Reviewers always see the latest plan with all user-approved or operator-approved/applied prior feedback applied.
+**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A is the **post-plan re-entry** discussion prompt, Gate C is the final approval prompt, and Gate B applies accepted in-scope findings — by default **auto-applying** with no prompt (`approve_requested=false`), or via a 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) when `--approve` is set (`approve_requested=true`). Gate A and Gate C use `AskUserQuestion` on their reachable paths; Gate B uses `AskUserQuestion` on its non-empty-findings path only under `--approve`. Reviewers always see the latest plan with all user-approved or operator-approved/applied prior feedback applied.
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
 **Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: Gates apply uniformly across SIMPLE and HARD tiers. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The always-explicit Gate B behavior applies uniformly across both tiers.
+**Cross-tier invariant**: Gates apply uniformly across SIMPLE and HARD tiers. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The Gate B apply-UX behavior (auto-apply by default, explicit under `--approve`) applies uniformly across both tiers; only the post-apply Step 3.6 assessor is HARD-only.
 
 ## Per-tier review-round cap
 
@@ -83,9 +83,24 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) before Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b (Gate C) run in normal sequence on HARD runs, including `LOOP_STATUS=zero-findings-degraded-panel`.
 
-#### Gate B mode (always explicit)
+#### Gate B mode (auto-apply default; `--approve` for explicit)
 
-Determine Gate B handling only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. Gate B is always explicit: plan-review accepted findings are never applied inside Step 3, and `--manual` / persisted manual mode no longer exists. Gate B always asks with Apply all / Go through each / Switch to discussion mode, and Gate B always prompts explicitly before any finding changes `plan.txt`.
+Determine Gate B handling only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. Plan-review accepted findings are never applied inside Step 3; Gate B is the only apply point. `--manual` / persisted manual mode no longer exists. The apply UX is selected by `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
+
+- **`approve_requested=false` (default) — auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim (which runs `### Shared post-apply pipeline`). No operator prompt fires before the plan is revised. This restores the pre-#3512 auto-apply behavior (issue #2930). The HARD Step 3.6 assessor remains the quality gate after the apply settles; the plan-size brakes and validator auto-fix escalation in `### Shared post-apply pipeline` still prompt when triggered (see **Apply-pipeline prompts under auto-apply** below).
+- **`approve_requested=true` (`--approve`) — explicit.** Use the full Apply all / Go through each / Switch to discussion mode prompt below; Gate B prompts explicitly before any finding changes `plan.txt`. `Go through each` and `Switch to discussion mode` are reachable only on this path (discussion otherwise remains reachable via Gate C `Discuss further`).
+
+The zero-findings short-circuit above is unchanged in both modes (nothing to apply, no prompt either way).
+
+#### Apply-pipeline prompts under auto-apply
+
+Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. The only operator prompts that can still fire inside the apply pipeline are the intentional safety brakes in `### Shared post-apply pipeline`, and they are unchanged by `--approve`:
+
+1. **Plan-size HARD trigger** (`design-postplan-emit.sh` rc=12 → Split / Override / Cancel).
+2. **Cumulative drift guard** (rc=14 → Continue / Cancel).
+3. **Plan-command validator escalation** (rc=10): defects are first auto-corrected cross-vendor (see `SKILL.md` **### Plan command validator failure (shared)**); the Fix-and-retry / Override / Cancel prompt fires only after auto-fix is exhausted.
+
+On HARD, the Step 3.6 assessor (post-apply) is the quality gate. On SIMPLE there is no assessor (deferred to #3513), so these size brakes are the only automatic halt on the apply path until #3513 lands. Keeping them as halts is deliberate: they catch a plan going in a bad direction by size even when finding acceptance is automatic.
 
 **Step 3 outcomes** (read `$DESIGN_TMPDIR/.step3-plan-review-result.env` when present; see `plan-review.md` § Single-pass review):
 
@@ -99,7 +114,7 @@ Print a compact findings list under `## Plan Review Findings — Review`: one ro
 
 ### Prompt
 
-Fire `AskUserQuestion` with exactly three options:
+**Explicit mode only (`approve_requested=true`).** Under default auto-apply (`approve_requested=false`) this entire prompt is skipped — Gate B runs `### Apply-all body` directly after the `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` breadcrumb (see **Gate B mode** above). When `--approve` is set, fire `AskUserQuestion` with exactly three options:
 
 - **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep and shared post-apply pipeline run there; the merged `design-postplan-emit.sh --with-plan-size` fence owns clean rc0/12/13/14 plan-size handling without a second standalone Step 2b.5 pass.
 - **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below; the merged post-plan fence fires **once** per Gate B settled path, not once per per-finding apply.
@@ -188,10 +203,9 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 
 3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d. Step 1d.7 writes the approved outline separately to `design-outline.md`. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). All three files remain readable inputs to subsequent plan revisions.
 
-4. **Gate B apply contract**: Gate B always prompts explicitly before revising `plan.txt`. The rewrite runs only after the operator chooses **Apply all** or applies individual findings in **Go through each**; it does not ask again for each already-approved apply action. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. **Loop-internal carve-out**: the plan-review loop no longer applies accepted findings between rounds; Gate B is the only apply point. There is no mode state; Gate B is always explicit.
+4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt; under `--approve` (`approve_requested=true`) it prompts explicitly before revising `plan.txt` and the rewrite runs only after the operator chooses **Apply all** or applies individual findings in **Go through each**. In neither mode does it ask again for each already-approved apply action. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. **Loop-internal carve-out**: the plan-review loop no longer applies accepted findings between rounds; Gate B is the only apply point. There is no persisted mode state; the apply UX is recomputed from `approve_requested` at each Gate B entry.
 
 5. **Assessor Stop cancellation**: when Step 3.6 `AskUserQuestion` picks **Stop** on a WORSE-majority verdict, `/design` sets `SUMMARY_OUTCOME=cancelled-assessor-worse`, runs the Final summary block, preserves `$DESIGN_TMPDIR`, and skips `[DESIGNED]` rename and design-log publish (see `assessor.md`).
 
 <!-- single-pass review contract -->
-Gate B always asks explicitly before applying accepted findings: Apply all / Go through each / Switch to discussion mode.
-Gate B always prompts explicitly.
+Gate B is the only apply point for accepted plan-review findings. By default it auto-applies them with no prompt; under `--approve` it asks explicitly: Apply all / Go through each / Switch to discussion mode.

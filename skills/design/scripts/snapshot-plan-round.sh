@@ -17,7 +17,7 @@ ROUND=""
 CURSOR_VALUE=""
 
 usage() {
-    larch_err "Usage: snapshot-plan-round.sh write-original|write-after|read-cursor|write-cursor --design-tmpdir DIR [--round N] [--value N]"
+    larch_err "Usage: snapshot-plan-round.sh write-original|write-after|read-cursor|write-cursor|revert-round --design-tmpdir DIR [--round N] [--value N]"
 }
 
 atomic_copy_plan() {
@@ -54,7 +54,7 @@ parse_cursor_file() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        write-original|write-after|read-cursor|write-cursor)
+        write-original|write-after|read-cursor|write-cursor|revert-round)
             SUBCMD="$1"
             shift
             ;;
@@ -108,6 +108,34 @@ case "$SUBCMD" in
         tmp=$(mktemp "$DESIGN_TMPDIR/.cursor.XXXXXX")
         printf '%s\n' "$CURSOR_VALUE" >"$tmp"
         mv -f "$tmp" "$cursor_file"
+        ;;
+    revert-round)
+        # Roll back round N's applied findings: restore plan.txt to the pre-round
+        # snapshot, drop round N's post-Gate-B snapshot, and roll the cursor +
+        # review-round counter back (mirrors the write-after-failed rollback:
+        # cursor=N, count=N-1). The assessor is HARD-only, so plan.txt-original
+        # exists for the round-1 baseline.
+        [[ -n "$ROUND" ]] || { larch_err "snapshot-plan-round.sh: revert-round requires --round"; exit 2; }
+        case "$ROUND" in ''|*[!0-9]*|0) larch_err "snapshot-plan-round.sh: --round must be a positive integer"; exit 2 ;; esac
+        ROUND=$((10#$ROUND))
+        if [[ "$ROUND" -gt 1 ]]; then
+            restore_src="$DESIGN_TMPDIR/plan-after-round-$((ROUND - 1)).txt"
+        else
+            restore_src="$DESIGN_TMPDIR/plan.txt-original"
+        fi
+        [[ -f "$restore_src" ]] || { larch_err "snapshot-plan-round.sh: revert-round source missing: ${restore_src##*/}"; exit 2; }
+        atomic_copy_plan "$restore_src" "$DESIGN_TMPDIR/plan.txt" ".revert-plan" \
+            || { larch_err "snapshot-plan-round.sh: revert-round copy-back failed"; exit 1; }
+        rm -f "$DESIGN_TMPDIR/plan-after-round-${ROUND}.txt"
+        printf '%s\n' "$((ROUND - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
+        cursor_file="$DESIGN_TMPDIR/plan-review-round-cursor.txt"
+        tmp=$(mktemp "$DESIGN_TMPDIR/.cursor.XXXXXX")
+        printf '%s\n' "$ROUND" >"$tmp"
+        mv -f "$tmp" "$cursor_file"
+        emit_kv REVERT_STATUS ok
+        emit_kv RESTORED_FROM "${restore_src##*/}"
+        emit_kv CURSOR "$ROUND"
+        emit_kv REVIEW_ROUND_COUNT "$((ROUND - 1))"
         ;;
     *)
         usage

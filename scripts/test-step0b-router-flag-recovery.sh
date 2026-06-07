@@ -132,7 +132,7 @@ STUB
 chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 
 run_design_init() {
-  local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}"
+  local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}" approve="${5:-false}"
   mkdir -p "$dtmp"
   export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
   local _path="$extra_path"
@@ -144,7 +144,8 @@ run_design_init() {
     --claude-pid 424242 \
     --classification SIMPLE \
     --partition-requested "$partition" \
-    --brainstorm-requested "$brainstorm"
+    --brainstorm-requested "$brainstorm" \
+    --approve-requested "$approve"
 }
 
 # Case 8: invoke production driver; brainstorm argv merges into run-params.json.
@@ -159,6 +160,17 @@ grep -Fq 'INIT_STATUS=ok' "$D8/.design-init-runparams-result.env" \
   || fail "case8: result env missing INIT_STATUS=ok"
 jq -e '.brainstorm_requested == true and (has("manual_gate_b") | not)' "$D8/run-params.json" >/dev/null \
   || fail "case8: driver jq-merge failed; got $(cat "$D8/run-params.json")"
+
+# Case 8a (#3628): approve argv merges into run-params.json (mirrors case 8 brainstorm merge).
+D8A="$TMPROOT/driver8a"
+set +e
+out8a=$(run_design_init "$D8A" false false "" true 2>&1)
+rc8a=$?
+set -e
+[[ "$rc8a" -eq 0 ]] || fail "case8a: design-init-runparams.sh rc=$rc8a out=$out8a"
+[[ -f "$D8A/run-params.json" ]] || fail "case8a: missing run-params.json"
+jq -e '.approve_requested == true' "$D8A/run-params.json" >/dev/null \
+  || fail "case8a: approve jq-merge failed; got $(cat "$D8A/run-params.json")"
 
 # Case 9: rename failure is best-effort; run-params still written.
 cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
