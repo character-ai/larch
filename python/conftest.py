@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import config
 import logging_util
+import retry
 
 
 @pytest.fixture(autouse=True)
@@ -20,3 +23,21 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv(config.ENV_LARCH_QUIET_DISABLE, "1")
     logging_util.reset_quiet_state()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace all sleep paths with no-ops so retry/backoff tests don't wait.
+
+    Two paths to cover:
+    - retry.default_sleeper: used by with_transient_retry in gh.py reads
+    - time.sleep: fallback in merge.py when no sleeper is injected
+
+    Tests that verify sleep *amounts* already inject their own sleeper
+    (e.g. sleeper=sleeps.append) and are unaffected by these patches.
+    """
+    def noop(_s: float) -> None:
+        pass
+
+    monkeypatch.setattr(retry, "default_sleeper", noop)
+    monkeypatch.setattr(time, "sleep", noop)
