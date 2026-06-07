@@ -1,0 +1,5 @@
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1949: assertion shape not in v1 grammar
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1996: assertion shape not in v1 grammar
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1997: assertion shape not in v1 grammar
+ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
