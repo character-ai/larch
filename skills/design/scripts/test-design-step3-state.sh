@@ -28,7 +28,7 @@ D1="$TMP/gate-b-bypass"
 mkdir -p "$D1/.completed"
 out=$(run_action "$D1" gate-b-bypass)
 [[ "$out" == *'STEP3_STATE=gate-b-bypass'* ]] || fail "gate-b-bypass state missing: $out"
-for step in 3 3.5 3.6; do
+for step in 3 3.5; do
     [[ -f "$D1/.completed/step-$step" ]] || fail "gate-b-bypass missing step-$step"
 done
 
@@ -53,7 +53,7 @@ echo "=== direct-review-entry clears downstream and consumes marker ==="
 D4="$TMP/direct-entry"
 mkdir -p "$D4/.completed"
 : >"$D4/.step3-reentry"
-for step in 3 3.5 3.6 3b 4 4b; do
+for step in 3 3.5 3b 4 4b; do
     : >"$D4/.completed/step-$step"
 done
 out=$(run_action "$D4" direct-review-entry)
@@ -63,7 +63,7 @@ out=$(run_action "$D4" direct-review-entry)
 for step in 2a 2a.5 2b 2b.5; do
     [[ -f "$D4/.completed/step-$step" ]] || fail "direct-review entry missing step-$step"
 done
-for step in 3 3.5 3.6 3b 4 4b; do
+for step in 3 3.5 3b 4 4b; do
     [[ ! -f "$D4/.completed/step-$step" ]] || fail "direct-review entry left stale step-$step"
 done
 
