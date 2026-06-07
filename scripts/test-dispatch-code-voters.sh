@@ -9,9 +9,9 @@ export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.0
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
-# --section CLI selector: splits the 12 scenarios + 3 regression blocks into
+# --section CLI selector: splits the scenarios + 3 regression blocks into
 # 8 groups so the CI matrix can pack them as independent harness rows. Sections:
-#   happy:                          scenarios 1-4 (happy path, absent tools, empty voter, round-2 3-judge parity)
+#   happy:                          happy path, shrink-not-backfill (both-down + one-down), empty voter, round-2 3-judge parity
 #   edge-and-r3-claude:             scenarios 4-5 (symlink diff, 2 MB diff) + Regression 3 claude case
 #   retry-claude:                   retry_success_claude, retry_fail_claude
 #   retry-codex-success:            retry_success_codex
@@ -19,7 +19,7 @@ export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 #   retry-codex-fail-and-fallback:  retry_fail_codex, retry_fail_fallback
 #   regressions-r1-r2:              env-isolation (Regression 1) + harness-ancestor path-guard (Regression 2)
 #   regressions-r3-codex:           production-shape codex case (Regression 3, codex half)
-# With no --section, all 12 scenarios + 3 regressions run sequentially
+# With no --section, all scenarios + 3 regressions run sequentially
 # (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
@@ -344,14 +344,43 @@ grep -Fq 'Lines that do not start with the exact ballot ID from the ballot headi
     || { echo "FAIL: $(basename "$prompt") missing dual-prefix ignore rule" >&2; exit 1; }
 done
 
+# Shrink-not-backfill: both externals unavailable → Claude-only panel. The codex
+# and cursor slots are SKIPPED (not back-filled to a duplicate Claude/alternate
+# judge), and a panel that shrank solely from unavailability must NOT raise a
+# degraded-panel warning (expected eligible judges = 1 Claude = 1 effective).
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
-grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
-grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
-grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
-grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
-grep -Fq 'DISPATCH_OK=true' <<< "$out"
+grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out" || { echo "FAIL: both-down should skip voter 2 (no Claude back-fill)" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=skipped' <<< "$out" || { echo "FAIL: both-down should skip voter 3 (no Claude back-fill)" >&2; exit 1; }
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: skipped voter 2 keeps its codex tool label (not claude)" >&2; exit 1; }
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: skipped voter 3 keeps its cursor tool label (not claude)" >&2; exit 1; }
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: both-down must keep Claude voter 1 as the floor" >&2; exit 1; }
+grep -Fq 'DISPATCH_OK=true' <<< "$out" || { echo "FAIL: both-down with a healthy Claude floor should report DISPATCH_OK=true" >&2; exit 1; }
+if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
+    echo "FAIL: both-down via unavailability must not emit a degraded panel warning (shrink is the designed state)" >&2
+    exit 1
+fi
 
 require_voter_paths_file_nonempty "happy-absent" "$out"
+absent_pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ $(wc -l < "$absent_pf" | tr -d ' ') -eq 1 ]] || { echo "FAIL: both-down code-voter paths file expects 1 line (Claude only)" >&2; exit 1; }
+
+# Shrink-not-backfill: exactly one external unavailable (Codex down, Cursor up) →
+# 2-judge panel (Claude + Cursor). The Codex slot is SKIPPED, the Cursor slot
+# launches, and no degraded-panel warning fires (2 eligible = 2 effective).
+out=$(PATH="$STUB_BIN:$PATH" CURSOR_STUB_LOG="$CURSOR_LOG" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/one-down" --codex-available false --cursor-available true)
+grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out" || { echo "FAIL: one-down (codex) should skip voter 2 (no back-fill)" >&2; exit 1; }
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: one-down skipped voter 2 keeps its codex tool label" >&2; exit 1; }
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: one-down voter 3 should launch on cursor" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" || { echo "FAIL: one-down voter 3 (cursor) should be launched" >&2; exit 1; }
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: one-down must keep Claude voter 1 as the floor" >&2; exit 1; }
+grep -Fq 'DISPATCH_OK=true' <<< "$out" || { echo "FAIL: one-down should report DISPATCH_OK=true" >&2; exit 1; }
+if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
+    echo "FAIL: one-down via unavailability must not emit a degraded panel warning (2-judge shrink is the designed state)" >&2
+    exit 1
+fi
+require_voter_paths_file_nonempty "happy-one-down" "$out"
+one_down_pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ $(wc -l < "$one_down_pf" | tr -d ' ') -eq 2 ]] || { echo "FAIL: one-down code-voter paths file expects 2 lines (Claude + Cursor)" >&2; exit 1; }
 
 issues_log="$TMP/execution-issues.md"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=empty LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/empty-voter1" --codex-available true --cursor-available true)
@@ -378,11 +407,11 @@ grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out"
 case "$out" in
     *VOTER_2_STATUS=skipped*) echo "FAIL: round2 must not skip voter 2 (Codex stays on rounds 2+)" >&2; exit 1 ;;
 esac
-grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" || grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out" \
-    || { echo "FAIL: round2 voter 2 must be launched or fallback, not skipped" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: round2 voter 2 (both vendors available) must be launched" >&2; exit 1; }
 grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: round2 voter2 parse-rate status missing/incorrect" >&2; exit 1; }
-grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" || grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out" \
-    || { echo "FAIL: round2 voter 3 must be launched or fallback" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: round2 voter 3 (both vendors available) must be launched" >&2; exit 1; }
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
     echo "FAIL: round2 should not emit a degraded panel warning when all three effective judges produce output" >&2
@@ -868,6 +897,12 @@ grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 2/3 effective
 
 require_voter_paths_file_nonempty "retry-codex-fail" "$out"
 
+# Shrink-not-backfill, both externals down AND the sole Claude judge goes
+# narrative-only (parse-rate failure). The codex/cursor slots are SKIPPED (no
+# Claude back-fill → no phase3 codex/cursor output is produced), and the panel
+# genuinely degrades to 0/1: the only eligible judge (Claude) emitted
+# non-substantive output, so a degraded warning IS expected here (unlike the
+# healthy-Claude both-down case above, which shrinks to 1/1 with no warning).
 retry_fail_fallback_tmp="$TMP/retry-fail-fallback-claude"
 retry_fail_fallback_count_file="$TMP/retry-fail-fallback-claude-count.txt"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_fallback_count_file" "$SCRIPT" \
@@ -875,16 +910,18 @@ out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT
     --review-tmpdir "$retry_fail_fallback_tmp" \
     --codex-available false \
     --cursor-available false)
-grep -Fq 'VOTER_2_TOOL=claude' <<< "$out" \
-    || { echo "FAIL: fallback-claude fixture expected voter 2 to run on claude" >&2; exit 1; }
-grep -Fq 'VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
-    || { echo "FAIL: fallback-claude fixture expected VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
-grep -Fq "VOTER_2_PATH=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" <<< "$out" \
-    || { echo "FAIL: fallback-claude fixture expected voter 2 final path to remain the phase3 output" >&2; exit 1; }
-[[ -s "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" ]] \
-    || { echo "FAIL: fallback-claude fixture should write an output-specific codex voter diag" >&2; exit 1; }
-grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" \
-    || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out" \
+    || { echo "FAIL: both-down should skip voter 2 (no Claude back-fill)" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=skipped' <<< "$out" \
+    || { echo "FAIL: both-down should skip voter 3 (no Claude back-fill)" >&2; exit 1; }
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: both-down sole-Claude narrative-only should report VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
+grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 0/1 effective judges produced output.**' <<< "$out" \
+    || { echo "FAIL: both-down with a narrative-only sole Claude judge should degrade to 0/1 effective judges" >&2; exit 1; }
+[[ ! -e "$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" ]] \
+    || { echo "FAIL: shrink-not-backfill must not produce a phase3 codex back-fill output" >&2; exit 1; }
+[[ ! -e "$retry_fail_fallback_tmp/cursor-vote-output-phase3.txt" ]] \
+    || { echo "FAIL: shrink-not-backfill must not produce a phase3 cursor back-fill output" >&2; exit 1; }
 require_voter_paths_file_nonempty "retry-fallback-claude" "$out"
 fi  # end section: retry-codex-fail-and-fallback
 
