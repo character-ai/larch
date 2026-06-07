@@ -105,16 +105,14 @@ if [[ -z "$NODE_B" ]]; then
   exit 1
 fi
 
-# Read blocked_by count before mutation for verification (best-effort)
-BEFORE=$(gh api "repos/${REPO}/issues/${ISSUE_A}" --jq '.issue_dependencies_summary.blocked_by // 0' 2>/dev/null) || BEFORE=0
-
 # Call addBlockedBy mutation via GraphQL variables (safe: no string interpolation)
+# Returns blockedBy nodes for transactionally-consistent membership verification.
 # shellcheck disable=SC2016
 MUTATION_OUT=$(gh api graphql \
   -F issueId="$NODE_A" -F blockingId="$NODE_B" \
   -f query='mutation($issueId: ID!, $blockingId: ID!) {
     addBlockedBy(input: {issueId: $issueId, blockingIssueId: $blockingId}) {
-      clientMutationId
+      issue { blockedBy(first: 100) { nodes { number } } }
     }
   }' 2>&1) || {
   echo "ERROR=addBlockedBy mutation failed: $MUTATION_OUT" >&2
@@ -127,11 +125,10 @@ if ! printf '%s' "$MUTATION_OUT" | python3 -c \
   exit 1
 fi
 
-# Verify: blocked_by count should have increased (warn-only; already-blocked is acceptable)
-AFTER=$(gh api "repos/${REPO}/issues/${ISSUE_A}" --jq '.issue_dependencies_summary.blocked_by // 0' 2>/dev/null) || AFTER=0
-
-if [[ "$AFTER" -le "$BEFORE" ]]; then
-  echo "WARNING=blocked_by count did not increase (before=${BEFORE}, after=${AFTER}) — relationship may already exist" >&2
+# Verify ISSUE_B is in the returned blockedBy nodes (same-response, not an async counter)
+if ! printf '%s' "$MUTATION_OUT" | python3 -c \
+  "import json,sys; d=json.load(sys.stdin); nums=[n['number'] for n in d['data']['addBlockedBy']['issue']['blockedBy']['nodes']]; sys.exit(0 if int('${ISSUE_B}') in nums else 1)" 2>/dev/null; then
+  echo "WARNING=addBlockedBy succeeded but #${ISSUE_B} was not found in the blockedBy payload — relationship status is uncertain" >&2
 fi
 
 echo "SUCCESS=true"
