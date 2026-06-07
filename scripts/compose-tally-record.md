@@ -22,8 +22,7 @@ The output is a single JSON object on stdout with `schema_version` (`2`),
 `phase`, `batch`, `mode`, `rounds`, `accepted_count`, `rejected_count`,
 `exonerated_count`, and `body`. For code-review tallies,
 `rejected_count` counts every finding that did not meet the acceptance threshold
-(including split-panel and exonerated vote patterns). `exonerated_count` is an
-informational sub-count and must satisfy `exonerated_count ≤ rejected_count`.
+(0 YES). `exonerated_count` is always `0` (retained for backward compatibility).
 The `plan-review` phase maps to `batch: "plan-review-tally"`; the
 `code-review` phase maps to `batch: "code-review-tally"`. The body file is
 embedded verbatim as a JSON string by `jq --rawfile`.
