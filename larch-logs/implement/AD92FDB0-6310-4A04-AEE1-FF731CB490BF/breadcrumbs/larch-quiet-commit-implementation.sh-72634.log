@@ -1,0 +1,3 @@
+[sergey-zhupanov/implementing-pr3-necessity-gated-review-3649 7a8d6b5c1] Add necessity-gated review: rubric, judge bar, reviewer self-filter
+ 15 files changed, 233 insertions(+), 8 deletions(-)
+ create mode 100644 skills/shared/review-acceptance-rubric.md
