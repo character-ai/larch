@@ -15,7 +15,7 @@ repos:
         name: shellcheck (parallel, pinned binary)
         entry: scripts/pre-commit-shellcheck.sh
         language: python
-        additional_dependencies: [shellcheck-py==0.11.0.1]
+        additional_dependencies: [shellcheck-py==0.10.0.1]
         types: [shell]
         # larch-logs/ holds committed run artifacts (e.g. source-env.sh files
         # whose absolute paths have been replaced with <TMPDIR> /

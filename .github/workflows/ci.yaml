@@ -183,7 +183,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install shellcheck
-        run: pip install shellcheck-py==0.11.0.1
+        run: pip install shellcheck-py==0.10.0.1
       - name: Run shellcheck (${{ matrix.scope }})
         run: |
           set -euo pipefail
