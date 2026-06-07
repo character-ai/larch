@@ -241,6 +241,32 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
+          "input": 16,
+          "cache_read": 3848217,
+          "cache_create": 17600,
+          "cache_create_5m": 17600,
+          "cache_create_1h": 0,
+          "output": 5837,
+          "total": 3871670
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 16,
+              "cache_read": 3848217,
+              "cache_create": 17600,
+              "cache_create_5m": 17600,
+              "cache_create_1h": 0,
+              "output": 5837,
+              "total": 3871670
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
           "input": 0,
           "cache_read": 0,
           "cache_create": 0,
@@ -253,22 +279,22 @@
       }
     ],
     "totals": {
-      "input": 94,
-      "cache_read": 17276065,
-      "cache_create": 122742,
-      "cache_create_5m": 122742,
+      "input": 110,
+      "cache_read": 21124282,
+      "cache_create": 140342,
+      "cache_create_5m": 140342,
       "cache_create_1h": 0,
-      "output": 55362,
-      "total": 17454263
+      "output": 61199,
+      "total": 21325933
     }
   },
   "BUCKETS_claude": {
-    "input": 94,
-    "cache_read": 17276065,
-    "cache_create_5m": 122742,
+    "input": 110,
+    "cache_read": 21124282,
+    "cache_create_5m": 140342,
     "cache_create_1h": 0,
-    "output": 55362,
-    "total": 17454263
+    "output": 61199,
+    "total": 21325933
   },
   "BUCKETS_codex": {
     "input": 0,

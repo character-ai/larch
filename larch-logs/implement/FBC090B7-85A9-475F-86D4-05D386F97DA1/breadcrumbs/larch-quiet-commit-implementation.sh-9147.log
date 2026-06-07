@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-design-voter-external-agent-3618 70b6572e1] Implement #3618: voter reliability hardening + regression tests
+ 11 files changed, 149 insertions(+), 30 deletions(-)
