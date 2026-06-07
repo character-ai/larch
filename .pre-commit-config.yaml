@@ -15,7 +15,7 @@ repos:
         name: shellcheck (parallel, pinned binary)
         entry: scripts/pre-commit-shellcheck.sh
         language: python
-        additional_dependencies: [shellcheck-py==0.10.0.1]
+        additional_dependencies: [shellcheck-py==0.11.0.1]
         types: [shell]
         # larch-logs/ holds committed run artifacts (e.g. source-env.sh files
         # whose absolute paths have been replaced with <TMPDIR> /
@@ -26,7 +26,7 @@ repos:
         require_serial: true
         # Selection (types: [shell]) and -x follow-source semantics match
         # the upstream shellcheck-py hook this replaces. Engine is the
-        # same binary (shellcheck-py==0.10.0.1), pinned in the hook env.
+        # same binary (shellcheck-py==0.11.0.1), pinned in the hook env.
         # Parallelism lives in the wrapper; require_serial: true prevents
         # pre-commit from also splitting the file list, which would
         # multiply parallel shellcheck processes against xargs -P.

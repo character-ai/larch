@@ -164,7 +164,7 @@ jobs:
 
   # Dedicated shellcheck jobs — split into `scripts` and `skills/.claude`
   # scopes running in parallel to halve wall-clock time. Each scope installs
-  # the pinned shellcheck-py==0.10.0.1 binary directly (no pre-commit
+  # the pinned shellcheck-py==0.11.0.1 binary directly (no pre-commit
   # overhead) and runs shellcheck -x in parallel via xargs. The pre-commit
   # `shellcheck` hook remains active for local `pre-commit run` and the dev
   # git-hook; CI skips it in `lint` and `lint-local` via the SKIP env var.
@@ -183,7 +183,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install shellcheck
-        run: pip install shellcheck-py==0.10.0.1
+        run: pip install shellcheck-py==0.11.0.1
       - name: Run shellcheck (${{ matrix.scope }})
         run: |
           set -euo pipefail
