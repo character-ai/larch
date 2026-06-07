@@ -69,7 +69,15 @@ case "$VERIFICATION_CONTEXT" in
 esac
 
 printf 'You are a %s.\n' "$PANEL_ROLE"
+printf '%s\n' 'You vote YES or NO on each in-scope finding. Vote YES only if the finding is NECESSARY for the feature under the Review Acceptance Rubric below: the feature would be incomplete, broken, unverifiable, or regressed without it. Otherwise vote NO.'
+printf '%s\n' 'Default-deny: if you are unsure whether a finding clears a necessity gate, vote NO. "Legitimate but not necessary" is a NO — such findings belong on the Out-of-Scope list, not in this change.'
+printf '%s\n' 'Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, or "best practice" — those are Out-of-Scope signals, not acceptance signals.'
+printf '%s\n' 'When the CORRECTNESS axis is recorded on a NO vote, use false-positive only when the problem is not real; use true or partially-true when the problem is real but does not clear a necessity gate.'
 printf '%s\n' 'Do NOT vote NO solely because you dislike or distrust the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.'
+printf '\n'
+# Emit rubric body only (stop before the "---" Update-triggers separator).
+awk '/^---/{exit} {print}' "$REPO_ROOT/skills/shared/review-acceptance-rubric.md"
+printf '\n'
 
 case "$ID_GRAMMAR" in
     finding-only)

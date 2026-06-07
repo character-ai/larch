@@ -1349,7 +1349,7 @@ grep -Fq 'YES or NO on proposed modifications' <<< "$voter1_text" \
 shared_line=$(grep -n '^For Codex, Cursor, and their Claude replacement voters' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$shared_line" ]] || fail "plan-review.md missing shared-voter-prompt anchor"
 shared_text=$(sed -n "${shared_line}p" "$PLAN_REVIEW_MD")
-grep -Fq 'Vote YES for findings' <<< "$shared_text" \
+grep -Fq 'Vote YES only if' <<< "$shared_text" \
   || fail "plan-review.md shared Voter 2/3 prompt missing YES/NO-only instruction"
 
 grep -Fq 'Vote NO only when the stated problem is not real or not worth raising' "$RENDER_VOTER_SH" \

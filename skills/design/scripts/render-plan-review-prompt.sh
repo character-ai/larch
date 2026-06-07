@@ -185,6 +185,7 @@ prompt_body=""
 IFS= read -r -d '' prompt_body <<'EOF' || true
 __FULL_ROLE__
 __TIER_EMPHASIS__
+__NECESSITY_GATE__
 Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{` (start of the sentinel). Any character emitted before that first `s` or `{` — even a single "Reviewing…" line — risks your entire slot being salvaged or dropped by the format gate, so emit zero preamble.
 Review the implementation plan file at __PLAN_FILE__. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
 The plan describes the codebase AFTER this PR lands. Files cited in `### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.
@@ -212,6 +213,17 @@ prompt_body="${_fr_before}${full_role}${_fr_after}"
 _te_before="${prompt_body%%__TIER_EMPHASIS__*}"
 _te_after="${prompt_body##*__TIER_EMPHASIS__}"
 prompt_body="${_te_before}${tier_emphasis}${_te_after}"
+# Necessity gate: emit rubric body (stop before the "---" Update-triggers separator).
+necessity_gate_text=""
+necessity_gate_text="$(awk '/^---/{exit} {print}' "$SCRIPT_DIR/../../../skills/shared/review-acceptance-rubric.md" 2>/dev/null || true)"
+_ng_before="${prompt_body%%__NECESSITY_GATE__*}"
+_ng_after="${prompt_body##*__NECESSITY_GATE__}"
+if [[ -n "$necessity_gate_text" ]]; then
+    prompt_body="${_ng_before}${necessity_gate_text}${_ng_after}"
+else
+    larch_err "render-plan-review-prompt.sh: WARNING: review-acceptance-rubric.md missing or empty; skipping necessity gate block"
+    prompt_body="${_ng_before}${_ng_after}"
+fi
 _pf_before="${prompt_body%%__PLAN_FILE__*}"
 _pf_after="${prompt_body##*__PLAN_FILE__}"
 prompt_body="${_pf_before}${PLAN_FILE}${_pf_after}"

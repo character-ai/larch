@@ -1,0 +1,64 @@
+# Review Acceptance Rubric (Necessity Gate)
+
+A proposed change is **in-scope-acceptable only if the feature would be incomplete, broken, unverifiable, or regressed without it.** If a finding is real, or even valuable, but the feature
+ships correctly without it, it is **not in-scope** — route it to Out-of-Scope (file a tracked
+issue). To be accepted in-scope, a finding must clear at least one of these gates:
+
+1. Completeness — the change is a required part of the specified feature; without it,
+   functionality the issue explicitly asked for is missing or only partially delivered.
+2. Correctness — as written, the plan or implementation would fail to deliver the feature as
+   specified: a real defect on the feature's own execution path (wrong behavior, inverted logic,
+   a missing case the spec requires).
+3. Introduced regression or harm — the change itself introduces a security vulnerability, a
+   data-loss or data-corruption path, or a breaking change to an existing caller, contract, or
+   CLI/wire surface — even if the new feature works. (You do not ship a regression and file an
+   issue about it.)
+4. Necessary test — the change adds a test for behavior THIS feature introduces that is not
+   covered by any existing or planned test, AND the test is proportionate to the behavior's risk
+   and size. A test that merely could exist, restates coverage already present, or is
+   red-green-TDD-that-should-have-happened does NOT qualify — that is a Nit, and Nits never clear
+   this gate.
+5. Unblock a pre-existing condition — a pre-existing defect that actively blocks completing,
+   building, or verifying the feature (overlaps 1-2; the test is "the feature cannot be finished
+   or shipped until this is fixed").
+
+Default-deny. If you are unsure whether a finding clears a gate, it does not. Unsure => Out-of-Scope
+or reject => never an in-scope accept.
+
+Out-of-Scope signals, NOT acceptance signals (real, possibly worth a future issue — never an
+in-scope change here): "cleaner," "more robust," "more idiomatic," "more consistent," "more
+flexible / future-proof," "best practice," "while we're here," "defensive in case," refactors,
+renames-for-clarity, added configurability, and broadened error handling for inputs the feature
+cannot produce.
+
+Out-of-Scope is the safe harbor, not the trash. A real finding that fails the necessity gate
+belongs on the Out-of-Scope list, where it can still be accepted as a tracked GitHub issue.
+Deferring a good idea is the correct outcome, not a loss.
+
+Severity interaction. A Nit can never clear the necessity gate (a Nit is by definition optional).
+After the first review round, a finding that no prior round raised is suspect: if it were
+necessary, the plan or code would not have passed the earlier round — hold it to gate 2 or 3
+(Correctness or Introduced-regression) only.
+
+Anchor. Judge necessity against the spec, not against the finding text. For /design plan review,
+the spec is the originating issue scope (the staged scope anchor / feature description). For
+/implement and /review code review, the spec is the implementation plan (plan fidelity).
+
+---
+
+## Update triggers
+
+The following surfaces embed this rubric's necessity-gate language. When the rubric changes, update all of them and run `make test-render-voter-prompt`:
+
+- `skills/shared/scripts/render-voter-prompt.sh` — embeds rubric body verbatim for external voters
+- `skills/shared/reviewer-templates.md` — Necessity gate subsection for reviewer self-filter
+- `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `scripts/generate-code-reviewer-agent.sh`)
+- `agents/reviewer-plan-fidelity.md` — generated (re-run `scripts/generate-reviewer-plan-fidelity-agent.sh`)
+- `agents/reviewer-code-robustness.md` — generated (re-run `scripts/generate-reviewer-code-robustness-agent.sh`)
+- `agents/reviewer-security-structure-tests.md` — generated (re-run `scripts/generate-reviewer-security-structure-tests-agent.sh`)
+- `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `scripts/generate-pre-rendered-reviewer-prompts.sh`
+- `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `scripts/generate-pre-rendered-reviewer-prompts.sh`
+- `skills/design/scripts/render-plan-review-prompt.sh` — plan-review external prompts
+- `scripts/render-specialist-prompt.sh` — code-review external prompts (competition notice)
+- `skills/design/references/plan-review.md` — Voter 1 and Codex/Cursor voter instructions + competition notice
+- `skills/shared/voting-protocol.md` — voter prompt template YES definition
