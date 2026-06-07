@@ -1,2 +1,0 @@
-[sergey-zhupanov/implementing-implement-code-review-shrin-3638 6c22fcbc8] Shrink /review judge panel on vendor unavailability instead of back-filling
- 13 files changed, 163 insertions(+), 78 deletions(-)
