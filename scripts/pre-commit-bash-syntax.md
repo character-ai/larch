@@ -1,31 +1,26 @@
-# pre-commit-bash-syntax.sh
+# scripts/pre-commit-bash-syntax.sh - contract
 
-Parallel `bash -n` (syntax-check) wrapper for the `bash-syntax-check`
-pre-commit hook. Receives filenames from pre-commit and runs `bash -n`
-on each in parallel via `xargs -P`.
+## Purpose
 
-On macOS, `/bin/bash` is 3.2.57 (Apple's GPLv2-frozen system bash), so
-local commits on Mac get a real bash 3.2 parse-time check. On Linux the
-system bash (5.x) is used instead, still catching generic syntax errors.
+`scripts/pre-commit-bash-syntax.sh` is the parallel `bash -n` (syntax-check)
+wrapper invoked by the `bash-syntax-check` pre-commit hook in
+`.pre-commit-config.yaml`. On macOS `/bin/bash` is 3.2.57 (Apple's GPLv2-frozen
+system bash), so the hook doubles as a bash 3.2 parse-time check for Mac
+developers. On Linux the system bash (5.x) catches generic syntax errors.
 
-The CI `bash32-check` job (macOS runner) provides the authoritative bash
-3.2 syntax gate. This hook gives developers the same check at commit time
-without waiting for CI.
+## Invariants
 
-## Primary callers
+- Consumes only `"$@"` from pre-commit; file selection stays in `.pre-commit-config.yaml`.
+- Zero-args input exits 0 (BSD xargs has no `-r`).
+- Forwards filenames as NUL-delimited records via `printf '%s\0' | xargs -0 -n 1`.
+- Uses portable CPU-count fallback order: `nproc`, `sysctl -n hw.ncpu`, `getconf`, then `1`.
 
-- `.pre-commit-config.yaml` `bash-syntax-check` hook
+## Callers
 
-## Makefile target
+- `.pre-commit-config.yaml` `repo: local` `id: bash-syntax-check` hook (`entry: scripts/pre-commit-bash-syntax.sh`).
+- Indirectly: `make lint`, `pre-commit run bash-syntax-check`, `bash scripts/relevant-checks.sh`, and the GitHub Actions `lint-local` job.
 
-None — invoked only through pre-commit.
+## Edit-in-sync rules
 
-## Harness
-
-None — behaviour is trivially `bash -n` on each file; tested implicitly
-by the `bash32-check` CI job and local `pre-commit run --all-files
-bash-syntax-check`.
-
-## Edit-in-sync
-
-Keep the `xargs -P` pattern in sync with `scripts/pre-commit-shellcheck.sh`.
+- Keep the `xargs -P` / `-n 1` pattern in sync with `scripts/pre-commit-shellcheck.sh`.
+- The CI `bash32-check` job (macOS runner) is the authoritative bash 3.2 gate; this hook gives developers the same check at commit time.

@@ -105,7 +105,7 @@ scan_file() {
             if (line ~ /(^|[[:space:];|&({])local[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*([[:space:];|&)]|$)/) report("local -n nameref") # lint-bash32: ok linter pattern
             if (line ~ /&>>/) report("&>> append-all redirection") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])coproc([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*\{/) report("coproc") # lint-bash32: ok linter pattern
-            if (line ~ /\$\{[!A-Za-z_@*][A-Za-z0-9_]*\[[ \t]*-[0-9]/) report("negative array index \${arr[-N]}")
+            if (line ~ /\$\{[!A-Za-z_@*][A-Za-z0-9_]*\[[ \t]*-[0-9]/) report("negative array index ${arr[-N]}")
             if (line ~ /\{(-?[0-9]+|[A-Za-z])\.\.(-?[0-9]+|[A-Za-z])\.\.-?[0-9]/) report("step brace expansion {x..y..incr}")
         }
         END { exit violations ? 1 : 0 }
