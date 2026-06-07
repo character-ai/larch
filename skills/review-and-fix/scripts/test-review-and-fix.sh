@@ -3116,6 +3116,7 @@ if section_runs step5-starting-round; then
             emit_kv() { printf '%s=%s\n' "$1" "$2"; }
             larch_err() { printf '%s\n' "$*" >&2; }
             flush_review_batches() { printf 'flush %s %s\n' "$1" "$2" >> "$STEP5_FLUSH_LOG"; }
+            # shellcheck disable=SC2317  # test double invoked by sourced step5 loop
             kv_get() {
                 local file="$1" key="$2"
                 awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
@@ -3367,6 +3368,7 @@ STUB
         emit_kv() { printf '%s=%s\n' "$1" "$2"; }
         larch_err() { printf '%s\n' "$*" >&2; }
         flush_review_batches() { :; }
+        # shellcheck disable=SC2317  # test double invoked by sourced step5 loop
         kv_get() {
             local file="$1" key="$2"
             awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
