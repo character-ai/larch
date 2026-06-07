@@ -1551,6 +1551,12 @@ if [[ -f "$DESIGN_TMPDIR/oos-accepted-design.md" ]]; then
 else
     rm -f "$_prior_cum_oos"
 fi
+mkdir -p "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}"
+if [[ -f "$_prior_cum_oos" ]]; then
+    cp -f "$_prior_cum_oos" "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/oos-accepted-design.before.md"
+else
+    rm -f "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/oos-accepted-design.before.md"
+fi
 
 _round_start=$(_plan_round_now_s)
 set +e

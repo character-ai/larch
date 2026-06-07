@@ -40,6 +40,9 @@ chmod +x "$VALIDATE_STUB"
 #   fix-first   → any vendor writes the fixed marker (attempt 1 succeeds).
 #   never-fix   → no vendor writes the marker (loop exhausts).
 #   codex-fail-cursor-fix → codex returns 1 + no marker; cursor writes marker.
+#   mutate-target-never-fix → vendor mutates target but validator still fails.
+#   mutate-repo-dirty → vendor changes an already-dirty repo path without
+#                        changing porcelain status.
 DISPATCH_STUB="$TMP/dispatch-stub.sh"
 cat >"$DISPATCH_STUB" <<'STUB'
 #!/usr/bin/env bash
@@ -57,11 +60,25 @@ printf '%s\n' "$vendor" >>"$run_dir/autofix-vendor-calls"
 case "${AUTOFIX_TEST_MODE:-}" in
   fix-first) printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"; exit 0 ;;
   never-fix) exit 0 ;;
+  mutate-target-never-fix)
+    printf 'plan body\nvendor mutation still invalid\ndiff_lines: 3\n' >"$plan_file"
+    exit 0
+    ;;
   codex-fail-cursor-fix)
     if [ "$vendor" = codex ]; then exit 1; fi
     printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"; exit 0 ;;
   mutate-tmpdir)
     printf 'bad mutation\n' >"$(dirname "$plan_file")/accepted-plan-findings.md"
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"
+    exit 0
+    ;;
+  mutate-tmpdir-symlink)
+    ln -s /etc/hosts "$(dirname "$plan_file")/unsafe-link"
+    printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"
+    exit 0
+    ;;
+  mutate-repo-dirty)
+    printf 'repo dirty changed by vendor\n' >"${AUTOFIX_REPO_FILE:?}"
     printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$plan_file"
     exit 0
     ;;
@@ -172,13 +189,60 @@ orig_log7="$(kv "$out7" ORIGINAL_VALIDATE_LOG_FILE)"
   || fail "case7 original log path drifted: $out7"
 grep -Fq 'raw-secret-token' "$orig_log7" || fail 'case7 original validator evidence copy missing'
 
-# Case 8: non-target tmpdir mutation is restored and cannot be treated as success
-# even when the plan file itself was fixed.
+# Case 8: non-target tmpdir mutation is restored and a genuinely fixed target
+# still succeeds after the guard has cleaned the side mutation.
 D8="$TMP/d8"; mk_design "$D8"
 printf 'trusted accepted\n' >"$D8/accepted-plan-findings.md"
 out8=$(AUTOFIX_TEST_MODE=mutate-tmpdir run_subject "$D8" --codex-present true --cursor-present false --max-attempts 1)
-[[ "$(kv "$out8" AUTOFIX_STATUS)" == "exhausted" ]] || fail "case8 expected exhausted after guard failure: $out8"
+[[ "$(kv "$out8" AUTOFIX_STATUS)" == "ok" ]] || fail "case8 expected ok after side-mutation restore: $out8"
 [[ "$(cat "$D8/accepted-plan-findings.md")" == "trusted accepted" ]] || fail 'case8 trusted artifact mutation must be restored'
+
+# Case 8b: unsafe non-target symlinks are removed by the fail-closed tmpdir
+# guard, then a fixed target can continue.
+D8B="$TMP/d8b"; mk_design "$D8B"
+out8b=$(AUTOFIX_TEST_MODE=mutate-tmpdir-symlink run_subject "$D8B" --codex-present true --cursor-present false --max-attempts 1)
+[[ "$(kv "$out8b" AUTOFIX_STATUS)" == "ok" ]] || fail "case8b expected ok after symlink side-mutation restore: $out8b"
+[[ ! -e "$D8B/unsafe-link" ]] || fail 'case8b unsafe symlink side mutation must be removed'
+
+# Case 8c: failed attempts restore target-file mutations before returning to
+# the caller.
+D8C="$TMP/d8c"; mk_design "$D8C"
+before8c=$(cat "$D8C/plan.txt")
+out8c=$(AUTOFIX_TEST_MODE=mutate-target-never-fix run_subject "$D8C" --codex-present true --cursor-present false --max-attempts 1)
+[[ "$(kv "$out8c" AUTOFIX_STATUS)" == "exhausted" ]] || fail "case8c expected exhausted: $out8c"
+[[ "$(cat "$D8C/plan.txt")" == "$before8c" ]] || fail 'case8c failed attempt must restore original target plan'
+
+# Case 8d: vendor selection honors degraded-tool availability flags, not only
+# raw presence flags.
+D8D="$TMP/d8d"; mk_design "$D8D"
+out8d=$(AUTOFIX_TEST_MODE=fix-first run_subject "$D8D" --codex-present true --codex-available false --cursor-present true --cursor-available true)
+[[ "$(kv "$out8d" VENDOR_SEQUENCE)" == "cursor" ]] || fail "case8d expected only cursor when codex unavailable: $out8d"
+[[ "$(kv "$out8d" FIXED_BY)" == "cursor" ]] || fail "case8d expected cursor fix: $out8d"
+
+# Case 8e: repo dirty guard detects content mutations even when porcelain
+# status text stays unchanged (tracked file is dirty before and after).
+if command -v git >/dev/null 2>&1; then
+  R8E="$TMP/repo8e"
+  mkdir -p "$R8E"
+  (
+    cd "$R8E"
+    git init -q -b main
+    git config user.email test@example.com
+    git config user.name Test
+    printf 'clean\n' > tracked.txt
+    git add tracked.txt
+    git commit -q -m init
+    printf 'dirty before\n' > tracked.txt
+  )
+  D8E="$TMP/d8e"; mk_design "$D8E"
+  out8e=$(AUTOFIX_TEST_MODE=mutate-repo-dirty AUTOFIX_REPO_FILE="$R8E/tracked.txt" \
+    run_subject "$D8E" --codex-present true --cursor-present false --max-attempts 1 --repo-root "$R8E")
+  [[ "$(kv "$out8e" AUTOFIX_STATUS)" == "exhausted" ]] || fail "case8e expected exhausted after repo dirty delta: $out8e"
+  [[ -f "$D8E/plan-autofix/attempt-1-codex/repo-dirty-delta.log" ]] || fail 'case8e missing repo dirty delta log'
+  [[ "$(cat "$D8E/plan.txt")" == "plan body"$'\n'"diff_lines: 3" ]] || fail 'case8e repo dirty failure must restore target plan'
+else
+  printf '%s\n' 'SKIP: case8e requires git'
+fi
 
 # Case 9: validator infrastructure failure stops after the first attempt and
 # leaves a durable revalidation log path.

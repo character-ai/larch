@@ -43,6 +43,8 @@ DESIGN_TMPDIR=""
 PLAN_FILE=""
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
+CODEX_AVAILABLE=""
+CURSOR_AVAILABLE=""
 REPO_ROOT=""
 MAX_ATTEMPTS=2
 SITE="design plan-command auto-fix"
@@ -54,6 +56,8 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?--codex-present requires a value}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?--cursor-present requires a value}"; shift 2 ;;
+        --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --repo-root) REPO_ROOT="${2:?--repo-root requires a value}"; shift 2 ;;
         --max-attempts) MAX_ATTEMPTS="${2:?--max-attempts requires a value}"; shift 2 ;;
         --site) SITE="${2:?--site requires a value}"; shift 2 ;;
@@ -80,9 +84,13 @@ case "$PLAN_FILE" in
 esac
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --cursor-present must be true or false"; exit 2; }
+[[ -n "$CODEX_AVAILABLE" ]] || CODEX_AVAILABLE="$CODEX_PRESENT"
+[[ -n "$CURSOR_AVAILABLE" ]] || CURSOR_AVAILABLE="$CURSOR_PRESENT"
+[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --cursor-available must be true or false"; exit 2; }
 case "$MAX_ATTEMPTS" in ''|*[!0-9]*|0) larch_err "auto-fix-plan-commands.sh: --max-attempts must be a positive integer"; exit 2 ;; esac
 MAX_ATTEMPTS=$((10#$MAX_ATTEMPTS))
-[[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PLUGIN_ROOT"
+[[ -n "$REPO_ROOT" ]] || REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PLUGIN_ROOT")"
 [[ -d "$REPO_ROOT" ]] || { larch_err "auto-fix-plan-commands.sh: --repo-root must be a directory"; exit 2; }
 REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
 TARGET_REL="${PLAN_FILE#"$DESIGN_TMPDIR"/}"
@@ -91,10 +99,10 @@ TARGET_KEY=$(printf '%s' "$(basename "$PLAN_FILE")" | tr -cs 'A-Za-z0-9._-' '_' 
 [[ -n "$SITE_KEY" ]] || SITE_KEY=site
 [[ -n "$TARGET_KEY" ]] || TARGET_KEY=target
 
-# Build the cross-vendor alternation order (Codex first when present).
+# Build the cross-vendor alternation order (Codex first when available).
 VENDOR_ORDER=()
-[[ "$CODEX_PRESENT" == "true" ]] && VENDOR_ORDER+=("codex")
-[[ "$CURSOR_PRESENT" == "true" ]] && VENDOR_ORDER+=("cursor")
+[[ "$CODEX_PRESENT" == "true" && "$CODEX_AVAILABLE" == "true" ]] && VENDOR_ORDER+=("codex")
+[[ "$CURSOR_PRESENT" == "true" && "$CURSOR_AVAILABLE" == "true" ]] && VENDOR_ORDER+=("cursor")
 
 if [[ "${#VENDOR_ORDER[@]}" -eq 0 ]]; then
     emit_kv AUTOFIX_STATUS unavailable
@@ -124,47 +132,140 @@ sha_file() {
     fi
 }
 
+sha_stdin() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    else
+        sha256sum | awk '{print $1}'
+    fi
+}
+
+tmpdir_guard_rel_safe() {
+    local rel="$1"
+    case "$rel" in
+        ''|/*|../*|*/../*|*$'\n'*|*$'\r'*|*$'\t'*)
+            return 1
+            ;;
+    esac
+    return 0
+}
+
 tmpdir_guard_manifest() {
-    local out="$1" rel
+    local out="$1" rel path failed=0 scan
     : >"$out"
-    (cd "$DESIGN_TMPDIR" && find . -type f ! -path './plan-autofix/*' ! -path "./$TARGET_REL" -print) \
-        | LC_ALL=C sort \
-        | while IFS= read -r rel || [[ -n "$rel" ]]; do
-            rel="${rel#./}"
-            printf '%s\t%s\n' "$(sha_file "$DESIGN_TMPDIR/$rel")" "$rel" >>"$out"
-        done
+    scan="$out.scan"
+    if ! (cd "$DESIGN_TMPDIR" && find . ! -path './plan-autofix' ! -path './plan-autofix/*' ! -path "./$TARGET_REL" -print) \
+        | LC_ALL=C sort >"$scan"; then
+        rm -f "$scan"
+        return 1
+    fi
+    while IFS= read -r rel || [[ -n "$rel" ]]; do
+        rel="${rel#./}"
+        [[ -n "$rel" && "$rel" != "." ]] || continue
+        if ! tmpdir_guard_rel_safe "$rel"; then
+            printf 'UNSAFE_PATH\t-\t%s\n' "$rel" >>"$out"
+            failed=1
+            continue
+        fi
+        path="$DESIGN_TMPDIR/$rel"
+        if [[ -L "$path" ]]; then
+            printf 'UNSAFE_SYMLINK\t-\t%s\n' "$rel" >>"$out"
+            failed=1
+        elif [[ -f "$path" ]]; then
+            printf 'FILE\t%s\t%s\n' "$(sha_file "$path")" "$rel" >>"$out"
+        elif [[ -d "$path" ]]; then
+            printf 'DIR\t-\t%s\n' "$rel" >>"$out"
+        else
+            printf 'UNSAFE_SPECIAL\t-\t%s\n' "$rel" >>"$out"
+            failed=1
+        fi
+    done <"$scan"
+    rm -f "$scan"
+    return "$failed"
 }
 
 tmpdir_guard_backup() {
-    local manifest="$1" backup_dir="$2" rel
+    local manifest="$1" backup_dir="$2" type _hash rel
     mkdir -p "$backup_dir"
-    while IFS="$(printf '\t')" read -r _hash rel || [[ -n "$rel" ]]; do
+    while IFS="$(printf '\t')" read -r type _hash rel || [[ -n "$rel" ]]; do
         [[ -n "$rel" ]] || continue
-        mkdir -p "$backup_dir/$(dirname "$rel")"
-        cp -p "$DESIGN_TMPDIR/$rel" "$backup_dir/$rel"
+        tmpdir_guard_rel_safe "$rel" || return 1
+        case "$type" in
+            FILE)
+                mkdir -p "$backup_dir/$(dirname "$rel")"
+                cp -p "$DESIGN_TMPDIR/$rel" "$backup_dir/$rel" || return 1
+                ;;
+            DIR)
+                mkdir -p "$backup_dir/$rel" || return 1
+                ;;
+            *)
+                return 1
+                ;;
+        esac
     done <"$manifest"
 }
 
 tmpdir_guard_restore() {
-    local before_manifest="$1" after_manifest="$2" backup_dir="$3" rel
-    awk -F '\t' '{print $2}' "$before_manifest" | LC_ALL=C sort >"$backup_dir/.before-paths"
-    awk -F '\t' '{print $2}' "$after_manifest" | LC_ALL=C sort >"$backup_dir/.after-paths"
-    comm -13 "$backup_dir/.before-paths" "$backup_dir/.after-paths" \
+    local before_manifest="$1" after_manifest="$2" backup_dir="$3" rel type _hash
+    awk -F '\t' '{print $3}' "$before_manifest" | LC_ALL=C sort >"$backup_dir/.before-paths"
+    awk -F '\t' '{print $3}' "$after_manifest" | LC_ALL=C sort >"$backup_dir/.after-paths"
+    if ! comm -13 "$backup_dir/.before-paths" "$backup_dir/.after-paths" \
+        | LC_ALL=C sort -r \
         | while IFS= read -r rel || [[ -n "$rel" ]]; do
             [[ -n "$rel" ]] || continue
-            rm -f "$DESIGN_TMPDIR/$rel"
-        done
-    while IFS="$(printf '\t')" read -r _hash rel || [[ -n "$rel" ]]; do
+            tmpdir_guard_rel_safe "$rel" || exit 1
+            rm -rf "${DESIGN_TMPDIR:?}/$rel" || exit 1
+        done; then
+        return 1
+    fi
+    while IFS="$(printf '\t')" read -r type _hash rel || [[ -n "$rel" ]]; do
         [[ -n "$rel" ]] || continue
-        mkdir -p "$DESIGN_TMPDIR/$(dirname "$rel")"
-        cp -p "$backup_dir/$rel" "$DESIGN_TMPDIR/$rel"
+        tmpdir_guard_rel_safe "$rel" || return 1
+        case "$type" in
+            FILE)
+                mkdir -p "$DESIGN_TMPDIR/$(dirname "$rel")"
+                cp -p "$backup_dir/$rel" "$DESIGN_TMPDIR/$rel" || return 1
+                ;;
+            DIR)
+                mkdir -p "$DESIGN_TMPDIR/$rel" || return 1
+                ;;
+            *)
+                return 1
+                ;;
+        esac
     done <"$before_manifest"
 }
 
 git_status_snapshot() {
-    local out="$1"
+    local out="$1" rel path
     if git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$REPO_ROOT" status --porcelain=v1 -z >"$out"
+        {
+            printf 'STATUS\0'
+            git -C "$REPO_ROOT" status --porcelain=v1 -z --untracked-files=all || exit 1
+            printf '\0UNSTAGED_DIFF_SHA\0'
+            git -C "$REPO_ROOT" diff --binary --no-ext-diff | sha_stdin || exit 1
+            printf '\0STAGED_DIFF_SHA\0'
+            git -C "$REPO_ROOT" diff --cached --binary --no-ext-diff | sha_stdin || exit 1
+            printf '\0UNTRACKED\0'
+            git -C "$REPO_ROOT" ls-files --others --exclude-standard -z \
+                | while IFS= read -r -d '' rel || [[ -n "$rel" ]]; do
+                    case "$rel" in
+                        ''|/*|../*|*/../*|*$'\n'*|*$'\r'*|*$'\t'*)
+                            printf 'UNSAFE_PATH\t%s\0' "$rel"
+                            ;;
+                        *)
+                            path="$REPO_ROOT/$rel"
+                            if [[ -L "$path" ]]; then
+                                printf 'SYMLINK\t%s\t%s\0' "$(readlink "$path" | sha_stdin)" "$rel"
+                            elif [[ -f "$path" ]]; then
+                                printf 'FILE\t%s\t%s\0' "$(sha_file "$path")" "$rel"
+                            elif [[ -e "$path" ]]; then
+                                printf 'SPECIAL\t-\t%s\0' "$rel"
+                            fi
+                            ;;
+                    esac
+                done
+        } >"$out"
     else
         : >"$out"
     fi
@@ -175,9 +276,9 @@ check_repo_dirty_delta() {
     cmp -s "$before" "$after" && return 0
     {
         printf '%s\n' 'auto-fix vendor changed repository dirty-tree state'
-        printf '%s\n' '--- before status -z (NULs shown as newlines) ---'
+        printf '%s\n' '--- before repository snapshot (NULs shown as newlines) ---'
         tr '\0' '\n' <"$before"
-        printf '%s\n' '--- after status -z (NULs shown as newlines) ---'
+        printf '%s\n' '--- after repository snapshot (NULs shown as newlines) ---'
         tr '\0' '\n' <"$after"
     } >"$log_file"
     return 1
@@ -314,14 +415,11 @@ final_status="defects-found"
 validator_infra_log_file=""
 declare -a sequence=()
 
-snapshot_plan_trailers || {
-    emit_kv AUTOFIX_STATUS failed
-    emit_kv VENDOR_SEQUENCE ""
-    emit_kv ATTEMPTS 0
-    emit_kv FIXED_BY ""
-    emit_kv FINAL_VALIDATE_STATUS trailer-snapshot-failed
-    emit_kv ORIGINAL_VALIDATE_LOG_FILE "$ORIGINAL_VALIDATE_LOG"
-    exit 0
+restore_target_file() {
+    local backup="$1"
+    rm -f "$PLAN_FILE" || return 1
+    cp -p "$backup" "$PLAN_FILE" || return 1
+    [[ -f "$PLAN_FILE" && ! -L "$PLAN_FILE" ]]
 }
 
 idx=0
@@ -340,32 +438,69 @@ while (( attempts < MAX_ATTEMPTS )); do
     tmpdir_backup="$run_dir/tmpdir-backup"
     repo_before="$run_dir/repo-before.status-z"
     repo_after="$run_dir/repo-after.status-z"
-    tmpdir_guard_manifest "$tmpdir_before"
-    tmpdir_guard_backup "$tmpdir_before" "$tmpdir_backup"
-    git_status_snapshot "$repo_before"
+    target_backup="$run_dir/target-before"
+    cp -p "$PLAN_FILE" "$target_backup" || {
+        final_status="target-snapshot-failed"
+        continue
+    }
+    if ! snapshot_plan_trailers >"$run_dir/trailer-snapshot.log" 2>&1; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
+        final_status="trailer-snapshot-failed"
+        continue
+    fi
+    if ! tmpdir_guard_manifest "$tmpdir_before"; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
+        final_status="tmpdir-unsafe"
+        continue
+    fi
+    if ! tmpdir_guard_backup "$tmpdir_before" "$tmpdir_backup"; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
+        final_status="tmpdir-backup-failed"
+        continue
+    fi
+    if ! git_status_snapshot "$repo_before"; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
+        final_status="repo-snapshot-failed"
+        continue
+    fi
     dispatch_rc=0
     dispatch_vendor_fix "$vendor" "$run_dir" "$prompt_file" || dispatch_rc=$?
-    git_status_snapshot "$repo_after"
-    tmpdir_guard_manifest "$tmpdir_after"
+    if [[ ! -f "$PLAN_FILE" || -L "$PLAN_FILE" ]]; then
+        dispatch_rc=92
+    fi
+    if ! git_status_snapshot "$repo_after"; then
+        dispatch_rc=93
+    fi
+    tmpdir_after_rc=0
+    tmpdir_guard_manifest "$tmpdir_after" || tmpdir_after_rc=$?
     if ! check_repo_dirty_delta "$repo_before" "$repo_after" "$run_dir/repo-dirty-delta.log"; then
         dispatch_rc=90
     fi
-    if ! cmp -s "$tmpdir_before" "$tmpdir_after"; then
-        tmpdir_guard_restore "$tmpdir_before" "$tmpdir_after" "$tmpdir_backup" || true
-        dispatch_rc=91
+    if [[ "$tmpdir_after_rc" -ne 0 ]] || ! cmp -s "$tmpdir_before" "$tmpdir_after"; then
+        tmpdir_verify="$run_dir/tmpdir-restored.manifest"
+        if tmpdir_guard_restore "$tmpdir_before" "$tmpdir_after" "$tmpdir_backup" \
+            && tmpdir_guard_manifest "$tmpdir_verify" \
+            && cmp -s "$tmpdir_before" "$tmpdir_verify"; then
+            larch_err "→ auto-fix: attempt ${attempts} vendor=${vendor} restored non-target tmpdir mutations"
+        else
+            dispatch_rc=91
+        fi
     fi
     larch_err "→ auto-fix: attempt ${attempts} vendor=${vendor} dispatch-rc=${dispatch_rc}"
     if [[ "$dispatch_rc" -ne 0 ]]; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
         final_status="dispatch-failed"
         continue
     fi
     if ! dedup_and_validate_plan_trailers >"$run_dir/dedup.log" 2>&1; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
         final_status="trailer-dedup-failed"
         continue
     fi
     revalidate_rc=0
     final_status="$(revalidate "$run_dir/revalidate.log")" || revalidate_rc=$?
     if [[ "$revalidate_rc" -ne 0 && "$final_status" != "defects-found" ]]; then
+        restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
         validator_infra_log_file="$run_dir/revalidate.log"
         final_status="validator-infra-failed"
         break
@@ -375,6 +510,7 @@ while (( attempts < MAX_ATTEMPTS )); do
         fixed_by="$vendor"
         break
     fi
+    restore_target_file "$target_backup" || { final_status="target-restore-failed"; break; }
 done
 
 SEQ_CSV="$(IFS=,; printf '%s' "${sequence[*]-}")"

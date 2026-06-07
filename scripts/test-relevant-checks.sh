@@ -511,6 +511,18 @@ REPO_3K="$TMPROOT/repo-python-source"
 STUB_3K="$TMPROOT/stub-python-source"
 setup_python_source_repo "$REPO_3K"
 make_stub_dir "$STUB_3K" present absent
+cat > "$STUB_3K/python3" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "-m" && "$2" == "pytest" ]]; then
+    exit 1
+fi
+if [[ "$1" == "-" ]]; then
+    cat >/dev/null
+    exit 0
+fi
+exec /usr/bin/python3 "$@"
+EOF
+chmod +x "$STUB_3K/python3"
 run_checks "$REPO_3K" "$(controlled_path "$STUB_3K")"
 assert_exit_eq "3k: Python source change exits 0 without py-lint tools" "$RUN_EXIT" 0
 assert_stdout_contains "3k: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
@@ -533,7 +545,7 @@ EOF
 chmod +x "$STUB_3L/python3"
 run_checks "$REPO_3L" "$(controlled_path_no_py_tools "$STUB_3L")"
 assert_exit_eq "3l: Python source change exits 0 without pytest" "$RUN_EXIT" 0
-assert_stdout_contains "3l: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3l: py-lint Python floor warning" "$RUN_OUT" "WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target"
 assert_stdout_contains "3l: missing pytest warning" "$RUN_OUT" "WARNING: python3 >= 3.11 not found"
 assert_stdout_not_contains "3l: no fail-closed error when python/*.py changed" "$RUN_OUT" "ERROR: python/*.py changed but Python lint/test tools are missing from PATH"
 assert_stdout_not_contains "3l: does not invoke py-test when pytest is missing" "$RUN_OUT" "make stub: py-test"
@@ -583,7 +595,7 @@ EOF
 chmod +x "$STUB_3M/python3"
 run_checks "$REPO_3M" "$(controlled_path_no_py_tools "$STUB_3M")"
 assert_exit_eq "3m: .pylintrc-only change exits 0 without Python tools" "$RUN_EXIT" 0
-assert_stdout_contains "3m: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3m: py-lint Python floor warning" "$RUN_OUT" "WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target"
 assert_stdout_contains "3m: missing pytest warning" "$RUN_OUT" "WARNING: python3 >= 3.11 not found"
 
 echo "=== Section 3n: Python direct targets with all tools on PATH ==="

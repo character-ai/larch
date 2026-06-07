@@ -53,13 +53,13 @@ parse_cursor_file() {
 }
 
 restore_review_artifacts_after_revert() {
-    local round="$1" prev_round prev_dir
+    local round="$1" prev_round prev_dir before_oos
     prev_round=$((round - 1))
     prev_dir="$DESIGN_TMPDIR/plan-review/round-${prev_round}"
     local name src
     for name in \
         accepted-plan-findings.md rejected-findings.md oos.md oos-this-round.md \
-        oos-accepted-design.md voting-tally.md ballot.txt findings.md \
+        voting-tally.md ballot.txt findings.md \
         findings-in-scope.md findings-in-scope.pre-dedup.md findings-oos.md \
         findings-oos.pre-dedup.md findings-classification.tsv; do
         src="$prev_dir/$name"
@@ -69,6 +69,17 @@ restore_review_artifacts_after_revert() {
             rm -f "$DESIGN_TMPDIR/$name"
         fi
     done
+    before_oos="$DESIGN_TMPDIR/plan-review/round-${round}/oos-accepted-design.before.md"
+    if [[ -f "$before_oos" && ! -L "$before_oos" ]]; then
+        cp -f "$before_oos" "$DESIGN_TMPDIR/oos-accepted-design.md"
+    else
+        src="$prev_dir/oos-accepted-design.md"
+        if (( prev_round > 0 )) && [[ -f "$src" && ! -L "$src" ]]; then
+            cp -f "$src" "$DESIGN_TMPDIR/oos-accepted-design.md"
+        else
+            rm -f "$DESIGN_TMPDIR/oos-accepted-design.md"
+        fi
+    fi
     rm -rf "$DESIGN_TMPDIR/plan-review/round-${round}"
     rm -f \
         "$DESIGN_TMPDIR/assessor-verdict-round-${round}.txt" \
@@ -95,8 +106,10 @@ clear_post_revert_state() {
         "$DESIGN_TMPDIR/check-plan-size.validation.log" \
         "$DESIGN_TMPDIR/.step3-entry-plan-printed"
     rm -f "$DESIGN_TMPDIR"/.plan-command-autofix-*.attempted
+    rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
     rm -f \
         "$DESIGN_TMPDIR/.completed/finalize" \
+        "$DESIGN_TMPDIR/.completed/step-2b.5" \
         "$DESIGN_TMPDIR/.completed/step-3b" \
         "$DESIGN_TMPDIR/.completed/step-4" \
         "$DESIGN_TMPDIR/.completed/step-4b" \

@@ -977,8 +977,8 @@ grep -Fq 'continue the surrounding success path without prompting' "$SKILL_MD" \
   || fail "(FINDING_17) SKILL.md missing auto-fix ok prompt-suppression contract"
 grep -Fq 'Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them' "$SKILL_MD" \
   || fail "(FINDING_17) SKILL.md missing auto-fix fallback warning contract"
-grep -Fq -- '--repo-root "$CLAUDE_PLUGIN_ROOT"' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md missing auto-fix repo-root forwarding"
+grep -Fq -- '--repo-root "$PWD"' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md missing consumer repo-root forwarding"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 postplan_line=$(awk -v s="$step2b_mark" 'NR>s && /design-postplan-emit\.sh/ {print NR; exit}' "$SKILL_MD" || true)
 step2b5_line=$(awk -v s="$step2b_mark" 'NR>s && /### Step 2b\.5/ {print NR; exit}' "$SKILL_MD" || true)

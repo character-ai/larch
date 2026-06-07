@@ -262,4 +262,13 @@ set -e
 printf '%s\n' "$out11" | grep -Fq 'jq is unavailable' \
   || fail "case11: missing jq-unavailable WARN on stdout"
 
+# Case 12: prompt-side Step 0b route fence must merge current argv flags into
+# resumed and already-planned flows, not only fresh proceed flows.
+# shellcheck disable=SC2016 # fixed-string probe for literal SKILL.md shell text.
+grep -Fq 'if [[ "${ROUTE:-}" == resume@* || "${ROUTE:-}" == already-planned ]]; then' "$REPO_ROOT/skills/design/SKILL.md" \
+  || fail "case12: SKILL.md missing resume/already-planned route flag merge guard"
+# shellcheck disable=SC2016 # fixed-string probe for literal jq filter text.
+grep -Fq '.approve_requested = (.approve_requested == true or $merge_a)' "$REPO_ROOT/skills/design/SKILL.md" \
+  || fail "case12: SKILL.md route merge must preserve current --approve"
+
 echo "PASS: test-step0b-router-flag-recovery.sh"

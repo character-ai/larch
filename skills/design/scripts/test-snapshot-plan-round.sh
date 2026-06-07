@@ -87,10 +87,12 @@ printf '2\n' >"$REV/plan-review-round-cursor.txt"
 printf '2\n' >"$REV/review-round-count.txt"
 mkdir -p "$REV/plan-review/round-1" "$REV/plan-review/round-2"
 printf 'round1 accepted\n' >"$REV/plan-review/round-1/accepted-plan-findings.md"
+printf 'cumulative oos before round2\n' >"$REV/plan-review/round-2/oos-accepted-design.before.md"
 printf 'round2 accepted\n' >"$REV/accepted-plan-findings.md"
 printf 'round2 tally\n' >"$REV/voting-tally.md"
 printf 'round2 rejected\n' >"$REV/rejected-findings.md"
 printf 'round2 oos\n' >"$REV/oos.md"
+printf 'round2 cumulative oos\n' >"$REV/oos-accepted-design.md"
 printf 'round2 assessor\n' >"$REV/assessor-verdict-round-2.txt"
 printf 'stale postplan\n' >"$REV/.design-postplan-emit-result.env"
 printf 'diff_added\n' >"$REV/.gate-b-optional-trailer-keys"
@@ -99,6 +101,7 @@ printf 'stale validator\n' >"$REV/validate-plan-commands.log"
 printf '999\n' >"$REV/diff-lines.txt"
 mkdir -p "$REV/.completed"
 : >"$REV/.completed/finalize"
+: >"$REV/.completed/step-2b.5"
 : >"$REV/.completed/step-3b"
 : >"$REV/.plan-command-autofix-design_Step_3.5_Gate_B.attempted"
 rev2=$("$SUBJECT" revert-round --design-tmpdir "$REV" --round 2 2>&1) || fail 'revert-round N=2 failed'
@@ -108,13 +111,14 @@ printf '%s\n' "$rev2" | grep -Fq 'REVERT_STATUS=ok' || fail 'revert-round N=2 mi
 [[ "$(cat "$REV/plan-review-round-cursor.txt")" == "2" ]] || fail 'revert-round N=2 cursor must be 2'
 [[ "$(cat "$REV/review-round-count.txt")" == "1" ]] || fail 'revert-round N=2 count must be 1'
 [[ "$(cat "$REV/accepted-plan-findings.md")" == "round1 accepted" ]] || fail 'revert-round N=2 must restore prior accepted findings'
+[[ "$(cat "$REV/oos-accepted-design.md")" == "cumulative oos before round2" ]] || fail 'revert-round N=2 must restore cumulative accepted OOS before reverted round'
 [[ ! -e "$REV/voting-tally.md" ]] || fail 'revert-round N=2 must remove stale tally when prior has none'
 [[ ! -e "$REV/plan-review/round-2" ]] || fail 'revert-round N=2 must remove stale round-2 artifacts'
 [[ ! -e "$REV/assessor-verdict-round-2.txt" ]] || fail 'revert-round N=2 must remove stale assessor verdict'
 [[ ! -e "$REV/.design-postplan-emit-result.env" ]] || fail 'revert-round N=2 must clear stale postplan result'
 [[ ! -e "$REV/.gate-b-optional-trailer-keys" ]] || fail 'revert-round N=2 must clear trailer snapshot'
 [[ ! -e "$REV/validate-plan-commands.log" ]] || fail 'revert-round N=2 must clear stale validator log'
-[[ ! -e "$REV/.completed/finalize" && ! -e "$REV/.completed/step-3b" ]] || fail 'revert-round N=2 must clear downstream completion sentinels'
+[[ ! -e "$REV/.completed/finalize" && ! -e "$REV/.completed/step-2b.5" && ! -e "$REV/.completed/step-3b" ]] || fail 'revert-round N=2 must clear downstream completion sentinels'
 [[ ! -e "$REV/.plan-command-autofix-design_Step_3.5_Gate_B.attempted" ]] || fail 'revert-round N=2 must clear auto-fix cycle sentinels'
 [[ ! -e "$REV/diff-lines.txt" ]] || fail 'revert-round N=2 must clear stale diff-lines when restored plan has no trailer'
 
