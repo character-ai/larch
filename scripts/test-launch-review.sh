@@ -3190,7 +3190,8 @@ assert_grep "SL-cursor-empty-retry-disabled diag still written" "cursor-empty-re
 rm -f "$SL_CURSOR_EMPTY_OFF_COUNT"
 
 # Case SL-cursor-transient8-then-empty: two exit-8 transients then exit-0 empty
-# .result — shared TRANSIENT_ATTEMPT budget exhausts before a fourth call.
+# .result — with MAX_TRANSIENT_RETRIES=4, budget covers all three retries so
+# attempt 4 succeeds with a non-empty result.
 SL_CURSOR_T8_EMPTY_COUNT="$TMPDIR/sl-cursor-t8-empty-count.txt"
 printf '0' > "$SL_CURSOR_T8_EMPTY_COUNT"
 cat > "$STUB_BIN/cursor-t8-then-empty" <<STUB_CURSOR_T8_EMPTY
@@ -3222,8 +3223,8 @@ RC_CURSOR_T8_EMPTY=$?
 set -e
 assert_equals "SL-cursor-transient8-then-empty exits 0 after mixed retries" "0" "$RC_CURSOR_T8_EMPTY"
 SL_CURSOR_T8_EMPTY_ATTEMPTS=$(cat "$SL_CURSOR_T8_EMPTY_COUNT" 2>/dev/null || echo "0")
-assert_equals "SL-cursor-transient8-then-empty stub invoked exactly 3 times" "3" "$SL_CURSOR_T8_EMPTY_ATTEMPTS"
-assert_equals "SL-cursor-transient8-then-empty output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_CURSOR_T8_EMPTY")"
+assert_equals "SL-cursor-transient8-then-empty stub invoked exactly 4 times" "4" "$SL_CURSOR_T8_EMPTY_ATTEMPTS"
+assert_equals "SL-cursor-transient8-then-empty output marker" "t8-then-empty ok" "$(cat "$OUT_CURSOR_T8_EMPTY")"
 rm -f "$SL_CURSOR_T8_EMPTY_COUNT"
 
 # Case SL-cursor-empty-then-auth: empty .result retry then auth failure retry.
