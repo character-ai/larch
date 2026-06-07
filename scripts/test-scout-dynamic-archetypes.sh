@@ -27,7 +27,16 @@ grep -q 'You are a read-only reviewer' || exit 7
 if [[ "${SCOUT_STUB_FAIL:-false}" == "true" ]]; then
     exit 17
 fi
-cat "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}"
+# launch-claude-subprocess.sh now runs `claude --print --output-format json`
+# (issue #3637): the launcher promotes the envelope's `.result` string to the
+# output file. Wrap the fixture content as the `.result` of a JSON envelope so
+# the scout reads the same bytes a real claude run would deliver. Command
+# substitution strips the fixture's single trailing newline and `jq -r`
+# re-adds one downstream, so the promoted `.result` round-trips the fixture
+# byte-for-byte (assert_raw_matches).
+_scout_stub_content=$(cat "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}")
+jq -cn --arg r "$_scout_stub_content" \
+    '{type:"result",subtype:"success",is_error:false,result:$r,usage:{input_tokens:1,output_tokens:1,cache_read_input_tokens:0,cache_creation_input_tokens:0}}'
 STUB
 chmod +x "$BIN/claude"
 cat > "$BIN/jq" <<'STUB'
