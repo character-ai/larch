@@ -27,7 +27,7 @@ Failure (exit 1): `ERROR=<message>` on stderr.
 1. Auto-detects repo from `gh repo view` when `--repo` is omitted.
 2. Resolves both issue numbers to GraphQL node IDs in a single `gh api graphql` call using GraphQL variables (no string interpolation — safe from injection via `--repo`).
 3. Calls `addBlockedBy` mutation via GraphQL variables.
-4. Verifies by comparing `issue_dependencies_summary.blocked_by` on issue A before and after. A non-increase is warned but not treated as a hard error (already-blocked is acceptable).
+4. Verifies by checking membership of ISSUE_B in the `blockedBy` nodes returned directly by the mutation payload (`AddBlockedByPayload.issue.blockedBy.nodes`). This is transactionally consistent — same response as the write — avoiding the async-rollup race on `issue_dependencies_summary`. A warn-only message is emitted if ISSUE_B is absent from the payload (highly unlikely in practice; would indicate a real verification failure).
 5. Requires `python3` in PATH for JSON parsing.
 
 ## Callers
