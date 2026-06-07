@@ -241,6 +241,45 @@ compose_coder_prompt() {
 
 run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
+    # #3704: the review-fix coder waterfall is Cursor → Codex (the Claude tier
+    # lives in the caller via CODER_STATUS=main-agent-required). Cursor's
+    # stronger edit-following behavior suits surgical fix application; Codex
+    # remains the initial-implementation default in /implement Step 2.
+    if run_coder_dispatch_cursor "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
+        return 0
+    fi
+    if run_coder_dispatch_codex "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
+        return 0
+    fi
+    larch_err "⚠ review-and-fix: coder dispatch failed (both cursor and codex)"
+    return 1
+}
+
+run_coder_dispatch_cursor() {
+    local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
+    local _SERIAL_LOCK=""
+    if cursor_launcher_load_model_args && cursor_launcher_setup_auth_argv; then
+        _SERIAL_LOCK=""
+        external_serial_lock_acquire _SERIAL_LOCK "cursor"
+        external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+        local _wrapped_prompt
+        _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
+        _wrapped_prompt=${_wrapped_prompt%X}
+        if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
+            cursor agent -p --trust \
+            ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+            --workspace "$PWD" \
+            "$_wrapped_prompt" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
+            cp "$round_dir/coder-cursor.log" "$tool_log" 2>/dev/null || : > "$tool_log"
+            printf 'cursor\n' > "$tool_stdout"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+run_coder_dispatch_codex() {
+    local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
     local _SERIAL_LOCK=""
     local codex_events="$round_dir/coder-codex.events.jsonl"
     local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
@@ -318,25 +357,6 @@ run_coder_dispatch() {
         larch_err "⚠ review-and-fix: Codex OPENAI_API_KEY auth path failed; falling back when possible (exit $codex_rc)"
     fi
 
-    if cursor_launcher_load_model_args && cursor_launcher_setup_auth_argv; then
-        _SERIAL_LOCK=""
-        external_serial_lock_acquire _SERIAL_LOCK "cursor"
-        external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-        local _wrapped_prompt
-        _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
-        _wrapped_prompt=${_wrapped_prompt%X}
-        if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
-            cursor agent -p --trust \
-            ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-            --workspace "$PWD" \
-            "$_wrapped_prompt" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
-            cp "$round_dir/coder-cursor.log" "$tool_log" 2>/dev/null || : > "$tool_log"
-            printf 'cursor\n' > "$tool_stdout"
-            return 0
-        fi
-    fi
-
-    larch_err "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
     return 1
 }
 post_dispatch_submodule_revert() {
@@ -685,11 +705,12 @@ apply_findings_with_coder() {
     tool_log="$round_dir/coder-output.log"
     larch_err "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
     if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
-        # #3207: no external coder could apply (codex -> cursor both exhausted).
-        # Waterfall to the Claude/main-agent tier instead of hard-failing:
-        # CODER_STATUS=main-agent-required, return 4. The orchestrator (/implement
-        # Step 5, /review Step 3) then applies the accepted findings via main-agent
-        # Edit/Write, mirroring the implementer's codex -> cursor -> claude chain.
+        # #3207: no external coder could apply (cursor -> codex both exhausted;
+        # order flipped Cursor-first by #3704). Waterfall to the Claude/main-agent
+        # tier instead of hard-failing: CODER_STATUS=main-agent-required, return 4.
+        # The orchestrator (/implement Step 5, /review Step 3) then applies the
+        # accepted findings via main-agent Edit/Write, completing the review-fix
+        # cursor -> codex -> claude chain.
         {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=main-agent-required\n'
@@ -1557,7 +1578,7 @@ _implement_round_body() {
             ;;
         fix-required|cap-reached)
             if [[ "$coder_rc" -eq 4 || "$coder_status" == "main-agent-required" ]]; then
-                # #3207: codex -> cursor both exhausted; hand off to the main agent.
+                # #3207: cursor -> codex both exhausted; hand off to the main agent.
                 status="coder-main-agent-required"
                 exit_code=0
             elif [[ "$coder_rc" -eq 2 ]]; then

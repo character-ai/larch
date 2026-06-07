@@ -110,7 +110,13 @@ LARCH_VPR_CTX=()
 
 VOTER_1_PATH="$REVIEW_TMPDIR/claude-vote-output.txt"
 claude_prompt=$(make_voter_prompt_file claude)
-set +e
+codex_prompt=$(make_voter_prompt_file codex)
+cursor_prompt=$(make_voter_prompt_file cursor)
+
+# #3704: dispatch all three voters in parallel. The Claude voter is backgrounded
+# (its `.done` sentinel stays launcher-owned per #2973, so the wait barrier below
+# still arbitrates completion) and the Codex+Cursor waterfall launches
+# immediately — no serial gate between the Claude lane and the external lanes.
 "$SCRIPT_DIR/launch-claude-review.sh" \
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
@@ -118,7 +124,44 @@ set +e
     --role voter \
     --timeout 1200 \
     --timing-task-kind claude-code-voter \
-    "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
+    "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr" &
+voter1_pid=$!
+
+VOTER_2_BASE="$REVIEW_TMPDIR/codex-vote-output.txt"
+VOTER_3_BASE="$REVIEW_TMPDIR/cursor-vote-output.txt"
+manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
+{
+    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_BASE" "$codex_prompt"
+    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
+} > "$manifest"
+
+codex_present_for_waterfall="$CODEX_AVAILABLE"
+# Shrink-not-backfill: pass --no-fallback so an unavailable (or failed) external
+# slot is dropped from the result set instead of being replaced by a duplicate
+# judge (the alternate external, then Claude). The panel is Claude (always) plus
+# each AVAILABLE external; the acceptance-threshold table compensates for the
+# smaller panel (2 judges → unanimous, 1 → binding single).
+# Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
+# abnormally mid-run) so set -e does not abort dispatch before tally.
+set +e
+waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present "$codex_present_for_waterfall" \
+    --cursor-present "$CURSOR_AVAILABLE" \
+    --mode "$mode" \
+    --timeout 1200 \
+    --no-fallback \
+    "${ctx_args[@]+"${ctx_args[@]}"}")
+_waterfall_rc=$?
+set -e
+if [[ $_waterfall_rc -ne 0 ]]; then
+    larch_err "dispatch-code-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
+fi
+
+# Reap the parallel Claude voter; it has been running concurrently with the
+# external waterfall since dispatch.
+set +e
+wait "$voter1_pid"
 voter1_rc=$?
 set -e
 
@@ -166,39 +209,6 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
             --redact >/dev/null 2>&1 || true
     fi
     unset _voter1_diag _issues_log _status_label
-fi
-
-codex_prompt=$(make_voter_prompt_file codex)
-cursor_prompt=$(make_voter_prompt_file cursor)
-VOTER_2_BASE="$REVIEW_TMPDIR/codex-vote-output.txt"
-VOTER_3_BASE="$REVIEW_TMPDIR/cursor-vote-output.txt"
-manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
-{
-    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_BASE" "$codex_prompt"
-    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
-} > "$manifest"
-
-codex_present_for_waterfall="$CODEX_AVAILABLE"
-# Shrink-not-backfill: pass --no-fallback so an unavailable (or failed) external
-# slot is dropped from the result set instead of being replaced by a duplicate
-# judge (the alternate external, then Claude). The panel is Claude (always) plus
-# each AVAILABLE external; the acceptance-threshold table compensates for the
-# smaller panel (2 judges → unanimous, 1 → binding single).
-# Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
-# abnormally mid-run) so set -e does not abort dispatch before tally.
-set +e
-waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
-    --slots-file "$manifest" \
-    --codex-present "$codex_present_for_waterfall" \
-    --cursor-present "$CURSOR_AVAILABLE" \
-    --mode "$mode" \
-    --timeout 1200 \
-    --no-fallback \
-    "${ctx_args[@]+"${ctx_args[@]}"}")
-_waterfall_rc=$?
-set -e
-if [[ $_waterfall_rc -ne 0 ]]; then
-    larch_err "dispatch-code-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
 fi
 
 all_outputs=""

@@ -1,6 +1,6 @@
 # dispatch-plan-voters.sh Contract
 
-`scripts/dispatch-plan-voters.sh` launches `/design` Step 3 **plan-review** voter slots: **Voter 1 (Claude)** via `scripts/launch-claude-review.sh`, and **Voters 2–3** (Codex, Cursor) through `scripts/dispatch-with-waterfall.sh`.
+`scripts/dispatch-plan-voters.sh` launches `/design` Step 3 **plan-review** voter slots: **Voter 1 (Claude)** via `scripts/launch-claude-review.sh`, and **Voters 2–3** (Codex, Cursor) through `scripts/dispatch-with-waterfall.sh`. All three voters dispatch **in parallel** (#3704): Voter 1 is backgrounded and the external waterfall launches immediately, with no serial gate; the dispatcher reaps Voter 1 (`wait` → `voter1_rc`) after the waterfall returns.
 
 - Sources `scripts/lib-plan-voter-coverage.sh`; effective-judge coverage and the per-slot status KV block are emitted by that library.
 - Validates `--design-tmpdir` via `scripts/lib-design-tmpdir.sh` (`larch_design_tmpdir_validate`) after argv parsing and before `mkdir -p`.
@@ -19,7 +19,7 @@ Each slot is dispatched through the same three-phase waterfall used elsewhere:
 - Phase 2: alternate external tool when Phase 1 is absent or fails
 - Phase 3: Claude replacement when both external phases are absent or fail
 
-The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description` and `--timeout 1860`. The 1860s per-voter waterfall cap follows the `skills/design/SKILL.md` anti-pattern #5 timeout family for plan-review/dialectic phases; Voter 1 remains on its separate `launch-claude-review.sh --timeout 1200` path. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
+The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description` and `--timeout 1860`. The 1860s per-voter waterfall cap follows the `skills/design/SKILL.md` anti-pattern #5 timeout family for plan-review/dialectic phases; Voter 1 remains on its separate `launch-claude-review.sh --timeout 1200` path. The waterfall invocation is wrapped in `set +e`/`set -e` (parity with `dispatch-code-voters.sh`) so an abnormal waterfall exit cannot abort the dispatcher under `set -e` and orphan the backgrounded Claude voter; a non-zero exit is logged via `larch_err` and treated as a partial/empty result. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
 
 `dispatch-plan-voters.sh` is a top-level Family B writer; paired-PID plumbing
 was removed in breadcrumbs Stage 3.

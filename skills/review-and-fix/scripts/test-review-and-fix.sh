@@ -867,22 +867,24 @@ fi
 grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.sidecar" \
     || fail "codex bad-usage telemetry sidecar should capture parse diagnostics"
 
-work_codex_fallback_telemetry="$TMP/codex-fallback-telemetry"
+# #3704 cursor-first order: a FAILED codex tier (reached after the cursor tier
+# fails) must still contribute usage telemetry before the main-agent handoff.
+work_codex_fallback_telemetry="$TMP/codex-failed-telemetry"
 make_work_repo "$work_codex_fallback_telemetry"
 implement_tmp="$work_codex_fallback_telemetry/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
-codex_fallback_ledger="$TMP/codex-fallback-telemetry-ledger.jsonl"
+codex_fallback_ledger="$TMP/codex-failed-telemetry-ledger.jsonl"
 set +e
-out=$(LARCH_TOKEN_LEDGER="$codex_fallback_ledger" TEST_AGENT_BEHAVIOR=cursor-success run_review_and_fix "$work_codex_fallback_telemetry" \
-    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-fallback-telemetry-run)
+out=$(LARCH_TOKEN_LEDGER="$codex_fallback_ledger" TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_codex_fallback_telemetry" \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-failed-telemetry-run)
 rc=$?
 set -e
-[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex fallback telemetry expected exit 0 got $rc"; }
-grep -Fq 'CODER_TOOL=cursor' <<< "$out" || fail "codex fallback telemetry should fall through to cursor"
-[[ -s "$implement_tmp/round-1/coder-codex.events.jsonl" ]] || fail "codex fallback telemetry events missing"
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex failed-tier telemetry expected exit 0 got $rc"; }
+grep -Fq 'CODER_STATUS=main-agent-required' <<< "$out" || fail "codex failed-tier telemetry should hand off to the main agent"
+[[ -s "$implement_tmp/round-1/coder-codex.events.jsonl" ]] || fail "codex failed-tier telemetry events missing"
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review_fix" and .total==1050)' "$codex_fallback_ledger" >/dev/null \
-    || fail "codex fallback telemetry token ledger row"
+    || fail "codex failed-tier telemetry token ledger row"
 
 work_codex_unset_root="$TMP/codex-telemetry-unset-root"
 make_work_repo "$work_codex_unset_root"
@@ -1229,7 +1231,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 0 (#3207 main-agent handoff) got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=coder-main-agent-required' <<< "$out" || fail "all-fail early breadcrumb status (#3207)"
-grep -Fq 'coder dispatch failed (both codex and cursor)' <<< "$out" || fail "all-fail early breadcrumb warning"
+grep -Fq 'coder dispatch failed (both cursor and codex)' <<< "$out" || fail "all-fail early breadcrumb warning"
 
 work_sub="$TMP/submodule-violation"
 make_work_repo "$work_sub"
@@ -1943,7 +1945,10 @@ else
     fail "review-scout-manifest basenames should come from non-empty KVs: $(cat "$scout_missing_files_batch" 2>/dev/null)"
 fi
 
-# --- Codex auth-prep failure (login mode): cursor fallback, no codex argv, no temp-home survivors ---
+# --- Codex auth-prep failure (login mode): no codex argv, no temp-home survivors ---
+# #3704 cursor-first order: cursor must fail first (all-fail) so the codex tier
+# runs and its auth-prep failure path is exercised; dispatch then hands off to
+# the main agent.
 work_rf_auth_prep_fail="$TMP/rf-codex-auth-prep-fail"
 make_work_repo "$work_rf_auth_prep_fail"
 rf_auth_prep_impl="$work_rf_auth_prep_fail/implement"
@@ -1977,7 +1982,7 @@ out_rf_auth_prep=$(
     TMPDIR="$rf_auth_prep_case_tmp" \
     PATH="$rf_auth_prep_bin:$PATH" \
     HOME="$rf_auth_prep_fixture" \
-    TEST_AGENT_BEHAVIOR=cursor-success \
+    TEST_AGENT_BEHAVIOR=all-fail \
     TEST_AGENT_ARGV_FILE="$rf_auth_prep_argv" \
     run_review_and_fix "$work_rf_auth_prep_fail" \
         --implement-tmpdir "$rf_auth_prep_impl" --mode diff --round-num 1 \
@@ -1986,7 +1991,7 @@ out_rf_auth_prep=$(
 rc_rf_auth_prep=$?
 set -e
 [[ "$rc_rf_auth_prep" -eq 0 ]] || { echo "$out_rf_auth_prep" >&2; fail "rf auth-prep failure expected exit 0 got $rc_rf_auth_prep"; }
-grep -Fq 'CODER_TOOL=cursor' <<< "$out_rf_auth_prep" || fail "rf auth-prep failure should fall back to cursor"
+grep -Fq 'CODER_STATUS=main-agent-required' <<< "$out_rf_auth_prep" || fail "rf auth-prep failure should hand off to the main agent"
 grep -Fq 'codex-auth-setup: failed to prepare Codex auth material' "$rf_auth_prep_impl/round-1/coder-codex.wrapper.log" \
     || fail "rf auth-prep failure wrapper log missing auth setup breadcrumb"
 [[ ! -s "$rf_auth_prep_argv" ]] || fail "rf auth-prep failure must not invoke codex argv capture"
@@ -1997,7 +2002,7 @@ while IFS= read -r _rf_home; do
         fail "rf auth-prep failure left new review-fix temp home: $_rf_home"
     fi
 done <<< "$rf_auth_prep_after"
-pass "rf codex auth-prep failure cursor fallback and cleanup"
+pass "rf codex auth-prep failure main-agent handoff and cleanup"
 
 # --- Codex login fallback with fixture auth.json symlink ---
 work_rf_login_fallback="$TMP/rf-codex-login-fallback"
@@ -2039,6 +2044,8 @@ grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$rf_login_
 pass "rf codex login fallback with fixture auth"
 
 # --- Codex env-key dispatch failure breadcrumb and temp-home cleanup ---
+# #3704 cursor-first order: cursor must fail first (all-fail) so the codex tier
+# runs; its env-key dispatch failure then hands off to the main agent.
 work_rf_env_key_fail="$TMP/rf-codex-env-key-dispatch-fail"
 make_work_repo "$work_rf_env_key_fail"
 rf_env_key_impl="$work_rf_env_key_fail/implement"
@@ -2049,7 +2056,7 @@ rf_env_key_home_capture="$TMP/rf-codex-env-key-dispatch-fail-home.txt"
 set +e
 out_rf_env_key=$(
     OPENAI_API_KEY=sk-larch-rf-env-key-sentinel \
-    TEST_AGENT_BEHAVIOR=cursor-success \
+    TEST_AGENT_BEHAVIOR=all-fail \
     TEST_AGENT_ARGV_FILE="$rf_env_key_argv" \
     TEST_AGENT_CODEX_HOME_FILE="$rf_env_key_home_capture" \
     run_review_and_fix "$work_rf_env_key_fail" \
@@ -2059,7 +2066,7 @@ out_rf_env_key=$(
 rc_rf_env_key=$?
 set -e
 [[ "$rc_rf_env_key" -eq 0 ]] || { echo "$out_rf_env_key" >&2; fail "rf env-key dispatch failure expected exit 0 got $rc_rf_env_key"; }
-grep -Fq 'CODER_TOOL=cursor' <<< "$out_rf_env_key" || fail "rf env-key dispatch failure should fall back to cursor"
+grep -Fq 'CODER_STATUS=main-agent-required' <<< "$out_rf_env_key" || fail "rf env-key dispatch failure should hand off to the main agent"
 grep -Fq 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path' \
     "$rf_env_key_impl/round-1/coder-codex.wrapper.log" \
     || fail "rf env-key dispatch failure wrapper log breadcrumb"

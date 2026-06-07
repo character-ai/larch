@@ -80,6 +80,15 @@ case "${LARCH_WAIT_BARRIER_MODE:-delayed}" in
         printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
         printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
         ;;
+    concurrent)
+        # #3704 parallel-dispatch probe: drop the marker the blocked Claude CLI
+        # stub is polling for, then settle the external slots immediately.
+        : > "${LARCH_WAIT_BARRIER_MARKER:?}"
+        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
+        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
+        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
+        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
+        ;;
     nonzero_done)
         printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
         printf '7\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
@@ -263,6 +272,18 @@ cat > "$STUB_BIN/claude" <<'STUB'
 cat >/dev/null
 case "${CLAUDE_STUB_MODE:-ok}" in
   empty) exit 0 ;;
+  wait_for_marker)
+    # #3704 parallel-dispatch probe: block until the waterfall stub drops the
+    # marker. Under serialized dispatch (Claude voter blocking before the
+    # external manifest is built) the marker never appears and this exits 1.
+    _i=0
+    while [[ ! -f "${CLAUDE_STUB_WAIT_MARKER:?}" && "$_i" -lt 100 ]]; do
+      sleep 0.1
+      _i=$((_i + 1))
+    done
+    [[ -f "${CLAUDE_STUB_WAIT_MARKER}" ]] || exit 1
+    printf 'FINDING_1: YES\n'
+    exit 0 ;;
   fail_nonempty)
     printf 'stub voter output for diag test\n'
     exit 7 ;;
@@ -649,6 +670,33 @@ grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
     || { echo "FAIL: wait usage-error path should still tally existing voter3 output" >&2; exit 1; }
 grep -Fq 'dispatch-code-voters.sh: wait-for-reviewers.sh exited 1 (usage/config error) - proceeding with whatever state exists' "$wait_usage_stderr" \
     || { echo "FAIL: wait usage-error path should log the usage/config diagnostic" >&2; exit 1; }
+
+# #3704: all three voters dispatch in parallel. The Claude CLI stub blocks until
+# the waterfall stub drops a marker file; under the old serialized dispatch the
+# marker never appears while the Claude voter runs, the stub exits 1, and
+# VOTER_1 fails — so VOTER_1_STATUS=launched proves concurrent dispatch without
+# any wall-clock assertion.
+parallel_tmp="$TMP/parallel-dispatch"
+mkdir -p "$parallel_tmp"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_plugin" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    LARCH_VOTER_WAIT_TIMEOUT=2 \
+    CLAUDE_STUB_MODE=wait_for_marker \
+    CLAUDE_STUB_WAIT_MARKER="$parallel_tmp/waterfall-started" \
+    LARCH_WAIT_BARRIER_MODE=concurrent \
+    LARCH_WAIT_BARRIER_MARKER="$parallel_tmp/waterfall-started" \
+    LARCH_WAIT_BARRIER_VOTER2="$parallel_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$parallel_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$parallel_tmp" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: parallel dispatch — Claude voter must run concurrently with the external waterfall (#3704)" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: parallel dispatch should keep voter2 launched" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: parallel dispatch should keep voter3 launched" >&2; exit 1; }
+grep -Fq 'DISPATCH_OK=true' <<< "$out" \
+    || { echo "FAIL: parallel dispatch should report DISPATCH_OK=true" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then
