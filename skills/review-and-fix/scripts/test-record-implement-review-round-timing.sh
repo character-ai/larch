@@ -38,11 +38,18 @@ REJECTED_COUNT=0
 F
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 4 --start-s 30 --end-s 31
 awk -F '\t' '$2 == "round" && $6 == 4 && $7 == 30 && $10 == 1 && $11 == 0 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
+# Full-tuple idempotency: same (round, start-s, end-s) must not add a second row.
+"$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 4 --start-s 30 --end-s 31
+round_rows=$(awk -F '\t' '$2 == "round" && $6 == 4 { c++ } END { print c + 0 }' "$TMP_BASE/timing-ledger.tsv")
+[[ "$round_rows" == 1 ]] || { echo "expected idempotent re-emit with same tuple (1 round-4 row), got $round_rows" >&2; exit 1; }
+# Full-tuple fingerprinting: a different (start-s, end-s) for the same round writes a fresh row.
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 4 --start-s 40 --end-s 41
 round_rows=$(awk -F '\t' '$2 == "round" && $6 == 4 { c++ } END { print c + 0 }' "$TMP_BASE/timing-ledger.tsv")
-[[ "$round_rows" == 1 ]] || { echo "expected idempotent deferred emit (1 round-4 row), got $round_rows" >&2; exit 1; }
+[[ "$round_rows" == 2 ]] || { echo "expected fresh row on different-tuple deferred emit (2 round-4 rows), got $round_rows" >&2; exit 1; }
 awk -F '\t' '$2 == "round" && $6 == 4 && $7 == 30 && $8 == 31 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv" \
-    || { echo "deferred re-emit must not overwrite existing round-4 timing" >&2; exit 1; }
+    || { echo "original round-4 timing row must still be present after different-tuple emit" >&2; exit 1; }
+awk -F '\t' '$2 == "round" && $6 == 4 && $7 == 40 && $8 == 41 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv" \
+    || { echo "fresh round-4 timing row must be present after different-tuple emit" >&2; exit 1; }
 round7_dir="$TMP_BASE/round-7"
 mkdir -p "$round7_dir"
 cat > "$round7_dir/review-tally.env" <<'F'
