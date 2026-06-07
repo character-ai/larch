@@ -49,6 +49,8 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-phase1-plan-assessor
     cursor-phase2-plan-assessor
     cursor-phase3-plan-assessor
+    codex-plan-autofix
+    cursor-plan-autofix
     codex-review-voter
     cursor-review-voter
     cursor-specialist-structure

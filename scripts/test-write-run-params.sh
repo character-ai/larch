@@ -53,7 +53,8 @@ jq -e '
   (has("manual_gate_b") | not) and
   .workflow_path == null and
   .partition_requested == false and
-  .brainstorm_requested == false
+  .brainstorm_requested == false and
+  .approve_requested == false
 ' "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -82,6 +83,13 @@ if "$WRITER" \
     fail "invalid brainstorm-requested was accepted"
 fi
 
+if "$WRITER" \
+    --classification SIMPLE \
+    --approve-requested maybe \
+    --output "$TMPROOT/bad-approve.json" >/dev/null 2>&1; then
+    fail "invalid approve-requested was accepted"
+fi
+
 
 assert_rejected_with partition-requested-empty 'write-run-params.sh: --partition-requested requires a value' \
     --classification SIMPLE \
@@ -102,6 +110,16 @@ assert_rejected_with brainstorm-requested-missing 'write-run-params.sh: --brains
     --classification SIMPLE \
     --output "$TMPROOT/brainstorm-requested-missing.json" \
     --brainstorm-requested
+
+assert_rejected_with approve-requested-empty 'write-run-params.sh: --approve-requested requires a value' \
+    --classification SIMPLE \
+    --approve-requested "" \
+    --output "$TMPROOT/approve-requested-empty.json"
+
+assert_rejected_with approve-requested-missing 'write-run-params.sh: --approve-requested requires a value' \
+    --classification SIMPLE \
+    --output "$TMPROOT/approve-requested-missing.json" \
+    --approve-requested
 
 assert_rejected_with classification-empty 'write-run-params.sh: --classification requires a value' \
     --classification "" \
@@ -153,14 +171,26 @@ jq -e '.partition_requested == true' "$TMPROOT/partition-true.json" >/dev/null \
 jq -e '.brainstorm_requested == true' "$TMPROOT/brainstorm-true.json" >/dev/null \
     || fail "--brainstorm-requested true did not set JSON true"
 
+"$WRITER" \
+    --classification SIMPLE \
+    --approve-requested true \
+    --output "$TMPROOT/approve-true.json" >/dev/null
+jq -e '.approve_requested == true' "$TMPROOT/approve-true.json" >/dev/null \
+    || fail "--approve-requested true did not set JSON true"
+
+# approve_requested defaults to false when the flag is omitted entirely
+jq -e '.approve_requested == false' "$TMPROOT/brainstorm-true.json" >/dev/null \
+    || fail "approve_requested did not default to false when omitted"
+
 
 "$WRITER" \
     --classification SIMPLE \
     --partition-requested true \
     --brainstorm-requested true \
+    --approve-requested true \
     --output "$TMPROOT/all-flags-true.json" >/dev/null
-jq -e '.partition_requested == true and .brainstorm_requested == true' "$TMPROOT/all-flags-true.json" >/dev/null \
-    || fail "partition + brainstorm true was not persisted"
+jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true' "$TMPROOT/all-flags-true.json" >/dev/null \
+    || fail "partition + brainstorm + approve true was not persisted"
 
 "$WRITER" \
     --classification HARD \
@@ -170,6 +200,7 @@ jq -e '.partition_requested == true and .brainstorm_requested == true' "$TMPROOT
     --workflow-path HARD \
     --partition-requested true \
     --brainstorm-requested true \
+    --approve-requested true \
     --output "$TMPROOT/all-v3-flags.json" >/dev/null
 jq -e '
   .schema_version == 3 and
@@ -180,7 +211,8 @@ jq -e '
   has("review_budget") == false and
   .workflow_path == "HARD" and
   .partition_requested == true and
-  .brainstorm_requested == true
+  .brainstorm_requested == true and
+  .approve_requested == true
 ' "$TMPROOT/all-v3-flags.json" >/dev/null || fail "full v3 flag set was not persisted"
 
 "$WRITER" \

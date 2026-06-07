@@ -63,6 +63,7 @@ case "$ACTION" in
             exit 0
         fi
         rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+        rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
         : >"$DESIGN_TMPDIR/.completed/step-1e"
         : >"$DESIGN_TMPDIR/.completed/step-2a"
         : >"$DESIGN_TMPDIR/.completed/step-2a.5"

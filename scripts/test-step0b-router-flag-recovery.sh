@@ -14,7 +14,7 @@ TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/larch-step0b-recovery.XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
 
 merge_run_params() {
-  local out="$1" partition_requested="$2" brainstorm_requested="$3"
+  local out="$1" partition_requested="$2" brainstorm_requested="$3" approve_requested="${4:-false}"
   local _rp_merge _rp_err
   _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
   _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
@@ -22,7 +22,8 @@ merge_run_params() {
   jq -c \
     --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
     --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
-    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b)' \
+    --argjson merge_a "$([[ "$approve_requested" == true ]] && echo true || echo false)" \
+    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a)' \
     "$out" >"$_rp_merge" 2>"$_rp_err" || { cat "$_rp_err" >&2; rm -f "$_rp_merge" "$_rp_err"; return 1; }
   mv -f "$_rp_merge" "$out"
   rm -f "$_rp_err"
@@ -31,10 +32,10 @@ merge_run_params() {
 # Replicates design-init-runparams.sh Step 0b outer guard: recovery runs only when at least one argv flag
 # is true and jq exists; when the output file is missing it warns and does not recreate it.
 recovery_merge_if_needed() {
-  local out="$1" partition_requested="$2" brainstorm_requested="$3"
-  if [[ "$partition_requested" == true || "$brainstorm_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+  local out="$1" partition_requested="$2" brainstorm_requested="$3" approve_requested="${4:-false}"
+  if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$approve_requested" == true ]] && command -v jq >/dev/null 2>&1; then
     if [[ -f "$out" ]]; then
-      merge_run_params "$out" "$partition_requested" "$brainstorm_requested"
+      merge_run_params "$out" "$partition_requested" "$brainstorm_requested" "$approve_requested"
     else
       printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
     fi
@@ -42,13 +43,13 @@ recovery_merge_if_needed() {
 }
 
 write_then_recover() {
-  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5"
+  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_approve="${6:-false}"
   if ! "$WRITER" --classification "$classification" \
       --partition-requested false --brainstorm-requested false \
       --output "$out" >/dev/null 2>&1; then
     return 1
   fi
-  recovery_merge_if_needed "$out" "$r_partition" "$r_brainstorm" || return 1
+  recovery_merge_if_needed "$out" "$r_partition" "$r_brainstorm" "$r_approve" || return 1
   : > "$spy"
 }
 
@@ -56,7 +57,7 @@ write_then_recover() {
 OUT1="$TMPROOT/case1.json"
 "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
 recovery_merge_if_needed "$OUT1" true false
-jq -e '.partition_requested == true and .brainstorm_requested == false and (has("manual_gate_b") | not)' "$OUT1" >/dev/null \
+jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT1" >/dev/null \
   || fail "case1: partition argv merge produced $(cat "$OUT1")"
 
 # Case 3: stored partition=true; argv partition=false, brainstorm=true => OR-merge preserves partition.
@@ -66,11 +67,18 @@ recovery_merge_if_needed "$OUT3" false true
 jq -e '.partition_requested == true and .brainstorm_requested == true and (has("manual_gate_b") | not)' "$OUT3" >/dev/null \
   || fail "case3: partition OR-merge regressed; got $(cat "$OUT3")"
 
+# Case 3a: stored approve=true; argv approve=false with another true flag preserves approve.
+OUT3A="$TMPROOT/case3a.json"
+"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --approve-requested true --output "$OUT3A" >/dev/null
+recovery_merge_if_needed "$OUT3A" true false false
+jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == true and (has("manual_gate_b") | not)' "$OUT3A" >/dev/null \
+  || fail "case3a: approve OR-merge regressed; got $(cat "$OUT3A")"
+
 # Case 4: stored brainstorm=true; guard enters via partition argv true; brainstorm OR-merge preserves.
 OUT4="$TMPROOT/case4.json"
 "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
 recovery_merge_if_needed "$OUT4" true false
-jq -e '.brainstorm_requested == true and .partition_requested == true and (has("manual_gate_b") | not)' "$OUT4" >/dev/null \
+jq -e '.brainstorm_requested == true and .partition_requested == true and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT4" >/dev/null \
   || fail "case4: brainstorm OR-merge regressed; got $(cat "$OUT4")"
 
 # Case 5: all-false argv => outer guard short-circuits; file unchanged (false-branch no-op).
@@ -81,7 +89,7 @@ before_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 recovery_merge_if_needed "$OUT5" false false
 after_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 [[ "$before_sum" == "$after_sum" ]] || fail "case5: all-false guard mutated file; before=$before_sum after=$after_sum"
-jq -e '.partition_requested == false and .brainstorm_requested == false and (has("manual_gate_b") | not)' "$OUT5" >/dev/null \
+jq -e '.partition_requested == false and .brainstorm_requested == false and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT5" >/dev/null \
   || fail "case5: all-false post-state mismatch"
 
 # Case 6: missing run-params.json under a true argv flag warns and does not recreate fallback defaults.
@@ -132,7 +140,7 @@ STUB
 chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 
 run_design_init() {
-  local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}"
+  local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}" approve="${5:-false}"
   mkdir -p "$dtmp"
   export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
   local _path="$extra_path"
@@ -144,7 +152,8 @@ run_design_init() {
     --claude-pid 424242 \
     --classification SIMPLE \
     --partition-requested "$partition" \
-    --brainstorm-requested "$brainstorm"
+    --brainstorm-requested "$brainstorm" \
+    --approve-requested "$approve"
 }
 
 # Case 8: invoke production driver; brainstorm argv merges into run-params.json.
@@ -159,6 +168,17 @@ grep -Fq 'INIT_STATUS=ok' "$D8/.design-init-runparams-result.env" \
   || fail "case8: result env missing INIT_STATUS=ok"
 jq -e '.brainstorm_requested == true and (has("manual_gate_b") | not)' "$D8/run-params.json" >/dev/null \
   || fail "case8: driver jq-merge failed; got $(cat "$D8/run-params.json")"
+
+# Case 8a (#3628): approve argv merges into run-params.json (mirrors case 8 brainstorm merge).
+D8A="$TMPROOT/driver8a"
+set +e
+out8a=$(run_design_init "$D8A" false false "" true 2>&1)
+rc8a=$?
+set -e
+[[ "$rc8a" -eq 0 ]] || fail "case8a: design-init-runparams.sh rc=$rc8a out=$out8a"
+[[ -f "$D8A/run-params.json" ]] || fail "case8a: missing run-params.json"
+jq -e '.approve_requested == true' "$D8A/run-params.json" >/dev/null \
+  || fail "case8a: approve jq-merge failed; got $(cat "$D8A/run-params.json")"
 
 # Case 9: rename failure is best-effort; run-params still written.
 cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
@@ -241,5 +261,14 @@ set -e
 [[ "$rc11" -eq 0 ]] || fail "case11: jq-unavailable driver rc=$rc11 out=$out11"
 printf '%s\n' "$out11" | grep -Fq 'jq is unavailable' \
   || fail "case11: missing jq-unavailable WARN on stdout"
+
+# Case 12: prompt-side Step 0b route fence must merge current argv flags into
+# resumed and already-planned flows, not only fresh proceed flows.
+# shellcheck disable=SC2016 # fixed-string probe for literal SKILL.md shell text.
+grep -Fq 'if [[ "${ROUTE:-}" == resume@* || "${ROUTE:-}" == already-planned ]]; then' "$REPO_ROOT/skills/design/SKILL.md" \
+  || fail "case12: SKILL.md missing resume/already-planned route flag merge guard"
+# shellcheck disable=SC2016 # fixed-string probe for literal jq filter text.
+grep -Fq '.approve_requested = (.approve_requested == true or $merge_a)' "$REPO_ROOT/skills/design/SKILL.md" \
+  || fail "case12: SKILL.md route merge must preserve current --approve"
 
 echo "PASS: test-step0b-router-flag-recovery.sh"

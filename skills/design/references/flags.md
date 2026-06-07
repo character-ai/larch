@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--approve`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
@@ -20,11 +20,12 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 - `--run-id <ID>`: optional stable run id. Default empty.
 - `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
 - `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`.
-- `--manual` / `-m`: removed. These flags are rejected as unknown public flags before Step 0; Gate B is always explicit.
+- `--approve`: public boolean flag, default `false`. Controls Gate B (Step 3.5) finding-acceptance UX. Default (`approve_requested=false`): Gate B **auto-applies** every accepted in-scope finding with no `AskUserQuestion` (the old #2930 behavior; see `references/approval-gates.md` §Gate B). When set (`approve_requested=true`): Gate B restores the explicit per-round prompt (`Apply all` / `Go through each` / `Switch to discussion mode`) at every review round, so `Go through each` and `Switch to discussion mode` are reachable only under `--approve` (discussion otherwise remains reachable via Gate C `Discuss further`). Persisted as `approve_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. Independent of the HARD Step 3.6 assessor, the size brakes, and the validator auto-fix — those quality halts fire regardless of `--approve`.
+- `--manual` / `-m`: removed. These flags are rejected as unknown public flags before Step 0. There is no persisted manual mode; Gate B auto-applies by default and `--approve` is the only way to restore the explicit per-round apply prompt.
 
 `scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
-**Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
+**Mutual exclusion**: at most one `--hard` and at most one `--approve` on argv; duplicate `--hard` or duplicate `--approve` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 

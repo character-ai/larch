@@ -46,6 +46,17 @@ append_target_once() {
 
 maybe_append_py_lint_target() {
     local missing="" tool=""
+    if ! command -v python3 >/dev/null 2>&1 || ! python3 - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+    then
+        if [ "${PY_LINT_SKIP_WARNED:-0}" -eq 0 ]; then
+            echo "WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target"
+            PY_LINT_SKIP_WARNED=1
+        fi
+        return 0
+    fi
     for tool in ruff pylint pyright; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             missing="${missing}${missing:+ }$tool"

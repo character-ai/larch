@@ -231,7 +231,7 @@ apply_step3_6_handoff() {
     if [[ "${_assessor_rc:-1}" -eq 10 ]]; then
         _assessor_last_marker_line=$(printf '%s\n' "${_assessor_out:-}" | awk -v m="$_assessor_marker" '$0==m {n=NR} END {print n+0}')
         if [[ "${_assessor_last_marker_line:-0}" -le 0 ]]; then
-            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Revert/Stop.**" >>"$d/handoff.stderr"
             return 1
         fi
         _assessor_display=$(printf '%s\n' "${_assessor_out:-}" | awk -v n="$_assessor_last_marker_line" 'NR<n {print}')
@@ -249,7 +249,7 @@ apply_step3_6_handoff() {
             esac
         done <<<"$_assessor_trailers"
         if [[ "$_assessor_round_count" -ne 1 || "$_assessor_round_invalid" == true || -z "$_assessor_round_num" ]]; then
-            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Revert/Stop.**" >>"$d/handoff.stderr"
             return 1
         fi
     fi
@@ -278,6 +278,42 @@ apply_step3_6_handoff() {
             return 1
             ;;
     esac
+}
+
+apply_step3_6_revert_choice() {
+    local d="$1" round="${2:-}" _revert_rc=0 _revert_out
+    local _prev_plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+    : >"$d/revert-choice.out"
+    : >"$d/revert-choice.err"
+    export DESIGN_TMPDIR="$d"
+    export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+    export ASSESSOR_ROUND_NUM="$round"
+    set +e
+    if [[ -z "${ASSESSOR_ROUND_NUM:-}" && -f "$d/.step3.6-trusted-assessor-round" && ! -L "$d/.step3.6-trusted-assessor-round" ]]; then
+        IFS= read -r ASSESSOR_ROUND_NUM < "$d/.step3.6-trusted-assessor-round" || ASSESSOR_ROUND_NUM=""
+    fi
+    case "${ASSESSOR_ROUND_NUM:-}" in
+        ''|*[!0-9]*|0)
+            _revert_out="**⚠ 3.6: assessor WORSE Revert missing trusted round anchor; keeping the applied plan and continuing to Step 3b.**"
+            _revert_rc=2
+            ;;
+        *)
+            _revert_out=$("$REPO_ROOT/skills/design/scripts/snapshot-plan-round.sh" revert-round --design-tmpdir "$d" --round "$ASSESSOR_ROUND_NUM" 2>&1) || _revert_rc=$?
+            ;;
+    esac
+    set -e
+    printf '%s\n' "$_revert_out" >>"$d/revert-choice.out"
+    if [[ "${_revert_rc:-1}" -eq 0 ]] && printf '%s\n' "$_revert_out" | grep -Fq 'REVERT_STATUS=ok'; then
+        printf '%s\n' "ℹ 3.6: assessor WORSE — reverted round ${ASSESSOR_ROUND_NUM} findings; continuing to Step 3b with the pre-round plan." >>"$d/revert-choice.out"
+        "$REPO_ROOT/scripts/append-execution-issue.sh" --log "$d/execution-issues.md" --category Warnings --entry "Step 3.6 — assessor WORSE-majority (round ${ASSESSOR_ROUND_NUM}): operator chose Revert; plan.txt restored to the pre-round snapshot and review-round state rolled back." >>"$d/revert-choice.err" 2>&1 || true
+    else
+        printf '%s\n' "**⚠ 3.6: assessor WORSE Revert failed (exit ${_revert_rc}); keeping the applied plan and continuing to Step 3b.**" >>"$d/revert-choice.out"
+        "$REPO_ROOT/scripts/append-execution-issue.sh" --log "$d/execution-issues.md" --category Warnings --entry "Step 3.6 — assessor WORSE-majority (round ${ASSESSOR_ROUND_NUM}): operator chose Revert but snapshot-plan-round.sh revert-round exited ${_revert_rc}; applied plan kept." >>"$d/revert-choice.err" 2>&1 || true
+    fi
+    mkdir -p "$d/.completed"
+    : >"$d/.completed/step-3.6"
+    unset DESIGN_TMPDIR ASSESSOR_ROUND_NUM
+    export CLAUDE_PLUGIN_ROOT="$_prev_plugin_root"
 }
 
 setup_worse_assessor_artifacts() {
@@ -353,6 +389,35 @@ else
     pass "handoff filters trailer marker"
 fi
 assert_contains "$(cat "$D21/chat.out")" 'ASSESSOR_ROUND_NUM=2' "handoff exposes trusted round scalar"
+
+# 25b Revert prompt branch restores the trusted round, clears stale downstream
+# markers, logs the warning, and writes the settled Step 3.6 marker.
+reset_env
+D21B="$TMP/handoff-revert-branch"
+setup_design_tmp "$D21B" HARD
+printf 'original plan\ndiff_lines: 1\n' >"$D21B/plan.txt-original"
+printf 'after round1\ndiff_lines: 2\n' >"$D21B/plan-after-round-1.txt"
+printf 'after round2\ndiff_lines: 3\n' >"$D21B/plan-after-round-2.txt"
+printf 'after round2\ndiff_lines: 3\n' >"$D21B/plan.txt"
+printf '2\n' >"$D21B/.step3.6-trusted-assessor-round"
+printf '2\n' >"$D21B/plan-review-round-cursor.txt"
+printf '2\n' >"$D21B/review-round-count.txt"
+mkdir -p "$D21B/plan-review/round-1" "$D21B/plan-review/round-2" "$D21B/.completed"
+printf 'round1 accepted\n' >"$D21B/plan-review/round-1/accepted-plan-findings.md"
+printf 'cumulative oos before round2\n' >"$D21B/plan-review/round-2/oos-accepted-design.before.md"
+printf 'round2 accepted\n' >"$D21B/accepted-plan-findings.md"
+printf 'round2 oos\n' >"$D21B/oos-accepted-design.md"
+: >"$D21B/.completed/step-2b.5"
+: >"$D21B/.completed/step-3b"
+: >"$D21B/.gate-b-postapply-ready-2"
+apply_step3_6_revert_choice "$D21B" ""
+assert_contains "$(cat "$D21B/revert-choice.out")" 'REVERT_STATUS=ok' "revert branch emits ok status"
+if [[ "$(cat "$D21B/plan.txt")" == "after round1"$'\n'"diff_lines: 2" ]]; then pass "revert branch restores prior plan"; else fail "revert branch restores prior plan"; fi
+if [[ "$(cat "$D21B/review-round-count.txt")" == "1" ]]; then pass "revert branch rolls back review count"; else fail "revert branch rolls back review count"; fi
+if [[ -f "$D21B/.completed/step-3.6" ]]; then pass "revert branch writes step-3.6 marker"; else fail "revert branch missing step-3.6 marker"; fi
+if [[ ! -e "$D21B/.completed/step-2b.5" && ! -e "$D21B/.completed/step-3b" ]]; then pass "revert branch clears stale post-apply/downstream markers"; else fail "revert branch did not clear stale post-apply/downstream markers"; fi
+if [[ ! -e "$D21B/.gate-b-postapply-ready-2" ]]; then pass "revert branch clears Gate B idempotency marker"; else fail "revert branch did not clear Gate B idempotency marker"; fi
+assert_contains "$(cat "$D21B/execution-issues.md")" 'operator chose Revert; plan.txt restored' "revert branch logs warning"
 
 # 26 handoff rc=10 with invalid trailer aborts fail-closed
 reset_env

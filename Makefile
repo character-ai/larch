@@ -11,7 +11,7 @@ PYTHON ?= python3
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
-.PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
+.PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-run-analysis-quiet test-parse-bootstrap-routing-envelope
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
@@ -30,6 +30,8 @@ PYTHON ?= python3
 lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-awk-multibyte-regex lint-only
 
 py-lint:
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+		|| (printf '%s\n' "ERROR: make py-lint requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
 	cd python && ruff check . && pylint . && pyright
 
 py-test:
@@ -89,7 +91,7 @@ test-harnesses-4: test-review-and-fix-dispatch test-refresh-run-logs test-design
 
 test-harnesses-5: test-launch-review-cursor-core test-assess-plan-round test-dispatch-code-voters-regressions-r3-codex test-ci-wait test-local-cleanup test-mermaid-fragments test-redact test-step0b-router-flag-recovery test-design-driver test-compose-collector-failure-log test-render-cost-line-callsites test-render-cost-line-realism test-step3-orchestrator-fence test-quick-mode-docs-sync test-implement-step2-routing test-implement-step8-exit3-first-fixer
 
-test-harnesses-6: test-dispatch-panel-core-dynamic test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step3-review test-generate-topology-docs test-render-run-summary test-larch-logs-batches test-block-submodule test-ship-pr-rebase test-ci-behind-count test-snapshot-plan-round test-check-stale-plugin test-plan-block-strip-body test-extract-plan-scope-paths test-run-step2-dispatch test-tally-vote test-render-final-summary-bash32
+test-harnesses-6: test-dispatch-panel-core-dynamic test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step3-review test-generate-topology-docs test-render-run-summary test-larch-logs-batches test-block-submodule test-ship-pr-rebase test-ci-behind-count test-snapshot-plan-round test-auto-fix-plan-commands test-check-stale-plugin test-plan-block-strip-body test-extract-plan-scope-paths test-run-step2-dispatch test-tally-vote test-render-final-summary-bash32
 
 test-harnesses-7: test-plan-review-loop test-tally-plan-review test-check-contains-pins test-dispatch-code-voters-retry-codex-success test-release-prepare test-release-finish test-tracking-issue-read-sentinel test-run-research-planner test-trailer-helpers test-ci-failed-jobs test-references-headers test-ship-pr-oos-pr-prep test-run-external-agent-args test-gh-run-logs test-slack-issue-announce test-implement-anti-halt test-fetch-combinable-issues-filter
 
@@ -110,7 +112,7 @@ test-harnesses-15: test-dispatch-plan-voters test-stall-recovery-report test-oos
 
 test-harnesses-16: test-launch-review-cursor-retry test-findings-classification test-revise-plan-with-waterfall test-validate-citations-budget test-larch-log-write-round test-token-vendor-scrapers test-render-findings-batch test-write-tally test-parse-prose-blockers test-run-negotiation-round test-oos-serialize test-render-lane-status test-lib-quiet test-run-step1-plan-log test-write-rejected-findings test-subskill-anchors test-external-tool-registry test-blocked-by-issue test-anti-improvised-wakeup
 
-test-harnesses-17: test-harness-shards-coverage test-step2-dispatch test-prompt-template-invariants test-dispatch-plan-review-panel test-cleanup test-design-publish test-token-report test-emit-tally test-lint-readability-preamble test-token-ledger test-relevant-checks-helper-failure test-add-blocked-by test-gate-b-dedup-plan test-relevant-checks-byte-budget test-review-structure test-promote-release test-lib-phase-driver test-synthesis-subagent test-lib-submodule-prohibition
+test-harnesses-17: test-harness-shards-coverage test-step2-dispatch test-prompt-template-invariants test-dispatch-plan-review-panel test-cleanup test-design-publish test-token-report test-emit-tally test-lint-readability-preamble test-token-ledger test-relevant-checks-helper-failure test-add-blocked-by test-gate-b-dedup-plan test-gate-b-apply-mode test-relevant-checks-byte-budget test-review-structure test-promote-release test-lib-phase-driver test-synthesis-subagent test-lib-submodule-prohibition
 
 test-harnesses-18: test-collect-agent-bash32 test-run-external-agent test-clarify-comment test-tracking-issue-summary test-dispatch-code-voters-retry-cursor test-wait-for-reviewers test-relevant-checks test-timing-report test-verify-skill-called test-log-phase test-lint-gh-body-inline test-cache-key-discipline test-parse-design-argv test-implement-fork-env test-lint-renderer-substitution-safety test-audit-edit-write test-append-execution-issue test-plan-adequacy-audit test-lib-title-markers
 
@@ -487,6 +489,9 @@ test-emit-plan:
 test-gate-b-dedup-plan:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-gate-b-dedup-plan.sh
 
+test-gate-b-apply-mode:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-gate-b-apply-mode.sh
+
 test-trailer-helpers:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-trailer-helpers.sh
 
@@ -497,6 +502,9 @@ test-check-plan-size:
 
 test-snapshot-plan-round:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-snapshot-plan-round.sh
+
+test-auto-fix-plan-commands:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-auto-fix-plan-commands.sh
 
 test-dispatch-plan-assessors:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-dispatch-plan-assessors.sh

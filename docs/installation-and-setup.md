@@ -232,7 +232,7 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 
 ### SIMPLE-tier `/design` cost
 
-`/design` (SIMPLE, the default) runs the full plan-review panel once per Step 3 entry; accepted findings are applied only through explicit Gate B operator choices. Real-world runs can still take tens of minutes because the external panel and voting run before Gate B; the Step 3 review-run counter caps Gate C re-entries separately at the tier-derived cap of `3` for SIMPLE. See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the env var contracts.
+`/design` (SIMPLE, the default) runs the full plan-review panel once per Step 3 entry; accepted findings auto-apply at Gate B by default, while `--approve` restores the explicit Gate B operator choices. Real-world runs can still take tens of minutes because the external panel and voting run before Gate B; the Step 3 review-run counter caps Gate C re-entries separately at the tier-derived cap of `3` for SIMPLE. See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the env var contracts.
 
 ## `scripts/relevant-checks.sh` — required consumer contract
 
