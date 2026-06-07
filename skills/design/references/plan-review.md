@@ -47,11 +47,10 @@ Step 3 **may** extend the fixed 10-slot static panel with up to 3 scout-proposed
 
 ## Single-pass review
 
-`plan-review-loop.sh` runs exactly one review pass per Step 3 entry: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never calls `revise-plan-with-waterfall.sh`, never applies findings to `plan.txt`, and never loops internally. `--round-cap` is accepted for caller/back-compat validation but is inert; the outer Step 3 driver (`run-step3-review.sh`) owns the Gate-C review-round cap via `review-round-count.txt`.
+`plan-review-loop.sh` runs exactly one review pass per Step 3 entry: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never calls `revise-plan-with-waterfall.sh`, never applies findings to `plan.txt`, and never loops internally. The outer Step 3 driver (`run-step3-review.sh`) owns the Gate-C review-round cap via `review-round-count.txt`.
 
 Terminal `LOOP_STATUS` values are limited to `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, and `main-agent-vote-required`; the outer driver may also surface `cap-reached` before launching the loop. Gate B is the sole apply point for accepted findings.
 
-- **Env vars**: `LARCH_DESIGN_ROUND_CAP` is deprecated for the inner loop; it remains only as the outer Step 3 cap input.
 - **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero accepted findings with a degraded but non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
 - **Tally failures**: `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before Gate B and preserves the current plan.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.

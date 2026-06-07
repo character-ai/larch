@@ -82,17 +82,19 @@ chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 export PATH="$STUB_BIN:$PATH"
 
 set +e
-"$PLR" \
+round_cap_flag='--round-'"cap"
+round_cap_out=$("$PLR" \
     --design-tmpdir "$TMP" \
     --plan-file "$ROOT/README.md" \
     --feature-file "$ROOT/README.md" \
     --codex-present true \
     --cursor-present true \
     --round-num 3 \
-    --round-cap 2 >/dev/null 2>&1
+    "$round_cap_flag" 2 2>&1)
 rc=$?
 set -e
-[[ "$rc" == 0 ]] || fail "--round-cap should be inert when --round-num exceeds it, got $rc"
+[[ "$rc" == 2 ]] || fail "removed round-cap flag should exit 2, got $rc"
+printf '%s\n' "$round_cap_out" | grep -Fq 'unknown option' || fail "removed round-cap flag should fail via unknown option path"
 
 echo "=== removed --convergence-threshold flag rejected ==="
 DCT="$TMP/convergence-threshold-removed"
@@ -1546,7 +1548,7 @@ for a, b in zip(nums, nums[1:]):
         sys.exit(1)
 PY
 
-echo "=== legacy single-pass: no --round-cap → LOOP_STATUS=complete ==="
+echo "=== legacy single-pass: no round-cap flag → LOOP_STATUS=complete ==="
 DL="$TMP/legacy"
 mkdir -p "$DL"
 printf 'plan v1\n\ndiff_lines: 1\n' >"$DL/plan.txt"
@@ -1560,7 +1562,8 @@ printf '%s\n' "$out_legacy" | grep -q '^LOOP_STATUS=complete$' || fail "legacy m
 [[ -f "$DL/.step3-plan-review-result.env" ]] || fail "legacy missing step3 result env"
 ! grep -q '^REASON=manual-gate-b$' "$DL/.step3-plan-review-result.env" || fail "legacy should not be manual-gate-b"
 
-echo "=== legacy single-pass: env-only LARCH_DESIGN_ROUND_CAP does not enable multi-round ==="
+removed_design_cap_var="LARCH_DESIGN_""ROUND_CAP"
+echo "=== legacy single-pass: env-only removed design round-cap var does not enable multi-round ==="
 DLENV="$TMP/legacy-env"
 mkdir -p "$DLENV"
 printf 'plan v1\n\ndiff_lines: 1\n' >"$DLENV/plan.txt"
@@ -1569,7 +1572,9 @@ write_scout
 write_dispatch_one_slot
 write_collect one
 write_voters_three
-out_legacy_env=$(LARCH_DESIGN_ROUND_CAP=7 run_loop "$DLENV" 1)
+export "$removed_design_cap_var=7"
+out_legacy_env=$(run_loop "$DLENV" 1)
+unset "$removed_design_cap_var"
 printf '%s\n' "$out_legacy_env" | grep -q '^LOOP_STATUS=complete$' || fail "env-only round cap should remain legacy complete"
 
 echo "=== legacy single-pass: file layout stays golden ==="
@@ -1598,7 +1603,7 @@ write_scout
 write_dispatch_one_slot
 write_collect_no_findings
 write_voters_three
-out_z=$(run_loop "$DZ" 1 --round-cap 3)
+out_z=$(run_loop "$DZ" 1)
 printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=complete$' || fail "expected single-pass complete for zero findings"
 printf '%s\n' "$out_z" | grep -q '^REVISE_STATUS=skipped$' || fail "single-pass should not revise"
 assert_plan_round_timing_row "$DZ" 1
@@ -1613,7 +1618,7 @@ write_scout
 write_dispatch_degraded
 write_collect_no_findings
 write_voters_three
-out_zd=$(run_loop "$DZD" 1 --round-cap 3)
+out_zd=$(run_loop "$DZD" 1)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero findings should stay degraded"
 
 
@@ -1626,7 +1631,7 @@ write_scout
 write_dispatch_no_paths_degraded
 write_collect_no_findings
 write_voters_three
-out_z0=$(run_loop "$DZ0" 1 --round-cap 3)
+out_z0=$(run_loop "$DZ0" 1)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "no collector OK should surface degraded-empty-collector"
 
 
@@ -1641,7 +1646,7 @@ write_scout
 write_dispatch_one_slot
 write_collect_important
 write_voters_three
-out_clear=$(run_loop "$DCLEAR" 1 --round-cap 2)
+out_clear=$(run_loop "$DCLEAR" 1)
 printf '%s\n' "$out_clear" | grep -q '^LOOP_STATUS=complete$' || fail "artifact clear path should complete"
 ! grep -q 'stale accepted findings' "$DCLEAR/accepted-plan-findings.md" || fail "stale accepted-plan-findings.md was not cleared"
 ! grep -q 'stale ballot' "$DCLEAR/ballot.txt" || fail "stale ballot.txt was not cleared"
@@ -1656,7 +1661,7 @@ write_scout
 write_dispatch_one_slot
 write_collect_important_with_oos
 write_voters_three
-out_oos=$(run_loop "$DOOS" 1 --round-cap 2)
+out_oos=$(run_loop "$DOOS" 1)
 printf '%s\n' "$out_oos" | grep -q '^LOOP_STATUS=complete$' || fail "OOS filter path should complete"
 grep -q 'accepted OOS' "$DOOS/oos-accepted-design.md" || fail "accepted OOS missing"
 ! grep -q 'rejected OOS' "$DOOS/oos-accepted-design.md" || fail "rejected OOS leaked into accepted OOS"
@@ -1672,7 +1677,7 @@ write_dispatch_one_slot
 write_collect_important_with_oos
 write_voters_three
 write_tally_main_agent
-out_ma=$(run_loop "$DMA" 1 --round-cap 2)
+out_ma=$(run_loop "$DMA" 1)
 printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent status should be preserved"
 grep -q 'accepted OOS' "$DMA/oos-accepted-design.md" || fail "main-agent OOS accumulation missing"
 expected_dma_scope="$(cd "$DMA" && pwd -P)/plan-review-scope-anchor.txt"
@@ -1695,7 +1700,7 @@ write_dispatch_one_slot
 write_collect_important
 write_voters_three
 write_tally_error
-out_tm=$(run_loop "$DTM" 1 --round-cap 2)
+out_tm=$(run_loop "$DTM" 1)
 printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "tally-error should surface tally-error loop status"
 printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "tally-error should skip revise"
 grep -q 'prior tally OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should restore prior OOS content"
@@ -1718,7 +1723,7 @@ write_dispatch_one_slot
 write_collect_empty_fail
 write_voters_three
 set +e
-out_pfoos=$(run_loop "$DPFOOS" 1 --round-cap 2)
+out_pfoos=$(run_loop "$DPFOOS" 1)
 pfoos_rc=$?
 set -e
 [[ "$pfoos_rc" -eq 1 ]] || fail "panel-failed OOS restore should exit 1"

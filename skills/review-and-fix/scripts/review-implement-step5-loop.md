@@ -12,11 +12,11 @@ Internal loop driver for `/implement` Step 5. Runs repeated `review-and-fix.sh` 
 
 ## Starting-round resume
 
-At loop entry, `run_implement_loop` computes the effective cap from `ROUND_CAP + count_prior_degraded_rounds(IMPLEMENT_TMPDIR, STARTING_ROUND)` before validating the prior-round artifact. If `STARTING_ROUND > entry_effective_cap`, the loop emits `mav-resume-past-cap` only when the immediately previous `round-N/review-and-fix.env` exists. That artifact anchor prevents arbitrary high `--starting-round` values from being silently treated as success.
+At loop entry, `run_implement_loop` uses the flat `ROUND_CAP` value as the effective cap (5 from `/implement` Step 5) before validating the prior-round artifact. If `STARTING_ROUND > cap`, the loop emits `mav-resume-past-cap` only when the immediately previous `round-N/review-and-fix.env` exists. That artifact anchor prevents arbitrary high `--starting-round` values from being silently treated as success.
 
 When the previous artifact is required but not visible, `step5_probe_prior_round_env` checks once, runs `sync >/dev/null 2>&1 || true`, then checks once more. This is a bounded best-effort retry for just-written files; `sync` is not a guaranteed cache-invalidation barrier.
 
-If both probes miss, the loop emits one diagnostic line with `IMPLEMENT_TMPDIR`, `STARTING_ROUND`, `expected_env_path`, `base_cap`, `entry_prior_deg`, and `entry_effective_cap`, then returns a `stall` envelope with `STALL_REASON=starting-round-invalid` and `STALL_TRACKING=false`. The orchestrator must not rename the tracking issue to `[STALLED]` for that stall reason, but it still needs to persist that `STALL_TRACKING=false` decision into Step 18's durable state: rewrite the existing `ship-pr-state.sh` when present, or seed the minimal Step-8-shape `ship-pr-state.sh` described in `skills/implement/SKILL.md` Step 5 before jumping to cleanup.
+If both probes miss, the loop emits one diagnostic line with `IMPLEMENT_TMPDIR`, `STARTING_ROUND`, `expected_env_path`, and `base_cap`, then returns a `stall` envelope with `STALL_REASON=starting-round-invalid` and `STALL_TRACKING=false`. The orchestrator must not rename the tracking issue to `[STALLED]` for that stall reason, but it still needs to persist that `STALL_TRACKING=false` decision into Step 18's durable state: rewrite the existing `ship-pr-state.sh` when present, or seed the minimal Step-8-shape `ship-pr-state.sh` described in `skills/implement/SKILL.md` Step 5 before jumping to cleanup.
 
 ## Pre-coder head and structural-diff telemetry
 

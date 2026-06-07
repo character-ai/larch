@@ -92,7 +92,7 @@ launcher_env=(env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
 
 echo "=== missing --design-tmpdir ==="
 set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --round-cap 5 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then
@@ -102,23 +102,12 @@ else
 fi
 assert_contains "$out" '--design-tmpdir is required' 'missing design-tmpdir error'
 
-echo "=== missing --round-cap ==="
 DARGV="$TMP/argv"
 write_common_inputs "$DARGV" SIMPLE
-set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 2 ]]; then
-    pass 'missing round-cap exits 2'
-else
-    fail "missing round-cap rc=$rc"
-fi
-assert_contains "$out" '--round-cap is required' 'missing round-cap error'
 
 echo "=== unknown option ==="
 set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 --bogus 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --bogus 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then
@@ -145,7 +134,7 @@ D_DEFAULT="$TMP/default-mode"
 write_common_inputs "$D_DEFAULT" SIMPLE
 stub="$(write_loop_stub "$D_DEFAULT" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_DEFAULT" --round-cap 5)"
+    --design-tmpdir "$D_DEFAULT")"
 assert_contains "$out" 'LOOP_STATUS=complete' 'omitted mode defaults to no-preview review path'
 
 echo "=== --preview-only renders plan and creates sentinel ==="
@@ -189,20 +178,6 @@ if [[ -z "$(printf '%s' "$out2" | tr -d '[:space:]')" ]]; then
     pass '--preview-only second call emits nothing (sentinel suppresses)'
 else
     fail "--preview-only second call should emit nothing; got: ${out2:0:100}"
-fi
-
-echo "=== --preview-only without --round-cap ==="
-D_PV2="$TMP/preview-no-cap"
-write_common_inputs "$D_PV2" SIMPLE
-set +e
-out="$("${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$preview_stub" \
-    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV2" 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 0 ]]; then
-    pass '--preview-only without --round-cap exits 0'
-else
-    fail "--preview-only without --round-cap rc=$rc (should not require --round-cap)"
 fi
 
 echo "=== --preview-only non-header renderer output does not create sentinel ==="
@@ -406,7 +381,7 @@ D_NP="$TMP/no-preview"
 write_common_inputs "$D_NP" SIMPLE
 stub="$(write_loop_stub "$D_NP" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --no-preview --design-tmpdir "$D_NP" --round-cap 5)"
+    --no-preview --design-tmpdir "$D_NP")"
 if [[ "$out" == *'## Plan Candidate for Review'* ]]; then
     fail '--no-preview should not output plan preview'
 else
@@ -417,11 +392,11 @@ assert_contains "$out" 'LOOP_STATUS=complete' '--no-preview emits review KVs'
 echo "=== cap-reached short-circuit ==="
 D1="$TMP/cap"
 write_common_inputs "$D1" SIMPLE
-printf '3\n' >"$D1/review-round-count.txt"
+printf '5\n' >"$D1/review-round-count.txt"
 stub="$(write_loop_stub "$D1" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1" --round-cap 5)"
+    --design-tmpdir "$D1")"
 rc=$?
 set -e
 if [[ "$rc" -eq 0 ]]; then
@@ -432,12 +407,12 @@ fi
 assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached KV'
 assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'skipped-cap-reached KV'
 grep -Fq 'LOOP_STATUS=cap-reached' "$D1/.step3-review-result.env" || fail 'result env cap-reached'
-[[ "$(cat "$D1/review-round-count.txt")" == "3" ]] || fail 'cap-reached leaves counter unchanged'
+[[ "$(cat "$D1/review-round-count.txt")" == "5" ]] || fail 'cap-reached leaves counter unchanged'
 
 echo "=== cap-reached cleans stale round forensics ==="
 D1B="$TMP/cap-cleanup"
 write_common_inputs "$D1B" SIMPLE
-printf '3\n' >"$D1B/review-round-count.txt"
+printf '5\n' >"$D1B/review-round-count.txt"
 mkdir -p "$D1B/plan-review/round-1" "$D1B/plan-review/round-2"
 printf 'stale\n' >"$D1B/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$D1B/plan-review/round-2/stale.txt"
@@ -450,7 +425,7 @@ printf 'stale ballot\n' >"$D1B/ballot.txt"
 stub="$(write_loop_stub "$D1B" 'exit 97')"
 set +e
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1B" --round-cap 5 >/dev/null
+    --design-tmpdir "$D1B" >/dev/null
 rc=$?
 set -e
 if [[ "$rc" -eq 0 ]]; then
@@ -476,7 +451,7 @@ printf 'keep-me\n' >"$D1S/plan-review/round-keeper/stale.txt"
 ln -s "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-2"
 stub="$(write_loop_stub "$D1S" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1S" --round-cap 5)"
+    --design-tmpdir "$D1S")"
 assert_contains "$out" 'refusing to remove symlinked round artifact round-2' 'symlinked round cleanup warning'
 [[ ! -e "$D1S/plan-review/round-1" ]] || fail 'non-symlink round-1 should be removed during cleanup'
 [[ -f "$D1S/plan-review/round-keeper/stale.txt" ]] || fail 'symlinked round-2 target must survive cleanup'
@@ -488,7 +463,7 @@ write_common_inputs "$D1C" SIMPLE
 printf 'abc\n' >"$D1C/review-round-count.txt"
 stub="$(write_loop_stub "$D1C" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1C" --round-cap 5)"
+    --design-tmpdir "$D1C")"
 assert_contains "$out" 'review-round-count.txt non-numeric' 'non-numeric count warning'
 if [[ "$(cat "$D1C/review-round-count.txt")" == "1" ]]; then
     pass 'non-numeric count treated as zero then round 1 persisted'
@@ -501,7 +476,7 @@ D2="$TMP/persist"
 write_common_inputs "$D2" SIMPLE
 stub="$(write_loop_stub "$D2" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D2" --round-cap 5 >/dev/null
+    --design-tmpdir "$D2" >/dev/null
 if [[ "$(cat "$D2/review-round-count.txt")" == "1" ]]; then
     pass 'pending round persisted'
 else
@@ -514,7 +489,7 @@ write_common_inputs "$D3" HARD
 printf '2\n' >"$D3/review-round-count.txt"
 stub="$(write_loop_stub "$D3" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D3" --round-cap 5 >/dev/null
+    --design-tmpdir "$D3" >/dev/null
 if [[ "$(cat "$D3/review-round-count.txt")" == "2" ]]; then
     pass 'tally-error rollback'
 else
@@ -527,7 +502,7 @@ write_common_inputs "$D3B" HARD
 printf '2\n' >"$D3B/review-round-count.txt"
 stub="$(write_loop_stub "$D3B" "printf 'LOOP_STATUS=tally-error\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D3B" --round-cap 5 >/dev/null
+    --design-tmpdir "$D3B" >/dev/null
 if [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]]; then
     pass 'loop-status tally-error rollback'
 else
@@ -540,7 +515,7 @@ write_common_inputs "$D4" SIMPLE
 printf '1\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D4" --round-cap 5 >/dev/null
+    --design-tmpdir "$D4" >/dev/null
 if [[ "$(cat "$D4/review-round-count.txt")" == "1" ]]; then
     pass 'degraded-empty-collector rollback'
 else
@@ -553,7 +528,7 @@ write_common_inputs "$D5" SIMPLE
 printf '1\n' >"$D5/review-round-count.txt"
 stub="$(write_loop_stub "$D5" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=panel-failed\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 1")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D5" --round-cap 5 >/dev/null
+    --design-tmpdir "$D5" >/dev/null
 if [[ "$(cat "$D5/review-round-count.txt")" == "2" ]]; then
     pass 'panel-failed keeps round'
 else
@@ -565,7 +540,7 @@ D6="$TMP/weird"
 write_common_inputs "$D6" SIMPLE
 stub="$(write_loop_stub "$D6" "printf 'LOOP_STATUS=weird-status\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6" --round-cap 5)"
+    --design-tmpdir "$D6")"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
 echo "=== removed loop-only LOOP_STATUS normalizes on non-zero rc ==="
@@ -573,7 +548,7 @@ D6B="$TMP/revision-failed-rc"
 write_common_inputs "$D6B" SIMPLE
 stub="$(write_loop_stub "$D6B" "printf 'LOOP_STATUS=revision-failed\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6B" --round-cap 5)"
+    --design-tmpdir "$D6B")"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'removed revision-failed normalizes on rc 1'
 assert_contains "$out" 'missing or invalid LOOP_STATUS' 'removed revision-failed emits invalid-status warning'
 
@@ -583,7 +558,7 @@ write_common_inputs "$D6C" SIMPLE
 printf 'scope anchor\n' >"$D6C/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D6C" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D6C/plan-review-scope-anchor.txt\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6C" --round-cap 5)"
+    --design-tmpdir "$D6C")"
 assert_contains "$out" 'LOOP_STATUS=main-agent-vote-required' 'main-agent-vote-required preserved on rc 1'
 grep -Fq 'LOOP_STATUS=main-agent-vote-required' "$D6C/.step3-review-result.env" || fail 'result env main-agent-vote-required'
 
@@ -607,7 +582,7 @@ loop_stub="$(write_loop_stub "$D10" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
-    --design-tmpdir "$D10" --round-cap 5)"
+    --design-tmpdir "$D10")"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then
@@ -633,7 +608,7 @@ TALLY_PLAN_REVIEW_STATUS=ok
 EOF
 stub="$(write_loop_stub "$D7" 'exit 2')"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D7" --round-cap 5)"
+    --design-tmpdir "$D7")"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'stale inner env ignored'
 if grep -Fq 'ACCEPTED_COUNT=9' "$D7/.step3-review-result.env"; then
     fail 'stale accepted count leaked into normalized result env'
@@ -658,17 +633,25 @@ COLLECT_FAILURE_COUNT=0
 EOF
 printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=7\nAGGREGATOR_STATUS=stdout\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D8" --round-cap 5)"
+    --design-tmpdir "$D8")"
 assert_contains "$out" 'LOOP_STATUS=complete' 'inner file loop status wins'
 grep -Fq 'AGGREGATOR_STATUS=file' "$D8/.step3-review-result.env" || fail 'inner file aggregator should win over stdout'
 
-echo "=== invalid round-cap via real plan-review-loop normalizes to panel-failed ==="
+echo "=== removed round-cap flag is rejected as unknown ==="
 D11="$TMP/invalid-cap-real"
 write_common_inputs "$D11" SIMPLE
+round_cap_flag='--round-'"cap"
+set +e
 out="$("${launcher_env[@]}" "$LAUNCHER" \
-    --design-tmpdir "$D11" --round-cap 0 2>&1)"
-assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-failed'
-grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
+    --design-tmpdir "$D11" "$round_cap_flag" 0 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass 'removed round-cap exits 2'
+else
+    fail "removed round-cap rc=$rc"
+fi
+assert_contains "$out" "unknown option: $round_cap_flag" 'removed round-cap unknown option'
 
 echo "=== driver argv matches plan-review-loop contract ==="
 # Edit-in-sync: seam stub argv whitelist must match plan-review-loop.sh case parser
@@ -681,7 +664,7 @@ cat >"$seam_stub" <<'STUBEOF'
 set -euo pipefail
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--round-cap|--timeout)
+        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--timeout)
             shift 2
             ;;
         *)
@@ -695,7 +678,7 @@ exit 0
 STUBEOF
 chmod +x "$seam_stub"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$seam_stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SEAM" --round-cap 5)"
+    --design-tmpdir "$D_SEAM")"
 assert_contains "$out" 'LOOP_STATUS=complete' 'integration seam settled LOOP_STATUS'
 grep -Fq 'LOOP_STATUS=complete' "$D_SEAM/.step3-review-result.env" || fail 'integration seam result env complete'
 
@@ -704,7 +687,7 @@ D11B="$TMP/breadcrumb-rounds"
 write_common_inputs "$D11B" SIMPLE
 stub="$(write_loop_stub "$D11B" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D11B" --round-cap 5)"
+    --design-tmpdir "$D11B")"
 assert_contains "$out" 'STEP3_REVIEW_ROUND_NUM=1' 'stdout STEP3_REVIEW_ROUND_NUM breadcrumb'
 assert_contains "$out" 'ROUND_NUM=1' 'stdout ROUND_NUM breadcrumb'
 
@@ -717,7 +700,7 @@ printf 'scope anchor\n' >"$D_SCOPE/plan-review-scope-anchor.txt"
 printf 'stale scope\n' >"$D_STALE/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D_SCOPE" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D_SCOPE/plan-review-scope-anchor.txt\n'; exit 0")"
 out="$("${launcher_env[@]}" IMPLEMENT_TMPDIR="$D_STALE" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE")"
 assert_contains "$out" "SCOPE_ANCHOR_FILE=$D_SCOPE/plan-review-scope-anchor.txt" 'scope anchor uses DESIGN_TMPDIR path'
 grep -Fq "SCOPE_ANCHOR_FILE=$D_SCOPE/plan-review-scope-anchor.txt" "$D_SCOPE/.step3-review-result.env" || fail 'scope anchor persisted on main-agent-vote-required'
 
@@ -726,7 +709,7 @@ write_common_inputs "$D_SCOPE_OK" SIMPLE
 printf 'scope anchor\n' >"$D_SCOPE_OK/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D_SCOPE_OK" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D_SCOPE_OK/plan-review-scope-anchor.txt\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_OK" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_OK")"
 assert_contains "$out" "SCOPE_ANCHOR_FILE=$D_SCOPE_OK/plan-review-scope-anchor.txt" 'scope anchor persists on ok complete stdout'
 grep -Fq "SCOPE_ANCHOR_FILE=$D_SCOPE_OK/plan-review-scope-anchor.txt" "$D_SCOPE_OK/.step3-review-result.env" || fail 'scope anchor persisted on ok complete result env'
 
@@ -736,7 +719,7 @@ write_common_inputs "$D_SCOPE_DESYNC" SIMPLE
 printf 'scope anchor\n' >"$D_SCOPE_DESYNC/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D_SCOPE_DESYNC" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D_SCOPE_DESYNC/plan-review-scope-anchor.txt\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_DESYNC" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_DESYNC")"
 assert_not_contains "$out" 'SCOPE_ANCHOR_FILE=' 'panel-failed desync omits scope anchor from stdout'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_DESYNC/.step3-review-result.env" && fail 'panel-failed desync should omit scope anchor from result env'
 
@@ -746,7 +729,7 @@ write_common_inputs "$D_SCOPE_STALE" SIMPLE
 printf 'scope anchor\n' >"$D_SCOPE_STALE/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D_SCOPE_STALE" "printf 'LOOP_STATUS=tally-error\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" SCOPE_ANCHOR_FILE="$D_SCOPE_STALE/plan-review-scope-anchor.txt" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_STALE" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_STALE")"
 assert_not_contains "$out" 'SCOPE_ANCHOR_FILE=' 'tally-error stale seed omits scope anchor from stdout'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_STALE/.step3-review-result.env" && fail 'tally-error stale seed should omit scope anchor from result env'
 
@@ -755,7 +738,7 @@ D_SCOPE_BAD="$TMP/scope-bad"
 write_common_inputs "$D_SCOPE_BAD" SIMPLE
 stub="$(write_loop_stub "$D_SCOPE_BAD" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=bad\rpath\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_BAD" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_BAD")"
 assert_not_contains "$out" 'SCOPE_ANCHOR_FILE=' 'CR/LF scope anchor is omitted from stdout'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_BAD/.step3-review-result.env" && fail 'CR/LF scope anchor should be omitted from result env'
 D_SCOPE_OUT="$TMP/scope-outside"
@@ -764,7 +747,7 @@ outside_anchor="$TMP/outside-anchor.txt"
 printf 'outside\n' >"$outside_anchor"
 stub="$(write_loop_stub "$D_SCOPE_OUT" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$outside_anchor\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_OUT" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_OUT")"
 assert_not_contains "$out" 'SCOPE_ANCHOR_FILE=' 'outside scope anchor is omitted from stdout'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_OUT/.step3-review-result.env" && fail 'outside scope anchor should be omitted from result env'
 
@@ -774,7 +757,7 @@ write_common_inputs "$D_SCOPE_EMPTY" SIMPLE
 : >"$D_SCOPE_EMPTY/plan-review-scope-anchor.txt"
 stub="$(write_loop_stub "$D_SCOPE_EMPTY" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_EMPTY" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_EMPTY")"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'zero-byte staged anchor downgrades to panel-failed'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_EMPTY/.step3-review-result.env" && fail 'zero-byte staged anchor must omit scope anchor'
 
@@ -783,7 +766,7 @@ D_SCOPE_REC="$TMP/scope-recover"
 write_common_inputs "$D_SCOPE_REC" SIMPLE
 stub="$(write_loop_stub "$D_SCOPE_REC" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D_SCOPE_REC" --round-cap 5)"
+    --design-tmpdir "$D_SCOPE_REC")"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'missing main-agent anchor downgrades to panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D_SCOPE_REC/.step3-review-result.env" || fail 'panel-failed recovery persisted'
 grep -Fq 'SCOPE_ANCHOR_FILE=' "$D_SCOPE_REC/.step3-review-result.env" && fail 'panel-failed recovery must omit scope anchor'
@@ -794,7 +777,7 @@ write_common_inputs "$D9" SIMPLE
 ln -s "$D9/elsewhere.env" "$D9/.step3-plan-review-result.env"
 stub="$(write_loop_stub "$D9" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=stdout\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D9" --round-cap 5)"
+    --design-tmpdir "$D9")"
 assert_contains "$out" 'LOOP_STATUS=complete' 'symlink inner stdout fallback loop status'
 grep -Fq 'AGGREGATOR_STATUS=stdout' "$D9/.step3-review-result.env" || fail 'symlink inner should use stdout fallback'
 
@@ -805,7 +788,7 @@ ln -sf "$D12/outer-target.env" "$D12/.step3-review-result.env"
 stub="$(write_loop_stub "$D12" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D12" --round-cap 5 2>&1)"
+    --design-tmpdir "$D12" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then
@@ -821,12 +804,12 @@ assert_contains "$out" 'LOOP_STATUS=complete' 'symlinked outer still emits LOOP_
 echo "=== cap-reached with symlinked outer result env still emits cap-reached ==="
 D12B="$TMP/symlink-outer-cap"
 write_common_inputs "$D12B" SIMPLE
-printf '3\n' >"$D12B/review-round-count.txt"
+printf '5\n' >"$D12B/review-round-count.txt"
 ln -sf "$D12B/outer-cap-target.env" "$D12B/.step3-review-result.env"
 loop_stub="$(write_loop_stub "$D12B" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
-    --design-tmpdir "$D12B" --round-cap 5 2>&1)"
+    --design-tmpdir "$D12B" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then

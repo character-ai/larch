@@ -153,7 +153,7 @@ $case_dir/feature-description.txt
 --run-id
 run-xyz" "dynamic-archetypes forwarded on unified argv"
 
-echo "=== degraded prior rounds extend effective round cap ==="
+echo "=== degraded prior rounds do not extend hard round cap ==="
 case_dir="$TMP/degraded-cap"
 make_tmpdir "$case_dir" degraded-cap true false
 mkdir -p "$case_dir/round-1" "$case_dir/round-2"
@@ -162,7 +162,7 @@ printf 'DEGRADED_ROUND=false\n' > "$case_dir/round-2/review-and-fix.env"
 argv_file="$TMP/degraded-cap.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 3 >/dev/null
 assert_contains "$(cat "$argv_file")" "--round-cap
-6" "degraded prior rounds add back onto unified base round cap"
+5" "degraded prior rounds keep unified hard round cap"
 
 echo "=== canonical RUN_ID prefers sentinel over session-id ==="
 case_dir="$TMP/run-id-sentinel"

@@ -16,11 +16,10 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview] [--round-cap N]'
+    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview]'
 }
 
 DESIGN_TMPDIR_ARG=""
-ROUND_CAP=""
 _preview_only=false
 _no_preview=false
 
@@ -29,11 +28,6 @@ while [[ $# -gt 0 ]]; do
         --design-tmpdir)
             [[ $# -ge 2 ]] || fail '--design-tmpdir requires a value'
             DESIGN_TMPDIR_ARG="$2"
-            shift 2
-            ;;
-        --round-cap)
-            [[ $# -ge 2 ]] || fail '--round-cap requires a value'
-            ROUND_CAP="$2"
             shift 2
             ;;
         --preview-only)
@@ -67,7 +61,7 @@ fi
 [[ -n "$DESIGN_TMPDIR_ARG" ]] || { usage; fail '--design-tmpdir is required'; }
 
 if [[ "$_preview_only" == true ]]; then
-    # Preview mode: render plan-candidate preview live. Does not require --round-cap.
+    # Preview mode: render plan-candidate preview live.
     # Does not cd/canonicalize the tmpdir — pass raw path so allowlist warnings work.
     SESSION_ENV_PATH="$DESIGN_TMPDIR_ARG/session-env.sh"
     PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
@@ -116,8 +110,7 @@ if [[ "$_preview_only" == true ]]; then
     exit 0
 fi
 
-# --no-preview path: requires --round-cap; canonicalizes tmpdir.
-[[ -n "$ROUND_CAP" ]] || { usage; fail '--round-cap is required'; }
+# --no-preview path: canonicalizes tmpdir.
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 export DESIGN_TMPDIR
@@ -192,10 +185,7 @@ if [[ -s "$ROUND_COUNT_FILE" ]]; then
 fi
 
 _tier="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"
-case "$_tier" in
-    SIMPLE) _round_cap=3 ;;
-    *) _round_cap=5 ;;
-esac
+_round_cap=5
 
 if ((_round_count >= _round_cap)); then
     emit "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**"
@@ -309,8 +299,7 @@ else
             --feature-file "$_feature_file" \
             --codex-present "${CODEX_PRESENT:-false}" \
             --cursor-present "${CURSOR_PRESENT:-false}" \
-            --round-num "$ROUND_NUM" \
-            --round-cap "$ROUND_CAP")
+            --round-num "$ROUND_NUM")
         _plan_review_rc=$?
         set -e
 

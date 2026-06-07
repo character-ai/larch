@@ -25,9 +25,6 @@ source "$PLUGIN_ROOT/scripts/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
-# shellcheck source=scripts/lib-implement-round-cap.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-implement-round-cap.sh"
 # shellcheck source=scripts/lib-vote-tally.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"

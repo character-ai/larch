@@ -60,8 +60,7 @@ run_driver() {
         RUN_STEP3_TEST_DH="$design_tmpdir" \
         RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" \
         "$LAUNCHER" \
-        --design-tmpdir "$design_tmpdir" \
-        --round-cap 5
+        --design-tmpdir "$design_tmpdir"
 }
 
 echo "=== missing counter starts at round 1 ==="
@@ -74,7 +73,7 @@ grep -Fq 'STEP3_REVIEW_ROUND_NUM=1' "$D1/.step3-review-cap.env" || fail 'expecte
 echo "=== cap reached bypasses loop ==="
 D2="$TMPROOT/cap-reached"
 write_common_inputs "$D2" SIMPLE
-printf '3\n' >"$D2/review-round-count.txt"
+printf '5\n' >"$D2/review-round-count.txt"
 printf 'stale accepted\n' >"$D2/accepted-plan-findings.md"
 printf 'stale tally\n' >"$D2/voting-tally.md"
 stub="$(write_loop_stub "$D2" 'exit 97')"
@@ -82,7 +81,7 @@ driver_out=$(run_driver "$D2" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
 printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
-[[ "$(cat "$D2/review-round-count.txt")" == "3" ]] || fail 'cap-reached path must leave counter unchanged'
+[[ "$(cat "$D2/review-round-count.txt")" == "5" ]] || fail 'cap-reached path must leave counter unchanged'
 [[ ! -e "$D2/accepted-plan-findings.md" ]] || fail 'cap-reached path must clear stale accepted findings'
 [[ ! -e "$D2/voting-tally.md" ]] || fail 'cap-reached path must clear stale voting tally'
 

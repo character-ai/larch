@@ -3025,10 +3025,6 @@ if section_runs step5-starting-round; then
     mkdir -p "$step5_tmp"
     PLUGIN_ROOT="$REPO_ROOT"
     export PLUGIN_ROOT
-    # shellcheck source=scripts/lib-implement-round-cap.sh
-    # shellcheck disable=SC1091
-    . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
-    eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
     eval "$(sed -n '/^pre_coder_snapshot_dir()/,/^}/p' "$SCRIPT")"
     eval "$(sed -n '/^clear_stale_pre_coder_snapshot_artifacts/,/^}/p' "$SCRIPT")"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
@@ -3084,9 +3080,9 @@ if section_runs step5-starting-round; then
 
     step5_assert_diagnostic_keys() {
         local err_file="$1" key="" count=""
-        count=$(grep -c 'IMPLEMENT_TMPDIR=.*STARTING_ROUND=.*expected_env_path=.*base_cap=.*entry_prior_deg=.*entry_effective_cap=' "$err_file" || true)
+        count=$(grep -c 'IMPLEMENT_TMPDIR=.*STARTING_ROUND=.*expected_env_path=.*base_cap=' "$err_file" || true)
         [[ "$count" == "1" ]] || fail "step5-starting-round expected one diagnostic line in $err_file"
-        for key in IMPLEMENT_TMPDIR STARTING_ROUND expected_env_path base_cap entry_prior_deg entry_effective_cap; do
+        for key in IMPLEMENT_TMPDIR STARTING_ROUND expected_env_path base_cap; do
             grep -Fq "${key}=" "$err_file" || fail "step5-starting-round missing diagnostic key ${key}"
         done
     }
@@ -3099,14 +3095,13 @@ if section_runs step5-starting-round; then
     }
 
     step5_run_loop_case() {
-        local case_name="$1" starting_round="$2" round_cap="$3" sync_mode="$4" body_mode="$5" prior_deg_mode="${6:-normal}"
+        local case_name="$1" starting_round="$2" round_cap="$3" sync_mode="$4" body_mode="$5"
         local case_dir="$step5_tmp/$case_name" out_file="" err_file=""
         out_file="$case_dir/out.env"
         err_file="$case_dir/err.log"
         mkdir -p "$case_dir/impl"
         STEP5_SYNC_MODE="$sync_mode"
         STEP5_BODY_MODE="$body_mode"
-        STEP5_COUNT_PRIOR_MODE="$prior_deg_mode"
         STEP5_SYNC_CREATE_PATH="$case_dir/impl/round-$((10#$starting_round - 1))/review-and-fix.env"
         STEP5_FLUSH_LOG="$case_dir/flush.log"
         : > "$STEP5_FLUSH_LOG"
@@ -3121,27 +3116,12 @@ if section_runs step5-starting-round; then
             emit_kv() { printf '%s=%s\n' "$1" "$2"; }
             larch_err() { printf '%s\n' "$*" >&2; }
             flush_review_batches() { printf 'flush %s %s\n' "$1" "$2" >> "$STEP5_FLUSH_LOG"; }
+            # shellcheck disable=SC2317  # test double invoked by sourced step5 loop
             kv_get() {
                 local file="$1" key="$2"
                 awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
             }
             count_high_severity_accepted() { printf '0\n'; }
-            case "$STEP5_COUNT_PRIOR_MODE" in
-                normal) ;;
-                entry-nonnumeric)
-                    count_prior_degraded_rounds() {
-                        if [[ "$2" == "$STARTING_ROUND" ]]; then
-                            printf 'bogus\n'
-                        else
-                            step5_original_count_prior_degraded_rounds "$@"
-                        fi
-                    }
-                    ;;
-                *)
-                    printf 'unknown STEP5_COUNT_PRIOR_MODE=%s\n' "$STEP5_COUNT_PRIOR_MODE" >&2
-                    exit 98
-                    ;;
-            esac
             sync() {
                 case "$STEP5_SYNC_MODE" in
                     create-prior)
@@ -3248,29 +3228,26 @@ if section_runs step5-starting-round; then
     [[ "$flush_count" == "1" ]] || fail "step5 hoisted-clean expected one flush_review_batches call"
     pass "step5-starting-round hoisted-clean"
 
-    # Case 4a: inflated cap without the immediate prior artifact is rejected by the anchor.
-    step5_reset_case inflated-anchor-reject
+    # Case 4a: degraded prior rounds no longer inflate the hard cap; missing immediate prior is rejected by the anchor.
+    step5_reset_case hard-cap-anchor-reject
     for round in 1 2 3 4 5; do
         step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" true
     done
-    step5_run_loop_case inflated-anchor-reject 11 5 noop fail-if-called
-    [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 inflated-anchor-reject expected exit 2 got $STEP5_LAST_RC"
-    step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 10
+    step5_run_loop_case hard-cap-anchor-reject 11 5 noop fail-if-called
+    [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 hard-cap-anchor-reject expected exit 2 got $STEP5_LAST_RC"
+    step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 5
     step5_assert_diagnostic_keys "$STEP5_LAST_ERR"
-    pass "step5-starting-round inflated-anchor-reject"
+    pass "step5-starting-round hard-cap-anchor-reject"
 
-    # Case 4b: inflated cap with round 10 present resumes past cap.
-    step5_reset_case hoisted-inflated
+    # Case 4b: degraded prior rounds no longer inflate; round 5 artifact anchors past-cap success.
+    step5_reset_case hoisted-hard-cap-degraded
     for round in 1 2 3 4 5; do
         step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" true
     done
-    for round in 6 7 8 9 10; do
-        step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" false
-    done
-    step5_run_loop_case hoisted-inflated 11 5 noop fail-if-called
-    [[ "$STEP5_LAST_RC" -eq 0 ]] || fail "step5 hoisted-inflated expected exit 0 got $STEP5_LAST_RC"
-    step5_assert_envelope "$STEP5_LAST_OUT" mav-resume-past-cap false "" 10
-    pass "step5-starting-round hoisted-inflated"
+    step5_run_loop_case hoisted-hard-cap-degraded 6 5 noop fail-if-called
+    [[ "$STEP5_LAST_RC" -eq 0 ]] || fail "step5 hoisted-hard-cap-degraded expected exit 0 got $STEP5_LAST_RC"
+    step5_assert_envelope "$STEP5_LAST_OUT" mav-resume-past-cap false "" 5
+    pass "step5-starting-round hoisted-hard-cap-degraded"
 
     # Case 5: cap-crossing STARTING_ROUND with missing immediate prior artifact fails closed.
     step5_reset_case hoisted-anchor-missing
@@ -3291,15 +3268,6 @@ if section_runs step5-starting-round; then
     [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 starting-round-999 expected exit 2 got $STEP5_LAST_RC"
     step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 5
     pass "step5-starting-round attack-999"
-
-    # Case 8: non-numeric prior-degraded count fails closed before the loop starts.
-    step5_reset_case entry-prior-deg-nonnumeric
-    step5_run_loop_case entry-prior-deg-nonnumeric 1 5 noop fail-if-called entry-nonnumeric
-    [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 entry-prior-deg-nonnumeric expected exit 2 got $STEP5_LAST_RC"
-    step5_assert_envelope "$STEP5_LAST_OUT" stall true env-write-failed 5
-    grep -Fq 'count_prior_degraded_rounds returned non-numeric entry_prior_deg=bogus' "$STEP5_LAST_ERR" \
-        || fail "step5 entry-prior-deg-nonnumeric missing stderr"
-    pass "step5-starting-round entry-prior-deg-nonnumeric"
 
     # Case: terminal lint-fix arm surfaces STDERR_TAIL_PATH before stall envelope.
     step5_reset_case lint-fix-terminal-tail
@@ -3400,6 +3368,7 @@ STUB
         emit_kv() { printf '%s=%s\n' "$1" "$2"; }
         larch_err() { printf '%s\n' "$*" >&2; }
         flush_review_batches() { :; }
+        # shellcheck disable=SC2317  # test double invoked by sourced step5 loop
         kv_get() {
             local file="$1" key="$2"
             awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true

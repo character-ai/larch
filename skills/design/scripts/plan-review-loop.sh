@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # plan-review-loop.sh — Single-pass /design plan-review driver.
 # --round-num is a stateless integer supplied by the caller; this script does
-# not read or write review-round-count.txt. --round-cap is accepted for
-# backward-compatible argv validation only; it does not enable inner loops.
+# not read or write review-round-count.txt.
 
 set -euo pipefail
 
@@ -43,14 +42,13 @@ source "$SCRIPT_DIR/lib-phase-driver.sh"
 source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 
 usage() {
-    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
+    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
 }
 
 DESIGN_TMPDIR=""
 PLAN_FILE=""
 FEATURE_FILE=""
 ROUND_NUM="1"
-ROUND_CAP="${LARCH_DESIGN_ROUND_CAP:-5}"
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 COLLECT_TIMEOUT="1860"
@@ -84,7 +82,6 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
-        --round-cap) ROUND_CAP="${2:?}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) PANEL_TIMEOUT="${2:?}"; COLLECT_TIMEOUT="${2:?}"; shift 2 ;;
@@ -101,9 +98,6 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num mu
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
 case "$COLLECT_TIMEOUT" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --timeout must be a positive integer"; exit 2 ;; esac
-case "$ROUND_CAP" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2 ;; esac
-ROUND_CAP=$((10#$ROUND_CAP))
-(( ROUND_CAP > 0 )) || { larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2; }
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 

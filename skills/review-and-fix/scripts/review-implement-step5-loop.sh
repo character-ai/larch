@@ -158,16 +158,8 @@ run_implement_loop() {
     case "$STARTING_ROUND" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --starting-round must be a positive integer"; exit 2 ;; esac
     (( 10#$STARTING_ROUND > 0 )) || { larch_err "review-and-fix.sh: --starting-round must be positive"; exit 2; }
 
-    local entry_prior_deg="" entry_effective_cap="" prior_round_num=0 expected_env_path=""
-    entry_prior_deg="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$STARTING_ROUND")"
-    case "$entry_prior_deg" in
-        ''|*[!0-9]*)
-            larch_err "review-and-fix.sh: count_prior_degraded_rounds returned non-numeric entry_prior_deg=${entry_prior_deg:-}"
-            step5_emit_final_envelope stall true env-write-failed 0 "$STARTING_ROUND" unknown "" "" "$base_cap"
-            exit 2
-            ;;
-    esac
-    entry_effective_cap=$((10#$base_cap + 10#$entry_prior_deg))
+    local entry_effective_cap="" prior_round_num=0 expected_env_path=""
+    entry_effective_cap=$((10#$base_cap))
 
     if (( 10#$STARTING_ROUND > 1 )); then
         prior_round_num=$((10#$STARTING_ROUND - 1))
@@ -178,14 +170,14 @@ run_implement_loop() {
             exit 0
         fi
         if ! step5_probe_prior_round_env "$IMPLEMENT_TMPDIR" "$prior_round_num"; then
-            larch_err "IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR STARTING_ROUND=$STARTING_ROUND expected_env_path=$expected_env_path base_cap=$base_cap entry_prior_deg=$entry_prior_deg entry_effective_cap=$entry_effective_cap"
+            larch_err "IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR STARTING_ROUND=$STARTING_ROUND expected_env_path=$expected_env_path base_cap=$base_cap"
             step5_emit_final_envelope stall false starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$entry_effective_cap"
             exit 2
         fi
     fi
 
     local round_num=$((10#$STARTING_ROUND))
-    local effective_round_cap="" prior_deg="" degraded_env="" skip_ratio="" threshold="0.5"
+    local effective_round_cap="" skip_ratio="" threshold="0.5"
     local structural_loc substantial checks_sh lint_sh cap_out lint_out
     local post_round_status="" post_exit=0 post_coder="" post_skipped=0 post_fix=0 post_round_dir="" post_accepted=""
     local lint_attempts lint_max="${LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS:-3}"
@@ -203,8 +195,7 @@ run_implement_loop() {
     fi
 
     while true; do
-        prior_deg="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$round_num")"
-        effective_round_cap=$((10#$base_cap + 10#$prior_deg))
+        effective_round_cap=$((10#$base_cap))
 
         if (( round_num > effective_round_cap )); then
             step5_emit_final_envelope mav-resume-past-cap false "" "$rounds_completed" $((round_num - 1)) "${last_irf:-complete}" "${last_coder:-}" "${last_hint:-}" "$effective_round_cap"
@@ -399,11 +390,6 @@ run_implement_loop() {
                         ;;
                 esac
             done
-        fi
-
-        degraded_env="$(kv_get "${post_round_dir}/review-and-fix.env" DEGRADED_ROUND)"
-        if [[ "$degraded_env" == "true" ]]; then
-            effective_round_cap=$((effective_round_cap + 1))
         fi
 
         structural_loc=0
