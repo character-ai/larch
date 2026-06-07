@@ -394,9 +394,9 @@ LARCH_TOKEN_LEDGER="$vote_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
     || fail "claude_sub voter path launch failed (stderr: $(cat "$TMP/vote-err"))"
 grep -Fq '"raw":"claude_vote"' "$vote_ledger" || fail "claude_sub voter path: raw provenance not claude_vote"
 
-# Plan voters/assessors map to claude_vote via substring patterns, not the
+# Plan voters map to claude_vote via substring patterns, not the
 # review fallback (issue #3637 FINDING_10).
-for vote_kind in claude-plan-voter claude-plan-assessor claude-phase2-plan-assessor; do
+for vote_kind in claude-plan-voter claude-code-voter; do
     vk_ledger="$TMP/claude-vote-$vote_kind-ledger.jsonl"
     LARCH_TOKEN_LEDGER="$vk_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
         --prompt-file "$prompt" \

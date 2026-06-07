@@ -147,7 +147,7 @@ emit "  • Codex:  $(state_phrase "$CODEX_STATE")"
 emit "  • Cursor: $(state_phrase "$CURSOR_STATE")"
 emit ""
 if [[ "$SKILL_LABEL" == "design" ]]; then
-    emit "What this means for /design: plan-review, decomposition, assessor, and plan-voter"
+    emit "What this means for /design: plan-review, decomposition, and plan-voter"
     emit "panels use availability-gated single launch (--no-fallback). Absent tools are"
     emit "omitted from the manifest; failed slots are dropped without cross-tool or Claude"
     emit "padding. When both externals are absent, plan-review uses one generic Claude"

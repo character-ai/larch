@@ -11,7 +11,7 @@ PYTHON ?= python3
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
-.PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
+.PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-run-analysis-quiet test-parse-bootstrap-routing-envelope
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
@@ -89,7 +89,7 @@ test-harnesses-3: test-launch-cursor-ci test-design-structure test-implement-str
 
 test-harnesses-4: test-review-and-fix-dispatch test-refresh-run-logs test-design-multi-round-integration test-sessionstart test-finalize-sanity-check test-lib-vote-tally test-check-phantom-dirty test-step-18b-final-report test-cache-root-validation test-token-cost test-token-cost-per-bucket test-get-issue-context test-research-banner test-alias-structure test-anti-halt
 
-test-harnesses-5: test-launch-review-cursor-core test-assess-plan-round test-dispatch-code-voters-regressions-r3-codex test-ci-wait test-local-cleanup test-mermaid-fragments test-redact test-step0b-router-flag-recovery test-design-driver test-compose-collector-failure-log test-render-cost-line-callsites test-render-cost-line-realism test-step3-orchestrator-fence test-quick-mode-docs-sync test-implement-step2-routing test-implement-step8-exit3-first-fixer
+test-harnesses-5: test-launch-review-cursor-core test-dispatch-code-voters-regressions-r3-codex test-ci-wait test-local-cleanup test-mermaid-fragments test-redact test-step0b-router-flag-recovery test-design-driver test-compose-collector-failure-log test-render-cost-line-callsites test-render-cost-line-realism test-step3-orchestrator-fence test-quick-mode-docs-sync test-implement-step2-routing test-implement-step8-exit3-first-fixer
 
 test-harnesses-6: test-dispatch-panel-core-dynamic test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step3-review test-generate-topology-docs test-render-run-summary test-larch-logs-batches test-block-submodule test-ship-pr-rebase test-ci-behind-count test-snapshot-plan-round test-auto-fix-plan-commands test-check-stale-plugin test-plan-block-strip-body test-extract-plan-scope-paths test-run-step2-dispatch test-tally-vote test-render-final-summary-bash32
 
@@ -97,14 +97,14 @@ test-harnesses-7: test-plan-review-loop test-tally-plan-review test-check-contai
 
 test-harnesses-8: test-implement-bootstrap test-tracking-issue-write test-audit-runs test-decompose-panel-dispatch test-pipe-sigpipe-safety test-lint-skill-invocations test-lint-literal-counts test-run-analysis-quiet test-scout-plan-archetypes-wrapper test-session-setup-repo-fallback test-review-and-fix-parsers test-review-implement-step5-loop-timing test-resolve-repo test-lib-design-tmpdir test-pause-skill test-refresh-execution-issues test-render-run-summary-callsites test-intra-batch-deps
 
-test-harnesses-9: test-design-pause-resume test-implement-finalize test-scout-dynamic-archetypes test-check-plan-size test-design-plan-quality-assessor test-plan-review-prompt test-implement-admission test-materialize-manifest-oos test-degraded-tools-gate test-clarify-state test-write-design-current-env test-render-reviewer-prompt test-list-issues test-alias-target-resolution test-plan-review-scope-anchor test-render-run-summary-format test-token-report-summary-format test-keepalive-sentinel test-ballot-parse
+test-harnesses-9: test-design-pause-resume test-implement-finalize test-scout-dynamic-archetypes test-check-plan-size test-plan-review-prompt test-implement-admission test-materialize-manifest-oos test-degraded-tools-gate test-clarify-state test-write-design-current-env test-render-reviewer-prompt test-list-issues test-alias-target-resolution test-plan-review-scope-anchor test-render-run-summary-format test-token-report-summary-format test-keepalive-sentinel test-ballot-parse
 
-test-harnesses-10: test-dispatch-code-voters-happy test-timing-ledger test-write-final-report test-design-postplan-emit test-upsert-diagrams-comment test-oos-disposition-gate test-session-setup-presence-defaults test-parse-input test-check-reviewer-failure-threshold test-run-step5-review test-launch-claude-ci test-step-telemetry-mark test-lint-no-raw-stderr-after-quiet-init test-render-assessor-prompt test-design-reentry-guard test-commit-implementation test-design-step3-state test-research-angle-prompts test-review-relevant-checks-helper
+test-harnesses-10: test-dispatch-code-voters-happy test-timing-ledger test-write-final-report test-design-postplan-emit test-upsert-diagrams-comment test-oos-disposition-gate test-session-setup-presence-defaults test-parse-input test-check-reviewer-failure-threshold test-run-step5-review test-launch-claude-ci test-step-telemetry-mark test-lint-no-raw-stderr-after-quiet-init test-design-reentry-guard test-commit-implementation test-design-step3-state test-research-angle-prompts test-review-relevant-checks-helper
 
-test-harnesses-11: test-dispatch-with-waterfall test-collect-agent-retry test-codex-implementer test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-retry-claude test-token-claude-source test-larch-logs-manifest test-dispatch-plan-assessors test-step3-review-cap test-flush-execution-issues test-implement-review-token-propagation test-lib-failed-agent-stderr-tail test-ci-status test-check-clean-tree test-emit-plan test-read-design-classification test-git-commit-only test-orchestrator-scope-sync test-body-file-title
+test-harnesses-11: test-dispatch-with-waterfall test-collect-agent-retry test-codex-implementer test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-retry-claude test-token-claude-source test-larch-logs-manifest test-step3-review-cap test-flush-execution-issues test-implement-review-token-propagation test-lib-failed-agent-stderr-tail test-ci-status test-check-clean-tree test-emit-plan test-read-design-classification test-git-commit-only test-orchestrator-scope-sync test-body-file-title
 
 test-harnesses-12: test-launch-codex-ci test-verify-run-log-completeness test-review-core test-render-final-summary test-oos-issue-cap test-validate-research-output test-validate-plan-commands test-scrub-log-secrets test-restore-finalize-state test-plan-block test-redact-tmpdir-paths test-rebase-push-keep-on-conflict test-emit-design-plan-preview test-lint-skill-md-flag-signature test-lib-cursor-auth test-invoke-plan-validator test-normalize-oos-block-header test-token-report-dedup test-implement-cleanup-roundtrip
-test-harnesses-13: test-dispatch-panel-reuse test-aggregate-findings test-collect-agent-results test-cursor-implementer test-harness-timer test-render-specialist-prompt test-file-design-oos test-tally-plan-assessor test-lint-awk-multibyte-regex test-lint-codex-exec-auth test-lint-bare-grep-probe test-deny-edit-write test-compose-plan-goals-test test-research-structure test-finalize-plan test-lib-net test-persist-implement-run-flags test-parse-bootstrap-routing-envelope test-brainstorm-prompts
+test-harnesses-13: test-dispatch-panel-reuse test-aggregate-findings test-collect-agent-results test-cursor-implementer test-harness-timer test-render-specialist-prompt test-file-design-oos test-lint-awk-multibyte-regex test-lint-codex-exec-auth test-lint-bare-grep-probe test-deny-edit-write test-compose-plan-goals-test test-research-structure test-finalize-plan test-lib-net test-persist-implement-run-flags test-parse-bootstrap-routing-envelope test-brainstorm-prompts
 
 test-harnesses-14: test-design-log-publish test-tally-code-votes test-collect-findings test-gh-pr-body-update test-compose-review-findings test-launch-codex-exec test-check-topology-rule-paths test-preflight-args test-classify-bump test-append-tool-failure test-session-env-roundtrip test-write-run-params test-parse-plan-commands test-agent-model-args test-git-push test-ci-rerun-failed test-implement-cleanup-script test-github-remote-repo test-implement-positional-issue
 
@@ -506,20 +506,6 @@ test-snapshot-plan-round:
 test-auto-fix-plan-commands:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-auto-fix-plan-commands.sh
 
-test-dispatch-plan-assessors:
-	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-dispatch-plan-assessors.sh
-
-test-render-assessor-prompt:
-	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-render-assessor-prompt.sh
-
-test-tally-plan-assessor:
-	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-tally-plan-assessor.sh
-
-test-assess-plan-round:
-	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-assess-plan-round.sh
-
-test-design-plan-quality-assessor:
-	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-plan-quality-assessor.sh
 
 test-parse-plan-commands:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-plan-commands.sh

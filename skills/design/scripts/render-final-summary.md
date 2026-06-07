@@ -14,7 +14,7 @@ this helper).
 Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel, reentry-guard cancel
 (`cancelled-reentry-guard`); Step 1c/1d sprawl
 cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
-partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (`--post-publish-only` after
+partition filing (`cancelled-decompose`, `approved-partition`); Step 5c happy path (`--post-publish-only` after
 the publish outcome is known); Step 5c plan-block-write failure (`--outcome
 failed-plan-write`), and log-publish failure after Gate-C approval (`--outcome
 failed-publish`). The current `design-publish.sh` success path orders Step 5c as

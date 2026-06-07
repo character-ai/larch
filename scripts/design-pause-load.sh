@@ -284,9 +284,6 @@ case "$RESTORED_DESIGN_CLASSIFICATION" in
     SIMPLE|HARD) ;;
     *) RESTORED_DESIGN_CLASSIFICATION=HARD ;;
 esac
-if [[ "$STEP" == "3b" && "$RESTORED_DESIGN_CLASSIFICATION" == "HARD" && ! -f "$restore_tmp/.completed/step-3.6" ]]; then
-    STEP="3.6"
-fi
 
 RESTORED_ISSUE=$(kv_get ISSUE_NUMBER "$restore_tmp/pause-state.txt")
 validate_plain_value restored-issue-number "$RESTORED_ISSUE"

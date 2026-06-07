@@ -8,13 +8,13 @@ It also verifies `plan-review-loop.sh` remains stateless with respect to `review
 
 Check 17 also pins the per-turn background-polling NEVER literal in `skills/shared/orchestrator-never.md`.
 
-## Step 3.6 region fence
+## Thin-fence region checks
 
 `assert_thin_fence FILE LABEL [START_MARKER END_MARKER]` may now operate on an explicit region. With markers, the harness extracts the inclusive start/exclusive end range and fails if either marker is absent; without markers, it preserves whole-file checks.
 
-The `skills/design/SKILL.md` check is scoped to `<!-- step:3.6` through `<!-- step:3b`. Region-only pins forbid fat-fence symlink/result-env shapes, including `phase_driver_read_result_env`, symlink-source warnings, and file-first `.step3.6-assessor.env` while/read loops. The same region pins the first entry `.pause-requested` pause-save guard before classification to include `${REPO:+--repo "$REPO"}`.
+Region-only pins forbid fat-fence symlink/result-env shapes, including `phase_driver_read_result_env` and symlink-source warnings. The same region pins the first entry `.pause-requested` pause-save guard before classification to include `${REPO:+--repo "$REPO"}`.
 
-The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins the first entry `.pause-requested` pause-save guard to include `${REPO:+--repo "$REPO"}` so the Step 3.6 occurrence cannot satisfy the check by accident.
+The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins the first entry `.pause-requested` pause-save guard to include `${REPO:+--repo "$REPO"}`.
 
 ## Recent contract coverage
 

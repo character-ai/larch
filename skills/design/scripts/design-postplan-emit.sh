@@ -258,7 +258,7 @@ _postplan_emit_rc1_diagnostic() {
             emit "**⚠ 2b: plan.txt is missing a final diff_lines metadata line; repair plan.txt before Step 2b.5 / Step 3.**"
             ;;
         snapshot-failed)
-            emit "**⚠ 2b: failed to snapshot plan.txt-original for HARD assessor flow; aborting before Step 3.**"
+            emit "**⚠ 2b: failed to snapshot plan.txt-original for HARD review flow; aborting before Step 3.**"
             ;;
         validate-driver-failed)
             emit "**⚠ 2b: plan-command validator infrastructure failed; aborting before Step 3.**"
