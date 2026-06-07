@@ -20,7 +20,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one `--hard` may appear on argv; duplicate `--hard` is a hard error before Step 0. Any other unrecognized or disallowed leading public `--` flag is a hard error before Step 0 (never swallowed as positional/verbal feature text).
+**Mutual exclusion**: at most one `--hard` and at most one `--approve` may appear on argv; duplicate `--hard` or duplicate `--approve` is a hard error before Step 0. Any other unrecognized or disallowed leading public `--` flag is a hard error before Step 0 (never swallowed as positional/verbal feature text).
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
@@ -1308,7 +1308,10 @@ EOF
 
   [ -z "${_assessor_display:-}" ] || printf '%s\n' "$_assessor_display"
   printf 'ASSESSOR_RC=%s\n' "$_assessor_rc"
-  [ -z "${_assessor_round_num:-}" ] || printf 'ASSESSOR_ROUND_NUM=%s\n' "$_assessor_round_num"
+  if [ -n "${_assessor_round_num:-}" ]; then
+    printf 'ASSESSOR_ROUND_NUM=%s\n' "$_assessor_round_num"
+    printf '%s\n' "$_assessor_round_num" > "$DESIGN_TMPDIR/.step3.6-trusted-assessor-round"
+  fi
 
   case "${_assessor_rc:-1}" in
     0)
@@ -1343,8 +1346,19 @@ For `ASSESSOR_RC=10`, the displayed WORSE block above is already driver-rendered
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set +e
-_revert_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" revert-round --design-tmpdir "$DESIGN_TMPDIR" --round "$ASSESSOR_ROUND_NUM" 2>&1)
-_revert_rc=$?
+_revert_rc=0
+if [ -z "${ASSESSOR_ROUND_NUM:-}" ] && [ -f "$DESIGN_TMPDIR/.step3.6-trusted-assessor-round" ] && [ ! -L "$DESIGN_TMPDIR/.step3.6-trusted-assessor-round" ]; then
+  IFS= read -r ASSESSOR_ROUND_NUM < "$DESIGN_TMPDIR/.step3.6-trusted-assessor-round" || ASSESSOR_ROUND_NUM=""
+fi
+case "${ASSESSOR_ROUND_NUM:-}" in
+  ''|*[!0-9]*|0)
+    _revert_out="**⚠ 3.6: assessor WORSE Revert missing trusted round anchor; keeping the applied plan and continuing to Step 3b.**"
+    _revert_rc=2 # matches snapshot-plan-round.sh usage/validation failures
+    ;;
+  *)
+    _revert_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" revert-round --design-tmpdir "$DESIGN_TMPDIR" --round "$ASSESSOR_ROUND_NUM" 2>&1) || _revert_rc=$?
+    ;;
+esac
 set -e
 printf '%s\n' "$_revert_out"
 if [ "${_revert_rc:-1}" -eq 0 ] && printf '%s\n' "$_revert_out" | grep -Fq 'REVERT_STATUS=ok'; then
@@ -1723,24 +1737,43 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, firs
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-set +e
-_autofix_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/auto-fix-plan-commands.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --plan-file "$_validator_target_file" \
-  --codex-present "$CODEX_PRESENT" \
-  --cursor-present "$CURSOR_PRESENT" \
-  --site "<SITE>")
-_autofix_rc=$?
-set -e
-printf '%s\n' "$_autofix_out"
+_autofix_site_key=$(printf '%s' "<SITE>" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_//; s/_$//')
+_autofix_attempted="$DESIGN_TMPDIR/.plan-command-autofix-${_autofix_site_key:-site}.attempted"
+if [ -e "$_autofix_attempted" ]; then
+  _autofix_out="AUTOFIX_STATUS=skipped-cycle-cap"
+  _autofix_rc=0
+else
+  : > "$_autofix_attempted"
+  set +e
+  _autofix_out=$("$CLAUDE_PLUGIN_ROOT/skills/design/scripts/auto-fix-plan-commands.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --plan-file "$_validator_target_file" \
+    --repo-root "$CLAUDE_PLUGIN_ROOT" \
+    --codex-present "$CODEX_PRESENT" \
+    --cursor-present "$CURSOR_PRESENT" \
+    --site "<SITE>")
+  _autofix_rc=$?
+  set -e
+fi
+printf '%s\n' "${_autofix_out:-}"
 _autofix_status=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="AUTOFIX_STATUS"{print $2; exit}')
 _autofix_fixed_by=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="FIXED_BY"{print $2; exit}')
+_autofix_log_file=$(printf '%s\n' "$_autofix_out" | awk -F= '$1=="ORIGINAL_VALIDATE_LOG_FILE"{print $2; exit}')
+case "${_autofix_status:-}" in
+  ok|exhausted|unavailable) ;;
+  skipped-cycle-cap) ;;
+  *) _autofix_status=failed ;;
+esac
+if [ "${_autofix_rc:-0}" -ne 0 ]; then
+  _autofix_status=failed
+fi
+[ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
 ```
 
 Branch on `_autofix_status` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c`):
 
-- **`ok`** — the target file now passes the validator. Append a `Warnings` entry recording the auto-correction via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact`, then **continue the surrounding success path without prompting**. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-postplan-emit.sh --with-plan-size ...` fence (same site flags) so plan-size + validation re-run against the fixed plan; for Step 5c, re-invoke `design-publish.sh`.
-- **`exhausted` or `unavailable`** — auto-repair did not resolve the defects (vendors failed/exhausted) or no external vendor was available. **Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them (same `append-tool-failure.sh` call, `--tool "validate-plan-commands(auto-fix-${_autofix_status})"`), then fall through to the operator `AskUserQuestion` below.
+- **`ok`** — the target file now passes the validator. Append a `Warnings` entry recording the auto-correction via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" --exit-code 0 --category Warnings --output-file "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}" --redact`, then **continue the surrounding success path without prompting**. Use the preserved original validator log path from `ORIGINAL_VALIDATE_LOG_FILE` when present; revalidation may overwrite the live validator log after the defect evidence was captured. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-postplan-emit.sh --with-plan-size ...` fence (same site flags) so plan-size + validation re-run against the fixed plan; for Step 5c, re-invoke `design-publish.sh`. The durable `_autofix_attempted` sentinel remains in place so a re-entered failing validator path falls through to the prompt instead of dispatching another external auto-fix cycle.
+- **`exhausted`, `unavailable`, `failed`, or `skipped-cycle-cap`** — auto-repair did not resolve the defects, no external vendor was available, the helper exited non-zero or omitted/returned an unknown status, or this site already spent its durable auto-fix attempt. **Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them (same `append-tool-failure.sh` call, `--tool "validate-plan-commands(auto-fix-${_autofix_status})"` and `--output-file "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}"`), then fall through to the operator `AskUserQuestion` below. Missing/unknown `AUTOFIX_STATUS` never continues silently.
 
 When auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
 

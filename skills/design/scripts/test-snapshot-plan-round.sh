@@ -85,12 +85,23 @@ printf 'after round2\n' >"$REV/plan-after-round-2.txt"
 printf 'round2 applied\n' >"$REV/plan.txt"
 printf '2\n' >"$REV/plan-review-round-cursor.txt"
 printf '2\n' >"$REV/review-round-count.txt"
+mkdir -p "$REV/plan-review/round-1" "$REV/plan-review/round-2"
+printf 'round1 accepted\n' >"$REV/plan-review/round-1/accepted-plan-findings.md"
+printf 'round2 accepted\n' >"$REV/accepted-plan-findings.md"
+printf 'round2 tally\n' >"$REV/voting-tally.md"
+printf 'round2 rejected\n' >"$REV/rejected-findings.md"
+printf 'round2 oos\n' >"$REV/oos.md"
+printf 'round2 assessor\n' >"$REV/assessor-verdict-round-2.txt"
 rev2=$("$SUBJECT" revert-round --design-tmpdir "$REV" --round 2 2>&1) || fail 'revert-round N=2 failed'
 printf '%s\n' "$rev2" | grep -Fq 'REVERT_STATUS=ok' || fail 'revert-round N=2 missing REVERT_STATUS=ok'
 [[ "$(cat "$REV/plan.txt")" == "after round1" ]] || fail 'revert-round N=2 must restore plan-after-round-1'
 [[ ! -e "$REV/plan-after-round-2.txt" ]] || fail 'revert-round N=2 must drop round-2 snapshot'
 [[ "$(cat "$REV/plan-review-round-cursor.txt")" == "2" ]] || fail 'revert-round N=2 cursor must be 2'
 [[ "$(cat "$REV/review-round-count.txt")" == "1" ]] || fail 'revert-round N=2 count must be 1'
+[[ "$(cat "$REV/accepted-plan-findings.md")" == "round1 accepted" ]] || fail 'revert-round N=2 must restore prior accepted findings'
+[[ ! -e "$REV/voting-tally.md" ]] || fail 'revert-round N=2 must remove stale tally when prior has none'
+[[ ! -e "$REV/plan-review/round-2" ]] || fail 'revert-round N=2 must remove stale round-2 artifacts'
+[[ ! -e "$REV/assessor-verdict-round-2.txt" ]] || fail 'revert-round N=2 must remove stale assessor verdict'
 
 # Round-1 revert restores from plan.txt-original; counter rolls to 0.
 printf 'orig\n' >"$REV/plan.txt-original"
@@ -98,12 +109,16 @@ printf 'after round1\n' >"$REV/plan-after-round-1.txt"
 printf 'round1 applied\n' >"$REV/plan.txt"
 printf '1\n' >"$REV/plan-review-round-cursor.txt"
 printf '1\n' >"$REV/review-round-count.txt"
+printf 'round1 accepted\n' >"$REV/accepted-plan-findings.md"
+printf 'round1 tally\n' >"$REV/voting-tally.md"
 rev1=$("$SUBJECT" revert-round --design-tmpdir "$REV" --round 1 2>&1) || fail 'revert-round N=1 failed'
 printf '%s\n' "$rev1" | grep -Fq 'RESTORED_FROM=plan.txt-original' || fail 'revert-round N=1 must restore from original'
 [[ "$(cat "$REV/plan.txt")" == "orig" ]] || fail 'revert-round N=1 must restore plan.txt-original'
 [[ ! -e "$REV/plan-after-round-1.txt" ]] || fail 'revert-round N=1 must drop round-1 snapshot'
 [[ "$(cat "$REV/plan-review-round-cursor.txt")" == "1" ]] || fail 'revert-round N=1 cursor must be 1'
 [[ "$(cat "$REV/review-round-count.txt")" == "0" ]] || fail 'revert-round N=1 count must be 0'
+[[ ! -e "$REV/accepted-plan-findings.md" ]] || fail 'revert-round N=1 must remove accepted findings'
+[[ ! -e "$REV/voting-tally.md" ]] || fail 'revert-round N=1 must remove voting tally'
 
 # Missing restore source → exit 2, plan.txt untouched (orchestrator keeps applied plan).
 printf 'round5 applied\n' >"$REV/plan.txt"

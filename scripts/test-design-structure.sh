@@ -965,6 +965,20 @@ grep -Fq 'Override' "$SKILL_MD" \
   || fail "(14b9a) SKILL.md missing Override validator option label"
 grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
+grep -Fq 'auto-fix-plan-commands.sh' "$SKILL_MD" \
+  || fail "(FINDING_14) SKILL.md missing validator auto-fix helper invocation"
+grep -Fq '.plan-command-autofix-${_autofix_site_key:-site}.attempted' "$SKILL_MD" \
+  || fail "(FINDING_23) SKILL.md missing durable auto-fix cycle cap sentinel"
+grep -Fq 'ORIGINAL_VALIDATE_LOG_FILE' "$SKILL_MD" \
+  || fail "(FINDING_11) SKILL.md missing original validator evidence handoff"
+grep -Fq 'Missing/unknown `AUTOFIX_STATUS` never continues silently' "$SKILL_MD" \
+  || fail "(FINDING_4) SKILL.md missing auto-fix unknown-status fallback"
+grep -Fq 'continue the surrounding success path without prompting' "$SKILL_MD" \
+  || fail "(FINDING_17) SKILL.md missing auto-fix ok prompt-suppression contract"
+grep -Fq 'Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them' "$SKILL_MD" \
+  || fail "(FINDING_17) SKILL.md missing auto-fix fallback warning contract"
+grep -Fq -- '--repo-root "$CLAUDE_PLUGIN_ROOT"' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md missing auto-fix repo-root forwarding"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 postplan_line=$(awk -v s="$step2b_mark" 'NR>s && /design-postplan-emit\.sh/ {print NR; exit}' "$SKILL_MD" || true)
 step2b5_line=$(awk -v s="$step2b_mark" 'NR>s && /### Step 2b\.5/ {print NR; exit}' "$SKILL_MD" || true)
@@ -1931,6 +1945,10 @@ contains "$SKILL_MD" 'ASSESSOR_RC=%s' 'SKILL.md missing orchestrator-owned asses
 contains "$SKILL_MD" 'design_classification=${_design_classification}; skipped' 'SKILL.md missing design_classification cheap-skip breadcrumb'
 contains "$SKILL_MD" 'design-plan-quality-assessor.sh configuration error (exit 2)' 'SKILL.md missing assessor exit-2 abort prose'
 contains "$SKILL_MD" 'WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' 'SKILL.md missing rc=10 trusted trailer fail-closed abort prose'
+contains "$SKILL_MD" 'Revert this round'\''s findings & proceed' 'SKILL.md missing Step 3.6 Revert prompt option'
+contains "$SKILL_MD" '.step3.6-trusted-assessor-round' 'SKILL.md missing durable assessor round anchor for Revert'
+contains "$SKILL_MD" 'snapshot-plan-round.sh" revert-round --design-tmpdir "$DESIGN_TMPDIR" --round "$ASSESSOR_ROUND_NUM"' 'SKILL.md missing Step 3.6 revert-round fence'
+contains "$SKILL_MD" 'Continue/Revert/Stop' 'SKILL.md missing Continue/Revert/Stop WORSE prompt wording'
 contains "$MAKEFILE" 'test-design-plan-quality-assessor' 'Makefile missing test-design-plan-quality-assessor target'
 [[ -x "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" ]] || fail "design-plan-quality-assessor.sh must be executable"
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_SNAPSHOT_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing SNAPSHOT_SH seam'

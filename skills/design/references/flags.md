@@ -25,7 +25,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 `scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
-**Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
+**Mutual exclusion**: at most one `--hard` and at most one `--approve` on argv; duplicate `--hard` or duplicate `--approve` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 

@@ -188,6 +188,11 @@ assert_rc 'duplicate hard' 3
 assert_kv 'duplicate hard' VALIDATION_ERROR --hard
 assert_no_flag_kvs 'duplicate hard'
 
+run_case --approve --approve
+assert_rc 'duplicate approve' 3
+assert_kv 'duplicate approve' VALIDATION_ERROR --approve
+assert_no_flag_kvs 'duplicate approve'
+
 run_case --simple 3249
 assert_rc 'retired simple' 3
 assert_kv 'retired simple' VALIDATION_ERROR --simple

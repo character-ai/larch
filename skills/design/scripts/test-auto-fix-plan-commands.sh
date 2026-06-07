@@ -114,9 +114,47 @@ if LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" LARCH_AUTOFIX_VALIDATE_PLAN_SH="$V
    "$SUBJECT" --design-tmpdir "$D6" --plan-file "$D6/missing.txt" --codex-present true --cursor-present true >/dev/null 2>&1; then
   fail 'case6 missing plan file must fail closed'
 fi
+# plan file must be a real session-local file, not a symlink or outside path.
+OUTSIDE="$TMP/outside-plan.txt"
+printf 'outside\n' >"$OUTSIDE"
+if LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
+   "$SUBJECT" --design-tmpdir "$D6" --plan-file "$OUTSIDE" --codex-present true --cursor-present true >/dev/null 2>&1; then
+  fail 'case6 outside plan file must fail closed'
+fi
+ln -s "$D6/plan.txt" "$D6/plan-link.txt"
+if LARCH_AUTOFIX_DISPATCH_SH="$DISPATCH_STUB" LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
+   "$SUBJECT" --design-tmpdir "$D6" --plan-file "$D6/plan-link.txt" --codex-present true --cursor-present true >/dev/null 2>&1; then
+  fail 'case6 symlink plan file must fail closed'
+fi
 # bad boolean
 if "$SUBJECT" --design-tmpdir "$D6" --plan-file "$D6/plan.txt" --codex-present maybe --cursor-present true >/dev/null 2>&1; then
   fail 'case6 invalid --codex-present must fail closed'
 fi
+
+# Case 7: prompt rendering fails closed on validator-log redaction failure and
+# preserves the original validator log path after revalidation overwrites the live log.
+D7="$TMP/d7"; mk_design "$D7"
+D7_CANON="$(cd "$D7" && pwd -P)"
+printf 'raw-secret-token\n' >"$D7/validate-plan-commands.log"
+REDACT_FAIL="$TMP/redact-fail-plugin"
+mkdir -p "$REDACT_FAIL/scripts" "$REDACT_FAIL/skills/design/scripts"
+cp "$ROOT/scripts/lib-quiet.sh" "$REDACT_FAIL/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/lib-design-tmpdir.sh" "$REDACT_FAIL/scripts/lib-design-tmpdir.sh"
+cat >"$REDACT_FAIL/scripts/redact-secrets.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$REDACT_FAIL/scripts/redact-secrets.sh"
+out7=$(AUTOFIX_TEST_MODE=never-fix CLAUDE_PLUGIN_ROOT="$REDACT_FAIL" run_subject "$D7" --codex-present true --cursor-present false --max-attempts 1)
+prompt7="$D7/plan-autofix/attempt-1-codex/prompt.md"
+grep -Fq '[validator log redaction failed; raw log intentionally withheld]' "$prompt7" \
+  || fail 'case7 prompt must include redaction-failed placeholder'
+if grep -Fq 'raw-secret-token' "$prompt7"; then
+  fail 'case7 prompt must not include raw validator log after redaction failure'
+fi
+orig_log7="$(kv "$out7" ORIGINAL_VALIDATE_LOG_FILE)"
+[[ "$orig_log7" == "$D7_CANON/plan-autofix/original-validate-plan-commands.log" ]] \
+  || fail "case7 original log path drifted: $out7"
+grep -Fq 'raw-secret-token' "$orig_log7" || fail 'case7 original validator evidence copy missing'
 
 pass 'auto-fix-plan-commands harness'

@@ -64,13 +64,26 @@ done
 
 [[ -n "$DESIGN_TMPDIR" ]] || { usage; exit 2; }
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] || { larch_err "auto-fix-plan-commands.sh: --plan-file must be an existing file"; exit 2; }
+if [[ -L "$PLAN_FILE" ]]; then
+    larch_err "auto-fix-plan-commands.sh: --plan-file must not be a symlink"
+    exit 2
+fi
+PLAN_DIR="$(cd "$(dirname "$PLAN_FILE")" && pwd -P)" || { larch_err "auto-fix-plan-commands.sh: --plan-file parent is not resolvable"; exit 2; }
+PLAN_FILE="$PLAN_DIR/$(basename "$PLAN_FILE")"
+case "$PLAN_FILE" in
+    "$DESIGN_TMPDIR"/*) ;;
+    *) larch_err "auto-fix-plan-commands.sh: --plan-file must be under --design-tmpdir"; exit 2 ;;
+esac
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "auto-fix-plan-commands.sh: --cursor-present must be true or false"; exit 2; }
 case "$MAX_ATTEMPTS" in ''|*[!0-9]*|0) larch_err "auto-fix-plan-commands.sh: --max-attempts must be a positive integer"; exit 2 ;; esac
 MAX_ATTEMPTS=$((10#$MAX_ATTEMPTS))
-[[ -n "$REPO_ROOT" ]] || REPO_ROOT="$(git -C "$(dirname "$PLAN_FILE")" rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+[[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PLUGIN_ROOT"
+[[ -d "$REPO_ROOT" ]] || { larch_err "auto-fix-plan-commands.sh: --repo-root must be a directory"; exit 2; }
+REPO_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
 
 # Build the cross-vendor alternation order (Codex first when present).
 VENDOR_ORDER=()
@@ -89,9 +102,13 @@ fi
 
 WORK_DIR="$DESIGN_TMPDIR/plan-autofix"
 mkdir -p "$WORK_DIR"
+ORIGINAL_VALIDATE_LOG="$WORK_DIR/original-validate-plan-commands.log"
+if [[ -f "$DESIGN_TMPDIR/validate-plan-commands.log" && ! -f "$ORIGINAL_VALIDATE_LOG" ]]; then
+    cp -p "$DESIGN_TMPDIR/validate-plan-commands.log" "$ORIGINAL_VALIDATE_LOG" 2>/dev/null || true
+fi
 
 render_fix_prompt() {
-    local attempt="$1" vendor="$2" out="$3" validate_log="$DESIGN_TMPDIR/validate-plan-commands.log"
+    local attempt="$1" vendor="$2" out="$3" validate_log="$ORIGINAL_VALIDATE_LOG"
     {
         printf '%s\n' "You are repairing fenced shell commands inside a /design implementation plan file."
         printf '%s\n' "The plan-command validator reported defects in: $PLAN_FILE"
@@ -105,7 +122,9 @@ render_fix_prompt() {
         if [[ -f "$validate_log" ]]; then
             printf '%s\n' "VALIDATOR REPORT (untrusted tool output):"
             printf '%s\n' "<<<VALIDATOR_LOG"
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$validate_log" 2>/dev/null || cat "$validate_log"
+            if ! "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$validate_log" 2>/dev/null; then
+                printf '%s\n' "[validator log redaction failed; raw log intentionally withheld]"
+            fi
             printf '%s\n\n' "VALIDATOR_LOG"
         fi
         printf '%s\n' "(auto-fix attempt $attempt, vendor $vendor)"
@@ -157,7 +176,8 @@ dispatch_vendor_fix() {
             return "$parsed_exit"
             ;;
         cursor)
-            local cursor_rc=0 preflight_log="$run_dir/cursor.preflight.log"
+            local cursor_rc=0 preflight_log="$run_dir/cursor.preflight.log" timing_start_s timing_end_s
+            timing_start_s="$(date +%s)"
             : >"$preflight_log"
             # shellcheck source=scripts/lib-cursor-launcher-common.sh
             source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
@@ -178,6 +198,15 @@ dispatch_vendor_fix() {
                 --workspace "$DESIGN_TMPDIR" \
                 "$_wrapped_prompt" \
                 >"$run_dir/cursor.wrapper.log" 2>&1 || cursor_rc=$?
+            timing_end_s="$(date +%s)"
+            DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_SKILL=design "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+                --vendor cursor \
+                --task-kind cursor-plan-autofix \
+                --start-s "$timing_start_s" \
+                --end-s "$timing_end_s" \
+                --output "$run_dir/cursor.log" \
+                --exit-code "$cursor_rc" \
+                --status "$([[ "$cursor_rc" -eq 0 ]] && printf complete || printf failed)" >/dev/null 2>&1 || true
             return "$cursor_rc"
             ;;
         *)
@@ -223,4 +252,5 @@ emit_kv VENDOR_SEQUENCE "$SEQ_CSV"
 emit_kv ATTEMPTS "$attempts"
 emit_kv FIXED_BY "$fixed_by"
 emit_kv FINAL_VALIDATE_STATUS "$final_status"
+emit_kv ORIGINAL_VALIDATE_LOG_FILE "$ORIGINAL_VALIDATE_LOG"
 exit 0

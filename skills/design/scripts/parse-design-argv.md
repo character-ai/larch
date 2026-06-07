@@ -45,7 +45,7 @@ Bare `--` terminates the flag scan. It is not a validation error and is excluded
 
 | Code | Meaning |
 |------|---------|
-| `0` | Parsed OK; seven KVs on stdout |
+| `0` | Parsed OK; eight KVs on stdout |
 | `3` | Validation error; `VALIDATION_ERROR=<token>` on stdout |
 
 The script never intentionally exits `1` or `2`; the orchestrator owns user-facing aborts.

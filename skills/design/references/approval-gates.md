@@ -58,7 +58,7 @@ When the user picks **Ready for review**:
 
 ## Gate B — Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. The Step 3 review pass has not revised `plan.txt`; Gate B is the explicit operator apply point for accepted findings. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b (see SKILL.md post-loop branch matrix).
+**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. The Step 3 review pass has not revised `plan.txt`; Gate B is the single apply point for accepted findings, auto-applying by default and prompting only when `--approve` set `approve_requested=true`. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b (see SKILL.md post-loop branch matrix).
 
 ### Severity classification rubric
 
@@ -106,7 +106,7 @@ On HARD, the Step 3.6 assessor (post-apply) is the quality gate. On SIMPLE there
 
 - When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `panel-failed`, or `cap-reached`, Gate B is **bypassed** — Step 3 already routed to Step 3b. Step 3.6 is skipped too on those short-circuits. Step 3 prints the matching skip breadcrumb: `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`, or `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`.
 - When `LOOP_STATUS` is `main-agent-vote-required`, after successful MainAgent adjudication and re-tally, parse the re-tally output and refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent. Re-tally is env-sourced for scope anchoring: bind `_RETALLY_SCOPE_ANCHOR_IN="$SCOPE_ANCHOR_FILE"` before launch, unset `_RETALLY_PARSED_SCOPE_ANCHOR_FILE` before parsing stdout, persist the parsed `SCOPE_ANCHOR_FILE` when present, otherwise fall back to `_RETALLY_SCOPE_ANCHOR_IN` on `ok` when it is CR/LF-clean, and omit the key on `tally-error`. The re-tally must pass `--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"` before refreshing the active state and must not pass `--scope-anchor-file`. Settled Gate B paths proceed through Step 3.6. If re-tally emits `tally-error`, use that short-circuit.
-- When `LOOP_STATUS` is `complete` or `zero-findings-degraded-panel`, Gate B uses the full explicit prompt below. The review pass has not modified `plan.txt`; any revision happens only after an operator chooses Apply all or Go through each.
+- When `LOOP_STATUS` is `complete` or `zero-findings-degraded-panel`, Gate B follows the mode rules above. The review pass has not modified `plan.txt`; revision happens through default auto-apply when `approve_requested=false`, or only after an operator chooses Apply all or Go through each when `approve_requested=true`.
 
 ### Presentation
 

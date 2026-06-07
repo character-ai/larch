@@ -48,7 +48,7 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/` and 
 
 ## `/design`
 
-**Arguments**: `[--hard] [-p|--partition] [--brainstorm] [--no-dedup] [--run-id <ID>] <issue-N | feature description>`
+**Arguments**: `[--hard] [-p|--partition] [--brainstorm] [--approve] [--no-dedup] [--run-id <ID>] <issue-N | feature description>`
 
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 

@@ -49,6 +49,9 @@ while [ "$#" -gt 0 ]; do
             shift
             ;;
         --approve)
+            if [ "$approve_requested" = true ]; then
+                validation_error '--approve'
+            fi
             approve_requested=true
             shift
             ;;

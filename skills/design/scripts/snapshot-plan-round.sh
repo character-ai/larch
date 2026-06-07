@@ -52,6 +52,40 @@ parse_cursor_file() {
     esac
 }
 
+restore_review_artifacts_after_revert() {
+    local round="$1" prev_round prev_dir
+    prev_round=$((round - 1))
+    prev_dir="$DESIGN_TMPDIR/plan-review/round-${prev_round}"
+    local name src
+    for name in \
+        accepted-plan-findings.md rejected-findings.md oos.md oos-this-round.md \
+        oos-accepted-design.md voting-tally.md ballot.txt findings.md \
+        findings-in-scope.md findings-in-scope.pre-dedup.md findings-oos.md \
+        findings-oos.pre-dedup.md findings-classification.tsv; do
+        src="$prev_dir/$name"
+        if (( prev_round > 0 )) && [[ -f "$src" && ! -L "$src" ]]; then
+            cp -f "$src" "$DESIGN_TMPDIR/$name"
+        else
+            rm -f "$DESIGN_TMPDIR/$name"
+        fi
+    done
+    rm -rf "$DESIGN_TMPDIR/plan-review/round-${round}"
+    rm -f \
+        "$DESIGN_TMPDIR/assessor-verdict-round-${round}.txt" \
+        "$DESIGN_TMPDIR/assessor-verdict-round-${round}.txt.env" \
+        "$DESIGN_TMPDIR/claude-plan-assessor-round-${round}.txt" \
+        "$DESIGN_TMPDIR/claude-plan-assessor-round-${round}.txt.meta" \
+        "$DESIGN_TMPDIR/claude-plan-assessor-round-${round}.txt.done" \
+        "$DESIGN_TMPDIR/codex-plan-assessor-round-${round}.txt" \
+        "$DESIGN_TMPDIR/codex-plan-assessor-round-${round}.txt.diag" \
+        "$DESIGN_TMPDIR/codex-plan-assessor-round-${round}.txt.json" \
+        "$DESIGN_TMPDIR/codex-plan-assessor-round-${round}.txt.meta" \
+        "$DESIGN_TMPDIR/cursor-plan-assessor-round-${round}.txt" \
+        "$DESIGN_TMPDIR/cursor-plan-assessor-round-${round}.txt.diag" \
+        "$DESIGN_TMPDIR/cursor-plan-assessor-round-${round}.txt.json" \
+        "$DESIGN_TMPDIR/cursor-plan-assessor-round-${round}.txt.meta"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         write-original|write-after|read-cursor|write-cursor|revert-round)
@@ -127,6 +161,7 @@ case "$SUBCMD" in
         atomic_copy_plan "$restore_src" "$DESIGN_TMPDIR/plan.txt" ".revert-plan" \
             || { larch_err "snapshot-plan-round.sh: revert-round copy-back failed"; exit 1; }
         rm -f "$DESIGN_TMPDIR/plan-after-round-${ROUND}.txt"
+        restore_review_artifacts_after_revert "$ROUND"
         printf '%s\n' "$((ROUND - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
         cursor_file="$DESIGN_TMPDIR/plan-review-round-cursor.txt"
         tmp=$(mktemp "$DESIGN_TMPDIR/.cursor.XXXXXX")
