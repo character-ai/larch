@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-8] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -75,8 +75,8 @@ export SESSION_ENV_PATH
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
-    [0-8]) ;;
-    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
+    [0-3]) ;;
+    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 3"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
@@ -244,7 +244,7 @@ escape_scout_field() {
 }
 
 scout_manifest_is_valid() {
-    local scout_manifest="$1" max="${2:-8}"
+    local scout_manifest="$1" max="${2:-3}"
     [[ -s "$scout_manifest" ]] || return 1
     # Keep historical folded slugs reserved so the scout cannot resurrect
     # static lenses that still exist as legacy agent files.

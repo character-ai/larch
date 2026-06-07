@@ -1,0 +1,2 @@
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
