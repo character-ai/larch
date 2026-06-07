@@ -349,7 +349,10 @@ def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
         )
 
 
-def test_copytree_rejects_symlinks_escaping_run_dir(tmp_path: Path) -> None:
+def test_copytree_rejects_symlinks_escaping_run_dir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
@@ -360,6 +363,7 @@ def test_copytree_rejects_symlinks_escaping_run_dir(tmp_path: Path) -> None:
     link.symlink_to(secret)
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     ctx = _ctx(tmp_path, str(state))
     with pytest.raises(ShipError, match="refusing symlink"):
         _ = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
@@ -410,7 +414,10 @@ def test_flush_logs_pre_skip_reason_tokens(
     assert skip.reason == reason
 
 
-def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
+def test_publish_run_tree_copies_run_id_pathspec(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
@@ -418,6 +425,7 @@ def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
     _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     ctx = _ctx(tmp_path, str(state))
     rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
         ctx,
@@ -674,6 +682,7 @@ def test_publish_run_tree_preserves_existing_dest_when_copy_fails(
     dest = repo / "larch-logs" / "implement" / "run-abc"
     dest.mkdir(parents=True)
     _ = (dest / "old.txt").write_text("old\n", encoding="utf-8")
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
 
     def fail_copy(*_a: object, **_k: object) -> None:
         raise ShipError("copy failed")
@@ -727,6 +736,7 @@ def test_scrub_run_tree_fail_closed_on_residual(
 
 
 def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -736,6 +746,7 @@ def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
     _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -776,6 +787,7 @@ def test_flush_logs_pre_reports_volatile_only_skip_reason(
 
 
 def test_larch_log_commit_commits_canonical_token_report_delta(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -785,6 +797,7 @@ def test_larch_log_commit_commits_canonical_token_report_delta(
     _ = (src / "token-report.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -805,6 +818,7 @@ def test_larch_log_commit_commits_canonical_token_report_delta(
 
 
 def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -815,6 +829,7 @@ def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
     _ = (src / "token-report.ndjson").write_text("{}\n", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -842,6 +857,7 @@ def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
 
 
 def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -851,6 +867,7 @@ def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
     _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -888,6 +905,7 @@ def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
 def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
     failing_call: tuple[str, str],
     status_stdout: str,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -897,6 +915,7 @@ def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
     _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -925,6 +944,7 @@ def test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans(
     _ = (src / "token-report-refresh.json").write_text("secret", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
 
     def fake_scrub(_directory: Path) -> tuple[int, int]:
@@ -951,6 +971,7 @@ def test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans(
 
 
 def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -960,6 +981,7 @@ def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
     _ = (src / "session-transcript-refresh.txt").write_text("transcript", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -985,6 +1007,7 @@ def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
 
 
 def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -994,6 +1017,7 @@ def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
     _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     path = f"{rel}/token-report-refresh.json"
     runner = RecordingRunner(
@@ -1019,6 +1043,7 @@ def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
 
 
 def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
@@ -1028,6 +1053,7 @@ def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
     _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
     repo = tmp_path / "repo"
     repo.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     path = f"{rel}/timing-report-refresh.json"
     runner = RecordingRunner(
@@ -1050,6 +1076,58 @@ def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
     assert reset_call in runner.calls
     assert restore_call in runner.calls
     assert runner.calls.index(reset_call) < runner.calls.index(restore_call)
+
+
+def test_publish_run_tree_uses_repo_root_not_cwd_subdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression: copy destination uses _REPO_ROOT regardless of caller CWD."""
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subdir = repo / "python"
+    subdir.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    ctx = _ctx(tmp_path, str(state))
+    rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        tmp_path / "larch-logs",
+        cwd=str(subdir),  # CWD is a repo subdirectory, not the root
+    )
+    assert rel == "larch-logs/implement/run-abc"
+    # Copy must land under repo root, not under the subdirectory CWD.
+    assert (repo / rel / "manifest.json").is_file(), "copy must land under repo root"
+    assert not (subdir / rel).exists(), "copy must NOT land under subdir CWD"
+
+
+def test_larch_log_commit_rejects_cwd_outside_repo_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Guard: raise ShipError when caller CWD is not the repo root."""
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subdir = repo / "python"
+    subdir.mkdir()
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    ctx = _ctx(tmp_path, str(state))
+    with pytest.raises(ShipError, match="repo root"):
+        _ = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+            RecordingRunner(),
+            ctx,
+            tmp_path / "larch-logs",
+            cwd=str(subdir),
+        )
 
 
 def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
