@@ -1056,8 +1056,11 @@ set -e
 if [ -f "$clone_ql/larch-logs/design/RUNQUIETEXCL1/larch-quiet-design-log-publish.sh-4242.log" ]; then
     fail "quiet log must not appear as top-level design artifact"
 fi
-[ -f "$clone_ql/larch-logs/design/RUNQUIETEXCL1/breadcrumbs/larch-quiet-design-log-publish.sh-4242.log" ] \
-    || fail "quiet log missing from breadcrumbs"
+# Quiet logs are consolidated into breadcrumbs/quiet.log with per-file headers.
+_ql_bc="$clone_ql/larch-logs/design/RUNQUIETEXCL1/breadcrumbs/quiet.log"
+[ -f "$_ql_bc" ] || fail "quiet log missing from breadcrumbs (quiet.log absent)"
+grep -q 'top-level quiet must not duplicate' "$_ql_bc" 2>/dev/null || fail "quiet log content missing from breadcrumbs/quiet.log"
+grep -q '=== larch-quiet-design-log-publish.sh-4242.log ===' "$_ql_bc" 2>/dev/null || fail "quiet log header missing from breadcrumbs/quiet.log"
 rm -rf "$TMPQL"
 
 echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
@@ -1438,9 +1441,11 @@ printf 'legacy ndjson must not publish\n' >"$TMPBC/design/breadcrumbs/stream.ndj
     [[ "$out_bc" == *"PUBLISH_OK=true"* ]] || fail "breadcrumb publish PUBLISH_OK: $out_bc"
 )
 git -C "$clone_bc" pull -q origin main
-bc_quiet="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/larch-quiet-design-log-publish.sh-99999.log"
-[[ -f "$bc_quiet" ]] || fail "breadcrumb quiet log missing"
+# Quiet logs are consolidated into breadcrumbs/quiet.log (not individual files).
+bc_quiet="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/quiet.log"
+[[ -f "$bc_quiet" ]] || fail "breadcrumb quiet log missing (quiet.log absent)"
 [[ ! -f "$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.ndjson" ]] || fail "legacy ndjson must not be published"
+[[ ! -f "$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/larch-quiet-design-log-publish.sh-99999.log" ]] || fail "individual quiet log must not be published separately"
 grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_quiet" || fail "breadcrumb quiet log tmpdir redaction missing"
 ! grep -Fq "$secret_path" "$bc_quiet" || fail "breadcrumb quiet log leaked tmpdir path"
 grep -q '<REDACTED-PRIVATE-KEY>' "$bc_quiet" || fail "breadcrumb quiet log PEM redaction missing"

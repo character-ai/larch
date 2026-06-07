@@ -12,12 +12,12 @@ render-session-transcript.py --input <raw-jsonl> [--output <jsonl>]
 
 `--input` is the raw Claude Code session JSONL. `--output` writes the rendered JSONL to a file; without it the JSONL is written to stdout. Exit codes: `0` success, `2` input missing or unreadable, `3` parsed but produced zero records (suspect format), other non-zero on unexpected exceptions.
 
-## Output schema (v1)
+## Output schema (v2)
 
 The first line is a header object:
 
 ```json
-{"v": 1, "source_basename": "<input-basename>", "turns": <int>}
+{"v": 2, "source_basename": "<input-basename>", "turns": <int>}
 ```
 
 Subsequent lines are per-turn objects:
@@ -33,7 +33,7 @@ Subsequent lines are per-turn objects:
 | `command`     | `name` (e.g. `/larch:fix-issue`), `args` (optional)                           | User-typed slash command. |
 | `text`        | `value`                                                                       | Plain user or assistant prose (with `<system-reminder>` blocks stripped). |
 | `thinking`    | `value`                                                                       | Assistant thinking. Kept only when at least one `tool_use` in the same assistant turn produced an errored or warned `tool_result`. |
-| `tool_call`   | `id` (tool_use_id), `name`, `input` (full object)                             | Assistant tool invocation. |
+| `tool_call`   | `id` (tool_use_id), `name`, `input` or `elided_input_bytes`                   | Assistant tool invocation. See input trimming rules below. |
 | `tool_result` | `tool_use_id`, `name`, plus body fields below                                 | User-side tool result. |
 
 `tool_result` body fields are mutually exclusive between elided and kept variants:
@@ -48,6 +48,19 @@ A result is kept (full body retained) when either:
 2. The tool is `Bash` and the first 500 chars of the output contain `^(Error:|Exit code [1-9])` or a `warning:` substring (case-insensitive).
 
 Otherwise the body collapses to `elided_bytes`.
+
+### tool_call input trimming (v2)
+
+`tool_call` inputs are trimmed before output to reduce transcript size:
+
+- **`Edit` / `Write` / `NotebookEdit`**: `input` is replaced with a stub
+  `{"file_path": "<path>", "input_bytes": <N>}` — the PR diff carries the
+  content; the stub records the target path and original byte count.
+  (`file_path` is taken from `input.file_path`, `input.notebook_path`, or
+  `input.path`, in that order.)
+- **All other tools**: the full `input` object is included when its
+  JSON-serialized length is ≤ 1 024 bytes; otherwise `input` is omitted
+  and `elided_input_bytes: <N>` is emitted instead.
 
 ## First pass / orphan results
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """render-session-transcript.py — render a Claude Code session JSONL as a filtered chat-view JSONL.
 
-Output schema (v1):
+Output schema (v2):
 
   Line 1 is a header record:
-      {"v": 1, "source_basename": "<input-basename>", "turns": N}
+      {"v": 2, "source_basename": "<input-basename>", "turns": N}
 
   Subsequent lines are per-turn records (one JSON object per line):
       {"turn": <int>, "role": "user" | "assistant", "blocks": [<block>...]}
@@ -14,6 +14,10 @@ Output schema (v1):
       {"type": "text", "value": "..."}                       # plain user / assistant text
       {"type": "thinking", "value": "..."}                   # assistant thinking (kept only when adjacent to error)
       {"type": "tool_call", "id": "toolu_...", "name": "Bash", "input": {...}}
+      {"type": "tool_call", "id": "toolu_...", "name": "Edit",
+       "input": {"file_path": "...", "input_bytes": N}}      # Edit/Write/NotebookEdit: content stub
+      {"type": "tool_call", "id": "toolu_...", "name": "Bash",
+       "elided_input_bytes": N}                              # large input elided (>1 KB serialized)
       {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
        "elided_bytes": N}                                    # routine result, body elided
       {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
@@ -34,6 +38,11 @@ Filter rules:
     Otherwise replaced with `elided_bytes`.
   - thinking blocks kept only when at least one tool_use in the same
     assistant turn produced an errored tool_result.
+  - tool_call inputs trimmed:
+      - Edit/Write/NotebookEdit: replaced with {file_path, input_bytes} stub
+        (PR diff carries the content).
+      - Other tools: included when serialized JSON <= 1 KB; otherwise elided
+        and reported as elided_input_bytes.
 
 Exit codes:
   0 success; output written.
@@ -49,7 +58,10 @@ import re
 import sys
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+_STUB_INPUT_TOOLS = {"Edit", "Write", "NotebookEdit"}
+_INPUT_CAP_BYTES = 1024
 
 HOUSEKEEPING_TYPES = {
     "permission-mode",
@@ -219,10 +231,25 @@ def render_assistant_blocks(content, id_to_kept) -> list[dict]:
             tid = blk.get("id", "")
             if tid:
                 out["id"] = tid
-            out["name"] = blk.get("name", "?")
+            tname = blk.get("name", "?")
+            out["name"] = tname
             inp = blk.get("input", {})
             if inp:
-                out["input"] = inp
+                if tname in _STUB_INPUT_TOOLS:
+                    file_path = (
+                        inp.get("file_path")
+                        or inp.get("notebook_path")
+                        or inp.get("path")
+                        or ""
+                    )
+                    input_bytes = len(json.dumps(inp, ensure_ascii=False))
+                    out["input"] = {"file_path": file_path, "input_bytes": input_bytes}
+                else:
+                    serialized = json.dumps(inp, ensure_ascii=False)
+                    if len(serialized) <= _INPUT_CAP_BYTES:
+                        out["input"] = inp
+                    else:
+                        out["elided_input_bytes"] = len(serialized)
             blocks.append(out)
     return blocks
 

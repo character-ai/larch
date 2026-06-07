@@ -23,6 +23,7 @@ Usage: compose-tally-record.sh --phase plan-review|code-review --mode simple|har
     [--rounds N] [--accepted N] [--rejected N] [--exonerated N] [--body-file PATH]
 
 Optional deprecated argv: two ASCII hyphens followed by the literal token neutral, then N (ignored; accepted for CLI compatibility).
+--body-file is optional for code-review (body field omitted when absent); required for plan-review.
 USAGE
 }
 
@@ -61,13 +62,17 @@ done
 
 [ -n "$PHASE" ] || { usage; fail "--phase is required"; }
 [ -n "$MODE" ] || { usage; fail "--mode is required"; }
-[ -n "$BODY_FILE" ] || { usage; fail "--body-file is required"; }
 
 case "$PHASE" in
     plan-review) BATCH="plan-review-tally" ;;
     code-review) BATCH="code-review-tally" ;;
     *) fail "--phase must be plan-review or code-review: $PHASE" ;;
 esac
+
+# body-file is required for plan-review; optional (and ignored) for code-review.
+if [ "$PHASE" = "plan-review" ]; then
+    [ -n "$BODY_FILE" ] || { usage; fail "--body-file is required for --phase plan-review"; }
+fi
 
 case "$MODE" in
     simple|hard) ;;
@@ -80,26 +85,50 @@ require_non_negative_integer "--rejected" "$REJECTED"
 require_non_negative_integer "--exonerated" "$EXONERATED"
 
 command -v jq >/dev/null 2>&1 || fail "jq is required"
-[ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
-[ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
 
-jq -cn \
-    --arg phase "$PHASE" \
-    --arg batch "$BATCH" \
-    --arg mode "$MODE" \
-    --argjson rounds "$ROUNDS" \
-    --argjson accepted_count "$ACCEPTED" \
-    --argjson rejected_count "$REJECTED" \
-    --argjson exonerated_count "$EXONERATED" \
-    --rawfile body "$BODY_FILE" \
-    '{
-        schema_version: 2,
-        phase: $phase,
-        batch: $batch,
-        mode: $mode,
-        rounds: $rounds,
-        accepted_count: $accepted_count,
-        rejected_count: $rejected_count,
-        exonerated_count: $exonerated_count,
-        body: $body
-    }'
+if [ -n "$BODY_FILE" ]; then
+    [ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
+    [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
+fi
+
+if [ -n "$BODY_FILE" ]; then
+    jq -cn \
+        --arg phase "$PHASE" \
+        --arg batch "$BATCH" \
+        --arg mode "$MODE" \
+        --argjson rounds "$ROUNDS" \
+        --argjson accepted_count "$ACCEPTED" \
+        --argjson rejected_count "$REJECTED" \
+        --argjson exonerated_count "$EXONERATED" \
+        --rawfile body "$BODY_FILE" \
+        '{
+            schema_version: 2,
+            phase: $phase,
+            batch: $batch,
+            mode: $mode,
+            rounds: $rounds,
+            accepted_count: $accepted_count,
+            rejected_count: $rejected_count,
+            exonerated_count: $exonerated_count,
+            body: $body
+        }'
+else
+    jq -cn \
+        --arg phase "$PHASE" \
+        --arg batch "$BATCH" \
+        --arg mode "$MODE" \
+        --argjson rounds "$ROUNDS" \
+        --argjson accepted_count "$ACCEPTED" \
+        --argjson rejected_count "$REJECTED" \
+        --argjson exonerated_count "$EXONERATED" \
+        '{
+            schema_version: 2,
+            phase: $phase,
+            batch: $batch,
+            mode: $mode,
+            rounds: $rounds,
+            accepted_count: $accepted_count,
+            rejected_count: $rejected_count,
+            exonerated_count: $exonerated_count
+        }'
+fi

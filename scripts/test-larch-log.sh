@@ -163,7 +163,14 @@ assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.meta" "
 assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.json" "0" "round artifact includes dynamic codex phased json sidecar"
 assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.cap-hit" "0" "round artifact includes dynamic codex phased cap-hit sidecar"
 assert_round_artifact_included "codex-specialist-security-output.txt" "1" "round artifact excludes static codex raw output"
-assert_round_artifact_included "codex-specialist-security-output-phase2.txt" "0" "round artifact includes phased static codex raw output"
+assert_round_artifact_included "codex-specialist-security-output-phase2.txt" "1" "round artifact excludes phased static codex raw output"
+assert_round_artifact_included "codex-specialist-security-output-retry.txt" "1" "round artifact excludes static codex retry output"
+assert_round_artifact_included "codex-specialist-security-output-retry.txt.meta" "1" "round artifact excludes static codex retry meta sidecar"
+assert_round_artifact_included "cursor-specialist-correctness-output-phase2.txt" "1" "round artifact excludes phased static cursor raw output"
+assert_round_artifact_included "cursor-specialist-correctness-output-retry.txt" "1" "round artifact excludes static cursor retry output"
+assert_round_artifact_included "cursor-specialist-correctness-output-retry.txt.meta" "1" "round artifact excludes static cursor retry meta sidecar"
+assert_round_artifact_included "dyn-api-contract-prompt.md" "1" "round artifact excludes dynamic reviewer prompt"
+assert_round_artifact_included "scout-round1-manifest.json.raw" "1" "round artifact excludes raw scout manifest"
 assert_round_artifact_included "dyn-api-contract-codex-output.txt.prompt" "1" "round artifact excludes dynamic codex prompt"
 assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.prompt" "1" "round artifact excludes dynamic codex phased prompt"
 assert_round_artifact_included "dyn-api-contract-codex-output-vote-prompt.txt" "1" "round artifact excludes dynamic codex vote prompt"
@@ -178,16 +185,20 @@ if awk '
     /[*]-vote-prompt\.txt/ { vote_deny = NR }
     /skipped-findings\.security\.md/ { zero_deny = NR }
     /dirty-checkpoint-\*\.env/ { broad_allow = NR }
+    /dyn-\*-prompt\.md/ { dyn_prompt_deny = NR }
+    /scout-round\*-manifest\.json\.raw/ { scout_raw_deny = NR }
     END {
         ok = static_deny && dyn_allow && vote_deny && zero_deny && broad_allow
         ok = ok && static_deny < dyn_allow && vote_deny < dyn_allow && zero_deny < dyn_allow
         ok = ok && dyn_allow < broad_allow && !dyn_catchall
+        ok = ok && dyn_prompt_deny && dyn_prompt_deny < broad_allow
+        ok = ok && scout_raw_deny && scout_raw_deny < broad_allow
         exit(ok ? 0 : 1)
     }
 ' "$LARCH_LOG"; then
-    pass "round artifact dynamic codex explicit allow is ordered before broad output allows"
+    pass "round artifact ordering: dyn codex allow before broad allow, dyn-prompt/scout-raw deny before broad allow"
 else
-    fail "round artifact dynamic codex explicit allow ordering/regression pin"
+    fail "round artifact ordering/regression pin"
 fi
 
 echo "=== manifest updates mutable fields ==="
@@ -283,8 +294,15 @@ if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.ndjson" ]; then
 else
     fail "commit must not publish legacy ndjson stream files"
 fi
-_quiet_bc="$_repo/larch-logs/implement/$_rid/breadcrumbs/larch-quiet-foo.sh-12345.log"
-if [ -f "$_quiet_bc" ]; then pass "commit publishes session-root quiet log"; else fail "commit publishes session-root quiet log (missing $_quiet_bc)"; fi
+_quiet_bc="$_repo/larch-logs/implement/$_rid/breadcrumbs/quiet.log"
+if [ -f "$_quiet_bc" ]; then pass "commit publishes consolidated quiet.log"; else fail "commit publishes consolidated quiet.log (missing $_quiet_bc)"; fi
+# The individual file should no longer be published separately.
+if [ ! -f "$_repo/larch-logs/implement/$_rid/breadcrumbs/larch-quiet-foo.sh-12345.log" ]; then
+    pass "commit does not publish individual quiet log files"
+else
+    fail "commit must not publish individual quiet log files (should consolidate into quiet.log)"
+fi
+if grep -q '=== larch-quiet-foo.sh-12345.log ===' "$_quiet_bc" 2>/dev/null; then pass "quiet.log has per-file header"; else fail "quiet.log must have per-file header"; fi
 if grep -q '<REDACTED-PRIVATE-KEY>' "$_quiet_bc" 2>/dev/null; then pass "commit redacts quiet-log PEM"; else fail "commit redacts quiet-log PEM"; fi
 if grep -q 'MIIBOgIBAAJB' "$_quiet_bc" 2>/dev/null; then fail "commit leaked raw quiet-log PEM"; else pass "commit omits raw quiet-log PEM"; fi
 if grep -q '<TMPDIR>' "$_quiet_bc" 2>/dev/null; then pass "commit redacts quiet-log tmpdir path"; else fail "commit redacts quiet-log tmpdir path"; fi
@@ -336,8 +354,8 @@ git -C "$_bc_no_bc_repo" checkout -q -b feature-breadcrumb-no-srcdir
 (cd "$_bc_no_bc_repo" && "$LARCH_LOG" init --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" --issue 42) >/dev/null
 printf 'quiet-only session\n' > "$_bc_no_bc_staging/larch-quiet-bar.sh-67890.log"
 _bc_no_bc_out="$(cd "$_bc_no_bc_repo" && "$LARCH_LOG" commit --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" 2>&1)"
-_bc_no_bc_quiet="$_bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/larch-quiet-bar.sh-67890.log"
-if [ -f "$_bc_no_bc_quiet" ]; then pass "commit publishes quiet log without breadcrumbs dir"; else fail "commit publishes quiet log without breadcrumbs dir (missing $_bc_no_bc_quiet; out=$_bc_no_bc_out)"; fi
+_bc_no_bc_quiet="$_bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_no_bc_quiet" ]; then pass "commit publishes quiet.log without breadcrumbs dir"; else fail "commit publishes quiet.log without breadcrumbs dir (missing $_bc_no_bc_quiet; out=$_bc_no_bc_out)"; fi
 
 echo "=== commit rejects traversal-backed session-root quiet log ==="
 _bc_quiet_symlink_repo="$TMP/breadcrumb-quiet-symlink-repo"
@@ -552,7 +570,8 @@ _bc_redact_keep_rc=0
 (cd "$_bc_redact_keep_repo" && with_implement_tmpdir "$_bc_redact_keep_staging" "$LARCH_LOG" commit --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" >/dev/null 2>&1) || _bc_redact_keep_rc=$?
 cp "$_saved_redact" "$_orig_redact"
 if [ "$_bc_redact_keep_rc" -ne 0 ]; then pass "redactor failure on refresh exits non-zero"; else fail "redactor failure on refresh should fail"; fi
-if [ -f "$_bc_redact_keep_repo/larch-logs/implement/$_bc_redact_keep_run/breadcrumbs/larch-quiet-existing.sh-1.log" ]; then
+_bc_rk_ql="$_bc_redact_keep_repo/larch-logs/implement/$_bc_redact_keep_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_rk_ql" ] && grep -q 'keep-me quiet' "$_bc_rk_ql" 2>/dev/null; then
     pass "redactor failure preserves previously committed breadcrumbs"
 else
     fail "redactor failure must preserve previously committed breadcrumbs"
@@ -595,7 +614,8 @@ _bc_mv_rc=0
 (cd "$_bc_mv_repo" && PATH="$TMP/mock-bin:$PATH" LARCH_TEST_FAIL_BREADCRUMB_PUBLISH=1 \
     "$LARCH_LOG" commit --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" >/dev/null 2>&1) || _bc_mv_rc=$?
 if [ "$_bc_mv_rc" -ne 0 ]; then pass "publish failure exits non-zero"; else fail "publish failure should exit non-zero"; fi
-if grep -q 'first quiet' "$_bc_mv_repo/larch-logs/implement/$_bc_mv_run/breadcrumbs/larch-quiet-existing.sh-1.log"; then
+_bc_mv_ql="$_bc_mv_repo/larch-logs/implement/$_bc_mv_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_mv_ql" ] && grep -q 'first quiet' "$_bc_mv_ql" 2>/dev/null; then
     pass "publish failure preserves previously committed breadcrumb payload"
 else
     fail "publish failure must preserve previously committed breadcrumb payload"
@@ -642,7 +662,8 @@ printf 'first quiet\n' > "$_bc_missing_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_missing_repo" && with_implement_tmpdir "$_bc_missing_staging" "$LARCH_LOG" commit --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run") >/dev/null
 rm -f "$_bc_missing_staging"/larch-quiet-*-*.log
 (cd "$_bc_missing_repo" && with_implement_tmpdir "$_bc_missing_staging" "$LARCH_LOG" commit --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run") >/dev/null
-if [ -f "$_bc_missing_repo/larch-logs/implement/$_bc_missing_run/breadcrumbs/larch-quiet-existing.sh-1.log" ]; then
+_bc_miss_ql="$_bc_missing_repo/larch-logs/implement/$_bc_missing_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_miss_ql" ] && grep -q 'first quiet' "$_bc_miss_ql" 2>/dev/null; then
     pass "missing breadcrumb source leaves committed breadcrumbs intact"
 else
     fail "missing breadcrumb source must not delete committed breadcrumbs"
@@ -666,7 +687,8 @@ printf 'first quiet\n' > "$_bc_empty_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_empty_repo" && with_implement_tmpdir "$_bc_empty_staging" "$LARCH_LOG" commit --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run") >/dev/null
 rm -f "$_bc_empty_staging"/larch-quiet-*-*.log
 (cd "$_bc_empty_repo" && with_implement_tmpdir "$_bc_empty_staging" "$LARCH_LOG" commit --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run") >/dev/null
-if [ -f "$_bc_empty_repo/larch-logs/implement/$_bc_empty_run/breadcrumbs/larch-quiet-existing.sh-1.log" ]; then
+_bc_emp_ql="$_bc_empty_repo/larch-logs/implement/$_bc_empty_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_emp_ql" ] && grep -q 'first quiet' "$_bc_emp_ql" 2>/dev/null; then
     pass "empty breadcrumb source leaves committed breadcrumbs intact"
 else
     fail "empty breadcrumb source must not delete committed breadcrumbs"
@@ -688,7 +710,8 @@ git -C "$_bc_nonreg_repo" commit -q -m "init"
 git -C "$_bc_nonreg_repo" checkout -q -b feature-breadcrumb-nonreg
 (cd "$_bc_nonreg_repo" && "$LARCH_LOG" init --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run" --issue 42) >/dev/null
 (cd "$_bc_nonreg_repo" && with_implement_tmpdir "$_bc_nonreg_staging" "$LARCH_LOG" commit --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run") >/dev/null 2>&1 || true
-if [ -f "$_bc_nonreg_repo/larch-logs/implement/$_bc_nonreg_run/breadcrumbs/larch-quiet-nonreg.sh-11111.log" ]; then
+_bc_nr_ql="$_bc_nonreg_repo/larch-logs/implement/$_bc_nonreg_run/breadcrumbs/quiet.log"
+if [ -f "$_bc_nr_ql" ] && grep -q 'quiet log fixture' "$_bc_nr_ql" 2>/dev/null; then
     pass "non-regular ndjson does not block quiet-log publish"
 else
     fail "non-regular ndjson should still allow quiet-log publish"
@@ -979,10 +1002,10 @@ if [ -f "$_wr_round/scout-round1-manifest.json" ]; then
 else
     fail "write-round must commit scout-round1-manifest.json (missing)"
 fi
-if [ -f "$_wr_round/scout-round1-manifest.json.raw" ]; then
-    pass "write-round commits scout-round1-manifest.json.raw"
+if [ ! -f "$_wr_round/scout-round1-manifest.json.raw" ]; then
+    pass "write-round denies scout-round1-manifest.json.raw"
 else
-    fail "write-round must commit scout-round1-manifest.json.raw (missing)"
+    fail "write-round must deny scout-round1-manifest.json.raw (cooked .json is canonical)"
 fi
 
 # Test 3: dynamic-archetypes flattened to round root (not in a subdir)
@@ -991,10 +1014,10 @@ if [ -f "$_wr_round/reviewer-dyn-api-contract.md" ] && [ ! -d "$_wr_round/dynami
 else
     fail "write-round must flatten reviewer-dyn-*.md (missing or still in subdir)"
 fi
-if [ -f "$_wr_round/dyn-api-contract-prompt.md" ]; then
-    pass "write-round flattens dyn-*-prompt.md to round root"
+if [ ! -f "$_wr_round/dyn-api-contract-prompt.md" ]; then
+    pass "write-round denies dyn-*-prompt.md"
 else
-    fail "write-round must flatten dyn-*-prompt.md (missing)"
+    fail "write-round must deny dyn-*-prompt.md (archetype def in reviewer-dyn-*.md is canonical)"
 fi
 
 # Test 4: no-regression — existing allowed files still committed
@@ -1054,11 +1077,11 @@ if [ "$_wr_status_content" = "$(cat "$_wr_source/scout-round1-status.env")" ]; t
 else
     fail "write-round scout-round1-status.env content mismatch"
 fi
-_wr_raw_content=$(cat "$_wr_round/scout-round1-manifest.json.raw" 2>/dev/null || true)
-if [ "$_wr_raw_content" = "$(cat "$_wr_source/scout-round1-manifest.json.raw")" ]; then
-    pass "write-round scout-round1-manifest.json.raw content matches source"
+# scout-round1-manifest.json.raw is now denied; verify it is absent in the round dir.
+if [ ! -f "$_wr_round/scout-round1-manifest.json.raw" ]; then
+    pass "write-round scout-round1-manifest.json.raw absent (denied)"
 else
-    fail "write-round scout-round1-manifest.json.raw content mismatch"
+    fail "write-round scout-round1-manifest.json.raw must be absent (denied)"
 fi
 
 echo "=== write-round keeps baseline artifacts unchanged without scout or dynamic inputs ==="

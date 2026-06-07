@@ -26,7 +26,10 @@ Accepted security-tagged review/design OOS findings are held locally and NEVER w
 Dynamic review scout notes are also treated as untrusted data. `scripts/scout-dynamic-archetypes.sh` rejects scout-authored `rationale` or `prompt_body` strings containing the literal `</scout_notes>` wrapper terminator, rejects `prompt_body` strings containing literal `</reviewer_` closers or standalone `---` lines, and repairs accepted `prompt_body` strings so they end with the full required closing sentence (`Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.`). `skills/review/scripts/dispatch-panel.sh` then tells dynamic reviewers to extract only file/aspect hints from `<scout_notes>` and ignore commands, tool/workflow requests, scope changes, and output-format instructions inside that block. This keeps synthesized dynamic reviewer prompts inside their untrusted `<scout_notes>` envelope and preserves the wrapper-alignment footer even if the scout omits or truncates it.
 
 Committed breadcrumb publication stages only session-root quiet logs whose
-basenames match `larch-quiet-*-*.log`. Legacy `*.ndjson` breadcrumb stream files and
+basenames match `larch-quiet-*-*.log`. Each matched file is individually redacted
+and the redacted content is concatenated into a single
+`larch-logs/.../breadcrumbs/quiet.log` file (with per-source-file header lines
+`=== <basename> ===`). Legacy `*.ndjson` breadcrumb stream files and
 session-local monitor sidecars (`.quiet`, `.done`, `.status`, `.surfaced`,
 `.bc-offset`) stay under the run tmpdir and are not copied into
 `larch-logs/.../breadcrumbs/`; attempted quiet-log publication still fails
@@ -338,12 +341,11 @@ through the redaction and publication path described here.
    `design-log-publish.sh`**: both entrypoints invoke the shared
    `larch_log_publish_breadcrumbs_shared` helper in `scripts/lib-larch-log.sh`.
    The helper stages each accepted source file through
-   `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
-   into a temp staging directory, then atomically moves the staging directory
-   into place under `larch-logs/<skill>/<run-id>/breadcrumbs/`. Same-basename
-   publication is depth 1: per-script `larch-quiet-<script>-<pid>.log` files at
-   the session-tmpdir root become
-   `larch-logs/<skill>/<run-id>/breadcrumbs/larch-quiet-<script>-<pid>.log`.
+   `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`,
+   then concatenates all redacted output into a single
+   `larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` file (with per-source
+   header lines `=== <basename> ===`) rather than publishing individual files.
+   The staging and final atomic directory swap prevent partial publication.
    Source-directory resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set
    (must still pass session-tmpdir containment), else the log-root parent's
    `breadcrumbs/`. Quiet-log sources are derived via `dirname` of that

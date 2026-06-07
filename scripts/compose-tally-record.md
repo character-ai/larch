@@ -13,21 +13,23 @@ Inputs:
 [--accepted N]
 [--rejected N]
 [--exonerated N]
---body-file PATH
+[--body-file PATH]   # required for plan-review; optional (and ignored) for code-review
 ```
 
 Optional deprecated argv (two ASCII hyphens + literal neutral + N): accepted for CLI compatibility but ignored (not emitted in JSON).
 
 The output is a single JSON object on stdout with `schema_version` (`2`),
 `phase`, `batch`, `mode`, `rounds`, `accepted_count`, `rejected_count`,
-`exonerated_count`, and `body`. For code-review tallies,
+and `exonerated_count`. For `plan-review` tallies the `body` field is also
+included (verbatim markdown tally prose via `jq --rawfile`). For `code-review`
+tallies the `body` field is **omitted** — the rejected-findings prose is already
+canonical in `round-N/rejected-findings-full.md` and `review-findings-full.jsonl`.
 `rejected_count` counts every finding that did not meet the acceptance threshold
 (0 YES). `exonerated_count` is always `0` (retained for backward compatibility).
 The `plan-review` phase maps to `batch: "plan-review-tally"`; the
-`code-review` phase maps to `batch: "code-review-tally"`. The body file is
-embedded verbatim as a JSON string by `jq --rawfile`.
+`code-review` phase maps to `batch: "code-review-tally"`.
 
-The helper rejects missing body files, symlinks, invalid phase or mode values,
+The helper rejects missing body files (for plan-review), symlinks, invalid phase or mode values,
 and non-numeric tally counts. It does not redact content; `larch-log.sh` still
 applies the standard tmpdir and secret redaction pass before writing.
 

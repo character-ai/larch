@@ -131,7 +131,11 @@ done
 [ -n "$RUN_ID" ] || { usage; fail "--run-id is required"; }
 [ -n "$PHASE" ] || { usage; fail "--phase is required"; }
 [ -n "$MODE" ] || { usage; fail "--mode is required"; }
-[ -n "$BODY_FILE" ] || { usage; fail "--body-file is required"; }
+
+# body-file required for plan-review; optional for code-review (body field omitted).
+if [ "$PHASE" = "plan-review" ]; then
+    [ -n "$BODY_FILE" ] || { usage; fail "--body-file is required for --phase plan-review"; }
+fi
 
 case "$PHASE" in
     plan-review) BATCH="plan-review-tally" ;;
@@ -151,10 +155,13 @@ require_non_negative_integer "--exonerated" "$EXONERATED"
 
 [ -x "$COMPOSE_TALLY_RECORD" ] || fail "compose-tally-record.sh not executable: $COMPOSE_TALLY_RECORD"
 [ -x "$LARCH_LOG" ] || fail "larch-log.sh not executable: $LARCH_LOG"
-[ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
-[ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
+if [ -n "$BODY_FILE" ]; then
+    [ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
+    [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
+fi
 
-if [ "$PHASE" = "code-review" ]; then
+# For code-review: skip body validation and don't pass --body-file (body omitted).
+if [ "$PHASE" = "code-review" ] && [ -n "$BODY_FILE" ]; then
     set +e
     validation_out="$(validate_code_review_headers "$BODY_FILE" 2>&1)"
     validation_rc=$?
@@ -171,14 +178,13 @@ fi
 RECORD_FILE="$(mktemp "${TMPDIR:-/tmp}/write-tally-record.XXXXXX")" || fail "cannot create tally temp file"
 trap 'rm -f "${RECORD_FILE:-}"' EXIT
 
-if ! "$COMPOSE_TALLY_RECORD" \
-    --phase "$PHASE" \
-    --mode "$MODE" \
-    --rounds "$ROUNDS" \
-    --accepted "$ACCEPTED" \
-    --rejected "$REJECTED" \
-    --exonerated "$EXONERATED" \
-    --body-file "$BODY_FILE" > "$RECORD_FILE"; then
+_compose_args=(--phase "$PHASE" --mode "$MODE" --rounds "$ROUNDS" --accepted "$ACCEPTED" --rejected "$REJECTED" --exonerated "$EXONERATED")
+# For code-review, body is dropped (rejected-findings prose already in review-findings-full.jsonl).
+# For plan-review (or any phase when --body-file was supplied), include the body.
+if [ "$PHASE" != "code-review" ] && [ -n "$BODY_FILE" ]; then
+    _compose_args+=(--body-file "$BODY_FILE")
+fi
+if ! "$COMPOSE_TALLY_RECORD" "${_compose_args[@]}" > "$RECORD_FILE"; then
     emit_kv FAILED true
     emit_kv ERROR "compose-tally-record.sh failed"
     exit 2

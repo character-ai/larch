@@ -449,7 +449,8 @@ EOF
     else
         fail "refresh breadcrumbs: sidecars must not be committed"
     fi
-    quiet_committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/larch-quiet-refresh-run-logs.sh-24680.log"
+    # Quiet logs are consolidated into breadcrumbs/quiet.log (not individual files).
+    quiet_committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/quiet.log"
     if [ -f "$quiet_committed" ]; then
         pass "refresh breadcrumbs: session-root quiet log committed"
     else

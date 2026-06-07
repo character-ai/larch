@@ -43,7 +43,7 @@ larch-logs/
       execution-issues.ndjson
       session-transcript.jsonl
       breadcrumbs/
-        larch-quiet-<script>-<pid>.log
+        quiet.log
       round-<N>/
         findings.md
         findings-classification.tsv
@@ -72,7 +72,14 @@ larch-logs/
 
 ### In-loop refresh sidecars
 
-During open-PR retry loops, the Python ship driver may re-render refresh sidecars under `larch-logs/implement/<RUN_ID>/` before a push. A refresh that changes only `token-report-refresh.json`, `timing-report-refresh.json`, or `session-transcript-refresh.txt` is treated as volatile-only: the repo run tree is restored/cleaned and the flush returns without a commit, leaving repo-wide porcelain empty before any push. Canonical reports such as `token-report.json`, `timing-report.json`, `token-report.ndjson`, and `timing-report.ndjson` are not volatile-only; substantive changes to those files still commit.
+In-loop refresh sidecars (`token-report-refresh.json`, `timing-report-refresh.json`,
+`session-transcript-refresh.txt`) are volatile in-loop snapshots that are NOT
+committed to the run tree. The Python ship driver reads them as inputs for
+re-rendering canonical batches (`token-report.ndjson`, `timing-report.ndjson`,
+`session-transcript.jsonl`) but does not copy the refresh files themselves into
+`larch-logs/implement/<RUN_ID>/`. Canonical reports such as `token-report.json`,
+`timing-report.json`, `token-report.ndjson`, and `timing-report.ndjson` are still
+committed normally.
 
 ### breadcrumbs/
 
@@ -104,14 +111,16 @@ breadcrumb staging and returns success without creating or replacing the
 committed `breadcrumbs/` directory.
 
 Per-script session-root quiet logs whose basenames match exactly
-`larch-quiet-<script>-<pid>.log` are staged. Each accepted file is redacted
-through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file
-<tmp>` and committed as `larch-logs/<skill>/<run-id>/breadcrumbs/<basename>`
-after an atomic mktemp-plus-move of the staging directory. Quiet-log sourcing
-uses `dirname` of the breadcrumbs source path and runs even when `breadcrumbs/`
-was never created. Candidates must stay under the active session tmpdir, must
-not be symlinks, and must not be hardlinks. Legacy `*.ndjson` files and other
-non-quiet-log artifacts under the session `breadcrumbs/` hint are not published.
+`larch-quiet-<script>-<pid>.log` are staged. Each accepted file is individually
+redacted through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming
+--state-file <tmp>`, then all redacted content is **concatenated** into a single
+`larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` with per-source header lines
+`=== <basename> ===`. The individual source files are not published separately.
+Quiet-log sourcing uses `dirname` of the breadcrumbs source path and runs even
+when `breadcrumbs/` was never created. Candidates must stay under the active
+session tmpdir, must not be symlinks, and must not be hardlinks. Legacy
+`*.ndjson` files and other non-quiet-log artifacts under the session
+`breadcrumbs/` hint are not published.
 When no quiet log stages, the helper returns 0 and does not create, replace,
 or clear an existing committed `breadcrumbs/` destination.
 

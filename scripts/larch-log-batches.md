@@ -57,8 +57,16 @@ object composed by `scripts/compose-tally-record.sh`:
 
 The `phase` value is `plan-review` or `code-review`; `batch` is the matching
 batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
-`exonerated_count` is always `0` (retained for schema backward compatibility); `rejected_count` counts every finding that did not meet the acceptance threshold (0 YES); non-accepted findings with ≥1 YES are `neutral`; and
-`body` holds the verbatim markdown tally prose with newlines JSON-escaped.
+`exonerated_count` is always `0` (retained for schema backward compatibility); `rejected_count` counts every finding that did not meet the acceptance threshold (0 YES); non-accepted findings with ≥1 YES are `neutral`.
+
+`body` holds verbatim markdown tally prose for `plan-review-tally`. For
+`code-review-tally` the `body` field is **omitted** — the rejected-findings
+prose that used to populate it is the third copy of the same data (also in
+`round-N/rejected-findings-full.md` and `review-findings-full.jsonl`); no
+programmatic reader consumes `body` from `code-review-tally.json`. Canonical
+`code-review-tally.json` objects contain only the envelope fields
+(`schema_version`, `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
+`rejected_count`, `exonerated_count`).
 
 The `json-object` sanitizer validates these tally batches before replace writes.
 `review-findings-full.jsonl` is line-delimited JSON (one finding per line, with
