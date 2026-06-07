@@ -27,7 +27,6 @@ OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
 
 # ship.py JSON/result literals
 JOURNAL_EVENT_SHIP_RESULT: Final = "ship-result"
-NEEDS_USER_OOS_FILING: Final = "oos-filing"
 NEEDS_USER_FIRST_FIXER_NON_HEALTH: Final = "first-fixer-non-health"
 NEEDS_USER_CI_FIX_EXHAUSTED: Final = "ci-fix-exhausted"
 NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED: Final = "fix-attempts-exhausted"

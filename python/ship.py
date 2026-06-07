@@ -48,7 +48,6 @@ import gh
 import git
 import logging_util
 import merge
-import oos
 import pr
 import pr_body
 import proc
@@ -82,7 +81,6 @@ _ALLOWED_SHIP_STATE_KEYS = frozenset({
     "PR_URL",
     "PR_TITLE",
     "MERGE_RESULT",
-    "OOS_PENDING",
     "CI_FIX_REBASE_PENDING",
     "CI_FIX_REBASE_PENDING_HEAD",
     "REBASE_COUNT",
@@ -175,7 +173,6 @@ def _step_result_to_ship(
         for token in (
             config.NEEDS_USER_CI_FIX_EXHAUSTED,
             config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
-            config.NEEDS_USER_OOS_FILING,
             config.NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
             "local-unfixable",
         ):
@@ -260,23 +257,6 @@ def _summary_from_manifest(ctx: RunContext) -> str:
     return "- Implement requested changes.\n"
 
 
-def oos_observation_count(manifest_path: Path) -> int | None:
-    """Return manifest oos_observations length, or None for malformed/OOS-invalid JSON."""
-    try:
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(loaded, dict):
-        return None
-    data = cast("dict[str, object]", loaded)
-    observations = data.get("oos_observations")
-    if isinstance(observations, list):
-        return len(cast("list[object]", observations))
-    if "oos_observations" in data:
-        return None
-    return 0
-
-
 def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     issue = ctx.issue_number or ctx.issue
     prefix = f"Fixes #{issue}: " if issue and str(issue).isdigit() else ""
@@ -289,262 +269,6 @@ def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     title = subject or f"Implement issue #{issue or ctx.issue}"
     return title if not prefix or title.startswith(prefix) else f"{prefix}{title}"
 
-
-
-def resolve_oos_accepted_design_path(tmpdir: Path) -> Path:
-    """Resolve accepted design OOS path in bash checkpoint order."""
-    design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
-    if design_tmpdir:
-        design_path = Path(design_tmpdir) / "oos-accepted-design.md"
-        if design_path.is_file():
-            return design_path
-    exported = tmpdir / "design-export" / "oos-accepted-design.md"
-    if exported.is_file():
-        return exported
-    return tmpdir / "oos-accepted-design.md"
-
-
-def _append_execution_tool_failure(
-    runner: Runner,
-    ctx: RunContext,
-    *,
-    site: str,
-    tool: str,
-    exit_code: int,
-    output_file: Path,
-    cwd: str | None,
-) -> None:
-    script = Path(__file__).resolve().parents[1] / "scripts" / "append-tool-failure.sh"
-    if script.is_file():
-        _ = runner.run(
-            [
-                "bash",
-                str(script),
-                "--log",
-                str(Path(ctx.tmpdir) / "execution-issues.md"),
-                "--site",
-                site,
-                "--tool",
-                tool,
-                "--exit-code",
-                str(exit_code),
-                "--category",
-                "Tool Failures",
-                "--output-file",
-                str(output_file),
-                "--redact",
-            ],
-            cwd=cwd,
-        )
-    log_path = Path(ctx.tmpdir) / "execution-issues.md"
-    existing = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
-    if tool not in existing:
-        bullet = f"- **Step {site}**: {tool} failed with exit {exit_code}; see {output_file}\n"
-        if "### Tool Failures\n" in existing:
-            updated = existing.rstrip() + "\n" + bullet
-        else:
-            sep = "" if not existing else "\n"
-            updated = existing.rstrip() + sep + "### Tool Failures\n" + bullet
-        _ = log_path.write_text(updated, encoding="utf-8")
-
-
-def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
-    manifest_path = Path(ctx.manifest_path) if ctx.manifest_path else None
-    if manifest_path is None or not manifest_path.is_file():
-        return None
-    manifest_oos_count = oos_observation_count(manifest_path)
-    materialize_failure_blocks = manifest_oos_count is None or manifest_oos_count > 0
-    if materialize_failure_blocks:
-        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
-    script = (
-        Path(__file__).resolve().parents[1]
-        / "skills"
-        / "implement"
-        / "scripts"
-        / "materialize-manifest-oos.sh"
-    )
-    result = runner.run(
-        [
-            "bash",
-            str(script),
-            "--manifest-path",
-            str(manifest_path),
-            "--implement-tmpdir",
-            ctx.tmpdir,
-        ],
-        cwd=cwd,
-    )
-    if result.returncode == 0:
-        return None
-    stderr_log = Path(ctx.tmpdir) / "materialize-manifest-oos.log"
-    _ = stderr_log.write_text(result.stderr or result.stdout, encoding="utf-8")
-    _append_execution_tool_failure(
-        runner,
-        ctx,
-        site="pr-create",
-        tool="materialize-manifest-oos.sh",
-        exit_code=result.returncode,
-        output_file=stderr_log,
-        cwd=cwd,
-    )
-    if not materialize_failure_blocks:
-        return None
-    return ShipResult(
-        Outcome.NEEDS_USER_INPUT,
-        needs_user_reason=config.NEEDS_USER_OOS_FILING,
-        detail=config.NEEDS_USER_OOS_FILING,
-    )
-
-
-def _oos_gate(
-    runner: Runner,
-    ctx: RunContext,
-    *,
-    cwd: str | None,
-    iteration: int = 0,
-    rebase_count: int = 0,
-    fix_attempts: int = 0,
-    transient_retries: int = 0,
-) -> ShipResult | None:
-    tmpdir = Path(ctx.tmpdir)
-    design_path = resolve_oos_accepted_design_path(tmpdir)
-    accepted = tuple(
-        str(path)
-        for path in (
-            tmpdir / "oos-accepted-review.md",
-            tmpdir / "oos-accepted-main-agent.md",
-            design_path,
-        )
-        if path.is_file()
-    )
-    created = tmpdir / "oos-issues-created.md"
-    run_id = ctx.run_id
-    if not run_id:
-        session_id = tmpdir / "session-id"
-        if session_id.is_file():
-            run_id = session_id.read_text(encoding="utf-8").strip()
-    run_dir_ndjson = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson" if run_id else Path()
-    if not run_dir_ndjson.is_file():
-        candidates = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
-        if len(candidates) == 1:
-            run_dir_ndjson = candidates[0]
-        elif len(candidates) > 1 and not run_id:
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason=config.NEEDS_USER_OOS_FILING,
-                detail=config.NEEDS_USER_OOS_FILING,
-            )
-    commit_messages = ""
-    base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
-    commit_range = f"{base_remote}/main..HEAD"
-    merge_base = runner.run(["git", "merge-base", "HEAD", f"{base_remote}/main"], cwd=cwd)
-    if merge_base.returncode == 0 and merge_base.stdout.strip():
-        commit_range = f"{merge_base.stdout.strip()}..HEAD"
-    messages = runner.run(["git", "log", "--format=%B", commit_range], cwd=cwd)
-    if messages.returncode == 0:
-        commit_messages = messages.stdout
-    non_sec = oos.count_non_security(accepted)
-    if (
-        non_sec > 0
-        and not (ctx.forked or ctx.forked_target or ctx.repo_unavailable)
-        and not run_dir_ndjson.is_file()
-    ):
-        _write_ship_state(
-            ctx.with_(oos_pending=True),
-            phase="pr-create",
-            iteration=iteration,
-            rebase_count=rebase_count,
-            fix_attempts=fix_attempts,
-            transient_retries=transient_retries,
-        )
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason=config.NEEDS_USER_OOS_FILING,
-            detail=config.NEEDS_USER_OOS_FILING,
-        )
-    disposition = oos.disposition_ok(
-        runner,
-        accepted_files=accepted,
-        filed_urls_files=(str(created),) if created.is_file() else (),
-        filed_urls_strict_files=(str(design_path),) if design_path.is_file() else (),
-        oos_issues_ndjson=str(run_dir_ndjson) if run_dir_ndjson.is_file() else None,
-        commit_range_messages=commit_messages,
-        forked=ctx.forked or ctx.forked_target,
-        repo_unavailable=ctx.repo_unavailable,
-    )
-    if disposition.ok:
-        _write_ship_state(
-            ctx.with_(oos_pending=False),
-            phase="pr-create",
-            iteration=iteration,
-            rebase_count=rebase_count,
-            fix_attempts=fix_attempts,
-            transient_retries=transient_retries,
-        )
-        return None
-    _write_ship_state(
-        ctx.with_(oos_pending=True),
-        phase="pr-create",
-        iteration=iteration,
-        rebase_count=rebase_count,
-        fix_attempts=fix_attempts,
-        transient_retries=transient_retries,
-    )
-    return ShipResult(
-        Outcome.NEEDS_USER_INPUT,
-        needs_user_reason=config.NEEDS_USER_OOS_FILING,
-        detail=config.NEEDS_USER_OOS_FILING,
-    )
-
-
-def _pending_oos_gate(
-    runner: Runner,
-    ctx: RunContext,
-    *,
-    cwd: str | None,
-    iteration: int = 0,
-    rebase_count: int = 0,
-    fix_attempts: int = 0,
-    transient_retries: int = 0,
-) -> ShipResult | None:
-    security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
-    if security_oos.is_file() and security_oos.stat().st_size > 0:
-        _write_ship_state(
-            ctx.with_(oos_pending=True),
-            phase="pr-create",
-            iteration=iteration,
-            rebase_count=rebase_count,
-            fix_attempts=fix_attempts,
-            transient_retries=transient_retries,
-        )
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason=config.NEEDS_USER_OOS_FILING,
-            detail=config.NEEDS_USER_OOS_FILING,
-        )
-    return _oos_gate(
-        runner,
-        ctx,
-        cwd=cwd,
-        iteration=iteration,
-        rebase_count=rebase_count,
-        fix_attempts=fix_attempts,
-        transient_retries=transient_retries,
-    )
-
-
-def _has_oos_gate_inputs(ctx: RunContext) -> bool:
-    tmpdir = Path(ctx.tmpdir)
-    design_path = resolve_oos_accepted_design_path(tmpdir)
-    return any(
-        path.is_file() and path.stat().st_size > 0
-        for path in (
-            tmpdir / "oos-accepted-review.md",
-            tmpdir / "oos-accepted-main-agent.md",
-            design_path,
-            tmpdir / "security-oos-observations.md",
-        )
-    )
 
 
 def _postmerge_should_flush(ctx: RunContext) -> bool:
@@ -752,7 +476,6 @@ def _write_ship_state(
         "PR_URL": ctx.pr_url,
         "PR_TITLE": ctx.pr_title,
         "MERGE_RESULT": ctx.merge_result,
-        "OOS_PENDING": _state_bool(value=ctx.oos_pending),
         "CI_FIX_REBASE_PENDING": _state_bool(value=ctx.ci_fix_rebase_pending),
         "CI_FIX_REBASE_PENDING_HEAD": ci_fix_rebase_pending_head
         if ctx.ci_fix_rebase_pending
@@ -847,7 +570,6 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         ("STALL_TRACKING", "stall_tracking"),
         ("BAIL_NEEDS_USER_INPUT", "bail_needs_user_input"),
         ("PR_CLOSED", "pr_closed"),
-        ("OOS_PENDING", "oos_pending"),
         ("CI_FIX_REBASE_PENDING", "ci_fix_rebase_pending"),
     ):
         value = state.get(key, "")
@@ -1241,7 +963,6 @@ def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
         forked=resume.durable.forked,
         merge=resume.durable.merge,
         draft=resume.durable.draft,
-        oos_pending=_state_bool_text(run_logs.read_state_kv(ctx.state_file, "OOS_PENDING")),
     )
 
 
@@ -1523,22 +1244,6 @@ def run_ship(
             test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
             issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
         )
-        if resume.start == "fresh":
-            materialize_result = _materialize_manifest_oos(runner, pr_context, cwd=repo_root)
-            if materialize_result is not None:
-                return materialize_result
-        if resume.start == "fresh" or pr_context.oos_pending or _has_oos_gate_inputs(pr_context):
-            oos_result = _pending_oos_gate(
-                runner,
-                pr_context,
-                cwd=repo_root,
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-            )
-            if oos_result is not None:
-                return oos_result
         title = _pr_title(pr_context, runner, cwd=repo_root)
         ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
         working = pr_context.with_(

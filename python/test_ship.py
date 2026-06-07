@@ -8,7 +8,6 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
 from pathlib import Path
 import pytest
 
@@ -17,7 +16,6 @@ import run_logs
 import ship
 from errors import PrePushConflictHandoff, ShipError, Stalled
 from outcomes import Outcome, StepResult
-from proc import CommandResult
 from run_context import RunContext
 
 
@@ -82,12 +80,6 @@ def test_happy_path_stage_order(
         "compose_pr_body",
         lambda **_k: order.append("pr-body") or "body",
     )
-    monkeypatch.setattr(
-        ship.oos,
-        "disposition_ok",
-        lambda *_a, **_k: order.append("oos") or type("D", (), {"ok": True})(),
-    )
-
     def fake_flush(_runner: RecordingRunner, ctx: RunContext, *, cwd: str | None = None) -> run_logs.RefreshSkip:
         order.append("flush-pre")
         flush_args.append((ctx.state_file, cwd))
@@ -143,7 +135,6 @@ def test_happy_path_stage_order(
         "flush-pre",
         "postbump",
         "pr-body",
-        "oos",
         "ensure-pr",
         "comment",
         "monitor",
@@ -172,7 +163,6 @@ def test_merge_loop_iteration_cap_stalls(
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
     monkeypatch.setattr(
         ship.pr,
         "ensure_pr",
@@ -202,352 +192,18 @@ def test_merge_loop_iteration_cap_stalls(
     assert result.detail == "merge loop iteration cap reached"
 
 
-def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text("### OOS_1\nbody\n", encoding="utf-8")
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(
-        ship.oos,
-        "disposition_ok",
-        lambda *_a, **_k: type("D", (), {"ok": False})(),
-    )
 
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run before OOS filing")
 
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
 
-def test_design_export_oos_allows_pr_create_after_disposition(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    exported = tmp_path / "design-export" / "oos-accepted-design.md"
-    exported.parent.mkdir()
-    _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
 
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
 
-def test_design_tmpdir_oos_allows_pr_create_after_disposition(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    design_tmpdir = tmp_path / "design"
-    design_tmpdir.mkdir()
-    accepted = design_tmpdir / "oos-accepted-design.md"
-    _ = accepted.write_text("### OOS_1: design tmpdir OOS\nbody\n", encoding="utf-8")
-    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmpdir))
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
 
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
-
-def test_stale_design_tmpdir_falls_back_to_design_export(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    stale_design = tmp_path / "stale-design"
-    exported = tmp_path / "design-export" / "oos-accepted-design.md"
-    exported.parent.mkdir()
-    _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
-    monkeypatch.setenv("DESIGN_TMPDIR", str(stale_design))
-
-    assert ship.resolve_oos_accepted_design_path(tmp_path) == exported
-
-
-def test_oos_gate_uses_single_alternate_ndjson_when_run_id_path_missing(tmp_path: Path) -> None:
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text(
-        "### OOS_1: Filed elsewhere\n- **Description**: already filed\n",
-        encoding="utf-8",
-    )
-    alternate = tmp_path / "larch-logs" / "implement" / "other-run" / "oos-issues.ndjson"
-    alternate.parent.mkdir(parents=True)
-    _ = alternate.write_text(
-        '{"body":"Created https://github.com/example/larch/issues/99"}\n',
-        encoding="utf-8",
-    )
-
-    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-
-    assert result is None
-
-
-def test_oos_gate_requires_ndjson_for_non_security_without_filed_evidence(tmp_path: Path) -> None:
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text(
-        "### OOS_1: Needs ndjson\n- **Description**: unresolved\n",
-        encoding="utf-8",
-    )
-
-    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-
-    assert result is not None
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-
-
-def test_oos_gate_blocks_legacy_trailing_tag_without_filed_evidence(
-    tmp_path: Path,
-) -> None:
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text(
-        "### FINDING_1: Needs filing [OUT_OF_SCOPE]\n- **Description**: unresolved\n",
-        encoding="utf-8",
-    )
-
-    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-
-    assert result is not None
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-
-
-def test_run_ship_proceeds_when_disposition_satisfied_with_non_empty_accepted(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text(
-        "### OOS_1: Filed\n- **Description**: already filed\n",
-        encoding="utf-8",
-    )
-    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
-    ndjson.parent.mkdir(parents=True)
-    _ = ndjson.write_text(
-        '{"body":"Created https://github.com/example/larch/issues/42"}\n',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 9, "url": "https://example.test/pr/9", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-
-    ctx = _ctx(tmp_path, merge=False, oos_pending=True)
-    result = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.OK
-
-
-def test_oos_gate_allows_inline_triage_without_ndjson(tmp_path: Path) -> None:
-    class InlineRunner(RecordingRunner):
-        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
-            self.calls.append(list(argv))
-            if argv[:3] == ["git", "log", "--format=%B"]:
-                return CommandResult(tuple(argv), 0, "Inline-triage rule 1: folded\n", "", 0.01)
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    accepted = tmp_path / "oos-accepted-main-agent.md"
-    _ = accepted.write_text(
-        "### OOS_1: Folded\n- **Description**: fixed inline\n",
-        encoding="utf-8",
-    )
-    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
-    ndjson.parent.mkdir(parents=True)
-    _ = ndjson.write_text("", encoding="utf-8")
-
-    result = ship._oos_gate(InlineRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-
-    assert result is None
-
-
-def test_oos_observation_count_matches_materializer_policy(tmp_path: Path) -> None:
-    missing = tmp_path / "missing.json"
-    _ = missing.write_text('{"summary_bullets":["x"]}', encoding="utf-8")
-    empty = tmp_path / "empty.json"
-    _ = empty.write_text('{"oos_observations":[]}', encoding="utf-8")
-    invalid_type = tmp_path / "invalid-type.json"
-    _ = invalid_type.write_text('{"oos_observations":"bad"}', encoding="utf-8")
-    malformed = tmp_path / "malformed.json"
-    _ = malformed.write_text("{", encoding="utf-8")
-
-    assert ship.oos_observation_count(missing) == 0
-    assert ship.oos_observation_count(empty) == 0
-    assert ship.oos_observation_count(invalid_type) is None
-    assert ship.oos_observation_count(malformed) is None
-
-
-def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    class FailingMaterializeRunner(RecordingRunner):
-        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
-            self.calls.append(list(argv))
-            if "materialize-manifest-oos.sh" in " ".join(argv):
-                return CommandResult(tuple(argv), 1, "", "boom", 0.01)
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
-
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run after materialize failure")
-
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    ctx = _ctx(tmp_path)
-    _ = Path(ctx.manifest_path).write_text(
-        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
-        encoding="utf-8",
-    )
-    runner = FailingMaterializeRunner()
-    result = ship.run_ship(ctx, runner=runner, cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-    assert any("materialize-manifest-oos.sh" in " ".join(call) for call in runner.calls)
-    assert "materialize-manifest-oos.sh failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-
-
-def test_manifest_materialize_empty_failure_does_not_block_pr_create(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    class FailingMaterializeRunner(RecordingRunner):
-        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
-            self.calls.append(list(argv))
-            if "materialize-manifest-oos.sh" in " ".join(argv):
-                return CommandResult(tuple(argv), 1, "", "boom", 0.01)
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-
-    ctx = _ctx(tmp_path, merge=False)
-    _ = Path(ctx.manifest_path).write_text(
-        json.dumps({"summary_bullets": ["x"], "oos_observations": []}),
-        encoding="utf-8",
-    )
-    result = ship.run_ship(ctx, runner=FailingMaterializeRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.OK
-
-
-def test_security_sidecar_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run with security sidecar")
-
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    sidecar = tmp_path / "security-oos-observations.md"
-    _ = sidecar.write_text("### Security OOS: audit\n", encoding="utf-8")
-
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-
-
-def test_manifest_materialize_success_blocks_for_step9a1(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    class MaterializingRunner(RecordingRunner):
-        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
-            self.calls.append(list(argv))
-            if "materialize-manifest-oos.sh" in " ".join(argv):
-                _ = (tmp_path / "oos-accepted-main-agent.md").write_text(
-                    "### OOS_1: Manifest OOS\n- **Description**: x\n",
-                    encoding="utf-8",
-                )
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run with materialized OOS")
-
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    ctx = _ctx(tmp_path)
-    _ = Path(ctx.manifest_path).write_text(
-        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
-        encoding="utf-8",
-    )
-    result = ship.run_ship(ctx, runner=MaterializingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-
-def test_ship_writes_phase_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
-    )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    state_file = tmp_path / "ship-pr-state.sh"
-
-    result = ship.run_ship(
-        _ctx(tmp_path, merge=False, state_file=str(state_file)),
-        runner=RecordingRunner(),
-        cwd=str(tmp_path),
-    )
-
-    assert result.outcome is Outcome.OK
-    state = state_file.read_text(encoding="utf-8")
-    assert "PHASE=done\n" in state
-    assert "PR_NUMBER=5\n" in state
-    assert "REBASE_COUNT=0\n" in state
 
 
 def test_open_pr_resume_restores_counters_and_validated_branch(
@@ -576,8 +232,6 @@ DRAFT=false
 
     monkeypatch.setattr(ship.checks, "run_checks_phase", forbidden)
     monkeypatch.setattr(ship.finalize, "postbump", forbidden)
-    monkeypatch.setattr(ship, "_materialize_manifest_oos", forbidden)
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
     monkeypatch.setattr(ship.run_logs, "write_final_report_comment", forbidden)
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
@@ -764,84 +418,6 @@ def test_merged_resume_with_merge_disabled_does_not_mark_done(
     assert "PHASE=done\n" not in state
 
 
-def test_open_pr_resume_runs_pending_oos_gate(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state_file = tmp_path / "ship-pr-state.sh"
-    _ = state_file.write_text(
-        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nOOS_PENDING=true\nMERGE=false\n"
-        "ITERATION=10\nREBASE_COUNT=2\nFIX_ATTEMPTS=3\nTRANSIENT_RETRIES=4\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
-    monkeypatch.setattr(
-        ship.gh,
-        "pr_view",
-        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
-    )
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
-    )
-    monkeypatch.setattr(
-        ship.oos,
-        "disposition_ok",
-        lambda *_a, **_k: type("D", (), {"ok": False})(),
-    )
-
-    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-    state = state_file.read_text(encoding="utf-8")
-    assert "ITERATION=10\n" in state
-    assert "REBASE_COUNT=2\n" in state
-    assert "FIX_ATTEMPTS=3\n" in state
-    assert "TRANSIENT_RETRIES=4\n" in state
-
-
-def test_open_pr_resume_blocks_leftover_oos_artifacts(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    state_file = tmp_path / "ship-pr-state.sh"
-    _ = state_file.write_text(
-        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nOOS_PENDING=true\nMERGE=false\n"
-        "ITERATION=10\nREBASE_COUNT=2\nFIX_ATTEMPTS=3\nTRANSIENT_RETRIES=4\n",
-        encoding="utf-8",
-    )
-    _ = (tmp_path / "accepted-design-oos.md").write_text("### OOS_1: leftover\n", encoding="utf-8")
-    _ = (tmp_path / "security-oos-observations.md").write_text("### Security OOS: leftover\n", encoding="utf-8")
-    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
-    monkeypatch.setattr(
-        ship.gh,
-        "pr_view",
-        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
-    )
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
-    monkeypatch.setattr(
-        ship.pr,
-        "ensure_pr",
-        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
-    )
-    monkeypatch.setattr(
-        ship.oos,
-        "disposition_ok",
-        lambda *_a, **_k: type("D", (), {"ok": False})(),
-    )
-
-    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-    state = state_file.read_text(encoding="utf-8")
-    assert "OOS_PENDING=true\n" in state
-    assert "ITERATION=10\n" in state
 
 
 def test_blocked_rebase_continuation_sanitizes_untrusted_url(tmp_path: Path) -> None:
@@ -1105,7 +681,6 @@ def test_fresh_postmerge_stall_preserves_postmerge_phase(
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
         ship.pr,
@@ -2159,7 +1734,6 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
     monkeypatch.setattr(
         ship.pr,
         "ensure_pr",
@@ -2509,7 +2083,6 @@ def test_main_ensure_pr_stall_creates_finalize_state(
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("ensure-pr failed")))
     rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json"), "--repo", "o/r"])
     assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
@@ -2694,28 +2267,6 @@ def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch
     assert "PHASE=rebase-failed\n" in state
     assert "STALL_TRACKING=true\n" in state
 
-
-def test_transient_and_oos_reentry_do_not_write_finalize(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    state_file = tmp_path / "ship-pr-state.sh"
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.TRANSIENT, "network"))
-    transient = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
-    assert transient.outcome is Outcome.TRANSIENT
-    assert not (tmp_path / "finalize-state.sh").exists()
-    assert state_file.is_file()
-
-    tmp2 = tmp_path / "oos"
-    tmp2.mkdir()
-    accepted = tmp2 / "oos-accepted-main-agent.md"
-    _ = accepted.write_text("### OOS_1\nbody\n", encoding="utf-8")
-    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": False})())
-    oos_state = tmp2 / "ship-pr-state.sh"
-    oos_result = ship.run_ship(_ctx(tmp2, state_file=str(oos_state)), runner=RecordingRunner(), cwd=str(tmp2))
-    assert oos_result.outcome is Outcome.NEEDS_USER_INPUT
-    assert not (tmp2 / "finalize-state.sh").exists()
-    assert oos_state.is_file()
 
 
 def test_checks_stall_writes_terminal_finalize_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

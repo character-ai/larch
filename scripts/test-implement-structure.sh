@@ -880,30 +880,15 @@ grep -Fq 'INPUT_<i>' "$OOS_PIPELINE_MD" \
 [[ -x "$MATERIALIZE_OOS_SH" ]] || fail "materialize-manifest-oos.sh must exist and be executable"
 grep -Fq 'materialize-manifest-oos.sh' "$STEP2_IMPLEMENT_SH" \
   || fail "step2-implement.sh must invoke materialize-manifest-oos.sh"
-grep -Fq 'materialize-manifest-oos.sh' "$SHIP_PR_SH" \
-  || fail "ship-pr.sh must invoke materialize-manifest-oos.sh"
-grep -Fq 'materialize-manifest-oos.sh' "$PY_SHIP" \
-  || fail "python/ship.py must invoke materialize-manifest-oos.sh"
-python_materialize_order=0
-awk '
-  /^def run_ship\(/ { in_fn=1; next }
-  in_fn && /^def / { exit }
-  in_fn && /_materialize_manifest_oos/ && mat == 0 { mat = NR }
-  in_fn && /_oos_gate/ && gate == 0 { gate = NR }
-  END { if (mat == 0 || gate == 0 || mat >= gate) exit 1 }
-' "$PY_SHIP" || python_materialize_order=$?
-[[ "$python_materialize_order" == "0" ]] \
-  || fail "python/ship.py must materialize manifest OOS before _oos_gate"
-ship_pr_materialize_order=0
-awk '
-  /^run_pr_prep_phase\(\)/ { in_fn=1; next }
-  in_fn && /^}/ { exit }
-  in_fn && /bash "\$materialize_oos"/ && mat == 0 { mat = NR }
-  in_fn && /state_set OOS_PENDING true/ && pend == 0 { pend = NR }
-  END { if (mat == 0 || pend == 0 || mat >= pend) exit 1 }
-' "$SHIP_PR_SH" || ship_pr_materialize_order=$?
-[[ "$ship_pr_materialize_order" == "0" ]] \
-  || fail "ship-pr.sh must materialize manifest OOS before first pr-prep OOS_PENDING=true"
+# Post-decouple: materialize-manifest-oos.sh is called by step2-implement.sh (Step 2
+# post-dispatch) but no longer by ship-pr.sh or python/ship.py — OOS filing moved
+# to a mandatory post-ship step backed by python/file_oos.py (#3650).
+! grep -qi 'oos\|OOS' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must have no OOS references after #3650 decoupling"
+! grep -qi 'oos\|OOS' "$PY_SHIP" \
+  || fail "python/ship.py must have no OOS references after #3650 decoupling"
+[[ -f "$REPO_ROOT/python/file_oos.py" ]] \
+  || fail "python/file_oos.py must exist (post-ship OOS engine, #3650)"
 step1_block=$(awk '/^1\. \*\*Resolve accepted-OOS inputs\*\*/{flag=1; print; next} flag && /^2\. \*\*/{exit} flag{print}' "$OOS_PIPELINE_MD")
 if printf '%s\n' "$step1_block" | grep -Fq 'harvest' && printf '%s\n' "$step1_block" | grep -Fq 'MANIFEST_PATH'; then
   fail "oos-pipeline.md step 1 must not harvest MANIFEST_PATH"

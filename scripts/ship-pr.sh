@@ -527,7 +527,6 @@ write_initial_state() {
         printf 'BAIL_REASON=\n'
         printf 'BAIL_FAILURE_DETAIL_LOG=\n'
         printf 'CI_PASSED=false\n'
-        printf 'OOS_PENDING=false\n'
         printf 'PR_NUMBER=\n'
         printf 'PR_URL=\n'
         printf 'PR_TITLE=\n'
@@ -678,97 +677,6 @@ record_failure() {
         --exit-code "$exit_code" \
         --category "$category" \
         --output-file "$output_file"
-}
-
-# Canonical path for plan-review accepted OOS (mirrors skills/implement/SKILL.md disposition gate).
-resolve_oos_accepted_design_path() {
-    local impl="$1"
-    if [[ -n "${DESIGN_TMPDIR:-}" && -f "${DESIGN_TMPDIR%/}/oos-accepted-design.md" ]]; then
-        printf '%s\n' "${DESIGN_TMPDIR%/}/oos-accepted-design.md"
-        return
-    fi
-    if [[ -f "$impl/design-export/oos-accepted-design.md" ]]; then
-        printf '%s\n' "$impl/design-export/oos-accepted-design.md"
-        return
-    fi
-    printf '%s\n' "$impl/oos-accepted-design.md"
-}
-
-# Mechanical OOS disposition check before any ship-pr path clears OOS_PENDING to
-# false (mirrors skills/implement/SKILL.md Step 8+ gate argv shape).
-run_oos_disposition_gate_if_required_before_oos_pending_false() {
-    local gate_script="$PLUGIN_ROOT/skills/implement/scripts/oos-disposition-gate.sh"
-    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc oos_design_path _had_errexit=0
-    forked=$(read_state FORKED_TARGET)
-    repo_un=$(read_state REPO_UNAVAILABLE)
-    if [ "$forked" = "true" ] || [ "$repo_un" = "true" ]; then
-        return 0
-    fi
-    if [ ! -f "$gate_script" ]; then
-        larch_err "ship-pr.sh: oos-disposition-gate.sh missing at $gate_script"
-        return 2
-    fi
-    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-    oos_range="HEAD"
-    if [ -n "$repo_root" ] && git -C "$repo_root" rev-parse -q --verify origin/main >/dev/null 2>&1; then
-        oos_mb=$(git -C "$repo_root" merge-base HEAD origin/main 2>/dev/null || true)
-        if [ -n "$oos_mb" ]; then
-            oos_range="${oos_mb}..HEAD"
-        else
-            oos_range="origin/main..HEAD"
-        fi
-    fi
-    run_id=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
-    oos_ndjson=""
-    if [ -n "$run_id" ]; then
-        oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/oos-issues.ndjson"
-    fi
-    if [ -z "$oos_ndjson" ] || [ ! -f "$oos_ndjson" ]; then
-        oos_list=$(find "$IMPLEMENT_TMPDIR/larch-logs/implement" -mindepth 2 -maxdepth 2 -name oos-issues.ndjson -type f 2>/dev/null | LC_ALL=C sort || true)
-        oos_n=$(printf '%s\n' "$oos_list" | sed '/^$/d' | wc -l | tr -d '[:space:]')
-        if [ "${oos_n:-0}" -eq 1 ]; then
-            oos_ndjson=$(printf '%s\n' "$oos_list" | sed '/^$/d' | head -n 1)
-        elif [ "${oos_n:-0}" -gt 1 ] && [ -z "$run_id" ]; then
-            larch_err "ship-pr.sh: ambiguous oos-issues.ndjson without session-id; refusing to clear OOS_PENDING"
-            return 2
-        fi
-    fi
-    gate_extra=()
-    if [ -n "$oos_ndjson" ] && [ -f "$oos_ndjson" ]; then
-        gate_extra+=(--oos-issues-ndjson "$oos_ndjson")
-    fi
-    oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
-    local non_sec_oos=0 oos_acc n
-    while IFS= read -r oos_acc; do
-        [ -z "$oos_acc" ] && continue
-        [ -f "$oos_acc" ] || continue
-        n=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_acc" 2>/dev/null | tr -d '[:space:]' || printf '0')
-        non_sec_oos=$((non_sec_oos + n))
-    done <<EOF
-$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md
-$oos_design_path
-$IMPLEMENT_TMPDIR/oos-accepted-review.md
-EOF
-    if [ "${non_sec_oos:-0}" -gt 0 ] && { [ -z "$oos_ndjson" ] || [ ! -f "$oos_ndjson" ]; }; then
-        larch_err "ship-pr.sh: non-security accepted OOS requires oos-issues.ndjson evidence before clearing OOS_PENDING"
-        return 2
-    fi
-    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
-        larch_err "ship-pr.sh: security-routed manifest OOS requires private SECURITY.md disposition before clearing OOS_PENDING"
-        return 2
-    fi
-    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
-    case $- in *e*) _had_errexit=1 ;; esac
-    set +e
-    bash "$gate_script" \
-        "${gate_extra[@]+"${gate_extra[@]}"}" \
-        --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
-        --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
-        --filed-urls-strict-file "$oos_design_path" \
-        --commit-range "$oos_range" 2>"$gate_log"
-    gate_rc=$?
-    (( _had_errexit )) && set -e
-    return "$gate_rc"
 }
 
 state_set() {
@@ -1179,7 +1087,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0 manifest_path materialize_oos materialize_rc
+    local summary tests closes code_flow_file composed_summary plan_goals_file run_id
     larch_err "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1208,74 +1116,12 @@ run_pr_prep_phase() {
         printf '%s\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' "$closes"
     } > "$IMPLEMENT_TMPDIR/pr-body.md"
 
-    manifest_path=$(read_state MANIFEST_PATH)
-    materialize_oos="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
-    if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
-        materialize_count=""
-        materialize_count_rc=0
-        materialize_count=$(bash "$materialize_oos" --count-only --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null) || materialize_count_rc=$?
-        fail_file=$(failure_capture_path pr-prep)
-        _had_errexit=0
-        case $- in *e*) _had_errexit=1 ;; esac
-        set +e
-        bash "$materialize_oos" --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$fail_file" 2>&1
-        materialize_rc=$?
-        (( _had_errexit )) && set -e
-        if [ "$materialize_rc" -ne 0 ]; then
-            record_failure pr-prep "materialize-manifest-oos.sh" "$materialize_rc" "$fail_file" Tool Failures
-            if [ "$materialize_count_rc" -ne 0 ] || [ "${materialize_count:-0}" -gt 0 ]; then
-                state_set OOS_PENDING true
-                advance_phase pr-create
-                exit 0
-            fi
-        fi
-    fi
-
-    oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
-    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
-        state_set OOS_PENDING true
-        advance_phase pr-create
-        exit 0
-    fi
-    fail_file=$(failure_capture_path pr-prep)
-    _had_errexit=0
-    case $- in *e*) _had_errexit=1 ;; esac
-    set +e
-    run_oos_disposition_gate_if_required_before_oos_pending_false
-    gate_rc=$?
-    (( _had_errexit )) && set -e
-    if [ "$gate_rc" -ne 0 ]; then
-        if [ -f "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" ]; then
-            cp "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" "$fail_file" 2>/dev/null || true
-        fi
-        record_failure pr-prep "oos-disposition-gate.sh" "$gate_rc" "$fail_file" Warnings
-        if run_recovery_waterfall pr-prep fix "$fail_file" pr-prep-oos; then
-            _had_errexit=0
-            case $- in *e*) _had_errexit=1 ;; esac
-            set +e
-            run_oos_disposition_gate_if_required_before_oos_pending_false
-            gate_rc=$?
-            (( _had_errexit )) && set -e
-            if [ "$gate_rc" -eq 0 ]; then
-                state_set OOS_PENDING false
-                advance_phase pr-create
-                return 0
-            fi
-        fi
-        exit_stall 9a1
-    fi
-    state_set OOS_PENDING false
     advance_phase pr-create
 }
 
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
     larch_err "→ ship-pr: opening PR"
-    if [ "$(read_state OOS_PENDING)" = "true" ]; then
-        larch_err "ship-pr.sh: refusing PR creation while OOS_PENDING=true"
-        advance_phase pr-prep
-        exit 0
-    fi
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
@@ -1339,7 +1185,9 @@ run_pr_create_phase() {
     out=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
         record_failure pr-create "create-pr.sh" "$rc" "$fail_file" Warnings
-        if run_recovery_waterfall pr-create fix "$fail_file" create-pr "$title" "$IMPLEMENT_TMPDIR/pr-body.md"; then
+        if grep -Fq "Uncommitted working-tree changes detected before push" "$fail_file" 2>/dev/null; then
+            :
+        elif run_recovery_waterfall pr-create fix "$fail_file" create-pr "$title" "$IMPLEMENT_TMPDIR/pr-body.md"; then
             ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
                 "$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}"
             rc=$_WTR_RC
@@ -2560,10 +2408,6 @@ run_recovery_waterfall() {
                     verify_rc=1
                 fi
                 ;;
-            pr-prep-oos)
-                run_oos_disposition_gate_if_required_before_oos_pending_false
-                verify_rc=$?
-                ;;
             write-final-pre)
                 capture_command_output out "$wf_log" "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
                 verify_rc=$?
@@ -3251,7 +3095,7 @@ main() {
         PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
         MERGE DRAFT DEFERRED PR_CLOSED \
         DONE_RENAME_APPLIED STALL_TRACKING STALL_STEP BAIL_NEEDS_USER_INPUT \
-        CI_PASSED OOS_PENDING PR_NUMBER PR_URL PR_TITLE RESUME_PHASE CALLER_KIND \
+        CI_PASSED PR_NUMBER PR_URL PR_TITLE RESUME_PHASE CALLER_KIND \
         REBASE_COUNT FIX_ATTEMPTS ITERATION TRANSIENT_RETRIES FAILED_RUN_ID \
         MANIFEST_PATH TOOL_LABEL \
         BAIL_REASON BAIL_FAILURE_DETAIL_LOG DESIGN_ONLY_DONE EXPECTED_SESSION_ID \
@@ -3260,7 +3104,7 @@ main() {
         require_key "$key"
     done
 
-    for key in REPO_UNAVAILABLE FORKED_TARGET MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
+    for key in REPO_UNAVAILABLE FORKED_TARGET MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
         is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
     done
 

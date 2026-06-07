@@ -81,7 +81,6 @@ class RunContext:
     expected_session_id: str = ""
     expected_tmpdir_basename_prefix: str = ""
     deferred: bool = False
-    oos_pending: bool = False
     plan_file: str = ""
     summary: str = ""
     mermaid: str = ""
@@ -146,7 +145,6 @@ class RunContext:
                 "",
             ),
             deferred=_env_bool(source, "DEFERRED"),
-            oos_pending=_env_bool(source, "OOS_PENDING"),
             plan_file=source.get("PLAN_FILE", "")
             or (
                 str(default_plan_file)
