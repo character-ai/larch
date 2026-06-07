@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+import types
 
 import pytest
 import config
 import logging_util
+import merge as _merge_mod
 import retry
 
 
@@ -27,11 +29,17 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace all sleep paths with no-ops so retry/backoff tests don't wait.
+    """Replace sleep paths with no-ops so retry/backoff tests don't wait.
 
     Two paths to cover:
     - retry.default_sleeper: used by with_transient_retry in gh.py reads
-    - time.sleep: fallback in merge.py when no sleeper is injected
+    - merge._merge_mod.time: the time module reference inside merge.py;
+      patched at the module-attribute level (not time.sleep globally) so
+      pytest-xdist / execnet worker threads keep their real time.sleep and
+      do not deadlock.
+
+    merge.py only uses time.sleep (confirmed by grep); all other time
+    attributes are preserved via SimpleNamespace forwarding.
 
     Tests that verify sleep *amounts* already inject their own sleeper
     (e.g. sleeper=sleeps.append) and are unaffected by these patches.
@@ -40,4 +48,10 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
         pass
 
     monkeypatch.setattr(retry, "default_sleeper", noop)
-    monkeypatch.setattr(time, "sleep", noop)
+    # Replace merge.py's reference to the time module with a stub that has
+    # a no-op sleep but forwards everything else to the real time module.
+    fake_time = types.SimpleNamespace(
+        **{k: getattr(time, k) for k in dir(time) if not k.startswith("_")}
+    )
+    fake_time.sleep = noop
+    monkeypatch.setattr(_merge_mod, "time", fake_time)
