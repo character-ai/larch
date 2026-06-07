@@ -64,12 +64,12 @@ if [[ -s "$artifact_root/voting-tally.md" ]]; then
     oos=$(awk -F'|' '
         /^## Findings/ { in_findings=1; next }
         /^## / && in_findings { in_findings=0 }
-        in_findings && NF >= 7 {
-            item=$2; result=$7
+        in_findings && NF >= 6 {
+            item=$2; result=$(NF-1)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
             if (result == "" || result ~ /^-+$/) {
-                result=$NF
+                result=$(NF-2)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
             }
             if (item ~ /^OOS_[0-9]+$/ && result == "accepted") c++
