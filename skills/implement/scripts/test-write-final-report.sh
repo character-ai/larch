@@ -775,6 +775,9 @@ sub_nonzero_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROO
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$sub_nonzero_stdout" 'claude_sub nonzero token-report omits corrupt warning from stdout summary'
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-sub-nonzero.md")" 'claude_sub nonzero token-report omits corrupt warning from tracking summary body'
 assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$sub_nonzero_stderr")" 'claude_sub nonzero token-report omits corrupt warning on stderr'
+sub_nonzero_cost_line=$(printf '%s\n' "$sub_nonzero_stdout" | grep -F -- '- **Cost**:' || true)
+assert_contains 'Claude (subprocess)' "$sub_nonzero_cost_line" 'claude_sub nonzero cost line shows Claude (subprocess)'
+assert_contains '💰 TOTAL' "$sub_nonzero_cost_line" 'claude_sub nonzero cost line has total'
 
 impl_claude_zero="$TMP_ROOT/impl-claude-zero"; mkdir -p "$impl_claude_zero/larch-logs/implement/run-claude-zero"
 printf 'ISSUE_NUMBER=23\nRUN_ID=run-claude-zero\nADOPTED=true\n' > "$impl_claude_zero/parent-issue.md"

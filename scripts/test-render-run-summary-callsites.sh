@@ -15,6 +15,8 @@ cu=$(grep -cF -- '--cost-unavailable' "$f") || cu=0
 test "$((b + cu))" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens or --cost-unavailable (blocks=$c flags=$((b + cu)))"
 e=$(grep -cF -- '--emergency-requested' "$f") || e=0
 test "$e" -ge "$c" || fail "each write-final-report render-run-summary invocation should pass --emergency-requested (blocks=$c flags=$e)"
+cs=$(grep -cF -- '--claude-sub-' "$f") || cs=0
+test "$cs" -ge 1 || fail "write-final-report must forward --claude-sub-* args to render-run-summary (found $cs)"
 pass 'write-final-report render-run-summary per-bucket wiring'
 
 g="$REPO/skills/design/scripts/render-final-summary.sh"

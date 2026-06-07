@@ -167,6 +167,10 @@ cmd_record_vendor() {
     local vendor="${1:-}"
     shift || true
     [[ -n "$vendor" ]] || { warn "record-vendor requires <vendor>"; return 1; }
+    # Reject the literal 'claude' vendor name: it would collide with the transcript-derived
+    # 'claude' key in token-report.sh's vendor-object merge and overwrite main-agent totals.
+    # Use 'claude_sub' for spawned-process Claude (reviewer/voter/CI/scout).
+    [[ "$vendor" != "claude" ]] || { warn "record-vendor: vendor 'claude' is reserved; use 'claude_sub' for spawned-process Claude"; return 1; }
     command -v jq >/dev/null 2>&1 || { warn "jq not found"; return 1; }
 
     local input=0 output=0 cache_read=0 cache_create=0 total=0 raw="" kv key value

@@ -90,6 +90,22 @@ def test_kv_parse_into_cost_fields() -> None:
     assert priced.priced_by_token_cost is True
 
 
+def test_kv_parse_claude_sub_cost() -> None:
+    # Verify CLAUDE_SUB_COST is parsed from token-cost.sh output and stored in claude_sub_cost.
+    runner = Runner(
+        CommandResult(
+            ("token-cost",),
+            0,
+            "CLAUDE_COST=1.00\nCODEX_COST=0.00\nCURSOR_COST=0.00\nCLAUDE_SUB_COST=0.50\nTOTAL_COST=1.50\n",
+            "",
+            0.01,
+        )
+    )
+    priced = price_run(runner, record=_record(), plugin_root=Path.cwd().parent)
+    assert priced.claude_sub_cost == 0.50
+    assert priced.total_cost == 1.50
+
+
 def test_real_token_cost_override() -> None:
     old = os.environ.get("LARCH_CLAUDE_RATE_PER_M")
     os.environ["LARCH_CLAUDE_RATE_PER_M"] = "10"
