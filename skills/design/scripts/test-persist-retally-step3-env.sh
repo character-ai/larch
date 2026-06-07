@@ -88,6 +88,17 @@ grep -Fq '### FINDING_1: Prior accepted' "$TMP/accepted-plan-findings-all.md" \
 grep -Fq '### FINDING_2: MainAgent accepted' "$TMP/accepted-plan-findings-all.md" \
     || fail 'ok re-tally should append current MainAgent accepted findings'
 
+cat >"$TMP/.oos-accepted-design.prev.md" <<'EOF'
+### OOS_1: Prior accepted OOS
+- **Description**: Preserve the prior round OOS item.
+- **Focus area**: correctness
+EOF
+cat >"$TMP/oos-accepted-design.md" <<'EOF'
+### OOS_1: MainAgent accepted OOS
+- **Description**: Preserve the current MainAgent OOS item.
+- **Focus area**: correctness
+EOF
+
 "$SUBJECT" \
     --design-tmpdir "$TMP" \
     --retally-stdout-file "$TMP/retally-ok.txt" \
@@ -96,6 +107,12 @@ grep -Fq '### FINDING_2: MainAgent accepted' "$TMP/accepted-plan-findings-all.md
     --loop-status complete
 [[ "$(grep -c '^### FINDING_2:' "$TMP/accepted-plan-findings-all.md")" -eq 1 ]] \
     || fail 'ok re-tally cumulative merge should be idempotent'
+grep -Fq 'Prior accepted OOS' "$TMP/oos-accepted-design.md" \
+    || fail 'ok re-tally should preserve prior cumulative accepted OOS'
+grep -Fq 'MainAgent accepted OOS' "$TMP/oos-accepted-design.md" \
+    || fail 'ok re-tally should append current MainAgent accepted OOS'
+[[ "$(grep -c 'Preserve the current MainAgent OOS item' "$TMP/oos-accepted-design.md")" -eq 1 ]] \
+    || fail 'ok re-tally OOS cumulative merge should be idempotent'
 
 cat >"$TMP/accepted-plan-findings-all.md" <<'EOF'
 ### FINDING_1: Prior accepted

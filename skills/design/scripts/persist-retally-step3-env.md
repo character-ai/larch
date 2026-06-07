@@ -4,11 +4,13 @@ Refreshes both Step 3 result envs (`.step3-plan-review-result.env` and
 `.step3-review-result.env`) after a `/design` MainAgent re-tally, routing
 `SCOPE_ANCHOR_FILE` through `larch_scope_anchor_retally_handoff_value`.
 On successful re-tally, it also merges current `accepted-plan-findings.md`
-blocks into `accepted-plan-findings-all.md` so cumulative final-summary
-accounting includes MainAgent-adjudicated findings. The merge is exact-block
-idempotent and is skipped on `tally-error`; tally-error also clears partial
-current `accepted-plan-findings.md` and zeros accepted-count KVs in refreshed
-env files.
+blocks into `accepted-plan-findings-all.md` and merges current
+`oos-accepted-design.md` with `.oos-accepted-design.prev.md`, so cumulative
+final-summary and filing accounting include MainAgent-adjudicated findings and
+prior-round accepted OOS. The in-scope merge is exact-block idempotent; the OOS
+merge uses normalized `Description` keys. Both merges are skipped on
+`tally-error`; tally-error also clears partial current
+`accepted-plan-findings.md` and zeros accepted-count KVs in refreshed env files.
 
 - **Argv**: `--design-tmpdir DIR --retally-stdout-file FILE
   --retally-input-anchor PATH-OR-EMPTY --tally-plan-review-status ok|tally-error
@@ -22,6 +24,9 @@ env files.
   `scripts/lib-scope-anchor-handoff.sh`). See `SECURITY.md` "Plan-review
   scope-anchor pipeline" — path-only handoff surface. The cumulative accepted
   merge reads only `### FINDING_N:` blocks from the current accepted file and
-  appends blocks not already present byte-for-byte in the cumulative file.
+  appends blocks not already present byte-for-byte in the cumulative file; the
+  OOS merge reads `### OOS_N:` blocks from the prior snapshot and current
+  accepted-OOS file and writes the merged cumulative file back to
+  `oos-accepted-design.md`.
 - **Harness**: `skills/design/scripts/test-persist-retally-step3-env.sh`
   (Makefile target `test-persist-retally-step3-env`).

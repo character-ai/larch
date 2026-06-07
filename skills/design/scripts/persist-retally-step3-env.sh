@@ -101,6 +101,58 @@ if out:
 PY
 }
 
+_merge_retally_oos_accepted() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "ok" ]] || return 0
+    local prior="$DESIGN_TMPDIR/.oos-accepted-design.prev.md"
+    local current="$DESIGN_TMPDIR/oos-accepted-design.md"
+    python3 - "$prior" "$current" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+prior_path = Path(sys.argv[1])
+current_path = Path(sys.argv[2])
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+def blocks(text: str):
+    return [m.group(0).strip() for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text)]
+
+def desc_key(block: str) -> str:
+    match = re.search(r"\*\*Description\*\*:\s*(.+?)(?:\n|$)", block, re.S)
+    text = match.group(1) if match else block
+    return " ".join(text.strip().lower().split())
+
+out = []
+seen = set()
+for block in blocks(read(prior_path)):
+    key = desc_key(block)
+    if key in seen:
+        continue
+    seen.add(key)
+    out.append(block)
+
+for block in blocks(read(current_path)):
+    key = desc_key(block)
+    if key in seen:
+        continue
+    seen.add(key)
+    out.append(block)
+
+if out:
+    current_path.write_text("\n\n".join(out) + "\n\n", encoding="utf-8")
+else:
+    try:
+        current_path.unlink()
+    except FileNotFoundError:
+        pass
+PY
+}
+
 _clear_failed_retally_accepted() {
     [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]] || return 0
     rm -f "$DESIGN_TMPDIR/accepted-plan-findings.md"
@@ -143,6 +195,7 @@ _rewrite_env_file() {
     phase_driver_write_result_env "$path" "${kvs[@]}"
 }
 
+_merge_retally_oos_accepted
 _merge_retally_accepted_all
 _clear_failed_retally_accepted
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-plan-review-result.env"
