@@ -1,2 +1,0 @@
-Reviewing the plan and validating harness isolation claims against the repository.
-{"no_issues_found": true}

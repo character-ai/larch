@@ -1,2 +1,0 @@
-Reading the plan and tracing the files it references in the codebase.
-{"no_issues_found": true}

@@ -1,2 +1,0 @@
-Reading the plan and counting `new_case` invocations in the harness file.
-{"no_issues_found": true}

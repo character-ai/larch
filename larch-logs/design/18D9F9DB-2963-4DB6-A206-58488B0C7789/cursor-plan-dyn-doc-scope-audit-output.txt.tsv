@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	nit	correctness	plan.txt:29-30	Duplicate WI2+WI3 bullets for `scripts/design-pause-load.md` contract update	Line 29 omits `-z`, temp NUL-buffer capture, and explicit `if ! git ls-tree … >"$enum_tmp"` guard that line 30 and the shell WI2 bullets require; an implementer following only line 29 could ship an incomplete contract paragraph	Collapse to a single bullet: keep line 30’s `-z` + mktemp capture + per-path `if ! git show` wording; delete the redundant line 29 paragraph

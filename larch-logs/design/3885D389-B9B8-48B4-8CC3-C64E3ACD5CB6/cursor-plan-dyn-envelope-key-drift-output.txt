@@ -1,2 +1,0 @@
-Reviewing the plan against `skills/implement/SKILL.md` for envelope-key coverage between Step 0 and first session-env rehydration.
-{"no_issues_found": true}

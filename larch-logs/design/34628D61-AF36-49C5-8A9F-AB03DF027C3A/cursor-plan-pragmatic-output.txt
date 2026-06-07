@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	skills/research/references/validation-phase.md:77-79	Validation-lane fence omits required --output and --timeout	launch-codex-exec.sh requires absolute --output; validation COLLECT_ARGS still targets codex-validation-output.txt; missing flags abort launch or desync collector paths	Add --output "$RESEARCH_TMPDIR/codex-validation-output.txt" --timeout 1800 to the validation-lane launch-codex-exec.sh invocation (mirror research-phase.md:75)

@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- legitimate simplification, but the existing guarded snapshot approach is acceptable and not worth another plan change
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

@@ -1,1 +1,0 @@
-dyn-cursor-plan-driver-action-sync	cursor	format-gate-miss	I couldn't finish this review: every read path failed with **“Service temporarily unavailable”** (Read, Grep, Glob, SemanticSearch, and shell reads). I did not read `plan.txt`, `design-driver.sh`, `de

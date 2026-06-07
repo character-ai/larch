@@ -1,1 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan line 7 and Approach ordering omit vote-prompt/zero-byte denies between static Codex deny and the new allow, so a literal insert would let dyn-*-codex-output-*.txt include dyn-*-codex-output-vote-prompt.txt names currently excluded by *-vote-prompt.txt

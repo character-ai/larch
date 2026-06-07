@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	python/report_tokens_cli.py:114-118	Plan makes report_tokens_issue.py skill-aware for omitted-section labels but omits the CLI caller	post_issue/assemble_issue_body still have no skill parameter so trimmed implement issues can keep listing Aggregate cost by workflow in the Omitted sections notice	Add python/report_tokens_cli.py to the plan and pass skill into post_issue/assemble_issue_body/_section_label

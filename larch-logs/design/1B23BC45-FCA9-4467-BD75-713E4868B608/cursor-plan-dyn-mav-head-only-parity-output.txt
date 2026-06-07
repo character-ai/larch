@@ -1,3 +1,0 @@
-Tracing the plan's claims against the codebase: reading the plan and relevant implementation files.
-{"no_issues_found": true}
-

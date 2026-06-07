@@ -1,2 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the repo has three other feature-focused separate rebase-push harnesses (force-lease, fork-mode, keep-on-conflict); adding a fourth for --no-push fetch retry follows that established pattern, and merging into keep-on-conflict would mix conflict-handling and network-retry concerns in a file whose header explicitly scopes it to local-only conflicts
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

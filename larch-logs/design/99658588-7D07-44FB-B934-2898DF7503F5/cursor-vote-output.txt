@@ -1,3 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- fork_fb already hits compose_self_fallback with PR_NUMBER set but lacks Lines/PR assertions; a dedicated merged-outcome fixture is slightly redundant yet still a valid way to pin the LINES_DATA_OK=true branch
-FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- acceptance #1 cites partial-flags in test-write-final-report.sh but that case exists only in scripts/test-render-run-summary.sh
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan says exact owner/name validation but compute-pr-line-counts.sh only enforces single-slash/non-empty parts, not full GitHub slug rules

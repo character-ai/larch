@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- guard-scoping to routing verbs is a natural implementation choice; no plan modification needed to avoid false-fails on ordering prose
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

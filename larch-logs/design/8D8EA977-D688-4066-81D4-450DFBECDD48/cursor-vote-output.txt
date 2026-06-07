@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- start_attempt tier rotation is ship-pr runtime detail; defer until agents.py ports run_ci_fix_vendor
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- strangler Phase 1 does not call gh/logging_util on live paths; wire redact at integration
-FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- batch redact(text) suffices for Phase 1 parity tests; add streaming when logging_util replaces lib-quiet
-FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly acknowledges the workstreams are independent and could be separate commits; splitting adds process overhead without proportional benefit for two non-overlapping small changes
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

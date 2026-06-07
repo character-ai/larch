@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	plan.txt:29	STALL_TRACKING left optional on STATUS=bailed hard-bail	Dispatcher STATUS=bailed with REASON=wrapper-validation-failure sets FINAL_BAIL_REASON/IMPLEMENT_BAIL_REASON but orchestrator omits STALL_TRACKING; Step 18a fast-paths with no stall detected and stall report never shows bail reason	Require unconditional STALL_TRACKING=true on the new STATUS=bailed bullet (match §2.1.5:616 and main-branch-post-dispatch:630), not if needed

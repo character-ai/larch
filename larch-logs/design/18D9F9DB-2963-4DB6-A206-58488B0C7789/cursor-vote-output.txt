@@ -1,2 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- line 23 already requires on-non-zero WARN with LOAD_OK=true, which implies a set -e-safe guarded call

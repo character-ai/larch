@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- timing-report.sh design-only gate is the primary fix; caller-site LARCH_TIMING_SKILL=implement pins are minimal-cost defense-in-depth that the plan explicitly justifies via polluted-env edge case
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scan tests already assert workflow=="" for implement; cache serializes record.workflow directly, so the chain is covered; explicit cache JSON assertions are defense-in-depth but the plan's scan coverage is sufficient
-FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

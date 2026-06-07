@@ -1,4 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- legitimate producer-audit nit, but harmless defensive stderr exclusions are not worth complicating this plan further.

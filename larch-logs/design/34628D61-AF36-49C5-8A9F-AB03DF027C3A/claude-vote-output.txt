@@ -1,9 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- linter follows existing lint-bare-grep-probe pattern; adds legitimate guard that prevents future raw codex exec calls
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- installation-and-setup.md already uses general language ("covered surfaces") rather than enumerating specific scripts, so prose remains accurate after plan lands

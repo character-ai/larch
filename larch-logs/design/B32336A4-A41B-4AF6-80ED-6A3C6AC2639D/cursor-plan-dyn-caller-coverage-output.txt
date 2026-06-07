@@ -1,2 +1,0 @@
-I'll read the plan and search the repo for every caller of `degraded-tools-gate.sh` and its KV outputs.
-{"no_issues_found": true}

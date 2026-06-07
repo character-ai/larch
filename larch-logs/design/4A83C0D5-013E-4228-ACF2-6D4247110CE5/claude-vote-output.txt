@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly states "end before start → absent" and "end_line >= start_line → present"; the grep -n mechanism is implicit via "same pairing rules as plan-block-read.sh" reference, so the stated problem is not a real gap in the behavioral spec

@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	security	SECURITY.md planned subsection from plan.txt:88-93	Planned trust-boundary text says MainAgent re-tally argv even though the plan repeatedly forbids scope-anchor argv	Implementer may copy an inaccurate SECURITY.md claim that conflicts with the no --scope-anchor-file constraint and misdocuments the handoff boundary	Change that phrase to MainAgent re-tally env/stdout/result-env refresh or remove argv from the path-only handoff list

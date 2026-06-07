@@ -1,2 +1,0 @@
-Reviewing the plan and scanning the codebase for documentation drift and guard-contract issues.
-{"no_issues_found": true}
