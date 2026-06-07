@@ -253,15 +253,57 @@ refresh_issue_counts
 
 # --- Plan review line ---
 PLAN_LINE="0 findings"
-if [ ! -f "$DESIGN_TMPDIR/voting-tally.md" ]; then
+apf="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+if [ ! -s "$apf" ]; then
+    apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
+fi
+filter_gate_b_skipped_findings() {
+    local accepted_file="$1" rejected_file="$2" out_file="$3"
+    python3 - "$accepted_file" "$rejected_file" "$out_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+accepted_path, rejected_path, out_path = map(Path, sys.argv[1:4])
+reason = "rejected by user during one-by-one review"
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+def blocks(text: str, prefix: str):
+    pattern = rf"(?ms)^### {prefix}_[0-9]+:.*?(?=^### |\Z)"
+    return [m.group(0).strip() for m in re.finditer(pattern, text)]
+
+def normalize(block: str) -> str:
+    lines = [line.rstrip() for line in block.strip().splitlines() if reason not in line]
+    return "\n".join(lines).strip()
+
+skipped = {normalize(block) for block in blocks(read(rejected_path), "FINDING") if reason in block}
+accepted = [block for block in blocks(read(accepted_path), "FINDING") if normalize(block) not in skipped]
+body = "\n\n".join(accepted)
+if body:
+    body += "\n\n"
+out_path.write_text(body, encoding="utf-8")
+PY
+}
+if [ -s "$apf" ] && [ -s "$DESIGN_TMPDIR/rejected-findings.md" ] \
+    && grep -Fq 'rejected by user during one-by-one review' "$DESIGN_TMPDIR/rejected-findings.md" 2>/dev/null; then
+    _filtered_apf="$DESIGN_TMPDIR/.final-summary-accepted-plan-findings.md"
+    if filter_gate_b_skipped_findings "$apf" "$DESIGN_TMPDIR/rejected-findings.md" "$_filtered_apf" 2>/dev/null; then
+        apf="$_filtered_apf"
+    fi
+fi
+oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
+if { [ ! -f "$apf" ] || [ ! -s "$apf" ]; } && { [ ! -f "$oaf" ] || [ ! -s "$oaf" ]; }; then
     PLAN_LINE="0 findings"
 else
-    apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
-    oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
-    if { [ ! -f "$apf" ] || [ ! -s "$apf" ]; } && { [ ! -f "$oaf" ] || [ ! -s "$oaf" ]; }; then
-        PLAN_LINE="0 findings"
-    else
-        read -r acnt xc yc zc wc < <(awk '
+    plan_review_count_inputs=()
+    [ -s "$apf" ] && plan_review_count_inputs+=("$apf")
+    [ -s "$oaf" ] && plan_review_count_inputs+=("$oaf")
+    read -r acnt xc yc zc wc < <(awk '
           function bump(fa,   a) {
             a = tolower(fa)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", a)
@@ -270,11 +312,11 @@ else
             if (a == "architecture" || a == "code-quality") { md++; return }
             lw++
           }
-          BEGIN { cx=0; hy=0; md=0; lw=0; inf=0 }
+          BEGIN { cx=0; hy=0; md=0; lw=0; inf=0; total=0 }
           FNR == 1 { inf=0 }
-          /^### (FINDING_|OOS_)/ { inf=1; next }
-          inf && /^- focus-area[[:space:]]*=[[:space:]]*/ {
-            sub(/^- focus-area[[:space:]]*=[[:space:]]*/, "")
+          /^### (FINDING_|OOS_)[0-9]/ { inf=1; total++; next }
+          inf && /^- \*\*Focus area\*\*:[[:space:]]*/ {
+            sub(/^- \*\*Focus area\*\*:[[:space:]]*/, "")
             bump($0)
             inf=0
             next
@@ -282,14 +324,14 @@ else
           /^### / { inf=0 }
           END {
             n = cx+hy+md+lw
+            if (n < total) { lw += (total - n); n = total }
             print n, cx+0, hy+0, md+0, lw+0
           }
-        ' "$apf" "$oaf" 2>/dev/null || echo "0 0 0 0 0")
-        if [ "${acnt:-0}" -eq 0 ] 2>/dev/null; then
-            PLAN_LINE="0 findings"
-        else
-            PLAN_LINE="${acnt} accepted (${xc} critical / ${yc} high / ${zc} medium / ${wc} low)"
-        fi
+    ' "${plan_review_count_inputs[@]}" 2>/dev/null || echo "0 0 0 0 0")
+    if [ "${acnt:-0}" -eq 0 ] 2>/dev/null; then
+        PLAN_LINE="0 findings"
+    else
+        PLAN_LINE="${acnt} accepted (${xc} critical / ${yc} high / ${zc} medium / ${wc} low)"
     fi
 fi
 

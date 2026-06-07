@@ -586,6 +586,38 @@ open(current_path, "w", encoding="utf-8").write(body)
 PY
 }
 
+_restore_prior_round_accepted_all() {
+    local prior_all="$1"
+    if [[ -f "$prior_all" ]]; then
+        cp -f "$prior_all" "$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+    else
+        rm -f "$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+    fi
+}
+
+_accumulate_round_accepted_all() {
+    local prior_all="$1"
+    local round_accepted="$DESIGN_TMPDIR/accepted-plan-findings.md"
+    local cumulative="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
+    if [[ ! -f "$round_accepted" || ! -s "$round_accepted" ]]; then
+        _restore_prior_round_accepted_all "$prior_all"
+        return 0
+    fi
+    {
+        if [[ -f "$prior_all" && -s "$prior_all" ]]; then
+            sed -e '${/^[[:space:]]*$/d;}' "$prior_all"
+            printf '\n\n'
+        fi
+        sed -e '${/^[[:space:]]*$/d;}' "$round_accepted"
+        printf '\n\n'
+    } >"$cumulative"
+}
+
+_clear_current_accepted_findings() {
+    rm -f "$DESIGN_TMPDIR/accepted-plan-findings.md"
+    : >"$DESIGN_TMPDIR/accepted-plan-findings.md"
+}
+
 _terminal_exit() {
     local rc="$1" rounds_completed="$2"
     if ! write_step3_result_env "$rounds_completed"; then
@@ -1545,6 +1577,12 @@ if [[ -f "$DESIGN_TMPDIR/oos-accepted-design.md" ]]; then
 else
     rm -f "$_prior_cum_oos"
 fi
+_prior_accepted_all="$DESIGN_TMPDIR/.accepted-plan-findings-all.prev.md"
+if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings-all.md" ]]; then
+    cp -f "$DESIGN_TMPDIR/accepted-plan-findings-all.md" "$_prior_accepted_all"
+else
+    rm -f "$_prior_accepted_all"
+fi
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}"
 if [[ -f "$_prior_cum_oos" ]]; then
     cp -f "$_prior_cum_oos" "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/oos-accepted-design.before.md"
@@ -1562,6 +1600,7 @@ _count_collector_evidence
 
 if (( _round_rc != 0 )) || [[ "${LOOP_STATUS:-}" == "panel-failed" ]]; then
     _restore_prior_round_oos "$_prior_cum_oos"
+    _restore_prior_round_accepted_all "$_prior_accepted_all"
     LOOP_STATUS=panel-failed
     LOOP_REASON=panel-failed
     revise_status=skipped
@@ -1582,14 +1621,18 @@ if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN
     fi
     _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
     _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
+    _restore_prior_round_accepted_all "$_prior_accepted_all"
     _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
 fi
 
 if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" && "${TALLY_PLAN_REVIEW_FATAL:-false}" == "true" ]]; then
     _restore_prior_round_oos "$_prior_cum_oos"
+    _restore_prior_round_accepted_all "$_prior_accepted_all"
+    _clear_current_accepted_findings
     LOOP_STATUS=tally-error
     LOOP_REASON=tally-error
     revise_status=skipped
+    ACCEPTED_COUNT=0
     IMPORTANT_ACCEPTED_COUNT=0
     NIT_ACCEPTED_COUNT=0
     NON_NIT_ACCEPTED_COUNT=0
@@ -1597,6 +1640,7 @@ if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" && "${TALLY_PLAN_REVIEW_F
 fi
 
 _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
+_accumulate_round_accepted_all "$_prior_accepted_all"
 ACCEPTED_COUNT=0
 if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
     ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)

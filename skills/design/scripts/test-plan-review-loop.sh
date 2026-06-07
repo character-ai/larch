@@ -820,6 +820,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$DESIGN_TMPDIR" ]] || exit 2
+cat >"$DESIGN_TMPDIR/accepted-plan-findings.md" <<'INNER'
+### FINDING_1: Tentative MainAgent finding
+- **Reviewer**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Concern**: tentative before MainAgent adjudication
+
+INNER
 cat >"$DESIGN_TMPDIR/oos-accepted-design.md" <<'INNER'
 ### OOS_1:
 - **Description**: main-agent accepted OOS. Scenario: branch coverage
@@ -853,6 +861,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$DESIGN_TMPDIR" ]] || exit 2
+cat >"$DESIGN_TMPDIR/accepted-plan-findings.md" <<'INNER'
+### FINDING_1: Failed tally accepted
+- **Severity**: important
+- **Concern**: partial failed tally output
+
+INNER
 printf 'TALLY_PLAN_REVIEW_STATUS=tally-error\nVOTING_TALLY_FILE=%s\n' "$DESIGN_TMPDIR/voting-tally.md"
 exit 2
 EOS
@@ -1590,7 +1604,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/accepted-plan-findings.md\nplan-review/round-1/ballot.txt\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/findings-in-scope.md\nplan-review/round-1/findings-in-scope.pre-dedup.md\nplan-review/round-1/findings-oos.md\nplan-review/round-1/findings.md\nplan-review/round-1/oos-accepted-design.md\nplan-review/round-1/oos.md\nplan-review/round-1/plan-review-scope-anchor.txt\nplan-review/round-1/plan-review-slots.ndjson\nplan-review/round-1/plan.txt\nplan-review/round-1/rejected-findings.md\nplan-review/round-1/round-summary.env\nplan-review/round-1/scout-plan-manifest.json\nplan-review/round-1/voting-tally.md\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings-all.md\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/accepted-plan-findings.md\nplan-review/round-1/ballot.txt\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/findings-in-scope.md\nplan-review/round-1/findings-in-scope.pre-dedup.md\nplan-review/round-1/findings-oos.md\nplan-review/round-1/findings.md\nplan-review/round-1/oos-accepted-design.md\nplan-review/round-1/oos.md\nplan-review/round-1/plan-review-scope-anchor.txt\nplan-review/round-1/plan-review-slots.ndjson\nplan-review/round-1/plan.txt\nplan-review/round-1/rejected-findings.md\nplan-review/round-1/round-summary.env\nplan-review/round-1/scout-plan-manifest.json\nplan-review/round-1/voting-tally.md\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 
@@ -1672,6 +1686,11 @@ DMA="$TMP/single-main-agent"
 mkdir -p "$DMA"
 printf 'plan\n\ndiff_lines: 1\n' >"$DMA/plan.txt"
 printf 'feat\n' >"$DMA/feature-description.txt"
+cat >"$DMA/accepted-plan-findings-all.md" <<'EOF'
+### FINDING_1: Prior accepted before MainAgent
+- **Concern**: keep prior only
+
+EOF
 write_scout
 write_dispatch_one_slot
 write_collect_important_with_oos
@@ -1680,6 +1699,8 @@ write_tally_main_agent
 out_ma=$(run_loop "$DMA" 1)
 printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent status should be preserved"
 grep -q 'accepted OOS' "$DMA/oos-accepted-design.md" || fail "main-agent OOS accumulation missing"
+grep -q 'Prior accepted before MainAgent' "$DMA/accepted-plan-findings-all.md" || fail "main-agent should preserve prior cumulative accepted findings"
+! grep -q 'Tentative MainAgent finding' "$DMA/accepted-plan-findings-all.md" || fail "main-agent should not accumulate tentative accepted findings before adjudication"
 expected_dma_scope="$(cd "$DMA" && pwd -P)/plan-review-scope-anchor.txt"
 printf '%s\n' "$out_ma" | grep -Fqx "SCOPE_ANCHOR_FILE=$expected_dma_scope" || fail "main-agent-vote-required should carry staged scope anchor fallback"
 grep -Fqx "SCOPE_ANCHOR_FILE=$expected_dma_scope" "$DMA/.step3-plan-review-result.env" || fail "main-agent-vote-required result env should carry staged scope anchor fallback"
@@ -1695,6 +1716,7 @@ mkdir -p "$DTM"
 printf 'plan\n\ndiff_lines: 1\n' >"$DTM/plan.txt"
 printf 'feat\n' >"$DTM/feature-description.txt"
 printf '### OOS_1: prior tally OOS\n- **Concern**: keep me\n' >"$DTM/oos-accepted-design.md"
+printf '### FINDING_1: prior tally accepted\n- **Concern**: keep me\n' >"$DTM/accepted-plan-findings-all.md"
 write_scout
 write_dispatch_one_slot
 write_collect_important
@@ -1705,6 +1727,10 @@ printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "tally-err
 printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "tally-error should skip revise"
 grep -q 'prior tally OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should restore prior OOS content"
 ! grep -q 'accepted OOS' "$DTM/oos-accepted-design.md" || fail "tally-error should not merge failed round OOS"
+grep -q 'prior tally accepted' "$DTM/accepted-plan-findings-all.md" || fail "tally-error should restore prior cumulative accepted findings"
+! grep -q 'Failed tally accepted' "$DTM/accepted-plan-findings-all.md" || fail "tally-error should not merge failed round accepted findings"
+[[ ! -s "$DTM/accepted-plan-findings.md" ]] || fail "tally-error should clear current accepted-plan-findings.md"
+printf '%s\n' "$out_tm" | grep -q '^ACCEPTED_COUNT=0$' || fail "tally-error should emit ACCEPTED_COUNT=0"
 [[ -f "$DTM/.step3-plan-review-result.env" ]] || fail "tally-error missing result env"
 grep -q '^LOOP_STATUS=tally-error$' "$DTM/.step3-plan-review-result.env" || fail "result env missing tally-error loop status"
 if printf '%s\n' "$out_tm" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "tally-error stdout should omit scope anchor"; fi
@@ -1718,6 +1744,7 @@ mkdir -p "$DPFOOS"
 printf 'plan\n\ndiff_lines: 1\n' >"$DPFOOS/plan.txt"
 printf 'feat\n' >"$DPFOOS/feature-description.txt"
 printf '### OOS_1: prior panel OOS\n- **Concern**: keep me\n' >"$DPFOOS/oos-accepted-design.md"
+printf '### FINDING_1: prior panel accepted\n- **Concern**: keep me\n' >"$DPFOOS/accepted-plan-findings-all.md"
 write_scout
 write_dispatch_one_slot
 write_collect_empty_fail
@@ -1729,6 +1756,7 @@ set -e
 [[ "$pfoos_rc" -eq 1 ]] || fail "panel-failed OOS restore should exit 1"
 printf '%s\n' "$out_pfoos" | grep -q '^LOOP_STATUS=panel-failed$' || fail "panel-failed OOS restore should surface panel-failed"
 grep -q 'prior panel OOS' "$DPFOOS/oos-accepted-design.md" || fail "panel-failed should restore prior OOS content"
+grep -q 'prior panel accepted' "$DPFOOS/accepted-plan-findings-all.md" || fail "panel-failed should restore prior cumulative accepted findings"
 
 echo "=== stubbed driver: empty collector stdout fails closed (panel-failed) ==="
 DEMPTY="$TMP/collector-empty-fail"

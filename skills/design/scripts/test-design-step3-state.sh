@@ -56,9 +56,17 @@ mkdir -p "$D4/.completed"
 for step in 3 3.5 3b 4 4b; do
     : >"$D4/.completed/step-$step"
 done
+printf 'prior accepted\n' >"$D4/accepted-plan-findings-all.md"
+printf 'prior accepted snapshot\n' >"$D4/.accepted-plan-findings-all.prev.md"
+printf 'prior oos\n' >"$D4/oos-accepted-design.md"
+printf 'prior oos snapshot\n' >"$D4/.oos-accepted-design.prev.md"
 out=$(run_action "$D4" direct-review-entry)
 [[ "$out" == *'STEP3_STATE=direct-review-entry'* ]] || fail "direct-review entry state missing: $out"
 [[ ! -f "$D4/.step3-reentry" ]] || fail "direct-review entry did not consume marker"
+[[ ! -f "$D4/accepted-plan-findings-all.md" ]] || fail "direct-review entry left stale cumulative accepted findings"
+[[ ! -f "$D4/.accepted-plan-findings-all.prev.md" ]] || fail "direct-review entry left stale cumulative accepted snapshot"
+[[ ! -f "$D4/oos-accepted-design.md" ]] || fail "direct-review entry left stale accepted OOS"
+[[ ! -f "$D4/.oos-accepted-design.prev.md" ]] || fail "direct-review entry left stale accepted OOS snapshot"
 [[ -f "$D4/.completed/step-1e" ]] || fail "direct-review entry missing step-1e"
 for step in 2a 2a.5 2b 2b.5; do
     [[ -f "$D4/.completed/step-$step" ]] || fail "direct-review entry missing step-$step"
@@ -78,5 +86,27 @@ out=$(run_action "$D5" direct-review-pause-hygiene)
 [[ -f "$D5/.step3-reentry" ]] || fail "pause hygiene consumed marker"
 [[ ! -f "$D5/.completed/step-3" ]] || fail "pause hygiene left stale step-3"
 [[ -f "$D5/.completed/step-2b.5" ]] || fail "pause hygiene missing bypass package"
+
+echo "=== auto-continuation-entry clears unsafe Step 3 sentinels ==="
+D6="$TMP/auto-continuation-entry"
+mkdir -p "$D6/.completed"
+for step in 3 3.5 3b 4 4b; do
+    : >"$D6/.completed/step-$step"
+done
+: >"$D6/.gate-b-postapply-ready-1"
+printf 'prior cumulative\n' >"$D6/accepted-plan-findings-all.md"
+printf 'prior cumulative snapshot\n' >"$D6/.accepted-plan-findings-all.prev.md"
+printf 'prior oos\n' >"$D6/oos-accepted-design.md"
+printf 'prior oos snapshot\n' >"$D6/.oos-accepted-design.prev.md"
+out=$(run_action "$D6" auto-continuation-entry)
+[[ "$out" == *'STEP3_STATE=auto-continuation-entry'* ]] || fail "auto continuation state missing: $out"
+for step in 3 3.5 3b 4 4b; do
+    [[ ! -f "$D6/.completed/step-$step" ]] || fail "auto continuation left stale step-$step"
+done
+[[ ! -e "$D6/.gate-b-postapply-ready-1" ]] || fail "auto continuation left stale Gate B marker"
+grep -Fq 'prior cumulative' "$D6/accepted-plan-findings-all.md" || fail "auto continuation should preserve cumulative accepted findings"
+grep -Fq 'prior cumulative snapshot' "$D6/.accepted-plan-findings-all.prev.md" || fail "auto continuation should preserve accepted findings snapshot"
+grep -Fq 'prior oos' "$D6/oos-accepted-design.md" || fail "auto continuation should preserve accepted OOS"
+grep -Fq 'prior oos snapshot' "$D6/.oos-accepted-design.prev.md" || fail "auto continuation should preserve accepted OOS snapshot"
 
 printf 'PASS: test-design-step3-state.sh\n'
