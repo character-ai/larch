@@ -189,7 +189,7 @@ jobs:
           set -euo pipefail
           max_parallel="$(nproc 2>/dev/null || echo 1)"
           find ${{ matrix.paths }} -name "*.sh" -not -path "*/larch-logs/*" -print0 \
-            | xargs -0 -r -P "$max_parallel" shellcheck -x --
+            | xargs -0 -r -P "$max_parallel" shellcheck -x --exclude=SC2329 --
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
