@@ -2,8 +2,8 @@ design.sketch.simple_slots	0 sketch agents	SIMPLE sentinel path	skills/design/re
 design.sketch.regular_slots	4 regular	2 Cursor + 2 Codex	skills/design/references/sketch-launch.md
 design.plan_review.cursor_archetypes	5 Cursor	Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review.md
 design.plan_review.codex_archetypes	5 Codex	Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review.md
-design.plan_review.dynamic_archetypes	up to 6	scout proposes specialists fanned into Cursor+Codex dyn slots	skills/design/references/plan-review.md
-design.plan_review.panel_slots	10 static + up to 12 dynamic	NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar	skills/design/references/plan-review.md
+design.plan_review.dynamic_archetypes	up to 3	scout proposes specialists fanned into Cursor+Codex dyn slots	skills/design/references/plan-review.md
+design.plan_review.panel_slots	10 static + up to 6 dynamic	NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar	skills/design/references/plan-review.md
 design.decompose.panel_slots	8 fixed	4 archetypes x 2 vendors via decompose-panel-dispatch.sh	skills/design/references/decompose-panel.md
 design.decompose.dispatch	decompose-panel-dispatch.sh	renders prompts + dispatch-with-waterfall	skills/design/scripts/decompose-panel-dispatch.sh
 design.decompose.aggregator	decompose-aggregator.sh	single-slot merge of eight proposals	skills/design/scripts/decompose-aggregator.sh
