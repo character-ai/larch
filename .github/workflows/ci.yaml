@@ -189,7 +189,7 @@ jobs:
           set -euo pipefail
           max_parallel="$(nproc 2>/dev/null || echo 1)"
           find ${{ matrix.paths }} -name "*.sh" -not -path "*/larch-logs/*" -print0 \
-            | xargs -0 -r -P "$max_parallel" shellcheck -x --exclude=SC2329 --
+            | xargs -0 -r -n 1 -P "$max_parallel" shellcheck -x --exclude=SC2329 --
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
@@ -253,21 +253,17 @@ jobs:
       - name: Run test harnesses (shard ${{ matrix.shard }} of 20)
         run: make test-harnesses-${{ matrix.shard }}
 
+  # agent-lint and agnix consolidated into one job so both run sequentially
+  # on a single runner instead of competing for two.
   agent-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: zhupanov/agent-lint@v2.3.2
         with:
           github-token: ${{ github.token }}
           pedantic: true
-
-  agnix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
       - uses: agent-sh/agnix@v0.17.0
         with:
           target: 'claude-code'
@@ -314,32 +310,15 @@ jobs:
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
           gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
 
-  # Trufflehog verified-only scan. Independent of gitleaks — catches
-  # credentials that authenticate against a live provider API even if
-  # gitleaks' regex rules miss them. Action pinned to commit SHA
-  # (supply-chain: tags are mutable; a force-pushed tag could silently
-  # swap the scanner binary). `version: 3.82.13` also pins the scanner
-  # Docker image so both action driver and scanner engine are pinned.
-  trufflehog:
+  # agent-sync, trufflehog, and smoke-dialectic consolidated into one job.
+  # fetch-depth: 0 is required by trufflehog; the other steps are unaffected.
+  agent-sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      # Pinned to commit SHA for v3.82.13 (verify with
-      # `git ls-remote https://github.com/trufflesecurity/trufflehog refs/tags/v3.82.13`).
-      - uses: trufflesecurity/trufflehog@1aa1871f9ae24a8c8a3a48a9345514acf42beb39
-        with:
-          version: 3.82.13
-          path: ./
-          extra_args: --only-verified
-
-  agent-sync:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
       - name: Walk generators registry and check for drift
         run: |
           bash scripts/check-generators.sh
@@ -437,12 +416,19 @@ jobs:
 
           rm -f /tmp/hits
           exit "$exit_code"
-
-  smoke-dialectic:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v6
+      # Trufflehog verified-only scan. Independent of gitleaks — catches
+      # credentials that authenticate against a live provider API even if
+      # gitleaks' regex rules miss them. Action pinned to commit SHA
+      # (supply-chain: tags are mutable; a force-pushed tag could silently
+      # swap the scanner binary). `version: 3.82.13` also pins the scanner
+      # Docker image so both action driver and scanner engine are pinned.
+      # Pinned to commit SHA for v3.82.13 (verify with
+      # `git ls-remote https://github.com/trufflesecurity/trufflehog refs/tags/v3.82.13`).
+      - uses: trufflesecurity/trufflehog@1aa1871f9ae24a8c8a3a48a9345514acf42beb39
+        with:
+          version: 3.82.13
+          path: ./
+          extra_args: --only-verified
       - name: Run dialectic smoke test
         # Invokes scripts/dialectic-smoke-test.sh directly; the `make smoke-dialectic`
         # target is equivalent and exists for local developer convenience.
