@@ -506,6 +506,20 @@ printf 'collector fail\n' >"$TMP/design/dyn-codex-plan-harness-fidelity-collecto
 printf 'collector fail\n' >"$TMP/design/unknown-slot-collector.failure.log"
 printf 'aggregate stderr\n' >"$TMP/design/plan-review-collector.stderr"
 printf 'dropped slot\n' >"$TMP/design/plan-review-slots.ndjson.output-files.dropped-slots"
+# Derived/duplicate artifacts excluded per #3705:
+printf 'validate script\n' >"$TMP/design/aggregate-validate.py"
+printf 'tmp findings\n' >"$TMP/design/findings.md.tmp"
+printf 'redacted plan\n' >"$TMP/design/composed-plan.redacted.md"
+printf 'ballot content\n' >"$TMP/design/ballot.txt"
+printf 'voter prompt\n' >"$TMP/design/claude-plan-voter-prompt.txt"
+printf 'aggregator prompt\n' >"$TMP/design/aggregator-prompt.md"
+printf 'untagged input\n' >"$TMP/design/aggregate-untagged-input.md"
+printf 'pre-dedup findings\n' >"$TMP/design/findings-in-scope.pre-dedup.md"
+printf 'pre-agg findings\n' >"$TMP/design/findings-in-scope.pre-aggregation.md"
+printf 'raw scout manifest\n' >"$TMP/design/scout-plan-manifest.json.raw"
+printf 'raw scout prompt\n' >"$TMP/design/scout-plan-manifest.json.raw.prompt"
+printf 'vote meta\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.meta"
+printf 'vote json\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.json"
 # Same suffix family in render-cache must also be denied:
 printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 printf '{"type":"token_usage","input_tokens":2,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/render-cache/cached-output.txt.events.jsonl"
@@ -588,7 +602,20 @@ for denied in \
     "dyn-codex-plan-harness-fidelity-collector.failure.log" \
     "unknown-slot-collector.failure.log" \
     "plan-review-collector.stderr" \
-    "plan-review-slots.ndjson.output-files.dropped-slots"; do
+    "plan-review-slots.ndjson.output-files.dropped-slots" \
+    "aggregate-validate.py" \
+    "findings.md.tmp" \
+    "composed-plan.redacted.md" \
+    "ballot.txt" \
+    "claude-plan-voter-prompt.txt" \
+    "aggregator-prompt.md" \
+    "aggregate-untagged-input.md" \
+    "findings-in-scope.pre-dedup.md" \
+    "findings-in-scope.pre-aggregation.md" \
+    "scout-plan-manifest.json.raw" \
+    "scout-plan-manifest.json.raw.prompt" \
+    "cursor-plan-arch-vote-output.txt.meta" \
+    "cursor-plan-arch-vote-output.txt.json"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
@@ -1730,5 +1757,79 @@ out_prancestor=$(
 unset ANCESTOR_RACE_FIND_ROOT ANCESTOR_RACE_PATH ANCESTOR_RACE_PARENT ANCESTOR_RACE_TARGET
 [[ "$out_prancestor" == *"PUBLISH_OK=false"* ]] || fail "plan-review ancestor race should fail publish: $out_prancestor"
 [[ "$out_prancestor" == *"design-log-publish: plan-review ancestor became a symlink before staging"* ]] || fail "plan-review ancestor race missing larch_err: $out_prancestor"
+
+echo "=== ballot.txt in round directory silently skipped (#3705) ==="
+TMPBALLOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-ballot.XXXXXX")
+clone_ballot=$(setup_clone_with_origin_head "$TMPBALLOT")
+stub_ballot="$TMPBALLOT/stub"
+make_gh_stub "$stub_ballot"
+export PATH="$stub_ballot:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+export TEST_CLONE_ROOT="$clone_ballot"
+export TEST_MERGE_BRANCH="larch-log-design-RUNBALLOT1"
+mkdir -p "$TMPBALLOT/design/plan-review/round-1"
+printf 'body\n' >"$TMPBALLOT/design/plan.txt"
+printf 'findings content\n' >"$TMPBALLOT/design/plan-review/round-1/findings.md"
+printf 'ballot derived content\n' >"$TMPBALLOT/design/plan-review/round-1/ballot.txt"
+printf 'tally\n' >"$TMPBALLOT/design/plan-review/round-1/voting-tally.md"
+out_ballot=$(
+    (cd "$clone_ballot" && bash "$PUBLISH" --design-tmpdir "$TMPBALLOT/design" --run-id "RUNBALLOT1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_ballot" == *"PUBLISH_OK=true"* ]] || fail "ballot.txt in round should not prevent publish: $out_ballot"
+git -C "$clone_ballot" pull -q origin main
+[[ ! -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/ballot.txt" ]] || fail "ballot.txt should not be staged from round directory"
+[[ -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/findings.md" ]] || fail "findings.md should still be staged"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== plan.txt round-1-only + plan.diff for rounds >= 2 (#3705) ==="
+TMPMULTIROUND=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-multiround.XXXXXX")
+clone_mr=$(setup_clone_with_origin_head "$TMPMULTIROUND")
+stub_mr="$TMPMULTIROUND/stub"
+make_gh_stub "$stub_mr"
+export PATH="$stub_mr:$PATH"
+export TEST_CLONE_ROOT="$clone_mr"
+export TEST_MERGE_BRANCH="larch-log-design-RUNMR1"
+mkdir -p "$TMPMULTIROUND/design/plan-review/round-1" "$TMPMULTIROUND/design/plan-review/round-2"
+printf 'plan body\n' >"$TMPMULTIROUND/design/plan.txt"
+printf 'original plan\n' >"$TMPMULTIROUND/design/plan-review/round-1/plan.txt"
+printf 'tally1\n' >"$TMPMULTIROUND/design/plan-review/round-1/voting-tally.md"
+printf 'original plan\nupdated section\n' >"$TMPMULTIROUND/design/plan-review/round-2/plan.txt"
+printf 'tally2\n' >"$TMPMULTIROUND/design/plan-review/round-2/voting-tally.md"
+out_mr=$(
+    (cd "$clone_mr" && bash "$PUBLISH" --design-tmpdir "$TMPMULTIROUND/design" --run-id "RUNMR1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_mr" == *"PUBLISH_OK=true"* ]] || fail "multi-round publish should succeed: $out_mr"
+git -C "$clone_mr" pull -q origin main
+[[ -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-1/plan.txt" ]] || fail "round-1 plan.txt should be staged"
+[[ ! -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.txt" ]] || fail "round-2 plan.txt should NOT be staged"
+[[ -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.diff" ]] || fail "round-2 plan.diff should be staged"
+command grep -q 'updated section' "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.diff" || fail "round-2 plan.diff should contain the new content"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== top-level dedup skips files byte-identical to final round (#3705) ==="
+TMPDEDUP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-dedup.XXXXXX")
+clone_dd=$(setup_clone_with_origin_head "$TMPDEDUP")
+stub_dd="$TMPDEDUP/stub"
+make_gh_stub "$stub_dd"
+export PATH="$stub_dd:$PATH"
+export TEST_CLONE_ROOT="$clone_dd"
+export TEST_MERGE_BRANCH="larch-log-design-RUNDEDUP1"
+mkdir -p "$TMPDEDUP/design/plan-review/round-1"
+printf 'plan body\n' >"$TMPDEDUP/design/plan.txt"
+# findings.md at top level: same as round-1 copy — should be deduped away
+printf 'findings content\n' >"$TMPDEDUP/design/findings.md"
+printf 'findings content\n' >"$TMPDEDUP/design/plan-review/round-1/findings.md"
+# voting-tally.md at top level: different from round-1 — should be staged
+printf 'tally-top\n' >"$TMPDEDUP/design/voting-tally.md"
+printf 'tally-round1\n' >"$TMPDEDUP/design/plan-review/round-1/voting-tally.md"
+out_dd=$(
+    (cd "$clone_dd" && bash "$PUBLISH" --design-tmpdir "$TMPDEDUP/design" --run-id "RUNDEDUP1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_dd" == *"PUBLISH_OK=true"* ]] || fail "dedup publish should succeed: $out_dd"
+git -C "$clone_dd" pull -q origin main
+[[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/findings.md" ]] || fail "deduped top-level findings.md should not be staged"
+[[ -f "$clone_dd/larch-logs/design/RUNDEDUP1/voting-tally.md" ]] || fail "non-duplicate voting-tally.md should be staged"
+[[ -f "$clone_dd/larch-logs/design/RUNDEDUP1/plan-review/round-1/findings.md" ]] || fail "round-1/findings.md should be staged"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "All design-log-publish harness assertions passed."

@@ -305,6 +305,24 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # Derived/duplicate artifacts excluded per #3705 (Phase 1 logs-size-reduction).
+    case "$name" in
+        aggregate-validate.py|findings.md.tmp|composed-plan.redacted.md|ballot.txt)
+            return 0
+            ;;
+        *-plan-voter-prompt.txt|aggregator-prompt.md|aggregate-untagged-input.md)
+            return 0
+            ;;
+        findings-in-scope.pre-dedup.md|findings-in-scope.pre-aggregation.md)
+            return 0
+            ;;
+        scout-plan-manifest.json.raw|scout-plan-manifest.json.raw.prompt)
+            return 0
+            ;;
+        *-vote-output.txt.meta|*-vote-output.txt.json)
+            return 0
+            ;;
+    esac
     # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
     case "$name" in
         cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)
@@ -401,6 +419,17 @@ if [[ "$REASON" == "pause" ]]; then
     rm -f "$RUN_DEST"/timing-report-final.json "$RUN_DEST"/timing-report-final.* 2>/dev/null || true
 fi
 
+# Pre-compute last plan-review round source directory for top-level dedup (#3705).
+_last_round_src=0
+if [[ -d "$DESIGN_TMPDIR/plan-review" ]]; then
+    for _lr_d in "$DESIGN_TMPDIR/plan-review"/round-[1-9]*/; do
+        [[ -d "$_lr_d" ]] || continue
+        _lr_n="${_lr_d%/}"
+        _lr_n="${_lr_n##*/round-}"
+        [[ "$_lr_n" =~ ^[0-9]+$ ]] && (( _lr_n > _last_round_src )) && _last_round_src="$_lr_n"
+    done
+fi
+
 _top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
 ENUM_TOP_TMP="$_top_files"
 if ! find "$DESIGN_TMPDIR" -maxdepth 1 -type f | LC_ALL=C sort >"$_top_files"; then
@@ -413,6 +442,13 @@ fi
 while IFS= read -r f || [[ -n "$f" ]]; do
     [[ -z "$f" ]] && continue
     b=$(basename "$f")
+    # Top-level dedup: skip files byte-identical to the final round's copy (#3705).
+    if (( _last_round_src > 0 )); then
+        _round_cmp="$DESIGN_TMPDIR/plan-review/round-$_last_round_src/$b"
+        if [[ -f "$_round_cmp" ]] && cmp -s "$f" "$_round_cmp"; then
+            continue
+        fi
+    fi
     design_publish_stage_file "$f" "$RUN_DEST/$b" || {
         larch_err "design-log-publish: staging failed for $f"
         emit_publish_result false
@@ -475,8 +511,18 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             fi
         elif [[ "$rel" =~ ^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$ ]]; then
             _base=$(basename "$rel")
+            # Extract round number for plan.txt round-1-only check (#3705).
+            _rn_str="${rel%%/*}"
+            _rn_str="${_rn_str#round-}"
+            # plan.txt is round-1-only; rounds >= 2 get plan.diff generated below (#3705).
+            if [[ "$_base" == "plan.txt" ]] && (( _rn_str > 1 )); then
+                continue
+            fi
             if design_round_artifact_included "$_base"; then
                 :
+            elif design_artifact_excluded "$_base"; then
+                # Known top-level exclusion also applies at round level; skip silently.
+                continue
             else
                 larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
                 emit_publish_result false
@@ -506,6 +552,24 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
     done <"$_pr_files"
     rm -f "$_pr_files"
     ENUM_PR_TMP=""
+
+    # Generate plan.diff (unified diff vs previous round) for rounds >= 2 (#3705).
+    for _diff_rn in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        _prev_plan_src="$pr_root/round-$(( _diff_rn - 1 ))/plan.txt"
+        _curr_plan_src="$pr_root/round-$_diff_rn/plan.txt"
+        [[ -f "$_curr_plan_src" ]] || continue
+        [[ -f "$_prev_plan_src" ]] || continue
+        _diff_out_f=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-plandiff.XXXXXX")
+        diff -u "$_prev_plan_src" "$_curr_plan_src" >"$_diff_out_f" || true
+        mkdir -p "$RUN_DEST/plan-review/round-$_diff_rn"
+        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_diff_out_f" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/plan-review/round-$_diff_rn/plan.diff"; then
+            rm -f "$_diff_out_f"
+            larch_err "design-log-publish: plan.diff staging failed for round $_diff_rn"
+            emit_publish_result false
+            exit 0
+        fi
+        rm -f "$_diff_out_f"
+    done
 fi
 
 if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; then
