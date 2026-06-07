@@ -286,4 +286,156 @@ grep -Fq 'Glob' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSO
 grep -Fq 'Edit' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSON must not allow Edit"
 grep -Fq '"plan"' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing permission-mode plan"
 
+# --- claude_sub token capture (issue #3637) ---
+# The launcher now runs `claude --print --output-format json`; assert that the
+# .result prose is extracted into the output file and the reported .usage is
+# folded into the claude_sub ledger lane with role-derived provenance.
+grep -Fq -- '--output-format json' "$SCRIPT" || fail "argv regression: --output-format json missing from $SCRIPT"
+grep -Fq 'output-format' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing --output-format json"
+
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"spawned claude review prose","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+
+json_out="$TMP/out-json.txt"
+json_ledger="$TMP/claude-sub-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/json-stdout" 2>"$TMP/json-err" \
+    || fail "claude_sub json path launch failed (stderr: $(cat "$TMP/json-err"))"
+grep -Fq 'STATUS=OK' "$TMP/json-stdout" || fail "claude_sub json path missing STATUS=OK"
+# .result extracted into the output file so collectors see prose, not raw JSON.
+grep -Fq 'spawned claude review prose' "$json_out" || fail "claude_sub json path: .result not extracted into output file"
+grep -Fq 'input_tokens' "$json_out" && fail "claude_sub json path: raw JSON envelope leaked into output file (extraction failed)"
+# The raw JSON sidecar is cleaned up.
+[[ ! -f "${json_out}.json" ]] || fail "claude_sub json path: ${json_out}.json sidecar not cleaned up"
+# A claude_sub vendor row was recorded with the reported usage and raw=claude_review.
+[[ -f "$json_ledger" ]] || fail "claude_sub json path: token ledger not written"
+grep -Fq '"vendor":"claude_sub"' "$json_ledger" || fail "claude_sub json path: no claude_sub vendor row in ledger"
+grep -Fq '"raw":"claude_review"' "$json_ledger" || fail "claude_sub json path: raw provenance not claude_review"
+# total = input(100)+output(50)+cache_read(10)+cache_create(5) = 165
+grep -Fq '"total":165' "$json_ledger" || fail "claude_sub json path: total token count wrong (expected 165): $(cat "$json_ledger")"
+# cache_creation_input_tokens folds into the single cache_create bucket.
+grep -Fq '"cache_create":5' "$json_ledger" || fail "claude_sub json path: cache_create not folded from cache_creation_input_tokens"
+
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+empty_json_out="$TMP/out-empty-json.txt"
+empty_json_ledger="$TMP/claude-empty-json-ledger.jsonl"
+if LARCH_TOKEN_LEDGER="$empty_json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$empty_json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/empty-json-stdout" 2>"$TMP/empty-json-err"; then
+    fail "claude_sub empty JSON result path should fail closed"
+fi
+grep -Fq 'CLAUDE_JSON_RESULT_INVALID' "$empty_json_out" || fail "claude_sub empty JSON result path: output sentinel missing"
+grep -Fq 'claude JSON envelope missing non-empty string result' "${empty_json_out}.stderr" || fail "claude_sub empty JSON result path: stderr diagnostic missing"
+[[ "$(cat "$empty_json_out.done")" = "99" ]] || fail "claude_sub empty JSON result path: .done should record 99"
+[[ ! -f "$empty_json_ledger" ]] || grep -Fvq 'claude_sub' "$empty_json_ledger" || fail "claude_sub empty JSON result path: ledger row recorded despite failed promotion"
+
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"error_max_turns","is_error":true,"result":"failed","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+error_json_out="$TMP/out-error-json.txt"
+error_json_ledger="$TMP/claude-error-json-ledger.jsonl"
+if LARCH_TOKEN_LEDGER="$error_json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$error_json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/error-json-stdout" 2>"$TMP/error-json-err"; then
+    fail "claude_sub is_error JSON path should fail closed"
+fi
+grep -Fq 'CLAUDE_JSON_RESULT_INVALID' "$error_json_out" || fail "claude_sub is_error JSON path: output sentinel missing"
+grep -Fq 'claude JSON envelope reported is_error=true' "${error_json_out}.stderr" || fail "claude_sub is_error JSON path: stderr diagnostic missing"
+[[ ! -f "$error_json_ledger" ]] || grep -Fvq 'claude_sub' "$error_json_ledger" || fail "claude_sub is_error JSON path: ledger row recorded despite failed promotion"
+
+# Provenance varies by timing-task-kind: voter -> claude_vote.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"spawned claude review prose","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+vote_ledger="$TMP/claude-vote-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$vote_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-vote.txt" \
+    --timeout 5 \
+    --timing-task-kind claude-code-voter \
+    >/dev/null 2>"$TMP/vote-err" \
+    || fail "claude_sub voter path launch failed (stderr: $(cat "$TMP/vote-err"))"
+grep -Fq '"raw":"claude_vote"' "$vote_ledger" || fail "claude_sub voter path: raw provenance not claude_vote"
+
+# Plan voters/assessors map to claude_vote via substring patterns, not the
+# review fallback (issue #3637 FINDING_10).
+for vote_kind in claude-plan-voter claude-plan-assessor claude-phase2-plan-assessor; do
+    vk_ledger="$TMP/claude-vote-$vote_kind-ledger.jsonl"
+    LARCH_TOKEN_LEDGER="$vk_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$TMP/out-$vote_kind.txt" \
+        --timeout 5 \
+        --timing-task-kind "$vote_kind" \
+        >/dev/null 2>"$TMP/$vote_kind-err" \
+        || fail "claude_sub $vote_kind launch failed (stderr: $(cat "$TMP/$vote_kind-err"))"
+    grep -Fq '"raw":"claude_vote"' "$vk_ledger" || fail "claude_sub $vote_kind: raw provenance not claude_vote"
+done
+
+# scout -> claude_scout.
+scout_ledger="$TMP/claude-scout-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$scout_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-scout.txt" \
+    --timeout 5 \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/scout-err" \
+    || fail "claude_sub scout path launch failed"
+grep -Fq '"raw":"claude_scout"' "$scout_ledger" || fail "claude_sub scout path: raw provenance not claude_scout"
+
+# Malformed / non-JSON output is tolerated: output preserved, no ledger row.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+printf 'plain non-json reviewer output\n'
+STUB
+chmod +x "$BIN/claude"
+plain_ledger="$TMP/claude-plain-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$plain_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-plain.txt" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/plain-stdout" 2>/dev/null \
+    || fail "claude_sub plain path launch failed"
+grep -Fq 'plain non-json reviewer output' "$TMP/out-plain.txt" || fail "claude_sub plain path: non-JSON output not preserved"
+[[ ! -f "$plain_ledger" ]] || grep -Fvq 'claude_sub' "$plain_ledger" || fail "claude_sub plain path: ledger row recorded from non-JSON output"
+
 echo "All assertions passed."

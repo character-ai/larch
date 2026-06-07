@@ -108,6 +108,21 @@ case "$MODEL" in *[[:space:]]*|*[$'\n\r\t']*|"") fail "--model must be a single 
 case "$TIMING_TASK_KIND" in ""|--*) fail "--timing-task-kind requires a non-empty, non-flag-like value" ;; esac
 (( CONTEXT_COUNT <= 20 )) || fail "--context-files is capped at 20 files"
 
+# claude_sub ledger provenance (raw=) derived from the timing task kind so the
+# spawned-Claude token rows are attributed by role (review/vote/scout) within
+# the single claude_sub lane. Substring patterns keep the attribution accurate
+# across the family of voter/assessor/scout kinds that flow through this launcher
+# (e.g. claude-code-voter, claude-plan-voter, claude-plan-assessor,
+# claude-phase{1,2,3}-plan-assessor, scout-dynamic-archetypes) rather than
+# mislabeling every non-exact kind as review. Unknown kinds fall back to
+# claude_review. The raw value is provenance metadata only and never changes
+# which lane the tokens land in (issue #3637).
+case "$TIMING_TASK_KIND" in
+    *scout*)             TOKEN_RAW=claude_scout ;;
+    *voter*|*assessor*)  TOKEN_RAW=claude_vote ;;
+    *)                   TOKEN_RAW=claude_review ;;
+esac
+
 PROMPT_CANON=$(canonical_existing_file "$PROMPT_FILE") || fail "invalid --prompt-file"
 OUTPUT_CANON=$(canonical_output_path "$OUTPUT_FILE") || fail "invalid --output-file"
 rm -f "${OUTPUT_CANON}.stderr-tail"
@@ -168,9 +183,11 @@ if [[ "$READ_TOOLS" == "true" ]]; then
         printf '%s\n\n' "You are a read-only reviewer. Do NOT use Edit, Write, or Bash tools. Do NOT modify files."
         cat "$PROMPT_CANON"
     } > "$PROMPT_RENDERED"
-    # Verified on dev host: claude --print accepts --add-dir, --allowedTools, --permission-mode plan (read-only).
+    # Verified on dev host: claude --print --output-format json composes with
+    # --add-dir, --allowedTools, --permission-mode plan (read-only); .result
+    # carries the prose and .usage carries token counts (issue #3637).
     CMD_JSON=$(jq -cn --arg model "$MODEL" --arg read_root "$READ_TOOLS_ROOT" \
-        '["claude","--model",$model,"--print","--add-dir",$read_root,"--allowedTools","Read","--permission-mode","plan"]')
+        '["claude","--model",$model,"--print","--output-format","json","--add-dir",$read_root,"--allowedTools","Read","--permission-mode","plan"]')
 else
     {
         printf '%s\n\n' "You are a read-only reviewer. Do NOT use Edit, Write, or Bash tools. Do NOT modify files."
@@ -185,7 +202,7 @@ else
             printf '\n</context_file_%s>\n' "$idx"
         done
     } > "$PROMPT_RENDERED"
-    CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude","--model",$model,"--print"]')
+    CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude","--model",$model,"--print","--output-format","json"]')
 fi
 {
     printf 'OUTER_LAUNCHER=claude\n'
@@ -197,9 +214,9 @@ fi
 status="OK"
 exit_code=0
 if [[ "$READ_TOOLS" == "true" ]]; then
-    _claude_argv=(claude --model "$MODEL" --print --add-dir "$READ_TOOLS_ROOT" --allowedTools Read --permission-mode plan)
+    _claude_argv=(claude --model "$MODEL" --print --output-format json --add-dir "$READ_TOOLS_ROOT" --allowedTools Read --permission-mode plan)
 else
-    _claude_argv=(claude --model "$MODEL" --print)
+    _claude_argv=(claude --model "$MODEL" --print --output-format json)
 fi
 if command -v timeout >/dev/null 2>&1; then
     if timeout "$TIMEOUT" "${_claude_argv[@]}" < "$PROMPT_RENDERED" > "$OUTPUT_TMP" 2> "${OUTPUT_TMP}.stderr"; then
@@ -219,6 +236,50 @@ fi
 
 mv "$OUTPUT_TMP" "$OUTPUT_CANON"
 mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
+
+# --- Spawned-Claude token capture (issue #3637) ---
+# The CLI runs with --output-format json, so successful JSON envelopes must
+# promote a non-empty string .result before the run can count as successful.
+# Usage accounting is recorded only after that prose promotion succeeds.
+if [[ "$exit_code" -eq 0 ]]; then
+    rm -f "${OUTPUT_CANON}.json"
+    if command -v jq >/dev/null 2>&1 \
+        && cp "$OUTPUT_CANON" "${OUTPUT_CANON}.json" 2>/dev/null \
+        && [[ -s "${OUTPUT_CANON}.json" ]] \
+        && jq -e . "${OUTPUT_CANON}.json" >/dev/null 2>&1; then
+        _claude_extract="${OUTPUT_CANON}.extract.$$"
+        _claude_json_reason=""
+        if jq -e '(.is_error // false) == true' "${OUTPUT_CANON}.json" >/dev/null 2>&1; then
+            _claude_json_reason="claude JSON envelope reported is_error=true"
+        elif jq -er 'if (.result | type) == "string" and (.result | length) > 0 then .result else empty end' \
+            "${OUTPUT_CANON}.json" > "$_claude_extract" 2>/dev/null && [[ -s "$_claude_extract" ]]; then
+            mv -f "$_claude_extract" "$OUTPUT_CANON"
+            read -r _cl_in _cl_out _cl_cr _cl_cc < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "${OUTPUT_CANON}.json" 2>/dev/null || echo "0 0 0 0")
+            if [[ "$_cl_in" =~ ^[0-9]+$ && "$_cl_out" =~ ^[0-9]+$ && "$_cl_cr" =~ ^[0-9]+$ && "$_cl_cc" =~ ^[0-9]+$ ]]; then
+                _cl_total=$((_cl_in + _cl_out + _cl_cr + _cl_cc))
+                "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
+                    input="$_cl_in" output="$_cl_out" cache_read="$_cl_cr" \
+                    cache_create="$_cl_cc" total="$_cl_total" raw="$TOKEN_RAW" >/dev/null 2>&1 || true
+            fi
+        else
+            _claude_json_reason="claude JSON envelope missing non-empty string result"
+        fi
+        if [[ -n "$_claude_json_reason" ]]; then
+            rm -f "$_claude_extract"
+            printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT_CANON"
+            printf '%s\n' "$_claude_json_reason" >> "${OUTPUT_CANON}.stderr"
+            exit_code=99
+            status="ERROR"
+        fi
+    elif [[ -s "$OUTPUT_CANON" && "$(LC_ALL=C head -c 1 "$OUTPUT_CANON" 2>/dev/null || true)" == "{" ]]; then
+        printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT_CANON"
+        printf '%s\n' "claude JSON envelope could not be parsed" >> "${OUTPUT_CANON}.stderr"
+        exit_code=99
+        status="ERROR"
+    fi
+    rm -f "${OUTPUT_CANON}.json"
+fi
+
 # Fail-loud guard: a 0-byte output with a 0 exit code means the CLI likely
 # rejected an unknown flag silently; treat as ERROR so callers see a real failure.
 if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then

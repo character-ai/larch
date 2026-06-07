@@ -41,6 +41,8 @@ CURSOR_TOKENS=0
 C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
+CLAUDE_SUB_TOKENS=0
+CS_IN=0 CS_CR=0 CS_CW5=0 CS_CW1=0 CS_OUT=0
 ISSUE_NUMBER=""
 ISSUE_URL=""
 PR_NUMBER=""
@@ -84,6 +86,12 @@ while [ $# -gt 0 ]; do
         --cursor-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_IN=$2; shift 2 ;;
         --cursor-cache-read-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_CR=$2; shift 2 ;;
         --cursor-output-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_OUT=$2; shift 2 ;;
+        --claude-sub-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CLAUDE_SUB_TOKENS=$2; shift 2 ;;
+        --claude-sub-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CS_IN=$2; shift 2 ;;
+        --claude-sub-cache-read-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CS_CR=$2; shift 2 ;;
+        --claude-sub-cache-write-5m-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CS_CW5=$2; shift 2 ;;
+        --claude-sub-cache-write-1h-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CS_CW1=$2; shift 2 ;;
+        --claude-sub-output-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CS_OUT=$2; shift 2 ;;
         --issue-number) [ $# -ge 2 ] || { usage; exit 2; }; ISSUE_NUMBER=$2; shift 2 ;;
         --issue-url) [ $# -ge 2 ] || { usage; exit 2; }; ISSUE_URL=$2; shift 2 ;;
         --pr-number) [ $# -ge 2 ] || { usage; exit 2; }; PR_NUMBER=$2; shift 2 ;;
@@ -139,6 +147,17 @@ if [ "$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT))" -gt 0 ]; then
 else
     claude_args=(--claude-tokens "$CLAUDE_TOKENS")
 fi
+if [ "$((CS_IN + CS_CR + CS_CW5 + CS_CW1 + CS_OUT))" -gt 0 ]; then
+    claude_sub_args=(
+        --claude-sub-input-tokens "$CS_IN"
+        --claude-sub-cache-read-tokens "$CS_CR"
+        --claude-sub-cache-write-5m-tokens "$CS_CW5"
+        --claude-sub-cache-write-1h-tokens "$CS_CW1"
+        --claude-sub-output-tokens "$CS_OUT"
+    )
+else
+    claude_sub_args=(--claude-sub-tokens "$CLAUDE_SUB_TOKENS")
+fi
 
 if [ "$COST_UNAVAILABLE" = true ]; then
     cost_lines=""
@@ -148,12 +167,14 @@ else
         cost_lines=$("$TOKEN_COST_SH" \
             "${claude_args[@]}" \
             "${codex_args[@]}" \
-            "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+            "${cursor_args[@]}" \
+            "${claude_sub_args[@]}" 2>"$cost_errf") || cost_lines=""
     else
         cost_lines=$("$PLUGIN_ROOT/scripts/token-cost.sh" \
             "${claude_args[@]}" \
             "${codex_args[@]}" \
-            "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+            "${cursor_args[@]}" \
+            "${claude_sub_args[@]}" 2>"$cost_errf") || cost_lines=""
     fi
     if [ -s "$cost_errf" ]; then
         cat "$cost_errf" >&2
@@ -171,19 +192,21 @@ if [ "$COST_UNAVAILABLE" = true ]; then
     cc=N/A
     dc=N/A
     uc=N/A
+    csc=N/A
     tt=N/A
 else
     tc=$(read_cost TOTAL_COST)
     cc=$(read_cost CLAUDE_COST)
     dc=$(read_cost CODEX_COST)
     uc=$(read_cost CURSOR_COST)
+    csc=$(read_cost CLAUDE_SUB_COST)
     tt=$(read_cost TOTAL_TOKENS)
 fi
 
 cost_bullet() {
     case "$tc" in N/A|"") printf 'N/A'; return ;; esac
     local _ln _rest
-    _ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt")
+    _ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt" "$csc")
     _rest=${_ln#💰 Cost: }
     printf '💰 %s' "$_rest"
 }

@@ -219,10 +219,11 @@ if [ "${#mode_parts[@]}" -gt 0 ]; then
 fi
 
 # --- Tokens ---
-CLAUDE_T=0 CODEX_T=0 CURSOR_T=0
+CLAUDE_T=0 CODEX_T=0 CURSOR_T=0 CLAUDE_SUB_T=0
 C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
+CS_IN=0 CS_CR=0 CS_CW5=0 CS_CW1=0 CS_OUT=0
 TOKEN_JSON=""
 TOKEN_DATA_AVAILABLE=false
 TOKEN_REPORT_CORRUPT_ZERO=false
@@ -238,18 +239,21 @@ if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
     fi
 fi
 if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1 && jq -e '.claude.totals' "$TOKEN_JSON" >/dev/null 2>&1; then
-    read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    read -r CLAUDE_T CODEX_T CURSOR_T CLAUDE_SUB_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0), (.claude_sub.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\n')
     TOKEN_CODEX_PRESENT=false
     TOKEN_CURSOR_PRESENT=false
+    TOKEN_CLAUDE_SUB_PRESENT=false
     jq -e '.codex' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CODEX_PRESENT=true
     jq -e '.cursor' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CURSOR_PRESENT=true
+    jq -e '.claude_sub' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CLAUDE_SUB_PRESENT=true
     # guard against silent zero costs
-    if jq -e --argjson codex_present "$TOKEN_CODEX_PRESENT" --argjson cursor_present "$TOKEN_CURSOR_PRESENT" '
+    if jq -e --argjson codex_present "$TOKEN_CODEX_PRESENT" --argjson cursor_present "$TOKEN_CURSOR_PRESENT" --argjson claude_sub_present "$TOKEN_CLAUDE_SUB_PRESENT" '
       (.claude.totals? != null)
       and ((.claude.totals.total // 0) == 0)
       and (if $codex_present then ((.codex.totals.total // 0) == 0) else true end)
       and (if $cursor_present then ((.cursor.totals.total // 0) == 0) else true end)
-      and ($codex_present or $cursor_present)
+      and (if $claude_sub_present then ((.claude_sub.totals.total // 0) == 0) else true end)
+      and ($codex_present or $cursor_present or $claude_sub_present)
     ' "$TOKEN_JSON" >/dev/null 2>&1; then
         TOKEN_REPORT_CORRUPT_ZERO=true
         larch_err "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"
@@ -258,9 +262,10 @@ if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1
         read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
         read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
         read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+        read -r CS_IN CS_CR CS_CW5 CS_CW1 CS_OUT < <(jq -r '[.BUCKETS_claude_sub.input, .BUCKETS_claude_sub.cache_read, .BUCKETS_claude_sub.cache_create_5m, .BUCKETS_claude_sub.cache_create_1h, .BUCKETS_claude_sub.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
     fi
-    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
-    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
+    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT + CS_IN + CS_CR + CS_CW5 + CS_CW1 + CS_OUT))
+    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T + CLAUDE_SUB_T))
     if [ "$TOKEN_REPORT_CORRUPT_ZERO" != true ] && { [ "$sum_b" -ne 0 ] || [ "$total_t" -ne 0 ]; }; then
         TOKEN_DATA_AVAILABLE=true
     fi
@@ -464,6 +469,7 @@ run_body_render() {
             --claude-tokens "$CLAUDE_T"
             --codex-tokens "$CODEX_T"
             --cursor-tokens "$CURSOR_T"
+            --claude-sub-tokens "$CLAUDE_SUB_T"
             --claude-input-tokens "$C_IN"
             --claude-cache-read-tokens "$C_CR"
             --claude-cache-write-5m-tokens "$C_CW5"
@@ -475,6 +481,11 @@ run_body_render() {
             --cursor-input-tokens "$U_IN"
             --cursor-cache-read-tokens "$U_CR"
             --cursor-output-tokens "$U_OUT"
+            --claude-sub-input-tokens "$CS_IN"
+            --claude-sub-cache-read-tokens "$CS_CR"
+            --claude-sub-cache-write-5m-tokens "$CS_CW5"
+            --claude-sub-cache-write-1h-tokens "$CS_CW1"
+            --claude-sub-output-tokens "$CS_OUT"
         )
     fi
     if [ -n "$nf" ] && [ -f "$nf" ]; then

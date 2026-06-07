@@ -23,6 +23,8 @@ def _record(workflow: str = "unknown") -> RunRecord:
         codex_cost=2,
         cursor_cost=3,
         total_cost=6,
+        claude_sub=VendorTotals(total=40),
+        claude_sub_cost=4,
     )
 
 
@@ -56,6 +58,8 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
         record.cursor_cost,
         record.total_cost,
         priced_by_token_cost=True,
+        claude_sub=record.claude_sub,
+        claude_sub_cost=record.claude_sub_cost,
     )
     body, _sections, cache = render("implement", (record,), temp_root=tmp_path)
     normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
@@ -83,6 +87,8 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
         simple.cursor_cost,
         simple.total_cost,
         priced_by_token_cost=True,
+        claude_sub=simple.claude_sub,
+        claude_sub_cost=simple.claude_sub_cost,
     )
     hard = RunRecord(
         8,
@@ -101,6 +107,8 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
         hard.cursor_cost,
         7,
         priced_by_token_cost=True,
+        claude_sub=hard.claude_sub,
+        claude_sub_cost=hard.claude_sub_cost,
     )
     body, _sections, cache = render("design", (simple, hard), temp_root=tmp_path)
     normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")

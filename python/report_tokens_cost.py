@@ -30,11 +30,13 @@ def _vendor_totals(record: RunRecord, vendor: VendorName) -> VendorTotals:
         return record.claude
     if vendor == "codex":
         return record.codex
+    if vendor == "claude_sub":
+        return record.claude_sub
     return record.cursor
 
 
 def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
-    if vendor == "claude":
+    if vendor in ("claude", "claude_sub"):
         keys = ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output")
     elif vendor == "codex":
         keys = ("input", "cached_input", "output")
@@ -44,7 +46,7 @@ def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
 
 
 def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
-    if vendor == "claude":
+    if vendor in ("claude", "claude_sub"):
         split_cache_create = totals.cache_create_5m + totals.cache_create_1h
         cache_create = split_cache_create if split_cache_create > 0 else totals.cache_create
         component_total = (
@@ -80,19 +82,22 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
     for vendor in VENDORS:
         bucket = _bucket(record, vendor)
         totals = _vendor_totals(record, vendor)
+        # token-cost.sh uses hyphenated flag prefixes; the claude_sub vendor key
+        # maps to the --claude-sub-* flags (issue #3637).
+        flag_prefix = "claude-sub" if vendor == "claude_sub" else vendor
         if bucket and _bucket_total(bucket, vendor) > 0:
-            if vendor == "claude":
+            if vendor in ("claude", "claude_sub"):
                 legacy_cache_create = safe_int(bucket.get("cache_create"))
                 cache_create_5m = safe_int(bucket.get("cache_create_5m"))
                 cache_create_1h = safe_int(bucket.get("cache_create_1h"))
                 if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
                     cache_create_5m = legacy_cache_create
                 argv.extend([
-                    "--claude-input-tokens", str(safe_int(bucket.get("input"))),
-                    "--claude-cache-read-tokens", str(safe_int(bucket.get("cache_read"))),
-                    "--claude-cache-write-5m-tokens", str(cache_create_5m),
-                    "--claude-cache-write-1h-tokens", str(cache_create_1h),
-                    "--claude-output-tokens", str(safe_int(bucket.get("output"))),
+                    f"--{flag_prefix}-input-tokens", str(safe_int(bucket.get("input"))),
+                    f"--{flag_prefix}-cache-read-tokens", str(safe_int(bucket.get("cache_read"))),
+                    f"--{flag_prefix}-cache-write-5m-tokens", str(cache_create_5m),
+                    f"--{flag_prefix}-cache-write-1h-tokens", str(cache_create_1h),
+                    f"--{flag_prefix}-output-tokens", str(safe_int(bucket.get("output"))),
                 ])
             elif vendor == "codex":
                 argv.extend([
@@ -107,7 +112,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
                     "--cursor-output-tokens", str(safe_int(bucket.get("output"))),
                 ])
         else:
-            argv.extend([f"--{vendor}-tokens", str(_aggregate_tokens(totals, vendor))])
+            argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals, vendor))])
     return argv
 
 
@@ -151,12 +156,15 @@ def _fallback_cost(record: RunRecord) -> RunRecord:
     claude_cost = (aggregate_vendor_tokens(record, "claude") / 1_000_000) * rates.claude_blended
     codex_cost = (aggregate_vendor_tokens(record, "codex") / 1_000_000) * rates.codex_blended
     cursor_cost = (aggregate_vendor_tokens(record, "cursor") / 1_000_000) * rates.cursor_blended
-    total_cost = claude_cost + codex_cost + cursor_cost
+    # claude_sub uses the Claude blended rate in the fallback path (issue #3637).
+    claude_sub_cost = (aggregate_vendor_tokens(record, "claude_sub") / 1_000_000) * rates.claude_blended
+    total_cost = claude_cost + codex_cost + cursor_cost + claude_sub_cost
     return replace(
         record,
         claude_cost=round(claude_cost, 2),
         codex_cost=round(codex_cost, 2),
         cursor_cost=round(cursor_cost, 2),
+        claude_sub_cost=round(claude_sub_cost, 2),
         total_cost=round(total_cost, 2),
         priced_by_token_cost=False,
     )
@@ -179,11 +187,15 @@ def price_run(runner: Runner, *, record: RunRecord, plugin_root: Path | None = N
     if not all(key in parsed for key in required):
         print(f"Warning: token-cost.sh output incomplete for issue #{record.number}; using blended Python fallback", file=sys.stderr)
         return _fallback_cost(record)
+    # CLAUDE_SUB_COST is parsed leniently (default 0.0) so a token-cost.sh that
+    # predates the claude_sub lane still prices the other three lanes; TOTAL_COST
+    # from a current token-cost.sh already includes claude_sub (issue #3637).
     return replace(
         record,
         claude_cost=parsed["CLAUDE_COST"],
         codex_cost=parsed["CODEX_COST"],
         cursor_cost=parsed["CURSOR_COST"],
+        claude_sub_cost=parsed.get("CLAUDE_SUB_COST", 0.0),
         total_cost=parsed["TOTAL_COST"],
         priced_by_token_cost=True,
     )

@@ -48,7 +48,7 @@ append_launch_failure() {
         --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "Tool Failures" --output-file "$diag_file" \
-        "${_args[@]}" --redact >/dev/null 2>&1 || true
+        ${_args[@]+"${_args[@]}"} --redact >/dev/null 2>&1 || true
 }
 
 while [ $# -gt 0 ]; do
@@ -173,13 +173,13 @@ fi
 START_S=$(date +%s)
 LAUNCHER_EXIT=0
 if command -v timeout >/dev/null 2>&1; then
-    if timeout "$TIMEOUT" claude --model "$MODEL" --print < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
+    if timeout "$TIMEOUT" claude --model "$MODEL" --print --output-format json < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
         LAUNCHER_EXIT=0
     else
         LAUNCHER_EXIT=$?
     fi
 else
-    if claude --model "$MODEL" --print < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
+    if claude --model "$MODEL" --print --output-format json < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
         LAUNCHER_EXIT=0
     else
         LAUNCHER_EXIT=$?
@@ -187,6 +187,47 @@ else
 fi
 mv "${OUTPUT}.tmp.$$" "$OUTPUT" 2>/dev/null || true
 mv "${OUTPUT}.stderr.$$" "${OUTPUT}.stderr" 2>/dev/null || true
+
+# --- Spawned-Claude .usage extraction (issue #3637) ---
+# The CLI runs with --output-format json. Valid JSON envelopes must promote a
+# non-empty string .result into $OUTPUT before the run can be considered
+# successful, and usage is recorded only after that prose promotion succeeds.
+CL_IN=0 CL_OUT=0 CL_CR=0 CL_CC=0 CL_TOTAL=0
+CI_JSON_FAILURE=false
+if [[ "$LAUNCHER_EXIT" -eq 0 ]] && [[ -s "$OUTPUT" ]]; then
+    rm -f "${OUTPUT}.json"
+    if command -v jq >/dev/null 2>&1 && cp "$OUTPUT" "${OUTPUT}.json" 2>/dev/null && jq -e . "${OUTPUT}.json" >/dev/null 2>&1; then
+        _ci_extract="${OUTPUT}.extract.$$"
+        _ci_json_reason=""
+        if jq -e '(.is_error // false) == true' "${OUTPUT}.json" >/dev/null 2>&1; then
+            _ci_json_reason="claude JSON envelope reported is_error=true"
+        elif jq -er 'if (.result | type) == "string" and (.result | length) > 0 then .result else empty end' \
+            "${OUTPUT}.json" > "$_ci_extract" 2>/dev/null && [[ -s "$_ci_extract" ]]; then
+            mv -f "$_ci_extract" "$OUTPUT"
+            read -r CL_IN CL_OUT CL_CR CL_CC < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "${OUTPUT}.json" 2>/dev/null || echo "0 0 0 0")
+            case "$CL_IN" in ''|*[!0-9]*) CL_IN=0 ;; esac
+            case "$CL_OUT" in ''|*[!0-9]*) CL_OUT=0 ;; esac
+            case "$CL_CR" in ''|*[!0-9]*) CL_CR=0 ;; esac
+            case "$CL_CC" in ''|*[!0-9]*) CL_CC=0 ;; esac
+            CL_TOTAL=$((CL_IN + CL_OUT + CL_CR + CL_CC))
+        else
+            _ci_json_reason="claude JSON envelope missing non-empty string result"
+        fi
+        if [[ -n "$_ci_json_reason" ]]; then
+            rm -f "$_ci_extract"
+            printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT"
+            printf '%s\n' "$_ci_json_reason" >> "${OUTPUT}.stderr"
+            LAUNCHER_EXIT=99
+            CI_JSON_FAILURE=true
+        fi
+    elif [[ "$(LC_ALL=C head -c 1 "$OUTPUT" 2>/dev/null || true)" == "{" ]]; then
+        printf 'CLAUDE_JSON_RESULT_INVALID\n' > "$OUTPUT"
+        printf '%s\n' "claude JSON envelope could not be parsed" >> "${OUTPUT}.stderr"
+        LAUNCHER_EXIT=99
+        CI_JSON_FAILURE=true
+    fi
+    rm -f "${OUTPUT}.json"
+fi
 
 END_S=$(date +%s)
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
@@ -202,9 +243,21 @@ if (( LAUNCHER_EXIT != 0 )); then
     append_launch_failure "CI $ROLE" "claude-ci" "$LAUNCHER_EXIT" "${OUTPUT}.stderr" "" ""
 fi
 
-if [[ -s "$OUTPUT" ]]; then
+# Record spawned-Claude CI-fix tokens into the claude_sub ledger lane (priced at
+# Claude rates) using the real .usage counts; the single cache_creation field
+# folds into one cache_create bucket. The token-cost report reads this ledger on
+# the next refresh-run-logs token-report.sh pass (issue #3637). When .usage was
+# unavailable, fall back to the legacy word-count proxy so the sidecar that
+# ship-pr.sh forwards to append-token-record.sh is still populated.
+if [[ "$CL_TOTAL" -gt 0 ]]; then
+    DESIGN_TMPDIR='' "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor claude_sub \
+        input="$CL_IN" output="$CL_OUT" cache_read="$CL_CR" cache_create="$CL_CC" \
+        total="$CL_TOTAL" raw="claude_ci" >/dev/null 2>&1 || true
+    printf 'TOOL=claude\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nCACHE_CREATE=%s\nTOTAL=%s\nRAW=claude_ci\n' \
+        "$CL_IN" "$CL_OUT" "$CL_CR" "$CL_CC" "$CL_TOTAL" > "${OUTPUT}.token-record"
+elif [[ "$CI_JSON_FAILURE" != true && -s "$OUTPUT" ]]; then
     _tok=$(wc -w < "$OUTPUT" | tr -d '[:space:]')
-    printf 'TOOL=claude\nTOTAL=%s\nRAW=claude_ci_fix\n' "${_tok:-0}" > "${OUTPUT}.token-record"
+    printf 'TOOL=claude\nTOTAL=%s\nRAW=claude_ci\n' "${_tok:-0}" > "${OUTPUT}.token-record"
 fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"

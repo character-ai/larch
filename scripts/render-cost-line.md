@@ -11,7 +11,8 @@ scripts/render-cost-line.sh \
   [--claude-input-tokens N ... --claude-output-tokens N] \
   [--codex-input-tokens N --codex-cached-input-tokens N --codex-output-tokens N] \
   [--cursor-input-tokens N --cursor-cache-read-tokens N --cursor-output-tokens N] \
-  [--claude-tokens <N> --codex-tokens <N> --cursor-tokens <N>] \
+  [--claude-sub-input-tokens N --claude-sub-cache-read-tokens N --claude-sub-cache-write-5m-tokens N --claude-sub-cache-write-1h-tokens N --claude-sub-output-tokens N] \
+  [--claude-tokens <N> --codex-tokens <N> --cursor-tokens <N> --claude-sub-tokens <N>] \
   [--quiet-on-empty]
 ```
 
@@ -23,10 +24,11 @@ scripts/render-cost-line.sh \
 One line to stdout, newline-terminated:
 
 ```
-💰 Cost: TOTAL ~$X.XX — Claude $A.AA, Codex $B.BB, Cursor $C.CC  |  Tokens: <T>k
+💰 Cost: TOTAL ~$X.XX — Claude $A.AA, Codex $B.BB, Cursor $C.CC, Claude (subprocess) $D.DD  |  Tokens: <T>k
 ```
 
 - Literal `💰 Cost: TOTAL ~` prefix; amounts use two decimal places and a leading `$` per slot.
+- The `Claude (subprocess)` slot (machine name `claude_sub`, issue #3637) is always rendered, mirroring Codex/Cursor; it is priced at Claude rates and summed into the total. `--quiet-on-empty` also accounts for the `claude_sub` flags.
 - ASCII em dash `—` between the total and the per-vendor breakdown.
 - **Two spaces** before and after the pipe character (ASCII U+007C), i.e. two spaces, then the pipe, then two spaces, before `Tokens:`.
 - `Tokens: <T>k` uses the same thousands rounding as `render-run-summary.sh` (`int((total+500)/1000)`).

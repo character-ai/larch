@@ -12,10 +12,11 @@ usage() {
     printf 'Usage: render-cost-line.sh [--per-bucket flags] [--claude-tokens N ...] [--quiet-on-empty]\n' >&2
 }
 
-CLAUDE_T=0 CODEX_T=0 CURSOR_T=0
+CLAUDE_T=0 CODEX_T=0 CURSOR_T=0 CLAUDE_SUB_T=0
 C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
+CS_IN=0 CS_CR=0 CS_CW5=0 CS_CW1=0 CS_OUT=0
 QUIET_ON_EMPTY=false
 
 while [ $# -gt 0 ]; do
@@ -34,13 +35,19 @@ while [ $# -gt 0 ]; do
         --cursor-input-tokens)     U_IN=${2:-0}; shift 2 ;;
         --cursor-cache-read-tokens) U_CR=${2:-0}; shift 2 ;;
         --cursor-output-tokens)    U_OUT=${2:-0}; shift 2 ;;
+        --claude-sub-tokens)  CLAUDE_SUB_T=${2:-0}; shift 2 ;;
+        --claude-sub-input-tokens)     CS_IN=${2:-0}; shift 2 ;;
+        --claude-sub-cache-read-tokens) CS_CR=${2:-0}; shift 2 ;;
+        --claude-sub-cache-write-5m-tokens) CS_CW5=${2:-0}; shift 2 ;;
+        --claude-sub-cache-write-1h-tokens) CS_CW1=${2:-0}; shift 2 ;;
+        --claude-sub-output-tokens)    CS_OUT=${2:-0}; shift 2 ;;
         --quiet-on-empty) QUIET_ON_EMPTY=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 2 ;;
     esac
 done
 
-case "$CLAUDE_T$CODEX_T$CURSOR_T$C_IN$C_CR$C_CW5$C_CW1$C_OUT$D_IN$D_CACHED$D_OUT$U_IN$U_CR$U_OUT" in *[!0-9]*)
+case "$CLAUDE_T$CODEX_T$CURSOR_T$C_IN$C_CR$C_CW5$C_CW1$C_OUT$D_IN$D_CACHED$D_OUT$U_IN$U_CR$U_OUT$CLAUDE_SUB_T$CS_IN$CS_CR$CS_CW5$CS_CW1$CS_OUT" in *[!0-9]*)
     usage
     exit 2
     ;;
@@ -49,7 +56,8 @@ esac
 if "$QUIET_ON_EMPTY" && [ "$CLAUDE_T" -eq 0 ] && [ "$CODEX_T" -eq 0 ] && [ "$CURSOR_T" -eq 0 ] \
     && [ "$C_IN" -eq 0 ] && [ "$C_CR" -eq 0 ] && [ "$C_CW5" -eq 0 ] && [ "$C_CW1" -eq 0 ] && [ "$C_OUT" -eq 0 ] \
     && [ "$D_IN" -eq 0 ] && [ "$D_CACHED" -eq 0 ] && [ "$D_OUT" -eq 0 ] \
-    && [ "$U_IN" -eq 0 ] && [ "$U_CR" -eq 0 ] && [ "$U_OUT" -eq 0 ]; then
+    && [ "$U_IN" -eq 0 ] && [ "$U_CR" -eq 0 ] && [ "$U_OUT" -eq 0 ] \
+    && [ "$CLAUDE_SUB_T" -eq 0 ] && [ "$CS_IN" -eq 0 ] && [ "$CS_CR" -eq 0 ] && [ "$CS_CW5" -eq 0 ] && [ "$CS_CW1" -eq 0 ] && [ "$CS_OUT" -eq 0 ]; then
     exit 0
 fi
 
@@ -82,10 +90,22 @@ if [ "$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT))" -gt 0 ]; then
 else
     claude_args=(--claude-tokens "$CLAUDE_T")
 fi
+if [ "$((CS_IN + CS_CR + CS_CW5 + CS_CW1 + CS_OUT))" -gt 0 ]; then
+    claude_sub_args=(
+        --claude-sub-input-tokens "$CS_IN"
+        --claude-sub-cache-read-tokens "$CS_CR"
+        --claude-sub-cache-write-5m-tokens "$CS_CW5"
+        --claude-sub-cache-write-1h-tokens "$CS_CW1"
+        --claude-sub-output-tokens "$CS_OUT"
+    )
+else
+    claude_sub_args=(--claude-sub-tokens "$CLAUDE_SUB_T")
+fi
 if ! cost_lines=$("$TOKEN_COST_SH" \
     "${claude_args[@]}" \
     "${codex_args[@]}" \
     "${cursor_args[@]}" \
+    "${claude_sub_args[@]}" \
     2>"$cost_errf"); then
     if [ -s "$cost_errf" ]; then
         cat "$cost_errf" >&2
@@ -108,6 +128,7 @@ tc=$(read_kv TOTAL_COST)
 cc=$(read_kv CLAUDE_COST)
 dc=$(read_kv CODEX_COST)
 uc=$(read_kv CURSOR_COST)
+csc=$(read_kv CLAUDE_SUB_COST)
 tt=$(read_kv TOTAL_TOKENS)
 
-larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt"
+larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt" "$csc"

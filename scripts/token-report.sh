@@ -261,6 +261,7 @@ render_jq() {
       def vendor_label($vname):
         if   $vname == "codex"  then "Codex"
         elif $vname == "cursor" then "Cursor"
+        elif $vname == "claude_sub" then "Claude (subprocess)"
         else md_cell($vname)
         end;
 
@@ -345,13 +346,15 @@ render_jq() {
           end;
 
       # Coverage-lossless vendor enumeration: take distinct vendor names in
-      # the in-run window, then emit codex first, cursor second, and any other
-      # vendors alphabetically.
+      # the in-run window, then emit codex first, cursor second, claude_sub
+      # third, and any other vendors alphabetically. claude_sub is pinned so
+      # the spawned-Claude lane has a deterministic position right after the
+      # other known external lanes (issue #3637).
       def vendor_names($marks; $vendor):
         ($marks[0].ts) as $first
         | ($vendor | map(select(.ts != null and .ts >= $first)) | map(.vendor) | unique) as $present
-        | (["codex", "cursor"] | map(select(. as $v | $present | index($v) != null)))
-        + ($present - ["codex", "cursor"] | sort);
+        | (["codex", "cursor", "claude_sub"] | map(select(. as $v | $present | index($v) != null)))
+        + ($present - ["codex", "cursor", "claude_sub"] | sort);
 
       def skill_totals($rows):
         ($rows
@@ -419,6 +422,24 @@ render_jq() {
                   output: sumfield($rows; "output"),
                   total: sumfield($rows; "total")
                 }
+            ),
+            # claude_sub uses the Claude bucket shape (priced at Claude rates),
+            # but its rows are ledger vendor rows with a single cache_create
+            # field. Fold that single value into the 5m bucket (cache_create_1h
+            # stays 0); report_tokens_cost.py prices a lone cache_create at the
+            # 5m rate, so this keeps capture and pricing consistent (issue
+            # #3637). No bare cache_create key is emitted so _bucket_total does
+            # not double-count it against the 5m/1h split.
+            BUCKETS_claude_sub: (
+              ($vin | map(select(.vendor == "claude_sub"))) as $rows
+              | {
+                  input: sumfield($rows; "input"),
+                  cache_read: sumfield($rows; "cache_read"),
+                  cache_create_5m: sumfield($rows; "cache_create"),
+                  cache_create_1h: 0,
+                  output: sumfield($rows; "output"),
+                  total: sumfield($rows; "total")
+                }
             )
           };
 
@@ -458,6 +479,13 @@ render_jq() {
               cache_read: sumfield($ux; "cache_read"),
               output: sumfield($ux; "output")
             }) as $ub
+          | (($s.vendor | map(select(.vendor == "claude_sub"))) as $cx | {
+              input: sumfield($cx; "input"),
+              cache_read: sumfield($cx; "cache_read"),
+              cache_write_5m: sumfield($cx; "cache_create"),
+              cache_write_1h: 0,
+              output: sumfield($cx; "output")
+            }) as $csb
           | {
               claude: {
                 input: $ct.input,
@@ -468,8 +496,10 @@ render_jq() {
               },
               codex: $db,
               cursor: $ub,
+              claude_sub: $csb,
               codex_ledger_total: (($s.vendor | map(select(.vendor == "codex"))) | sumfield(.; "total")),
               cursor_ledger_total: (($s.vendor | map(select(.vendor == "cursor"))) | sumfield(.; "total")),
+              claude_sub_ledger_total: (($s.vendor | map(select(.vendor == "claude_sub"))) | sumfield(.; "total")),
               token_total: ($ct.total + $vt)
             }
           | tojson
@@ -612,7 +642,7 @@ done
 if [[ "$BUCKETS_MODE" == true ]]; then
     [[ -n "$BUCKETS_VENDOR" ]] || unavailable "missing --vendor for --buckets"
     case "$BUCKETS_VENDOR" in
-        claude|codex|cursor) ;;
+        claude|codex|cursor|claude_sub) ;;
         *) unavailable "unknown vendor: $BUCKETS_VENDOR" ;;
     esac
 else
@@ -649,6 +679,9 @@ if [[ "$BUCKETS_MODE" == true ]]; then
             ;;
         cursor)
             jq -r '.BUCKETS_cursor | "INPUT=\(.input) CACHE_READ=\(.cache_read) OUTPUT=\(.output)"' "$tmpj"
+            ;;
+        claude_sub)
+            jq -r '.BUCKETS_claude_sub | "INPUT=\(.input) CACHE_READ=\(.cache_read) CACHE_WRITE_5M=\(.cache_create_5m) CACHE_WRITE_1H=\(.cache_create_1h) OUTPUT=\(.output)"' "$tmpj"
             ;;
     esac
     rm -f "$tmpj"
@@ -697,10 +730,12 @@ else
         c_raw=$(jq -r '((.claude.input//0)+(.claude.cache_read//0)+(.claude.cache_write_5m//0)+(.claude.cache_write_1h//0)+(.claude.output//0))' <<<"$report")
         d_raw=$(jq -r '((.codex.input//0)+(.codex.cached_input//0)+(.codex.output//0))' <<<"$report")
         u_raw=$(jq -r '((.cursor.input//0)+(.cursor.cache_read//0)+(.cursor.output//0))' <<<"$report")
+        cs_raw=$(jq -r '((.claude_sub.input//0)+(.claude_sub.cache_read//0)+(.claude_sub.cache_write_5m//0)+(.claude_sub.cache_write_1h//0)+(.claude_sub.output//0))' <<<"$report")
         ck=$(tok_to_k "$c_raw")
         dk=$(tok_to_k "$d_raw")
         uk=$(tok_to_k "$u_raw")
-        emit "$(printf 'Tokens: %sk — Claude: %sk | Codex: %sk | Cursor: %sk' "$tok_k" "$ck" "$dk" "$uk")"
+        csk=$(tok_to_k "$cs_raw")
+        emit "$(printf 'Tokens: %sk — Claude: %sk | Codex: %sk | Cursor: %sk | Claude (subprocess): %sk' "$tok_k" "$ck" "$dk" "$uk" "$csk")"
     else
         emit "$report"
     fi

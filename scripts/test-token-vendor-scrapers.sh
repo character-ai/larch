@@ -60,6 +60,21 @@ eq "cursor total" "10" "$((INP + OUT + CR + CW))"
 bad=$(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$TMP/nope.json" 2>/dev/null || echo "0 0 0 0")
 eq "cursor malformed fallback" "0 0 0 0" "$bad"
 
+# claude_sub usage extraction (issue #3637): launch-claude-{subprocess,ci}.sh run
+# `claude --print --output-format json` and parse the Claude snake_case .usage
+# schema. Pin the exact jq the launchers use so the claude_sub ledger row totals
+# stay correct.
+cat > "$TMP/claude.json" <<'JSON'
+{"type":"result","result":"reviewer prose","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+read -r CL_IN CL_OUT CL_CR CL_CC < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "$TMP/claude.json")
+eq "claude_sub input" "100" "$CL_IN"
+eq "claude_sub cache_create folds cache_creation_input_tokens" "5" "$CL_CC"
+eq "claude_sub total" "165" "$((CL_IN + CL_OUT + CL_CR + CL_CC))"
+
+claude_bad=$(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "$TMP/nope.json" 2>/dev/null || echo "0 0 0 0")
+eq "claude_sub malformed fallback" "0 0 0 0" "$claude_bad"
+
 STUB_BIN="$TMP/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/cursor" <<'EOF'

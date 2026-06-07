@@ -117,10 +117,11 @@ if [ -f "$DESIGN_TMPDIR/timing-report-final.json" ] && command -v jq >/dev/null 
 fi
 
 # --- Token buckets + cost-unavailable (FINDING_12) ---
-CLAUDE_T=0 CODEX_T=0 CURSOR_T=0
+CLAUDE_T=0 CODEX_T=0 CURSOR_T=0 CLAUDE_SUB_T=0
 C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
+CS_IN=0 CS_CR=0 CS_CW5=0 CS_CW1=0 CS_OUT=0
 COST_ARGS=()
 _cost_unavailable=false
 tok_json="$DESIGN_TMPDIR/token-report-final.json"
@@ -133,14 +134,15 @@ if command -v jq >/dev/null 2>&1 && [ -f "$tok_json" ] && jq -e '.claude.totals'
 fi
 
 if [ "$jq_ok" = true ]; then
-    read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\n')
+    read -r CLAUDE_T CODEX_T CURSOR_T CLAUDE_SUB_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0), (.claude_sub.totals.total // 0)] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\t0\n')
     if jq -e '.BUCKETS_claude' "$tok_json" >/dev/null 2>&1; then
         read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
         read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\n')
         read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\n')
+        read -r CS_IN CS_CR CS_CW5 CS_CW1 CS_OUT < <(jq -r '[.BUCKETS_claude_sub.input, .BUCKETS_claude_sub.cache_read, .BUCKETS_claude_sub.cache_create_5m, .BUCKETS_claude_sub.cache_create_1h, .BUCKETS_claude_sub.output] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
     fi
-    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
-    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
+    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT + CS_IN + CS_CR + CS_CW5 + CS_CW1 + CS_OUT))
+    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T + CLAUDE_SUB_T))
     if [ "$sum_b" -eq 0 ] && [ "$total_t" -eq 0 ]; then
         _cost_unavailable=true
         if [ "$stderr_nonempty" = true ] && [ ! -f "$DESIGN_TMPDIR/token-report-final.failure.log" ]; then
@@ -162,12 +164,14 @@ if [ "$jq_ok" = true ]; then
             --claude-tokens "$CLAUDE_T"
             --codex-tokens "$CODEX_T"
             --cursor-tokens "$CURSOR_T"
+            --claude-sub-tokens "$CLAUDE_SUB_T"
         )
     else
         COST_ARGS=(
             --claude-tokens "$CLAUDE_T"
             --codex-tokens "$CODEX_T"
             --cursor-tokens "$CURSOR_T"
+            --claude-sub-tokens "$CLAUDE_SUB_T"
             --claude-input-tokens "$C_IN"
             --claude-cache-read-tokens "$C_CR"
             --claude-cache-write-5m-tokens "$C_CW5"
@@ -179,6 +183,11 @@ if [ "$jq_ok" = true ]; then
             --cursor-input-tokens "$U_IN"
             --cursor-cache-read-tokens "$U_CR"
             --cursor-output-tokens "$U_OUT"
+            --claude-sub-input-tokens "$CS_IN"
+            --claude-sub-cache-read-tokens "$CS_CR"
+            --claude-sub-cache-write-5m-tokens "$CS_CW5"
+            --claude-sub-cache-write-1h-tokens "$CS_CW1"
+            --claude-sub-output-tokens "$CS_OUT"
         )
     fi
 else

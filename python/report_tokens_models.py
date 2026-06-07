@@ -10,8 +10,11 @@ from typing import Literal
 from collections.abc import Mapping, Sequence
 
 Skill = Literal["design", "implement"]
-VendorName = Literal["claude", "codex", "cursor"]
-VENDORS: tuple[VendorName, ...] = ("claude", "codex", "cursor")
+# claude_sub = spawned-process Claude (reviewer/voter/CI/scout), distinct from
+# the transcript-derived main-agent `claude` lane. Priced at Claude rates; the
+# distinct name avoids colliding with the transcript `claude` key (issue #3637).
+VendorName = Literal["claude", "codex", "cursor", "claude_sub"]
+VENDORS: tuple[VendorName, ...] = ("claude", "codex", "cursor", "claude_sub")
 DATE_LEN = 10
 _INT_RE = re.compile(r"^[+-]?[0-9]+$")
 
@@ -69,6 +72,11 @@ class RunRecord:
     cursor_cost: float = 0.0
     total_cost: float = 0.0
     priced_by_token_cost: bool = False
+    # Defaulted (empty) so historical runs and call sites that predate the
+    # spawned-Claude lane keep working; populated from the claude_sub lane when
+    # present (issue #3637). Frozen VendorTotals is safe as a shared default.
+    claude_sub: VendorTotals = VendorTotals()
+    claude_sub_cost: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -23,8 +23,8 @@ bash scripts/render-run-summary.sh \
   [--workflow-path SIMPLE|HARD|N/A] \
   [--emergency-requested true|false] \
   --duration '<elapsed-or-N/A>' \
-  --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> \
-  --claude-input-tokens <n> ... --cursor-output-tokens <n> \
+  --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> --claude-sub-tokens <n> \
+  --claude-input-tokens <n> ... --cursor-output-tokens <n> --claude-sub-input-tokens <n> ... --claude-sub-output-tokens <n> \
   --issue-number <n> --issue-url <url> \
   ...
 ```
@@ -70,7 +70,7 @@ renderer’s body inside that upsert payload.
 
 ## Cost line
 
-This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…  |  Tokens: …k`). There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
+This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…, Claude (subprocess) $…  |  Tokens: …k`). The `Claude (subprocess)` lane (machine name `claude_sub`, issue #3637) is always rendered, mirroring Codex/Cursor which show even at `$0.00`. There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
 
 See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.
 
@@ -96,7 +96,7 @@ entirely and emits exactly `- **Cost**: N/A`.
 
 Callers should use this flag instead of omitting token flags or passing explicit
 zero counts: omitting flags preserves the default zero-token pricing path and
-therefore yields `💰 TOTAL ~$0.00 — Claude $0.00, Codex $0.00, Cursor $0.00`.
+therefore yields `💰 TOTAL ~$0.00 — Claude $0.00, Codex $0.00, Cursor $0.00, Claude (subprocess) $0.00`.
 The flag is compatible with token flags; when both are present,
 `--cost-unavailable` wins and cost computation is skipped.
 

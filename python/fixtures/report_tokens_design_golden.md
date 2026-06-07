@@ -17,13 +17,14 @@ Tracked total estimated cost: $13.00.
 | Claude | $2.00 | 20 |
 | Codex | $4.00 | 40 |
 | Cursor | $6.00 | 60 |
+| Claude (subprocess) | $8.00 | 80 |
 
 ## Top runs by estimated cost
 
-| Issue | Workflow | Started | Total | Claude | Codex | Cursor |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
-| [#8](https://example.invalid/HARD) | HARD | 2026-01-01 | $7.00 (token-cost) | $1.00 | $2.00 | $3.00 |
-| [#7](https://example.invalid/SIMPLE) | SIMPLE | 2026-01-01 | $6.00 (token-cost) | $1.00 | $2.00 | $3.00 |
+| Issue | Workflow | Started | Total | Claude | Codex | Cursor | Claude (sub) |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| [#8](https://example.invalid/HARD) | HARD | 2026-01-01 | $7.00 (token-cost) | $1.00 | $2.00 | $3.00 | $4.00 |
+| [#7](https://example.invalid/SIMPLE) | SIMPLE | 2026-01-01 | $6.00 (token-cost) | $1.00 | $2.00 | $3.00 | $4.00 |
 
 ## Phase breakdown
 
@@ -58,6 +59,12 @@ Tracked total estimated cost: $13.00.
 | --- | ---: |
 | 2026-01-01 | $3.00 |
 
+### HARD Claude (subprocess) cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-01-01 | $4.00 |
+
 ### SIMPLE
 
 ### SIMPLE Total cost
@@ -83,6 +90,12 @@ Tracked total estimated cost: $13.00.
 | Date | Cost |
 | --- | ---: |
 | 2026-01-01 | $3.00 |
+
+### SIMPLE Claude (subprocess) cost
+
+| Date | Cost |
+| --- | ---: |
+| 2026-01-01 | $4.00 |
 
 ## Cost-reduction suggestions
 

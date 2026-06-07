@@ -15,11 +15,13 @@ Claude API responses may appear on multiple JSONL rows with identical `requestId
 - `--since-last-mark --terse` prints one line for the most recent ledger mark:
   `Step N — <name>: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum> (codex=X, cursor=Y)`.
 - `--summary` prints one non-dollar token rollup line for chat breadcrumbs:  
-  `Tokens: <T>k — Claude: <Ck | Codex: <D>k | Cursor: <U>k`  
+  `Tokens: <T>k — Claude: <Ck | Codex: <D>k | Cursor: <U>k | Claude (subprocess): <CS>k`  
   The dollar-primary cost line for `/implement` and `/design` lives exclusively in `scripts/render-run-summary.sh` (`- **Cost**:` inside the `larch:final-summary` body). **Print the `--summary` line verbatim when used — do not paraphrase.**
 - `--full --markdown [--output FILE]` renders a markdown table grouped by step with indented skill rows and vendor rows.
-- `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, one sibling object per non-Claude vendor, and `BUCKETS_claude` / `BUCKETS_codex` / `BUCKETS_cursor` (per-bucket totals aligned with `token-cost.sh` flags).
-- `--buckets --vendor claude|codex|cursor` (with `--ledger` / `--transcript` / session hooks as for other modes) prints one line of `KEY=value` bucket counts for stdout (test/CI helper).
+- `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, one sibling object per non-Claude vendor, and `BUCKETS_claude` / `BUCKETS_codex` / `BUCKETS_cursor` / `BUCKETS_claude_sub` (per-bucket totals aligned with `token-cost.sh` flags).
+- `--buckets --vendor claude|codex|cursor|claude_sub` (with `--ledger` / `--transcript` / session hooks as for other modes) prints one line of `KEY=value` bucket counts for stdout (test/CI helper).
+
+The `claude_sub` lane (display "Claude (subprocess)", issue #3637) is the spawned-process Claude reviewer/voter/CI/scout work, recorded into the JSONL ledger by `token-ledger.sh record-vendor claude_sub`. It is **disjoint by construction** from the transcript-derived `claude` lane (different source: ledger vendor rows vs. the orchestrator session transcript), so the two never double-count. `BUCKETS_claude_sub` uses the Claude bucket shape and folds the single ledger `cache_create` into `cache_create_5m` (priced at the 5m rate downstream); `claude_sub` is pinned after `codex`/`cursor` in `vendor_names` for a deterministic lane order.
 - `--append-token-report FILE` renders the full table and idempotently replaces or appends a sentinel-bracketed block in `FILE`. Legacy callers may still use this mode; production `/implement` now appends structured records through `scripts/larch-log.sh`:
 
 ```
