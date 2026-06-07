@@ -101,6 +101,12 @@ if out:
 PY
 }
 
+_clear_failed_retally_accepted() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]] || return 0
+    rm -f "$DESIGN_TMPDIR/accepted-plan-findings.md"
+    : >"$DESIGN_TMPDIR/accepted-plan-findings.md"
+}
+
 _rewrite_env_file() {
     local path="$1"
     local -a kvs=()
@@ -122,6 +128,11 @@ _rewrite_env_file() {
                     value="$LOOP_STATUS"
                     saw_loop=1
                     ;;
+                ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|NIT_ACCEPTED_COUNT|NON_NIT_ACCEPTED_COUNT)
+                    if [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
+                        value=0
+                    fi
+                    ;;
             esac
             kvs+=("${key}=${value}")
         done <"$path"
@@ -133,6 +144,7 @@ _rewrite_env_file() {
 }
 
 _merge_retally_accepted_all
+_clear_failed_retally_accepted
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-plan-review-result.env"
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-review-result.env"
 exit 0

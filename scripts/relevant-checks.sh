@@ -134,6 +134,16 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/persist-retally-step3-env.sh|skills/design/scripts/persist-retally-step3-env.md|skills/design/scripts/test-persist-retally-step3-env.sh|skills/design/scripts/test-persist-retally-step3-env.md)
+                append_target_once test-persist-retally-step3-env
+                ;;
+        esac
+        case "$f" in
+            skills/design/scripts/design-step3-state.sh|skills/design/scripts/design-step3-state.md|skills/design/scripts/test-design-step3-state.sh|skills/design/scripts/test-design-step3-state.md)
+                append_target_once test-design-step3-state
+                ;;
+        esac
+        case "$f" in
             skills/design/scripts/render-final-summary.sh|skills/design/scripts/render-final-summary.md|skills/design/scripts/test-render-final-summary.sh|skills/design/scripts/test-render-final-summary.md|scripts/test-render-final-summary-bash32.sh|scripts/test-render-final-summary-bash32.md)
                 append_target_once test-render-final-summary
                 append_target_once test-render-final-summary-bash32

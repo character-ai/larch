@@ -79,4 +79,20 @@ out=$(run_action "$D5" direct-review-pause-hygiene)
 [[ ! -f "$D5/.completed/step-3" ]] || fail "pause hygiene left stale step-3"
 [[ -f "$D5/.completed/step-2b.5" ]] || fail "pause hygiene missing bypass package"
 
+echo "=== auto-continuation-entry clears unsafe Step 3 sentinels ==="
+D6="$TMP/auto-continuation-entry"
+mkdir -p "$D6/.completed"
+for step in 3 3.5 3b 4 4b; do
+    : >"$D6/.completed/step-$step"
+done
+: >"$D6/.gate-b-postapply-ready-1"
+printf 'prior cumulative\n' >"$D6/accepted-plan-findings-all.md"
+out=$(run_action "$D6" auto-continuation-entry)
+[[ "$out" == *'STEP3_STATE=auto-continuation-entry'* ]] || fail "auto continuation state missing: $out"
+for step in 3 3.5 3b 4 4b; do
+    [[ ! -f "$D6/.completed/step-$step" ]] || fail "auto continuation left stale step-$step"
+done
+[[ ! -e "$D6/.gate-b-postapply-ready-1" ]] || fail "auto continuation left stale Gate B marker"
+grep -Fq 'prior cumulative' "$D6/accepted-plan-findings-all.md" || fail "auto continuation should preserve cumulative accepted findings"
+
 printf 'PASS: test-design-step3-state.sh\n'

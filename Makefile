@@ -533,6 +533,9 @@ test-design-multi-round-integration:
 test-step3-review-cap:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-step3-review-cap.sh
 
+test-persist-retally-step3-env:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-persist-retally-step3-env.sh
+
 test-run-step3-review:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-run-step3-review.sh
 

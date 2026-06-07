@@ -6,7 +6,9 @@ Refreshes both Step 3 result envs (`.step3-plan-review-result.env` and
 On successful re-tally, it also merges current `accepted-plan-findings.md`
 blocks into `accepted-plan-findings-all.md` so cumulative final-summary
 accounting includes MainAgent-adjudicated findings. The merge is exact-block
-idempotent and is skipped on `tally-error`.
+idempotent and is skipped on `tally-error`; tally-error also clears partial
+current `accepted-plan-findings.md` and zeros accepted-count KVs in refreshed
+env files.
 
 - **Argv**: `--design-tmpdir DIR --retally-stdout-file FILE
   --retally-input-anchor PATH-OR-EMPTY --tally-plan-review-status ok|tally-error

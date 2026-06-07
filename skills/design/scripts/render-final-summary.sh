@@ -257,6 +257,45 @@ apf="$DESIGN_TMPDIR/accepted-plan-findings-all.md"
 if [ ! -s "$apf" ]; then
     apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
 fi
+filter_gate_b_skipped_findings() {
+    local accepted_file="$1" rejected_file="$2" out_file="$3"
+    python3 - "$accepted_file" "$rejected_file" "$out_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+accepted_path, rejected_path, out_path = map(Path, sys.argv[1:4])
+reason = "rejected by user during one-by-one review"
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+def blocks(text: str, prefix: str):
+    pattern = rf"(?ms)^### {prefix}_[0-9]+:.*?(?=^### |\Z)"
+    return [m.group(0).strip() for m in re.finditer(pattern, text)]
+
+def normalize(block: str) -> str:
+    lines = [line.rstrip() for line in block.strip().splitlines() if reason not in line]
+    return "\n".join(lines).strip()
+
+skipped = {normalize(block) for block in blocks(read(rejected_path), "FINDING") if reason in block}
+accepted = [block for block in blocks(read(accepted_path), "FINDING") if normalize(block) not in skipped]
+body = "\n\n".join(accepted)
+if body:
+    body += "\n\n"
+out_path.write_text(body, encoding="utf-8")
+PY
+}
+if [ -s "$apf" ] && [ -s "$DESIGN_TMPDIR/rejected-findings.md" ] \
+    && grep -Fq 'rejected by user during one-by-one review' "$DESIGN_TMPDIR/rejected-findings.md" 2>/dev/null; then
+    _filtered_apf="$DESIGN_TMPDIR/.final-summary-accepted-plan-findings.md"
+    if filter_gate_b_skipped_findings "$apf" "$DESIGN_TMPDIR/rejected-findings.md" "$_filtered_apf" 2>/dev/null; then
+        apf="$_filtered_apf"
+    fi
+fi
 oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
 if { [ ! -f "$apf" ] || [ ! -s "$apf" ]; } && { [ ! -f "$oaf" ] || [ ! -s "$oaf" ]; }; then
     PLAN_LINE="0 findings"

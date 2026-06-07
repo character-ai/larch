@@ -18,4 +18,4 @@ Output KVs:
 - `DEGRADED_PANEL=0|1`
 - `STRUCTURAL_OR_LARGE_CHANGE=true|false`
 
-The helper recomputes accepted-finding counts from `accepted-plan-findings.md` instead of trusting in-memory KVs. It stops under `--approve` so explicit Gate B operator choices do not silently trigger another automatic review round. It also stops at the shared review cap before the caller invokes `run-step3-review.sh`, preserving the current round artifacts for Gate C.
+The helper recomputes accepted-finding counts from `accepted-plan-findings.md` instead of trusting in-memory KVs. It resolves tier from canonical `design_classification` in `run-params.json`; missing or invalid values default to `HARD`, and stale `workflow_path` does not override `design_classification`. It stops under `--approve` so explicit Gate B operator choices do not silently trigger another automatic review round. It also stops at the shared review cap before the caller invokes `run-step3-review.sh`, preserving the current round artifacts for Gate C.

@@ -219,6 +219,69 @@ cont_out=$(run_continuation "$DHIGH" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'high fallback should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'high fallback reason missing'
 
+echo "=== continuation helper stops on small clean SIMPLE round ==="
+DSMALL="$TMPROOT/continuation-small-clean"
+write_common_inputs "$DSMALL" SIMPLE
+printf '1\n' >"$DSMALL/review-round-count.txt"
+cat >"$DSMALL/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Latent cleanup
+- **Severity**: latent
+- **Concern**: small cleanup
+EOF
+cont_out=$(run_continuation "$DSMALL" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'small clean SIMPLE round should stop'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'small clean reason missing'
+
+echo "=== continuation helper continues on many non-nit findings ==="
+DNONNIT="$TMPROOT/continuation-non-nit"
+write_common_inputs "$DNONNIT" SIMPLE
+printf '1\n' >"$DNONNIT/review-round-count.txt"
+: >"$DNONNIT/accepted-plan-findings.md"
+for n in 1 2 3 4 5 6; do
+    cat >>"$DNONNIT/accepted-plan-findings.md" <<EOF
+### FINDING_${n}: Latent ${n}
+- **Severity**: latent
+- **Concern**: cleanup ${n}
+
+EOF
+done
+cont_out=$(run_continuation "$DNONNIT" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'many non-nit findings should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=non-nit-accepted$' || fail 'non-nit reason missing'
+
+echo "=== continuation helper continues on first-round structural HARD ==="
+DSTRUCT="$TMPROOT/continuation-structural"
+write_common_inputs "$DSTRUCT" HARD
+printf '1\n' >"$DSTRUCT/review-round-count.txt"
+cat >"$DSTRUCT/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Latent structural
+- **Severity**: latent
+- **Concern**: structural follow-up
+EOF
+cont_out=$(run_continuation "$DSTRUCT" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'first-round structural HARD should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=structural-or-large-change$' || fail 'structural reason missing'
+
+echo "=== continuation helper ignores stale workflow_path when design_classification is SIMPLE ==="
+DSTALE="$TMPROOT/continuation-stale-workflow"
+write_common_inputs "$DSTALE" SIMPLE
+printf '{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"HARD"}\n' >"$DSTALE/run-params.json"
+printf '1\n' >"$DSTALE/review-round-count.txt"
+cp "$DSMALL/accepted-plan-findings.md" "$DSTALE/accepted-plan-findings.md"
+cont_out=$(run_continuation "$DSTALE" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'stale workflow_path must not force structural continuation'
+printf '%s\n' "$cont_out" | grep -q '^STRUCTURAL_OR_LARGE_CHANGE=false$' || fail 'stale workflow_path should not mark structural'
+
+echo "=== continuation helper defaults invalid classification to HARD ==="
+DINVALID="$TMPROOT/continuation-invalid-classification"
+write_common_inputs "$DINVALID" SIMPLE
+printf '{"schema_version":2,"design_classification":"UNKNOWN","workflow_path":"SIMPLE"}\n' >"$DINVALID/run-params.json"
+printf '1\n' >"$DINVALID/review-round-count.txt"
+cp "$DSMALL/accepted-plan-findings.md" "$DINVALID/accepted-plan-findings.md"
+cont_out=$(run_continuation "$DINVALID" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'invalid classification should default HARD and continue'
+printf '%s\n' "$cont_out" | grep -q '^STRUCTURAL_OR_LARGE_CHANGE=true$' || fail 'invalid classification should mark structural'
+
 echo "=== continuation helper continues on degraded zero-findings ==="
 DDEG="$TMPROOT/continuation-degraded"
 write_common_inputs "$DDEG" SIMPLE

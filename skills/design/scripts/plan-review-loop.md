@@ -14,7 +14,7 @@ does not own a separate `check-reviewers.sh` probe or timeout knob.
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
 
 - Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `accepted-plan-findings-all.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`. `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`. Never revises `plan.txt`; Gate B is the only apply point.
-- `accepted-plan-findings-all.md` is cumulative for automatic Step 3 continuation rounds before Gate C; Gate B still reads only `accepted-plan-findings.md`.
+- `accepted-plan-findings-all.md` is cumulative for automatic Step 3 continuation rounds before Gate C; Gate B still reads only `accepted-plan-findings.md`. `main-agent-vote-required` does not merge tentative accepted findings until the MainAgent re-tally succeeds.
 - `oos-accepted-design.md` is cumulative for the current Step 3 run. Zero-finding, tally-error, and panel-failed branches preserve the prior cumulative file instead of truncating it, and only accepted OOS blocks are merged forward.
 - Honors `LARCH_AGGREGATOR_DISABLED=1` by skipping `aggregate-findings.sh` and setting `AGGREGATOR_STATUS=disabled`.
 - Emits stdout KV lines documented below plus optional `WARN=` lines. `WARN=plan-review-tsv: empty or missing structured reviewer rows for …` is suppressed when the reviewer output file contains the canonical `{"no_issues_found": true}` zero-findings sentinel (healthy slot with no TSV rows); the warning still fires for genuinely empty or unparseable output (header-only TSV with no sentinel).
@@ -54,7 +54,7 @@ The script always runs one pass and never invokes the revision waterfall; Gate B
 
 ## Single-pass status mapping
 
-The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
+The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. Tally-error restores cumulative accepted artifacts and clears the current accepted artifact before exit. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
 
 ## Durable handoff: `.step3-plan-review-result.env`
 

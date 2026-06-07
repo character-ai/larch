@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 usage() {
-    printf '%s\n' 'usage: design-step3-state.sh --design-tmpdir DIR (--gate-b-bypass|--direct-review-entry|--direct-review-pause-hygiene)' >&2
+    printf '%s\n' 'usage: design-step3-state.sh --design-tmpdir DIR (--gate-b-bypass|--direct-review-entry|--direct-review-pause-hygiene|--auto-continuation-entry)' >&2
 }
 
 DESIGN_TMPDIR=""
@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
             ACTION="${1#--}"
             shift
             ;;
-        --direct-review-entry|--direct-review-pause-hygiene)
+        --direct-review-entry|--direct-review-pause-hygiene|--auto-continuation-entry)
             [[ -z "$ACTION" ]] || { usage; exit 2; }
             ACTION="${1#--}"
             shift
@@ -73,5 +73,10 @@ case "$ACTION" in
             rm -f "$DESIGN_TMPDIR/.step3-reentry"
         fi
         printf '%s\n' "STEP3_STATE=$ACTION"
+        ;;
+    auto-continuation-entry)
+        rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+        rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
+        printf '%s\n' 'STEP3_STATE=auto-continuation-entry'
         ;;
 esac

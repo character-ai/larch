@@ -131,12 +131,13 @@ for m in re.finditer(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", plan_text):
     diff_lines = int(m.group(1))
 plan_lines = len(plan_text.splitlines())
 
-classification = ""
+classification = "HARD"
 try:
     data = json.loads(run_params_path.read_text(encoding="utf-8", errors="replace"))
-    classification = str(data.get("workflow_path") or data.get("design_classification") or "").upper()
+    raw_classification = str(data.get("design_classification") or "").upper()
+    classification = "SIMPLE" if raw_classification == "SIMPLE" else "HARD"
 except Exception:
-    classification = ""
+    classification = "HARD"
 structural_large = classification == "HARD" or diff_lines > 500 or plan_lines > 120
 
 for key, value in (

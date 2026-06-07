@@ -87,6 +87,36 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_all" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'plan review line must prefer cumulative accepted findings when present'
 pass 'plan review counts cumulative accepted findings'
+cat >"$D/accepted-plan-findings-all.md" <<'EOF'
+### FINDING_1: Applied correctness
+- **Reviewer**: Cursor-Pragmatic
+- **Focus area**: correctness
+- **Concern**: applied
+
+### FINDING_2: Skipped security
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: security
+- **Concern**: skipped
+EOF
+cat >"$D/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Applied correctness
+- **Reviewer**: Cursor-Pragmatic
+- **Focus area**: correctness
+- **Concern**: applied
+EOF
+cat >"$D/rejected-findings.md" <<'EOF'
+### FINDING_2: Skipped security
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: security
+- **Concern**: skipped
+- **Reason not implemented**: rejected by user during one-by-one review
+EOF
+std_skipped="$TMP/std-cumulative-skipped.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE-SKIPPED" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_skipped" 2>/dev/null
+grep -q -- '- \*\*Plan review\*\*: 1 ' "$D/final-summary.md" || fail 'plan review line must exclude Gate B skipped findings from cumulative count'
+pass 'plan review excludes Gate B skipped cumulative findings'
+rm -f "$D/rejected-findings.md"
 rm -f "$D/voting-tally.md"
 std_all_without_tally="$TMP/std-cumulative-no-tally.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE-NO-TALLY" \

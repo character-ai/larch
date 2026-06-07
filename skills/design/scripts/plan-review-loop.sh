@@ -613,6 +613,11 @@ _accumulate_round_accepted_all() {
     } >"$cumulative"
 }
 
+_clear_current_accepted_findings() {
+    rm -f "$DESIGN_TMPDIR/accepted-plan-findings.md"
+    : >"$DESIGN_TMPDIR/accepted-plan-findings.md"
+}
+
 _terminal_exit() {
     local rc="$1" rounds_completed="$2"
     if ! write_step3_result_env "$rounds_completed"; then
@@ -1616,16 +1621,18 @@ if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN
     fi
     _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
     _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
-    _accumulate_round_accepted_all "$_prior_accepted_all"
+    _restore_prior_round_accepted_all "$_prior_accepted_all"
     _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
 fi
 
 if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" && "${TALLY_PLAN_REVIEW_FATAL:-false}" == "true" ]]; then
     _restore_prior_round_oos "$_prior_cum_oos"
     _restore_prior_round_accepted_all "$_prior_accepted_all"
+    _clear_current_accepted_findings
     LOOP_STATUS=tally-error
     LOOP_REASON=tally-error
     revise_status=skipped
+    ACCEPTED_COUNT=0
     IMPORTANT_ACCEPTED_COUNT=0
     NIT_ACCEPTED_COUNT=0
     NON_NIT_ACCEPTED_COUNT=0
