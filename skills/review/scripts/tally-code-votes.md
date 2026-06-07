@@ -2,7 +2,7 @@
 
 **Type**: executable script.
 
-**Purpose**: Tally `/review` code-review votes from a 3-judge panel and emit accepted/rejected/OOS findings plus a per-finding scoreboard. Replaces the older `tally-votes.sh` which presumed 2 voter files that no script ever wrote — hence every finding silently auto-accepted (the bug this PR closes).
+**Purpose**: Tally `/review` code-review votes from the judge panel (Claude plus each available external — 1 to 3 judges under shrink-not-backfill) and emit accepted/rejected/OOS findings plus a per-finding scoreboard. Replaces the older `tally-votes.sh` which presumed 2 voter files that no script ever wrote — hence every finding silently auto-accepted (the bug this PR closes).
 
 Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `reviewer_for_block`, `is_security_block`, `accept_finding`, `classify_result`, and `split_ballot_to_blocks`. The same library backs `skills/design/scripts/tally-plan-review.sh`, so the threshold rules and security-tag detection cannot drift between code review and plan review.
 
@@ -19,8 +19,8 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `--manifest-file FILE` | path | no | Panel manifest NDJSON. When provided, the tally writes `$REVIEW_TMPDIR/scout-archetype-yield.tsv` with per-archetype finding yield metrics; combined with `--collector-results-file`, dead-slot rows are appended to the reviewer competition scoreboard. |
 | `--collector-results-file FILE` | path | no | KV records file written by `scripts/collect-agent-results.sh` (blank-line-separated STATUS per reviewer). When provided alongside `--manifest-file`, the tally appends a row for each manifest entry that produced no score rows (including dynamic slots), showing 0 counts and `STATUS=<status>`. Manifest entries missing collector status default to `STATUS=OK`, matching zero-finding slots that ran successfully. |
 | `--not-substantive-count N` | non-negative int | no | When > 0, the tally header emits a degraded-panel banner noting N reviewer slot(s) produced narrative-only output. Forwarded by `review-core.sh` from `check-reviewer-failure-threshold.sh`'s `NOT_SUBSTANTIVE_SLOTS` output. |
-| `--cursor-available true\|false` | enum | no | Forwarded from review-core for context (currently informational only). |
-| `--codex-available true\|false` | enum | no | Same as above. |
+| `--cursor-available true\|false` | enum | no | Forwarded from review-core. Drives the **degraded-panel warning threshold** only: the expected (eligible) panel is Claude plus each external **not** marked unavailable, mirroring `dispatch-code-voters.sh` shrink-not-backfill, so a panel that shrank solely because a vendor was unavailable raises no spurious warning. Cursor counts toward the expected size unless this is `false`. Does **not** affect the acceptance threshold (which keys off the effective voter-file count). |
+| `--codex-available true\|false` | enum | no | Same as `--cursor-available`, for Codex. When neither flag is passed (both empty), the expected size stays at 3, preserving prior behavior for callers that do not pass availability. |
 | `--both-down true\|false` | enum | no | Deprecated compatibility flag. When `true`, maps to the same 0-judge `main-agent-vote-required` path as an empty voter-file set. Default: `false`. |
 
 ## Output artifacts
@@ -83,7 +83,9 @@ Single-parse invariant: the TSV and markdown tally both derive each per-voter vo
 - `effective == 1` → single-judge binding decision (`YES` accepts; `NO` rejects; `EXONERATE` is exonerated but not accepted).
 - `effective == 0` → no automated vote; emit `TALLY_STATUS=main-agent-vote-required`, leave accepted/rejected counts at 0, and require main-agent adjudication.
 
-The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not the per-finding non-`JUDGE_ERROR` vote count. `ELIGIBLE_VOTER_COUNT` captures the raw voter file count, while `VOTER_COUNT` removes parse-rate-degraded narrative-only voter slots before tallying. Per-judge `JUDGE_ERROR` fallbacks or missing per-item votes within the effective panel do not reduce a 3-judge panel to a lower tier.
+The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not the per-finding non-`JUDGE_ERROR` vote count. `ELIGIBLE_VOTER_COUNT` captures the raw voter file count, while `VOTER_COUNT` removes parse-rate-degraded narrative-only voter slots before tallying. Per-judge `JUDGE_ERROR` fallbacks or missing per-item votes within the effective panel do not reduce the panel to a lower tier.
+
+The acceptance threshold above is independent of the **degraded-panel warning** in `voting-tally.md`. That warning fires when the effective voter count falls below the expected (eligible) panel size — Claude plus each external not marked unavailable via `--codex-available`/`--cursor-available` (shrink-not-backfill, mirroring `dispatch-code-voters.sh`). A panel that shrank solely because a vendor was unavailable raises no warning; only a genuine failure of an available judge does.
 
 ## Callers
 

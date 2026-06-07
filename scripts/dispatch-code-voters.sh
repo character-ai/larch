@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# dispatch-code-voters.sh — Launch /review code-review judge panel through waterfall fallback.
+# dispatch-code-voters.sh — Launch the /review code-review judge panel: Claude
+# (always) plus each available external (Codex, Cursor). Unavailable externals
+# are dropped via the waterfall's --no-fallback mode (shrink-not-backfill), never
+# replaced by a duplicate judge; the acceptance-threshold table compensates for
+# the smaller panel.
 
 set -euo pipefail
 
@@ -175,6 +179,11 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
 } > "$manifest"
 
 codex_present_for_waterfall="$CODEX_AVAILABLE"
+# Shrink-not-backfill: pass --no-fallback so an unavailable (or failed) external
+# slot is dropped from the result set instead of being replaced by a duplicate
+# judge (the alternate external, then Claude). The panel is Claude (always) plus
+# each AVAILABLE external; the acceptance-threshold table compensates for the
+# smaller panel (2 judges → unanimous, 1 → binding single).
 # Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
 # abnormally mid-run) so set -e does not abort dispatch before tally.
 set +e
@@ -184,6 +193,7 @@ waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --cursor-present "$CURSOR_AVAILABLE" \
     --mode "$mode" \
     --timeout 1200 \
+    --no-fallback \
     "${ctx_args[@]+"${ctx_args[@]}"}")
 _waterfall_rc=$?
 set -e
@@ -210,14 +220,31 @@ read -r -a tools_arr <<< "$all_tools"
 
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
-VOTER_2_PATH="${outputs_arr[0]:-}"
-VOTER_3_PATH="${outputs_arr[1]:-}"
-VOTER_2_TOOL="${tools_arr[0]:-codex}"
-VOTER_3_TOOL="${tools_arr[1]:-cursor}"
+# Map waterfall outputs back to the codex/cursor slots by TOOL name, not by
+# position. Under --no-fallback an absent or failed external is dropped from
+# ALL_OUTPUT_FILES, so positional indexing is unreliable: when only cursor
+# survives it would otherwise be mis-assigned to the codex slot. Externals never
+# back-fill to Claude under --no-fallback, so each present output's tool is its
+# own primary (codex or cursor).
+VOTER_2_PATH=""
+VOTER_3_PATH=""
+VOTER_2_TOOL="codex"
+VOTER_3_TOOL="cursor"
+for _wf_i in "${!tools_arr[@]}"; do
+    case "${tools_arr[$_wf_i]}" in
+        codex)  VOTER_2_PATH="${outputs_arr[$_wf_i]:-}" ;;
+        cursor) VOTER_3_PATH="${outputs_arr[$_wf_i]:-}" ;;
+    esac
+done
+unset _wf_i
+# An unavailable external is intentionally skipped (no duplicate judge launched);
+# Claude (voter 1) remains the always-on floor. A genuine failure of an
+# *available* external is detected later by the size/sentinel re-evaluation and
+# marked "failed" (which the degraded-panel check still counts as a degradation).
 VOTER_2_STATUS="launched"
 VOTER_3_STATUS="launched"
-[[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
-[[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
+[[ "$CODEX_AVAILABLE" != "true" ]] && VOTER_2_STATUS="skipped"
+[[ "$CURSOR_AVAILABLE" != "true" ]] && VOTER_3_STATUS="skipped"
 voter1_wait_timed_out=false
 _wait_rc=0
 
@@ -229,7 +256,7 @@ _wait_rc=0
 wait_sentinels=()
 [[ -n "$VOTER_1_PATH" ]] && wait_sentinels+=("${VOTER_1_PATH}.done")
 [[ "$VOTER_2_STATUS" != "skipped" && -n "$VOTER_2_PATH" ]] && wait_sentinels+=("${VOTER_2_PATH}.done")
-[[ -n "$VOTER_3_PATH" ]] && wait_sentinels+=("${VOTER_3_PATH}.done")
+[[ "$VOTER_3_STATUS" != "skipped" && -n "$VOTER_3_PATH" ]] && wait_sentinels+=("${VOTER_3_PATH}.done")
 if (( ${#wait_sentinels[@]} > 0 )); then
     _wait_out_file=$(mktemp "${REVIEW_TMPDIR}/voter-wait.XXXXXX")
     set +e
@@ -287,17 +314,23 @@ voter3_done_rc=""
 # output file is non-empty.
 [[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" && "$voter1_done_rc" == "0" ]] || VOTER_1_STATUS="failed"
 [[ "$VOTER_2_STATUS" == "skipped" || ( -s "$VOTER_2_PATH" && "$voter2_done_rc" == "0" ) ]] || VOTER_2_STATUS="failed"
-[[ -s "$VOTER_3_PATH" && "$voter3_done_rc" == "0" ]] || VOTER_3_STATUS="failed"
+[[ "$VOTER_3_STATUS" == "skipped" || ( -s "$VOTER_3_PATH" && "$voter3_done_rc" == "0" ) ]] || VOTER_3_STATUS="failed"
 
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"
 VOTER_3_PARSE_RATE_STATUS="SKIPPED"
 [[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
 [[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_STATUS" != "skipped" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
-[[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
+[[ "$VOTER_3_STATUS" != "failed" && "$VOTER_3_STATUS" != "skipped" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
 
-# Every round expects three judge slots (Claude + Codex + Cursor); unavailable externals waterfall to Claude.
-expected_judges=3
+# Shrink-not-backfill: the expected (eligible) panel is Claude (always) plus each
+# AVAILABLE external. Unavailable externals are intentionally skipped, not
+# back-filled, so they are NOT counted toward expected_judges — their absence is
+# the designed state, not a degradation. The degraded-panel warning below then
+# fires only when an *available* judge failed to produce substantive output.
+expected_judges=1
+[[ "$CODEX_AVAILABLE" == "true" ]] && expected_judges=$((expected_judges + 1))
+[[ "$CURSOR_AVAILABLE" == "true" ]] && expected_judges=$((expected_judges + 1))
 
 effective_judges=0
 for slot_record in \
@@ -334,7 +367,7 @@ fi
 if [[ "$VOTER_2_STATUS" != "skipped" && -n "$VOTER_2_PATH" ]]; then
     printf '%s\n' "$VOTER_2_PATH" >> "$cv_tmp"
 fi
-if [[ -n "$VOTER_3_PATH" ]]; then
+if [[ "$VOTER_3_STATUS" != "skipped" && -n "$VOTER_3_PATH" ]]; then
     printf '%s\n' "$VOTER_3_PATH" >> "$cv_tmp"
 fi
 mv -f "$cv_tmp" "$code_voter_paths_file"

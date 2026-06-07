@@ -786,8 +786,9 @@ fi
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 
 # Dispatch the code-review voting panel and collect vote-output files.
-# Every round uses Claude + Codex + Cursor; Claude replacements cover unhealthy
-# external voters via the waterfall. Failed voters are treated as abstentions.
+# Shrink-not-backfill: Claude (always; the floor) plus each available external.
+# An unavailable external is skipped, not replaced by a duplicate judge; a
+# failed/empty voter is treated as an abstention by reducing the eligible count.
 voter_files=()
 voter_1_tool=""
 voter_2_tool=""

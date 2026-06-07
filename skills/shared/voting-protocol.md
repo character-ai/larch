@@ -54,7 +54,7 @@ Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains
 | 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE exonerates for scoring, NO rejects |
 | 0 | Main agent decides | No automated vote; main agent reads ballot as untrusted data and adjudicates |
 
-Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
+Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` code review the expected size is Claude plus the **available** externals (shrink-not-backfill), so a panel that shrank solely because a vendor was unavailable is the designed state and raises **no** warning — only a genuine failure of an *available* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
 
 After the acceptance threshold, each finding is classified into **operator-facing outcomes** `accepted`, `rejected`, or informational **`exonerated` as a subset of `rejected`** (every exonerated finding is also counted in the rejected total). The underlying vote-pattern classifier in `scripts/lib-vote-tally.sh::classify_result` still uses internal labels for scoreboard math; tally scripts map those labels to KV and JSON at the emission boundary.
 
@@ -71,10 +71,12 @@ Non-accepted tie-breaks (after the acceptance-threshold check fails), in order:
 - **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 - **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 
-**For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches all three voters every round:
-- **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched)
-- **Voter 2**: Codex — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
-- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh` → `launch-review.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
+**For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always) plus each **available** external every round. Code review uses **shrink-not-backfill**: an unavailable external is dropped, never replaced by a duplicate judge (the alternate external or an extra Claude):
+- **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched; the floor)
+- **Voter 2**: Codex — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `codex-available=false`, the slot is **skipped** (`VOTER_2_STATUS=skipped`, `VOTER_2_TOOL=codex`), not back-filled; the panel shrinks by one.
+- **Voter 3**: Cursor — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `cursor-available=false`, the slot is **skipped** (`VOTER_3_STATUS=skipped`, `VOTER_3_TOOL=cursor`), not back-filled; the panel shrinks by one.
+
+The eligible code-review panel size is therefore Claude plus the number of available externals: full tier when both vendors are up, the unanimous tier when exactly one is up, and the binding single-judge tier when both are down. The acceptance-threshold table above adapts to that count, and a panel that shrank solely because a vendor was unavailable is **not** reported as a degraded panel (only a genuine *failure* of an available judge degrades it). This differs from `/design` plan review, which still back-fills to keep three voters (Voter 1/2/3 above).
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 
@@ -120,7 +122,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 **For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` for Voter 2 (Codex) and Voter 3 (Cursor), then launch Voter 1 and any Claude replacement voters indicated by `VOTER_2_STATUS=fallback` / `VOTER_3_STATUS=fallback`. The dispatcher launches available external voters in parallel, waits for sentinels, and emits the external output paths. When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3.
 
-**For code review**: `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always), Codex (when available), and Cursor (when available) in parallel; when an external is unhealthy a Claude replacement fills the slot. The orchestrator does not invoke voters directly — `review-core.sh` calls the dispatch script.
+**For code review**: `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always), Codex (when available), and Cursor (when available) in parallel. An **unavailable** external is skipped (shrink-not-backfill) — no Claude or alternate-external replacement fills the slot — so the panel is Claude plus the available externals. A genuine *failure* of an available external still reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly — `review-core.sh` calls the dispatch script.
 
 **Generic Cursor voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -153,7 +155,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
-**Cursor voter replacement** (plan review and code review; if `cursor_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
+**Cursor voter replacement** (**plan review only**; if `cursor_available` is false): Launch a Claude voter in its place via the Agent tool so plan review's total voter count always remains 3. **Code review does not back-fill** — when `cursor_available` is false, `dispatch-code-voters.sh` skips the Cursor slot (`VOTER_3_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
 
 **Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -171,7 +173,7 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
-**Codex voter replacement** (plan review and code review; if `codex_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
+**Codex voter replacement** (**plan review only**; if `codex_available` is false): Launch a Claude voter in its place via the Agent tool so plan review's total voter count always remains 3. **Code review does not back-fill** — when `codex_available` is false, `dispatch-code-voters.sh` skips the Codex slot (`VOTER_2_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
 
 **Claude voter**: Launch via Agent tool with the voter prompt.
 

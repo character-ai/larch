@@ -294,8 +294,21 @@ normalize_reviewer_basename() {
 }
 
 expected_voters_for_round() {
-    # Code review always targets a 3-judge panel; per-round `--round-num` does not shrink quorum.
-    printf '3\n'
+    # Eligible judge count for the degraded-panel *warning* only. Mirrors
+    # dispatch-code-voters.sh shrink-not-backfill: the panel is Claude (always)
+    # plus each AVAILABLE external, so an external that was unavailable is not
+    # counted — a panel that shrank solely because a vendor was unavailable is the
+    # designed state, not a degradation, and must not raise a spurious warning. An
+    # external is counted unless explicitly marked unavailable (--codex-available
+    # false / --cursor-available false), preserving the historical expected=3 for
+    # callers that do not pass availability. The acceptance-threshold table
+    # (accept_finding / classify_result / panel_tier) is unchanged; only this
+    # warning threshold is availability-aware. Per-round `--round-num` does not
+    # shrink quorum.
+    local expected=1
+    [[ "$CODEX_AVAILABLE" != "false" ]] && expected=$((expected + 1))
+    [[ "$CURSOR_AVAILABLE" != "false" ]] && expected=$((expected + 1))
+    printf '%s\n' "$expected"
 }
 
 static_focus_area() {
@@ -808,8 +821,6 @@ fi
     printf 'OOS_ACCEPTED_COUNT=%s\n' "$OOS_ACCEPTED_COUNT"
     printf 'OOS_REJECTED_COUNT=%s\n' "$OOS_REJECTED_COUNT"
 } >> "$TALLY_ENV_FILE"
-
-: "$CURSOR_AVAILABLE" "$CODEX_AVAILABLE"
 
 emit_kv TALLY_STATUS ok
 emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
