@@ -729,7 +729,7 @@ _run_plan_review_round() {
     --plan-file "$PLAN_FILE" \
     --description-file "$SCOPE_ANCHOR_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" || true

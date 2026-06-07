@@ -301,15 +301,15 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic4/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq -- '--codex-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present true to scout" >&2; exit 1; }
 grep -Fq -- '--cursor-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present true to scout" >&2; exit 1; }
-grep -Fq 'DYNAMIC_SLOTS=8' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=16' <<< "$out"
+grep -Fq 'SLOT_COUNT=14' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic4/panel-manifest.ndjson")
-[[ "$dyn_prompt_slots" = "8" ]] || { echo "FAIL: expected 8 dynamic prompt_file slots" >&2; exit 1; }
+[[ "$dyn_prompt_slots" = "6" ]] || { echo "FAIL: expected 6 dynamic prompt_file slots" >&2; exit 1; }
 [[ -s "$TMP/dynamic4/dyn-api-contract-output.txt" ]]
 grep -Fq 'Begin your response with the literal line' \
     "$TMP/dynamic4/dynamic-archetypes/reviewer-dyn-api-contract.md" \
@@ -329,7 +329,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-escaped/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq '&lt;system&gt;evil&lt;/system&gt;' "$TMP/dynamic-escaped/dynamic-archetypes/reviewer-dyn-api-contract.md" \
     || { echo "FAIL: scout rationale must escape angle brackets" >&2; exit 1; }
@@ -350,7 +350,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-plan-delimiter/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'WARN=unsafe prompt_body for plan-inject' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
@@ -364,7 +364,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-empty/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=8' <<< "$out"
@@ -379,7 +379,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-fail/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=4' <<< "$out"
@@ -399,7 +399,7 @@ cat > "$TMP/scout-valid8.json" <<'JSON'
 JSON
 
 seed_case_inputs "$TMP/dynamic8"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic8/review.diff" \
     --review-tmpdir "$TMP/dynamic8" \
@@ -407,13 +407,13 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic8/plan.md" \
-    --dynamic-archetypes 8)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=16' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=24' <<< "$out"
+grep -Fq 'SLOT_COUNT=14' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic8/panel-manifest.ndjson")
-[[ "$dyn_prompt_slots" = "16" ]] || { echo "FAIL: expected 16 dynamic prompt_file slots" >&2; exit 1; }
+[[ "$dyn_prompt_slots" = "6" ]] || { echo "FAIL: expected 6 dynamic prompt_file slots" >&2; exit 1; }
 
 seed_case_inputs "$TMP/dynamic-parse-failed"
 issues_log="$TMP/dynamic-parse-failed/execution-issues.md"
@@ -425,7 +425,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" SCOUT_DYNA
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
@@ -450,7 +450,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$warn_log" SCOUT_DYNAMI
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed-warn/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 chmod 700 "$readonly_dir"
 [[ -s "$TMP/dynamic-parse-failed-warn/scout-parse-failed-round1-diag.txt" ]]
 if grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out"; then
@@ -478,7 +478,7 @@ fi
         --cursor-available true \
         --panel hard \
         --plan-file "$prod_tmp/review/plan.md" \
-        --dynamic-archetypes 4)
+        --dynamic-archetypes 3)
     chmod 700 "$readonly_dir"
     [[ -s "$prod_tmp/review/scout-parse-failed-round1-diag.txt" ]] \
         || { echo "FAIL: production parse-failed warn path should still write local diag sidecar" >&2; exit 1; }
@@ -497,7 +497,7 @@ for mode in docs-only test-only generated-only; do
         --cursor-available true \
         --panel hard \
         --plan-file "$TMP/skip-$mode/plan.md" \
-        --dynamic-archetypes 4)
+        --dynamic-archetypes 3)
     grep -Fq "SCOUT_STATUS=skipped-$mode" <<< "$out"
     grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 done
@@ -512,7 +512,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/missing-diff/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 [[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
@@ -528,7 +528,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/round-reuse/plan.md" \
-    --dynamic-archetypes 4 \
+    --dynamic-archetypes 3 \
     --round-num 2)
 grep -Fq "SCOUT_MANIFEST=$TMP/round-reuse/scout-round2-manifest.json" <<< "$out"
 [[ -f "$TMP/round-reuse/scout-round2-manifest.json" ]] || { echo "FAIL: expected round-scoped scout manifest" >&2; exit 1; }
@@ -546,7 +546,7 @@ cp "$TMP/scout-valid4.json" "$TMP/reuse-manifest-no-status/scout-round3-manifest
         --cursor-available true \
         --panel hard \
         --plan-file "$TMP/reuse-manifest-no-status/plan.md" \
-        --dynamic-archetypes 4 \
+        --dynamic-archetypes 3 \
         --round-num 3)
     grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
     grep -Fq 'SCOUT_FAIL_REASON=missing_status_sidecar' <<< "$out"
@@ -569,7 +569,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/reuse-empty-no-status/plan.md" \
-    --dynamic-archetypes 4 \
+    --dynamic-archetypes 3 \
     --round-num 4)
 grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
@@ -589,7 +589,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/reuse-empty-with-status/plan.md" \
-    --dynamic-archetypes 4 \
+    --dynamic-archetypes 3 \
     --round-num 5)
 grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=cached_parse_failed' <<< "$out"
@@ -615,7 +615,7 @@ EOF
         --cursor-available true \
         --panel hard \
         --plan-file "$TMP/reuse-invalid-manifest/plan.md" \
-        --dynamic-archetypes 4 \
+        --dynamic-archetypes 3 \
         --round-num 6)
     grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
     grep -Fq 'SCOUT_FAIL_REASON=dispatch_manifest_validation' <<< "$out"
@@ -652,9 +652,9 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/oversized-diff/plan.md" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=8' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
 [[ -s "$TMP/oversized-diff/cursor-specialist-security-output.txt" ]]
 
@@ -673,11 +673,11 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --panel hard \
     --plan-file "$parent_tmp/design-export/plan.txt" \
     --session-env-path "$parent_tmp/session-env.sh" \
-    --dynamic-archetypes 4)
+    --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=8' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
 
-for bad in 9 -1 abc; do
+for bad in 4 9 -1 abc; do
     set +e
     PATH="$STUB_BIN:$PATH" "$SCRIPT" \
         --mode diff \
@@ -781,7 +781,7 @@ PATH="$STUB_BIN:$PATH" \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/env-isolation-test/plan.md" \
-    --dynamic-archetypes 4 \
+    --dynamic-archetypes 3 \
     --round-num 11 >/dev/null
 if [[ -s "$env_isolation_parent" ]]; then
     echo "FAIL: regression1 env-isolation — parent LARCH_EXECUTION_ISSUES_LOG was written despite test-tmpdir REVIEW_TMPDIR" >&2
@@ -807,7 +807,7 @@ PATH="$STUB_BIN:$PATH" \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/path-guard-review/plan.md" \
-    --dynamic-archetypes 4 \
+    --dynamic-archetypes 3 \
     --round-num 12 >/dev/null
 [[ -s "$TMP/path-guard-review/scout-parse-failed-round12-diag.txt" ]] \
     || { echo "FAIL: regression2 path-guard — local diag sidecar not written" >&2; exit 1; }
@@ -837,7 +837,7 @@ fi
         --cursor-available true \
         --panel hard \
         --plan-file "$prod_tmp/review/plan.md" \
-        --dynamic-archetypes 4 \
+        --dynamic-archetypes 3 \
         --round-num 13 >/dev/null
     [[ -s "$prod_tmp/review/scout-parse-failed-round13-diag.txt" ]] \
         || { echo "FAIL: regression3 prod-shape — local diag sidecar not written" >&2; exit 1; }

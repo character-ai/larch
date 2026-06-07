@@ -16,7 +16,7 @@ usage() {
 PLAN_FILE=""
 DESCRIPTION_FILE=""
 OUTPUT=""
-MAX_ARCHETYPES="6"
+MAX_ARCHETYPES="3"
 SESSION_ENV_FILE=""
 CODEX_PRESENT="false"
 CURSOR_PRESENT="false"
@@ -108,8 +108,8 @@ validate_under_allowed_roots() {
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
 
-case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer 0-6" ;; esac
-(( 10#$MAX_ARCHETYPES <= 6 )) || fail "--max-archetypes must be 0-6 for plan scout"
+case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer 0-3" ;; esac
+(( 10#$MAX_ARCHETYPES <= 3 )) || fail "--max-archetypes must be 0-3 for plan scout"
 
 PLAN_CANON=$(validate_under_allowed_roots "plan-file" "$PLAN_FILE")
 DESC_CANON=$(validate_under_allowed_roots "description-file" "$DESCRIPTION_FILE")

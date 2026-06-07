@@ -80,7 +80,7 @@ JSON
     --plan-file "$D1/plan.txt" \
     --description-file "$D1/feature-description.txt" \
     --output "$D1/scout-plan-manifest.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$D1/source-env.sh" \
     --codex-present true \
     --cursor-present false >"$D1/out.env"
@@ -105,7 +105,7 @@ printf '{"archetypes":[]}\n' >"$SCOUT_STUB_MANIFEST"
     --plan-file "$D0/plan.txt" \
     --description-file "$D0/feature-description.txt" \
     --output "$D0/scout-plan-manifest.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$D0/source-env.sh" >/dev/null
 grep -Fxq 'skills/design/SKILL.md' "$D0/scout-plan-scope-files.txt" || fail "stub scope line"
 
@@ -121,10 +121,10 @@ jq -n '{archetypes: [range(0;8) | . as $i | {name: ("a-" + ($i|tostring)), focus
     --plan-file "$D8/plan.txt" \
     --description-file "$D8/feature-description.txt" \
     --output "$D8/out.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$D8/source-env.sh" | tee "$D8/out.env"
 grep -Fq 'WARN=scout-plan-archetypes-wrapper:' "$D8/out.env" || fail "expected truncate WARN KV"
-[[ "$(jq '.archetypes | length' "$D8/out.json")" == "6" ]] || fail "expected 6 after cap"
+[[ "$(jq '.archetypes | length' "$D8/out.json")" == "3" ]] || fail "expected 3 after cap"
 
 echo "=== reserved slug dropped ==="
 DR="$TMP/dr"
@@ -143,7 +143,7 @@ JSON
     --plan-file "$DR/plan.txt" \
     --description-file "$DR/feature-description.txt" \
     --output "$DR/out.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$DR/source-env.sh" | tee "$DR/out.env"
 grep -Fq 'WARN=scout-plan-archetypes-wrapper:' "$DR/out.env" || fail "reserved WARN KV"
 [[ "$(jq -r '.archetypes[0].name' "$DR/out.json")" == "api-z" ]] || fail "expected api-z only"
@@ -164,7 +164,7 @@ JSON
     --plan-file "$DM/plan.txt" \
     --description-file "$DM/feature-description.txt" \
     --output "$DM/scout-plan-manifest.json" \
-    --max-archetypes 6 \
+    --max-archetypes 3 \
     --session-env-path "$DM/source-env.sh" >/dev/null
 [[ "$(wc -l <"$DM/scout-plan-scope-files.txt" | tr -d ' ')" == "1" ]] || fail "expected one scope line"
 grep -Fxq 'skills/kept.sh' "$DM/scout-plan-scope-files.txt" || fail "malformed heading must not populate scope"

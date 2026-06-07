@@ -766,7 +766,7 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, and PR still must run.
 
-<!-- step:5 — Code Review: run-step5-review.sh → review-and-fix.sh (dynamic-archetypes default=6 in implement tmpdir mode; maximum allowed cap=8) -->
+<!-- step:5 — Code Review: run-step5-review.sh → review-and-fix.sh (dynamic-archetypes default=3 in implement tmpdir mode; maximum allowed cap=3) -->
 ## Step 5 — Code Review
 
 ```bash
@@ -784,9 +784,9 @@ if [ -z "$dynamic_archetypes_cap" ]; then
   fi
 fi
 # Implement-mode default when no dynamic-archetypes override is present.
-[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=6
+[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=3
 case "$dynamic_archetypes_cap" in
-  [0-8]) ;;
+  [0-3]) ;;
   *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s\n' "$dynamic_archetypes_cap" >&2; exit 2 ;;
 esac
 # Base Step 5 round cap; degraded rounds only inflate the banner hint.
@@ -844,7 +844,7 @@ git add -A
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix.sh` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `6` (implement mode default, valid up to 8). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
+Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix.sh` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `3` (implement mode default, valid up to 3). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
 
 Print once before the `run-step5-review.sh` invocation:
 
