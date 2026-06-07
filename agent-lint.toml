@@ -485,6 +485,12 @@ exclude = [
   # scripts/pre-commit-shellcheck.md.
   "scripts/pre-commit-shellcheck.sh",
   "scripts/pre-commit-shellcheck.md",
+  # scripts/pre-commit-bash-syntax.sh is the parallel bash -n wrapper invoked
+  # by the `bash-syntax-check` pre-commit hook in `.pre-commit-config.yaml`.
+  # Same exemption rationale as pre-commit-shellcheck.sh above: agent-lint
+  # G004 does not follow .pre-commit-config.yaml entries.
+  "scripts/pre-commit-bash-syntax.sh",
+  "scripts/pre-commit-bash-syntax.md",
   "scripts/test-sessionstart-health.sh",
   # scripts/test-effort-prose.sh is the regression harness for prompt-source
   # max-effort prose drift. Referenced only from Makefile (test-effort-prose

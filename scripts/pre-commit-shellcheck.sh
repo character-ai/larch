@@ -38,4 +38,6 @@ max_parallel="$(nproc 2>/dev/null \
 # NUL-delimited paths to handle filenames with spaces; -- guards against
 # any leading-dash filename being misinterpreted as a shellcheck option.
 # xargs exits non-zero if any child failed -> we propagate that exit.
-printf '%s\0' "$@" | xargs -0 -n 1 -P "$max_parallel" shellcheck -x --
+# SC2329: shellcheck 0.11.0 warns on functions "never invoked" — false positive
+# for trap handlers and functions called via sourced/inherited envs.
+printf '%s\0' "$@" | xargs -0 -n 1 -P "$max_parallel" shellcheck -x --exclude=SC2329 --

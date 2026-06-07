@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import config
 import logging_util
@@ -20,3 +22,28 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv(config.ENV_LARCH_QUIET_DISABLE, "1")
     logging_util.reset_quiet_state()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace time.sleep with a no-op so retry/backoff tests don't wait.
+
+    Patching time.sleep globally short-circuits all sleep paths:
+    - retry.default_sleeper calls time.sleep internally (its default argument
+      captures the function object at definition time, so patching the module
+      attribute retry.default_sleeper alone is ineffective; the global patch
+      is what actually suppresses sleep in with_transient_retry).
+    - merge.py falls back to time.sleep when no sleeper is injected.
+
+    The logging_util.py fd-4 guard (gating os.write(4,...) on
+    _self_initialized_quiet) ensures this global patch is safe under
+    pytest-xdist: the test that previously triggered an fd-4 write to
+    execnet's IPC channel no longer does so.
+
+    Tests that verify sleep *amounts* inject their own sleeper explicitly
+    (e.g. sleeper=sleeps.append) and are unaffected by this patch.
+    """
+    def noop(_s: float) -> None:
+        pass
+
+    monkeypatch.setattr(time, "sleep", noop)

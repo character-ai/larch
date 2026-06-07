@@ -465,6 +465,7 @@ else
     done
     collect_phase phase2_failed
 
+    # shellcheck disable=SC2154  # phase2_failed set indirectly by collect_phase via eval
     phase3_queue=("${phase3_seed[@]+"${phase3_seed[@]}"}" "${phase2_failed[@]+"${phase2_failed[@]}"}")
 
     reset_phase

@@ -30,17 +30,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  # Linters only: pre-commit over all files (markdownlint, jsonlint,
-  # actionlint, agent-lint, lint-skill-invocations, gitleaks). The `agnix`
-  # and `shellcheck` pre-commit hooks are SKIPped here because the dedicated
-  # `agnix` and `shellcheck` jobs below cover them in parallel; gitleaks
-  # remains because pre-commit's `--no-git` working-tree scan is documented
-  # in SECURITY.md as complementary to the dedicated `gitleaks` job's history
-  # scan, not redundant.
-  # Test harnesses run in the separate `test-harnesses` job below so
-  # harness failures and linter failures can be re-run independently.
-  # Mermaid fence lint and SIGPIPE safety lint run in the parallel
-  # `lint-mermaid` job (closes #2080).
+  # External-tool linters only: markdownlint, jsonlint, agent-lint,
+  # actionlint. All local bash/python linters run in the parallel
+  # `lint-local` job. `agnix` and `shellcheck` run in their dedicated jobs.
+  # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
+  # from this job's critical path. Test harnesses run in the separate
+  # `test-harnesses` job. Mermaid fence lint and SIGPIPE safety lint run in
+  # the parallel `lint-mermaid` job (closes #2080).
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -59,17 +55,45 @@ jobs:
             pre-commit-
       - name: Install lint dependencies
         run: pip install -r .github/workflows/requirements-lint.txt
-      - name: Run pre-commit linters
-        # SKIP the `agnix` and `shellcheck` hooks because the dedicated
-        # `agnix` and `shellcheck` CI jobs below run the same lints. The
-        # pre-commit hooks remain active for local `pre-commit run` and the
-        # dev git-hook — only CI skips them. If a dedicated job is removed,
-        # drop its hook name from SKIP to restore CI coverage. `gitleaks` is
-        # NOT skipped: its `--no-git` working-tree scan is documented in
-        # SECURITY.md as complementary to the dedicated `gitleaks` job's
-        # history scan. Issue #1034.
+      - name: Run pre-commit linters (external tools)
+        # Runs markdownlint, jsonlint, agent-lint, and actionlint only.
+        # `agnix` and `shellcheck` run in dedicated jobs. `gitleaks` moved
+        # to the `gitleaks` job. Local bash/python linters run in
+        # `lint-local`. If a dedicated job is removed, drop its hook name
+        # from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
+        run: make lint-only
+
+  # Local bash/python linters — split from `lint` into a parallel job so
+  # both halves run concurrently. Runs lint-skill-invocations,
+  # lint-literal-counts, lint-bash32, lint-renderer-substitution-safety,
+  # lint-awk-multibyte-regex, and all other local hooks while `lint` runs
+  # the external-tool hooks (markdownlint, jsonlint, agent-lint, actionlint).
+  lint-local:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: .github/workflows/requirements-lint.txt
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
+      - name: Install lint dependencies
+        run: pip install -r .github/workflows/requirements-lint.txt
+      - name: Run pre-commit linters (local)
+        # Runs only local bash/python linters. External tools (markdownlint,
+        # jsonlint, agent-lint, actionlint) run in `lint`. Dedicated-job
+        # hooks (gitleaks, agnix, shellcheck) are skipped here.
+        env:
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint
         run: make lint-only
 
   # Mermaid fence lint and SIGPIPE safety lint — split from the `lint` job
@@ -138,30 +162,34 @@ jobs:
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
-  # Dedicated shellcheck job — runs in parallel with `lint`; `lint` SKIPs
-  # shellcheck to avoid paying the pre-commit env-install cost twice. The
-  # shared `pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}` cache key
-  # allows both jobs to reuse the same cached hook env on cache hits.
+  # Dedicated shellcheck jobs — split into `scripts` and `skills/.claude`
+  # scopes running in parallel to halve wall-clock time. Each scope installs
+  # the pinned shellcheck-py==0.11.0.1 binary directly (no pre-commit
+  # overhead) and runs shellcheck -x in parallel via xargs. The pre-commit
+  # `shellcheck` hook remains active for local `pre-commit run` and the dev
+  # git-hook; CI skips it in `lint` and `lint-local` via the SKIP env var.
+  # shellcheck-py pinned to 0.11.0.1 — keep in sync with .pre-commit-config.yaml on bump.
   shellcheck:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: scripts
+            paths: scripts
+          - scope: skills
+            paths: "skills .claude"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: .github/workflows/requirements-lint.txt
-      - uses: actions/cache@v5
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-
-      - name: Install lint dependencies
-        run: pip install -r .github/workflows/requirements-lint.txt
-      - name: Run shellcheck (parallel via local hook)
-        run: pre-commit run --all-files shellcheck
+      - name: Install shellcheck
+        run: pip install shellcheck-py==0.11.0.1
+      - name: Run shellcheck (${{ matrix.scope }})
+        run: |
+          set -euo pipefail
+          max_parallel="$(nproc 2>/dev/null || echo 1)"
+          find ${{ matrix.paths }} -name "*.sh" -not -path "*/larch-logs/*" -print0 \
+            | xargs -0 -r -n 1 -P "$max_parallel" shellcheck -x --exclude=SC2329 --
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
@@ -225,33 +253,28 @@ jobs:
       - name: Run test harnesses (shard ${{ matrix.shard }} of 20)
         run: make test-harnesses-${{ matrix.shard }}
 
+  # agent-lint and agnix consolidated into one job so both run sequentially
+  # on a single runner instead of competing for two.
   agent-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: zhupanov/agent-lint@v2.3.2
         with:
           github-token: ${{ github.token }}
           pedantic: true
-
-  agnix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
       - uses: agent-sh/agnix@v0.17.0
         with:
           target: 'claude-code'
           config: '.agnix.toml'
           strict: 'true'
 
-  # Dedicated gitleaks gate — git-HISTORY scan (complementary to the
-  # `lint` job, which runs the pre-commit gitleaks hook over the working
-  # tree only via `--no-git`). Installs the same pinned v8.18.4 engine
-  # directly so local-pre-commit and CI agree on engine version.
-  # `fetch-depth: 0` is required because `gitleaks detect` walks the
-  # git log.
+  # Dedicated gitleaks gate — runs two sequential scans: (1) working-tree
+  # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved
+  # here to reduce `lint`'s wall-clock time) and (2) git-history scan
+  # (walks the full git log; `fetch-depth: 0` required). Both use the same
+  # pinned v8.18.4 engine so local pre-commit and CI agree on scanner version.
   gitleaks:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -275,41 +298,27 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp/
           sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
+      - name: Scan working tree
+        run: |
+          set -euo pipefail
+          gitleaks detect --source . --no-git --redact --no-banner
       - name: Scan git history
         run: |
           set -euo pipefail
           # Limit scan to new commits in this PR to avoid false positives from
-          # historical test-fixture keys in the main branch. The pre-commit hook
-          # (--no-git) scans the working tree; this step scans only new commits.
+          # historical test-fixture keys in the main branch.
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
           gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
 
-  # Trufflehog verified-only scan. Independent of gitleaks — catches
-  # credentials that authenticate against a live provider API even if
-  # gitleaks' regex rules miss them. Action pinned to commit SHA
-  # (supply-chain: tags are mutable; a force-pushed tag could silently
-  # swap the scanner binary). `version: 3.82.13` also pins the scanner
-  # Docker image so both action driver and scanner engine are pinned.
-  trufflehog:
+  # agent-sync, trufflehog, and smoke-dialectic consolidated into one job.
+  # fetch-depth: 0 is required by trufflehog; the other steps are unaffected.
+  agent-sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      # Pinned to commit SHA for v3.82.13 (verify with
-      # `git ls-remote https://github.com/trufflesecurity/trufflehog refs/tags/v3.82.13`).
-      - uses: trufflesecurity/trufflehog@1aa1871f9ae24a8c8a3a48a9345514acf42beb39
-        with:
-          version: 3.82.13
-          path: ./
-          extra_args: --only-verified
-
-  agent-sync:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
       - name: Walk generators registry and check for drift
         run: |
           bash scripts/check-generators.sh
@@ -407,12 +416,19 @@ jobs:
 
           rm -f /tmp/hits
           exit "$exit_code"
-
-  smoke-dialectic:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v6
+      # Trufflehog verified-only scan. Independent of gitleaks — catches
+      # credentials that authenticate against a live provider API even if
+      # gitleaks' regex rules miss them. Action pinned to commit SHA
+      # (supply-chain: tags are mutable; a force-pushed tag could silently
+      # swap the scanner binary). `version: 3.82.13` also pins the scanner
+      # Docker image so both action driver and scanner engine are pinned.
+      # Pinned to commit SHA for v3.82.13 (verify with
+      # `git ls-remote https://github.com/trufflesecurity/trufflehog refs/tags/v3.82.13`).
+      - uses: trufflesecurity/trufflehog@1aa1871f9ae24a8c8a3a48a9345514acf42beb39
+        with:
+          version: 3.82.13
+          path: ./
+          extra_args: --only-verified
       - name: Run dialectic smoke test
         # Invokes scripts/dialectic-smoke-test.sh directly; the `make smoke-dialectic`
         # target is equivalent and exists for local developer convenience.
@@ -454,3 +470,22 @@ jobs:
         run: pip install -r python/requirements-test.txt
       - name: Run Python tests
         run: make py-test
+
+  # Bash 3.2 conformance check. macOS ships /bin/bash at 3.2.57 (Apple
+  # keeps the GPLv2-era bash frozen). Runs bash -n (syntax-only, no
+  # execution) on every .sh file so parser-level 3.2 incompatibilities
+  # surface in CI before they break developer machines. Complements the
+  # static lint-bash32 grep in lint-local, which catches known 4+ tokens
+  # but cannot catch subtler parser differences.
+  bash32-check:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Syntax-check all scripts under bash 3.2
+        run: |
+          set -euo pipefail
+          max_parallel="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)"
+          find scripts skills .claude -name "*.sh" \
+            -not -path "*/larch-logs/*" -print0 \
+            | xargs -0 -n 1 -P "$max_parallel" /bin/bash -n --

@@ -123,6 +123,8 @@ local -n inner=target # lint-bash32: ok fixture
 cmd &>> log.txt # lint-bash32: ok fixture
 coproc WORKER { cat; } # lint-bash32: ok fixture
 coproc { cat; } # lint-bash32: ok fixture
+arr=(a b c); echo "${arr[-1]}" # lint-bash32: ok fixture
+echo {1..10..2} # lint-bash32: ok fixture
 EOF
 sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/bad.sh" > "$TMPROOT/scripts/bad-unsuppressed.sh"
 rm -f "$TMPROOT/scripts/bad.sh"
@@ -135,7 +137,9 @@ assert_case "forbidden constructs" 1 "$stderr_file" "$rc" \
     "declare -n nameref" \
     "local -n nameref" \
     "&>""> append-all redirection" \
-    "coproc"
+    "coproc" \
+    "negative array index" \
+    "step brace expansion"
 
 reset_tree
 write_sh "$TMPROOT/scripts/comments-and-allow.sh" <<'EOF'

@@ -122,9 +122,10 @@ class BreadcrumbWriter:
                     with Path(log_file).open("a", encoding="utf-8") as handle:
                         _ = handle.write(line)
                     routed = True
-            with suppress(OSError):
-                _ = os.write(4, line.encode("utf-8"))
-                routed = True
+            if _self_initialized_quiet:  # fd 4 is saved stderr only after quiet_init()
+                with suppress(OSError):
+                    _ = os.write(4, line.encode("utf-8"))
+                    routed = True
             if routed or quiet is True:
                 return
         stream = self.stream or sys.stderr
