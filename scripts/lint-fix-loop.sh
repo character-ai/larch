@@ -363,7 +363,7 @@ run_codex() {
     launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/lint-fix-codex-launcher.XXXXXX") || return 1
     rm -f "$run_dir/codex.log.events.jsonl" "$run_dir/codex.log.sidecar"
     set +e
-    "$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH" \
+    LARCH_TIMING_SKILL=implement "$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH" \
         --output "$run_dir/codex.log" \
         --timeout 1800 \
         --workdir "$REPO_ROOT" \

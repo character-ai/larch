@@ -197,6 +197,16 @@ write_state "$dir" 2 implementation
 run_capture "$SANDBOX/case7l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason main-branch-post-dispatch
 assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch classifies dispatch"
 assert_eq main-branch-post-dispatch "$(kv BAIL_REASON "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch renders allowlisted bail"
+dir=$(make_tmp case7l2)
+write_state "$dir" 2 implementation
+run_capture "$SANDBOX/case7l2.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason recovery-out-of-scope
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case7l2.out")" "7: recovery-out-of-scope stays unrecoverable"
+assert_eq recovery-out-of-scope "$(kv BAIL_REASON "$SANDBOX/case7l2.out")" "7: recovery-out-of-scope renders allowlisted bail"
+dir=$(make_tmp case7l3)
+write_state "$dir" 2 implementation
+run_capture "$SANDBOX/case7l3.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason ci-fix-exhausted
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case7l3.out")" "7: ci-fix-exhausted without detail log stays unrecoverable"
+assert_eq ci-fix-exhausted "$(kv BAIL_REASON "$SANDBOX/case7l3.out")" "7: ci-fix-exhausted renders allowlisted bail"
 
 # #3592 bug b: distinct failure evidence produces distinct signatures.
 dir=$(make_tmp case7m)

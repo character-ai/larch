@@ -690,6 +690,7 @@ implement_timing_emitters=(
   "scripts/launch-codex-ci.sh"
   "scripts/launch-cursor-ci.sh"
   "scripts/launch-claude-ci.sh"
+  "skills/review-and-fix/scripts/record-implement-review-round-timing.sh"
 )
 
 for rel in "${implement_timing_emitters[@]}"; do
@@ -697,9 +698,14 @@ for rel in "${implement_timing_emitters[@]}"; do
   [[ -f "$path" ]] || fail "implement timing emitter missing: $rel"
   awk -v rel="$rel" '
     function is_timing_call(line) {
-      return ((index(line, "timing-ledger.sh") > 0 && (index(line, " mark ") > 0 || index(line, " record-vendor-task") > 0)) || index(line, "timing-report.sh") > 0)
+      return ((index(line, "timing-ledger.sh") > 0 && (index(line, " mark ") > 0 || index(line, " record-vendor-task") > 0 || index(line, " record-round") > 0)) || index(line, "timing-report.sh") > 0)
     }
+    function is_record_round(line) {
+      return (index(line, "timing-ledger.sh") > 0 && index(line, " record-round") > 0)
+    }
+    /export LARCH_TIMING_SKILL=implement/ { export_pinned = NR }
     is_timing_call($0) && index($0, "LARCH_TIMING_SKILL=implement") == 0 {
+      if (is_record_round($0) && export_pinned > 0 && NR - export_pinned <= 5) next
       printf "%s:%d timing invocation lacks same-line LARCH_TIMING_SKILL=implement pin: %s\n", rel, NR, $0 > "/dev/stderr"
       offending = 1
     }
