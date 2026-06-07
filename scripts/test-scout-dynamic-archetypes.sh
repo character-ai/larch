@@ -549,12 +549,12 @@ rm -f "$huge_ov"
 grep -Fq 'FAILURE_REASON=prompt-override-invalid' "$TMP/prompt-override-oversize/stdout.env" \
     || fail "prompt override oversize: expected FAILURE_REASON on stdout"
 
-codex_tier_stub="$TMP/codex-tier-stub.sh"
-cat > "$codex_tier_stub" <<'STUB'
+cursor_tier_stub="$TMP/cursor-tier-stub.sh"
+cat > "$cursor_tier_stub" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ -n "${SCOUT_CODEX_ARGV_LOG:-}" ]] && printf '%s\n' "$*" >>"$SCOUT_CODEX_ARGV_LOG"
-if printf '%s\n' "$@" | grep -Fq -- '--tool cursor'; then
+[[ -n "${SCOUT_CURSOR_ARGV_LOG:-}" ]] && printf '%s\n' "$*" >>"$SCOUT_CURSOR_ARGV_LOG"
+if printf '%s\n' "$@" | grep -Fq -- '--tool codex'; then
     exit 99
 fi
 out=""
@@ -565,57 +565,57 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$out" ]] || exit 2
-if [[ "${SCOUT_CODEX_CAP_HIT:-false}" == "true" ]]; then
+if [[ "${SCOUT_CURSOR_CAP_HIT:-false}" == "true" ]]; then
     printf 'cap hit prose\n' >"$out"
     printf 'STATUS=cap_hit\n' >"${out}.cap-hit"
     printf '0\n' >"${out}.done"
     exit 0
 fi
-if [[ "${SCOUT_CODEX_PROSE:-false}" == "true" ]]; then
+if [[ "${SCOUT_CURSOR_PROSE:-false}" == "true" ]]; then
     printf 'not json prose\n' >"$out"
     printf '0\n' >"${out}.done"
     exit 0
 fi
-cat "${SCOUT_CODEX_JSON_FILE:?SCOUT_CODEX_JSON_FILE required}" >"$out"
+cat "${SCOUT_CURSOR_JSON_FILE:?SCOUT_CURSOR_JSON_FILE required}" >"$out"
 printf '0\n' >"${out}.done"
 exit 0
 STUB
-chmod +x "$codex_tier_stub"
+chmod +x "$cursor_tier_stub"
 
-mkdir -p "$TMP/waterfall-codex-win"
-seed_case_inputs "$TMP/waterfall-codex-win"
-export SCOUT_CODEX_ARGV_LOG="$TMP/waterfall-codex-win/codex-argv.log"
-export SCOUT_CLAUDE_ARGV_LOG="$TMP/waterfall-codex-win/claude-argv.log"
+mkdir -p "$TMP/waterfall-cursor-win"
+seed_case_inputs "$TMP/waterfall-cursor-win"
+export SCOUT_CURSOR_ARGV_LOG="$TMP/waterfall-cursor-win/cursor-argv.log"
+export SCOUT_CLAUDE_ARGV_LOG="$TMP/waterfall-cursor-win/claude-argv.log"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
-    SCOUT_CODEX_JSON_FILE="$TMP/valid4.json" \
+    SCOUT_CURSOR_JSON_FILE="$TMP/valid4.json" \
     SCOUT_STUB_OUTPUT_FILE="$TMP/malformed.json" \
     "$SCRIPT" \
     --mode diff \
-    --diff-file "$TMP/waterfall-codex-win/review.diff" \
-    --plan-file "$TMP/waterfall-codex-win/plan.md" \
+    --diff-file "$TMP/waterfall-cursor-win/review.diff" \
+    --plan-file "$TMP/waterfall-cursor-win/plan.md" \
     --max-archetypes 4 \
-    --output "$TMP/waterfall-codex-win/scout-manifest.json" \
+    --output "$TMP/waterfall-cursor-win/scout-manifest.json" \
     --codex-present true \
     --cursor-present true \
     --timeout 5 \
-    >"$TMP/waterfall-codex-win/stdout.env"
-grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-codex-win/stdout.env" || fail "codex tier should win waterfall"
-cmp -s "$TMP/valid4.json" "$TMP/waterfall-codex-win/scout-manifest.json.raw" || fail "codex raw should be winner"
-grep -Fq -- '--tool codex' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must use --tool codex"
-grep -Fq -- '--tool cursor' "$SCOUT_CODEX_ARGV_LOG" && fail "scout must not invoke --tool cursor"
-grep -Fq -- 'staged-context' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must pass staged-context --codex-add-dir"
-grep -Fq -- "$TMP/waterfall-codex-win/review.diff" "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass caller diff path"
-grep -Fq -- '--diff-file' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass unused --diff-file on --prompt-file launches"
+    >"$TMP/waterfall-cursor-win/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-cursor-win/stdout.env" || fail "cursor tier should win waterfall"
+cmp -s "$TMP/valid4.json" "$TMP/waterfall-cursor-win/scout-manifest.json.raw" || fail "cursor raw should be winner"
+grep -Fq -- '--tool cursor' "$SCOUT_CURSOR_ARGV_LOG" || fail "cursor tier must use --tool cursor"
+grep -Fq -- '--tool codex' "$SCOUT_CURSOR_ARGV_LOG" && fail "scout must not invoke --tool codex"
+grep -Fq -- '--codex-add-dir' "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass --codex-add-dir"
+grep -Fq -- "$TMP/waterfall-cursor-win/review.diff" "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass caller diff path"
+grep -Fq -- '--diff-file' "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass unused --diff-file on --prompt-file launches"
 
 mkdir -p "$TMP/waterfall-fallthrough"
 seed_case_inputs "$TMP/waterfall-fallthrough"
 export SCOUT_CLAUDE_ARGV_LOG="$TMP/waterfall-fallthrough/claude-argv.log"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
-    SCOUT_CODEX_PROSE=true \
+    SCOUT_CURSOR_PROSE=true \
     SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
     "$SCRIPT" \
     --mode diff \
@@ -623,10 +623,10 @@ PATH="$BIN:$PATH" \
     --plan-file "$TMP/waterfall-fallthrough/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-fallthrough/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-fallthrough/stdout.env"
-grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-fallthrough/stdout.env" || fail "codex prose should fall through to claude"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-fallthrough/stdout.env" || fail "cursor prose should fall through to claude"
 cmp -s "$TMP/valid4.json" "$TMP/waterfall-fallthrough/scout-manifest.json.raw" || fail "claude should supply winning raw"
 grep -Fq -- '--read-tools' "$SCOUT_CLAUDE_ARGV_LOG" || fail "claude tier must pass --read-tools"
 grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "claude tier must pass --read-tools-add-dir"
@@ -634,9 +634,9 @@ grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "claude tier
 mkdir -p "$TMP/waterfall-cap-hit-cleanup"
 seed_case_inputs "$TMP/waterfall-cap-hit-cleanup"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
-    SCOUT_CODEX_CAP_HIT=true \
+    SCOUT_CURSOR_CAP_HIT=true \
     SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
     "$SCRIPT" \
     --mode diff \
@@ -644,7 +644,7 @@ PATH="$BIN:$PATH" \
     --plan-file "$TMP/waterfall-cap-hit-cleanup/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-cap-hit-cleanup/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-cap-hit-cleanup/stdout.env"
 grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-cap-hit-cleanup/stdout.env" || fail "stale cap-hit must not block claude winner"
@@ -652,11 +652,11 @@ grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-cap-hit-cleanup/stdout.env" || fail "
 
 mkdir -p "$TMP/waterfall-exhausted"
 seed_case_inputs "$TMP/waterfall-exhausted"
-printf 'still not json\n' >"$TMP/codex-bad.raw"
+printf 'still not json\n' >"$TMP/cursor-bad.raw"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
-    SCOUT_CODEX_PROSE=true \
+    SCOUT_CURSOR_PROSE=true \
     SCOUT_STUB_OUTPUT_FILE="$TMP/malformed.json" \
     "$SCRIPT" \
     --mode diff \
@@ -664,7 +664,7 @@ PATH="$BIN:$PATH" \
     --plan-file "$TMP/waterfall-exhausted/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-exhausted/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-exhausted/stdout.env"
 grep -Fq 'SCOUT_STATUS=empty' "$TMP/waterfall-exhausted/stdout.env" || fail "multi-tier probe exhaustion should be empty"
@@ -682,50 +682,50 @@ chmod +x "$claude_fail_launch"
 mkdir -p "$TMP/waterfall-probe-claude-fail"
 seed_case_inputs "$TMP/waterfall-probe-claude-fail"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$claude_fail_launch" \
-    SCOUT_CODEX_PROSE=true \
+    SCOUT_CURSOR_PROSE=true \
     "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/waterfall-probe-claude-fail/review.diff" \
     --plan-file "$TMP/waterfall-probe-claude-fail/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-probe-claude-fail/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-probe-claude-fail/stdout.env"
-grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/waterfall-probe-claude-fail/stdout.env" || fail "codex prose + claude launch fail should surface claude-failed"
+grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/waterfall-probe-claude-fail/stdout.env" || fail "cursor prose + claude launch fail should surface claude-failed"
 grep -Fq 'SCOUT_FAIL_REASON' "$TMP/waterfall-probe-claude-fail/stdout.env" && fail "launcher failure must not set SCOUT_FAIL_REASON"
 
-codex_fail_launch="$TMP/waterfall-codex-fail-launch.sh"
-cat > "$codex_fail_launch" <<'STUB'
+cursor_fail_launch="$TMP/waterfall-cursor-fail-launch.sh"
+cat > "$cursor_fail_launch" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'STATUS=ERROR\nELAPSED=0\n'
 exit 7
 STUB
-chmod +x "$codex_fail_launch"
-mkdir -p "$TMP/waterfall-codex-fail-claude-win"
-seed_case_inputs "$TMP/waterfall-codex-fail-claude-win"
+chmod +x "$cursor_fail_launch"
+mkdir -p "$TMP/waterfall-cursor-fail-claude-win"
+seed_case_inputs "$TMP/waterfall-cursor-fail-claude-win"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_fail_launch" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_fail_launch" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
     SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
     "$SCRIPT" \
     --mode diff \
-    --diff-file "$TMP/waterfall-codex-fail-claude-win/review.diff" \
-    --plan-file "$TMP/waterfall-codex-fail-claude-win/plan.md" \
+    --diff-file "$TMP/waterfall-cursor-fail-claude-win/review.diff" \
+    --plan-file "$TMP/waterfall-cursor-fail-claude-win/plan.md" \
     --max-archetypes 4 \
-    --output "$TMP/waterfall-codex-fail-claude-win/scout-manifest.json" \
-    --codex-present true \
+    --output "$TMP/waterfall-cursor-fail-claude-win/scout-manifest.json" \
+    --cursor-present true \
     --timeout 5 \
-    >"$TMP/waterfall-codex-fail-claude-win/stdout.env"
-grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-codex-fail-claude-win/stdout.env" || fail "codex launch fail should fall through to claude winner"
+    >"$TMP/waterfall-cursor-fail-claude-win/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-cursor-fail-claude-win/stdout.env" || fail "cursor launch fail should fall through to claude winner"
 
 mkdir -p "$TMP/waterfall-both-launch-fail"
 seed_case_inputs "$TMP/waterfall-both-launch-fail"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_fail_launch" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_fail_launch" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$claude_fail_launch" \
     "$SCRIPT" \
     --mode diff \
@@ -733,7 +733,7 @@ PATH="$BIN:$PATH" \
     --plan-file "$TMP/waterfall-both-launch-fail/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-both-launch-fail/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-both-launch-fail/stdout.env"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/waterfall-both-launch-fail/stdout.env" || fail "both tiers launch fail should surface last-tier claude-failed"
@@ -758,16 +758,16 @@ exit 0
 STUB
 chmod +x "$empty_launch"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$empty_launch" \
-    SCOUT_CODEX_PROSE=true \
+    SCOUT_CURSOR_PROSE=true \
     "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/waterfall-exit0-empty/review.diff" \
     --plan-file "$TMP/waterfall-exit0-empty/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/waterfall-exit0-empty/scout-manifest.json" \
-    --codex-present true \
+    --cursor-present true \
     --timeout 5 \
     >"$TMP/waterfall-exit0-empty/stdout.env"
 grep -Fq 'SCOUT_STATUS=empty' "$TMP/waterfall-exit0-empty/stdout.env" || fail "exit-0 empty tier raw should contribute to probe exhaustion (empty)"
@@ -809,28 +809,28 @@ set -e
 [[ "$over_1mb_rc" -eq 2 ]] || fail ">1 MB staged diff must hard-fail before staging"
 grep -Fq 'staged --diff-file exceeds' "$TMP/staged-over-1mb-diff/stderr.env" || fail ">1 MB staged diff stderr"
 
-mkdir -p "$TMP/codex-no-description-text-argv"
-seed_case_inputs "$TMP/codex-no-description-text-argv"
-codex_huge_file="$TMP/codex-no-description-text-argv/huge-description.bin"
-cp -f "$huge_file" "$codex_huge_file"
-export SCOUT_CODEX_ARGV_LOG="$TMP/codex-no-description-text-argv/codex-argv.log"
+mkdir -p "$TMP/cursor-no-description-text-argv"
+seed_case_inputs "$TMP/cursor-no-description-text-argv"
+cursor_huge_file="$TMP/cursor-no-description-text-argv/huge-description.bin"
+cp -f "$huge_file" "$cursor_huge_file"
+export SCOUT_CURSOR_ARGV_LOG="$TMP/cursor-no-description-text-argv/cursor-argv.log"
 PATH="$BIN:$PATH" \
-    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$cursor_tier_stub" \
     SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
-    SCOUT_CODEX_JSON_FILE="$TMP/valid4.json" \
+    SCOUT_CURSOR_JSON_FILE="$TMP/valid4.json" \
     "$SCRIPT" \
     --mode description \
-    --scope-files "$TMP/codex-no-description-text-argv/scope-files.txt" \
-    --description-file "$codex_huge_file" \
-    --plan-file "$TMP/codex-no-description-text-argv/plan.md" \
+    --scope-files "$TMP/cursor-no-description-text-argv/scope-files.txt" \
+    --description-file "$cursor_huge_file" \
+    --plan-file "$TMP/cursor-no-description-text-argv/plan.md" \
     --max-archetypes 4 \
-    --output "$TMP/codex-no-description-text-argv/scout-manifest.json" \
-    --codex-present true \
+    --output "$TMP/cursor-no-description-text-argv/scout-manifest.json" \
+    --cursor-present true \
     --timeout 5 \
-    >"$TMP/codex-no-description-text-argv/stdout.env"
-grep -Fq -- '--description-text' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass --description-text on --prompt-file launches"
-grep -Fq -- '--codex-add-dir' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must pass --codex-add-dir"
-grep -Fq -- '--scope-files' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass unused --scope-files on --prompt-file launches"
+    >"$TMP/cursor-no-description-text-argv/stdout.env"
+grep -Fq -- '--description-text' "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass --description-text on --prompt-file launches"
+grep -Fq -- '--codex-add-dir' "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass --codex-add-dir"
+grep -Fq -- '--scope-files' "$SCOUT_CURSOR_ARGV_LOG" && fail "cursor tier must not pass unused --scope-files on --prompt-file launches"
 
 mkdir -p "$TMP/max-zero-no-stage"
 seed_case_inputs "$TMP/max-zero-no-stage"

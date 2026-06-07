@@ -236,7 +236,7 @@ run_implement_loop() {
                 exit 0
                 ;;
             coder-main-agent-required)
-                # #3207: codex -> cursor both exhausted this round; hand the
+                # #3207: cursor -> codex both exhausted this round; hand the
                 # accepted-findings application off to the main agent (Step 5
                 # orchestrator) rather than stalling — the Claude tier of the
                 # coder waterfall.

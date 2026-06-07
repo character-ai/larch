@@ -90,7 +90,10 @@ codex_prompt=$(make_prompt_file codex)
 cursor_prompt=$(make_prompt_file cursor)
 
 VOTER_1_PATH="$DESIGN_TMPDIR/claude-vote-output.txt"
-set +e
+# #3704: dispatch all three voters in parallel. The Claude voter is backgrounded
+# and the Codex+Cursor waterfall launches immediately — no serial gate between
+# the Claude lane and the external lanes (same structure as
+# dispatch-code-voters.sh).
 "$SCRIPT_DIR/launch-claude-review.sh" \
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
@@ -99,7 +102,46 @@ set +e
     --read-tools-add-dir "$DESIGN_TMPDIR" \
     --timeout 1200 \
     --timing-task-kind claude-plan-voter \
-    >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
+    >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr" &
+voter1_pid=$!
+
+manifest="$DESIGN_TMPDIR/plan-voter-slots.ndjson"
+VOTER_2_PATH="$DESIGN_TMPDIR/codex-vote-output.txt"
+VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
+: >"$manifest"
+if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_PATH" "$codex_prompt" >>"$manifest"
+fi
+if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt" >>"$manifest"
+fi
+
+waterfall_output=""
+if [[ -s "$manifest" ]]; then
+    # Guard against non-zero exit from waterfall (e.g. a reviewer launcher
+    # exiting abnormally mid-run) so set -e does not abort dispatch — and
+    # orphan the backgrounded Claude voter — before tally.
+    set +e
+    waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+        --slots-file "$manifest" \
+        --codex-present "$CODEX_AVAILABLE" \
+        --cursor-present "$CURSOR_AVAILABLE" \
+        --mode description \
+        --no-fallback \
+        --timeout 1860)
+    _waterfall_rc=$?
+    set -e
+    if [[ $_waterfall_rc -ne 0 ]]; then
+        larch_err "dispatch-plan-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
+    fi
+else
+    waterfall_output=$'DISPATCH_OK=true\n'
+fi
+
+# Reap the parallel Claude voter; it has been running concurrently with the
+# external waterfall since dispatch.
+set +e
+wait "$voter1_pid"
 voter1_rc=$?
 set -e
 [[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
@@ -152,30 +194,6 @@ fi
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
 [[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
-
-manifest="$DESIGN_TMPDIR/plan-voter-slots.ndjson"
-VOTER_2_PATH="$DESIGN_TMPDIR/codex-vote-output.txt"
-VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
-: >"$manifest"
-if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_PATH" "$codex_prompt" >>"$manifest"
-fi
-if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt" >>"$manifest"
-fi
-
-waterfall_output=""
-if [[ -s "$manifest" ]]; then
-    waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
-        --slots-file "$manifest" \
-        --codex-present "$CODEX_AVAILABLE" \
-        --cursor-present "$CURSOR_AVAILABLE" \
-        --mode description \
-        --no-fallback \
-        --timeout 1860)
-else
-    waterfall_output=$'DISPATCH_OK=true\n'
-fi
 
 dispatch_ok="true"
 waterfall_files=""

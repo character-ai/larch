@@ -1003,8 +1003,8 @@ fi
 # shellcheck disable=SC2016 # literal source text, not shell.
 grep -Fq 'larch_err "→ step0: coder=${coder}"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain the coder breadcrumb literal"
-grep -Fq 'Review/fix and other fixer lanes remain Codex-first' "$REPO_ROOT/SECURITY.md" \
-  || fail "SECURITY.md must document Codex-first fixer adjacency"
+grep -Fq 'The review-fix coder lane is Cursor-first (Cursor → Codex → main agent, #3704); other fixer lanes remain Codex-first' "$REPO_ROOT/SECURITY.md" \
+  || fail "SECURITY.md must document the Cursor-first review-fix lane and Codex-first fixer adjacency"
 grep -Fq "Operators who want Codex on \`/implement\` can pin it explicitly with \`--coder=codex\`." "$REPO_ROOT/SECURITY.md" \
   || fail "SECURITY.md must document explicit --coder=codex pinning"
 # shellcheck disable=SC2016 # literal removed-helper pin.

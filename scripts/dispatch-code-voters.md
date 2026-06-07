@@ -2,7 +2,7 @@
 
 Launches the `/review` judge voting panel: Claude (always) plus each **available** external (Codex, Cursor). The panel uses **shrink-not-backfill** — an unavailable external is dropped, never replaced by a duplicate judge (the alternate external or an extra Claude). The eligible panel is therefore Claude plus the number of available externals: the full tier when both vendors are up, the unanimous tier when one is up, and the binding single-judge tier when both are down. The Codex and Cursor slots are always written to the manifest, but `dispatch-with-waterfall.sh` is invoked with `--no-fallback`, so an absent or failed external slot is dropped from the result set rather than back-filled. The acceptance-threshold table in `skills/shared/voting-protocol.md` compensates for the smaller panel; a panel that shrank solely from vendor unavailability is the designed state, not a degradation.
 
-Voter 1 is always Claude (the floor) and is launched directly through `scripts/launch-claude-review.sh`. Voter 2 (Codex) and Voter 3 (Cursor) are dispatched through `scripts/dispatch-with-waterfall.sh --no-fallback`: each slot launches only when its vendor is available, and an unavailable or failed external is dropped, not back-filled. The dispatcher maps the waterfall's surviving outputs back to the Codex/Cursor slots **by tool name** (not by position), because `--no-fallback` removes dropped slots from `ALL_OUTPUT_FILES` and positional indexing would otherwise mis-assign a lone survivor.
+Voter 1 is always Claude (the floor) and is launched directly through `scripts/launch-claude-review.sh` as a **backgrounded parallel lane** (#3704): all three voters dispatch at the same time, with no serial gate between the Claude lane and the external waterfall. Voter 2 (Codex) and Voter 3 (Cursor) are dispatched through `scripts/dispatch-with-waterfall.sh --no-fallback`: each slot launches only when its vendor is available, and an unavailable or failed external is dropped, not back-filled. The dispatcher maps the waterfall's surviving outputs back to the Codex/Cursor slots **by tool name** (not by position), because `--no-fallback` removes dropped slots from `ALL_OUTPUT_FILES` and positional indexing would otherwise mis-assign a lone survivor.
 
 Before invoking nested `dispatch-with-waterfall.sh`, the script defensively
 does not allocate paired-PID files; this script is not a top-level
@@ -31,7 +31,7 @@ All launched voter dispatches use `mode=description`. The voter prompt is render
 
 ## Behavior
 
-Voter 1 runs synchronously via `launch-claude-review.sh` with `--role voter`. Voter 2 (Codex) and Voter 3 (Cursor) are dispatched together through `dispatch-with-waterfall.sh --no-fallback`:
+Voter 1 launches in the background via `launch-claude-review.sh` with `--role voter`, in parallel with the external waterfall; the dispatcher reaps it (`wait "$voter1_pid"` → `voter1_rc`) after the waterfall returns, before the Voter 1 failure diagnostics and the `.done` sentinel barrier. Voter 2 (Codex) and Voter 3 (Cursor) are dispatched together through `dispatch-with-waterfall.sh --no-fallback`:
 
 - A slot launches only when its vendor is available (`--codex-present` mirrors `--codex-available`, `--cursor-present` mirrors `--cursor-available`).
 - An unavailable or failed external slot is **dropped** (`tool-absent` for an absent vendor; a collector/format failure for an available-but-broken one), not back-filled to the alternate external or to Claude. Dropped slots are omitted from `ALL_OUTPUT_FILES`.
@@ -71,4 +71,4 @@ The `make_voter_prompt_file` function includes a silent-drop warning: non-matchi
 ## Callers and Harness
 
 - Caller: `skills/review/scripts/review-core.sh`
-- Harness: `scripts/test-dispatch-code-voters.sh`
+- Harness: `scripts/test-dispatch-code-voters.sh` (includes a #3704 parallel-dispatch probe: the Claude CLI stub blocks until the waterfall stub drops a marker, so serialized dispatch fails Voter 1 deterministically)

@@ -242,7 +242,7 @@ escape_prompt_data() {
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || fail "--mode must be diff or description"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
-# Cursor tier is accepted for caller API parity; scout waterfall is Codex → Claude only.
+# Codex tier is accepted for caller API parity; scout waterfall is Cursor → Claude only (#3704).
 case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer from 0 to 8" ;; esac
 (( 10#$MAX_ARCHETYPES <= 8 )) || fail "--max-archetypes must be an integer from 0 to 8"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
@@ -382,7 +382,7 @@ fenced_json_tmp=""
 tier_raw="$raw_output"
 winner_raw=""
 had_probe_miss=0
-codex_had_probe_miss=0
+cursor_had_probe_miss=0
 claude_supplied_winner=0
 last_launch_rc=1
 last_scout_status="claude-failed"
@@ -395,32 +395,35 @@ launch_latency_ms() {
     case "$latency_s" in ''|*[!0-9]*) printf '0\n' ;; *) printf '%s\n' "$((latency_s * 1000))" ;; esac
 }
 
-run_codex_tier() {
-    local launch_stdout="${OUTPUT}.codex.launch.env"
-    local -a codex_args=(
-        --tool codex
+run_cursor_tier() {
+    local launch_stdout="${OUTPUT}.cursor.launch.env"
+    # No sandbox add-dir grant: Cursor uses --workspace inside launch-review.sh
+    # and reads the staged-context paths referenced by the prompt directly
+    # (see .claude/rules/external-tool-launcher-parity.md — do not add a
+    # symmetric --add-dir grant to the Cursor launcher).
+    local -a cursor_args=(
+        --tool cursor
         --output "$tier_raw"
         --prompt-file "$prompt_file"
         --mode "$MODE"
         --timeout "$TIMEOUT"
         --timing-task-kind scout-dynamic-archetypes
-        --codex-add-dir "$STAGED_DIR"
     )
     set +e
-    "$LAUNCH_REVIEW_SH" "${codex_args[@]}" >"$launch_stdout"
+    "$LAUNCH_REVIEW_SH" "${cursor_args[@]}" >"$launch_stdout"
     last_launch_rc=$?
     set -e
     latency_ms=$(launch_latency_ms "$launch_stdout")
     if [[ "$last_launch_rc" -ne 0 ]]; then
         local launch_status
         launch_status=$(awk -F= '$1=="STATUS"{print $2; exit}' "$launch_stdout" 2>/dev/null || true)
-        last_scout_status="codex-failed"
+        last_scout_status="cursor-failed"
         [[ "$launch_status" == "TIMEOUT" || "$launch_status" == "cap_hit" ]] && last_scout_status="timeout"
         return 1
     fi
     if [[ ! -s "$tier_raw" ]]; then
         had_probe_miss=1
-        codex_had_probe_miss=1
+        cursor_had_probe_miss=1
         return 1
     fi
     if tier_raw_is_scout_json "$tier_raw"; then
@@ -428,7 +431,7 @@ run_codex_tier() {
         return 0
     fi
     had_probe_miss=1
-    codex_had_probe_miss=1
+    cursor_had_probe_miss=1
     return 1
 }
 
@@ -467,9 +470,9 @@ run_claude_tier() {
     return 1
 }
 
-if [[ "$CODEX_PRESENT" == "true" ]]; then
+if [[ "$CURSOR_PRESENT" == "true" ]]; then
     rm -f "${tier_raw}.cap-hit"
-    run_codex_tier || true
+    run_cursor_tier || true
 fi
 if [[ -z "$winner_raw" ]]; then
     rm -f "${tier_raw}.cap-hit"
@@ -477,7 +480,7 @@ if [[ -z "$winner_raw" ]]; then
 fi
 
 if [[ -z "$winner_raw" ]]; then
-    if [[ "$CODEX_PRESENT" == "true" ]]; then
+    if [[ "$CURSOR_PRESENT" == "true" ]]; then
         if (( had_probe_miss )); then
             write_empty_manifest "$OUTPUT"
             if [[ "$last_launch_rc" -ne 0 ]]; then
@@ -641,8 +644,8 @@ else
     scout_status="ok"
 fi
 
-if [[ "$MODE" == "description" && "$CODEX_PRESENT" == "true" && "$codex_had_probe_miss" -eq 1 && "$claude_supplied_winner" -eq 1 && "$scout_status" == "ok" ]]; then
-    emit_kv WARN "codex description-mode tier missed scout JSON; claude tier supplied winner"
+if [[ "$MODE" == "description" && "$CURSOR_PRESENT" == "true" && "$cursor_had_probe_miss" -eq 1 && "$claude_supplied_winner" -eq 1 && "$scout_status" == "ok" ]]; then
+    emit_kv WARN "cursor description-mode tier missed scout JSON; claude tier supplied winner"
 fi
 
 emit_kv SCOUT_STATUS "$scout_status"

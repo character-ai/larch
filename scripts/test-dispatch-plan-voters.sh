@@ -62,6 +62,20 @@ printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputToke
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
+if [[ "${CLAUDE_STUB_MODE:-ok}" == "wait_for_marker" ]]; then
+    # #3704 parallel-dispatch probe: block until the waterfall stub drops the
+    # marker. Under serialized dispatch the marker never appears while the
+    # Claude voter runs and this exits 1.
+    cat >/dev/null
+    _i=0
+    while [[ ! -f "${CLAUDE_STUB_WAIT_MARKER:?}" && "$_i" -lt 100 ]]; do
+        sleep 0.1
+        _i=$((_i + 1))
+    done
+    [[ -f "${CLAUDE_STUB_WAIT_MARKER}" ]] || exit 1
+    printf 'FINDING_1: YES\nOOS_1: NO -- claude parallel ok\n'
+    exit 0
+fi
 [[ "${CLAUDE_STUB_MODE:-ok}" == "fail" ]] && exit 77
 prompt="$(cat)"
 if grep -Fq 'previous attempt produced narrative output' <<< "$prompt"; then
@@ -136,6 +150,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$slots_file" ]] || exit 2
+if [[ -n "${PLAN_VOTER_WATERFALL_MARKER:-}" ]]; then
+    # #3704 parallel-dispatch probe: signal the blocked Claude CLI stub.
+    : > "$PLAN_VOTER_WATERFALL_MARKER"
+fi
 mode="${PLAN_VOTER_STUB_MODE:-healthy}"
 all_outputs=()
 all_tools=()
@@ -462,5 +480,23 @@ if grep -Fxq "$v2_failed" "$pv_ns"; then
     echo "FAIL: substantive-fail paths file must omit failed voter 2" >&2
     exit 1
 fi
+
+# #3704: all three plan voters dispatch in parallel. The Claude CLI stub blocks
+# until the waterfall stub drops a marker file; under the old serialized
+# dispatch the marker never appears while the Claude voter runs, the stub exits
+# 1, and VOTER_1 fails — so VOTER_1_STATUS=launched proves concurrent dispatch
+# without any wall-clock assertion.
+parallel_marker="$TMP/parallel-waterfall-started"
+out_parallel=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" \
+    CLAUDE_STUB_MODE=wait_for_marker \
+    CLAUDE_STUB_WAIT_MARKER="$parallel_marker" \
+    PLAN_VOTER_WATERFALL_MARKER="$parallel_marker" \
+    PLAN_VOTER_STUB_LOG="$TMP/stub-parallel.log" \
+    "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/parallel-dispatch" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out_parallel" \
+    || fail "parallel dispatch — Claude plan voter must run concurrently with the external waterfall (#3704)"
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out_parallel" || fail "parallel dispatch should keep voter2 launched"
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out_parallel" || fail "parallel dispatch should keep voter3 launched"
+grep -Fq 'DISPATCH_OK=true' <<< "$out_parallel" || fail "parallel dispatch should report DISPATCH_OK=true"
 
 echo "PASS: test-dispatch-plan-voters.sh"

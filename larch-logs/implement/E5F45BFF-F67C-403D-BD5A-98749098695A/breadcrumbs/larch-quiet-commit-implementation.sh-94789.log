@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-bug-implement-review-dispat-3704 d100ca039] Fixes #3704: parallelize review/plan voters, Cursor-first review-fix coder, Cursor->Claude scout
+ 23 files changed, 355 insertions(+), 212 deletions(-)

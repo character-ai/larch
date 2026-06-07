@@ -107,7 +107,7 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
 | **Dialectic debate** (`/design` Step 2a.5) | Defend / attack contested decisions | `/design` | **Bucket skipped — no Claude substitution** (per-side Cursor↔Codex→Claude-final retry) |
 | Dialectic judge panel (`/design` Step 2a.5) | Adjudicate between pre-authored defenses | `/design` | Replacement-first (panel shape stays intact) |
-| Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Codex→Claude waterfall** (landed in #3187) |
+| Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Cursor→Claude waterfall** (#3704; Codex is not in the scout waterfall) |
 
 ## Dialectic-specific behavior
 
