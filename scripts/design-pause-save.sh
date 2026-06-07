@@ -170,10 +170,8 @@ STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 STEP=""
 if [[ -f "$DESIGN_TMPDIR/.step3-reentry" ]]; then
     STEP="3"
-elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
     STEP="3b"
-elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
-    STEP="3.6"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && ! -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
     STEP="3.5"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-5b" && ! -f "$DESIGN_TMPDIR/.completed/step-5c" ]]; then

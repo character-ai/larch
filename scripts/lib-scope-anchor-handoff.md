@@ -9,7 +9,6 @@ gating and path validation in the plan-review pipeline.
   `IMPLEMENT_TMPDIR`).
 - **Primary callers**: `skills/design/scripts/plan-review-loop.sh`,
   `skills/design/scripts/run-step3-review.sh`,
-  `skills/shared/scripts/render-assessor-prompt.sh`,
   `skills/shared/scripts/render-voter-prompt.sh`,
   `skills/review/scripts/aggregate-findings.sh`.
 - **Invariants**: path-only handoff — the relay never inlines anchor bytes;

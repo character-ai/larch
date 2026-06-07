@@ -491,7 +491,7 @@ fi
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"
 make_design_tmpdir "$DESIGN_LEGACY_FINALIZE"
-complete_design_steps "$DESIGN_LEGACY_FINALIZE" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+complete_design_steps "$DESIGN_LEGACY_FINALIZE" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3b
 [[ ! -f "$DESIGN_LEGACY_FINALIZE/.completed/finalize" ]] || fail "legacy finalize precondition unexpectedly has .completed/finalize"
 printf 'issue body legacy finalize\n' >"$BODY_FILE"
 out_legacy_finalize=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_FINALIZE" --issue 9 --repo owner/repo)
@@ -516,7 +516,7 @@ fi
 
 DESIGN_LEGACY_FINALIZE_FAIL="$TMP/design-legacy-finalize-fail"
 make_design_tmpdir "$DESIGN_LEGACY_FINALIZE_FAIL"
-complete_design_steps "$DESIGN_LEGACY_FINALIZE_FAIL" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+complete_design_steps "$DESIGN_LEGACY_FINALIZE_FAIL" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3b
 set +e
 out_legacy_finalize_fail=$(DESIGN_TMPDIR="$DESIGN_LEGACY_FINALIZE_FAIL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
@@ -536,26 +536,25 @@ set -e
 [[ "$rc_legacy_finalize_fail" -ne 0 ]] || fail "old Step 4 FINALIZE failure guard should exit non-zero"
 [[ "$out_legacy_finalize_fail" == *"**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"* ]] || fail "old Step 4 FINALIZE failure warning missing: $out_legacy_finalize_fail"
 
-echo "=== step 3.6 and gate B bypass pause resume ==="
-DESIGN_36="$TMP/design-36"
-make_design_tmpdir "$DESIGN_36"
-complete_design_steps "$DESIGN_36" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5
-printf 'issue body 36\n' >"$BODY_FILE"
-out_36=$(bash "$SAVE" --design-tmpdir "$DESIGN_36" --issue 9 --repo owner/repo)
-[[ "$out_36" == *"PAUSE_OK=true"* && "$out_36" == *"STEP=3.6"* ]] || fail "expected step 3.6 after step-3.5: $out_36"
-out_36_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-36" --issue 9 --repo owner/repo)
-[[ "$out_36_load" == *"LOAD_OK=true"* && "$out_36_load" == *"STEP=3.6"* ]] || fail "step 3.6 load mismatch: $out_36_load"
+echo "=== gate B bypass pause resume ==="
+DESIGN_35="$TMP/design-35"
+make_design_tmpdir "$DESIGN_35"
+complete_design_steps "$DESIGN_35" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5
+printf 'issue body 35\n' >"$BODY_FILE"
+out_35=$(bash "$SAVE" --design-tmpdir "$DESIGN_35" --issue 9 --repo owner/repo)
+[[ "$out_35" == *"PAUSE_OK=true"* && "$out_35" == *"STEP=3b"* ]] || fail "expected step 3b after step-3.5: $out_35"
+out_35_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-35" --issue 9 --repo owner/repo)
+[[ "$out_35_load" == *"LOAD_OK=true"* && "$out_35_load" == *"STEP=3b"* ]] || fail "step 3.5-done load mismatch: $out_35_load"
 
 DESIGN_GATE_B="$TMP/design-gate-b-bypass"
 make_design_tmpdir "$DESIGN_GATE_B"
 [[ ! -f "$DESIGN_GATE_B/.completed/step-3" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3"
 [[ ! -f "$DESIGN_GATE_B/.completed/step-3.5" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3.5"
-[[ ! -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3.6"
 apply_gate_b_bypass_sentinels "$DESIGN_GATE_B" || fail "gate B bypass helper refused empty state"
-[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass helper missing triple sentinels"
+[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" ]] || fail "gate B bypass helper missing dual sentinels"
 printf 'issue body gate b\n' >"$BODY_FILE"
 out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
-[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass writes triple sentinels from empty state: $out_gate_b"
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass writes dual sentinels from empty state: $out_gate_b"
 out_gate_b_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_load" == *"LOAD_OK=true"* && "$out_gate_b_load" == *"STEP=3b"* ]] || fail "gate B bypass empty-state load mismatch: $out_gate_b_load"
 printf '12\n' >"$DESIGN_GATE_B/diff-lines.txt"
@@ -579,9 +578,8 @@ make_design_tmpdir "$DESIGN_GATE_B_STEP3"
 complete_design_steps "$DESIGN_GATE_B_STEP3" 3
 [[ -f "$DESIGN_GATE_B_STEP3/.completed/step-3" ]] || fail "gate B bypass step-3-only precondition missing step-3"
 [[ ! -f "$DESIGN_GATE_B_STEP3/.completed/step-3.5" ]] || fail "gate B bypass step-3-only precondition unexpectedly has step-3.5"
-[[ ! -f "$DESIGN_GATE_B_STEP3/.completed/step-3.6" ]] || fail "gate B bypass step-3-only precondition unexpectedly has step-3.6"
 apply_gate_b_bypass_sentinels "$DESIGN_GATE_B_STEP3" || fail "gate B bypass helper refused pre-existing step-3"
-[[ -f "$DESIGN_GATE_B_STEP3/.completed/step-3.5" && -f "$DESIGN_GATE_B_STEP3/.completed/step-3.6" ]] || fail "gate B bypass helper missing supplemental sentinels"
+[[ -f "$DESIGN_GATE_B_STEP3/.completed/step-3.5" ]] || fail "gate B bypass helper missing supplemental step-3.5 sentinel"
 printf 'issue body gate b step3\n' >"$BODY_FILE"
 out_gate_b_step3=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_STEP3" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_step3" == *"PAUSE_OK=true"* && "$out_gate_b_step3" == *"STEP=3b"* ]] || fail "gate B bypass with pre-existing step-3 should resume at 3b: $out_gate_b_step3"
@@ -595,19 +593,12 @@ printf 'issue body gate b missing\n' >"$BODY_FILE"
 out_gate_b_missing=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_MISSING" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_missing" == *"PAUSE_OK=true"* && "$out_gate_b_missing" == *"STEP=3.5"* ]] || fail "missing gate B bypass sentinels should resume at 3.5: $out_gate_b_missing"
 
-DESIGN_GATE_B_PARTIAL="$TMP/design-gate-b-partial-sentinel"
-make_design_tmpdir "$DESIGN_GATE_B_PARTIAL"
-complete_design_steps "$DESIGN_GATE_B_PARTIAL" 3.6
-printf 'issue body gate b partial\n' >"$BODY_FILE"
-out_gate_b_partial=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_PARTIAL" --issue 9 --repo owner/repo)
-[[ "$out_gate_b_partial" == *"PAUSE_OK=true"* && "$out_gate_b_partial" != *"STEP=3b"* ]] || fail "partial step-3.6 sentinel must not resume at 3b: $out_gate_b_partial"
-
 DESIGN_GATE_B_DONE="$TMP/design-gate-b-done"
 make_design_tmpdir "$DESIGN_GATE_B_DONE"
-complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
+complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5
 printf 'issue body gate b done\n' >"$BODY_FILE"
 out_gate_b_done=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_DONE" --issue 9 --repo owner/repo)
-[[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B triple touch should resume at 3b: $out_gate_b_done"
+[[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B dual touch should resume at 3b: $out_gate_b_done"
 set +e
 out_step3b_boundary_fail=$(DESIGN_TMPDIR="$DESIGN_GATE_B_DONE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
 set +e
@@ -722,7 +713,7 @@ out_bad_session_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
 echo "=== step-5b complete with withheld step-5c resumes at 5c ==="
 DESIGN_5C="$TMP/design-5c-withheld"
 make_design_tmpdir "$DESIGN_5C"
-complete_design_steps "$DESIGN_5C" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b 5b
+complete_design_steps "$DESIGN_5C" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b
 [[ -f "$DESIGN_5C/.completed/step-5b" ]] || fail "step-5b withheld-5c precondition missing step-5b"
 [[ ! -f "$DESIGN_5C/.completed/step-5c" ]] || fail "step-5c withheld-5c precondition unexpectedly has step-5c"
 printf 'issue body 5c withheld\n' >"$BODY_FILE"
@@ -929,7 +920,7 @@ printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\n' >"$LEGACY_HARD/pause-state.txt"
 : >"$LEGACY_HARD/.completed/step-3.5"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3b\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_legacy_3b=$(bash "$LOAD" --design-tmpdir "$TMP/legacy-3b" --issue 9 --repo owner/repo)
-[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3.6"* ]] || fail "legacy HARD STEP=3b without step-3.6 should resume at assessor: $out_legacy_3b"
+[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3b"* ]] || fail "legacy HARD STEP=3b with step-3.5 should resume at 3b: $out_legacy_3b"
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nTIER=SIMPLE\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_valid_marker=$(bash "$LOAD" --design-tmpdir "$TMP/valid-marker-fields" --issue 9 --repo owner/repo)
@@ -1035,7 +1026,7 @@ make_design_tmpdir "$DESIGN_DIRECT"
 complete_design_steps "$DESIGN_DIRECT" 0c 1c 1d 1d.5 1d.7
 printf 'direct review plan\n' >"$DESIGN_DIRECT/plan.txt"
 DESIGN_TMPDIR="$DESIGN_DIRECT" bash -euo pipefail -c '
-rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.step3-reentry"
@@ -1157,11 +1148,11 @@ fi
 echo "=== backward-loop re-entry clear host removes stale downstream sentinels ==="
 DESIGN_BACKWARD="$TMP/design-backward-loop"
 make_design_tmpdir "$DESIGN_BACKWARD"
-complete_design_steps "$DESIGN_BACKWARD" 0c 1c 1d 1d.5 1d.7 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b
+complete_design_steps "$DESIGN_BACKWARD" 0c 1c 1d 1d.5 1d.7 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b
 DESIGN_TMPDIR="$DESIGN_BACKWARD" bash -euo pipefail -c '
-rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 '
-for stale_step in 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b; do
+for stale_step in 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b; do
   [[ ! -f "$DESIGN_BACKWARD/.completed/step-$stale_step" ]] || fail "backward-loop clear host left stale step-$stale_step"
 done
 printf 'issue body backward loop 1e\n' >"$BODY_FILE"
@@ -1174,11 +1165,11 @@ out_backward_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_BACKWARD" --issue 9 -
 
 DESIGN_BACKWARD_DIRECT="$TMP/design-backward-direct"
 make_design_tmpdir "$DESIGN_BACKWARD_DIRECT"
-complete_design_steps "$DESIGN_BACKWARD_DIRECT" 0c 1c 1d 1d.5 1d.7 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b
+complete_design_steps "$DESIGN_BACKWARD_DIRECT" 0c 1c 1d 1d.5 1d.7 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b
 printf 'backward direct plan\n' >"$DESIGN_BACKWARD_DIRECT/plan.txt"
 DESIGN_TMPDIR="$DESIGN_BACKWARD_DIRECT" bash -euo pipefail -c '
-rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
-rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+rm -f "$DESIGN_TMPDIR/.completed/step-1e" "$DESIGN_TMPDIR/.completed/step-2a" "$DESIGN_TMPDIR/.completed/step-2a.5" "$DESIGN_TMPDIR/.completed/step-2b" "$DESIGN_TMPDIR/.completed/step-2b.5" "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.step3-reentry"
 if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then

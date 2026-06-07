@@ -20,7 +20,6 @@ DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.s
 PARSE_DESIGN_ARGV_SH="$REPO_ROOT/skills/design/scripts/parse-design-argv.sh"
 DESIGN_ROUTE_SH="$REPO_ROOT/skills/design/scripts/design-route.sh"
 DESIGN_INIT_SH="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
-DESIGN_PLAN_QUALITY_ASSESSOR_SH="$REPO_ROOT/skills/design/scripts/design-plan-quality-assessor.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 
@@ -412,10 +411,6 @@ assert_thin_fence() {
 
   grep -Fq 'set +e' "$subject" || fail "$label missing set +e child capture"
   grep -Fq '$?' "$subject" || fail "$label missing explicit rc capture"
-  # shellcheck disable=SC2016 # literal shell snippet should not expand in the harness.
-  if grep -Fq 'source "$DESIGN_TMPDIR/.step3.6-assessor.env"' "$subject"; then
-    fail "$label must not source assessor result env"
-  fi
   if grep -Fq '2>&1 | tail -n 1' "$subject"; then
     fail "$label must not merge stdout/stderr for scalar parsing"
   fi
@@ -425,14 +420,6 @@ assert_thin_fence() {
     fi
     if grep -Fq 'phase_driver_read_result_env' "$subject"; then
       fail "$label must not call phase_driver_read_result_env"
-    fi
-    if awk '
-      /while[[:space:]].*read/ { in_read_loop=1 }
-      in_read_loop && /done[[:space:]]*<.*\.step3\.6-assessor\.env/ { found=1; in_read_loop=0 }
-      in_read_loop && /^[[:space:]]*done([[:space:]]|$)/ { in_read_loop=0 }
-      END { exit found ? 0 : 1 }
-    ' "$subject"; then
-      fail "$label must not read .step3.6-assessor.env with a file-first while/read loop"
     fi
     local entry_guard_line
     entry_guard_line=$(awk '/read-design-classification\.sh/ { exit } /\.pause-requested/ && /design-pause-save\.sh/ { print; exit }' "$subject")
@@ -571,86 +558,37 @@ assert_step3b_entry_guard_threads_repo() {
 }
 
 run_thin_fence_self_tests() {
-  local tmp base inside_loop missing_repo
+  local tmp base missing_repo
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-structure-self.XXXXXX")
   trap 'rm -rf "$tmp"' RETURN
   base="$tmp/base.md"
   cat >"$base" <<'EOF_SELF'
-source "$DESIGN_TMPDIR/.step3.6-assessor.env"
-<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+<!-- step:X.test — Synthetic test step -->
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set +e
-_assessor_out=$(driver)
-_assessor_rc=$?
+_out=$(driver)
+_rc=$?
 set -e
-_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
 <!-- step:3b — Architecture Diagram -->
 EOF_SELF
-  assert_thin_fence "$base" 'self-test outside-region fat token' '<!-- step:3.6' '<!-- step:3b'
-
-  cat >"$tmp/inside-fat.md" <<'EOF_SELF'
-<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-set +e
-source "$DESIGN_TMPDIR/.step3.6-assessor.env"
-_assessor_rc=$?
-set -e
-_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
-<!-- step:3b — Architecture Diagram -->
-EOF_SELF
-  if (assert_thin_fence "$tmp/inside-fat.md" 'self-test inside-region fat token' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
-    fail 'self-test: fat-fence token inside Step 3.6 region should fail'
-  fi
-
-  inside_loop="$tmp/inside-loop.md"
-  cat >"$inside_loop" <<'EOF_SELF'
-<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-set +e
-while IFS= read -r _line; do
-  :
-done <"$DESIGN_TMPDIR/.step3.6-assessor.env"
-_assessor_rc=$?
-set -e
-_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
-<!-- step:3b — Architecture Diagram -->
-EOF_SELF
-  if (assert_thin_fence "$inside_loop" 'self-test file-first read loop' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
-    fail 'self-test: file-first .step3.6-assessor.env read loop should fail'
-  fi
+  assert_thin_fence "$base" 'self-test valid thin fence' '<!-- step:X.test' '<!-- step:3b'
 
   missing_repo="$tmp/missing-repo.md"
   cat >"$missing_repo" <<'EOF_SELF'
-<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+<!-- step:X.test — Synthetic test step -->
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 set +e
-_assessor_out=$(driver)
-_assessor_rc=$?
+_out=$(driver)
+_rc=$?
 exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set -e
-_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
 <!-- step:3b — Architecture Diagram -->
 EOF_SELF
-  if (assert_thin_fence "$missing_repo" 'self-test missing entry repo' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
+  if (assert_thin_fence "$missing_repo" 'self-test missing entry repo' '<!-- step:X.test' '<!-- step:3b') 2>/dev/null; then
     fail 'self-test: first entry pause-save guard without REPO should fail'
   fi
 }
 
-write_gate_b_bypass_fixture() {
-  local file="$1" missing_branch="${2:-}" missing_sentinel="${3:-}" branch line step35
-  : >"$file"
-  for branch in tally-error degraded-empty-collector panel-failed; do
-    # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the fixture.
-    step35=', and `: > "$DESIGN_TMPDIR/.completed/step-3.5"`'
-    if [[ "$branch" == "$missing_branch" && "$missing_sentinel" == step-3.5 ]]; then
-      step35=''
-    fi
-    printf '%s\n' "- \`LOOP_STATUS=$branch\` — Before jumping to Step 3b, write the Gate-B-bypass completion sentinels: \`mkdir -p \"\$DESIGN_TMPDIR/.completed\"\` plus \`: > \"\$DESIGN_TMPDIR/.completed/step-3\"\`${step35}, and \`: > \"\$DESIGN_TMPDIR/.completed/step-3.6\"\`." >>"$file"
-  done
-  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the fixture.
-  line='If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, write the Gate-B-bypass completion sentinels: `mkdir -p "$DESIGN_TMPDIR/.completed"` plus `: > "$DESIGN_TMPDIR/.completed/step-3"`, `: > "$DESIGN_TMPDIR/.completed/step-3.5"`, and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`.'
-  printf '%s\n' "$line" >>"$file"
-}
 
 run_gate_b_bypass_branch_sentinel_self_tests() {
   local fixture
@@ -781,9 +719,8 @@ contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping p
 contains "$APPROVAL_MD" 'auto-applying N accepted finding(s)' 'approval-gates.md missing Gate B auto-apply default breadcrumb'
 contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --approve explicit Gate B option wording'
 contains "$APPROVAL_MD" 'Gate B prompts explicitly before any finding changes' 'approval-gates.md missing explicit Gate B apply boundary (--approve path)'
-contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 boundary-qualified forward link'
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
+contains "$APPROVAL_MD" 'Step 3b → Step 3b completion boundary → Step 4 → Step 4b (Gate C) run in normal sequence' 'approval-gates.md missing zero-findings Step 3b boundary-qualified forward link'
+contains "$APPROVAL_MD" 'proceed to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b); Step 4 and Gate C follow in normal sequence.' 'approval-gates.md missing shared post-apply Step 3b forward link'
 contains "$APPROVAL_MD" '(default) — auto-apply.' 'approval-gates.md missing Gate B auto-apply default branch'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -1105,8 +1042,7 @@ assert_step3b_finalize_boundary
 assert_step2a_entry_simple_guard
 assert_simple_branch_has_no_sentinel_fence
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
-assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass/Gate B slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.6'
-assert_no_direct_step3b_step4_routes 'SKILL Step 3.6 slice' "$SKILL_MD" '<!-- step:3.6' '<!-- step:3b'
+assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass/Gate B slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'run-step3-review.md' "$RUN_STEP3_MD"
@@ -1130,9 +1066,7 @@ contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard' 'pause/resume harness missing old SIMPLE Step 2a compatibility fixture'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old step-3b without finalize should resume at Step 4 compatibility guard' 'pause/resume harness missing old Step 3b finalize compatibility fixture'
 assert_gate_b_bypass_branch_sentinels "$SKILL_MD"
-assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape' '<!-- step:3.6' '<!-- step:3b'
 assert_step3b_entry_guard_threads_repo "$SKILL_MD"
-assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assessor.sh thin-fence shape'
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
@@ -1354,7 +1288,7 @@ grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this fi
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
   fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
 fi
-grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(2974) SKILL.md missing updated anti-halt sequence"
 if grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD"; then
   fail "(2974) SKILL.md still contains stale 1d.5→1e anti-halt sequence"
@@ -1602,9 +1536,9 @@ assert_folded_sentinel_writes() {
   [[ -s "$tmp" ]] || fail '(21) Step 3.5 prelude fence missing'
   assert_fence_write_before_pause "$tmp" 'step-3' 'Step 3.5 prelude'
 
-  extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3.6' >"$tmp"
-  [[ -s "$tmp" ]] || fail '(21) Step 3.6 entry fence missing'
-  assert_fence_write_before_pause "$tmp" 'step-3.5' 'Step 3.6 entry'
+  extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3b' >"$tmp"
+  [[ -s "$tmp" ]] || fail '(21) Step 3b entry fence missing'
+  assert_fence_write_before_pause "$tmp" 'step-3.5' 'Step 3b entry'
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:5 —' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 5 prelude fence missing'
@@ -1710,7 +1644,7 @@ assert_backward_reentry_guards() {
 
   extract_bash_fence_after_marker "$SKILL_MD" 'Gate B(c) / Gate C(b) re-entry only' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Gate B/C Step 1e re-entry fence missing'
-  for step in step-1e step-2a step-2a.5 step-2b step-2b.5 step-3 step-3.5 step-3.6 step-3b step-4 step-4b; do
+  for step in step-1e step-2a step-2a.5 step-2b step-2b.5 step-3 step-3.5 step-3b step-4 step-4b; do
     grep -Fq "$step" "$tmp" \
       || fail "(21) Gate B/C re-entry fence missing stale clear for ${step}"
   done
@@ -1776,14 +1710,13 @@ assert_bash_fences_have_pause_check() {
 
 assert_step_completion_sentinels() {
   local step start_pat end_pat start_line end_line section
-  for step in 0c 1d.5 2b 2b.5 3b 3.6 4 5b; do
+  for step in 0c 1d.5 2b 2b.5 3b 4 5b; do
     case "$step" in
       0c) start_pat='### 0c —'; end_pat='<!-- step:1c' ;;
       1d.5) start_pat='<!-- step:1d.5'; end_pat='<!-- step:1e' ;;
       2b) start_pat='<!-- step:2b —'; end_pat='### Step 2b.5' ;;
       2b.5) start_pat='### Step 2b.5'; end_pat='<!-- step:3' ;;
       3b) start_pat='<!-- step:3b'; end_pat='<!-- step:4 —' ;;
-      3.6) start_pat='<!-- step:3.6'; end_pat='<!-- step:3b' ;;
       4) start_pat='<!-- step:4 —'; end_pat='<!-- step:4b' ;;
       5b) start_pat='### 5b'; end_pat='### 5c' ;;
     esac
@@ -1933,33 +1866,9 @@ echo "PASS: FINDING_2667_TEMPLATE — FINDING_N template six-field label set OK"
 
 contains "$DESIGN_POSTPLAN_EMIT_SH" 'snapshot-plan-round.sh' 'design-postplan-emit.sh missing snapshot-plan-round'
 contains "$DESIGN_POSTPLAN_EMIT_SH" 'write-original --design-tmpdir' 'design-postplan-emit.sh missing write-original invocation'
-contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'write-cursor --design-tmpdir' 'design-plan-quality-assessor.sh missing round-cursor advancement write-cursor'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'assess-plan-round.sh' 'design-plan-quality-assessor.sh missing assess-plan-round'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'snapshot-plan-round.sh' 'design-plan-quality-assessor.sh missing snapshot-plan-round'
-# shellcheck disable=SC2016 # SKILL.md bash excerpt; qualified path must remain unexpanded.
-contains "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"' 'SKILL.md missing qualified design-plan-quality-assessor invocation'
-contains "$SKILL_MD" 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' 'SKILL.md missing trusted assessor trailer marker parser'
-contains "$SKILL_MD" 'ASSESSOR_RC=%s' 'SKILL.md missing orchestrator-owned assessor rc print'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" 'design_classification=${_design_classification}; skipped' 'SKILL.md missing design_classification cheap-skip breadcrumb'
-contains "$SKILL_MD" 'design-plan-quality-assessor.sh configuration error (exit 2)' 'SKILL.md missing assessor exit-2 abort prose'
-contains "$SKILL_MD" 'WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' 'SKILL.md missing rc=10 trusted trailer fail-closed abort prose'
-contains "$SKILL_MD" 'Revert this round'\''s findings & proceed' 'SKILL.md missing Step 3.6 Revert prompt option'
-contains "$SKILL_MD" '.step3.6-trusted-assessor-round' 'SKILL.md missing durable assessor round anchor for Revert'
-contains "$SKILL_MD" 'snapshot-plan-round.sh" revert-round --design-tmpdir "$DESIGN_TMPDIR" --round "$ASSESSOR_ROUND_NUM"' 'SKILL.md missing Step 3.6 revert-round fence'
-contains "$SKILL_MD" 'Continue/Revert/Stop' 'SKILL.md missing Continue/Revert/Stop WORSE prompt wording'
-contains "$MAKEFILE" 'test-design-plan-quality-assessor' 'Makefile missing test-design-plan-quality-assessor target'
-[[ -x "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" ]] || fail "design-plan-quality-assessor.sh must be executable"
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_SNAPSHOT_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing SNAPSHOT_SH seam'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_ASSESS_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing ASSESS_SH seam'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_write_result_env' 'design-plan-quality-assessor.sh missing result flush helper'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_assessor_pause_checkpoint' 'design-plan-quality-assessor.sh missing pause checkpoint'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'set +e' 'design-plan-quality-assessor.sh missing child set +e capture'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
-contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode)' 'SKILL.md missing --approve explicit Gate B settle path'
 contains "$SKILL_MD" 'auto-applies** every accepted in-scope finding with no' 'SKILL.md missing Gate B auto-apply default routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
@@ -1986,33 +1895,7 @@ do
   [[ "$_bypass_line" != *'main-agent-vote-required'* ]] || fail 'bypass prose must not include main-agent-vote-required'
   [[ "$_bypass_line" != *'zero-findings-degraded-panel'* ]] || fail 'bypass prose must not include zero-findings-degraded-panel'
 done
-for _skip_breadcrumb in \
-  '⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)' \
-  '⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)' \
-  '⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)' \
-  '⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)' \
-
-do
-  contains "$SKILL_MD" "$_skip_breadcrumb" "SKILL.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"
-  contains "$APPROVAL_MD" "$_skip_breadcrumb" "approval-gates.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"
-done
-contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
-contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'
-contains "$REPO_ROOT/skills/design/scripts/test-render-final-summary.sh" "pass 'cancelled-assessor-worse outcome'" 'test-render-final-summary.sh missing cancelled-assessor-worse harness pin'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-plan-assessor' 'lib-timing-kinds.sh missing claude-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-phase2-plan-assessor' 'lib-timing-kinds.sh missing claude-phase2-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-phase3-plan-assessor' 'lib-timing-kinds.sh missing claude-phase3-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-plan-assessor' 'lib-timing-kinds.sh missing codex-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-phase1-plan-assessor' 'lib-timing-kinds.sh missing codex-phase1-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-phase2-plan-assessor' 'lib-timing-kinds.sh missing codex-phase2-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-plan-assessor' 'lib-timing-kinds.sh missing cursor-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-phase2-plan-assessor' 'lib-timing-kinds.sh missing cursor-phase2-plan-assessor'
-contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-phase3-plan-assessor' 'lib-timing-kinds.sh missing cursor-phase3-plan-assessor'
 contains "$MAKEFILE" 'test-snapshot-plan-round' 'Makefile missing test-snapshot-plan-round'
-contains "$MAKEFILE" 'test-dispatch-plan-assessors' 'Makefile missing test-dispatch-plan-assessors'
-contains "$MAKEFILE" 'test-render-assessor-prompt' 'Makefile missing test-render-assessor-prompt'
-contains "$MAKEFILE" 'test-tally-plan-assessor' 'Makefile missing test-tally-plan-assessor'
-contains "$MAKEFILE" 'test-assess-plan-round' 'Makefile missing test-assess-plan-round'
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

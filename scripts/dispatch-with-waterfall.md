@@ -32,7 +32,7 @@ When `--no-fallback` is set:
 - The paths-file and `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` stdout lists include **only** succeeded slots (empty dropped slots are omitted).
 - **Per-slot drop diagnostics (#3392).** Each dropped slot is classified with a reason and a single-line snippet (first ~200 chars) of the offending output, written to a sidecar TSV at `<paths-file>.dropped-slots` (one `slot<TAB>tool<TAB>reason<TAB>snippet` row per drop) whose path is emitted as `DROPPED_SLOTS_FILE`. Sidecar and KV are emitted only when at least one slot dropped. Reasons: `format-gate-miss` (non-empty `STATUS=OK` output whose first non-blank line fails `--require-first-line-pattern` — e.g. a leading conversational preamble — **and** which carries no later pattern-matching line to salvage; see the first-line-gate salvage note under Flags), `result-gate-miss` (fails `--require-result-pattern`), `empty` (`STATUS=OK` but no non-blank content), `collector-failure` (collector status not `OK`/`cap_hit`; snippet tails the slot's `.launch-stderr`), `result-unreadable` (gate check could not read the result file), and `tool-absent` (the slot's primary tool was not present). This lets a format-miss be distinguished from a tool outage instead of surfacing only as an empty paths-file. Drops are a `--no-fallback` concept: in the default multi-phase mode every slot settles on some tool, so no sidecar is written.
 
-`/design` plan-review, decompose, assessor, and plan-voter panels use this mode with availability-gated slot emission so absent tools are not manifest rows at all.
+`/design` plan-review, decompose, and plan-voter panels use this mode with availability-gated slot emission so absent tools are not manifest rows at all.
 
 ## Stdout keys
 

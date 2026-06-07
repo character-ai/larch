@@ -48,13 +48,12 @@ mkdir -p "$DESIGN_TMPDIR/.completed"
 
 case "$ACTION" in
     gate-b-bypass)
-        if [[ -f "$DESIGN_TMPDIR/.completed/step-3.5" || -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
+        if [[ -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
             printf '%s\n' 'STEP3_STATE=refused-partial-gate-b-bypass'
             exit 1
         fi
         : >"$DESIGN_TMPDIR/.completed/step-3"
         : >"$DESIGN_TMPDIR/.completed/step-3.5"
-        : >"$DESIGN_TMPDIR/.completed/step-3.6"
         printf '%s\n' 'STEP3_STATE=gate-b-bypass'
         ;;
     direct-review-entry|direct-review-pause-hygiene)
@@ -62,7 +61,7 @@ case "$ACTION" in
             printf '%s\n' 'STEP3_STATE=noop'
             exit 0
         fi
-        rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3.6" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
+        rm -f "$DESIGN_TMPDIR/.completed/step-3" "$DESIGN_TMPDIR/.completed/step-3.5" "$DESIGN_TMPDIR/.completed/step-3b" "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/.completed/step-4b"
         rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
         : >"$DESIGN_TMPDIR/.completed/step-1e"
         : >"$DESIGN_TMPDIR/.completed/step-2a"
