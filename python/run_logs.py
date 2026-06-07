@@ -1001,8 +1001,10 @@ def _publish_run_tree_to_repo(
         return ""
     if cwd is None:
         return f"larch-logs/implement/{run_id}"
-    repo_root = Path(cwd)
-    dest = repo_root / "larch-logs" / "implement" / run_id
+    # Always resolve destination from _REPO_ROOT (file-relative constant), never
+    # from cwd — a CWD that is a repo subdirectory (e.g. python/) would otherwise
+    # produce a stray tree at python/larch-logs/… instead of larch-logs/….
+    dest = _REPO_ROOT / "larch-logs" / "implement" / run_id
     if src.resolve() != dest.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=dest.parent, prefix=f".{run_id}.") as tmp:
@@ -1219,12 +1221,20 @@ def _larch_log_commit(
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if sentinel.exists():
         raise ShipError("refusing larch-log commit after post-merge sentinel")
-    if cwd is not None and (Path(cwd) / ".git").exists():
-        branch = git.try_current_branch(runner, cwd=cwd)
+    # Guard: refuse when the caller's cwd is not the repo root — staging
+    # larch-logs/ from a subdirectory (e.g. python/) would create a stray tree
+    # at python/larch-logs/… and silently pollute git history.
+    if cwd is not None and Path(cwd).resolve() != _REPO_ROOT.resolve():
+        raise ShipError(
+            f"refusing larch-log commit: cwd {cwd!r} is not repo root {str(_REPO_ROOT)!r}"
+        )
+    git_root = str(_REPO_ROOT)
+    if (_REPO_ROOT / ".git").exists():
+        branch = git.try_current_branch(runner, cwd=git_root)
         default_branches = {"main", "master"}
         origin_head = runner.run(
             ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-            cwd=cwd,
+            cwd=git_root,
         )
         if origin_head.returncode == 0 and origin_head.stdout.strip().startswith("origin/"):
             default_branches.add(origin_head.stdout.strip().split("/", 1)[1])
@@ -1238,32 +1248,32 @@ def _larch_log_commit(
     # ShipError if a detected secret survives.
     violations = 0
     if cwd is not None:
-        scrub_dir = Path(cwd) / rel
+        scrub_dir = _REPO_ROOT / rel
         if scrub_dir.is_dir():
             violations, files_scrubbed = _scrub_run_tree(scrub_dir)
             if violations > 0:
                 _warn_secret_scrub(violations, files_scrubbed, scrub_dir)
-    status = git.status_porcelain_paths(runner, rel, cwd=cwd)
+    status = git.status_porcelain_paths(runner, rel, cwd=git_root)
     if status.returncode != 0:
         return status
     if not status.stdout.strip():
         return CommandResult(("true",), 0, "", "", 0.0)
     if cwd is not None:
-        volatile_paths = _volatile_only_under_run_tree(rel, cwd, status.stdout)
+        volatile_paths = _volatile_only_under_run_tree(rel, git_root, status.stdout)
         if volatile_paths is not None:
             _cleanup_volatile_run_tree(
                 runner,
                 rel,
                 volatile_paths,
                 status.stdout,
-                cwd=cwd,
+                cwd=git_root,
             )
             return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.0)
-    _ = git.add(runner, rel, cwd=cwd)
-    if git.diff_quiet(runner, rel, cached=True, cwd=cwd):
+    _ = git.add(runner, rel, cwd=git_root)
+    if git.diff_quiet(runner, rel, cached=True, cwd=git_root):
         return CommandResult(("true",), 0, "", "", 0.0)
     subject = f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}{effective_run_id(ctx)}"
-    return git.commit(runner, subject, cwd=cwd)
+    return git.commit(runner, subject, cwd=git_root)
 
 
 def path_under_repo(repo_root: Path, rel_path: str) -> bool:
