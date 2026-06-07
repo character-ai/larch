@@ -217,7 +217,7 @@ set -e
 assert_rc "unbulleted security focus-area passes without URLs" 0 "$rc"
 
 awk_count=$(awk -f "$SCRIPT_DIR/oos-non-security-block-count.awk" "$TMP/sec-unbulleted.md")
-py_count=$(PYTHONPATH="$SCRIPT_DIR/../../../python" python3 -c 'import oos, sys; print(oos.count_non_security((sys.argv[1],)))' "$TMP/sec-unbulleted.md")
+py_count=$(PYTHONPATH="$SCRIPT_DIR/../../../python" python3 -c 'import file_oos, sys; print(file_oos.count_non_security((sys.argv[1],)))' "$TMP/sec-unbulleted.md")
 if [ "$awk_count" = "$py_count" ]; then
   pass "awk/python non-security counter parity for unbulleted security focus-area"
 else
