@@ -118,7 +118,7 @@ Different skills use different protocols for resolving review findings:
 
 | Protocol | Used by | Mechanism |
 |---|---|---|
-| [Voting](voting-process.md) | `/design`, `/review` (both diff and description modes) | The voting panel votes YES/NO/EXONERATE using the thresholds documented in the voting protocol. |
+| [Voting](voting-process.md) | `/design`, `/review` (both diff and description modes) | The voting panel votes YES/NO using the thresholds documented in the voting protocol. |
 | Negotiation | `/research` | Up to N rounds of back-and-forth with external reviewers. Claude makes the final call. |
 
 See [Voting Process](voting-process.md) for full details on the voting protocol.

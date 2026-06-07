@@ -155,7 +155,7 @@ Semantics:
 - `finding_reviewers` is proposer attribution copied from the ballot block.
 - `voting_result` is the final tally outcome for that row.
 - `vN_vote` is the normalized vote token used by the tally (`YES`, `NO`,
-  `EXONERATE`, or empty when that slot had no parseable vote for the id).
+  or empty when that slot had no parseable vote for the id; stray `EXONERATE` tokens are mapped to `NO`).
 - `vN_correctness`, `vN_severity`, `vN_quality`, and `vN_uncertain` are the
   optional forensic rating axes parsed from the same voter line.
 - `vN_tool` is the runtime tool identity for that slot.
@@ -235,8 +235,7 @@ finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\
 ```
 
 `finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
-pipe-delimited proposer attribution, and `voting_result` is one of `accepted`,
-`rejected`, `exonerated`, or `neutral`. `vN_*` columns follow compact effective
+pipe-delimited proposer attribution, and `voting_result` is one of `accepted`, `neutral`, or `rejected`. `vN_*` columns follow compact effective
 voter order after failed/degraded slots are removed. Rating cells are enum-only;
 missing or invalid axis tokens are empty and force `vN_uncertain=true`.
 
@@ -299,8 +298,7 @@ bailout paths may not produce them.
 
 One JSON object per `/implement` session. The tally envelope shape is shared with
 `code-review-tally.json`: `schema_version` (`2`), `phase`, `batch`, `mode`, `rounds`,
-`accepted_count`, `rejected_count`, `exonerated_count`, and
-`body`. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
+`accepted_count`, `rejected_count`, `exonerated_count` (always 0; retained for backward compatibility), and `body`. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
 the plan-review voting outcome (accepted count, rejected count, round summaries)
 plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
 sub-header. When no voting artifact is attached for this run, the body may note that plan review was completed in the `/design` phase instead of duplicating ballots here.

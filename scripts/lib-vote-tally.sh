@@ -5,9 +5,10 @@
 #
 # Contract documented in scripts/lib-vote-tally.md.
 
-# vote_for_id: prints YES | NO | EXONERATE | JUDGE_ERROR for a (id, voter_file) pair.
+# vote_for_id: prints YES | NO | JUDGE_ERROR for a (id, voter_file) pair.
 # Matches an anchored `<id>:` prefix and the first vote token after the colon to
 # avoid substring collisions and prose tokens overriding the actual vote.
+# Stray EXONERATE tokens from old voter output are tolerated and mapped to NO.
 # Returns JUDGE_ERROR on missing match (parser fallback — ballot entry absent or unparseable).
 vote_for_id() {
     local id="$1" file="$2"
@@ -22,7 +23,7 @@ vote_for_id() {
           sub(prefix, "", rest)
           if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
           else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
-          else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
+          else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="NO"
         }
       }
       END { print result }
@@ -155,30 +156,20 @@ split_ballot_to_blocks() {
 }
 
 # classify_result: derives a per-finding result label (accepted | rejected |
-# neutral | exonerated) from the vote counts. Encapsulates the secondary tie
-# rules so callers do not reimplement them. Prints the result to stdout.
+# neutral) from the vote counts. Prints the result to stdout.
+# neutral: not accepted but at least one YES vote (0 points to proposing reviewer).
+# rejected: not accepted and zero YES votes (-1 point to proposing reviewer).
+# The exonerate parameter is accepted for backward compatibility but is ignored;
+# vote_for_id maps stray EXONERATE tokens to NO so exonerate is always 0 in practice.
 classify_result() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
+    : "$no" "$exonerate"
     if (( eligible <= 0 )); then
         printf 'rejected'
-    elif (( eligible == 1 )); then
-        if (( yes > 0 )); then
-            printf 'accepted'
-        elif (( exonerate > 0 )); then
-            printf 'exonerated'
-        else
-            : "$no"
-            printf 'rejected'
-        fi
     elif accept_finding "$yes" "$no" "$exonerate" "$eligible"; then
         printf 'accepted'
-    elif (( yes > 0 && yes == no )); then
+    elif (( yes > 0 )); then
         printf 'neutral'
-    # Exoneration has two intentional paths:
-    # 1. Legacy zero-NO panels: any EXONERATE vote with no NO votes exonerates.
-    # 2. Mixed panels: EXONERATE must meet-or-beat NO and strictly exceed YES.
-    elif (( exonerate > 0 && (no == 0 || (exonerate >= no && exonerate > yes)) )); then
-        printf 'exonerated'
     else
         printf 'rejected'
     fi

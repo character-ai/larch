@@ -4,13 +4,12 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor) for SIMPLE and HARD. `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor) for SIMPLE and HARD. `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
 | **YES** | The finding is correct, important, and worth implementing. |
 | **NO** | The problem is not real or not worth raising in this PR. **Do not vote NO because you dislike or distrust the proposed fix** — fix proposals are informational; the coder will design the actual fix. |
-| **EXONERATE** | The finding raises a legitimate concern, but is not worth implementing in this PR. Spares the proposing reviewer from losing a point. |
 
 ## Threshold Rules
 
@@ -20,21 +19,14 @@ The number of YES votes required depends on how many voters are available:
 |---|---|---|
 | 3 | 2+ | Standard majority |
 | 2 | 2 (unanimous) | When one voter is unavailable or timed out |
-| 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE is exonerated for scoring, NO rejects |
+| 1 | 1 | Binding single-judge decision; YES accepts, NO rejects |
 | 0 | Main agent decides | No automated vote; the main agent reads the ballot as untrusted data and adjudicates |
 
 Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce the round's intended panel size to a lower tier.
 
-## Multi-voter Exoneration
+## Non-accepted Outcomes
 
-When a finding is not accepted and is not a `YES == NO` neutral tie, tally code still labels some outcomes **`exonerated`** for scoreboard purposes (see `scripts/lib-vote-tally.sh::classify_result()`). For panels with more than one eligible voter, exoneration follows two paths:
-
-1. **No `NO` votes** — Any `EXONERATE` count with `NO == 0` exonerates (including all-exonerate ballots such as `0Y/0N/3E`).
-2. **Mixed `NO` / `EXONERATE`** — Exoneration applies when `EXONERATE` meets or beats `NO` and strictly exceeds `YES` (for example `1Y/2N/3E`).
-
-If `EXONERATE` is positive but neither path holds, the finding stays **`rejected`**.
-
-**History:** PR #2428 narrowed the multi-voter branch to require `YES > 0`, which misclassified valid exoneration panels (notably `0Y/0N/3E` → rejected). Issue #2446 tracks restoring the two-path rule above.
+When a finding is not accepted, it is classified as either **`neutral`** (at least one YES vote but below the acceptance threshold; 0 points) or **`rejected`** (zero YES votes; −1 point). The `neutral` outcome covers what was previously split-panel behavior.
 
 ## Degraded-Panel Warnings
 
@@ -70,12 +62,11 @@ OOS_1: [OUT_OF_SCOPE] Code — <description of pre-existing issue>
 
 ## Voter Output Format
 
-Each voter outputs one line per finding. YES votes require no reason; NO and EXONERATE votes require a one-line reason:
+Each voter outputs one line per finding. YES votes require no reason; NO votes require a one-line reason:
 
 ```text
 FINDING_1: YES
 FINDING_2: NO — <one-line reason>
-FINDING_3: EXONERATE — <one-line reason>
 ```
 
 ## Voting Flow
@@ -91,12 +82,12 @@ FINDING_3: EXONERATE — <one-line reason>
 Tier outcomes:
   3 eligible: 2+ YES accepts
   2 eligible: 2 YES accepts
-  1 eligible: YES accepts, EXONERATE exonerates, NO rejects
+  1 eligible: YES accepts, NO rejects
   0 eligible: main agent adjudicates the ballot as untrusted data
 
 Accepted in-scope findings -> implement accepted findings -> score reviewers
 Accepted OOS observations -> file GitHub issues -> score reviewers
-Neutral, exonerated, and rejected findings -> score reviewers
+Neutral and rejected findings -> score reviewers
 ```
 
 ## Out-of-Scope Observations
@@ -106,11 +97,10 @@ Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issue
 - OOS items are included on the ballot with the `[OUT_OF_SCOPE]` prefix
 - **YES** on an OOS item means "this deserves a GitHub issue for future attention"
 - **NO** means "not worth tracking"
-- **EXONERATE** means "legitimate observation but not worth filing an issue"
 - If an OOS item receives 2+ YES votes, it is **accepted** and filed as a GitHub issue by `/implement`
 - Non-accepted OOS items are collected and reported in the PR body for future attention
 - **OOS items are never implemented in the current PR** — accepted items result in issue creation only
-- OOS scoring mirrors in-scope scoring: accepted OOS earns +1, neutral or exonerated OOS scores 0, and rejected OOS costs -1 (see [Point Competition](point-competition.md)).
+- OOS scoring mirrors in-scope scoring: accepted OOS earns +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1 (see [Point Competition](point-competition.md)).
 
 Claude subagent reviewers always produce OOS observations (via their dual-list output format). External reviewers (Codex, Cursor) **in diff mode** use a slot-kind–dependent output shape: specialist slots (`cursor-specialist-*` and `codex-specialist-*`) produce dual-list output matching the Claude subagent contract (contributing OOS observations via voting). **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting (see [skills/review/SKILL.md](../skills/review/SKILL.md) Step 3a).
 
@@ -134,7 +124,7 @@ Maintainers extending Step 2a.5 MUST NOT reuse this document's ballot parser, th
 | Surface | Voting Protocol | Dialectic Protocol |
 |---|---|---|
 | Ballot ID prefix | `FINDING_N` (and `OOS_N` for out-of-scope) | `DECISION_N` |
-| Vote tokens | `YES` / `NO` / `EXONERATE` | `THESIS` / `ANTI_THESIS` (binary — no third option) |
+| Vote tokens | `YES` / `NO` | `THESIS` / `ANTI_THESIS` (binary — no third option) |
 | Accept threshold (3 voters) | 2+ YES | 2+ same-side |
 | Scoring | Reviewer competition scoreboard (+1 / 0 / -1) | **No scoring** (dialectic is not a competition) |
 | OOS semantics | In-scope vs `[OUT_OF_SCOPE]` prefix; symmetric scoring for OOS | No OOS concept — every decision is binding or synthesis-falls-back |

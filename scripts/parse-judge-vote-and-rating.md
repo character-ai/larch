@@ -11,7 +11,7 @@ file is a hard non-zero exit.
 
 On success the script emits quiet-mode `KEY=value` lines:
 
-- `PARSED_VOTE=<YES|NO|EXONERATE|>`
+- `PARSED_VOTE=<YES|NO|>`
 - `PARSED_CORRECTNESS=<true|partially-true|false-positive|uncertain|>`
 - `PARSED_SEVERITY=<blocker|major|minor|nit|uncertain|>`
 - `PARSED_QUALITY=<excellent|good|adequate|weak|no-fix|uncertain|>`
@@ -20,7 +20,7 @@ On success the script emits quiet-mode `KEY=value` lines:
 No matching `<ID>:` line exits 0 with empty vote and empty axis values. A
 matching line whose token after `:` is not `YES`, `NO`, or `EXONERATE` also
 exits 0 with an empty vote. Vote tokens are matched case-insensitively and
-emitted upper-case.
+emitted upper-case. Stray `EXONERATE` tokens are tolerated and mapped to `NO`.
 
 Axis values are lowercase-only. Non-lowercase or otherwise unrecognized axis
 values emit empty for that axis and force `PARSED_UNCERTAIN=true`. The

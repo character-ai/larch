@@ -13,7 +13,7 @@
 #         - **Description**: <possibly multi-line>
 #           <continuation lines>
 #         - **Reviewer**: <attribution>
-#         - **Vote tally**: <YES/NO/EXONERATE counts>
+#         - **Vote tally**: <YES/NO counts>
 #         - **Phase**: design|review
 #
 #       The inline value after `- **Description**:` may be empty — in that

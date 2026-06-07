@@ -256,7 +256,6 @@ tally_votes_for_id() {
         case "$TALLY_VOTE" in
             YES) TALLY_YES=1 ;;
             NO) TALLY_NO=1 ;;
-            EXONERATE) TALLY_EXONERATE=1 ;;
             *) TALLY_JUDGE_ERROR=1 ;;
         esac
     elif (( TALLY_ELIGIBLE_COUNT > 0 )); then
@@ -267,7 +266,6 @@ tally_votes_for_id() {
             case "$TALLY_VOTE" in
                 YES) TALLY_YES=$((TALLY_YES + 1)) ;;
                 NO) TALLY_NO=$((TALLY_NO + 1)) ;;
-                EXONERATE) TALLY_EXONERATE=$((TALLY_EXONERATE + 1)) ;;
                 *) TALLY_JUDGE_ERROR=$((TALLY_JUDGE_ERROR + 1)) ;;
             esac
         done
@@ -468,15 +466,15 @@ fi
         printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$TALLY_ELIGIBLE_COUNT" "$tier_label"
     fi
     printf '## Findings\n\n'
-    printf '| Item | YES | NO | Exon | JERR | Result |\n'
-    printf '|---|---:|---:|---:|---:|---|\n'
+    printf '| Item | YES | NO | JERR | Result |\n'
+    printf '|---|---:|---:|---:|---|\n'
 
     while IFS= read -r id || [[ -n "$id" ]]; do
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"
         tally_votes_for_id "$id"
         result="$TALLY_RESULT"
-        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_JUDGE_ERROR" "$result"
+        printf '| %s | %s | %s | %s | %s |\n' "$id" "$TALLY_YES" "$TALLY_NO" "$TALLY_JUDGE_ERROR" "$result"
 
         reviewer=$(reviewer_for_block "$block")
         kind="finding"
@@ -506,7 +504,7 @@ fi
                 :
             else
                 cat "$block" >> "$oos_file"
-                printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_JUDGE_ERROR" "$result" >> "$oos_file"
+                printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s Result=%s\n\n' "$TALLY_YES" "$TALLY_NO" "$TALLY_JUDGE_ERROR" "$result" >> "$oos_file"
                 if [[ "$result" == "accepted" ]]; then
                     cat "$block" >> "$oos_accepted_local"
                     printf '\n' >> "$oos_accepted_local"
@@ -516,7 +514,7 @@ fi
     done < "$sorted_ids"
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |\n'
+    printf '| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score |\n'
     printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
     awk -F '\t' '
       {
@@ -527,12 +525,12 @@ fi
         if (kind == "finding") {
           proposed[reviewer]++
           if (result == "accepted") accepted[reviewer]++
-          else if (result == "neutral" || result == "exonerated") neutral[reviewer]++
+          else if (result == "neutral") neutral[reviewer]++
           else rejected[reviewer]++
         } else {
           oos_proposed[reviewer]++
           if (result == "accepted") oos_accepted[reviewer]++
-          else if (result == "neutral" || result == "exonerated") oos_neutral[reviewer]++
+          else if (result == "neutral") oos_neutral[reviewer]++
           else oos_rejected[reviewer]++
         }
       }

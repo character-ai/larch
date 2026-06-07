@@ -49,7 +49,7 @@ cat >"$TMP/c2/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
 - **Description**: something wrong
 - **Reviewer**: r1
-- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Vote tally**: YES=2 NO=0
 - **Phase**: design
 EOF
 set +e
@@ -162,7 +162,7 @@ cat >"$TMP/x1/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
 - **Description**: something wrong
 - **Reviewer**: r1
-- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Vote tally**: YES=2 NO=0
 - **Phase**: design
 EOF
 set +e
@@ -200,7 +200,7 @@ cat >"$TMP/x3/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
 - **Description**: something wrong
 - **Reviewer**: r1
-- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Vote tally**: YES=2 NO=0
 - **Phase**: design
 EOF
 set +e
@@ -233,7 +233,7 @@ cat >"$TMP/x4/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
 - **Description**: something wrong
 - **Reviewer**: r1
-- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Vote tally**: YES=2 NO=0
 - **Phase**: design
 EOF
 set +e
@@ -266,7 +266,7 @@ cat >"$TMP/x5/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
 - **Description**: something wrong
 - **Reviewer**: r1
-- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Vote tally**: YES=2 NO=0
 - **Phase**: design
 EOF
 set +e

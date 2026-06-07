@@ -340,7 +340,7 @@ grep -Fq 'vote based on whether the **problem described** is real, concrete, and
     || { echo "FAIL: $(basename "$prompt") missing OOS problem-vs-solution body" >&2; exit 1; }
 grep -Fq 'FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated FINDING_N example" >&2; exit 1; }
 grep -Fq 'OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated OOS_N example" >&2; exit 1; }
-grep -Fq 'Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES, NO, or EXONERATE are silently ignored.' "$prompt" \
+grep -Fq 'Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored.' "$prompt" \
     || { echo "FAIL: $(basename "$prompt") missing dual-prefix ignore rule" >&2; exit 1; }
 done
 

@@ -928,8 +928,8 @@ flush_review_batches() {
     read -r derived_accepted derived_rejected <<< "$derived_counts"
 
     if ! {
-        printf 'Rounds: %s | %s accepted, %s rejected (%s exonerated)\n' \
-            "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated"
+        printf 'Rounds: %s | %s accepted, %s rejected\n' \
+            "$rounds" "$derived_accepted" "$derived_rejected"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
@@ -1411,7 +1411,7 @@ _implement_round_body() {
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
     fi
     write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file"
-    larch_err "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected (${exonerated_count} exonerated)"
+    larch_err "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected (${neutral_count:-0} neutral)"
 
     coder_tool="none"
     coder_status="skipped"

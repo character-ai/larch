@@ -80,7 +80,7 @@ grep -q 'OOS_1' "$DESIGN/oos-accepted-design.md" || fail "accepted OOS missing f
 if grep -q 'OOS_2' "$DESIGN/oos.md" || grep -q 'OOS_2' "$DESIGN/oos-accepted-design.md"; then
     fail "security-tagged accepted OOS was not excluded"
 fi
-grep -q '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
+grep -q '| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
 grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
 
@@ -157,8 +157,8 @@ if grep -q 'FINDING_1' "$DESIGN_TIE/accepted-plan-findings.md"; then
     fail "tie (1Y/1N) with 2 voters should not be accepted"
 fi
 
-# Single-judge decisions are binding for YES, rejected for NO, and exonerated
-# for EXONERATE.
+# Single-judge decisions are binding for YES and rejected for NO.
+# EXONERATE is tolerated and mapped to NO (no longer a distinct outcome).
 DESIGN_ONE_YES="$TMPROOT/design-one-yes"
 mkdir -p "$DESIGN_ONE_YES"
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V4" --design-tmpdir "$DESIGN_ONE_YES" >/dev/null
@@ -179,9 +179,10 @@ EOF
 DESIGN_ONE_EXON="$TMPROOT/design-one-exon"
 mkdir -p "$DESIGN_ONE_EXON"
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V_EXON" --design-tmpdir "$DESIGN_ONE_EXON" >/dev/null
-grep -q '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$DESIGN_ONE_EXON/voting-tally.md" || fail "single EXONERATE should be exonerated"
+# EXONERATE is mapped to NO, so single EXONERATE → rejected (0 YES)
+grep -q '| FINDING_1 | 0 | 1 | 0 | rejected |' "$DESIGN_ONE_EXON/voting-tally.md" || fail "single EXONERATE (mapped to NO) should be rejected"
 if grep -q 'FINDING_1' "$DESIGN_ONE_EXON/accepted-plan-findings.md"; then
-    fail "single EXONERATE should not accept FINDING_1"
+    fail "single EXONERATE (mapped to NO) should not accept FINDING_1"
 fi
 
 DESIGN_ZERO="$TMPROOT/design-zero"
@@ -234,7 +235,7 @@ mkdir -p "$DESIGN_NEUTRAL"
 if grep -q 'FINDING_1' "$DESIGN_NEUTRAL/accepted-plan-findings.md"; then
     fail "3-voter panel with 1 YES and 2 JUDGE_ERROR should not accept"
 fi
-grep -q '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$DESIGN_NEUTRAL/voting-tally.md" || fail "JUDGE_ERROR quorum result row missing"
+grep -q '| FINDING_1 | 1 | 0 | 2 | neutral |' "$DESIGN_NEUTRAL/voting-tally.md" || fail "JUDGE_ERROR quorum result row missing (neutral: 1 YES, 2 JERR)"
 
 BALLOT_OOS_ONE="$TMPROOT/ballot-oos-one.md"
 cat > "$BALLOT_OOS_ONE" <<'EOF'

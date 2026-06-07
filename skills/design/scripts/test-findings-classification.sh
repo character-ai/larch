@@ -124,7 +124,7 @@ FINDING_2: YES CORRECTNESS=true SEVERITY=major UNCERTAIN=false
 FINDING_10: NO SEVERITY=minor CORRECTNESS=false-positive QUALITY=weak UNCERTAIN=false -- reason
 OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
 OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
-OOS_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
 EOF
 done
 OUT="$W1/findings-classification.tsv"
@@ -133,7 +133,7 @@ assert_cell "$OUT" FINDING_1 v1_tool Claude
 assert_cell "$OUT" FINDING_1 v2_tool Codex
 assert_cell "$OUT" FINDING_1 v3_tool Cursor
 assert_cell "$OUT" FINDING_1 v1_quality excellent
-assert_cell "$OUT" OOS_3 v2_vote EXONERATE
+assert_cell "$OUT" OOS_3 v2_vote NO
 assert_cell "$OUT" FINDING_1 finding_reviewers "Cursor-Edge Codex-Arch"
 assert_all_rows_21_fields "$OUT"
 

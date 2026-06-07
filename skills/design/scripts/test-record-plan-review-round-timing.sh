@@ -16,12 +16,12 @@ cat > "$TMP_BASE/rejected-findings.md" <<'F'
 F
 cat > "$TMP_BASE/voting-tally.md" <<'F'
 ## Findings
-| Item | YES | NO | Exon | JERR | Result |
-| --- | --- | --- | --- | --- | --- |
-| OOS_1 | 3 | 0 | 0 | 0 | accepted |
-| OOS_2 | 0 | 3 | 0 | 0 | rejected |
-| OOS_3 | 1 | 0 | 2 | 0 | exonerated |
-| FINDING_1 | 3 | 0 | 0 | 0 | accepted |
+| Item | YES | NO | JERR | Result |
+| --- | --- | --- | --- | --- |
+| OOS_1 | 3 | 0 | 0 | accepted |
+| OOS_2 | 0 | 3 | 0 | rejected |
+| OOS_3 | 1 | 1 | 0 | neutral |
+| FINDING_1 | 3 | 0 | 0 | accepted |
 ## Reviewer Competition Scoreboard
 F
 "$REPO_ROOT/skills/design/scripts/record-plan-review-round-timing.sh" --design-tmpdir "$TMP_BASE" --round 1 --start-s 100 --end-s 110

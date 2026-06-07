@@ -58,7 +58,7 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "ACCEPTED_COUNT=1 (FINDING_1 has 2 YES)" "$got" "1"
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "REJECTED_COUNT=1 (FINDING_2 has 1 YES)" "$got" "1"
 got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "EXONERATED_COUNT=0 (no exonerated findings)" "$got" "0"
-got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=0 (no neutral findings)" "$got" "0"
+got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=1 (FINDING_2 has 1 YES < threshold)" "$got" "1"
 got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome explicitly" "$got" "rejected"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env stores accepted count summary" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "OOS_ACCEPTED_COUNT=1 (FINDING_3 has 2 YES, accepted)" "$got" "1"
@@ -83,7 +83,7 @@ fi
 got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
 assert_eq "awk non-security count sees normalized block (standalone dual-sink single write)" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env OOS_ACCEPTED_COUNT appended" "$got" "1"
-grep -Fq '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
+grep -Fq '| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
 if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
     FAIL=1; printf '  FAIL clean 3-voter fixture should not emit degraded panel banner\n'
 else
@@ -195,8 +195,8 @@ env -u LARCH_QUIET_DISABLE "$SCRIPT" --ballot-file "$TMP/ballot.md" \
 grep -Fq 'WARN=judge vote/rating parser failed' "$out" \
     || { FAIL=1; printf '  FAIL parser failure WARN breadcrumb missing\n'; }
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
-grep -Fq $'FINDING_1\tCursor-Testing\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
-    || { FAIL=1; printf '  FAIL parser failure should record JUDGE_ERROR in TSV\n'; }
+grep -Fq $'FINDING_1\tCursor-Testing\tneutral\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL parser failure should record JUDGE_ERROR in TSV (neutral: 1 YES, 1 JERR)\n'; }
 
 echo "# Case: voter parse-rate diag emits degraded voter banner"
 TMP="$WORKDIR/case_voter_parse_banner"
@@ -248,7 +248,7 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 grep -Fq '1 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
     || { FAIL=1; printf '  FAIL effective quorum case missing voter parse-rate banner\n'; }
-grep -Fq '| FINDING_1 | 1 | 1 | 0 | 0 | neutral |' "$TMP/voting-tally.md" \
+grep -Fq '| FINDING_1 | 1 | 1 | 0 | neutral |' "$TMP/voting-tally.md" \
     || { FAIL=1; printf '  FAIL effective quorum case should classify 1 YES / 1 NO as neutral after removing the dead slot from tallying\n'; }
 got=$(awk -F= '$1=="VOTER_COUNT"{print $2}' "$out"); assert_eq "VOTER_COUNT reflects effective judges when parse-rate degrades a slot" "$got" "2"
 got=$(awk -F= '$1=="ELIGIBLE_VOTER_COUNT"{print $2}' "$out"); assert_eq "ELIGIBLE_VOTER_COUNT preserves raw voter file count" "$got" "3"
@@ -388,7 +388,7 @@ got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO �
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO → 2 in-scope rejected" "$got" "2"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO → OOS rejected" "$got" "1"
 
-echo "# Case: 1 voter EXONERATE → exonerated, not accepted"
+echo "# Case: 1 voter EXONERATE → mapped to NO → rejected, not accepted"
 TMP="$WORKDIR/case4c"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
@@ -397,15 +397,15 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
-got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → no in-scope accepted" "$got" "0"
-got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → rejected_count includes exonerated patterns" "$got" "2"
-got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → exonerated_count=2" "$got" "2"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE (→NO) → no in-scope accepted" "$got" "0"
+got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE (→NO) → rejected_count=2" "$got" "2"
+got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE (→NO) → exonerated_count=0 always" "$got" "0"
 got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
-got=$(awk -F= '$1=="FINDING_1_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated subtype" "$got" "exonerated"
-grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
+got=$(awk -F= '$1=="FINDING_1_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records true_rejected subtype (0 YES)" "$got" "true_rejected"
+grep -Fq '| FINDING_1 | 0 | 1 | 0 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE (mapped to NO) not labeled rejected\n'; }
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
-grep -Fq $'FINDING_1\tCodex-Structure\texonerated\tEXONERATE\t\t\t\ttrue\t\t\t\t\t\t\t\t\t\t' "$classification_file" \
-    || { FAIL=1; printf '  FAIL classification TSV missing exonerated voting_result row\n'; }
+grep -Fq $'FINDING_1\tCodex-Structure\trejected\tNO\t\t\t\ttrue\t\t\t\t\t\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing rejected voting_result row for EXONERATE-mapped-to-NO\n'; }
 
 echo "# Case: 0 voters → main-agent-vote-required"
 TMP="$WORKDIR/case4d"
@@ -503,11 +503,11 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-missing.txt" "$TMP/claude-vote-missing.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 JUDGE_ERROR → no accepted" "$got" "0"
-grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected row with 2 JERR votes missing\n'; }
+grep -Fq '| FINDING_1 | 1 | 0 | 2 | neutral |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL neutral row with 2 JERR votes missing (1 YES, 2 JERR → neutral)\n'; }
 classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
 [[ "$classification_file" == "$TMP/findings-classification-round-1.tsv" ]] || { FAIL=1; printf '  FAIL JUDGE_ERROR case did not emit standalone classification TSV path\n'; }
-grep -Fq $'FINDING_1\tCodex-Structure\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue' "$classification_file" \
-    || { FAIL=1; printf '  FAIL classification TSV missing JUDGE_ERROR columns for rejected row\n'; }
+grep -Fq $'FINDING_1\tCodex-Structure\tneutral\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing JUDGE_ERROR columns for neutral row (1 YES, 2 JERR)\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"
@@ -704,7 +704,7 @@ out="$TMP/out.env"
 yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
 [[ -s "$yield_file" ]] || { FAIL=1; printf '  FAIL yield TSV not emitted\n'; }
 grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL static structure yield row missing\n'; }
-grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
+grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t0\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing (neutral: not counted as rejected)\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
 if grep -Fq '| dyn-foo | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' "$TMP/voting-tally.md"; then
     FAIL=1; printf '  FAIL dynamic fallback-normalized reviewer should not also emit dead-slot STATUS=OK row\n'

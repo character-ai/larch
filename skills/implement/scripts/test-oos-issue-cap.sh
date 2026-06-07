@@ -36,7 +36,7 @@ append_oos() {
         printf '### OOS_%s: %s\n' "$n" "$title"
         printf -- '- **Description**: %s\n' "$description"
         printf -- '- **Reviewer**: Test\n'
-        printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+        printf -- '- **Vote tally**: YES=2 NO=0\n'
         printf -- '- **Phase**: implement\n\n'
     } >> "$file"
 }
@@ -218,12 +218,12 @@ build_many_oos "$input" 4
 {
     printf '### OOS_5: Missing description\n'
     printf -- '- **Reviewer**: Test\n'
-    printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+    printf -- '- **Vote tally**: YES=2 NO=0\n'
     printf -- '- **Phase**: implement\n\n'
     printf '### OOS_6: Last\n'
     printf -- '- **Description**: Final body\n'
     printf -- '- **Reviewer**: Test\n'
-    printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+    printf -- '- **Vote tally**: YES=2 NO=0\n'
     printf -- '- **Phase**: implement\n\n'
 } >> "$input"
 output="$TMP_ROOT/case-malformed-no-body/out.md"
@@ -243,7 +243,7 @@ build_many_oos "$input" 4
     printf '### OOS_6: Next\n'
     printf -- '- **Description**: Next body\n'
     printf -- '- **Reviewer**: Test\n'
-    printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+    printf -- '- **Vote tally**: YES=2 NO=0\n'
     printf -- '- **Phase**: implement\n\n'
 } >> "$input"
 output="$TMP_ROOT/case-malformed-with-body/out.md"
@@ -393,7 +393,7 @@ for cap in 3 1; do
         printf '### OOS_3: Third\n'
         printf -- '- **Description**: Body three\n'
         printf -- '- **Reviewer**: Test\n'
-        printf -- '- **Vote tally**: YES=2 NO=0 EXONERATE=0\n'
+        printf -- '- **Vote tally**: YES=2 NO=0\n'
         printf -- '- **Phase**: implement\n\n'
     } >> "$input"
     output="$TMP_ROOT/$name/out.md"

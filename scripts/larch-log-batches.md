@@ -57,7 +57,7 @@ object composed by `scripts/compose-tally-record.sh`:
 
 The `phase` value is `plan-review` or `code-review`; `batch` is the matching
 batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
-`exonerated_count` must be `≤ rejected_count`; `rejected_count` counts every finding that did not meet the acceptance threshold (including split-panel and exonerated vote patterns); and
+`exonerated_count` is always `0` (retained for schema backward compatibility); `rejected_count` counts every finding that did not meet the acceptance threshold (0 YES); non-accepted findings with ≥1 YES are `neutral`; and
 `body` holds the verbatim markdown tally prose with newlines JSON-escaped.
 
 The `json-object` sanitizer validates these tally batches before replace writes.

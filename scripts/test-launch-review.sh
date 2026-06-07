@@ -1920,8 +1920,9 @@ PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_NA
 assert_equals "case B3 2 narration lines + NO_ISSUES_FOUND preserves result (#3283)" "$B3_NARR_NIF" "$(cat "$OUT_B3_NARR_NIF")"
 
 # Case B3 (#3283): voter ballot grammar preserves result (shape B fix).
-# Reproduces cursor voter slot 3: compact FINDING_N: YES/NO/EXONERATE ballot that
+# Reproduces cursor voter slot 3: compact FINDING_N: YES/NO ballot that
 # previously tripped the >1000-tok/<500-byte heuristic and was false-degraded.
+# EXONERATE is still tolerated (mapped to NO) so old voter output passes parse-rate.
 OUT_B3_BALLOT="$TMPDIR/cursor-b3-ballot.txt"
 B3_BALLOT=$'FINDING_1: YES This is a real finding.\nFINDING_2: YES Confirmed.\nFINDING_3: EXONERATE Not relevant.'
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=3068 CURSOR_STUB_RESULT="$B3_BALLOT" \
