@@ -1,8 +1,0 @@
-{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
-{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
-{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
-{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
-{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
-{"slot":"dyn-cursor-plan-bash-port-parity","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-bash-port-parity-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-bash-port-parity.prompt"}
-{"slot":"dyn-cursor-plan-phase-api-contract","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-phase-api-contract-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-phase-api-contract.prompt"}
-{"slot":"dyn-cursor-plan-test-acceptance-gap","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-test-acceptance-gap-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-test-acceptance-gap.prompt"}

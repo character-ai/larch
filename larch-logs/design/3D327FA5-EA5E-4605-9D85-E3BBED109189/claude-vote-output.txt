@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already explicitly states "A2 before A1" in both Approach and Failure modes; file-list order is a presentation concern but existing guidance is sufficient
-FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false

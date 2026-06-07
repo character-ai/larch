@@ -1,7 +1,0 @@
-codex-plan-arch	codex	collector-failure	STATUS=FAILED
-codex-plan-edge	codex	collector-failure	STATUS=FAILED
-codex-plan-innovation	codex	collector-failure	STATUS=FAILED
-codex-plan-pragmatic	codex	collector-failure	STATUS=FAILED
-codex-plan-requirements	codex	collector-failure	STATUS=FAILED
-dyn-codex-plan-env-contract	codex	collector-failure	STATUS=FAILED
-dyn-codex-plan-subcommand-existence	codex	collector-failure	STATUS=FAILED

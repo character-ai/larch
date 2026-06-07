@@ -1,2 +1,0 @@
-Validating the plan against the codebase: reading cited files and integration points.
-{"no_issues_found": true}

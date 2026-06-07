@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	latent	risk-integration	scripts/test-implement-structure.sh:132-180	FINDING_1: Proposed wiring grep is still too broad	It can pass if any --input-file prose line mentions stall-recovery-issue-input.md while the actual /larch:issue --input-file call still uses stall-recovery-bug-body.md	Narrow the assertion to the actual /larch:issue --input-file line in Step 4 and also reject stall-recovery-bug-body.md on that line.

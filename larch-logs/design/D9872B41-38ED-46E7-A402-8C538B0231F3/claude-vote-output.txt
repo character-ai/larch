@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan explicitly marks this as a doc-only note about surfaces outside the review pass; removing it risks losing the Phase 7 pending-review signal entirely with no issue filed to track it.

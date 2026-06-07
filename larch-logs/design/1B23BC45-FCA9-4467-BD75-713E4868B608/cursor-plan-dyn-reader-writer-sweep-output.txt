@@ -1,2 +1,0 @@
-Reviewing the plan and scanning the codebase for all pre-coder artifact occurrences.
-{"no_issues_found": true}

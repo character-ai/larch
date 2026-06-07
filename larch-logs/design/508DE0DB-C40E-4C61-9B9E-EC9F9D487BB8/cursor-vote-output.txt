@@ -1,3 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
-FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Legitimate retention-semantics risk, but Change 3 is operator-approved; deferring it is a product call, not a required plan edit.
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

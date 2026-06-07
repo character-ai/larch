@@ -1,3 +1,0 @@
-The plan targets pre-coder snapshot relocation, not readability style. I'll trace the cited scripts and grep for every `pre-coder-*` reference to validate coverage.
-{"no_issues_found": true}
-

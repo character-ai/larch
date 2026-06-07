@@ -1,5 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reviewer's claim "existing case globs already require full-string match (e.g. `8a<script>` becomes `unknown`)" is factually wrong; current `8[[:alnum:]-]*` glob passes `8a<script>` through because `*` matches `<script>`, so a concrete bypass is demonstrable and the sanitizer gap is real
-FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

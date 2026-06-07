@@ -1,1 +1,0 @@
-FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan omits flag on step8b exit 5 but designs a separate ship-pr-rrr-phase14-postbump arm that calls the re-bump tail directly, so RESUME_PHASE routing suffices and mirroring CI flag machinery adds unnecessary complexity

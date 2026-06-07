@@ -1,2 +1,0 @@
-Reviewing the plan against the cited script contracts and integration points.
-{"no_issues_found": true}

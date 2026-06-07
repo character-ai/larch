@@ -1,6 +1,0 @@
-FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
-FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- design-only fallback gate still allows leak when ambient LARCH_TIMING_SKILL=design; caller pins are required defense
-FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- implement scan early-return plus planned legacy timing-report.json test adequately bounds the contract; malformed-artifact fixture is optional hardening
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

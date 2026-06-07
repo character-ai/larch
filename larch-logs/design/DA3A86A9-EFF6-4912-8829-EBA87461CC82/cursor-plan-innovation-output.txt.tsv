@@ -1,2 +1,0 @@
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	skills/design/SKILL.md:1343-1351	Step 4 entry compatibility FINALIZE lacks the explicit set +e / capture / warn / exit pattern spelled out for the Step 3b completion fence	Under set -e the driver can exit before the repair warning is printed; FM6 and the new exit pins treat warning-only as a failure	Mirror item 3 in item 4: wrap compatibility FINALIZE in set +e, capture _finalize_rc, print the repair warning on non-zero, then exit "$_finalize_rc"

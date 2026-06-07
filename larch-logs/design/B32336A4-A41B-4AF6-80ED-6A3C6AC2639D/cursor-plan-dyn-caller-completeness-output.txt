@@ -1,3 +1,0 @@
-Reviewing the plan and searching the repo for all `degraded-tools-gate.sh` call sites.
-Checking sentinel handling and whether notice-only paths set `.degraded-tools-gate-prompted`.
-{"no_issues_found": true}
