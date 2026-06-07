@@ -46,9 +46,26 @@ branch by:
    `/implement`-specific deny patterns (`coder-output.log`, `coder-codex.log`,
    `cursor-specialist-*-output.txt`, `*-vote-prompt.txt`, the known empty
    placeholders) are intentionally NOT included — those basenames do not
-   appear in design tmpdirs. All other top-level basenames pass through
-   (deny-only model). `findings.md` / `voting-tally.md` under `plan-review/`
-   remain canonical. Each included file is trimmed then redacted:
+   appear in design tmpdirs. Derived/duplicate artifacts excluded per #3705:
+   `aggregate-validate.py`, `findings.md.tmp`, `composed-plan.redacted.md`,
+   `ballot.txt` (derived from `findings-in-scope.md` + `findings-oos.md`),
+   `*-plan-voter-prompt.txt`, `aggregator-prompt.md`, `aggregate-untagged-input.md`,
+   `findings-in-scope.pre-dedup.md`, `findings-in-scope.pre-aggregation.md`,
+   `scout-plan-manifest.json.raw`, `scout-plan-manifest.json.raw.prompt`,
+   `*-vote-output.txt.meta`, `*-vote-output.txt.json`. The exclusion list is
+   also consulted for round-level files encountered in the round staging loop
+   (so ballot.txt in a round directory is silently skipped rather than erroring).
+   All other top-level basenames pass through (deny-only model). `findings.md` /
+   `voting-tally.md` under `plan-review/` remain canonical.
+   **Top-level dedup**: after computing the last round source directory, the
+   top-level staging loop skips any file that is byte-identical (`cmp -s`) to
+   the final round's copy. SIMPLE-tier runs with no `plan-review/` keep all
+   top-level files.
+   **`plan.txt` round-1-only / `plan.diff` rounds ≥ 2**: the round staging loop
+   skips `plan.txt` for rounds ≥ 2. After the round staging loop, the publisher
+   generates a unified diff (`plan.diff`) of round N's plan vs round N-1's plan
+   for each round ≥ 2 where both source `plan.txt` files exist, then stages
+   that diff with redaction. Each included file is trimmed then redacted:
    `*.meta` strips leading `CMD_JSON=`
    lines (`larch_redact_strip_meta_cmd_json`); files whose names match
    `*-output*.json` delete a top-level `.result` object when valid JSON
@@ -206,7 +223,10 @@ it is fail-closed:
   parent-directory TOCTOU the leaf recheck left open). The guard runs in all
   three subtree staging loops (`plan-review/`, `render-cache/`, `.completed/`).
 - Top-level round files must match `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and pass
-  `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`.
+  `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`,
+  OR be known-excluded per `design_artifact_excluded(basename)` (silently skipped).
+  `plan.txt` for round ≥ 2 is skipped before the inclusion check; `plan.diff` is
+  generated and staged by the publisher after the main round-file loop.
 - Files under `^round-[1-9][0-9]*/revise/` are rejected. Step 3 no longer
   runs inter-round revise, so newly published logs must not carry revise
   prompts, outputs, or candidate patches.

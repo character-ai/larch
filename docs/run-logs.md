@@ -194,7 +194,7 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step
 - `rejected-findings.md`
 - `oos.md`
 - `oos-accepted-design.md`
-- `ballot.txt`
+- `ballot.txt` (session snapshot; excluded from committed log by publisher)
 - `voting-tally.md`
 
 #### Manifests and voter diagnostics
@@ -205,7 +205,7 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step
 - `*-vote-output.txt`
 - `*-vote-output-first-pass.txt`
 - `voter*-diag.txt`
-- `plan.txt` (per-round snapshot)
+- `plan.txt` (round 1 only; rounds ≥ 2 commit `plan.diff` vs previous round)
 
 #### Loop forensics
 
