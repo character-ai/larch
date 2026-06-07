@@ -19,7 +19,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
   the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
   run the fixer waterfall, and return the GOTO-Rebase signal.
 - **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
-  `pr_body.py`, `push.py`, `pr.py`, `oos.py`, `merge.py` — PR/merge/logging ports with split
+  `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
   classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.

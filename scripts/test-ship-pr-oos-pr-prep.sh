@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runtime regression: ship-pr pr-prep materialize failure with manifest OOS forces OOS_PENDING.
+# Runtime regression: ship-pr pr-prep advances to pr-create without OOS gating (#3650).
+# After the OOS decoupling, run_pr_prep_phase builds the PR body and advances directly
+# to pr-create; no OOS_PENDING state is written and no security-sidecar check runs here.
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
@@ -47,7 +49,6 @@ BAIL_NEEDS_USER_INPUT=false
 BAIL_REASON=
 BAIL_FAILURE_DETAIL_LOG=
 CI_PASSED=false
-OOS_PENDING=false
 PR_NUMBER=
 PR_URL=
 PR_TITLE=
@@ -70,9 +71,7 @@ EOF
 
 : >"$TMPROOT/execution-issues.md"
 
-set +e
-LARCH_TEST_MATERIALIZE_FORCE_FAIL=true \
-  CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+if CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
   "$SHIP_PR" \
     --state-file "$state" \
     --implement-tmpdir "$TMPROOT" \
@@ -82,26 +81,28 @@ LARCH_TEST_MATERIALIZE_FORCE_FAIL=true \
     --repo owner/repo \
     --no-admin-fallback true \
     --no-logs-commit true \
-    >/dev/null 2>&1
-rc=$?
-set -e
-
-[[ "$rc" -eq 0 ]] || fail "ship-pr must exit 0 after pr-prep OOS handoff (got rc=$rc)"
-grep -Fq 'OOS_PENDING=true' "$state" \
-  || fail "ship-pr pr-prep must set OOS_PENDING=true when materialize fails with manifest OOS"
-if grep -Fq 'PHASE=pr-prep' "$state" || grep -Fq 'PHASE=pr-create' "$state"; then
+    >/dev/null 2>&1; then
   :
 else
-  fail "ship-pr must leave PHASE at pr-prep or pr-create when OOS_PENDING blocks PR creation"
+  :
 fi
-fail_glob=$(find "$TMPROOT" -maxdepth 1 -name 'ship-pr-fail-pr-prep-*' -type f 2>/dev/null | head -n 1)
-[[ -n "$fail_glob" ]] \
-  || fail "pr-prep must capture materialize failure output for operator review"
 
+# After pr-prep, ship-pr advances to pr-create (which may fail in the test env
+# when create-pr.sh or git operations are unavailable; any exit code is acceptable
+# as long as pr-prep itself did not stall at 9a1 — verify phase advanced past pr-prep).
+phase=$(awk -F= '$1=="PHASE"{print $2; exit}' "$state")
+[[ "$phase" != "pr-prep" ]] \
+  || fail "ship-pr pr-prep must advance PHASE beyond pr-prep to pr-create or later (got pr-prep)"
+
+# OOS_PENDING must not be written by pr-prep (#3650 decoupling).
+if grep -q 'OOS_PENDING=' "$state" 2>/dev/null; then
+  fail "ship-pr pr-prep must not write OOS_PENDING after #3650 decoupling (found: $(grep 'OOS_PENDING=' "$state"))"
+fi
+
+# Structural: ship-pr.sh must not reference OOS at all.
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
-grep -Fq 'security-oos-observations.md' "$SHIP_PR_SH" \
-  || fail "ship-pr.sh must block pr-prep on non-empty security-oos-observations.md"
-grep -Fq 'security-routed manifest OOS requires private SECURITY.md disposition' "$SHIP_PR_SH" \
-  || fail "ship-pr.sh must refuse clearing OOS_PENDING while security sidecar remains"
+if grep -qi 'oos' "$SHIP_PR_SH" 2>/dev/null; then
+  fail "ship-pr.sh must have no OOS references after #3650 decoupling"
+fi
 
 echo "PASS: test-ship-pr-oos-pr-prep.sh"
