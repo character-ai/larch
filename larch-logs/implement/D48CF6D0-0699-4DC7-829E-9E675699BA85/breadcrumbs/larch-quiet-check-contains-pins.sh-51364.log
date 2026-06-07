@@ -1,0 +1,3 @@
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1948: assertion shape not in v1 grammar
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1995: assertion shape not in v1 grammar
+SKIPPED_NON_CANONICAL: scripts/test-design-structure.sh:1996: assertion shape not in v1 grammar
