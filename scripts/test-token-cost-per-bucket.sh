@@ -83,4 +83,40 @@ out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M -u LARCH_CURSOR_R
 test "$(read_kv CODEX_COST "$out")" = "0.44" || fail "per-bucket Codex ignores legacy LARCH_CODEX_RATE_PER_M blended override"
 pass "per-bucket path ignores legacy blended env for bucket rates"
 
+# (f) claude_sub per-bucket reference mix: same token mix as (a), same expected cost.
+# claude_sub shares Claude rate constants and resolves them independently of CLAUDE_BUCKET.
+out=$(with_rates_cleared "$HELPER" \
+    --claude-sub-input-tokens 100 \
+    --claude-sub-cache-read-tokens 10000000 \
+    --claude-sub-cache-write-5m-tokens 100000 \
+    --claude-sub-output-tokens 5000 \
+    --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0)
+test "$(read_kv CLAUDE_SUB_COST "$out")" = "5.75" || fail "per-bucket claude_sub reference total"
+pass "CLAUDE_SUB_COST=5.75 reference mix"
+
+# (g) Per-bucket Claude env override also applies to claude_sub (shared rate constants).
+out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M \
+    -u LARCH_CLAUDE_CACHE_READ_RATE_PER_M -u LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M \
+    -u LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M -u LARCH_CLAUDE_OUTPUT_RATE_PER_M \
+    -u LARCH_CODEX_INPUT_RATE_PER_M -u LARCH_CODEX_CACHED_INPUT_RATE_PER_M -u LARCH_CODEX_OUTPUT_RATE_PER_M \
+    -u LARCH_CURSOR_INPUT_RATE_PER_M -u LARCH_CURSOR_CACHE_READ_RATE_PER_M -u LARCH_CURSOR_OUTPUT_RATE_PER_M \
+    LARCH_CLAUDE_INPUT_RATE_PER_M=10 \
+    "$HELPER" --claude-sub-input-tokens 1000000 \
+        --claude-sub-cache-read-tokens 0 --claude-sub-cache-write-5m-tokens 0 \
+        --claude-sub-cache-write-1h-tokens 0 --claude-sub-output-tokens 0 \
+        --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0)
+test "$(read_kv CLAUDE_SUB_COST "$out")" = "10.00" || fail "LARCH_CLAUDE_INPUT_RATE_PER_M override for claude_sub"
+pass "LARCH_CLAUDE_INPUT_RATE_PER_M override applies to claude_sub"
+
+# (h) claude_sub resolved independently of the claude bucket lane (no claude bucket flags needed).
+out=$(with_rates_cleared "$HELPER" \
+    --claude-sub-input-tokens 100 \
+    --claude-sub-cache-read-tokens 10000000 \
+    --claude-sub-cache-write-5m-tokens 100000 \
+    --claude-sub-output-tokens 5000 \
+    --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0)
+test "$(read_kv CLAUDE_COST "$out")" = "0.00" || fail "no claude lane when only claude_sub is used"
+test "$(read_kv CLAUDE_SUB_COST "$out")" = "5.75" || fail "claude_sub priced independently of claude lane"
+pass "claude_sub priced independently of claude lane"
+
 printf 'PASS: test-token-cost-per-bucket.sh — %s checks\n' "$PASS"

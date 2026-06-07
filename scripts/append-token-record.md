@@ -1,6 +1,6 @@
 # append-token-record.sh
 
-Normalizes token usage sidecars written by `launch-cursor-ci.sh` and `launch-codex-ci.sh` into `$IMPLEMENT_TMPDIR/token-report.ndjson`.
+Normalizes token usage sidecars written by CI launchers into `$IMPLEMENT_TMPDIR/token-report.ndjson`.
 
 ## Interface
 
@@ -9,6 +9,8 @@ append-token-record.sh --input PATH --tmpdir PATH
 ```
 
 The input sidecar is line-oriented `KEY=VALUE` text. Recognized keys are `TOOL`, `INPUT`, `OUTPUT`, `CACHE_READ`, `CACHE_CREATE`, `TOTAL`, and `RAW`.
+
+`TOOL` values accepted without normalization: `codex`, `cursor`, `claude`, `claude_sub`. Any other value is rewritten to `unknown`.
 
 ## Behavior
 

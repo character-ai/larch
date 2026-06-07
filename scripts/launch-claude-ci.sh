@@ -98,9 +98,17 @@ fi
 
 PLAN_CONTEXT=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
+    # Canonicalize the path to resist symlink-based traversal, then redact secrets
+    # before inlining into the prompt (mirrors the failure-log excerpt handling below).
+    _plan_canon="$(cd "$(dirname "$PLAN_FILE")" 2>/dev/null && pwd -P)/$(basename "$PLAN_FILE")"
+    [ -f "$_plan_canon" ] || _plan_canon="$PLAN_FILE"
+    if ! _plan_content=$("$SCRIPT_DIR/redact-secrets.sh" < "$_plan_canon" 2>/dev/null); then
+        _plan_content="[plan content omitted: redaction unavailable]"
+    fi
     PLAN_CONTEXT="
 Design plan (do not revert or undo the work it describes):
-$(cat "$PLAN_FILE")"
+$_plan_content"
+    unset _plan_canon _plan_content
 fi
 
 CONFLICT_CONTEXT=""
@@ -266,4 +274,7 @@ _AUTH_VERDICT=${_AUTH_VERDICT//$'\n'/}
 external_classify_launch_failure "$LAUNCHER_EXIT" "${OUTPUT}.stderr" "$_AUTH_VERDICT" 1 "claude" "$OUTPUT"
 emit_kv OUTPUT "$OUTPUT"
 emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
+# Stdout-contract: the script always exits 0 so the harness can parse LAUNCHER_EXIT=
+# and LAUNCHER_FAILURE_CLASS= from stdout. Callers must read LAUNCHER_EXIT from stdout,
+# not rely on process exit status, to distinguish tool success from tool failure.
 exit 0

@@ -33,7 +33,7 @@ Resolution order for the ledger file location:
 ## Subcommands
 
 - `mark <step-name>` appends a JSON object with `type=mark`, `step`, and UTC `ts`.
-- `record-vendor <vendor> [key=value ...]` appends a JSON object with `type=vendor`, `vendor`, `input`, `output`, `cache_read`, `cache_create`, `total`, `raw`, and UTC `ts`. The `<vendor>` name is not allowlisted; `codex`, `cursor`, and `claude_sub` (spawned-process Claude reviewer/voter/CI/scout — issue #3637) are the names `scripts/token-report.sh` recognizes for dedicated lanes. The `claude_sub` lane is intentionally distinct from the literal `claude` vendor name: a row literally named `claude` would collide with the transcript-derived `claude` key in `token-report.sh` and overwrite the main-agent tokens.
+- `record-vendor <vendor> [key=value ...]` appends a JSON object with `type=vendor`, `vendor`, `input`, `output`, `cache_read`, `cache_create`, `total`, `raw`, and UTC `ts`. The vendor name `claude` is **rejected** (returns 1 with a stderr warning) because it collides with the transcript-derived `claude` key in `token-report.sh`'s vendor-object merge and would overwrite main-agent totals. Use `claude_sub` for spawned-process Claude (reviewer/voter/CI/scout — issue #3637). All other vendor names are accepted; `codex`, `cursor`, and `claude_sub` are the names `scripts/token-report.sh` recognizes for dedicated lanes.
 - `dump` prints the ledger path on stdout's first line, then the JSONL contents when present.
 
 `--ledger PATH` overrides session-id resolution for tests. The override resolves under `${TMPDIR:-/tmp}` after canonicalizing its parent. Paths with `..` are rejected.

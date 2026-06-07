@@ -212,3 +212,27 @@ def test_scan_implement_skips_malformed_workflow_artifacts(tmp_path: Path, capsy
     err = capsys.readouterr().err
     assert "invalid timing-report.json" not in err
     assert "run-params.json" not in err
+
+
+def test_scan_accepts_claude_sub_only_tokens(tmp_path: Path) -> None:
+    # A run with only claude_sub tokens (no main-agent claude) must pass _has_numeric_tokens
+    # and surface a valid record — verifies that claude_sub _totals are read and the scan
+    # does not reject the run as incomplete.
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(
+        json.dumps({"issue_number": 2, "started_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    _ = (run / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"total": 0}},
+            "claude_sub": {"totals": {"total": 50}},
+            "BUCKETS_claude_sub": {"input": 30, "cache_read": 10, "cache_create": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 10},
+        }),
+        encoding="utf-8",
+    )
+    _ = (run / "run-params.json").write_text(json.dumps({"design_classification": "SIMPLE"}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert len(result.records) == 1
+    assert result.records[0].claude_sub.total == 50
