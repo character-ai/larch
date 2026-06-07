@@ -19,7 +19,9 @@ Timing defaults to `--timing-task-kind claude-ci-fix` (allow-listed in `scripts/
 
 ## Behavior
 
-The launcher builds a fixed, delimiter-fenced prompt, then invokes `claude --print` (model defaults to `claude-sonnet-4-6`, overridable via `--model`). Failures best-effort append through `append-tool-failure.sh` when `IMPLEMENT_TMPDIR` is set, consistent with other CI launchers.
+The launcher builds a fixed, delimiter-fenced prompt, then invokes `claude --print --output-format json` (model defaults to `claude-sonnet-4-6`, overridable via `--model`). Failures best-effort append through `append-tool-failure.sh` when `IMPLEMENT_TMPDIR` is set, consistent with other CI launchers.
+
+**Spawned-Claude token capture (issue #3637)**: on success the launcher extracts `.result` over `${OUTPUT}` (CI-fix collectors and the timing ledger keep seeing prose) and folds the reported `.usage` into the `claude_sub` ledger lane via `token-ledger.sh record-vendor claude_sub … raw=claude_ci` (priced at Claude rates downstream; the single `cache_creation` field collapses into one `cache_create` bucket). The `${OUTPUT}.token-record` sidecar is populated from the real `.usage` counts (`TOOL=claude … RAW=claude_ci`); when `.usage` is unavailable (missing `jq`, malformed envelope, or non-zero exit) it falls back to the legacy word-count proxy. The next `refresh-run-logs.sh` token-report pass picks up the ledger row.
 
 ## Machine-readable failure classification
 

@@ -83,6 +83,38 @@ else
     ok "resolve-conflict role omits topology.tsv"
 fi
 
+# --- claude_sub CI-fix token capture (issue #3637) ---
+if grep -Fq -- '--output-format json' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "ci launcher uses --output-format json"; else fail "ci launcher uses --output-format json"; fi
+cat > "$stub_bin/claude" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"ci fix applied; relevant-checks pass","usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":20,"cache_creation_input_tokens":10}}
+JSON
+EOF
+chmod +x "$stub_bin/claude"
+OUT_JSON="$TMPDIR_BASE/ci-fix-json"
+CI_LEDGER="$TMPDIR_BASE/ci-claude-sub-ledger.jsonl"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" LARCH_TOKEN_LEDGER="$CI_LEDGER" \
+    bash "$REPO_ROOT/scripts/launch-claude-ci.sh" --role fix --output "$OUT_JSON" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
+if grep -Fq 'ci fix applied; relevant-checks pass' "$OUT_JSON" 2>/dev/null && ! grep -Fq 'input_tokens' "$OUT_JSON" 2>/dev/null; then
+    ok "ci launcher extracts .result into output (prose, not raw JSON)"
+else
+    fail "ci launcher extracts .result into output: $(cat "$OUT_JSON" 2>/dev/null)"
+fi
+# total = input(200)+output(80)+cache_read(20)+cache_create(10) = 310; raw=claude_ci.
+if [[ -f "$CI_LEDGER" ]] && grep -Fq '"vendor":"claude_sub"' "$CI_LEDGER" && grep -Fq '"raw":"claude_ci"' "$CI_LEDGER" && grep -Fq '"total":310' "$CI_LEDGER" && grep -Fq '"cache_create":10' "$CI_LEDGER"; then
+    ok "ci launcher records claude_sub ledger row (raw=claude_ci, total=310)"
+else
+    fail "ci launcher records claude_sub ledger row: $(cat "$CI_LEDGER" 2>/dev/null)"
+fi
+if grep -Fq 'RAW=claude_ci' "${OUT_JSON}.token-record" 2>/dev/null && grep -Fq 'TOTAL=310' "${OUT_JSON}.token-record" 2>/dev/null; then
+    ok "ci launcher token-record sidecar populated from real usage"
+else
+    fail "ci launcher token-record sidecar populated from real usage: $(cat "${OUT_JSON}.token-record" 2>/dev/null)"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-claude-ci: $FAIL failure(s), $PASS pass(es)" >&2
     exit 1

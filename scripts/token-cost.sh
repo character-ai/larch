@@ -37,6 +37,8 @@ usage() {
     printf 'Per-bucket: --claude-input-tokens N ... --claude-output-tokens N\n' >&2
     printf '            --codex-input-tokens N --codex-cached-input-tokens N --codex-output-tokens N\n' >&2
     printf '            --cursor-input-tokens N --cursor-cache-read-tokens N --cursor-output-tokens N\n' >&2
+    printf '            --claude-sub-input-tokens N --claude-sub-cache-read-tokens N --claude-sub-cache-write-5m-tokens N \\\n' >&2
+    printf '            --claude-sub-cache-write-1h-tokens N --claude-sub-output-tokens N   (priced at Claude rates)\n' >&2
 }
 
 num() {
@@ -84,12 +86,15 @@ sum_money() {
 }
 
 # --- Arg parse ---
-CLAUDE_T=0 CODEX_T=0 CURSOR_T=0
+CLAUDE_T=0 CODEX_T=0 CURSOR_T=0 CLAUDE_SUB_T=0
 C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
+# claude_sub = spawned-process Claude (reviewer/voter/CI/scout). Same bucket
+# shape as claude, priced at Claude rates (issue #3637).
+CS_IN=0 CS_CR=0 CS_CW5=0 CS_CW1=0 CS_OUT=0
 
-CLAUDE_BUCKET=false CODEX_BUCKET=false CURSOR_BUCKET=false
+CLAUDE_BUCKET=false CODEX_BUCKET=false CURSOR_BUCKET=false CLAUDE_SUB_BUCKET=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -107,6 +112,12 @@ while [ $# -gt 0 ]; do
         --cursor-input-tokens)     CURSOR_BUCKET=true; U_IN=$(num "${2:-0}"); shift 2 ;;
         --cursor-cache-read-tokens) CURSOR_BUCKET=true; U_CR=$(num "${2:-0}"); shift 2 ;;
         --cursor-output-tokens)    CURSOR_BUCKET=true; U_OUT=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-tokens)       CLAUDE_SUB_T=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-input-tokens) CLAUDE_SUB_BUCKET=true; CS_IN=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-cache-read-tokens) CLAUDE_SUB_BUCKET=true; CS_CR=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-cache-write-5m-tokens) CLAUDE_SUB_BUCKET=true; CS_CW5=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-cache-write-1h-tokens) CLAUDE_SUB_BUCKET=true; CS_CW1=$(num "${2:-0}"); shift 2 ;;
+        --claude-sub-output-tokens) CLAUDE_SUB_BUCKET=true; CS_OUT=$(num "${2:-0}"); shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 2 ;;
     esac
@@ -140,6 +151,23 @@ else
     R_C_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")")
     R_C_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")")
     R_C_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")")
+fi
+# claude_sub is priced at the same Claude rate constants/env as the claude
+# lane, resolved independently of CLAUDE_BUCKET so a claude_sub-only invocation
+# (no claude buckets) still uses per-bucket Claude rates rather than the blended
+# fallback (issue #3637).
+if [ "$CLAUDE_SUB_BUCKET" = true ]; then
+    R_CS_IN=$(rate_or_default "${LARCH_CLAUDE_INPUT_RATE_PER_M:-}" "$DEFAULT_CLAUDE_INPUT_RATE_PER_M")
+    R_CS_CR=$(rate_or_default "${LARCH_CLAUDE_CACHE_READ_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M")
+    R_CS_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")
+    R_CS_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")
+    R_CS_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")
+else
+    R_CS_IN=$(rate_or_default "${LARCH_CLAUDE_INPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_INPUT_RATE_PER_M")")
+    R_CS_CR=$(rate_or_default "${LARCH_CLAUDE_CACHE_READ_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M")")
+    R_CS_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")")
+    R_CS_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")")
+    R_CS_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")")
 fi
 if [ "$CODEX_BUCKET" = true ]; then
     R_D_IN=$(rate_or_default "${LARCH_CODEX_INPUT_RATE_PER_M:-}" "$DEFAULT_CODEX_INPUT_RATE_PER_M")
@@ -218,19 +246,37 @@ else
     cursor_c=$(cost_for_blend "$CURSOR_T" "$R_U_BLEND")
 fi
 
+# --- Claude (subprocess) cost (Claude rates) ---
+if [ "$CLAUDE_SUB_BUCKET" = true ]; then
+    s1=$(cost_bucket "$CS_IN" "$R_CS_IN")
+    s2=$(cost_bucket "$CS_CR" "$R_CS_CR")
+    s3=$(cost_bucket "$CS_CW5" "$R_CS_CW5")
+    s4=$(cost_bucket "$CS_CW1" "$R_CS_CW1")
+    s5=$(cost_bucket "$CS_OUT" "$R_CS_OUT")
+    claude_sub_c=$(sum_money "$s1" "$s2" "$s3" "$s4" "$s5")
+    CLAUDE_SUB_T=$((CS_IN + CS_CR + CS_CW5 + CS_CW1 + CS_OUT))
+else
+    if [ "${CLAUDE_SUB_T:-0}" -gt 0 ] 2>/dev/null; then
+        BLENDED_WARN=true
+    fi
+    claude_sub_c=$(cost_for_blend "$CLAUDE_SUB_T" "$R_C_BLEND")
+fi
+
 if [ "$BLENDED_WARN" = true ]; then
     printf '%s\n' "token-cost.sh: WARNING: per-bucket counts unavailable; using blended rate (may overstate by ~3-10x)" >&2
 fi
 
-total=$(awk -v a="$claude_c" -v b="$codex_c" -v c="$cursor_c" 'BEGIN {
-  printf "%.2f\n", (a+0)+(b+0)+(c+0)
+total=$(awk -v a="$claude_c" -v b="$codex_c" -v c="$cursor_c" -v d="$claude_sub_c" 'BEGIN {
+  printf "%.2f\n", (a+0)+(b+0)+(c+0)+(d+0)
 }')
 
 printf 'CLAUDE_COST=%s\n' "$claude_c"
 printf 'CODEX_COST=%s\n' "$codex_c"
 printf 'CURSOR_COST=%s\n' "$cursor_c"
+printf 'CLAUDE_SUB_COST=%s\n' "$claude_sub_c"
 printf 'TOTAL_COST=%s\n' "$total"
 printf 'CLAUDE_TOKENS=%s\n' "$CLAUDE_T"
 printf 'CODEX_TOKENS=%s\n' "$CODEX_T"
 printf 'CURSOR_TOKENS=%s\n' "$CURSOR_T"
-printf 'TOTAL_TOKENS=%s\n' "$((CLAUDE_T + CODEX_T + CURSOR_T))"
+printf 'CLAUDE_SUB_TOKENS=%s\n' "$CLAUDE_SUB_T"
+printf 'TOTAL_TOKENS=%s\n' "$((CLAUDE_T + CODEX_T + CURSOR_T + CLAUDE_SUB_T))"

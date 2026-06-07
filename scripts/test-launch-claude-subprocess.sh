@@ -286,4 +286,86 @@ grep -Fq 'Glob' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSO
 grep -Fq 'Edit' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSON must not allow Edit"
 grep -Fq '"plan"' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing permission-mode plan"
 
+# --- claude_sub token capture (issue #3637) ---
+# The launcher now runs `claude --print --output-format json`; assert that the
+# .result prose is extracted into the output file and the reported .usage is
+# folded into the claude_sub ledger lane with role-derived provenance.
+grep -Fq -- '--output-format json' "$SCRIPT" || fail "argv regression: --output-format json missing from $SCRIPT"
+grep -Fq 'output-format' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing --output-format json"
+
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"spawned claude review prose","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+
+json_out="$TMP/out-json.txt"
+json_ledger="$TMP/claude-sub-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$json_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$json_out" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/json-stdout" 2>"$TMP/json-err" \
+    || fail "claude_sub json path launch failed (stderr: $(cat "$TMP/json-err"))"
+grep -Fq 'STATUS=OK' "$TMP/json-stdout" || fail "claude_sub json path missing STATUS=OK"
+# .result extracted into the output file so collectors see prose, not raw JSON.
+grep -Fq 'spawned claude review prose' "$json_out" || fail "claude_sub json path: .result not extracted into output file"
+grep -Fq 'input_tokens' "$json_out" && fail "claude_sub json path: raw JSON envelope leaked into output file (extraction failed)"
+# The raw JSON sidecar is cleaned up.
+[[ ! -f "${json_out}.json" ]] || fail "claude_sub json path: ${json_out}.json sidecar not cleaned up"
+# A claude_sub vendor row was recorded with the reported usage and raw=claude_review.
+[[ -f "$json_ledger" ]] || fail "claude_sub json path: token ledger not written"
+grep -Fq '"vendor":"claude_sub"' "$json_ledger" || fail "claude_sub json path: no claude_sub vendor row in ledger"
+grep -Fq '"raw":"claude_review"' "$json_ledger" || fail "claude_sub json path: raw provenance not claude_review"
+# total = input(100)+output(50)+cache_read(10)+cache_create(5) = 165
+grep -Fq '"total":165' "$json_ledger" || fail "claude_sub json path: total token count wrong (expected 165): $(cat "$json_ledger")"
+# cache_creation_input_tokens folds into the single cache_create bucket.
+grep -Fq '"cache_create":5' "$json_ledger" || fail "claude_sub json path: cache_create not folded from cache_creation_input_tokens"
+
+# Provenance varies by timing-task-kind: voter -> claude_vote.
+vote_ledger="$TMP/claude-vote-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$vote_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-vote.txt" \
+    --timeout 5 \
+    --timing-task-kind claude-code-voter \
+    >/dev/null 2>"$TMP/vote-err" \
+    || fail "claude_sub voter path launch failed (stderr: $(cat "$TMP/vote-err"))"
+grep -Fq '"raw":"claude_vote"' "$vote_ledger" || fail "claude_sub voter path: raw provenance not claude_vote"
+
+# scout -> claude_scout.
+scout_ledger="$TMP/claude-scout-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$scout_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-scout.txt" \
+    --timeout 5 \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/scout-err" \
+    || fail "claude_sub scout path launch failed"
+grep -Fq '"raw":"claude_scout"' "$scout_ledger" || fail "claude_sub scout path: raw provenance not claude_scout"
+
+# Malformed / non-JSON output is tolerated: output preserved, no ledger row.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+printf 'plain non-json reviewer output\n'
+STUB
+chmod +x "$BIN/claude"
+plain_ledger="$TMP/claude-plain-ledger.jsonl"
+LARCH_TOKEN_LEDGER="$plain_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$TMP/out-plain.txt" \
+    --timeout 5 \
+    --timing-task-kind claude-review \
+    >"$TMP/plain-stdout" 2>/dev/null \
+    || fail "claude_sub plain path launch failed"
+grep -Fq 'plain non-json reviewer output' "$TMP/out-plain.txt" || fail "claude_sub plain path: non-JSON output not preserved"
+[[ ! -f "$plain_ledger" ]] || grep -Fvq 'claude_sub' "$plain_ledger" || fail "claude_sub plain path: ledger row recorded from non-JSON output"
+
 echo "All assertions passed."

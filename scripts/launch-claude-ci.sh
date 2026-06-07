@@ -173,13 +173,13 @@ fi
 START_S=$(date +%s)
 LAUNCHER_EXIT=0
 if command -v timeout >/dev/null 2>&1; then
-    if timeout "$TIMEOUT" claude --model "$MODEL" --print < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
+    if timeout "$TIMEOUT" claude --model "$MODEL" --print --output-format json < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
         LAUNCHER_EXIT=0
     else
         LAUNCHER_EXIT=$?
     fi
 else
-    if claude --model "$MODEL" --print < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
+    if claude --model "$MODEL" --print --output-format json < "$PROMPT_FILE" > "${OUTPUT}.tmp.$$" 2> "${OUTPUT}.stderr.$$"; then
         LAUNCHER_EXIT=0
     else
         LAUNCHER_EXIT=$?
@@ -187,6 +187,32 @@ else
 fi
 mv "${OUTPUT}.tmp.$$" "$OUTPUT" 2>/dev/null || true
 mv "${OUTPUT}.stderr.$$" "${OUTPUT}.stderr" 2>/dev/null || true
+
+# --- Spawned-Claude .usage extraction (issue #3637) ---
+# The CLI now runs with --output-format json. Extract .result into $OUTPUT so
+# CI-fix collectors and the timing ledger keep seeing prose, and capture the
+# reported .usage counts for the claude_sub ledger lane below. Best-effort: a
+# missing jq, malformed envelope, or non-zero exit leaves $OUTPUT as raw bytes
+# and yields zero counts (the legacy word-count sidecar fallback then applies).
+CL_IN=0 CL_OUT=0 CL_CR=0 CL_CC=0 CL_TOTAL=0
+if [[ "$LAUNCHER_EXIT" -eq 0 ]] && command -v jq >/dev/null 2>&1 && [[ -s "$OUTPUT" ]]; then
+    rm -f "${OUTPUT}.json"
+    if cp "$OUTPUT" "${OUTPUT}.json" 2>/dev/null && jq -e . "${OUTPUT}.json" >/dev/null 2>&1; then
+        _ci_extract="${OUTPUT}.extract.$$"
+        if jq -re '.result // ""' "${OUTPUT}.json" > "$_ci_extract" 2>/dev/null && [[ -s "$_ci_extract" ]]; then
+            mv -f "$_ci_extract" "$OUTPUT"
+        else
+            rm -f "$_ci_extract"
+        fi
+        read -r CL_IN CL_OUT CL_CR CL_CC < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "${OUTPUT}.json" 2>/dev/null || echo "0 0 0 0")
+        case "$CL_IN" in ''|*[!0-9]*) CL_IN=0 ;; esac
+        case "$CL_OUT" in ''|*[!0-9]*) CL_OUT=0 ;; esac
+        case "$CL_CR" in ''|*[!0-9]*) CL_CR=0 ;; esac
+        case "$CL_CC" in ''|*[!0-9]*) CL_CC=0 ;; esac
+        CL_TOTAL=$((CL_IN + CL_OUT + CL_CR + CL_CC))
+    fi
+    rm -f "${OUTPUT}.json"
+fi
 
 END_S=$(date +%s)
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
@@ -202,7 +228,19 @@ if (( LAUNCHER_EXIT != 0 )); then
     append_launch_failure "CI $ROLE" "claude-ci" "$LAUNCHER_EXIT" "${OUTPUT}.stderr" "" ""
 fi
 
-if [[ -s "$OUTPUT" ]]; then
+# Record spawned-Claude CI-fix tokens into the claude_sub ledger lane (priced at
+# Claude rates) using the real .usage counts; the single cache_creation field
+# folds into one cache_create bucket. The token-cost report reads this ledger on
+# the next refresh-run-logs token-report.sh pass (issue #3637). When .usage was
+# unavailable, fall back to the legacy word-count proxy so the sidecar that
+# ship-pr.sh forwards to append-token-record.sh is still populated.
+if [[ "$CL_TOTAL" -gt 0 ]]; then
+    DESIGN_TMPDIR='' "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor claude_sub \
+        input="$CL_IN" output="$CL_OUT" cache_read="$CL_CR" cache_create="$CL_CC" \
+        total="$CL_TOTAL" raw="claude_ci" >/dev/null 2>&1 || true
+    printf 'TOOL=claude\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nCACHE_CREATE=%s\nTOTAL=%s\nRAW=claude_ci\n' \
+        "$CL_IN" "$CL_OUT" "$CL_CR" "$CL_CC" "$CL_TOTAL" > "${OUTPUT}.token-record"
+elif [[ -s "$OUTPUT" ]]; then
     _tok=$(wc -w < "$OUTPUT" | tr -d '[:space:]')
     printf 'TOOL=claude\nTOTAL=%s\nRAW=claude_ci_fix\n' "${_tok:-0}" > "${OUTPUT}.token-record"
 fi

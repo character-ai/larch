@@ -86,6 +86,7 @@ def _vendor_breakdown(records: tuple[RunRecord, ...]) -> str:
         f"| Claude | {_money(sum(record.claude_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'claude') for record in records):,} |",
         f"| Codex | {_money(sum(record.codex_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'codex') for record in records):,} |",
         f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'cursor') for record in records):,} |",
+        f"| Claude (subprocess) | {_money(sum(record.claude_sub_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'claude_sub') for record in records):,} |",
     ]
     return "\n".join(lines)
 
@@ -95,15 +96,15 @@ def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         lines = [
             "## Top runs by estimated cost",
             "",
-            "| Issue | Started | Total | Claude | Codex | Cursor |",
-            "| --- | --- | ---: | ---: | ---: | ---: |",
+            "| Issue | Started | Total | Claude | Codex | Cursor | Claude (sub) |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
         ]
     else:
         lines = [
             "## Top runs by estimated cost",
             "",
-            "| Issue | Workflow | Started | Total | Claude | Codex | Cursor |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+            "| Issue | Workflow | Started | Total | Claude | Codex | Cursor | Claude (sub) |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
         ]
     for record in sorted(records, key=lambda item: item.total_cost, reverse=True)[:10]:
         issue = f"[#{record.number}]({record.url})" if record.url else f"#{record.number}"
@@ -111,12 +112,12 @@ def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         if skill == "implement":
             lines.append(
                 f"| {issue} | {_md_cell(_date(record.started_at) or 'unknown')} | "
-                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} |",
+                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
             )
         else:
             lines.append(
                 f"| {issue} | {_md_cell(record.workflow)} | {_md_cell(_date(record.started_at) or 'unknown')} | "
-                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} |",
+                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
             )
     return "\n".join(lines)
 
@@ -188,6 +189,7 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Claude cost", "claude_cost"),
         ("Codex cost", "codex_cost"),
         ("Cursor cost", "cursor_cost"),
+        ("Claude (subprocess) cost", "claude_sub_cost"),
     )
     groups = workflow_groups(skill, records)
     lines = ["## Per-day cost trends", ""]
@@ -245,6 +247,7 @@ def _write_cache(path: Path, skill: Skill, records: tuple[RunRecord, ...]) -> No
                 "claude_cost": record.claude_cost,
                 "codex_cost": record.codex_cost,
                 "cursor_cost": record.cursor_cost,
+                "claude_sub_cost": record.claude_sub_cost,
                 "total_cost": record.total_cost,
                 "pricing_source": "token-cost.sh" if record.priced_by_token_cost else "python-blended-fallback",
             }

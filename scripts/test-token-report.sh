@@ -545,6 +545,60 @@ contains "summary zero-vendor Tokens" "Tokens:" "$summary_no_vendor"
 no_marks_summary=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --summary 2>&1)
 contains "summary no-marks unavailable" "Token report unavailable:" "$no_marks_summary"
 
+# --- claude_sub lane (spawned-process Claude) + no-double-count (issue #3637) ---
+# MANDATORY no-double-count regression: the transcript-derived `claude` lane and
+# the ledger-derived `claude_sub` lane come from disjoint sources and must never
+# share usage. Fixture: a transcript claude row (total 300) plus a ledger
+# claude_sub row (total 165); the report keeps them separate and folds the
+# single ledger cache_create into the 5m bucket. token_total sums the transcript
+# claude lane and all vendor lanes (codex + claude_sub).
+CS_LEDGER="$TMP/claude-sub-ledger.jsonl"
+CS_TRANSCRIPT="$TMP/claude-sub-transcript.jsonl"
+cat > "$CS_LEDGER" <<'JSONL'
+{"type":"mark","step":"Step 5 - review","ts":"2026-05-06T00:00:00Z"}
+{"type":"vendor","vendor":"codex","input":300,"output":60,"total":360,"ts":"2026-05-06T00:00:40Z","raw":"codex_review"}
+{"type":"vendor","vendor":"claude_sub","input":100,"output":50,"cache_read":10,"cache_create":5,"total":165,"ts":"2026-05-06T00:01:00Z","raw":"claude_review"}
+{"type":"mark","step":"Step 18 - done","ts":"2026-05-06T00:02:00Z"}
+JSONL
+cat > "$CS_TRANSCRIPT" <<'JSONL'
+{"type":"assistant","timestamp":"2026-05-06T00:00:30.000Z","attributionSkill":"larch:implement","message":{"id":"m1","usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":20,"cache_creation_input_tokens":0}}}
+JSONL
+cs_json=$("$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --full --format json)
+if printf '%s' "$cs_json" | jq -e '
+  (.vendors | index("claude_sub") != null) and
+  (.claude.totals.total == 300) and
+  (.claude_sub.totals.total == 165) and
+  (.claude.totals.total != .claude_sub.totals.total) and
+  (.BUCKETS_claude_sub.input == 100) and
+  (.BUCKETS_claude_sub.cache_read == 10) and
+  (.BUCKETS_claude_sub.cache_create_5m == 5) and
+  (.BUCKETS_claude_sub.cache_create_1h == 0) and
+  (.BUCKETS_claude_sub.output == 50) and
+  (.BUCKETS_claude_sub.total == 165) and
+  (.BUCKETS_claude.total == 300)
+' >/dev/null; then
+    pass
+else
+    fail "claude_sub lane / no-double-count json shape wrong: $cs_json"
+fi
+# The transcript `claude` bucket total must exclude the claude_sub ledger tokens.
+cs_claude_total=$(printf '%s' "$cs_json" | jq -r '.BUCKETS_claude.total')
+eq "claude transcript bucket excludes claude_sub" "300" "$cs_claude_total"
+
+cs_md=$("$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --full --markdown)
+contains "claude_sub heading" "### Claude (subprocess)" "$cs_md"
+
+cs_summary=$("$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --summary)
+contains "summary claude_sub lane" "Claude (subprocess):" "$cs_summary"
+# token_total = claude(300) + codex(360) + claude_sub(165) = 825 -> rounds to 1k.
+cs_token_total=$(printf '%s' "$cs_summary" | sed -n 's/.*Tokens: \([0-9]*\)k.*/\1/p')
+eq "summary token_total includes claude_sub (825 -> 1k)" "1" "$cs_token_total"
+
+# --buckets claude_sub extraction (CI helper). LARCH_QUIET_DISABLE forces the
+# direct-stdout path so the captured output is deterministic in quiet contexts.
+cs_buckets=$(LARCH_QUIET_DISABLE=1 "$SCRIPT" --ledger "$CS_LEDGER" --transcript "$CS_TRANSCRIPT" --buckets --vendor claude_sub)
+contains "buckets claude_sub" "INPUT=100 CACHE_READ=10 CACHE_WRITE_5M=5 CACHE_WRITE_1H=0 OUTPUT=50" "$cs_buckets"
+
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
     echo "PASS: test-token-report.sh — $PASS/$total assertions"

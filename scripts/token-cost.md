@@ -19,8 +19,9 @@ Per-bucket (preferred when counts are known):
 - Claude: `--claude-input-tokens`, `--claude-cache-read-tokens`, `--claude-cache-write-5m-tokens`, `--claude-cache-write-1h-tokens`, `--claude-output-tokens`
 - Codex: `--codex-input-tokens`, `--codex-cached-input-tokens`, `--codex-output-tokens`
 - Cursor: `--cursor-input-tokens`, `--cursor-cache-read-tokens`, `--cursor-output-tokens`
+- Claude (subprocess), machine name `claude_sub` (spawned-process Claude reviewer/voter/CI/scout — issue #3637): `--claude-sub-input-tokens`, `--claude-sub-cache-read-tokens`, `--claude-sub-cache-write-5m-tokens`, `--claude-sub-cache-write-1h-tokens`, `--claude-sub-output-tokens`. Same bucket shape as Claude, **priced at the Claude rate constants/env** (no separate rate fields). The rate resolution is independent of the Claude lane, so a `claude_sub`-only per-bucket invocation still uses the per-bucket Claude rates rather than the blended fallback.
 
-**Blended fallback**: when only aggregate `--claude-tokens` / `--codex-tokens` / `--cursor-tokens` are supplied, each lane is priced at a conservative cache-heavy blended default (see table below). The script prints one stderr line: `token-cost.sh: WARNING: per-bucket counts unavailable; using blended rate (may overstate by ~3-10x)`.
+**Blended fallback**: when only aggregate `--claude-tokens` / `--codex-tokens` / `--cursor-tokens` / `--claude-sub-tokens` are supplied, each lane is priced at a conservative cache-heavy blended default (see table below; `claude_sub` uses the Claude blended default). The script prints one stderr line: `token-cost.sh: WARNING: per-bucket counts unavailable; using blended rate (may overstate by ~3-10x)`.
 
 ## Environment
 
@@ -46,7 +47,7 @@ When only **aggregate** counts are provided, conservative blended defaults (USD 
 
 Precedence for each bucket: **per-bucket env** → **legacy blended env** (`LARCH_CLAUDE_RATE_PER_M` / `LARCH_TOKEN_RATE_PER_M` for Claude buckets, vendor blended for Codex/Cursor) → **per-bucket default constant**. Malformed env values fall through to the next tier.
 
-`TOTAL_COST` **always** sums all three vendor numeric costs (each lane is always numeric once defaults apply).
+`TOTAL_COST` **always** sums every vendor numeric cost — Claude, Codex, Cursor, and Claude (subprocess) (each lane is always numeric once defaults apply).
 
 > **Note**: Default rates are estimates, not invoice-grade billing. Set env overrides from your own billing visibility.
 
@@ -54,8 +55,8 @@ Precedence for each bucket: **per-bucket env** → **legacy blended env** (`LARC
 
 Lines of the form `KEY=value`:
 
-- `CLAUDE_COST`, `CODEX_COST`, `CURSOR_COST`, `TOTAL_COST` — `0.00` style decimals (no `$` in the KV values)
-- `CLAUDE_TOKENS`, `CODEX_TOKENS`, `CURSOR_TOKENS`, `TOTAL_TOKENS` — integers
+- `CLAUDE_COST`, `CODEX_COST`, `CURSOR_COST`, `CLAUDE_SUB_COST`, `TOTAL_COST` — `0.00` style decimals (no `$` in the KV values)
+- `CLAUDE_TOKENS`, `CODEX_TOKENS`, `CURSOR_TOKENS`, `CLAUDE_SUB_TOKENS`, `TOTAL_TOKENS` — integers
 
 ## Note on `/research` — intentional divergence from `token-tally.sh`
 

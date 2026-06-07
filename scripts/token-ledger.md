@@ -33,12 +33,12 @@ Resolution order for the ledger file location:
 ## Subcommands
 
 - `mark <step-name>` appends a JSON object with `type=mark`, `step`, and UTC `ts`.
-- `record-vendor <vendor> [key=value ...]` appends a JSON object with `type=vendor`, `vendor`, `input`, `output`, `cache_read`, `cache_create`, `total`, `raw`, and UTC `ts`.
+- `record-vendor <vendor> [key=value ...]` appends a JSON object with `type=vendor`, `vendor`, `input`, `output`, `cache_read`, `cache_create`, `total`, `raw`, and UTC `ts`. The `<vendor>` name is not allowlisted; `codex`, `cursor`, and `claude_sub` (spawned-process Claude reviewer/voter/CI/scout — issue #3637) are the names `scripts/token-report.sh` recognizes for dedicated lanes. The `claude_sub` lane is intentionally distinct from the literal `claude` vendor name: a row literally named `claude` would collide with the transcript-derived `claude` key in `token-report.sh` and overwrite the main-agent tokens.
 - `dump` prints the ledger path on stdout's first line, then the JSONL contents when present.
 
 `--ledger PATH` overrides session-id resolution for tests. The override resolves under `${TMPDIR:-/tmp}` after canonicalizing its parent. Paths with `..` are rejected.
 
-`record-vendor raw=` is enum-like and bounded. Use short provenance labels such as `codex_implement`, `codex_review`, `cursor_implement`, or `cursor_review`; never paste unstructured stderr, stdout, sidecar logs, prompts, or user content into `raw=`.
+`record-vendor raw=` is enum-like and bounded. Use short provenance labels such as `codex_implement`, `codex_review`, `cursor_implement`, `cursor_review`, or — for the `claude_sub` lane — `claude_review`, `claude_vote`, `claude_ci`, `claude_scout`; never paste unstructured stderr, stdout, sidecar logs, prompts, or user content into `raw=`.
 
 ## Failure Mode
 

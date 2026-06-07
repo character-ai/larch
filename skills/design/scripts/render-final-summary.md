@@ -49,7 +49,11 @@ When token JSON is missing/unparseable, or all parsed token counts are zero, the
 helper passes
 `--cost-unavailable` into `render-run-summary.sh`, yielding `- **Cost**: N/A`
 (not a misleading `$0.00`). Passing no token flags is not sufficient because the
-shared renderer defaults omitted counts to zero.
+shared renderer defaults omitted counts to zero. The token-count sourcing
+includes the spawned-process Claude lane (`Claude (subprocess)` / `claude_sub`,
+issue #3637): the helper reads `.claude_sub.totals.total` and
+`BUCKETS_claude_sub` from `token-report-final.json` and forwards `--claude-sub-*`
+flags to the renderer.
 
 ## Degraded render — fallback
 

@@ -145,6 +145,8 @@ def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
         "claude": ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"),
         "codex": ("input", "cached_input", "output"),
         "cursor": ("input", "cache_read", "output"),
+        # claude_sub shares the Claude bucket shape (priced at Claude rates).
+        "claude_sub": ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"),
     }
     for vendor in VENDORS:
         bucket = _as_mapping(report.get(f"BUCKETS_{vendor}"))
@@ -237,6 +239,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         claude=_totals(report, "claude"),
         codex=_totals(report, "codex"),
         cursor=_totals(report, "cursor"),
+        claude_sub=_totals(report, "claude_sub"),
         phase_rows=_phase_rows(report),
         raw_report=report,
     )
