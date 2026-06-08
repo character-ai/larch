@@ -337,6 +337,10 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
+if [ -z "${RUN_ID:-}" ] && [ "${no_logs_commit:-false}" != "true" ]; then
+    printf '**⚠ step-7a: run-id empty — run-log commit will be skipped. Pass --run-id or ensure LARCH_RUN_ID is in session-env.sh.**\n'
+fi
+
 REPO=""
 if [ -f "${SESSION_ENV_FILE:-/dev/null}" ]; then
     if [ "${forked_target:-false}" = "true" ]; then

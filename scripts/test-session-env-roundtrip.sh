@@ -385,6 +385,46 @@ else
 fi
 
 # ------------------------------------------------------------
+# H. write-session-env.sh — --run-id validation and LARCH_RUN_ID persistence
+# ------------------------------------------------------------
+
+run_env="$TMPDIR_TEST/run-id-session-env.sh"
+
+# H.1 — valid UUID-style run-id is accepted and round-trips via LARCH_RUN_ID.
+if "$WRITE_SCRIPT" \
+    --output "$run_env" --repo a/b --repo-unavailable false \
+    --run-id "BB3C5F31-A802-4F1B-A56C-1812B16EE0EC" 2>/dev/null; then
+    pass
+else
+    fail "H.1 valid --run-id rejected"
+fi
+got=$("$READ_SCRIPT" --file "$run_env" --key LARCH_RUN_ID)
+assert_eq "H.1 LARCH_RUN_ID round-trips" "BB3C5F31-A802-4F1B-A56C-1812B16EE0EC" "$got"
+
+# H.2 — REPO key still readable alongside LARCH_RUN_ID.
+got=$("$READ_SCRIPT" --file "$run_env" --key REPO)
+assert_eq "H.2 REPO readable with LARCH_RUN_ID present" "a/b" "$got"
+
+# H.3 — run-id with disallowed characters (space) is rejected.
+if err=$("$WRITE_SCRIPT" \
+    --output "$run_env" --repo a/b --repo-unavailable false \
+    --run-id "bad run id" 2>&1); then
+    fail "H.3 run-id with space accepted: $err"
+else
+    assert_contains "H.3 error message" "Invalid --run-id" "$err"
+fi
+
+# H.4 — absent --run-id omits the LARCH_RUN_ID key from the output.
+if "$WRITE_SCRIPT" \
+    --output "$run_env" --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "H.4 absent --run-id rejected"
+fi
+got=$("$READ_SCRIPT" --file "$run_env" --key LARCH_RUN_ID --default MISSING)
+assert_eq "H.4 LARCH_RUN_ID absent when --run-id omitted" "MISSING" "$got"
+
+# ------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------
 

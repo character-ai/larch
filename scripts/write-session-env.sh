@@ -21,6 +21,7 @@
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
 #   --prev-implement-tmpdir is optional (previous /implement tmpdir for larch-log handoff).
+#   --run-id is optional (RUN_ID from tracking adoption; written as LARCH_RUN_ID for rehydration).
 #   LARCH_CLAUDE_PLUGIN_ROOT is written automatically when CLAUDE_PLUGIN_ROOT is set.
 #
 # Output: Writes a KEY=VALUE file to --output path (atomic via temp+mv).
@@ -85,6 +86,7 @@ TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
 PREV_IMPLEMENT_TMPDIR_ARG=""
 DYNAMIC_ARCHETYPES_MAX_ARG=""
+RUN_ID_ARG=""
 CLAUDE_PLUGIN_ROOT_VALUE="${CLAUDE_PLUGIN_ROOT:-}"
 EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE="${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-30}"
 case "$EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE" in
@@ -107,6 +109,7 @@ while [[ $# -gt 0 ]]; do
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
     --prev-implement-tmpdir) PREV_IMPLEMENT_TMPDIR_ARG="$2"; shift 2 ;;
     --dynamic-archetypes) DYNAMIC_ARCHETYPES_MAX_ARG="$2"; shift 2 ;;
+    --run-id)              RUN_ID_ARG="$2"; shift 2 ;;
     *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -190,6 +193,13 @@ if [[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]]; then
   esac
 fi
 
+if [[ -n "$RUN_ID_ARG" ]]; then
+  if [[ ${#RUN_ID_ARG} -gt 128 || ! "$RUN_ID_ARG" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    larch_err "ERROR=Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$"
+    exit 1
+  fi
+fi
+
 # Build the content
 CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE
@@ -217,6 +227,8 @@ LARCH_CLAUDE_SOURCE_FILE=$CLAUDE_SOURCE_FILE"
 PREV_IMPLEMENT_TMPDIR=$PREV_IMPLEMENT_TMPDIR_ARG"
 [[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]] && CONTENT="$CONTENT
 LARCH_DYNAMIC_ARCHETYPES_MAX=$DYNAMIC_ARCHETYPES_MAX_ARG"
+[[ -n "$RUN_ID_ARG" ]] && CONTENT="$CONTENT
+LARCH_RUN_ID=$RUN_ID_ARG"
 [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]] && CONTENT="$CONTENT
 LARCH_CLAUDE_PLUGIN_ROOT=$CLAUDE_PLUGIN_ROOT_VALUE"
 

@@ -58,7 +58,9 @@ It may also write `LARCH_DYNAMIC_ARCHETYPES_MAX` when the caller passes
 `review-and-fix.sh`'s `DYNAMIC_ARCHETYPES` resolution logic, which reads
 `LARCH_DYNAMIC_ARCHETYPES_MAX` from session-env via `session_get`.
 
-Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--forked-target`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is normalized to digits with invalid / empty values falling back to `30`. `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 8. Empty optional values are omitted from the file.
+It may also write `LARCH_RUN_ID` when the caller passes `--run-id <id>`. `/implement`'s `_persist_larch_run_id()` in `scripts/implement-bootstrap.sh` calls this script a second time (after `phase_tracking()` resolves `RUN_ID`) with all previously-written session-env keys plus `--run-id "$RUN_ID"`, so downstream steps and helpers can rehydrate `RUN_ID` via `read-session-env-key.sh` without relying on orchestrator in-memory state.
+
+Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--forked-target`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is normalized to digits with invalid / empty values falling back to `30`. `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 8; `--run-id` must match `^[A-Za-z0-9._-]{1,128}$`. Empty optional values are omitted from the file.
 
 ## Invariants
 
