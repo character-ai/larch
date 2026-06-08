@@ -127,6 +127,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Configure the current checkout for upstream/fork OSS contribution: verify the fork, optionally sync it from upstream, rewire remotes, disable upstream pushes, and set <code>main</code> tracking.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#status"><code>/status</code></a></td>
+      <td><em>(none)</em></td>
+    </tr>
+    <tr><td colspan="2">Print the current larch version and health status of external vendor tools (Codex and Cursor), using the same probe machinery as <code>/implement</code>.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#upgrade-larch"><code>/upgrade-larch</code></a></td>
       <td><em>(none)</em></td>
     </tr>

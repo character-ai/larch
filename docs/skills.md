@@ -15,6 +15,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/review`](#review)
 - [`/review-and-fix`](#review-and-fix)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
+- [`/status`](#status)
 - [`/upgrade-larch`](#upgrade-larch)
 
 ## `/alias`
@@ -160,6 +161,14 @@ Apply accepted review findings as code fixes. Internal sub-skill invoked by `/re
 Configure the current checkout for upstream/fork OSS contribution. The skill verifies that the fork exists on GitHub and that its immediate parent is the declared upstream, probes both repositories' `refs/heads/main`, optionally performs a destructive fork sync of branches and tags after explicit confirmation, then rewires local remotes so `origin` points at the fork and `upstream` points at upstream. It disables upstream pushes with an invalid-scheme push URL, fetches `origin`, sets `main` to track `origin/main`, and fast-forwards only from a clean `main` checkout.
 
 The workflow is intentionally single-clone (per-clone single-flight lock; multiple clones may run concurrently) and supports any GitHub-compatible host, with github.com as the default. It refuses dirty linked worktrees, in-progress git operations in any linked worktree, missing local `main`, non-`main` checkouts, local `main` ahead of `origin/main`, diverged local/remote `main`, ambiguous remote layouts, non-parseable / mixed-host URLs, duplicate fork remotes, multi-fetch URL remotes, and multi-push URL remotes. If the fork is missing, it prints fork-creation instructions and exits without local mutation. `--init-submodules` is opt-in; default runs ignore submodules.
+
+## `/status`
+
+**Arguments**: *(none)*
+
+**Source**: [`skills/status/SKILL.md`](../skills/status/SKILL.md)
+
+Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `check-reviewers.sh` for binary/runtime probes, then `degraded-tools-gate.sh` to classify each vendor. Reports whether the session would run degraded (reduced panel or Claude-only fallback).
 
 ## `/upgrade-larch`
 
