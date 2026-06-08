@@ -80,3 +80,9 @@ and probe-failure fail-closed cases. Run via `make test-refresh-run-logs`.
 Any change to the stdout contract, transcript-refresh logging, or `--state-file` /
 `MERGE_RESULT` semantics must be reflected in `scripts/ship-pr.md` and
 `scripts/test-refresh-run-logs.sh`.
+
+## Vendor failure-diagnostics flush (#3713)
+
+Calls `scripts/flush-vendor-failure-diagnostics.sh` (best-effort, no commit)
+before the log commit/push so the `vendor-failure-diagnostics` batch carries any
+vendor-agent failure carriers staged this run. No-op when no failures occurred.

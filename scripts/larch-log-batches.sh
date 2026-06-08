@@ -35,6 +35,7 @@ execution-issues .ndjson append json-lines
 final-bail-reason .txt replace none
 include-probe-evidence .md replace none
 session-transcript .jsonl replace none
+vendor-failure-diagnostics .txt replace none
 "
 
 larch_log_batch_info() {

@@ -213,6 +213,84 @@ assert_eq "capture-stdout ignores explicit sink" "$merged_out" "$sel"
 sel=$(select_failed_agent_stderr_source "$merged_out" false true "$explicit_sink")
 assert_eq "capture-stdout-only ignores explicit sink" "${merged_out}.diag" "$sel"
 
+# ===========================================================================
+# #3713 vendor-agent failure-diagnostics carrier
+# ===========================================================================
+assert_contains() {
+    local label="$1" path="$2" needle="$3" rc=0
+    grep -Fq "$needle" "$path" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then ok "$label"; else fail "$label: '$needle' absent in $path"; fi
+}
+assert_absent() {
+    local label="$1" path="$2" needle="$3" rc=0
+    grep -Fq "$needle" "$path" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 0 ]; then fail "$label: '$needle' present in $path"; else ok "$label"; fi
+}
+
+VF="$TMPROOT/vf"; mkdir -p "$VF"
+
+# --- write_failure_diag composes labeled sections; filters success bulk ---
+o="$VF/codex-output.txt"
+printf 'health-probe fast-fail: codex unhealthy\nexit code 7\n' > "$o.diag"
+printf 'plain codex stderr\nError: quota exceeded usage limit\n' > "$o.sidecar"
+printf 'success transcript that must not leak\nrandom prose\n' > "$o"
+if write_failure_diag "$o"; then ok "write_failure_diag rc=0"; else fail "write_failure_diag rc!=0"; fi
+assert_file_present "carrier written" "$o.failure-diag"
+assert_contains "carrier has sidecar section" "$o.failure-diag" "===== sidecar ====="
+assert_contains "carrier has diag section" "$o.failure-diag" "===== diag ====="
+assert_contains "carrier keeps quota line" "$o.failure-diag" "quota exceeded usage limit"
+
+# --- events.jsonl folded to failure-shaped lines only ---
+o2="$VF/codex2.txt"
+printf '{"type":"item.completed","ok":true}\n{"type":"turn.failed","error":"rate limit reached"}\n{"type":"noise","data":"hello world plain"}\n' > "$o2.events.jsonl"
+write_failure_diag "$o2" >/dev/null 2>&1 || true
+assert_file_present "events carrier written" "$o2.failure-diag"
+assert_contains "events keeps turn.failed" "$o2.failure-diag" "turn.failed"
+assert_absent "events drops non-error noise" "$o2.failure-diag" "hello world plain"
+
+# --- no sources → return 1, no carrier ---
+o3="$VF/empty.txt"
+if write_failure_diag "$o3"; then fail "empty write_failure_diag should rc!=0"; else ok "empty write_failure_diag rc!=0"; fi
+assert_file_absent "no carrier when no sources" "$o3.failure-diag"
+
+# --- append-with-header on existing carrier ---
+printf 'second attempt diag\n' > "$o.diag"
+write_failure_diag "$o" >/dev/null 2>&1 || true
+assert_contains "carrier append-with-header" "$o.failure-diag" "additional failure diagnostics"
+
+# --- resolve prefers carrier, falls back, returns 1 when empty ---
+assert_eq "resolve prefers carrier" "$o.failure-diag" "$(resolve_failure_diagnostic_source "$o")"
+o4="$VF/r4.txt"; printf 'sidecar only\n' > "$o4.sidecar"
+assert_eq "resolve falls back to sidecar" "$o4.sidecar" "$(resolve_failure_diagnostic_source "$o4")"
+o5="$VF/r5.txt"
+if resolve_failure_diagnostic_source "$o5" >/dev/null; then fail "resolve empty should rc!=0"; else ok "resolve empty rc!=0"; fi
+
+# --- external_stream_reset archives + truncates; /dev/null no-op ---
+o6="$VF/r6.txt"; printf 'attempt-1 sidecar\n' > "$o6.sidecar"
+external_stream_reset "$o6.sidecar" "$o6.sidecar.history" "attempt 1"
+assert_file_present "reset archived history" "$o6.sidecar.history"
+if [[ ! -s "$o6.sidecar" ]]; then ok "reset truncated target to empty"; else fail "reset did not truncate target"; fi
+if external_stream_reset "/dev/null" "$o6.sidecar.history" "noop"; then ok "reset /dev/null no-op rc=0"; else fail "reset /dev/null returned nonzero"; fi
+
+# --- append_vendor_failure_diagnostics: per-slot redacted part + empty backstop ---
+o7="$VF/r7.txt"; printf 'codex crashed Error fatal\n' > "$o7.failure-diag"
+append_vendor_failure_diagnostics --source "$o7.failure-diag" --site "lib-test codex" --tmpdir "$VF" --exit-code 7
+parts=$(find "$VF/vendor-failure-diagnostics.parts" -name 'part.*' 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "one vendor part written" "1" "$parts"
+append_vendor_failure_diagnostics --source "/nonexistent" --site "empty" --tmpdir "$VF" --exit-code 124
+parts2=$(find "$VF/vendor-failure-diagnostics.parts" -name 'part.*' 2>/dev/null | wc -l | tr -d ' ')
+assert_eq "backstop still writes a part" "2" "$parts2"
+cat "$VF"/vendor-failure-diagnostics.parts/part.* > "$VF/merged-parts.txt" 2>/dev/null || true
+assert_contains "backstop synthesized line" "$VF/merged-parts.txt" "no diagnostics captured (exit 124)"
+
+# --- resolve_execution_issues_log precedence (inline so PASS/FAIL counters apply) ---
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH DESIGN_TMPDIR REVIEW_TMPDIR
+export IMPLEMENT_TMPDIR="$VF"
+assert_eq "log resolver IMPLEMENT_TMPDIR" "$VF/execution-issues.md" "$(resolve_execution_issues_log)"
+export LARCH_EXECUTION_ISSUES_LOG="$VF/custom.md"
+assert_eq "log resolver override wins" "$VF/custom.md" "$(resolve_execution_issues_log)"
+unset LARCH_EXECUTION_ISSUES_LOG IMPLEMENT_TMPDIR
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

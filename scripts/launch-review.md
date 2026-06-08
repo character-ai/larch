@@ -198,3 +198,15 @@ docs, and the skill call sites whenever argv grammar, sidecar shape, retry
 metadata, timing, budget-cap, or read-only hardening behavior changes.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
+## Vendor failure-diagnostics carrier (#3713)
+
+This launcher now sources `scripts/lib-failed-agent-stderr-tail.sh`. Per-attempt
+sidecar/diag truncations use `external_stream_reset` to archive the outgoing
+content to `${OUTPUT}.sidecar.history` before truncating, so multi-attempt stderr
+survives. The codex/cursor give-up computes the failure verdict first
+(verdict-before-reset), then `write_failure_diag` composes `${OUTPUT}.failure-diag`
+and `resolve_failure_diagnostic_source` selects the richest non-empty source to
+pass to `append-tool-failure.sh`; `append_launch_failure` also appends that source
+to the durable `vendor-failure-diagnostics` batch. This is the fix for the #3713
+incident, where a truncated sidecar produced an empty `execution-issues.md` block.

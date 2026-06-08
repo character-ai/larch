@@ -42,7 +42,8 @@ timing-report
 execution-issues
 final-bail-reason
 include-probe-evidence
-session-transcript'
+session-transcript
+vendor-failure-diagnostics'
 
 actual="$(larch_log_batch_list)"
 [ "$actual" = "$expected" ] || {

@@ -305,6 +305,21 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # #3713: raw per-attempt diagnostic archives and scout tier raw stems stay
+    # excluded; only the composed `*.failure-diag` carrier (staged + redacted by
+    # the default-include path below) reaches git. None of these arms end in
+    # `.failure-diag`, so the carrier is never matched (F1).
+    case "$name" in
+        *.sidecar.history|*.events.history)
+            return 0
+            ;;
+        *.raw.cursor|*.raw.claude)
+            return 0
+            ;;
+        scout-plan-manifest.json.raw.meta|scout-plan-manifest.json.raw.stderr|scout-plan-manifest.json.raw.prompt)
+            return 0
+            ;;
+    esac
     # Derived/duplicate artifacts excluded per #3705 (Phase 1 logs-size-reduction).
     case "$name" in
         aggregate-validate.py|findings.md.tmp|composed-plan.redacted.md|ballot.txt)

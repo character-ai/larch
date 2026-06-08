@@ -97,20 +97,32 @@ case "$STATUS_LABEL" in
     ""|*$'\n'*|*$'\r'*) fail_usage "--status-label must be a single line" ;;
 esac
 
-if [ ! -f "$OUTPUT_FILE" ]; then
-    emit_kv FAILED "true"
-    emit_kv ERROR "output file not found: $OUTPUT_FILE"
-    exit 2
-fi
-
 content_file=$OUTPUT_FILE
 tmp_content=""
 entry_file=""
+synthesized=""
 cleanup() {
     [ -z "$tmp_content" ] || rm -f "$tmp_content"
     [ -z "$entry_file" ] || rm -f "$entry_file"
+    [ -z "$synthesized" ] || rm -f "$synthesized"
 }
 trap cleanup EXIT
+
+# #3713 fail-closed backstop: a missing or zero-byte --output-file must NOT
+# leave an empty fenced block in execution-issues.md. Synthesize a one-line
+# "no diagnostics captured (exit N)" body so any logged failure always carries
+# content. This converts the historical missing-input exit 2 into a never-empty
+# log entry (the dominant caller invokes this helper best-effort).
+if [ ! -f "$OUTPUT_FILE" ] || [ ! -s "$OUTPUT_FILE" ]; then
+    synthesized="$(mktemp "${TMPDIR:-/tmp}/append-tool-failure-synth.XXXXXX")" || {
+        emit_kv FAILED "true"
+        emit_kv ERROR "cannot create synthesized backstop temp file"
+        exit 2
+    }
+    printf 'no diagnostics captured (exit %s)\n' "$EXIT_CODE" > "$synthesized"
+    OUTPUT_FILE=$synthesized
+    content_file=$synthesized
+fi
 
 if [ "$REDACT" = "true" ]; then
     [ -x "$SCRIPT_DIR/redact-secrets.sh" ] || {

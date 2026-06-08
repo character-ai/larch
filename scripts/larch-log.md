@@ -204,3 +204,12 @@ to the remote. Dedicated larch-log-only pushes are intentionally avoided.
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
 the `scripts/larch-log-flush.sh` helper plus `scripts/test-larch-log.sh`
 harness.
+
+## Vendor failure-diagnostics carrier (#3713)
+
+`round_artifact_included` denies `*.failure-diag`, `*.sidecar.history`, and
+`*.events.history` so the per-output failure carrier is never committed by the
+per-output write-round path (F14). The durable implement path for vendor-agent
+failures is the `vendor-failure-diagnostics` batch, staged by
+`scripts/flush-vendor-failure-diagnostics.sh`. See
+`docs/vendor-agent-diagnostics-audit.md`.

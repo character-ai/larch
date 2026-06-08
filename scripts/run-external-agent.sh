@@ -149,8 +149,17 @@ if [[ $# -eq 0 ]]; then
     usage; exit 1
 fi
 
-# Clear stale output, sentinels, metadata, and diagnostic files
-rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag" "${OUTPUT_FILE}.stderr-tail"
+# #3713: preserve a prior attempt's diagnostics that reused this OUTPUT path
+# before stale-artifact cleanup discards the `.diag`, so the composed failure
+# carrier (written by the EXIT trap on non-zero exit) can include earlier
+# attempts. The `.sidecar.history` archive is publish-excluded; only the
+# composed `${OUTPUT}.failure-diag` carrier reaches git.
+external_stream_reset "${OUTPUT_FILE}.diag" "${OUTPUT_FILE}.sidecar.history" "prior .diag (entry)"
+
+# Clear stale output, sentinels, metadata, diagnostic files, and the failure
+# carrier. Entry-clear of `.failure-diag` is the retry-then-success guard: a
+# later success leaves no carrier behind, so retry-then-success commits nothing.
+rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag" "${OUTPUT_FILE}.stderr-tail" "${OUTPUT_FILE}.failure-diag"
 
 # Write sentinel file on ANY exit — the reliable completion signal for callers.
 # Callers poll for <output-file>.done instead of waiting for runtime notifications.
@@ -158,11 +167,32 @@ rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT
 EXIT_CODE=99  # default: wrapper crashed before capturing real exit code
 PID=""
 # shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
+_compose_failure_carrier_on_exit() {
+    # #3713: compose ${OUTPUT}.failure-diag from this attempt's diagnostic
+    # streams on any non-zero exit, BEFORE the .done sentinel is written, so a
+    # visible .done always implies the carrier exists for failures. On success,
+    # remove any stale carrier so retry-then-success commits nothing. The carrier
+    # is a bounded, content-filtered composite; secret/tmpdir redaction happens
+    # downstream at the publish / append-vendor-failure-diagnostics boundary.
+    if [[ "${EXIT_CODE:-99}" -ne 0 ]]; then
+        local _sink_args=()
+        if [[ "${CAPTURE_STDOUT:-false}" == "true" ]]; then
+            _sink_args=(--sink "$OUTPUT_FILE")
+        elif [[ -n "${STDERR_SINK:-}" ]]; then
+            _sink_args=(--sink "$STDERR_SINK")
+        fi
+        write_failure_diag "$OUTPUT_FILE" "${_sink_args[@]+"${_sink_args[@]}"}" >/dev/null 2>&1 || true
+    else
+        rm -f "${OUTPUT_FILE}.failure-diag" 2>/dev/null || true
+    fi
+}
+# shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
 _write_sentinel_on_exit() {
     if [[ -n "${PID:-}" ]] && kill -0 "$PID" 2>/dev/null; then
         kill "$PID" 2>/dev/null || true
         wait "$PID" 2>/dev/null || true
     fi
+    _compose_failure_carrier_on_exit
     echo "$EXIT_CODE" > "${OUTPUT_FILE}${SENTINEL_SUFFIX}" 2>/dev/null || true
 }
 trap _write_sentinel_on_exit EXIT
@@ -215,6 +245,11 @@ case "$TOOL_NAME" in
                     printf '%s\n' "$_gate_probe_diag"
                 fi
             } >> "${OUTPUT_FILE}.diag"
+            # #3713: also echo the one-line diagnosis to stderr so the default-mode
+            # sidecar / stderr sink is never empty on the fast-fail path. The
+            # `.diag` content above still feeds the composed failure carrier that
+            # the EXIT trap writes before the `.done` sentinel.
+            printf 'health-probe fast-fail: %s unhealthy before launch\n' "$TOOL_NAME" >&2
             unset _gate_probe_diag
             case "$TOOL_NAME" in
                 codex) EXIT_CODE=7 ;;

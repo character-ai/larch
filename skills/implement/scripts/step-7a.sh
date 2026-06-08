@@ -152,6 +152,13 @@ run_log_flush() {
 
     run_larch_log_write token-report "$IMPLEMENT_TMPDIR/token-report-rendered.json"
     run_larch_log_write timing-report "$IMPLEMENT_TMPDIR/timing-report-rendered.json"
+    # #3713: stage the vendor-failure-diagnostics batch from per-slot parts so a
+    # vendor-agent failure earlier in the run rides into the PR tree at the
+    # pre-ship flush (no-op when no failures occurred this run).
+    "$PLUGIN_ROOT/scripts/flush-vendor-failure-diagnostics.sh" \
+        --tmpdir "$IMPLEMENT_TMPDIR" \
+        --run-id "$RUN_ID" \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" >/dev/null 2>&1 || true
     [ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ] && run_larch_log_write parent-issue "$IMPLEMENT_TMPDIR/parent-issue.md"
     [ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ] && run_larch_log_write pre-review-head "$IMPLEMENT_TMPDIR/pre-review-head.txt"
     [ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ] && run_larch_log_write pre-review-untracked "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"

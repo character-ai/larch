@@ -124,7 +124,9 @@ esac
 
 PROMPT_CANON=$(canonical_existing_file "$PROMPT_FILE") || fail "invalid --prompt-file"
 OUTPUT_CANON=$(canonical_output_path "$OUTPUT_FILE") || fail "invalid --output-file"
-rm -f "${OUTPUT_CANON}.stderr-tail"
+# #3713 F7: clear the failure carrier at launch start (entry-clear is the
+# retry-then-success guard for the direct-Claude path that owns ${OUTPUT}).
+rm -f "${OUTPUT_CANON}.stderr-tail" "${OUTPUT_CANON}.failure-diag"
 SESSION_ROOT=$(cd "$(dirname "$OUTPUT_CANON")" && pwd -P)
 
 EXTRA_ROOTS_CANON=()
@@ -285,10 +287,19 @@ if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then
     exit_code=99
     status="ERROR"
 fi
-if [[ "$exit_code" -ne 0 ]] && [[ -s "${OUTPUT_CANON}.stderr" ]]; then
-    write_failed_agent_stderr_tail "${OUTPUT_CANON}.stderr" "$OUTPUT_CANON" || true
+if [[ "$exit_code" -ne 0 ]]; then
+    if [[ -s "${OUTPUT_CANON}.stderr" ]]; then
+        write_failed_agent_stderr_tail "${OUTPUT_CANON}.stderr" "$OUTPUT_CANON" || true
+    fi
+    # #3713 F7: compose the failure carrier on nonzero exit (sink = subprocess
+    # stderr). This launcher owns ${OUTPUT}, clearing the carrier at entry and on
+    # success so retry-then-success commits nothing. Site-aware execution-issues /
+    # batch logging lives in the wrappers that know the tmpdir + site
+    # (launch-claude-review.sh, scout-dynamic-archetypes.sh,
+    # generate-code-flow-diagram.sh).
+    write_failure_diag "$OUTPUT_CANON" --sink "${OUTPUT_CANON}.stderr" >/dev/null 2>&1 || true
 else
-    rm -f "${OUTPUT_CANON}.stderr-tail"
+    rm -f "${OUTPUT_CANON}.stderr-tail" "${OUTPUT_CANON}.failure-diag"
 fi
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"
