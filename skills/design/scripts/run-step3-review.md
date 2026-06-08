@@ -68,4 +68,4 @@ Stops before semantic finding dedup (#6), Gate B (Step 3.5), and `main-agent-vot
 
 ## Prune-round threading
 
-`run-step3-review.sh` passes the pending review-round counter (`STEP3_REVIEW_ROUND_NUM`) to `plan-review-loop.sh --prune-round-num` while leaving `--round-num` as the artifact round index. It persists `PANEL_PRUNED_EMPTY` from both loop stdout and `.step3-plan-review-result.env` into `.step3-review-result.env` so `plan-review-continuation.sh` can continue pruned-empty rounds toward the round-5 re-probe.
+`run-step3-review.sh` writes `STEP3_REVIEW_ROUND_NUM` to `review-round-count.txt` before calling `plan-review-loop.sh`; the loop reads that file directly to derive the pruning round counter, eliminating the need to thread `--prune-round-num` via argv. `--round-num` remains the artifact directory index. It persists `PANEL_PRUNED_EMPTY` from both loop stdout and `.step3-plan-review-result.env` into `.step3-review-result.env` so `plan-review-continuation.sh` can continue pruned-empty rounds toward the round-5 re-probe.

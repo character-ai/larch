@@ -648,7 +648,7 @@ absent "$SKILL_MD" "$_removed_design_cap_var" 'SKILL must not reference removed 
 TR_RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/test-run-step3-review.sh"
 contains "$TR_RUN_STEP3_SH" 'driver argv matches plan-review-loop contract' \
   'test-run-step3-review.sh missing plan-review-loop integration-seam case'
-_plan_forward_flags=(--design-tmpdir --plan-file --feature-file --codex-present --cursor-present --round-num --prune-round-num)
+_plan_forward_flags=(--design-tmpdir --plan-file --feature-file --codex-present --cursor-present --round-num)
 for _pf in "${_plan_forward_flags[@]}"; do
   grep -Fq -- "$_pf" "$PLAN_LOOP_SH" \
     || fail "plan-review-loop.sh missing $_pf in argv parser"
@@ -1870,7 +1870,9 @@ contains "$DESIGN_POSTPLAN_EMIT_SH" 'write-original --design-tmpdir' 'design-pos
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
-contains "$RUN_STEP3_SH" '--prune-round-num "$STEP3_REVIEW_ROUND_NUM"' 'run-step3-review.sh missing --prune-round-num STEP3_REVIEW_ROUND_NUM to plan-review-loop'
+# shellcheck disable=SC2016 # $ tokens are literal grep pins
+absent "$RUN_STEP3_SH" '--prune-round-num "$STEP3_REVIEW_ROUND_NUM"' 'run-step3-review.sh must not thread --prune-round-num; plan-review-loop reads review-round-count.txt directly'
+contains "$PLAN_LOOP_SH" 'review-round-count.txt' 'plan-review-loop.sh missing review-round-count.txt file-based prune-round fallback'
 contains "$SKILL_MD" 'restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode)' 'SKILL.md missing --approve explicit Gate B settle path'
 contains "$SKILL_MD" 'auto-applies** every accepted in-scope finding with no' 'SKILL.md missing Gate B auto-apply default routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
