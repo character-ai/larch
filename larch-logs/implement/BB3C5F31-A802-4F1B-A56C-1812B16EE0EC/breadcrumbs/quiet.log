@@ -32,15 +32,31 @@
 
 === larch-quiet-read-session-env-key.sh-39712.log ===
 
+=== larch-quiet-read-session-env-key.sh-49703.log ===
+
+=== larch-quiet-read-session-env-key.sh-49942.log ===
+
+=== larch-quiet-read-session-env-key.sh-50147.log ===
+
 === larch-quiet-read-session-env-key.sh-55917.log ===
 
 === larch-quiet-read-session-env-key.sh-55954.log ===
 
 === larch-quiet-read-session-env-key.sh-55991.log ===
 
+=== larch-quiet-read-session-env-key.sh-68949.log ===
+
+=== larch-quiet-read-session-env-key.sh-68977.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-39738.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-92276.log ===
+
+=== larch-quiet-ship.py-69029.log ===
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: poll 3/180 pending after 31s; sleeping 10s
+ci_monitor: poll 4/180 pending after 44s; sleeping 10s
 
 === larch-quiet-step-7a.sh-56028.log ===
 FLUSH_STATUS=ok
