@@ -30,9 +30,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  # External-tool linters only: markdownlint, jsonlint, agent-lint,
-  # actionlint. All local bash/python linters run in the parallel
-  # `lint-local` job. `agnix` and `shellcheck` run in their dedicated jobs.
+  # External-tool linters only: markdownlint, jsonlint, and actionlint.
+  # All local bash/python linters run in the parallel `lint-local` job.
+  # `agent-lint`, `agnix`, and `shellcheck` run in their dedicated jobs.
   # `gitleaks` working-tree scan moved to the `gitleaks` job to shed ~40s
   # from this job's critical path. Test harnesses run in the separate
   # `test-harnesses` job. Mermaid fence lint and SIGPIPE safety lint run in
@@ -54,15 +54,18 @@ jobs:
           restore-keys: |
             pre-commit-
       - name: Install lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters (external tools)
-        # Runs markdownlint, jsonlint, agent-lint, and actionlint only.
-        # `agnix` and `shellcheck` run in dedicated jobs. `gitleaks` moved
-        # to the `gitleaks` job. Local bash/python linters run in
-        # `lint-local`. If a dedicated job is removed, drop its hook name
-        # from SKIP to restore CI coverage. Issue #1034.
+        # Runs markdownlint, jsonlint, and actionlint only.
+        # `agent-lint`, `agnix`, and `shellcheck` run in dedicated jobs.
+        # `gitleaks` moved to the `gitleaks` job. Local bash/python linters
+        # run in `lint-local`. If a dedicated job is removed, drop its hook
+        # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -108,11 +111,14 @@ jobs:
           restore-keys: |
             pre-commit-
       - name: Install lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters (local)
         # Runs only local bash/python linters. External tools (markdownlint,
-        # jsonlint, agent-lint, actionlint) run in `lint`. Dedicated-job
-        # hooks (gitleaks, agnix, shellcheck) are skipped here.
+        # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
+        # (gitleaks, agnix, shellcheck, agent-lint) are skipped here.
         env:
           SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint
         run: make lint-only
@@ -177,6 +183,11 @@ jobs:
         # a node_modules hit with a puppeteer miss would leave Chromium
         # absent and break the mermaid lint step (closes #1576).
         if: steps.node-modules-cache.outputs.cache-hit != 'true' || steps.puppeteer-cache.outputs.cache-hit != 'true'
+        env:
+          npm_config_fetch_retries: "5"
+          npm_config_fetch_retry_factor: "2"
+          npm_config_fetch_retry_mintimeout: "10000"
+          npm_config_fetch_retry_maxtimeout: "120000"
         run: cd mermaid-lint && npm ci
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
@@ -203,7 +214,17 @@ jobs:
             paths: "skills .claude"
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          # Key on .pre-commit-config.yaml since shellcheck-py is pinned there;
+          # a pin bump invalidates the cache.
+          cache-dependency-path: .pre-commit-config.yaml
       - name: Install shellcheck
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install shellcheck-py==0.11.0.1
       - name: Run shellcheck (${{ matrix.scope }})
         run: |
@@ -264,7 +285,7 @@ jobs:
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 10 \
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
             https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz \
             -o "$tmp/rg.tgz"
           tar -xzf "$tmp/rg.tgz" -C "$tmp"
@@ -296,7 +317,7 @@ jobs:
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 10 \
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
             -o "$tmp/agent-lint.tgz" \
             https://github.com/zhupanov/agent-lint/releases/download/v2.3.2/agent-lint-v2.3.2-x86_64-unknown-linux-musl.tar.gz
           tar -xzf "$tmp/agent-lint.tgz" -C "$tmp"
@@ -306,11 +327,34 @@ jobs:
         run: agent-lint --version
       - name: Run agent-lint
         run: agent-lint --pedantic .
-      - uses: agent-sh/agnix@v0.17.0
+      # agnix ships a prebuilt binary via GitHub release assets — same 504-prone
+      # surface as agent-lint/gitleaks. Install the pinned binary directly so CI
+      # can cache it and retry transient release-asset failures, instead of the
+      # agent-sh/agnix action's single-shot download.
+      # Cold-cache note: the first run after a version bump must download; the
+      # wider exponential retry (--retry-max-time 120) is the only mitigation
+      # for that run against short blips. A warm cache fully avoids the download.
+      - name: Cache agnix binary
+        id: cache-agnix
+        uses: actions/cache@v5
         with:
-          target: 'claude-code'
-          config: '.agnix.toml'
-          strict: 'true'
+          path: /usr/local/bin/agnix
+          key: agnix-bin-${{ runner.os }}-0.31.0
+      - name: Install agnix v0.31.0
+        if: steps.cache-agnix.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
+            -o "$tmp/agnix.tgz" \
+            https://github.com/agent-sh/agnix/releases/download/v0.31.0/agnix-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf "$tmp/agnix.tgz" -C "$tmp"
+          sudo install -m 0755 "$tmp/agnix" /usr/local/bin/agnix
+          rm -rf "$tmp"
+      - name: Verify agnix
+        run: agnix --version
+      - name: Run agnix
+        run: agnix . --strict --target claude-code --config .agnix.toml
 
   # Dedicated gitleaks gate — runs two sequential scans: (1) working-tree
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved
@@ -341,7 +385,7 @@ jobs:
           GITLEAKS_SHA256: ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d
         run: |
           set -euo pipefail
-          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 10 \
+          curl -sSfL --retry 5 --retry-max-time 120 --retry-all-errors --connect-timeout 10 \
             -o /tmp/gitleaks.tar.gz \
             https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz
           echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum --check --strict
@@ -379,6 +423,9 @@ jobs:
           cache: pip
           cache-dependency-path: .github/workflows/requirements-lint.txt
       - name: Install lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Check topology-rule paths coverage
         run: python3 scripts/check-topology-rule-paths.py
@@ -475,6 +522,22 @@ jobs:
       # Docker image so both action driver and scanner engine are pinned.
       # Pinned to commit SHA for v3.82.13 (verify with
       # `git ls-remote https://github.com/trufflesecurity/trufflehog refs/tags/v3.82.13`).
+      # Pre-pull the Docker image with exponential-backoff retry so a transient
+      # GHCR blip is retried before the action runs. The action then reuses the
+      # locally-present image. Image ref verified against the action's action.yml
+      # at the pinned SHA above (image: ghcr.io/trufflesecurity/trufflehog:${VERSION}).
+      # Best-effort: GHCR hardening for a Docker action is necessarily partial.
+      - name: Pre-pull trufflehog image (exponential-backoff retry)
+        run: |
+          set -euo pipefail
+          img="ghcr.io/trufflesecurity/trufflehog:3.82.13"
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$img"; then exit 0; fi
+            echo "trufflehog image pull attempt $attempt failed; backing off $((2 ** attempt))s..." >&2
+            sleep $(( 2 ** attempt ))
+          done
+          echo "::error::failed to pull $img after 5 attempts" >&2
+          exit 1
       - uses: trufflesecurity/trufflehog@1aa1871f9ae24a8c8a3a48a9345514acf42beb39
         with:
           version: 3.82.13
@@ -500,6 +563,9 @@ jobs:
           cache-dependency-path: python/requirements-dev.txt
       - uses: actions/setup-node@v5
       - name: Install Python lint dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-dev.txt
       - name: Run Python linters
         run: make py-lint
@@ -518,6 +584,9 @@ jobs:
           cache: pip
           cache-dependency-path: python/requirements-test.txt
       - name: Install Python test dependencies
+        env:
+          PIP_RETRIES: "5"
+          PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-test.txt
       - name: Run Python tests
         run: make py-test
