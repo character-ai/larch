@@ -12,12 +12,12 @@ render-session-transcript.py --input <raw-jsonl> [--output <jsonl>]
 
 `--input` is the raw Claude Code session JSONL. `--output` writes the rendered JSONL to a file; without it the JSONL is written to stdout. Exit codes: `0` success, `2` input missing or unreadable, `3` parsed but produced zero records (suspect format), other non-zero on unexpected exceptions.
 
-## Output schema (v2)
+## Output schema (v3, policy: prose-errors-only)
 
 The first line is a header object:
 
 ```json
-{"v": 2, "source_basename": "<input-basename>", "turns": <int>}
+{"v": 3, "source_basename": "<input-basename>", "turns": <int>, "policy": "prose-errors-only"}
 ```
 
 Subsequent lines are per-turn objects:
@@ -28,39 +28,28 @@ Subsequent lines are per-turn objects:
 
 `blocks` is an ordered list. Each block has a `type` field:
 
-| `type`        | Other fields                                                                  | Meaning |
-|---------------|-------------------------------------------------------------------------------|---------|
-| `command`     | `name` (e.g. `/larch:fix-issue`), `args` (optional)                           | User-typed slash command. |
-| `text`        | `value`                                                                       | Plain user or assistant prose (with `<system-reminder>` blocks stripped). |
-| `thinking`    | `value`                                                                       | Assistant thinking. Kept only when at least one `tool_use` in the same assistant turn produced an errored or warned `tool_result`. |
-| `tool_call`   | `id` (tool_use_id), `name`, `input` or `elided_input_bytes`                   | Assistant tool invocation. See input trimming rules below. |
-| `tool_result` | `tool_use_id`, `name`, plus body fields below                                 | User-side tool result. |
+| `type`        | Other fields                                        | Meaning |
+|---------------|-----------------------------------------------------|---------|
+| `command`     | `name` (e.g. `/larch:fix-issue`), `args` (optional) | User-typed slash command. |
+| `text`        | `value`                                             | Plain user or assistant prose (with `<system-reminder>` blocks stripped). |
+| `thinking`    | `value`                                             | Assistant thinking. Kept only when at least one `tool_use` in the same assistant turn produced an errored or warned `tool_result`. |
+| `tool_result` | `tool_use_id`, `name`, plus body fields below       | User-side errored or warned tool result only. |
 
-`tool_result` body fields are mutually exclusive between elided and kept variants:
+`tool_result` blocks are only emitted when errored or warned:
 
-- **Elided (routine)**: `elided_bytes` only.
 - **Kept (errored)**: `text` (verbatim body), `error: true`, optional `exit_code: <int>` when a Bash `Exit code N` prefix was parsed.
 - **Kept (warning)**: `text` (verbatim body), `warning: true`. Only set when the result was not also classified as an error.
 
-A result is kept (full body retained) when either:
+A result is kept when either:
 
 1. The harness flagged `is_error: true` on the original block, or
 2. The tool is `Bash` and the first 500 chars of the output contain `^(Error:|Exit code [1-9])` or a `warning:` substring (case-insensitive).
 
-Otherwise the body collapses to `elided_bytes`.
+Otherwise the result is **dropped entirely** (v3 policy; was `elided_bytes` in v2).
 
-### tool_call input trimming (v2)
+`tool_call` blocks are **dropped entirely** (v3 policy).
 
-`tool_call` inputs are trimmed before output to reduce transcript size:
-
-- **`Edit` / `Write` / `NotebookEdit`**: `input` is replaced with a stub
-  `{"file_path": "<path>", "input_bytes": <N>}` — the PR diff carries the
-  content; the stub records the target path and original byte count.
-  (`file_path` is taken from `input.file_path`, `input.notebook_path`, or
-  `input.path`, in that order.)
-- **All other tools**: the full `input` object is included when its
-  JSON-serialized length is ≤ 1 024 bytes; otherwise `input` is omitted
-  and `elided_input_bytes: <N>` is emitted instead.
+**Accepted capability loss**: tool-sequence reconstruction for clean runs (e.g., auditing how many times a file was re-read) is no longer possible from the committed transcript. Incident forensics of that shape must use live-session artifacts instead.
 
 ## First pass / orphan results
 

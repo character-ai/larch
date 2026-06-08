@@ -1,29 +1,30 @@
 #!/usr/bin/env python3
 """render-session-transcript.py — render a Claude Code session JSONL as a filtered chat-view JSONL.
 
-Output schema (v2):
+Output schema (v3, policy: prose-errors-only):
 
   Line 1 is a header record:
-      {"v": 2, "source_basename": "<input-basename>", "turns": N}
+      {"v": 3, "source_basename": "<input-basename>", "turns": N, "policy": "prose-errors-only"}
 
   Subsequent lines are per-turn records (one JSON object per line):
       {"turn": <int>, "role": "user" | "assistant", "blocks": [<block>...]}
 
-  Block types:
+  Block types kept:
       {"type": "command", "name": "/cmd", "args": "..."}     # slash command typed by user
       {"type": "text", "value": "..."}                       # plain user / assistant text
       {"type": "thinking", "value": "..."}                   # assistant thinking (kept only when adjacent to error)
-      {"type": "tool_call", "id": "toolu_...", "name": "Bash", "input": {...}}
-      {"type": "tool_call", "id": "toolu_...", "name": "Edit",
-       "input": {"file_path": "...", "input_bytes": N}}      # Edit/Write/NotebookEdit: content stub
-      {"type": "tool_call", "id": "toolu_...", "name": "Bash",
-       "elided_input_bytes": N}                              # large input elided (>1 KB serialized)
-      {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
-       "elided_bytes": N}                                    # routine result, body elided
       {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
        "text": "...", "error": true, "exit_code": N}         # errored result (full body)
       {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
        "text": "...", "warning": true}                       # warning result (full body)
+
+  Block types dropped (v3 policy):
+      tool_call blocks — all tool invocations are omitted.
+      non-error/non-warning tool_result blocks — routine results are omitted entirely.
+
+  Accepted capability loss: tool-sequence reconstruction for clean runs is no longer
+  possible from the committed transcript. Incident forensics of that shape must use
+  live-session artifacts instead.
 
 Filter rules:
   - Drop records with isMeta=true (harness-injected slash-command/@file expansions).
@@ -35,14 +36,10 @@ Filter rules:
       (a) is_error=true, OR
       (b) tool is 'Bash' AND first 500 chars contain '^(Error:|Exit code [1-9])'
           OR a 'warning:' substring (case-insensitive).
-    Otherwise replaced with `elided_bytes`.
+    Otherwise dropped entirely (v3; was elided_bytes in v2).
   - thinking blocks kept only when at least one tool_use in the same
     assistant turn produced an errored tool_result.
-  - tool_call inputs trimmed:
-      - Edit/Write/NotebookEdit: replaced with {file_path, input_bytes} stub
-        (PR diff carries the content).
-      - Other tools: included when serialized JSON <= 1 KB; otherwise elided
-        and reported as elided_input_bytes.
+  - tool_call blocks dropped entirely (v3).
 
 Exit codes:
   0 success; output written.
@@ -58,10 +55,7 @@ import re
 import sys
 from pathlib import Path
 
-SCHEMA_VERSION = 2
-
-_STUB_INPUT_TOOLS = {"Edit", "Write", "NotebookEdit"}
-_INPUT_CAP_BYTES = 1024
+SCHEMA_VERSION = 3
 
 HOUSEKEEPING_TYPES = {
     "permission-mode",
@@ -194,9 +188,8 @@ def render_user_blocks(content, id_to_name) -> list[dict]:
                 out["warning"] = True
             if exit_code is not None:
                 out["exit_code"] = exit_code
-        else:
-            out["elided_bytes"] = len(txt)
-        blocks.append(out)
+            blocks.append(out)
+        # v3 policy: non-error/non-warning tool_results are dropped entirely
     return blocks
 
 
@@ -226,31 +219,7 @@ def render_assistant_blocks(content, id_to_kept) -> list[dict]:
             think = blk.get("thinking", "").strip()
             if think:
                 blocks.append({"type": "thinking", "value": think})
-        elif bt == "tool_use":
-            out: dict = {"type": "tool_call"}
-            tid = blk.get("id", "")
-            if tid:
-                out["id"] = tid
-            tname = blk.get("name", "?")
-            out["name"] = tname
-            inp = blk.get("input", {})
-            if inp:
-                if tname in _STUB_INPUT_TOOLS:
-                    file_path = (
-                        inp.get("file_path")
-                        or inp.get("notebook_path")
-                        or inp.get("path")
-                        or ""
-                    )
-                    input_bytes = len(json.dumps(inp, ensure_ascii=False))
-                    out["input"] = {"file_path": file_path, "input_bytes": input_bytes}
-                else:
-                    serialized = json.dumps(inp, ensure_ascii=False)
-                    if len(serialized) <= _INPUT_CAP_BYTES:
-                        out["input"] = inp
-                    else:
-                        out["elided_input_bytes"] = len(serialized)
-            blocks.append(out)
+        # v3 policy: tool_use (tool_call) blocks are dropped entirely
     return blocks
 
 
@@ -285,6 +254,7 @@ def render(input_path: Path) -> str:
         "v": SCHEMA_VERSION,
         "source_basename": input_path.name,
         "turns": len(turns),
+        "policy": "prose-errors-only",
     }
     out_lines = [json.dumps(header, ensure_ascii=False, separators=(",", ":"))]
     for t in turns:
