@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 import config
-
-if TYPE_CHECKING:
-    import pytest
 import logging_util
 
 
@@ -59,3 +57,34 @@ def test_breadcrumb_ignores_unbound_quiet_active(
     writer = logging_util.BreadcrumbWriter(stream=stream)
     writer.emit("visible", quiet=None)
     assert stream.getvalue() == "visible\n"
+
+
+def test_emit_writes_newline_terminated_line(capsys: pytest.CaptureFixture[str]) -> None:
+    logging_util.reset_quiet_state()
+    logging_util.emit("RESULT=42")
+    captured = capsys.readouterr()
+    assert captured.out == "RESULT=42\n"
+
+
+def test_emit_already_newline_terminated(capsys: pytest.CaptureFixture[str]) -> None:
+    logging_util.reset_quiet_state()
+    logging_util.emit("RESULT=42\n")
+    captured = capsys.readouterr()
+    assert captured.out == "RESULT=42\n"
+
+
+def test_emit_kv_writes_key_equals_value(capsys: pytest.CaptureFixture[str]) -> None:
+    logging_util.reset_quiet_state()
+    logging_util.emit_kv("STATUS", "ok")
+    captured = capsys.readouterr()
+    assert captured.out == "STATUS=ok\n"
+
+
+def test_emit_kv_rejects_newline_in_value() -> None:
+    with pytest.raises(ValueError, match="newline"):
+        logging_util.emit_kv("KEY", "bad\nvalue")
+
+
+def test_emit_kv_rejects_carriage_return_in_value() -> None:
+    with pytest.raises(ValueError, match="newline"):
+        logging_util.emit_kv("KEY", "bad\rvalue")

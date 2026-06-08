@@ -12,7 +12,7 @@ PYTHON ?= python3
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-run-analysis-quiet test-parse-bootstrap-routing-envelope
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
 .PHONY: test-stall-recovery-report test-step-18b-final-report
@@ -27,7 +27,7 @@ PYTHON ?= python3
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-awk-multibyte-regex lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-codex-exec-auth lint-awk-multibyte-regex lint-retired-scripts lint-only
 
 py-lint:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -97,7 +97,7 @@ test-harnesses-7: test-implement-bootstrap test-larch-log test-render-final-summ
 
 test-harnesses-8: test-ship-pr-oos-pr-prep test-verify-run-log-completeness test-cleanup test-dispatch-code-voters-retry-claude test-oos-issue-cap test-token-vendor-scrapers test-generate-topology-docs test-lib-external-launcher-common test-classify-bump test-run-step5-review test-lint-gh-body-inline test-render-lane-status test-check-clean-tree test-run-step1-plan-log test-lib-net test-subskill-anchors test-research-angle-prompts test-ballot-parse
 
-test-harnesses-9: test-dispatch-with-waterfall test-collect-agent-retry test-review-core test-dispatch-code-voters-regressions-r1-r2 test-design-publish test-create-pr test-release-prepare test-launch-claude-ci test-run-analysis-quiet test-step0b-router-flag-recovery test-session-setup-repo-fallback test-relevant-checks-validation test-alias-target-resolution test-false-positive-keywords test-design-step3-state test-release-set-version test-anti-halt test-synthesis-subagent
+test-harnesses-9: test-dispatch-with-waterfall test-collect-agent-retry test-review-core test-dispatch-code-voters-regressions-r1-r2 test-design-publish test-create-pr test-release-prepare test-launch-claude-ci test-step0b-router-flag-recovery test-session-setup-repo-fallback test-relevant-checks-validation test-alias-target-resolution test-false-positive-keywords test-design-step3-state test-release-set-version test-anti-halt test-synthesis-subagent
 
 test-harnesses-10: test-design-pause-resume test-aggregate-findings test-tally-plan-review test-validate-citations-budget test-token-report test-emit-tally test-lint-literal-counts test-degraded-tools-gate test-plan-block test-lint-bare-grep-probe test-review-and-fix-parsers test-snapshot-plan-round test-resolve-repo test-compute-pr-line-counts test-commit-review-fixes test-implement-anti-halt test-lib-submodule-prohibition
 
@@ -770,8 +770,10 @@ test-render-run-summary:
 test-token-cost:
 	bash scripts/harness-timer.sh $@ bash scripts/test-token-cost.sh
 
-test-run-analysis-quiet:
-	bash scripts/harness-timer.sh $@ bash skills/report-tokens/scripts/test-run-analysis-quiet.sh
+lint-retired-scripts:
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+		|| (printf '%s\n' "ERROR: make lint-retired-scripts requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
+	$(PYTHON) python/cli.py lint retired-scripts
 
 test-render-cost-line:
 	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line.sh

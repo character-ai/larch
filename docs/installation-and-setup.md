@@ -37,7 +37,7 @@ To upgrade larch to the latest stable version, run the `/upgrade-larch` skill in
 
 After `/upgrade-larch` finishes, restart Claude Code if it installed a new version or repaired the marketplace sparse checkout. If it reports that you are already on the latest stable release and says `No upgrade needed.`, no restart is needed; install-stamp refresh and cache prune may still have run. If it reports `LARCH_CONE_RECONCILED=true`, `LARCH_RESTART_REQUIRED=true`, or says the sparse checkout is out of date, the plugin was reinstalled and Claude Code needs a restart. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
-Default `/implement` Step 8+ uses the Python ship driver from the cached plugin (`python3 ${CLAUDE_PLUGIN_ROOT}/python/ship.py`) on the first `/implement` after the upgraded plugin is loaded. Ensure `python3` is Python 3.11 or newer before starting the session; set `LARCH_SHIP_PR_IMPL=bash` before session start to keep the legacy bash driver temporarily. See [Plugin cache vs. working-tree version](#plugin-cache-vs-working-tree-version) for why restart timing controls which cached `SKILL.md` is active.
+Default `/implement` Step 8+ uses the Python ship driver from the cached plugin (`python3 ${CLAUDE_PLUGIN_ROOT}/python/cli.py ship pr`) on the first `/implement` after the upgraded plugin is loaded. Ensure `python3` is Python 3.11 or newer before starting the session; set `LARCH_SHIP_PR_IMPL=bash` before session start to keep the legacy bash driver temporarily. See [Plugin cache vs. working-tree version](#plugin-cache-vs-working-tree-version) for why restart timing controls which cached `SKILL.md` is active.
 
 `/upgrade-larch` is idempotent only when `gh` is installed, can resolve the latest stable release, and the marketplace sparse cone already matches larch's allowlist: if the currently installed version already matches that stable release and the cone matches, it skips reinstall but still refreshes the install stamp and prunes old cache directories. If the version matches but the sparse cone drifted (for example, a new top-level runtime directory was added to larch), `/upgrade-larch` repairs the cone with a sparse re-add and reinstalls the same version. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
@@ -97,7 +97,7 @@ This warning fires once per `session-setup.sh` invocation from a larch dev clone
 
 ### /report-tokens prerequisites
 
-`/report-tokens` runs through the stdlib-only Python entrypoint under `python/` and shares the repository Python floor: Python 3.11 or newer. `gh` is required when the command needs to resolve the repository slug or post the report issue; pass `--no-issue` or set `LARCH_REPORT_TOKENS_NO_ISSUE=1` to run text analysis without posting. Plotting uses optional matplotlib in a subprocess and gracefully skips PNG generation when matplotlib is unavailable; pass `--no-plot` or set `LARCH_REPORT_TOKENS_NO_PLOT=1` to skip it explicitly. Rate override environment variables are documented in `skills/report-tokens/scripts/run-analysis.md`.
+`/report-tokens` runs through the stdlib-only Python entrypoint under `python/` and shares the repository Python floor: Python 3.11 or newer. `gh` is required when the command needs to resolve the repository slug or post the report issue; pass `--no-issue` or set `LARCH_REPORT_TOKENS_NO_ISSUE=1` to run text analysis without posting. Plotting uses optional matplotlib in a subprocess and gracefully skips PNG generation when matplotlib is unavailable; pass `--no-plot` or set `LARCH_REPORT_TOKENS_NO_PLOT=1` to skip it explicitly. Rate override environment variables are documented in `docs/configuration-and-permissions.md`.
 
 ### Mermaid CLI (required when Markdown changes contain Mermaid fences)
 
@@ -287,7 +287,7 @@ These tools are required for the full design → implement → PR → merge work
 - **git** — version control (used by all skills)
 - **gh** — [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). Required for PR creation, CI monitoring, and merge automation.
 - **jq** — [JSON processor](https://jqlang.github.io/jq/). Used by validation scripts, session setup, and the shipped Stop hook (`hook-stop-fail-close.sh`). When `jq` is missing, JSON-dependent validation and fail-close behavior can be disabled. The SessionStart hook (see below) injects an advisory when `jq` is absent so the gap is visible at session start.
-- **python3** — Python 3.11 or newer for the default `/implement` Step 8+ ship driver (`python/ship.py`). Set `LARCH_SHIP_PR_IMPL=bash` before the session to use the legacy bash driver if the interpreter requirement is not met.
+- **python3** — Python 3.11 or newer for the default `/implement` Step 8+ ship driver (`python/cli.py ship pr`) and the `/report-tokens` CLI. Set `LARCH_SHIP_PR_IMPL=bash` before the session to use the legacy bash driver if the interpreter requirement is not met.
 
 ### Optional integrations
 

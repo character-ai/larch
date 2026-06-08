@@ -194,6 +194,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: lint-retired-scripts
+        name: Lint references to retired script paths
+        entry: python3 python/cli.py lint retired-scripts
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: local
+    hooks:
       - id: agnix
         name: Lint AI agent configuration files
         entry: agnix . --strict
