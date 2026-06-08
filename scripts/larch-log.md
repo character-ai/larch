@@ -48,6 +48,17 @@ Primary verbs:
   definition. Raw scout manifests (`scout-round*-manifest.json.raw`) are
   excluded — byte-identical to the cooked `.json` in nearly all committed runs;
   the cooked `.json` is canonical.
+  Proposal-stage finding aggregates — `findings.md`, `accepted-findings.md`,
+  `oos.md`, and `rejected-findings-full.md` — are explicitly denied.
+  `review-findings-full.jsonl` is the canonical store; `scripts/render-findings-view.sh`
+  reconstructs any dropped view on demand. `oos-accepted-review.md`,
+  `rejected-findings.md`, `voting-tally.md`, and `findings-classification.tsv`
+  are kept (audit scan inputs and the human round digest).
+  Voter output files (`*-vote-output.txt`, `*-vote-output-*.txt`,
+  `*-vote-output-first-pass.txt`) are capped at 2 KB by `stage_round_artifact`;
+  files over that limit are truncated with a `[TRUNCATED: original N bytes]` marker.
+  The `codex-impl-transcript` batch written via `larch-log.sh write` is capped at
+  8 KB with the same marker.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-archetype-yield.tsv`),
   dynamic-archetype files (`reviewer-dyn-*.md`), voter parse-retry first-pass

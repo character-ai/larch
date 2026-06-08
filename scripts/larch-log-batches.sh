@@ -4,7 +4,6 @@
 set -euo pipefail
 
 LARCH_LOG_BATCHES="
-plan-goals-test .md replace plan-goals
 parent-issue .md replace none
 pre-review-head .txt replace none
 pre-review-untracked .txt replace none

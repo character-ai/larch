@@ -4,7 +4,7 @@
 slugs, file extensions, write modes, and sanitizer hooks.
 
 The table intentionally covers the legacy tracking sections as durable files:
-`plan-goals-test`, optional `include-probe-evidence` (redacted Phase 1 probe transcripts when plans require them), per-run setup/implementation artifacts (`parent-issue`,
+optional `include-probe-evidence` (redacted Phase 1 probe transcripts when plans require them), per-run setup/implementation artifacts (`parent-issue`,
 `pre-review-head`, `pre-review-untracked`, `codex-impl-transcript`,
 `codex-impl-transcript-meta`,
 `codex-impl-transcript-prompt`, `codex-commit-message`,
@@ -20,9 +20,7 @@ The table intentionally covers the legacy tracking sections as durable files:
 pre-bump flush for full post-hoc auditability; refreshed on each CI-retry
 push via `scripts/refresh-run-logs.sh`).
 
-`plan-goals-test` uses the `plan-goals` sanitizer. The sanitizer requires a
-sectioned payload with a non-empty `## Implementation Plan` body and rejects
-pointer-only placeholders such as `See plan.txt`. `plan-review-tally` and
+`plan-review-tally` and
 `code-review-tally` and `review-scout-manifest` use the `json-object`
 sanitizer because their files are single replace-mode JSON objects.
 `review-findings-classification-round-N` batches are replace-mode `.tsv`

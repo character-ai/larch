@@ -1,4 +1,0 @@
-Research complete: inputs are only the supplied reviewer blocks (no repo reads). Merging duplicates, applying severity maxima, splitting OOS per instructions, and producing the structured list.
-
-
-
