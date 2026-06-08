@@ -61,7 +61,7 @@ grep -Fq -- '| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Ti
     || fail 'missing table header'
 grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 5m 00s | — | 6 |' "$OUT" || fail "round-1 row wrong: $(grep -F '| 1 |' "$OUT" || true)"
 grep -Fq -- '| 2 | 3 | 3 | 0 | 0 | 2m 00s | — | 4 |' "$OUT" || fail "round-2 row wrong: $(grep -F '| 2 |' "$OUT" || true)"
-grep -Fq -- '| **Total** | **7** | **5** | **2** | **1** | **7m 00s** | — | **10** |' "$OUT" \
+grep -Fq -- '| **Total** | **7** | **5** | **2** | **1** | **7m 00s** | **—** | **10** |' "$OUT" \
     || fail "total row wrong: $(grep -F 'Total' "$OUT" || true)"
 pass 'per-round table + totals'
 
@@ -79,11 +79,11 @@ grep -Fq -- '**Reviewer slot failures**: 1' "$OUT" || fail "failure count wrong:
 grep -Fq -- '- codex/generic: 1' "$OUT" || fail 'failed slot not attributed to codex/generic'
 pass 'reviewer slot failures attributed'
 
-# --- Test 5: single-source dollar-line invariant (no $ / 💰; cost cells are em dash) ---
-if grep -Fq -- '$' "$OUT"; then fail 'output must not contain a dollar sign (cost owned by render-run-summary.sh)'; fi
-if grep -Fq -- '💰' "$OUT"; then fail 'output must not contain a cost emoji'; fi
-grep -Fq -- 'cost is not separately instrumented' "$OUT" || fail 'missing cost footnote'
-pass 'single-source cost invariant respected'
+# --- Test 5: no token ledger -> cost cells are em dashes (no $); never the dollar-primary emoji ---
+if grep -Fq -- '$' "$OUT"; then fail 'without a token ledger, cost cells must be em dashes (no dollar figures)'; fi
+if grep -Fq -- '💰' "$OUT"; then fail 'output must not contain the dollar-primary cost emoji'; fi
+grep -Fq -- 'per-round vendor cost' "$OUT" || fail 'missing vendor-cost footnote'
+pass 'no-token-ledger cost cells are em dashes; footnote present'
 
 # --- Test 6: singular "reviewer" schema fallback ---
 OLD="$WORK/old"
@@ -120,5 +120,38 @@ pass 'usage errors exit 2'
 "$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" --skill implement \
     | grep -Fq -- '## Review Phase Detail' || fail 'stdout mode missing section heading'
 pass 'stdout mode'
+
+# --- Test 10: per-round VENDOR cost from token-ledger timestamp window (#3774 clarification) ---
+if command -v python3 >/dev/null 2>&1 && echo '"2023-11-14T22:15:00Z"' | jq -e 'fromdateiso8601 | numbers' >/dev/null 2>&1; then
+    iso() { python3 -c 'import sys,datetime; print(datetime.datetime.fromtimestamp(int(sys.argv[1]),datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
+    CR="$WORK/cost-run"; mkdir -p "$CR/round-1" "$CR/round-2"
+    cat >"$CR/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"1","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}
+JSON
+    cat >"$CR/round-2/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}
+JSON
+    # Round 1 window [1700000000,1700000300]; round 2 window [1700001000,1700001300].
+    {
+        printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000300\t300\t1\t0\t0\t-\n'
+        printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001300\t300\t0\t0\t0\t-\n'
+    } >"$CR/timing-ledger.tsv"
+    # codex + claude_sub land in round-1 window; cursor is outside both (must be excluded).
+    {
+        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"%s"}\n' "$(iso 1700000100)"
+        printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"%s"}\n' "$(iso 1700000160)"
+        printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"%s"}\n' "$(iso 1700002800)"
+    } >"$CR/token-ledger.jsonl"
+    exp1="$(bash "$REPO/scripts/token-cost.sh" --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
+    COUT="$WORK/cost-section.md"
+    "$HELPER" --rounds-root "$CR" --timing-ledger "$CR/timing-ledger.tsv" --token-ledger "$CR/token-ledger.jsonl" --skill implement --output "$COUT"
+    grep -Fq -- "| 1 | 1 | 1 | 0 | 0 | 5m 00s | \$$exp1 | 2 |" "$COUT" || fail "round-1 vendor cost wrong (exp \$$exp1): $(grep -F '| 1 |' "$COUT" || true)"
+    grep -Fq -- "| 2 | 0 | 0 | 0 | 0 | 5m 00s | \$0.00 | 2 |" "$COUT" || fail "round-2 empty-window cost should be \$0.00: $(grep -F '| 2 |' "$COUT" || true)"
+    exptot="$(awk -v a="$exp1" 'BEGIN{printf "%.2f", a+0}')"
+    grep -Fq -- "| **Total** | **1** | **1** | **0** | **0** | **10m 00s** | **\$$exptot** | **4** |" "$COUT" || fail "total vendor cost wrong (exp \$$exptot): $(grep -F 'Total' "$COUT" || true)"
+    pass "per-round VENDOR cost: in-window priced, out-of-window excluded, empty window = \$0.00"
+else
+    printf 'SKIP: python3 or jq fromdateiso8601 unavailable; per-round vendor cost test skipped\n'
+fi
 
 printf 'PASS: test-render-review-phase-detail.sh\n'

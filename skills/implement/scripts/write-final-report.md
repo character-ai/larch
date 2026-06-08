@@ -92,17 +92,20 @@ Before composing the note appendix, the script runs
 [`scripts/render-review-phase-detail.sh`](../../../scripts/render-review-phase-detail.md)
 with `--rounds-root "$IMPLEMENT_TMPDIR"`,
 `--findings-file "$run_dir/review-findings-full.jsonl"`,
-`--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, and `--skill implement`,
-capturing the rendered **Review Phase Detail** markdown to a temp file. That file
-is `cat` into the note block (after the existing notes), so the section lands in
-the `--note-lines-file` appendix that `render-run-summary.sh` emits after the
-`<!-- larch:run-summary v=1 -->` sentinel.
+`--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, the resolved
+`--token-ledger "$IMPLEMENT_TMPDIR/larch-tokens-<hash>.jsonl"` (globbed; omitted
+when absent), and `--skill implement`, capturing the rendered **Review Phase
+Detail** markdown to a temp file. That file is `cat` into the note block (after
+the existing notes), so the section lands in the `--note-lines-file` appendix that
+`render-run-summary.sh` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
 
 The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
 time, cost, reviewers launched), a Total row, the top reviewers by suggestions
 accepted (`vendor/archetype`), and a failed-reviewer-slot breakdown. The Cost
-column is an em-dash placeholder: the dollar-primary cost line stays single-source
-in `render-run-summary.sh`, and per-round token cost is not instrumented.
+column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
+attributed by token-ledger timestamp window and priced via `token-cost.sh`; it
+excludes main-agent Claude, so it is a distinct datum from (and less than) the
+single-source dollar-primary `- **Cost**:` line that `render-run-summary.sh` owns.
 
 The helper is best-effort and renders **nothing** when there were no panel review
 rounds (for example `--self-review` runs, where Step 5 does no panel review), so

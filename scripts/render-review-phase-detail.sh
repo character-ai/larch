@@ -10,27 +10,33 @@
 #   - the top-N reviewers (vendor/archetype) by suggestions accepted
 #   - a count of reviewer slots that failed, broken down by vendor/archetype
 #
-# The dollar-primary cost line is owned exclusively by render-run-summary.sh
-# (single-source dollar-line invariant), so the Cost column here is an em-dash
-# placeholder with a footnote pointing at the run Cost line. Per-round token
-# attribution is not currently instrumented (the token ledger has no per-round
-# delimiters), so the placeholder is also the honest value.
+# The Cost column is the per-round VENDOR cost (Codex + Cursor + Claude
+# subprocess): vendor token records from the token ledger are attributed to a
+# round by timestamp window ([round.start_s, round.end_s]) and priced via
+# token-cost.sh. It excludes main-agent Claude, so it is strictly the vendor
+# spend for that round and is therefore less than the run-total Cost line in the
+# summary (which additionally includes main-agent Claude). It renders as an em
+# dash when per-round timing or the token ledger is unavailable.
 #
 # Best-effort / observability-only: on missing inputs, missing jq, or partially
 # unreadable artifacts it renders what it can (or nothing) and exits 0, so it
 # can never break the final report. Usage errors exit 2.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+TOKEN_COST_SH="$SCRIPT_DIR/token-cost.sh"
+
 ROUNDS_ROOT=""
 FINDINGS_FILE=""
 TIMING_LEDGER=""
+TOKEN_LEDGER=""
 SKILL="implement"
 OUTPUT=""
 TOP_N=7
 
 usage() {
     printf '%s\n' \
-        "Usage: render-review-phase-detail.sh --rounds-root DIR [--findings-file F] [--timing-ledger F] [--skill implement|design] [--top-n N] [--output F]" >&2
+        "Usage: render-review-phase-detail.sh --rounds-root DIR [--findings-file F] [--timing-ledger F] [--token-ledger F] [--skill implement|design] [--top-n N] [--output F]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -38,6 +44,7 @@ while [ $# -gt 0 ]; do
         --rounds-root) [ $# -ge 2 ] || { usage; exit 2; }; ROUNDS_ROOT=$2; shift 2 ;;
         --findings-file) [ $# -ge 2 ] || { usage; exit 2; }; FINDINGS_FILE=$2; shift 2 ;;
         --timing-ledger) [ $# -ge 2 ] || { usage; exit 2; }; TIMING_LEDGER=$2; shift 2 ;;
+        --token-ledger) [ $# -ge 2 ] || { usage; exit 2; }; TOKEN_LEDGER=$2; shift 2 ;;
         --skill) [ $# -ge 2 ] || { usage; exit 2; }; SKILL=$2; shift 2 ;;
         --top-n) [ $# -ge 2 ] || { usage; exit 2; }; TOP_N=$2; shift 2 ;;
         --output) [ $# -ge 2 ] || { usage; exit 2; }; OUTPUT=$2; shift 2 ;;
@@ -138,6 +145,53 @@ fmt_hms() {
     fi
 }
 
+# Per-round vendor cost: window the token ledger by [start,end] (epoch), sum
+# per-vendor token buckets, and price via token-cost.sh. Prints "$N.NN" on
+# success, else "—". Runs in a command substitution (subshell), so it MUST NOT
+# mutate the cost accumulators — the caller parses the returned string instead.
+t_cost_acc=""
+any_cost=0
+round_vendor_cost() {
+    local start="$1" end="$2"
+    [ -n "$TOKEN_LEDGER" ] && [ -f "$TOKEN_LEDGER" ] || { printf -- '—'; return; }
+    [ -x "$TOKEN_COST_SH" ] || { printf -- '—'; return; }
+    [ -n "$start" ] && [ -n "$end" ] || { printf -- '—'; return; }
+    local sums="$WORK_DIR/cost-sums.tsv"
+    jq -r --argjson start "$start" --argjson end "$end" '
+        select(.type == "vendor")
+        | (try (.ts | fromdateiso8601) catch null) as $e
+        | select($e != null and $e >= $start and $e <= $end)
+        | [ (.vendor // ""), (.input // 0), (.cache_read // 0), (.cache_create // 0), (.output // 0) ]
+        | @tsv
+    ' "$TOKEN_LEDGER" 2>/dev/null \
+        | awk -F'\t' '
+            { cin[$1]+=$2; ccr[$1]+=$3; ccc[$1]+=$4; cout[$1]+=$5 }
+            END { for (v in cin) printf "%s\t%d\t%d\t%d\t%d\n", v, cin[v], ccr[v], ccc[v], cout[v] }
+        ' >"$sums" 2>/dev/null || : >"$sums"
+    local cost_args=()
+    local v cin ccr ccc cout
+    while IFS=$'\t' read -r v cin ccr ccc cout; do
+        [ -n "$v" ] || continue
+        case "$v" in
+            codex) cost_args+=(--codex-input-tokens "$cin" --codex-cached-input-tokens "$ccr" --codex-output-tokens "$cout") ;;
+            cursor) cost_args+=(--cursor-input-tokens "$cin" --cursor-cache-read-tokens "$ccr" --cursor-output-tokens "$cout") ;;
+            claude_sub) cost_args+=(--claude-sub-input-tokens "$cin" --claude-sub-cache-read-tokens "$ccr" --claude-sub-cache-write-5m-tokens "$ccc" --claude-sub-output-tokens "$cout") ;;
+        esac
+    done <"$sums"
+    local rc_val=""
+    if [ "${#cost_args[@]}" -gt 0 ]; then
+        local rc_out
+        rc_out="$("$TOKEN_COST_SH" "${cost_args[@]}" 2>/dev/null || true)"
+        rc_val="$(printf '%s\n' "$rc_out" | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
+    else
+        rc_val="0.00"
+    fi
+    case "$rc_val" in
+        ''|*[!0-9.]*) printf -- '—' ;;
+        *) printf '$%s' "$rc_val" ;;
+    esac
+}
+
 # ---- per-round rows + running totals ----
 rows_file="$WORK_DIR/rows.txt"
 : >"$rows_file"
@@ -168,17 +222,30 @@ while IFS= read -r rn; do
     sug=$((acc + rej + exo + neu))
     oosp=$((oosa + oosr))
 
-    secs=""
+    rstart=""; rend=""
     if [ -n "$TIMING_LEDGER" ] && [ -f "$TIMING_LEDGER" ]; then
-        secs="$(awk -F'\t' -v r="$rn" '
+        rrange="$(awk -F'\t' -v r="$rn" '
             $2=="round" && $6==r {
-                if (start=="" || ($7+0) < start) start=$7+0
-                if (end=="" || ($8+0) > end) end=$8+0
+                if (s=="" || ($7+0) < s) s=$7+0
+                if (e=="" || ($8+0) > e) e=$8+0
             }
-            END { if (start!="" && end!="" && end > start) print end-start }
+            END { if (s != "" && e != "") printf "%d %d", s, e }
         ' "$TIMING_LEDGER" 2>/dev/null || true)"
+        if [ -n "$rrange" ]; then
+            rstart="${rrange%% *}"
+            rend="${rrange##* }"
+        fi
     fi
-    case "$secs" in ''|*[!0-9]*) secs="" ;; esac
+    secs=""
+    if [ -n "$rstart" ] && [ -n "$rend" ] && [ "$rend" -gt "$rstart" ]; then
+        secs=$((rend - rstart))
+    fi
+
+    cost_disp="$(round_vendor_cost "$rstart" "$rend")"
+    # Accumulate in the parent shell (round_vendor_cost ran in a subshell).
+    case "$cost_disp" in
+        \$*) t_cost_acc="$t_cost_acc ${cost_disp#\$}"; any_cost=1 ;;
+    esac
 
     t_sug=$((t_sug + sug)); t_acc=$((t_acc + acc))
     t_oosp=$((t_oosp + oosp)); t_oosa=$((t_oosa + oosa))
@@ -186,11 +253,16 @@ while IFS= read -r rn; do
     if [ -n "$secs" ]; then t_secs=$((t_secs + secs)); any_time=1; fi
 
     if [ -n "$secs" ]; then time_disp="$(fmt_hms "$secs")"; else time_disp="—"; fi
-    printf '| %s | %s | %s | %s | %s | %s | — | %s |\n' \
-        "$rn" "$sug" "$acc" "$oosp" "$oosa" "$time_disp" "$rev" >>"$rows_file"
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+        "$rn" "$sug" "$acc" "$oosp" "$oosa" "$time_disp" "$cost_disp" "$rev" >>"$rows_file"
 done <"$rounds_list"
 
 if [ "$any_time" -eq 1 ]; then total_time="$(fmt_hms "$t_secs")"; else total_time="—"; fi
+if [ "$any_cost" -eq 1 ]; then
+    total_cost="\$$(printf '%s' "$t_cost_acc" | awk '{ for (i=1;i<=NF;i++) s+=$i } END { printf "%.2f", s+0 }')"
+else
+    total_cost="—"
+fi
 
 # ---- top-N reviewers by suggestions accepted (whole run) ----
 top_file="$WORK_DIR/top.txt"
@@ -206,7 +278,7 @@ if [ -n "$FINDINGS_FILE" ] && [ -f "$FINDINGS_FILE" ]; then
     if [ -s "$accepted_bn" ]; then
         top_awk="$WORK_DIR/top.awk"
         cat >"$top_awk" <<'AWK'
-FILENAME==mapfile { m[$1]=$2; next }
+FILENAME==mapf { m[$1]=$2; next }
 {
     bn=$0
     if (bn in m) va=m[bn]; else va=derive(bn)
@@ -214,7 +286,7 @@ FILENAME==mapfile { m[$1]=$2; next }
 }
 END { for (k in cnt) printf "%d\t%s\n", cnt[k], k }
 AWK
-        awk -F'\t' -v mapfile="$slot_map" -f "$derive_awk" -f "$top_awk" "$slot_map" "$accepted_bn" 2>/dev/null \
+        awk -F'\t' -v mapf="$slot_map" -f "$derive_awk" -f "$top_awk" "$slot_map" "$accepted_bn" 2>/dev/null \
             | sort -k1,1nr -k2,2 | head -n "$TOP_N" >"$top_file" || : >"$top_file"
     fi
 fi
@@ -249,7 +321,7 @@ fail_file="$WORK_DIR/fail.txt"
 if [ -s "$fail_raw" ]; then
     fail_awk="$WORK_DIR/fail.awk"
     cat >"$fail_awk" <<'AWK'
-FILENAME==mapfile { m[$1]=$2; next }
+FILENAME==mapf { m[$1]=$2; next }
 {
     tool=$1; bn=$2
     if (bn in m) {
@@ -262,7 +334,7 @@ FILENAME==mapfile { m[$1]=$2; next }
 }
 END { for (k in cnt) printf "%d\t%s\n", cnt[k], k }
 AWK
-    awk -F'\t' -v mapfile="$slot_map" -f "$derive_awk" -f "$fail_awk" "$slot_map" "$fail_raw" 2>/dev/null \
+    awk -F'\t' -v mapf="$slot_map" -f "$derive_awk" -f "$fail_awk" "$slot_map" "$fail_raw" 2>/dev/null \
         | sort -k1,1nr -k2,2 >"$fail_file" || : >"$fail_file"
     fail_total="$(wc -l <"$fail_raw" | tr -d ' ')"
     case "$fail_total" in ''|*[!0-9]*) fail_total=0 ;; esac
@@ -273,10 +345,10 @@ out="$WORK_DIR/section.md"
 {
     printf '## Review Phase Detail\n\n'
     printf '| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |\n'
-    printf '|--:|--:|--:|--:|--:|:--|:--|--:|\n'
+    printf '|--:|--:|--:|--:|--:|:--|--:|--:|\n'
     cat "$rows_file"
-    printf '| **Total** | **%s** | **%s** | **%s** | **%s** | **%s** | — | **%s** |\n' \
-        "$t_sug" "$t_acc" "$t_oosp" "$t_oosa" "$total_time" "$t_rev"
+    printf '| **Total** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** |\n' \
+        "$t_sug" "$t_acc" "$t_oosp" "$t_oosa" "$total_time" "$total_cost" "$t_rev"
     printf '\n'
 
     printf '**Top reviewers** (by suggestions accepted, whole run):\n'
@@ -299,7 +371,7 @@ out="$WORK_DIR/section.md"
     fi
     printf '\n'
 
-    printf '_Per-round and per-phase cost is not separately instrumented; see the **Cost** line above for the run total._\n'
+    printf '_Cost is the per-round vendor cost (Codex + Cursor + Claude subprocess), attributed by token-ledger timestamp window; it excludes main-agent Claude, so it is less than the run Cost line above. Rendered as an em dash when per-round timing or the token ledger is unavailable._\n'
 } >"$out"
 
 if [ -n "$OUTPUT" ]; then

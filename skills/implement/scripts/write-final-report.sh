@@ -403,10 +403,17 @@ append_render_warning() {
 # Best-effort: renders nothing when there were no panel review rounds (e.g.
 # --self-review runs), so the note block stays unchanged in that case.
 review_detail_file="$(mktemp "${TMPDIR:-/tmp}/wfr-review-detail.XXXXXX")"
+# Resolve the session token ledger (session-id-hashed name) for per-round
+# vendor cost; left unset when absent so the Cost column degrades to em dashes.
+rpd_token_ledger_args=()
+for _rpd_tl in "$IMPLEMENT_TMPDIR"/larch-tokens-*.jsonl; do
+    [ -f "$_rpd_tl" ] && rpd_token_ledger_args=(--token-ledger "$_rpd_tl") && break
+done
 "$PLUGIN_ROOT/scripts/render-review-phase-detail.sh" \
     --rounds-root "$IMPLEMENT_TMPDIR" \
     --findings-file "$run_dir/review-findings-full.jsonl" \
     --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv" \
+    "${rpd_token_ledger_args[@]+"${rpd_token_ledger_args[@]}"}" \
     --skill implement \
     --output "$review_detail_file" 2>/dev/null || : >"$review_detail_file"
 

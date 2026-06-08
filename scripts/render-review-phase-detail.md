@@ -19,7 +19,8 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 |------|----------|---------|
 | `--rounds-root DIR` | yes | Directory containing `round-<N>/` subdirs (live: `$IMPLEMENT_TMPDIR`; committed: the run-log dir). |
 | `--findings-file F` | no | `review-findings-full.jsonl` for top-reviewer attribution. |
-| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column. |
+| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column **and** the per-round cost window. |
+| `--token-ledger F` | no | `larch-tokens-<hash>.jsonl`; vendor token records (timestamp-windowed to each round) supply the per-round vendor Cost column. |
 | `--skill implement\|design` | no | Default `implement`. Reserved for a future `/design` per-round path (see below). |
 | `--top-n N` | no | Top-reviewers cap (default `7`). |
 | `--output F` | no | Write the section to `F`; otherwise print to stdout. |
@@ -38,10 +39,18 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 - **Time** — `timing-ledger.tsv` `type=round` rows (`max(end_s) - min(start_s)` per
   round number, column 6). Renders `—` when no ledger / round timing is present
   (committed logs do not carry the ledger).
-- **Cost** — always `—`. The dollar-primary cost line is owned exclusively by
-  `render-run-summary.sh` (single-source dollar-line invariant), and per-round
-  token attribution is not instrumented (the token ledger has no per-round
-  delimiters). A footnote points readers at the run **Cost** line.
+- **Cost** — the per-round **vendor** cost (Codex + Cursor + Claude subprocess).
+  Vendor token records from `--token-ledger` are attributed to a round by
+  timestamp window (`jq fromdateiso8601` on each record's `ts` against the
+  round's epoch `start_s`/`end_s` from `timing-ledger.tsv`), summed per vendor,
+  and priced with `token-cost.sh` (the ledger's combined `cache_create` is mapped
+  to the 5m cache-write bucket). It **excludes** main-agent Claude, so it is the
+  per-round vendor spend and is less than the run-total dollar-primary Cost line
+  in the summary (which additionally includes main-agent Claude) — i.e. it is a
+  distinct datum, not a duplicate of that single-source line. Renders `—` when
+  the token ledger or per-round timing is unavailable, and `$0.00` when the
+  ledger is present but no vendor records fall in the round's window. The Total
+  row sums the per-round vendor costs.
 
 ## Vendor/archetype attribution
 
