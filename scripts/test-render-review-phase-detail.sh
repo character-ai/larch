@@ -122,8 +122,10 @@ pass 'usage errors exit 2'
 pass 'stdout mode'
 
 # --- Test 10: per-round VENDOR cost from token-ledger timestamp window (#3774 clarification) ---
-if command -v python3 >/dev/null 2>&1 && echo '"2023-11-14T22:15:00Z"' | jq -e 'fromdateiso8601 | numbers' >/dev/null 2>&1; then
-    iso() { python3 -c 'import sys,datetime; print(datetime.datetime.fromtimestamp(int(sys.argv[1]),datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
+# Guard: only run if jq supports fromdateiso8601. ISO timestamps are hardcoded
+# (epoch→ISO was previously done via python3 -c '...', which caused flaky
+# set -e exits when python3 failed to fork under CI process-limit pressure).
+if echo '"2023-11-14T22:15:00Z"' | jq -e 'fromdateiso8601 | numbers' >/dev/null 2>&1; then
     CR="$WORK/cost-run"; mkdir -p "$CR/round-1" "$CR/round-2"
     cat >"$CR/round-1/round-meta.json" <<'JSON'
 {"tally":{"ACCEPTED_COUNT":"1","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}
@@ -136,15 +138,13 @@ JSON
         printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000300\t300\t1\t0\t0\t-\n'
         printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001300\t300\t0\t0\t0\t-\n'
     } >"$CR/timing-ledger.tsv"
-    # Pre-compute timestamps; guard each iso() call so a python3 failure surfaces as FAIL:.
-    _ts1="$(iso 1700000100)" || fail "iso() python3 failed for ts 1700000100 (rc=$?)"
-    _ts2="$(iso 1700000160)" || fail "iso() python3 failed for ts 1700000160 (rc=$?)"
-    _ts3="$(iso 1700002800)" || fail "iso() python3 failed for ts 1700002800 (rc=$?)"
     # codex + claude_sub land in round-1 window; cursor is outside both (must be excluded).
+    # Timestamps are hardcoded UTC ISO strings (epoch 1700000100, 1700000160, 1700002800)
+    # to avoid spawning python3 subprocesses under CI process-limit pressure (#3781).
     {
-        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"%s"}\n' "$_ts1"
-        printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"%s"}\n' "$_ts2"
-        printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"%s"}\n' "$_ts3"
+        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"2023-11-14T22:15:00Z"}\n'
+        printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"2023-11-14T22:16:00Z"}\n'
+        printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"2023-11-14T23:00:00Z"}\n'
     } >"$CR/token-ledger.jsonl"
     # Guard token-cost.sh: split producer from post-processor so pipefail cannot mask which side failed.
     if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null)"; then
@@ -176,7 +176,7 @@ JSON
     command grep -Fq 'FAIL:' "$_reg_out" || fail "regression: forced subprocess failure must produce FAIL: diagnostic (got rc=$_reg_rc)"
     pass "regression: forced subprocess failure surfaces FAIL: diagnostic"
 else
-    printf 'SKIP: python3 or jq fromdateiso8601 unavailable; per-round vendor cost test skipped\n'
+    printf 'SKIP: jq fromdateiso8601 unavailable; per-round vendor cost test skipped\n'
 fi
 
 printf 'PASS: test-render-review-phase-detail.sh\n'
