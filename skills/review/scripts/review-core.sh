@@ -860,24 +860,6 @@ if [[ "$findings_count" == "0" ]]; then
     exit 0
 fi
 
-prune_out="$REVIEW_TMPDIR/review-core-prune-nit.env"
-set +e
-"$PRUNE_NITS_SH" \
-    --findings-file "$REVIEW_TMPDIR/findings.md" \
-    --oos-file "$REVIEW_TMPDIR/oos.md" \
-    --input-mode code > "$prune_out"
-_prune_rc=$?
-set -e
-if [[ "$_prune_rc" -ne 0 ]]; then
-    append_review_execution_issue "- **review-core / prune-nit-findings**: subprocess exited with rc=$_prune_rc (unexpected; failing open)."
-fi
-_prune_status=$(kv_get "$prune_out" STATUS)
-_prune_count=$(kv_get "$prune_out" PRUNED_COUNT)
-_prune_count="${_prune_count:-0}"
-if [[ "${_prune_count}" != "0" ]]; then
-    larch_err "→ review: nit pre-filter pruned ${_prune_count} finding(s) to OOS track"
-fi
-
 aggregate_out="$REVIEW_TMPDIR/review-core-aggregate.env"
 aggregate_args=(
     --findings-file "$REVIEW_TMPDIR/findings.md"
@@ -964,6 +946,22 @@ aggregate_merged_count_raw=$(kv_get "$aggregate_out" MERGED_COUNT)
 if [[ "$aggregate_reason" == "ok" && "$aggregate_merged_count_raw" == "0" ]]; then
     emit_zero_findings_branch
     exit 0
+fi
+
+prune_out="$REVIEW_TMPDIR/review-core-prune-nit.env"
+set +e
+"$PRUNE_NITS_SH" \
+    --findings-file "$REVIEW_TMPDIR/findings.md" \
+    --input-mode code > "$prune_out"
+_prune_rc=$?
+set -e
+if [[ "$_prune_rc" -ne 0 ]]; then
+    append_review_execution_issue "- **review-core / prune-nit-findings**: subprocess exited with rc=$_prune_rc (unexpected; failing open)."
+fi
+_prune_count=$(kv_get "$prune_out" PRUNED_COUNT)
+_prune_count="${_prune_count:-0}"
+if [[ "${_prune_count}" != "0" ]]; then
+    larch_err "→ review: nit post-aggregate filter marked ${_prune_count} finding(s) as [OUT_OF_SCOPE]"
 fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
