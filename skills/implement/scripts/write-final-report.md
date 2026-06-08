@@ -86,6 +86,35 @@ renderer omits those flags and the bullet shows `N/A`.
 `compose_self_fallback` emits `- **Lines (PR diff)**: …` for schema parity
 (`N/A` when counts are unavailable).
 
+## Review phase detail (per-round, issue #3774)
+
+Before composing the note appendix, the script runs
+[`scripts/render-review-phase-detail.sh`](../../../scripts/render-review-phase-detail.md)
+with `--rounds-root "$IMPLEMENT_TMPDIR"`,
+`--findings-file "$run_dir/review-findings-full.jsonl"`,
+`--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, the resolved
+`--token-ledger "$IMPLEMENT_TMPDIR/larch-tokens-<hash>.jsonl"` (globbed; omitted
+when absent), and `--skill implement`, capturing the rendered **Review Phase
+Detail** markdown to a temp file. That file is `cat` into the note block (after
+the existing notes), so the section lands in the `--note-lines-file` appendix that
+`render-run-summary.sh` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
+
+The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
+time, cost, reviewers launched), a Total row, the top reviewers by suggestions
+accepted (`vendor/archetype`), and a failed-reviewer-slot breakdown. The Cost
+column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
+attributed by token-ledger timestamp window and priced via `token-cost.sh`; it
+excludes main-agent Claude, so it is a distinct datum from (and less than) the
+single-source dollar-primary `- **Cost**:` line that `render-run-summary.sh` owns.
+
+The helper is best-effort and renders **nothing** when there were no panel review
+rounds (for example `--self-review` runs, where Step 5 does no panel review), so
+the note block is unchanged in that case; a render failure is swallowed
+(`|| : >"$review_detail_file"`) and never blocks the report. `/design`'s plan
+review uses a different data model (no per-round `round-meta.json`), so this
+injection is `/implement`-only — see the helper's `.md` for the `/design`
+follow-up.
+
 ## Token-data-missing primary path
 
 When no usable token JSON exists, or the JSON is unparseable / lacks

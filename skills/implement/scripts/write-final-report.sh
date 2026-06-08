@@ -399,6 +399,24 @@ append_render_warning() {
     refresh_issue_counts
 }
 
+# --- Review phase detail (per-round review table; issue #3774) ---
+# Best-effort: renders nothing when there were no panel review rounds (e.g.
+# --self-review runs), so the note block stays unchanged in that case.
+review_detail_file="$(mktemp "${TMPDIR:-/tmp}/wfr-review-detail.XXXXXX")"
+# Resolve the session token ledger (session-id-hashed name) for per-round
+# vendor cost; left unset when absent so the Cost column degrades to em dashes.
+rpd_token_ledger_args=()
+for _rpd_tl in "$IMPLEMENT_TMPDIR"/larch-tokens-*.jsonl; do
+    [ -f "$_rpd_tl" ] && rpd_token_ledger_args=(--token-ledger "$_rpd_tl") && break
+done
+"$PLUGIN_ROOT/scripts/render-review-phase-detail.sh" \
+    --rounds-root "$IMPLEMENT_TMPDIR" \
+    --findings-file "$run_dir/review-findings-full.jsonl" \
+    --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv" \
+    "${rpd_token_ledger_args[@]+"${rpd_token_ledger_args[@]}"}" \
+    --skill implement \
+    --output "$review_detail_file" 2>/dev/null || : >"$review_detail_file"
+
 # --- Note lines (after sentinel in body — appended by render via note file) ---
 notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"
 {
@@ -445,6 +463,10 @@ notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"
             done
         fi
     fi
+    if [ -s "$review_detail_file" ]; then
+        printf '\n'
+        cat "$review_detail_file"
+    fi
 } > "$notes_tmp"
 # Drop note file if only whitespace / empty meaningful lines
 if ! grep -q '[^[:space:]]' "$notes_tmp" 2>/dev/null; then
@@ -454,7 +476,7 @@ fi
 
 summary="$IMPLEMENT_TMPDIR/summary-final.md"
 body_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-body.XXXXXX")"
-trap 'rm -f "$body_tmp" "${notes_tmp:-}"' EXIT
+trap 'rm -f "$body_tmp" "${notes_tmp:-}" "${review_detail_file:-}"' EXIT
 
 run_body_render() {
     local nf="${1-}"

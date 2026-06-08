@@ -227,9 +227,17 @@ parse_artifact() {
         if [ -z "$reviewer" ]; then
             reviewer="$(extract_reviewer_from_body "$pending_body")"
         fi
-        if [[ "$kind" == "code-review-oos" ]] && is_security_block <(printf '%s\n' "$body") 2>/dev/null; then
-            pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""
-            return 0
+        if [[ "$kind" == "code-review-oos" ]]; then
+            local _sec_tmp
+            _sec_tmp="$(mktemp)"
+            printf '%s\n' "$body" > "$_sec_tmp"
+            local _sec_match=false
+            if is_security_block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
+            rm -f "$_sec_tmp"
+            if [[ "$_sec_match" == "true" ]]; then
+                pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""
+                return 0
+            fi
         fi
         emit_record "$pending_id" "$phase" "$outcome" "${reviewer:-panel}" "$body" "$round_num"
         pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""

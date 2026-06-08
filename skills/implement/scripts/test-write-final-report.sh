@@ -52,9 +52,11 @@ cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-fail
 cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/compute-pr-line-counts.sh" "$plugin/scripts/compute-pr-line-counts.sh"
+cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
     "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
-    "$plugin/scripts/redact-secrets.sh" "$plugin/scripts/compute-pr-line-counts.sh"
+    "$plugin/scripts/redact-secrets.sh" "$plugin/scripts/compute-pr-line-counts.sh" \
+    "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
 : >"$GH_SHIM_LOG"
@@ -1036,5 +1038,39 @@ EOF
         assert_not_contains '- **PR**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file omits PR bullet"
     fi
 done
+
+# --- Review Phase Detail injection (issue #3774) ---
+rpd_dir="$TMP_ROOT/impl-rpd"; mkdir -p "$rpd_dir/round-1"
+printf 'ISSUE_NUMBER=11\nRUN_ID=run-rpd\nADOPTED=true\n' > "$rpd_dir/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$rpd_dir/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/11\n'
+    printf 'PR_NUMBER=11\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$rpd_dir/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\n' > "$rpd_dir/finalize-state.sh"
+mkdir -p "$rpd_dir/larch-logs/implement/run-rpd"
+cat > "$rpd_dir/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"1","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"1","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":4}}}
+JSON
+cat > "$rpd_dir/round-1/panel-manifest.ndjson" <<'JSON'
+{"slot":"correctness","tool":"cursor","output":"/t/round-1/cursor-specialist-correctness-output.txt"}
+JSON
+cat > "$rpd_dir/larch-logs/implement/run-rpd/review-findings-full.jsonl" <<'JSON'
+{"id":"FINDING_1","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1"}
+{"id":"FINDING_2","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1"}
+JSON
+CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd.md" \
+      "$HELPER" --implement-tmpdir "$rpd_dir" >/dev/null
+rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
+assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
+assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
+assert_contains 'cursor/correctness — 2' "$rpd_body" 'review phase detail top reviewer'
+# Happy path (run-5) has no review rounds -> section must be absent (e.g. --self-review).
+assert_not_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content.md")" 'no review rounds -> section omitted'
 
 finish
