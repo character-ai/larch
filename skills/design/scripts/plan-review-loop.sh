@@ -103,7 +103,16 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num mu
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
 if [[ -z "$PRUNE_ROUND_NUM" ]]; then
-    PRUNE_ROUND_NUM="$ROUND_NUM"
+    _rrc_file="$DESIGN_TMPDIR/review-round-count.txt"
+    if [[ -s "$_rrc_file" ]]; then
+        _rrc_raw="$(tr -d '[:space:]' <"$_rrc_file" 2>/dev/null || true)"
+        case "$_rrc_raw" in
+            ''|*[!0-9]*) PRUNE_ROUND_NUM="$ROUND_NUM" ;;
+            *) PRUNE_ROUND_NUM=$((10#$_rrc_raw)) ;;
+        esac
+    else
+        PRUNE_ROUND_NUM="$ROUND_NUM"
+    fi
 fi
 case "$PRUNE_ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --prune-round-num must be a positive integer"; exit 2 ;; esac
 PRUNE_ROUND_NUM=$((10#$PRUNE_ROUND_NUM))

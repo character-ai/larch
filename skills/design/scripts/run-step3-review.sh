@@ -300,8 +300,7 @@ else
             --feature-file "$_feature_file" \
             --codex-present "${CODEX_PRESENT:-false}" \
             --cursor-present "${CURSOR_PRESENT:-false}" \
-            --round-num "$ROUND_NUM" \
-            --prune-round-num "$STEP3_REVIEW_ROUND_NUM")
+            --round-num "$ROUND_NUM")
         _plan_review_rc=$?
         set -e
 
