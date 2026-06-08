@@ -87,8 +87,10 @@ cleanup() {
     [[ -n "$TEMP_PROMPT" ]] && rm -f "$TEMP_PROMPT"
     [[ -n "$SUBPROCESS_STDERR" ]] && rm -f "$SUBPROCESS_STDERR"
     # Write a stub failure-diag for wrapper-only exits (argv/ctx validation
-    # errors) where launch-claude-subprocess.sh never ran and wrote its own diag.
-    if [[ "$_rc" -ne 0 && -n "${OUTPUT:-}" && ! -f "${OUTPUT}.failure-diag" ]]; then
+    # errors) where launch-claude-subprocess.sh never ran. Guard on the absence
+    # of ${OUTPUT}.done (written by the subprocess) so the stub is not emitted
+    # when the subprocess ran but write_failure_diag found no diagnostic sources.
+    if [[ "$_rc" -ne 0 && -n "${OUTPUT:-}" && ! -f "${OUTPUT}.done" && ! -f "${OUTPUT}.failure-diag" ]]; then
         printf 'wrapper-exit: rc=%s (argv/ctx validation failure)\n' "$_rc" \
             > "${OUTPUT}.failure-diag" 2>/dev/null || true
     fi
