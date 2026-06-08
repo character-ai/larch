@@ -22,6 +22,7 @@ hard_requested=false
 partition_requested=false
 brainstorm_requested=false
 approve_requested=false
+skip_approve_requested=false
 no_dedup_requested=false
 run_id=""
 first_positional=""
@@ -48,11 +49,18 @@ while [ "$#" -gt 0 ]; do
             brainstorm_requested=true
             shift
             ;;
-        --approve)
+        --per-round-approval)
             if [ "$approve_requested" = true ]; then
-                validation_error '--approve'
+                validation_error '--per-round-approval'
             fi
             approve_requested=true
+            shift
+            ;;
+        --skip-approve | -s)
+            if [ "$skip_approve_requested" = true ]; then
+                validation_error '--skip-approve'
+            fi
+            skip_approve_requested=true
             shift
             ;;
         --no-dedup)
@@ -108,6 +116,7 @@ printf '%s\n' "HARD_REQUESTED=$hard_requested"
 printf '%s\n' "PARTITION_REQUESTED=$partition_requested"
 printf '%s\n' "BRAINSTORM_REQUESTED=$brainstorm_requested"
 printf '%s\n' "APPROVE_REQUESTED=$approve_requested"
+printf '%s\n' "SKIP_APPROVE_REQUESTED=$skip_approve_requested"
 printf '%s\n' "NO_DEDUP_REQUESTED=$no_dedup_requested"
 printf '%s\n' "RUN_ID=$run_id"
 printf '%s\n' "POSITIONAL_KIND=$positional_kind"

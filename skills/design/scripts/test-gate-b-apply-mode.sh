@@ -55,7 +55,7 @@ mk_design() {
   } >"$d/plan.txt"
 }
 
-# Default run-params restore auto-apply; --approve restores the prompt branch.
+# Default run-params restore auto-apply; --per-round-approval restores the prompt branch.
 D_AUTO="$TMP/auto"
 mk_design "$D_AUTO"
 [[ "$(gate_b_mode "$D_AUTO/run-params.json")" == auto-apply ]] || fail 'default approve_requested=false should auto-apply'
@@ -64,12 +64,12 @@ D_APPROVE="$TMP/approve"
 mk_design "$D_APPROVE"
 "$WRITE_RUN_PARAMS" --classification HARD --partition-requested false --brainstorm-requested false \
   --approve-requested true --output "$D_APPROVE/run-params.json" >/dev/null
-[[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--approve should restore explicit prompt'
+[[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
 grep -Fq 'Gate B — auto-applying N accepted finding(s)' "$APPROVAL_GATES" \
   || fail 'approval-gates missing default auto-apply breadcrumb'
 grep -Fq 'explicit per-round prompt' "$SKILL_MD" \
-  || fail 'SKILL missing --approve explicit Gate B branch prose'
+  || fail 'SKILL missing --per-round-approval explicit Gate B branch prose'
 grep -Fq 'LOOP_STATUS=cap-reached' "$SKILL_MD" \
   || fail 'SKILL missing cap-reached Gate B bypass branch'
 

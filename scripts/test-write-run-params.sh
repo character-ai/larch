@@ -54,7 +54,8 @@ jq -e '
   .workflow_path == null and
   .partition_requested == false and
   .brainstorm_requested == false and
-  .approve_requested == false
+  .approve_requested == false and
+  .skip_approve_requested == false
 ' "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -90,6 +91,13 @@ if "$WRITER" \
     fail "invalid approve-requested was accepted"
 fi
 
+if "$WRITER" \
+    --classification SIMPLE \
+    --skip-approve-requested maybe \
+    --output "$TMPROOT/bad-skip-approve.json" >/dev/null 2>&1; then
+    fail "invalid skip-approve-requested was accepted"
+fi
+
 
 assert_rejected_with partition-requested-empty 'write-run-params.sh: --partition-requested requires a value' \
     --classification SIMPLE \
@@ -120,6 +128,16 @@ assert_rejected_with approve-requested-missing 'write-run-params.sh: --approve-r
     --classification SIMPLE \
     --output "$TMPROOT/approve-requested-missing.json" \
     --approve-requested
+
+assert_rejected_with skip-approve-requested-empty 'write-run-params.sh: --skip-approve-requested requires a value' \
+    --classification SIMPLE \
+    --skip-approve-requested "" \
+    --output "$TMPROOT/skip-approve-requested-empty.json"
+
+assert_rejected_with skip-approve-requested-missing 'write-run-params.sh: --skip-approve-requested requires a value' \
+    --classification SIMPLE \
+    --output "$TMPROOT/skip-approve-requested-missing.json" \
+    --skip-approve-requested
 
 assert_rejected_with classification-empty 'write-run-params.sh: --classification requires a value' \
     --classification "" \
@@ -178,9 +196,20 @@ jq -e '.brainstorm_requested == true' "$TMPROOT/brainstorm-true.json" >/dev/null
 jq -e '.approve_requested == true' "$TMPROOT/approve-true.json" >/dev/null \
     || fail "--approve-requested true did not set JSON true"
 
+"$WRITER" \
+    --classification SIMPLE \
+    --skip-approve-requested true \
+    --output "$TMPROOT/skip-approve-true.json" >/dev/null
+jq -e '.skip_approve_requested == true' "$TMPROOT/skip-approve-true.json" >/dev/null \
+    || fail "--skip-approve-requested true did not set JSON true"
+
 # approve_requested defaults to false when the flag is omitted entirely
 jq -e '.approve_requested == false' "$TMPROOT/brainstorm-true.json" >/dev/null \
     || fail "approve_requested did not default to false when omitted"
+
+# skip_approve_requested defaults to false when the flag is omitted entirely
+jq -e '.skip_approve_requested == false' "$TMPROOT/brainstorm-true.json" >/dev/null \
+    || fail "skip_approve_requested did not default to false when omitted"
 
 
 "$WRITER" \
@@ -188,9 +217,10 @@ jq -e '.approve_requested == false' "$TMPROOT/brainstorm-true.json" >/dev/null \
     --partition-requested true \
     --brainstorm-requested true \
     --approve-requested true \
+    --skip-approve-requested true \
     --output "$TMPROOT/all-flags-true.json" >/dev/null
-jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true' "$TMPROOT/all-flags-true.json" >/dev/null \
-    || fail "partition + brainstorm + approve true was not persisted"
+jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true and .skip_approve_requested == true' "$TMPROOT/all-flags-true.json" >/dev/null \
+    || fail "partition + brainstorm + approve + skip-approve true was not persisted"
 
 "$WRITER" \
     --classification HARD \
@@ -201,6 +231,7 @@ jq -e '.partition_requested == true and .brainstorm_requested == true and .appro
     --partition-requested true \
     --brainstorm-requested true \
     --approve-requested true \
+    --skip-approve-requested true \
     --output "$TMPROOT/all-v3-flags.json" >/dev/null
 jq -e '
   .schema_version == 3 and
@@ -212,7 +243,8 @@ jq -e '
   .workflow_path == "HARD" and
   .partition_requested == true and
   .brainstorm_requested == true and
-  .approve_requested == true
+  .approve_requested == true and
+  .skip_approve_requested == true
 ' "$TMPROOT/all-v3-flags.json" >/dev/null || fail "full v3 flag set was not persisted"
 
 "$WRITER" \

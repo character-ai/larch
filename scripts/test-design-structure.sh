@@ -719,8 +719,8 @@ contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path a
 contains "$APPROVAL_MD" 'Cap: 5 (both tiers).' 'approval-gates.md missing flat cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.' 'approval-gates.md missing canonical boundary-qualified Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'auto-applying N accepted finding(s)' 'approval-gates.md missing Gate B auto-apply default breadcrumb'
-contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --approve explicit Gate B option wording'
-contains "$APPROVAL_MD" 'Gate B prompts explicitly before any finding changes' 'approval-gates.md missing explicit Gate B apply boundary (--approve path)'
+contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --per-round-approval explicit Gate B option wording'
+contains "$APPROVAL_MD" 'Gate B prompts explicitly before any finding changes' 'approval-gates.md missing explicit Gate B apply boundary (--per-round-approval path)'
 contains "$APPROVAL_MD" 'Step 3b → Step 3b completion boundary → Step 4 → Step 4b (Gate C) run in normal sequence' 'approval-gates.md missing zero-findings Step 3b boundary-qualified forward link'
 contains "$APPROVAL_MD" 'proceed to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b); Step 4 and Gate C follow in normal sequence.' 'approval-gates.md missing shared post-apply Step 3b forward link'
 contains "$APPROVAL_MD" '(default) — auto-apply.' 'approval-gates.md missing Gate B auto-apply default branch'
@@ -757,7 +757,7 @@ contains "$PLAN_LOOP_SH" '--round-num is a stateless integer supplied by the cal
 
 absent "$MAKEFILE" 'test-read-design-review-budget-invoke' 'Makefile must not reference deleted read-design-review-budget harness'
 
-# Gate B auto-apply default + --approve explicit pins are covered above and by current branch-matrix checks.
+# Gate B auto-apply default + --per-round-approval explicit pins are covered above and by current branch-matrix checks.
 # Check 15d: design SKILL must not chat-print token/timing summaries.
 if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
   fail "(15d) skills/design/SKILL.md must not invoke token-report.sh --summary"
@@ -1089,12 +1089,12 @@ grep -Fq '[-p|--partition]' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md argument-hint missing [-p|--partition]"
 grep -Fq '[--brainstorm]' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md argument-hint missing [--brainstorm]"
-grep -Fq '[--approve]' "$SKILL_MD" \
-  || fail "(3628) SKILL.md argument-hint missing [--approve]"
+grep -Fq '[--per-round-approval]' "$SKILL_MD" \
+  || fail "(3628) SKILL.md argument-hint missing [--per-round-approval]"
 grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq '`--partition`, `--brainstorm`, `--approve`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
+grep -Fq '`--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing reduced flag sequence"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
@@ -1234,15 +1234,21 @@ grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--approve-requested "$approve_requested"' "$SKILL_MD" \
   || fail "(3628) SKILL.md design-init-runparams invocation missing --approve-requested"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--skip-approve-requested "$skip_approve_requested"' "$SKILL_MD" \
+  || fail "(3735) SKILL.md design-init-runparams invocation missing --skip-approve-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
-  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm OR approve"
+grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true || "$SKIP_APPROVE_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm OR approve OR skip-approve"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail "(2754) design-init-runparams.sh jq merge missing brainstorm_requested arm"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.approve_requested = (.approve_requested == true or $merge_a)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail "(3628) design-init-runparams.sh jq merge missing approve_requested arm"
+# shellcheck disable=SC2016 # jq filter literal
+grep -Fq -- '.skip_approve_requested = (.skip_approve_requested == true or $merge_s)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(3735) design-init-runparams.sh jq merge missing skip_approve_requested arm"
 grep -Fq '⏩ 1d.5: brainstorm — skipped' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing skip breadcrumb literal"
 grep -Fq 'plan-review-feature-context.txt' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
@@ -1282,8 +1288,8 @@ grep -Fq 'continue directly to **Step 1e Gate A**' "$DESIGN_OUTLINE_MD" \
 # shellcheck disable=SC2016 # Markdown literal includes backticks and emoji intentionally.
 grep -Fq 'print `✅ 1d.7: outline approved — proceeding to sketches`' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing outline-approve acknowledgment breadcrumb"
-grep -Fq 'This sentinel is written **only** on explicit Approve.' "$DESIGN_OUTLINE_MD" \
-  || fail "(2974) design-outline.md must pin approve-only sentinel writes"
+grep -Fq 'This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md must pin approve-and-auto-approve sentinel writes"
 grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this file.' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md must exclude ad-hoc Q&A-only runs from outline gating"
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
@@ -1873,7 +1879,7 @@ contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing
 # shellcheck disable=SC2016 # $ tokens are literal grep pins
 absent "$RUN_STEP3_SH" '--prune-round-num "$STEP3_REVIEW_ROUND_NUM"' 'run-step3-review.sh must not thread --prune-round-num; plan-review-loop reads review-round-count.txt directly'
 contains "$PLAN_LOOP_SH" 'review-round-count.txt' 'plan-review-loop.sh missing review-round-count.txt file-based prune-round fallback'
-contains "$SKILL_MD" 'restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode)' 'SKILL.md missing --approve explicit Gate B settle path'
+contains "$SKILL_MD" 'restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode)' 'SKILL.md missing --per-round-approval explicit Gate B settle path'
 contains "$SKILL_MD" 'auto-applies** every accepted in-scope finding with no' 'SKILL.md missing Gate B auto-apply default routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$APPROVAL_MD" 'refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent' 'approval-gates.md missing MainAgent re-tally Step 3 state refresh pin'
@@ -1888,6 +1894,14 @@ contains "$SKILL_MD" 'so both `.step3-plan-review-result.env` and `.step3-review
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Apply-pipeline prompts under auto-apply' 'approval-gates.md missing auto-apply size-brake (Component C) coverage'
+# shellcheck disable=SC2016 # breadcrumb literal
+contains "$SKILL_MD" '⏩ 1d.7: outline — auto-approved (--skip-approve)' 'SKILL.md missing Step 1d.7 auto-approve breadcrumb'
+contains "$SKILL_MD" '⏩ 4b: Gate C — auto-approved final plan (--skip-approve)' 'SKILL.md missing Step 4b Gate C auto-approve breadcrumb'
+# Step 4b read-is-its-own-fence pin: SKIP_APPROVE_REQUESTED read at 4b must be a separate fence from the plan emit
+grep -Fq 'Step 4b read-is-its-own-fence pin' "$SKILL_MD" \
+  || fail "(3735) SKILL.md missing Step 4b read-is-its-own-fence pin comment"
+contains "$SKILL_MD" 'skip_approve_requested=false' 'SKILL.md missing skip_approve_requested false init'
+contains "$APPROVAL_MD" 'skip_approve_requested=true' 'approval-gates.md missing Gate C skip_approve_requested=true auto-approve carve-out'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 for _bypass_line in \
   "$(grep -F 'Gate-B-bypass short-circuits (' "$SKILL_MD")" \

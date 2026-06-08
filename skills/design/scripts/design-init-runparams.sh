@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-init-runparams.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N --classification SIMPLE|HARD --partition-requested true|false --brainstorm-requested true|false --approve-requested true|false [--repo OWNER/REPO]'
+    larch_err 'Usage: design-init-runparams.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N --classification SIMPLE|HARD --partition-requested true|false --brainstorm-requested true|false --approve-requested true|false --skip-approve-requested true|false [--repo OWNER/REPO]'
 }
 
 validate_plain_scalar() {
@@ -48,6 +48,7 @@ CLASSIFICATION=""
 PARTITION_REQUESTED=""
 BRAINSTORM_REQUESTED=""
 APPROVE_REQUESTED=""
+SKIP_APPROVE_REQUESTED=""
 REPO=""
 
 while [[ $# -gt 0 ]]; do
@@ -92,6 +93,11 @@ while [[ $# -gt 0 ]]; do
             APPROVE_REQUESTED="$2"
             shift 2
             ;;
+        --skip-approve-requested)
+            [[ $# -ge 2 ]] || fail '--skip-approve-requested requires a value'
+            SKIP_APPROVE_REQUESTED="$2"
+            shift 2
+            ;;
         --repo)
             [[ $# -ge 2 ]] || fail '--repo requires a value'
             REPO="$2"
@@ -128,6 +134,7 @@ esac
 validate_bool_flag --partition-requested "$PARTITION_REQUESTED"
 validate_bool_flag --brainstorm-requested "$BRAINSTORM_REQUESTED"
 validate_bool_flag --approve-requested "$APPROVE_REQUESTED"
+validate_bool_flag --skip-approve-requested "$SKIP_APPROVE_REQUESTED"
 validate_plain_scalar session-id "$SESSION_ID"
 [[ -n "$REPO" ]] && validate_repo "$REPO"
 
@@ -216,6 +223,7 @@ if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
     --partition-requested "$PARTITION_REQUESTED" \
     --brainstorm-requested "$BRAINSTORM_REQUESTED" \
     --approve-requested "$APPROVE_REQUESTED" \
+    --skip-approve-requested "$SKIP_APPROVE_REQUESTED" \
     --output "$RUN_PARAMS_PATH"; then
     INIT_STATUS=contract-drift
     larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**"
@@ -228,7 +236,7 @@ if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
 fi
 
 # 5. Router-flag jq-merge (verbatim from SKILL.md Step 0b)
-if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true ]] && command -v jq >/dev/null 2>&1; then
+if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true || "$SKIP_APPROVE_REQUESTED" == true ]] && command -v jq >/dev/null 2>&1; then
     if [[ -f "$RUN_PARAMS_PATH" ]]; then
         _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
         _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
@@ -236,7 +244,8 @@ if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APP
             --argjson merge_p "$([[ "$PARTITION_REQUESTED" == true ]] && echo true || echo false)" \
             --argjson merge_b "$([[ "$BRAINSTORM_REQUESTED" == true ]] && echo true || echo false)" \
             --argjson merge_a "$([[ "$APPROVE_REQUESTED" == true ]] && echo true || echo false)" \
-            '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a)' \
+            --argjson merge_s "$([[ "$SKIP_APPROVE_REQUESTED" == true ]] && echo true || echo false)" \
+            '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a) | .skip_approve_requested = (.skip_approve_requested == true or $merge_s)' \
             "$RUN_PARAMS_PATH" >"$_rp_merge" 2>"$_rp_err"; then
             mv -f "$_rp_merge" "$RUN_PARAMS_PATH"
             rm -f "$_rp_err"
@@ -247,8 +256,8 @@ if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APP
     else
         add_warn "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
     fi
-elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true ]]; then
-    add_warn '**⚠ 0b: partition, brainstorm, and/or approve requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'
+elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true || "$SKIP_APPROVE_REQUESTED" == true ]]; then
+    add_warn '**⚠ 0b: partition, brainstorm, approve, and/or skip-approve requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'
 fi
 
 _init_kvs=(

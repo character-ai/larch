@@ -77,12 +77,14 @@ Write `$DESIGN_TMPDIR/design-outline.md` with this exact top-level structure. Ke
 
 ## Approval prompt
 
-Fire `AskUserQuestion` after printing the outline:
+When `skip_approve_requested=true` (bound from the Step 1d.7 fence in `SKILL.md` before entering this file): write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and **proceed to Step 2a** without calling `AskUserQuestion`. The sentinel IS written on auto-approve (same as explicit Approve). Do not print the outline to chat on the auto-approve path unless the entry guard has already printed or skipped it; the gate fires only when the entry guard did not skip.
+
+When `skip_approve_requested=false`, fire `AskUserQuestion` after printing the outline:
 
 - **Question**: `"Here is the proposed design direction. Approve and proceed to sketches + plan, refine the outline, or cancel?"`
 - **Header**: `"Design outline"`
 - **Options**:
-  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to sketches`, and **proceed to Step 2a**. The orchestrator MUST go to Step 2a, not Step 1e. This sentinel is written **only** on explicit Approve.
+  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to sketches`, and **proceed to Step 2a**. The orchestrator MUST go to Step 2a, not Step 1e. This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).
   - **Refine outline** — enter the Refine loop below.
   - **Cancel** — run Cancel hygiene below.
 

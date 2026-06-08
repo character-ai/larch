@@ -14,12 +14,13 @@ Before invoking the Step 0-pre fence, substitute `<PUBLIC_ARGV_WORDS>` with thos
 
 ## Machine output
 
-On success, stdout contains exactly these eight KVs, one per line:
+On success, stdout contains exactly these nine KVs, one per line:
 
 - `HARD_REQUESTED=true|false`
 - `PARTITION_REQUESTED=true|false`
 - `BRAINSTORM_REQUESTED=true|false`
-- `APPROVE_REQUESTED=true|false`
+- `APPROVE_REQUESTED=true|false` (set by `--per-round-approval`)
+- `SKIP_APPROVE_REQUESTED=true|false` (set by `--skip-approve` / `-s`)
 - `NO_DEDUP_REQUESTED=true|false`
 - `RUN_ID=<value>` (empty when absent)
 - `POSITIONAL_KIND=issue|verbal|none`
@@ -43,9 +44,11 @@ Bare `--` terminates the flag scan. It is not a validation error and is excluded
 
 ## Exit codes
 
+Retired flag: `--approve` is rejected with `VALIDATION_ERROR=--approve` (exit `3`) — use `--per-round-approval` instead.
+
 | Code | Meaning |
 |------|---------|
-| `0` | Parsed OK; eight KVs on stdout |
+| `0` | Parsed OK; nine KVs on stdout |
 | `3` | Validation error; `VALIDATION_ERROR=<token>` on stdout |
 
 The script never intentionally exits `1` or `2`; the orchestrator owns user-facing aborts.

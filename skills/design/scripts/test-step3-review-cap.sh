@@ -29,7 +29,7 @@ grep -Fq 'review-round cap (${_round_cap}) reached for ${_tier}' "$ROOT/skills/d
 grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/design/scripts/run-step3-review.sh" \
     || fail 'run-step3-review.sh missing symlinked plan-review cleanup warning'
 grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
-    || fail 'SKILL missing explicit --approve continuation stop contract'
+    || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
     || fail 'SKILL missing Gate B postapply resume continuation guard'
 grep -Fq 'snapshot-plan-round.sh write-after' "$SKILL_MD" \
