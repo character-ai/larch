@@ -53,7 +53,7 @@ assert_kv() {
 
 assert_no_flag_kvs() {
     local label="$1"
-    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
+    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
         fail "$label emitted success KVs on validation failure"
     else
         pass "$label emitted no success KVs"
@@ -62,7 +62,7 @@ assert_no_flag_kvs() {
 
 assert_success_kv_count() {
     local label="$1" want="$2" got
-    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
+    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
     if [ "$got" = "$want" ]; then
         pass "$label success KV count"
     else
@@ -76,6 +76,7 @@ assert_common_false() {
     assert_kv "$label" PARTITION_REQUESTED false
     assert_kv "$label" BRAINSTORM_REQUESTED false
     assert_kv "$label" APPROVE_REQUESTED false
+    assert_kv "$label" SKIP_APPROVE_REQUESTED false
     assert_kv "$label" NO_DEDUP_REQUESTED false
     assert_kv "$label" RUN_ID ""
 }
@@ -83,7 +84,7 @@ assert_common_false() {
 # bare numeric tail
 run_case 3249
 assert_rc 'numeric tail' 0
-assert_success_kv_count 'numeric tail' 8
+assert_success_kv_count 'numeric tail' 9
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
@@ -93,6 +94,7 @@ run_case 3249 extra words
 assert_rc 'numeric issue extra tokens' 0
 assert_kv 'numeric issue extra tokens' POSITIONAL_KIND issue
 assert_kv 'numeric issue extra tokens' POSITIONAL_VALUE 3249
+assert_kv 'numeric issue extra tokens' SKIP_APPROVE_REQUESTED false
 
 # bare verbal tail
 run_case add a foo flag
@@ -118,18 +120,54 @@ run_case --brainstorm
 assert_rc '--brainstorm' 0
 assert_kv '--brainstorm' BRAINSTORM_REQUESTED true
 
-run_case --approve
-assert_rc '--approve' 0
-assert_kv '--approve' APPROVE_REQUESTED true
-assert_kv '--approve' POSITIONAL_KIND none
+run_case --per-round-approval
+assert_rc '--per-round-approval' 0
+assert_kv '--per-round-approval' APPROVE_REQUESTED true
+assert_kv '--per-round-approval' SKIP_APPROVE_REQUESTED false
+assert_kv '--per-round-approval' POSITIONAL_KIND none
 
-# --approve composes with an issue tail and leaves other booleans false
-run_case --approve 3249
-assert_rc '--approve issue' 0
-assert_kv '--approve issue' APPROVE_REQUESTED true
-assert_kv '--approve issue' HARD_REQUESTED false
-assert_kv '--approve issue' POSITIONAL_KIND issue
-assert_kv '--approve issue' POSITIONAL_VALUE 3249
+# --per-round-approval composes with an issue tail and leaves other booleans false
+run_case --per-round-approval 3249
+assert_rc '--per-round-approval issue' 0
+assert_kv '--per-round-approval issue' APPROVE_REQUESTED true
+assert_kv '--per-round-approval issue' SKIP_APPROVE_REQUESTED false
+assert_kv '--per-round-approval issue' HARD_REQUESTED false
+assert_kv '--per-round-approval issue' POSITIONAL_KIND issue
+assert_kv '--per-round-approval issue' POSITIONAL_VALUE 3249
+
+run_case --skip-approve
+assert_rc '--skip-approve' 0
+assert_kv '--skip-approve' SKIP_APPROVE_REQUESTED true
+assert_kv '--skip-approve' APPROVE_REQUESTED false
+assert_kv '--skip-approve' POSITIONAL_KIND none
+
+run_case -s
+assert_rc '-s' 0
+assert_kv '-s' SKIP_APPROVE_REQUESTED true
+assert_kv '-s' APPROVE_REQUESTED false
+assert_kv '-s' POSITIONAL_KIND none
+
+# --skip-approve composes with an issue tail
+run_case --skip-approve 3249
+assert_rc '--skip-approve issue' 0
+assert_kv '--skip-approve issue' SKIP_APPROVE_REQUESTED true
+assert_kv '--skip-approve issue' APPROVE_REQUESTED false
+assert_kv '--skip-approve issue' POSITIONAL_KIND issue
+assert_kv '--skip-approve issue' POSITIONAL_VALUE 3249
+
+# --per-round-approval and --skip-approve are orthogonal; both can appear together
+run_case --per-round-approval --skip-approve 3249
+assert_rc '--per-round-approval --skip-approve compose' 0
+assert_kv '--per-round-approval --skip-approve compose' APPROVE_REQUESTED true
+assert_kv '--per-round-approval --skip-approve compose' SKIP_APPROVE_REQUESTED true
+assert_kv '--per-round-approval --skip-approve compose' POSITIONAL_KIND issue
+assert_kv '--per-round-approval --skip-approve compose' POSITIONAL_VALUE 3249
+
+# retired --approve is rejected
+run_case --approve
+assert_rc 'retired --approve' 3
+assert_kv 'retired --approve' VALIDATION_ERROR --approve
+assert_no_flag_kvs 'retired --approve'
 
 run_case --manual
 assert_rc '--manual' 3
@@ -188,10 +226,20 @@ assert_rc 'duplicate hard' 3
 assert_kv 'duplicate hard' VALIDATION_ERROR --hard
 assert_no_flag_kvs 'duplicate hard'
 
-run_case --approve --approve
-assert_rc 'duplicate approve' 3
-assert_kv 'duplicate approve' VALIDATION_ERROR --approve
-assert_no_flag_kvs 'duplicate approve'
+run_case --per-round-approval --per-round-approval
+assert_rc 'duplicate per-round-approval' 3
+assert_kv 'duplicate per-round-approval' VALIDATION_ERROR --per-round-approval
+assert_no_flag_kvs 'duplicate per-round-approval'
+
+run_case --skip-approve --skip-approve
+assert_rc 'duplicate skip-approve' 3
+assert_kv 'duplicate skip-approve' VALIDATION_ERROR --skip-approve
+assert_no_flag_kvs 'duplicate skip-approve'
+
+run_case -s -s
+assert_rc 'duplicate -s' 3
+assert_kv 'duplicate -s' VALIDATION_ERROR --skip-approve
+assert_no_flag_kvs 'duplicate -s'
 
 run_case --simple 3249
 assert_rc 'retired simple' 3

@@ -17,10 +17,11 @@ WORKFLOW_PATH=""
 PARTITION_REQUESTED=""
 BRAINSTORM_REQUESTED=""
 APPROVE_REQUESTED=""
+SKIP_APPROVE_REQUESTED=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <SIMPLE|HARD> --output <path> [--reason <text>] [--source <text>] [--sketch-budget <0|2|4>] [--workflow-path <SIMPLE|HARD>] [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--approve-requested <true|false>]
+usage: write-run-params.sh --classification <SIMPLE|HARD> --output <path> [--reason <text>] [--source <text>] [--sketch-budget <0|2|4>] [--workflow-path <SIMPLE|HARD>] [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--approve-requested <true|false>] [--skip-approve-requested <true|false>]
 USAGE
 }
 
@@ -102,6 +103,11 @@ while [[ $# -gt 0 ]]; do
             APPROVE_REQUESTED="$2"
             shift 2
             ;;
+        --skip-approve-requested)
+            require_value --skip-approve-requested "${2-}"
+            SKIP_APPROVE_REQUESTED="$2"
+            shift 2
+            ;;
         --help|-h)
             usage
             exit 0
@@ -161,6 +167,10 @@ if [[ -n "$APPROVE_REQUESTED" ]]; then
     require_enum "--approve-requested" "$APPROVE_REQUESTED" true false
 fi
 
+if [[ -n "$SKIP_APPROVE_REQUESTED" ]]; then
+    require_enum "--skip-approve-requested" "$SKIP_APPROVE_REQUESTED" true false
+fi
+
 case "$OUTPUT" in
     /*) ;;
     *)
@@ -190,6 +200,7 @@ jq -n \
     --arg partition_requested "${PARTITION_REQUESTED:-false}" \
     --arg brainstorm_requested "${BRAINSTORM_REQUESTED:-false}" \
     --arg approve_requested "${APPROVE_REQUESTED:-false}" \
+    --arg skip_approve_requested "${SKIP_APPROVE_REQUESTED:-false}" \
     '{
       schema_version: 3,
       design_classification: $classification,
@@ -199,7 +210,8 @@ jq -n \
       workflow_path: (if $workflow_path == "" then null else $workflow_path end),
       partition_requested: ($partition_requested == "true"),
       brainstorm_requested: ($brainstorm_requested == "true"),
-      approve_requested: ($approve_requested == "true")
+      approve_requested: ($approve_requested == "true"),
+      skip_approve_requested: ($skip_approve_requested == "true")
     }' > "$TMP"
 
 mv "$TMP" "$OUTPUT"

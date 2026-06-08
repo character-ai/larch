@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Two-tier design flow (SIMPLE/HARD) with full plan review and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--approve] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -9,18 +9,19 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with the mechanical plan-review panel on both tiers (rounds 1-2 and 5 use the full static diagonal; rounds 3-4 may be reduced only by `reviewer-prune.sh`; plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the mechanical plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--approve`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
+**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--hard` | `false` | Opt into HARD (default is SIMPLE): 4 sketches, dialectic when contested, full review panel, 5 total review runs |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
-| `--approve` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
+| `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
+| `--skip-approve` / `-s` | `false` | Auto-approve Step 1d.7 outline-approval and Step 4b Gate C final-plan without an `AskUserQuestion`; does not skip any other prompt (see `references/flags.md`; persisted as `skip_approve_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one `--hard` and at most one `--approve` may appear on argv; duplicate `--hard` or duplicate `--approve` is a hard error before Step 0. Any other unrecognized or disallowed leading public `--` flag is a hard error before Step 0 (never swallowed as positional/verbal feature text).
+**Mutual exclusion**: at most one `--hard`, at most one `--per-round-approval`, and at most one `--skip-approve` / `-s` may appear on argv; duplicates are hard errors before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive — both may appear together. Any other unrecognized or disallowed leading public `--` flag (including retired `--approve`) is a hard error before Step 0 (never swallowed as positional/verbal feature text).
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
@@ -71,7 +72,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a w
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ```
 
-**Phase 7 exception**: pure-LLM Steps **1c**, **1d**, **1d.7**, and **1e** have no standalone prelude fences — their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work.
+**Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences — their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see **Kept preludes** row below.
 
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.
 
@@ -103,7 +104,7 @@ Pause/resume helper coverage lives in
 | Step 3 direct-review restore | Step 3 entry via `design-step3-state.sh --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
-| Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block | pause-check retained |
+| Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block; Step 1d.7 (`SKIP_APPROVE_REQUESTED` read fence) | pause-check retained |
 
 ## Design Mindset
 
@@ -133,7 +134,7 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 6. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
-7. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, 1d.7, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
+7. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 1d.7 retains a read-only `SKIP_APPROVE_REQUESTED` fence (no timing mark); Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -178,6 +179,7 @@ hard_requested=false
 partition_requested=false
 brainstorm_requested=false
 approve_requested=false
+skip_approve_requested=false
 no_dedup_requested=false
 run_id=""
 POSITIONAL_KIND=none
@@ -187,6 +189,7 @@ _seen_HARD_REQUESTED=false
 _seen_PARTITION_REQUESTED=false
 _seen_BRAINSTORM_REQUESTED=false
 _seen_APPROVE_REQUESTED=false
+_seen_SKIP_APPROVE_REQUESTED=false
 _seen_NO_DEDUP_REQUESTED=false
 _seen_RUN_ID=false
 _seen_POSITIONAL_KIND=false
@@ -201,6 +204,7 @@ while IFS= read -r _line || [ -n "$_line" ]; do
     PARTITION_REQUESTED) partition_requested="$_value"; _seen_PARTITION_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     BRAINSTORM_REQUESTED) brainstorm_requested="$_value"; _seen_BRAINSTORM_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     APPROVE_REQUESTED) approve_requested="$_value"; _seen_APPROVE_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    SKIP_APPROVE_REQUESTED) skip_approve_requested="$_value"; _seen_SKIP_APPROVE_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     NO_DEDUP_REQUESTED) no_dedup_requested="$_value"; _seen_NO_DEDUP_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     RUN_ID) run_id="$_value"; _seen_RUN_ID=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     POSITIONAL_KIND) POSITIONAL_KIND="$_value"; _seen_POSITIONAL_KIND=true; _success_kv_count=$((_success_kv_count + 1)) ;;
@@ -236,11 +240,12 @@ if [ "${_argv_rc:-0}" -ne 0 ]; then
   printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
   exit 1
 fi
-if [ "$_success_kv_count" -ne 8 ] \
+if [ "$_success_kv_count" -ne 9 ] \
   || [ "$_seen_HARD_REQUESTED" != true ] \
   || [ "$_seen_PARTITION_REQUESTED" != true ] \
   || [ "$_seen_BRAINSTORM_REQUESTED" != true ] \
   || [ "$_seen_APPROVE_REQUESTED" != true ] \
+  || [ "$_seen_SKIP_APPROVE_REQUESTED" != true ] \
   || [ "$_seen_NO_DEDUP_REQUESTED" != true ] \
   || [ "$_seen_RUN_ID" != true ] \
   || [ "$_seen_POSITIONAL_KIND" != true ] \
@@ -456,7 +461,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
        exit 1 ;;
    esac
    if [[ "${ROUTE:-}" == resume@* || "${ROUTE:-}" == already-planned ]]; then
-     if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$approve_requested" == true ]]; then
+     if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$approve_requested" == true || "$skip_approve_requested" == true ]]; then
        if [[ -f "$DESIGN_TMPDIR/run-params.json" && ! -L "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
          _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
          _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
@@ -464,7 +469,8 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
            --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
            --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
            --argjson merge_a "$([[ "$approve_requested" == true ]] && echo true || echo false)" \
-           '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a)' \
+           --argjson merge_s "$([[ "$skip_approve_requested" == true ]] && echo true || echo false)" \
+           '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a) | .skip_approve_requested = (.skip_approve_requested == true or $merge_s)' \
            "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
            mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
            rm -f "$_rp_err"
@@ -504,7 +510,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    ```
 
    Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
+5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
    ```bash
@@ -519,6 +525,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --partition-requested "$partition_requested" \
      --brainstorm-requested "$brainstorm_requested" \
      --approve-requested "$approve_requested" \
+     --skip-approve-requested "$skip_approve_requested" \
      ${REPO:+--repo "$REPO"})
    _init_rc=$?
    set -e
@@ -638,7 +645,24 @@ When Step 1d.5 finishes or is skipped by its entry guard, immediately run `mkdir
 
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard).
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+# Contract pin for CI (scripts/test-design-structure.sh): Step 4b read-is-its-own-fence pin
+_skip_approve_requested=false
+if command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _skip_approve_requested=true ;;
+  esac
+elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _skip_approve_requested=true
+fi
+printf 'SKIP_APPROVE_REQUESTED=%s\n' "$_skip_approve_requested"
+```
+
+Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. When `skip_approve_requested=true`, auto-approve the Step 1d.7 outline gate: check the entry guard from `references/design-outline.md` as usual (skip when `.outline-approved` exists per the guard), then — when the gate would fire — instead write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and proceed to Step 2a **without** calling `AskUserQuestion`. When `skip_approve_requested=false`, proceed normally per `references/design-outline.md`.
+
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
 
 `.completed/step-1d.7` is batch-written by the Step 2a entry fence before pause-check — not at a Step 1d.7 success boundary.
 
@@ -1266,10 +1290,10 @@ Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's appl
 
 **Gate B resume idempotency**: If `$DESIGN_TMPDIR/.gate-b-postapply-ready-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-current}}` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Resume at `approval-gates.md` §Shared post-apply pipeline step 7 (the merged `design-postplan-emit.sh --with-plan-size` fence) using the current `plan.txt`, then run the **Heuristic multi-round continuation check** below after the fence settles. Do not jump directly to Step 3b from this post-apply resume branch; the continuation helper must get the same chance to schedule an automatic follow-up round as it does on the original Gate B apply path.
 
-Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--approve` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, run the Gate B HARD round snapshot in `approval-gates.md` (`snapshot-plan-round.sh write-after` for `${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}`, then `write-cursor` to the next value) and then run the **Heuristic multi-round continuation check** below before writing `.completed/step-3.5`.
+Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, run the Gate B HARD round snapshot in `approval-gates.md` (`snapshot-plan-round.sh write-after` for `${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}`, then `write-cursor` to the next value) and then run the **Heuristic multi-round continuation check** below before writing `.completed/step-3.5`.
 `.completed/step-3.5` is written by the Step 3b entry fence before pause-check — not at a Step 3.5 success boundary.
 
-If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--approve`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
+If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
 **Heuristic multi-round continuation check**: After Gate B settles (on any non-Switch-to-discussion-mode non-exiting path), before proceeding to Step 3b, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` and parse only its `PLAN_REVIEW_CONTINUE*`, count, degraded, and cap KVs. The helper recomputes counts from disk artifacts (`accepted-plan-findings.md`, `.step3-review-result.env`, `review-round-count.txt`, `plan.txt`, and `run-params.json`) rather than trusting stale in-memory Step 3 KVs. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.md`.
 
@@ -1417,7 +1441,26 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
   --variant gatec
 ```
 
-Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Before the Gate C `AskUserQuestion`, read `skip_approve_requested` from `run-params.json` — this is a separate read-only fence, distinct from the plan preview emit above:
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+# Contract pin for CI (scripts/test-design-structure.sh): Step 4b read-is-its-own-fence pin
+_skip_approve_requested_gatec=false
+if command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _skip_approve_requested_gatec=true ;;
+  esac
+elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _skip_approve_requested_gatec=true
+fi
+printf 'SKIP_APPROVE_REQUESTED_GATEC=%s\n' "$_skip_approve_requested_gatec"
+```
+
+When `_skip_approve_requested_gatec=true`, auto-approve Gate C: print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed directly to Step 5 **without** calling `AskUserQuestion`. When `_skip_approve_requested_gatec=false`, fire the Gate C `AskUserQuestion` per `approval-gates.md`.
+
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip_approve_requested_gatec=false`). When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
