@@ -44,10 +44,9 @@ larch-logs/
       breadcrumbs/
         quiet.log
       round-<N>/
-        findings.md
         findings-classification.tsv
-        accepted-findings.md
         rejected-findings.md
+        oos-accepted-review.md
         review-round-summary.md
         review-summary.json
         voting-tally.md

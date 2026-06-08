@@ -67,9 +67,8 @@ require_log_root() {
 round_artifact_included() {
     local name="$1"
     case "$name" in
-        # Excluded raw per-specialist reviewer outputs and their sidecars
-        # (findings.md is the canonical aggregate). Exact-form deny; phase/retry
-        # variants are denied in the next branch.
+        # Excluded raw per-specialist reviewer outputs and their sidecars.
+        # Exact-form deny; phase/retry variants are denied in the next branch.
         cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
             return 1
             ;;
@@ -334,7 +333,8 @@ case "$cmd" in
         [ "$mode" = "replace" ] || larch_log_fail 1 "batch $BATCH is append-only; use append"
         path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
         tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-write.XXXXXX")" || larch_log_fail 2 "cannot create temp payload"
-        trap 'rm -f "${tmp:-}"' EXIT
+        _cap_tmp=""
+        trap 'rm -f "${tmp:-}" "${_cap_tmp:-}"' EXIT
         larch_log_redact_file "$INPUT_FILE" "$tmp"
         # Trim large batches at staging time (cap + byte-count marker).
         case "$BATCH" in
@@ -344,7 +344,7 @@ case "$cmd" in
                     _cap_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-write-cap.XXXXXX")"
                     head -c 8192 "$tmp" > "$_cap_tmp"
                     printf '\n[TRUNCATED: original %s bytes]\n' "$_orig_bytes" >> "$_cap_tmp"
-                    mv -f "$_cap_tmp" "$tmp"
+                    mv -f "$_cap_tmp" "$tmp" && _cap_tmp=""
                 fi
                 ;;
         esac
