@@ -13,11 +13,11 @@ issue). To be accepted in-scope, a finding must clear at least one of these gate
    data-loss or data-corruption path, or a breaking change to an existing caller, contract, or
    CLI/wire surface — even if the new feature works. (You do not ship a regression and file an
    issue about it.)
-4. Necessary test — the change adds a test for behavior THIS feature introduces that is not
-   covered by any existing or planned test, AND the test is proportionate to the behavior's risk
-   and size. A test that merely could exist, restates coverage already present, or is
-   red-green-TDD-that-should-have-happened does NOT qualify — that is a Nit, and Nits never clear
-   this gate.
+4. Necessary test — **Default a test finding to Out-of-Scope.** It clears this gate as in-scope
+   only if it covers a new, currently-uncovered, risk-bearing execution path that THIS feature
+   introduces, AND the test is proportionate to the behavior's risk and size. A test that could
+   merely exist, restates existing coverage, broadens an unrelated harness, or is
+   red-green-TDD-after-the-fact is a Nit → Out-of-Scope, never in-scope.
 5. Unblock a pre-existing condition — a pre-existing defect that actively blocks completing,
    building, or verifying the feature (overlaps 1-2; the test is "the feature cannot be finished
    or shipped until this is fixed").
@@ -28,8 +28,11 @@ or reject => never an in-scope accept.
 Out-of-Scope signals, NOT acceptance signals (real, possibly worth a future issue — never an
 in-scope change here): "cleaner," "more robust," "more idiomatic," "more consistent," "more
 flexible / future-proof," "best practice," "while we're here," "defensive in case," refactors,
-renames-for-clarity, added configurability, and broadened error handling for inputs the feature
-cannot produce.
+renames-for-clarity, added configurability, broadened error handling for inputs the feature
+cannot produce, performance / micro-optimization claims (e.g. "redundant I/O", "avoid an extra
+call/scan", "micro-cache this") when the feature already meets its stated performance
+requirement, and cross-shell / cross-OS / tool-version portability speculation for shells,
+platforms, or tool versions the project does not target.
 
 Out-of-Scope is the safe harbor, not the trash. A real finding that fails the necessity gate
 belongs on the Out-of-Scope list, where it can still be accepted as a tracked GitHub issue.
