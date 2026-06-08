@@ -1,0 +1,16 @@
+# Retired script manifest for the sh-to-py migration.
+# Format: path<TAB>retired_by
+# Rules:
+#   - path must be the full repo-relative path (never a bare basename).
+#     Example: skills/report-tokens/scripts/run-analysis.sh
+#   - Lint matches full path substrings only; live files that share a basename
+#     but have a different path (e.g. .claude/skills/analyze-issues/scripts/run-analysis.sh)
+#     will NOT be flagged.
+#   - Exclusions: any path under larch-logs/, CHANGELOG.md, and this manifest itself
+#     are never scanned for references.
+#   - Do NOT list the retired path literals directly in test fixtures; build
+#     fixture paths at runtime instead.
+skills/report-tokens/scripts/run-analysis.sh	#3667
+skills/report-tokens/scripts/run-analysis.md	#3667
+skills/report-tokens/scripts/test-run-analysis-quiet.sh	#3667
+skills/report-tokens/scripts/test-run-analysis-quiet.md	#3667

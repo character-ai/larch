@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ now defaults to the Python ship driver (`python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the default `/implement` Step 8+ ship driver and `/report-tokens`). `/implement` Step 8+ defaults to the Python ship driver via `python/cli.py ship pr` (delegating to `python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to use the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live via `python/cli.py report-tokens analyze` (delegating to `report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -53,7 +53,7 @@ for tests.
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path defaults to `python/ship.py`; use `LARCH_SHIP_PR_IMPL=bash` only when you need the legacy shell driver. `/report-tokens` is already cut over to Python; only the shell wrapper remains for skill compatibility and quiet-mode stream setup.
+The live `/implement` path defaults to `python/cli.py ship pr`; use `LARCH_SHIP_PR_IMPL=bash` only when you need the legacy shell driver. `/report-tokens` is cut over to `python/cli.py report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
 
 ## Pre-push conflict handoff scope
 

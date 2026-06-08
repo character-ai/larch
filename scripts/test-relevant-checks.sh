@@ -430,11 +430,24 @@ setup_report_tokens_wrapper_repo() {
     setup_git_repo "$dir"
     (
         cd "$dir"
-        git checkout -q -b report-tokens-wrapper-change
-        mkdir -p skills/report-tokens/scripts
-        printf '%s\n' "# run analysis wrapper" > skills/report-tokens/scripts/run-analysis.md
-        git add skills/report-tokens/scripts/run-analysis.md
-        git commit -q -m "touch report tokens wrapper docs"
+        git checkout -q -b report-tokens-skill-change
+        mkdir -p skills/report-tokens
+        printf '%s\n' "# report-tokens skill" > skills/report-tokens/SKILL.md
+        git add skills/report-tokens/SKILL.md
+        git commit -q -m "touch report-tokens SKILL.md"
+    )
+}
+
+setup_migrated_scripts_manifest_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b migrated-scripts-change
+        mkdir -p python
+        printf '%s\n' "# manifest" > python/migrated-scripts.tsv
+        git add python/migrated-scripts.tsv
+        git commit -q -m "touch migrated-scripts manifest"
     )
 }
 
@@ -495,15 +508,25 @@ run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
 assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
 assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
 
-echo "=== Section 3j2: report-tokens wrapper routing ==="
+echo "=== Section 3j2: report-tokens SKILL.md routing ==="
 
 REPO_3J2="$TMPROOT/repo-report-tokens-wrapper"
 STUB_3J2="$TMPROOT/stub-report-tokens-wrapper"
 setup_report_tokens_wrapper_repo "$REPO_3J2"
 make_stub_dir "$STUB_3J2" present absent
 run_checks "$REPO_3J2" "$(controlled_path "$STUB_3J2")"
-assert_exit_eq "3j2: report-tokens wrapper change exits 0" "$RUN_EXIT" 0
-assert_stdout_contains "3j2: routes test-run-analysis-quiet" "$RUN_OUT" "test-run-analysis-quiet"
+assert_exit_eq "3j2: report-tokens SKILL.md change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j2: routes py-test" "$RUN_OUT" "py-test"
+
+echo "=== Section 3j3: migrated-scripts manifest routing ==="
+
+REPO_3J3="$TMPROOT/repo-migrated-scripts"
+STUB_3J3="$TMPROOT/stub-migrated-scripts"
+setup_migrated_scripts_manifest_repo "$REPO_3J3"
+make_stub_dir "$STUB_3J3" present absent
+run_checks "$REPO_3J3" "$(controlled_path "$STUB_3J3")"
+assert_exit_eq "3j3: migrated-scripts manifest change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j3: routes lint-retired-scripts" "$RUN_OUT" "lint-retired-scripts"
 
 echo "=== Section 3k: Python direct targets with missing lint tools ==="
 

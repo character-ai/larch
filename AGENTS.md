@@ -6,7 +6,7 @@ This repository **is** the larch Claude Code plugin. Editing here modifies what 
 
 Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
-`python/` holds stdlib-only runtime modules. The ship-pr→Python driver is live by default at `/implement` Step 8+ (`python3 python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to select the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live through `python/report_tokens_*` plus the thin `skills/report-tokens/scripts/run-analysis.sh` wrapper. See `python/README.md` for layout and `make py-lint` / `make py-test`.
+`python/` holds stdlib-only runtime modules. The ship-pr→Python driver is live by default at `/implement` Step 8+ via `python3 python/cli.py ship pr` (delegating to `python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to select the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live via `python3 python/cli.py report-tokens analyze` (delegating to `python/report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. See `python/README.md` for layout and `make py-lint` / `make py-test`.
 
 ## Load Semantics
 
@@ -47,6 +47,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `skills/shared/skill-design-principles.md` — design principles for every larch skill (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration); Section III overrides Section IV for larch skills
 - `skills/shared/reviewer-templates.md` — Code Reviewer archetype (canonical; `agents/code-reviewer.md` is generated from it)
 - `SECURITY.md` — security policy
+- `docs/python-migration.md` — sh-to-py migration playbook: per-domain recipe, decision log, manifest format, and `lint-retired-scripts` usage
 
 ## Conventions
 

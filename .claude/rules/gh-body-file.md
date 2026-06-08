@@ -38,8 +38,6 @@ paths:
   - "skills/issue/SKILL.md"
   - "skills/issue/scripts/create-one.md"
   - "skills/issue/scripts/create-one.sh"
-  - "skills/report-tokens/scripts/run-analysis.md"
-  - "skills/report-tokens/scripts/run-analysis.sh"
   - "skills/review-and-fix/scripts/review-and-fix.md"
   - "skills/review-and-fix/scripts/review-and-fix.sh"
 ---

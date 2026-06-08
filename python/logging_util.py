@@ -105,6 +105,21 @@ def contract_stream() -> TextIO:
     return sys.stdout
 
 
+def emit(text: str) -> None:
+    """Write a line to the contract stream (fd 3 after quiet_init, else stdout)."""
+    stream = contract_stream()
+    line = text if text.endswith("\n") else text + "\n"
+    _ = stream.write(line)
+    stream.flush()
+
+
+def emit_kv(key: str, value: str) -> None:
+    """Write KEY=value to the contract stream. Raises ValueError on embedded newlines."""
+    if "\n" in value or "\r" in value:
+        raise ValueError(f"emit_kv value for {key!r} contains newline or carriage-return")
+    emit(f"{key}={value}")
+
+
 @dataclass
 class BreadcrumbWriter:
     """Progress breadcrumbs; honor lib-quiet routing when LARCH_QUIET_ACTIVE is set."""
