@@ -129,27 +129,51 @@ else:
             lines[0] = m2.group(1) + ' ' + title
         oos_additions.append('\n'.join(lines))
 
-try:
-    # Write findings-file atomically (write to temp, then rename)
-    dirn = os.path.dirname(os.path.abspath(findings_file))
-    fd, tmp_path = tempfile.mkstemp(dir=dirn)
+new_oos_content = oos_text + '\n\n' + '\n\n'.join(oos_additions) + '\n\n'
+
+original_findings = text
+findings_dir = os.path.dirname(os.path.abspath(findings_file)) or '.'
+oos_dir = os.path.dirname(os.path.abspath(oos_file)) or '.'
+findings_tmp = None
+oos_tmp = None
+
+def _restore_findings():
+    fd, restore_tmp = tempfile.mkstemp(dir=findings_dir)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(new_findings_content)
-        shutil.move(tmp_path, findings_file)
+            f.write(original_findings)
+        shutil.move(restore_tmp, findings_file)
     except Exception:
         try:
-            os.unlink(tmp_path)
+            os.unlink(restore_tmp)
         except OSError:
             pass
         raise
 
-    # Append OOS additions to oos-file
-    if oos_additions:
-        separator = '\n\n'
-        with open(oos_file, 'a', encoding='utf-8') as f:
-            f.write(separator + '\n\n'.join(oos_additions) + '\n\n')
+try:
+    fd, findings_tmp = tempfile.mkstemp(dir=findings_dir)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(new_findings_content)
+
+    fd, oos_tmp = tempfile.mkstemp(dir=oos_dir)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(new_oos_content)
+
+    shutil.move(findings_tmp, findings_file)
+    findings_tmp = None
+    try:
+        shutil.move(oos_tmp, oos_file)
+        oos_tmp = None
+    except Exception:
+        _restore_findings()
+        raise
 except Exception:
+    for tmp in (findings_tmp, oos_tmp):
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     fail_open()
 
 print('PRUNED_COUNT=%d' % len(pruned))
