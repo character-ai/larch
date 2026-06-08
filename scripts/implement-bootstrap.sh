@@ -136,6 +136,36 @@ valid_run_id() {
     esac
 }
 
+# Re-write session-env.sh with LARCH_RUN_ID added, so downstream helpers can
+# rehydrate RUN_ID via read-session-env-key.sh without relying on orchestrator
+# memory. Called after phase_tracking() resolves RUN_ID. Uses write-session-env.sh
+# (the sanctioned writer) by reading back all previously-written values and
+# re-issuing the call with the additional --run-id flag.
+_persist_larch_run_id() {
+    valid_run_id "${RUN_ID:-}" || return 0
+    [ -f "${IMPLEMENT_TMPDIR:-}/session-env.sh" ] || return 0
+    local _dynamic _persist_args
+    _dynamic=$("$SCRIPT_DIR/read-session-env-key.sh" \
+        --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
+    _persist_args=(
+        --output "$IMPLEMENT_TMPDIR/session-env.sh"
+        --repo "${REPO:-}"
+        --repo-unavailable "${REPO_UNAVAILABLE:-false}"
+        --codex-present "${CODEX_PRESENT:-}"
+        --cursor-present "${CURSOR_PRESENT:-}"
+        --codex-binary-found "${CODEX_BINARY_FOUND:-}"
+        --cursor-binary-found "${CURSOR_BINARY_FOUND:-}"
+        --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+        --token-session-id "${LARCH_TOKEN_SESSION_ID:-}"
+        --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
+        --forked-target "${FORKED_TARGET:-false}"
+        --run-id "$RUN_ID"
+    )
+    [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && _persist_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
+    [ -n "$_dynamic" ] && _persist_args+=(--dynamic-archetypes "$_dynamic")
+    "$SCRIPT_DIR/write-session-env.sh" "${_persist_args[@]}"
+}
+
 valid_issue_number() {
     local value=$1
     case "$value" in
@@ -1524,9 +1554,11 @@ main() {
         infra) ;;
         tracking)
             phase_tracking
+            _persist_larch_run_id
             ;;
         plan)
             phase_tracking
+            _persist_larch_run_id
             if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
                 ensure_untracked_baseline_snapshot
             fi
@@ -1536,6 +1568,7 @@ main() {
             ;;
         coder)
             phase_tracking
+            _persist_larch_run_id
             if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
                 ensure_untracked_baseline_snapshot
             fi
@@ -1548,6 +1581,7 @@ main() {
             ;;
         all)
             phase_tracking
+            _persist_larch_run_id
             if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
                 ensure_untracked_baseline_snapshot
             fi

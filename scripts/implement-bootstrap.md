@@ -135,7 +135,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 
 ## NEVER #14
 
-This script **must not** append or overwrite `$IMPLEMENT_TMPDIR/session-env.sh` via raw shell redirection (`>>`, `cat > … <<`). Only `write-session-env.sh` writes the file. The offline harness greps the live source for forbidden patterns.
+This script **must not** append or overwrite `$IMPLEMENT_TMPDIR/session-env.sh` via raw shell redirection (`>>`, `cat > … <<`). Only `write-session-env.sh` writes the file. The offline harness greps the live source for forbidden patterns. The one sanctioned multi-write pattern is `_persist_larch_run_id()`: it calls `write-session-env.sh` a second time (after `phase_tracking()` resolves `RUN_ID`) with all previously-written keys plus `--run-id "$RUN_ID"`, adding `LARCH_RUN_ID` for downstream step rehydration.
 
 ## Resume-tail idempotency
 
