@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stage 1 re-invoke plus renderer tests already limit schema drift; a shared compose helper is optional extra surface.
@@ -33,4 +34,3 @@ FINDING_32: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN
 FINDING_33: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_34: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_35: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

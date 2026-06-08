@@ -30,7 +30,7 @@ assert_revise_excluded() {
 }
 
 assert_included findings.md
-assert_included findings-in-scope.md
+assert_excluded findings-in-scope.md
 assert_included findings-oos.md
 assert_included findings-classification.tsv
 assert_included accepted-plan-findings.md

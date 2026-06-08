@@ -20,7 +20,7 @@ Any allowlist change MUST update, in the same commit:
 
 ## Top-level `round-N/` allowlist
 
-**Include basenames:** `findings.md`, `findings-in-scope.md`, `findings-oos.md`, `findings-classification.tsv`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `round-start-s`, `plan.txt` (round 1 only; see below).
+**Include basenames:** `findings.md`, `findings-oos.md`, `findings-classification.tsv`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `round-start-s`, `plan.txt` (round 1 only; see below). `findings-in-scope.md` is dropped from the include set (#3715); it is a strict subset of `findings.md` and is recoverable from `findings-classification.tsv` plus `findings-oos.md`.
 
 **Include patterns:** `*-vote-output.txt`, `*-vote-output-first-pass.txt`, `voter*-diag.txt`.
 

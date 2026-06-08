@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES — Reviewer output format is TSV (confirmed from render-plan-review-prompt.sh:98-108) but loop parses markdown ### FINDING_N blocks; empty ballot results silently.
 FINDING_2: YES — collect-agent-results.sh invocation in plan omits --substantive-validation --validation-mode --structured-reviewer-validation and uses 1800s not 1860s; multiple CI pins and plan-review.md contract broken.
 FINDING_3: YES — aggregate-findings.sh splits only on FINDING_N patterns (lines 177-183), OOS_N blocks would be silently dropped.
@@ -98,7 +99,3 @@ FINDING_97: YES — plan.txt:241 promises --input-mode plan grep pin but pin add
 FINDING_98: YES — Same as FINDING_81/85; wrong path confirmed.
 FINDING_99: YES — Same as FINDING_40; VOTER_1_PARSE_RATE_STATUS expected by test but not in emitted KV spec.
 FINDING_100: YES — Same as FINDING_42; SKILL.md:633-634 stale prose about inline scout+dispatch.
-OOS_1: YES — finalize-plan.sh:59-64 confirmed to require non-empty voting-tally.md; tally abort skipping the file write breaks Step 4; concrete real problem.
-OOS_2: NO — Topology drift is housekeeping naturally addressed by topology generation rules; not worth a separate GitHub issue.
-OOS_3: YES — New subprocess voter changes trust/logging boundary; SECURITY.md should document it; AGENTS.md policy applies.
-OOS_4: EXONERATE — Too speculative; plan states artifact paths remain identical; conditional concern without concrete breakage.

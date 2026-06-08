@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- is_anchor_for_basename patterns require invocation-shaped lines; plain WATERFALL_SH="…" assignments match none of the defined ERE shapes
@@ -47,6 +48,3 @@ FINDING_46: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
 FINDING_47: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
 FINDING_48: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
 FINDING_49: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
-OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

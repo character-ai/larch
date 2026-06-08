@@ -323,6 +323,14 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # Phase 3b exclusions (#3715 logs-size-reduction).
+    case "$name" in
+        findings-in-scope.md|timing-ledger.tsv|timing-ledger.tsv.lock|\
+        scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
+        composed-plan.md)
+            return 0
+            ;;
+    esac
     # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
     case "$name" in
         cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)
@@ -388,6 +396,20 @@ design_publish_stage_file() {
             }
             ;;
     esac
+    # Cap vote-output rationale prose at ~2 KB; keep per-finding vote lines (#3715).
+    case "$name" in
+        *-vote-output.txt|*-vote-output-first-pass.txt)
+            if [[ $(wc -c <"$trim_tmp") -gt 2048 ]]; then
+                _vote_cap_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-votecap.XXXXXX") || {
+                    rm -f "$trim_tmp"
+                    return 1
+                }
+                printf '[rationale capped — prose >2KB — vote lines preserved]\n' >"$_vote_cap_tmp"
+                command grep '^FINDING_[0-9]' "$trim_tmp" >>"$_vote_cap_tmp" || true
+                mv -f "$_vote_cap_tmp" "$trim_tmp"
+            fi
+            ;;
+    esac
     mkdir -p "$(dirname "$dest")"
     redact_tmp="$SCRIPT_DIR/redact-tmpdir-paths.sh"
     redact_secrets="$SCRIPT_DIR/redact-secrets.sh"
@@ -449,6 +471,14 @@ while IFS= read -r f || [[ -n "$f" ]]; do
             continue
         fi
     fi
+    # aggregator-output cmp-guard: stage only when it differs from findings.md (#3715).
+    case "$b" in
+        aggregator-output.txt|aggregator-output-phase2.txt|aggregator-output-phase3.txt)
+            if [[ -f "$DESIGN_TMPDIR/findings.md" ]] && cmp -s "$f" "$DESIGN_TMPDIR/findings.md"; then
+                continue
+            fi
+            ;;
+    esac
     design_publish_stage_file "$f" "$RUN_DEST/$b" || {
         larch_err "design-log-publish: staging failed for $f"
         emit_publish_result false
@@ -457,6 +487,23 @@ while IFS= read -r f || [[ -n "$f" ]]; do
 done <"$_top_files"
 rm -f "$_top_files"
 ENUM_TOP_TMP=""
+
+# Generate composed-plan.diff (diff of composed-plan.md vs final plan.txt) instead
+# of staging composed-plan.md directly (#3715). Lossless: reconstruct with
+# `patch plan.txt composed-plan.diff -o composed-plan.md`.
+_composed_src="$DESIGN_TMPDIR/composed-plan.md"
+_plan_ref="$DESIGN_TMPDIR/plan.txt"
+if [[ -f "$_composed_src" && -f "$_plan_ref" ]]; then
+    _cdiff_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-composeddiff.XXXXXX")
+    diff -u "$_plan_ref" "$_composed_src" >"$_cdiff_tmp" || true  # diff exits 1 on differences
+    if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_cdiff_tmp" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/composed-plan.diff"; then
+        rm -f "$_cdiff_tmp"
+        larch_err "design-log-publish: composed-plan.diff staging failed"
+        emit_publish_result false
+        exit 0
+    fi
+    rm -f "$_cdiff_tmp"
+fi
 
 if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; then
     if [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then

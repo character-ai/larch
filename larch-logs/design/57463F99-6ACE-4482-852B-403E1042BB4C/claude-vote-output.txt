@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- design-log-publish.md:47-48 explicitly documents "not create-pr.sh"; the proposed rule's "always route through the wrapper" wording directly contradicts the documented disposable-worktree path
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- SKILL.md:991 confirmed shows inline --body literal in Step 5d while skills/design/SKILL.md is in paths:; the contradiction lands verbatim after merge
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- run-analysis.sh:1031 confirmed with inline gh issue create --body body; plan claims exhaustive grep audit but missed this Python caller and omits the file from paths:

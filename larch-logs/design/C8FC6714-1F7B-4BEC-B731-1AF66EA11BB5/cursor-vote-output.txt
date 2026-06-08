@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
@@ -19,5 +20,3 @@ FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=f
 FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan failure-mode section already requires identifier-match lint; fixture is test detail
 FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- valid extra test coverage but redundant with FINDING_13 plan gap
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

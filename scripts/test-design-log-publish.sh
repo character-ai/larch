@@ -520,6 +520,26 @@ printf 'raw scout manifest\n' >"$TMP/design/scout-plan-manifest.json.raw"
 printf 'raw scout prompt\n' >"$TMP/design/scout-plan-manifest.json.raw.prompt"
 printf 'vote meta\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.meta"
 printf 'vote json\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.json"
+# Phase 3b exclusions per #3715:
+printf 'in-scope findings\n' >"$TMP/design/findings-in-scope.md"
+printf 'round 1\n2\n' >"$TMP/design/timing-ledger.tsv"
+: >"$TMP/design/timing-ledger.tsv.lock"
+printf 'scout dynamic prompt\n' >"$TMP/design/scout-dynamic-archetypes-prompt.md"
+printf 'before-revise plan\n' >"$TMP/design/plan.txt.before-revise"
+printf 'composed plan body\n' >"$TMP/design/composed-plan.md"
+# aggregator-output same as findings.md → should be skipped
+printf '### FINDING_1:\nbody\n' >"$TMP/design/findings.md"
+printf '### FINDING_1:\nbody\n' >"$TMP/design/aggregator-output.txt"
+# aggregator-output-phase2 different → should be staged
+printf '### FINDING_1:\nbody-different\n' >"$TMP/design/aggregator-output-phase2.txt"
+# large vote output (>2KB) → rationale prose capped; use claude-vote-output.txt
+# because cursor-plan-arch-vote-output.txt matches the transcript exclusion glob
+_long_vote="$TMP/design/claude-vote-output.txt"
+{ printf 'A long prose preamble that explains the thinking process in great detail.\n'
+  python3 -c "print('x' * 2100)"
+  printf 'FINDING_1: YES CORRECTNESS=true\n'
+  printf 'FINDING_2: NO\n'; } >"$_long_vote"
+unset _long_vote
 # Same suffix family in render-cache must also be denied:
 printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 printf '{"type":"token_usage","input_tokens":2,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/render-cache/cached-output.txt.events.jsonl"
@@ -615,11 +635,28 @@ for denied in \
     "scout-plan-manifest.json.raw" \
     "scout-plan-manifest.json.raw.prompt" \
     "cursor-plan-arch-vote-output.txt.meta" \
-    "cursor-plan-arch-vote-output.txt.json"; do
+    "cursor-plan-arch-vote-output.txt.json" \
+    "findings-in-scope.md" \
+    "timing-ledger.tsv" \
+    "timing-ledger.tsv.lock" \
+    "scout-dynamic-archetypes-prompt.md" \
+    "plan.txt.before-revise" \
+    "composed-plan.md" \
+    "aggregator-output.txt"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
+# aggregator-output-phase2 differs from findings.md → must be staged
+[[ -f "$clone/larch-logs/design/RUNPUB1/aggregator-output-phase2.txt" ]] || fail "aggregator-output-phase2 (different from findings.md) should be staged"
+# composed-plan.diff must exist and contain a valid unified diff header
+[[ -f "$clone/larch-logs/design/RUNPUB1/composed-plan.diff" ]] || fail "composed-plan.diff missing"
+command grep -q '^---' "$clone/larch-logs/design/RUNPUB1/composed-plan.diff" || fail "composed-plan.diff lacks unified diff header"
+# large vote output must be capped (only FINDING_ lines retained)
+[[ -f "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" ]] || fail "vote output missing after cap"
+command grep -q '\[rationale capped' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "vote cap sentinel missing"
+command grep -q '^FINDING_1: YES' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "FINDING_ lines missing after cap"
+! grep -q 'long prose preamble' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "prose preamble not removed by cap"  # lint-bare-grep-probe: ok test-script child-process safe
 
 echo "=== final no-delta succeeds idempotently when main already has run id ==="
 TMPNOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-noop.XXXXXX")

@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
@@ -19,5 +20,3 @@ FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false --
 FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=excellent UNCERTAIN=false -- failure mode 2 in plan (identifier mismatch) has no planned regression fixture despite being explicitly described
 FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- monitor SIGTERM/SIGKILL escalation handles live writers; wait returns immediately for already-reaped PIDs
 FINDING_21: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- harness checks timing/orphan but not wrapper exit propagation for representative ship-pr exit codes
-OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- scripts/lint-foreground-markers.md sibling must be updated per script-md-siblings rule when linter behavior changes
-OOS_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- AGENTS.md documents the background+monitor pair convention and omitting the wait requirement leaves contributors without the full contract

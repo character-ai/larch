@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- production sanitizer lines like REASON_TOKEN=pipe-in-node-label fence=N line=M will widen SKIP_REASON to include fence/line metadata; plan correctly documents new awk behavior but incorrectly claims no contract change
 FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- while IFS= read -r already splits tmp_stderr on newlines before sanitize_diagnostic_line runs; T8 embedded-newline assertion is structurally unreachable and gives false security confidence
 FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- BSD tr with UTF-8 locale rejects invalid byte sequences; plan targets macOS Bash 3.2 portability but omits LC_ALL=C
@@ -26,6 +27,3 @@ FINDING_25: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=fals
 FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_7; assert_file_contains is structurally wrong since out is a stdout string not a file path
 FINDING_27: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- exported env vars do propagate through bash child processes, but run_subject silently drops non-listed vars if not exported; plan should explicitly state export requirement or add forwarding
 FINDING_28: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of FINDING_10; reject stub always emits REASON_TOKEN so no-token fallback is not actually covered
-OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- per-call-site tr -d policy leaves every other larch_err passthrough site unprotected; worth a tracking issue for library-level protection
-OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sanitize-mermaid-fragment.sh:283 token aggregation will diverge if embedded-equals becomes a supported REASON_TOKEN value; worth a tracking issue
-OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- TSV and quiet emit surfaces pass raw job_name bytes; pre-existing but not recorded as deferred in the plan; worth a tracking issue

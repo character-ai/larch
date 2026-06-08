@@ -1,3 +1,4 @@
+[rationale capped — prose >2KB — vote lines preserved]
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- emit_result journals before the tmpdir allowlist guard; an empty or cwd-relative tmpdir could create journal files in the working directory even under the best-effort try/except
 FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- _write_ship_state writes RESUME_PHASE and CALLER_KIND to ship-pr-state.sh; write_finalize_state does not include those keys; plan Exit 4 prose incorrectly assigns them to finalize-state.sh
