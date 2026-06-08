@@ -22,7 +22,6 @@ larch-logs/
   implement/
     <RUN_ID>/
       manifest.json
-      plan-goals-test.md
       include-probe-evidence.md
       parent-issue.md
       pre-review-head.txt
@@ -45,10 +44,9 @@ larch-logs/
       breadcrumbs/
         quiet.log
       round-<N>/
-        findings.md
         findings-classification.tsv
-        accepted-findings.md
         rejected-findings.md
+        oos-accepted-review.md
         review-round-summary.md
         review-summary.json
         voting-tally.md
@@ -264,12 +262,6 @@ For current `/implement` runs, the committed manifest is normally an `"in-progre
 
 ## Batch files
 
-### plan-goals-test.md
-
-**Mode**: replace (one file per run). **Written**: **Step 0** materialization tail, after the design plan is finalized.
-
-Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`. Verbatim plan prose (including historical must-not-touch bullets or path constraints copied from the issue) is a **point-in-time snapshot** for that run only; if it appears to conflict with current run-log policy, treat this document and `docs/issue-anchored-plan.md` as authoritative for what committed `larch-logs/` paths mean.
-
 ### include-probe-evidence.md
 
 **Mode**: replace. **Written**: optional, when a plan's acceptance criteria require Phase 1 empirical subprocess output that otherwise lives only under `$IMPLEMENT_TMPDIR` (for example cross-agent include probes). Holds a redacted, tmpdir-free copy: a `BRANCH=A` / `BRANCH=B` header line plus per-agent transcript sections so post-merge reviewers can verify the probe and branch decision without the operator session tree.
@@ -439,7 +431,7 @@ Content: run ID, log directory path (`larch-logs/implement/<RUN_ID>/`), agent (i
 
 Written at **Step 0** materialization tail after the plan is finalized.
 
-Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` plus the current plan-review tally status (voting outcome when present, or a pointer that detailed plan review lives in the `/design` run artifacts).
+Content: current plan-review tally status (voting outcome when present, or a pointer that detailed plan review lives in the `/design` run artifacts). The implementation plan is readable at the tracking issue body (`larch:plan` block via `manifest.json::issue_number`).
 
 ### `larch:diagrams`
 

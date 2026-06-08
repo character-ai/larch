@@ -67,9 +67,8 @@ require_log_root() {
 round_artifact_included() {
     local name="$1"
     case "$name" in
-        # Excluded raw per-specialist reviewer outputs and their sidecars
-        # (findings.md is the canonical aggregate). Exact-form deny; phase/retry
-        # variants are denied in the next branch.
+        # Excluded raw per-specialist reviewer outputs and their sidecars.
+        # Exact-form deny; phase/retry variants are denied in the next branch.
         cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
             return 1
             ;;
@@ -108,6 +107,12 @@ round_artifact_included() {
         scout-round*-manifest.json.raw)
             return 1
             ;;
+        # Proposal-stage finding aggregates: projections of review-findings-full.jsonl.
+        # Drop at staging time — the jsonl is the canonical store; jq reconstructs any
+        # view on demand (see scripts/render-findings-view.sh).
+        findings.md|accepted-findings.md|rejected-findings-full.md|oos.md)
+            return 1
+            ;;
         # Pin the known Dynamic Codex forensics families and sidecars here:
         # dyn-*-codex-output.txt and dyn-*-codex-output-phase*.txt plus
         # .meta/.json/.cap-hit. Retry outputs are denied above; other/future
@@ -117,7 +122,7 @@ round_artifact_included() {
         dyn-*-codex-output.txt|dyn-*-codex-output-phase*.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output-phase*.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output-phase*.txt.json|dyn-*-codex-output.txt.cap-hit|dyn-*-codex-output-phase*.txt.cap-hit)
             return 0
             ;;
-        findings.md|findings-classification.tsv|scout-archetype-yield.tsv|accepted-findings.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
+        findings-classification.tsv|scout-archetype-yield.tsv|rejected-findings.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
             return 0
             ;;
         cursor-ci-stall-*.json)
@@ -146,6 +151,17 @@ stage_round_artifact() {
                 ;;
             *-output.txt.json|*-output-*.txt.json)
                 larch_redact_strip_json_result "$input" "$trim_tmp" || larch_log_fail 2 "cannot trim json sidecar: $input"
+                ;;
+            *-vote-output.txt|*-vote-output-*.txt)
+                # Cap at 2 KB; per-finding vote lines are near the top, rationale prose below.
+                # Covers *-vote-output-first-pass.txt via the *-vote-output-*.txt pattern.
+                _orig_bytes=$(wc -c < "$input" | tr -d ' ')
+                if [ "$_orig_bytes" -gt 2048 ]; then
+                    head -c 2048 "$input" > "$trim_tmp" || larch_log_fail 2 "cannot cap vote output: $input"
+                    printf '\n[TRUNCATED: original %s bytes]\n' "$_orig_bytes" >> "$trim_tmp"
+                else
+                    cp "$input" "$trim_tmp" || larch_log_fail 2 "cannot stage round artifact: $input"
+                fi
                 ;;
             *)
                 cp "$input" "$trim_tmp" || larch_log_fail 2 "cannot stage round artifact: $input"
@@ -317,8 +333,21 @@ case "$cmd" in
         [ "$mode" = "replace" ] || larch_log_fail 1 "batch $BATCH is append-only; use append"
         path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
         tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-write.XXXXXX")" || larch_log_fail 2 "cannot create temp payload"
-        trap 'rm -f "${tmp:-}"' EXIT
+        _cap_tmp=""
+        trap 'rm -f "${tmp:-}" "${_cap_tmp:-}"' EXIT
         larch_log_redact_file "$INPUT_FILE" "$tmp"
+        # Trim large batches at staging time (cap + byte-count marker).
+        case "$BATCH" in
+            codex-impl-transcript)
+                _orig_bytes=$(wc -c < "$tmp" | tr -d ' ')
+                if [ "$_orig_bytes" -gt 8192 ]; then
+                    _cap_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-write-cap.XXXXXX")"
+                    head -c 8192 "$tmp" > "$_cap_tmp"
+                    printf '\n[TRUNCATED: original %s bytes]\n' "$_orig_bytes" >> "$_cap_tmp"
+                    mv -f "$_cap_tmp" "$tmp" && _cap_tmp=""
+                fi
+                ;;
+        esac
         larch_log_validate_batch_payload "$BATCH" "$tmp"
         if [ -f "$path" ] && cmp -s "$tmp" "$path"; then
             larch_log_emit_success "$path" false true

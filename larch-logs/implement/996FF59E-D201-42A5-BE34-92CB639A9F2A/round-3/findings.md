@@ -1,4 +1,0 @@
-Normalizing the supplied reviewer slots into merged findings, preserving verbatim suggested revisions and `[OUT_OF_SCOPE]` on merged headings where any source carried that tag.
-
-
-

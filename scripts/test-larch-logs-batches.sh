@@ -12,8 +12,7 @@ source "$SCRIPT_DIR/larch-log-batches.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-larch-log.sh"
 
-expected='plan-goals-test
-parent-issue
+expected='parent-issue
 pre-review-head
 pre-review-untracked
 codex-impl-transcript
@@ -71,7 +70,6 @@ done
 [ "$(larch_log_batch_extension timing-report)" = ".json" ]
 [ "$(larch_log_batch_mode run-statistics)" = "replace" ]
 [ "$(larch_log_batch_extension run-statistics)" = ".md" ]
-[ "$(larch_log_batch_sanitizer plan-goals-test)" = "plan-goals" ]
 [ "$(larch_log_batch_mode parent-issue)" = "replace" ]
 [ "$(larch_log_batch_extension parent-issue)" = ".md" ]
 [ "$(larch_log_batch_mode pre-review-head)" = "replace" ]
@@ -113,41 +111,6 @@ done
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log-batches.XXXXXX")"
 tmpdir=""
 trap 'rm -rf "$tmp" "${tmpdir:-}"' EXIT
-
-pointer_payload="$tmp/pointer-plan-goals.md"
-cat > "$pointer_payload" <<'EOF'
-## Goal
-Prevent placeholder plans.
-
-## Implementation Plan
-See plan.txt
-
-## Test plan
-Run the larch-log batch tests.
-EOF
-
-valid_payload="$tmp/valid-plan-goals.md"
-cat > "$valid_payload" <<'EOF'
-## Goal
-Prevent placeholder plans.
-
-## Implementation Plan
-## Implementation Plan
-Add a dedicated composer for the plan-goals-test batch, wire the batch table to
-the plan-goals sanitizer, and update the regression harnesses so sectioned
-payloads are required before larch-log writes can publish the artifact.
-
-## Test plan
-Run scripts/test-compose-plan-goals-test.sh and scripts/test-larch-logs-batches.sh.
-EOF
-
-set +e
-LARCH_LOG_ROOT="$tmp/logs" "$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id pointer --batch plan-goals-test --input-file "$pointer_payload" >/dev/null 2>&1
-pointer_rc=$?
-set -e
-[ "$pointer_rc" -ne 0 ] || { echo "FAIL: pointer-only plan-goals payload should be rejected" >&2; exit 1; }
-
-LARCH_LOG_ROOT="$tmp/logs" "$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id valid --batch plan-goals-test --input-file "$valid_payload" >/dev/null
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-batches-test.XXXXXX")"
 

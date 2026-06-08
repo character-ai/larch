@@ -762,6 +762,14 @@ exclude = [
   # SKILL.md fences; sibling contract below.
   "scripts/phantom-probe-with-warn.sh",
   "scripts/phantom-probe-with-warn.md",
+  # scripts/render-findings-view.sh — ad-hoc operator CLI to reconstruct
+  # dropped markdown views from review-findings-full.jsonl; no automated caller.
+  "scripts/render-findings-view.sh",
+  "scripts/render-findings-view.md",
+  # scripts/sweep-run-logs-phase3a.sh — one-shot retroactive sweep for Phase 3a;
+  # run manually and then decommissioned.
+  "scripts/sweep-run-logs-phase3a.sh",
+  "scripts/sweep-run-logs-phase3a.md",
   # scripts/test-check-phantom-dirty.sh is the regression harness for
   # scripts/check-phantom-dirty.sh. Referenced only from Makefile
   # (test-check-phantom-dirty target) and its sibling contract.
