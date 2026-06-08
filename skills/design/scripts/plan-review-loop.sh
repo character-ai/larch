@@ -17,6 +17,7 @@ PLAN_REVIEW_DISPATCH_PANEL_SH="${LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH:-$PLUGIN_RO
 PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/collect-agent-results.sh}"
 PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
 PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
+PLAN_REVIEW_PRUNE_NITS_SH="${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-$PLUGIN_ROOT/skills/review/scripts/prune-nit-findings.sh}"
 SCOPE_MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
 if [[ ! -x "$SCOPE_MARKER_HELPER" ]]; then
     SCOPE_MARKER_HELPER="$REPO_ROOT/scripts/check-scope-reduction-marker.sh"
@@ -1458,6 +1459,28 @@ if [[ "$_parity_rc" -ne 0 ]]; then
     else
         emit_kv WARN "plan-review-dedup: scope-reduction marker parity failed; using pre-dedup in-scope findings"
     fi
+fi
+
+_plan_prune_out="$DESIGN_TMPDIR/plan-review-prune-nit.env"
+set +e
+"$PLAN_REVIEW_PRUNE_NITS_SH" \
+    --findings-file "$DESIGN_TMPDIR/findings-in-scope.md" \
+    --oos-file "$DESIGN_TMPDIR/findings-oos.md" \
+    --input-mode plan > "$_plan_prune_out"
+_plan_prune_rc=$?
+set -e
+if [[ "$_plan_prune_rc" -ne 0 ]]; then
+    emit_kv WARN "plan-review-prune-nit: subprocess exited with rc=$_plan_prune_rc (failing open)"
+fi
+_plan_prune_count=""
+while IFS= read -r _pln || [[ -n "$_pln" ]]; do
+    [[ -z "$_pln" ]] && continue
+    _pk="${_pln%%=*}"; _pv="${_pln#*=}"
+    case "$_pk" in PRUNED_COUNT) _plan_prune_count="$_pv" ;; esac
+done < "$_plan_prune_out"
+_plan_prune_count="${_plan_prune_count:-0}"
+if [[ "$_plan_prune_count" != "0" ]]; then
+    larch_err "→ plan-review: nit pre-filter pruned ${_plan_prune_count} finding(s) to OOS track"
 fi
 
 AGGREGATOR_STATUS="ok"
