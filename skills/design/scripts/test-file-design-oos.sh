@@ -91,6 +91,22 @@ set -e
 assert_rc "all security" 0 "$rc"
 grep -q '^FILE_DESIGN_OOS_STATUS=skip-all-security$' <<<"$out3" || fail "case3 not skip-all-security"
 
+# --- 3b: rendered bold-spaced format ("- **Focus area**: security") -> skip-all-security ---
+# Regression for issue #3782: plan-review-loop.sh emits "- **Focus area**: security"
+# (spaced, not hyphenated) but the AWK filter previously only matched the hyphenated form.
+mkdir -p "$TMP/c3b"
+cat >"$TMP/c3b/oos-accepted-design.md" <<'EOF'
+### OOS_1: Secret
+- **Focus area**: security
+- **Phase**: design
+EOF
+set +e
+out3b=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/c3b" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "all security rendered format" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-all-security$' <<<"$out3b" || fail "case3b not skip-all-security (rendered bold-spaced Focus area format)"
+
 # --- 4: oos-issue-cap rejects non-OOS-shaped batch (sanity for prepare dependency) ---
 mkdir -p "$TMP/c4"
 cat >"$TMP/c4/bad-combined.md" <<'EOF'
