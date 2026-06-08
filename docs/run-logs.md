@@ -452,6 +452,41 @@ For `/design`, `skills/design/scripts/render-final-summary.sh` writes `larch-log
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 
+## Retention
+
+By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-logs` skill implements an age-based retention policy to cap growth.
+
+**Default policy (slim)**:
+
+- Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
+- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`.
+- All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
+- A `gc-slimmed` marker file is written into each slimmed dir.
+
+**Escalation (delete)**:
+
+- `--delete` fully removes qualifying run dirs. Content remains recoverable via `git show <sha>:<path>` from git history.
+
+**Guards**:
+
+- Dirs containing `pause-state.txt` (resumable design sessions) are skipped.
+- Dirs already carrying a `gc-slimmed` marker are skipped (idempotent).
+- Dirs with no resolvable run date are skipped with a warning.
+
+**Output**:
+
+GC changes are committed on a dedicated branch and surfaced as a log-only PR for operator review and merge. GC is never run implicitly — operator-invoked only via `/gc-run-logs`.
+
+**Audit interplay**:
+
+Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit scanners should treat such absences as `informational` rather than `fail`; see `docs/run-logs-required-files.tsv` for the GC note on this behavior.
+
+**Consumer safety**:
+
+- `/report-tokens` (both skills): full cost-trend history is preserved indefinitely because it reads exactly the keep-set files.
+- `audit-runs`: targets recent batches within the retention window; aged dirs carry the `gc-slimmed` marker for honest scan reporting.
+
 ## Authoritative sources
 
 - `scripts/larch-log.md` — `larch-log.sh` verb contracts, log-root resolution, redaction rules
