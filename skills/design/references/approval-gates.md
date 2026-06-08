@@ -10,7 +10,7 @@
 
 **Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: Gates apply uniformly across SIMPLE and HARD tiers. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The Gate B apply-UX behavior (auto-apply by default, explicit under `--approve`) applies uniformly across both tiers.
+**Cross-tier invariant**: Gates apply uniformly across SIMPLE and HARD tiers. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The Gate B apply-UX behavior (auto-apply by default, explicit under `--per-round-approval`) applies uniformly across both tiers.
 
 ## Review-round cap
 
@@ -211,4 +211,4 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt; under `--approve` (`approve_requested=true`) it prompts explicitly before revising `plan.txt` and the rewrite runs only after the operator chooses **Apply all** or applies individual findings in **Go through each**. In neither mode does it ask again for each already-approved apply action. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. **Loop-internal carve-out**: the plan-review loop no longer applies accepted findings between rounds; Gate B is the only apply point. There is no persisted mode state; the apply UX is recomputed from `approve_requested` at each Gate B entry.
 
 <!-- single-pass review contract -->
-Gate B is the only apply point for accepted plan-review findings. By default it auto-applies them with no prompt; under `--approve` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
+Gate B is the only apply point for accepted plan-review findings. By default it auto-applies them with no prompt; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.

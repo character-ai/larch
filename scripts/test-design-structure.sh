@@ -719,8 +719,8 @@ contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path a
 contains "$APPROVAL_MD" 'Cap: 5 (both tiers).' 'approval-gates.md missing flat cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.' 'approval-gates.md missing canonical boundary-qualified Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'auto-applying N accepted finding(s)' 'approval-gates.md missing Gate B auto-apply default breadcrumb'
-contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --approve explicit Gate B option wording'
-contains "$APPROVAL_MD" 'Gate B prompts explicitly before any finding changes' 'approval-gates.md missing explicit Gate B apply boundary (--approve path)'
+contains "$APPROVAL_MD" 'Apply all / Go through each / Switch to discussion mode prompt below' 'approval-gates.md missing --per-round-approval explicit Gate B option wording'
+contains "$APPROVAL_MD" 'Gate B prompts explicitly before any finding changes' 'approval-gates.md missing explicit Gate B apply boundary (--per-round-approval path)'
 contains "$APPROVAL_MD" 'Step 3b → Step 3b completion boundary → Step 4 → Step 4b (Gate C) run in normal sequence' 'approval-gates.md missing zero-findings Step 3b boundary-qualified forward link'
 contains "$APPROVAL_MD" 'proceed to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b); Step 4 and Gate C follow in normal sequence.' 'approval-gates.md missing shared post-apply Step 3b forward link'
 contains "$APPROVAL_MD" '(default) — auto-apply.' 'approval-gates.md missing Gate B auto-apply default branch'
@@ -757,7 +757,7 @@ contains "$PLAN_LOOP_SH" '--round-num is a stateless integer supplied by the cal
 
 absent "$MAKEFILE" 'test-read-design-review-budget-invoke' 'Makefile must not reference deleted read-design-review-budget harness'
 
-# Gate B auto-apply default + --approve explicit pins are covered above and by current branch-matrix checks.
+# Gate B auto-apply default + --per-round-approval explicit pins are covered above and by current branch-matrix checks.
 # Check 15d: design SKILL must not chat-print token/timing summaries.
 if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
   fail "(15d) skills/design/SKILL.md must not invoke token-report.sh --summary"
