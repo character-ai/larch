@@ -819,23 +819,27 @@ PYEOF
             printf 'SECRET_SCRUB_VIOLATIONS=%s\n' "$scrub_n"
             printf 'larch-log.sh: WARNING — scrub-log-secrets.sh redacted %s secret-shaped value(s) from %s run %s logs before flush; ROTATE the affected credential(s)\n' "$scrub_n" "$SKILL" "$RUN_ID" >&2
         fi
-        # Scope all git operations to the per-run directory and the shared
-        # archetype pool. Building the pathspec explicitly hardens add/status/diff
-        # against prefix math mistakes and untracked-file omissions.
+        # Scope all git operations to the per-run directory, and conditionally
+        # to the shared archetype pool when it exists. Building the pathspec
+        # explicitly hardens add/status/diff against prefix math mistakes and
+        # untracked-file omissions.
         rel="larch-logs/$SKILL/$RUN_ID"
-        _shared_rel="larch-logs/shared"
+        _shared_rel=""
+        if [ -d "$REPO_ROOT/larch-logs/shared" ]; then
+            _shared_rel="larch-logs/shared"
+        fi
         # Check status first: git diff alone misses untracked files.
-        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" "$_shared_rel" | grep -q .; then
+        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" ${_shared_rel:+"$_shared_rel"} | grep -q .; then
             larch_log_emit_success "$repo_path" false true
             exit 0
         fi
-        git -C "$REPO_ROOT" add -- "$rel" "$_shared_rel" || larch_log_fail 3 "git add failed"
-        if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel" "$_shared_rel"; then
+        git -C "$REPO_ROOT" add -- "$rel" ${_shared_rel:+"$_shared_rel"} || larch_log_fail 3 "git add failed"
+        if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel" ${_shared_rel:+"$_shared_rel"}; then
             larch_log_emit_success "$repo_path" false true
             exit 0
         fi
-        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" "$_shared_rel" >/dev/null || {
-            git -C "$REPO_ROOT" reset HEAD -- "$rel" "$_shared_rel" 2>/dev/null || true
+        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" ${_shared_rel:+"$_shared_rel"} >/dev/null || {
+            git -C "$REPO_ROOT" reset HEAD -- "$rel" ${_shared_rel:+"$_shared_rel"} 2>/dev/null || true
             larch_log_fail 3 "git commit failed"
         }
         commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
