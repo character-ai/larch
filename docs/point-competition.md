@@ -70,3 +70,7 @@ The competition scoring system is active in skills that use the [voting protocol
 - **`/review`** — Code review findings (round 1) are scored after voting
 
 Skills that use the negotiation protocol (`/research`) do not use competition scoring.
+
+## Conditional spawning
+
+The same accepted-finding attribution that awards reviewer points also feeds per-run conditional spawning. From review round 3, reviewer combos with zero accepted findings in their last two launched rounds may be skipped for rounds 3-4; round 5 re-probes the full panel. This pruning history is run-local and does not affect the persistent scoreboard.

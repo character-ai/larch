@@ -664,7 +664,7 @@ cat >"$seam_stub" <<'STUBEOF'
 set -euo pipefail
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--timeout)
+        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--prune-round-num|--timeout)
             shift 2
             ;;
         *)

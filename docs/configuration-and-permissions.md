@@ -212,6 +212,10 @@ This closes the activation gap previously tracked in OOS #3369.
 
 Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
 
+### `LARCH_REVIEWER_PRUNE`
+
+Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps full reviewer manifests for every round. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 launch the full panel, while rounds 3-4 skip combos that produced zero accepted findings in their last two launched rounds. Non-empty values other than `off` emit a warning because `off` is the only supported override.
+
 ### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
 
 When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=2`), so per auth pass the worst case is at most three total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.

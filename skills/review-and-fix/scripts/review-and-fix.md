@@ -138,3 +138,7 @@ The script emits breadcrumbs at major round-loop and coder-dispatch boundaries t
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.
 
 Sourced loop callers can read `IRF_LAST_ACCEPTED_COUNT` and `IRF_LAST_REJECTED_COUNT` after `_implement_round_body` returns; these are current-round counts used by Step 5 round timing rows.
+
+## Conditional reviewer pruning
+
+Nested `/implement` review rounds pass `--prune-ledger "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"` to every `review-core.sh` invocation. `REVIEW_CORE_STATUS=prune-skipped` maps to `REVIEW_AND_FIX_STATUS=prune-skipped`, which is non-terminal for the outer Step 5 loop. When a degraded in-round retry ends in a status that does not record a settled ledger row, `review-and-fix.sh` clears that round's ledger rows with a zero-row `reviewer-prune.sh record` call before propagating the terminal status; clear failures emit `WARN` and preserve the review status.

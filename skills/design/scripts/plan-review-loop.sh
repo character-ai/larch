@@ -42,13 +42,14 @@ source "$SCRIPT_DIR/lib-phase-driver.sh"
 source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 
 usage() {
-    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
+    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
 }
 
 DESIGN_TMPDIR=""
 PLAN_FILE=""
 FEATURE_FILE=""
 ROUND_NUM="1"
+PRUNE_ROUND_NUM=""
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 COLLECT_TIMEOUT="1860"
@@ -74,6 +75,9 @@ DEGRADED_PANEL=0
 VOTER_1_PARSE_RATE_STATUS=""
 SCOPE_ANCHOR_FILE=""
 LOOP_STATUS="complete"
+PANEL_PRUNED_EMPTY=false
+PANEL_MANIFEST=""
+PRUNED_COMBOS=""
 _last_collect_out=""
 
 while [[ $# -gt 0 ]]; do
@@ -82,6 +86,7 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
+        --prune-round-num) PRUNE_ROUND_NUM="${2:?}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) PANEL_TIMEOUT="${2:?}"; COLLECT_TIMEOUT="${2:?}"; shift 2 ;;
@@ -97,6 +102,12 @@ done
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
+if [[ -z "$PRUNE_ROUND_NUM" ]]; then
+    PRUNE_ROUND_NUM="$ROUND_NUM"
+fi
+case "$PRUNE_ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --prune-round-num must be a positive integer"; exit 2 ;; esac
+PRUNE_ROUND_NUM=$((10#$PRUNE_ROUND_NUM))
+(( PRUNE_ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --prune-round-num must be a positive integer"; exit 2; }
 case "$COLLECT_TIMEOUT" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --timeout must be a positive integer"; exit 2 ;; esac
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
@@ -207,6 +218,7 @@ emit_loop_kvs() {
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
+    emit_kv PANEL_PRUNED_EMPTY "${PANEL_PRUNED_EMPTY:-false}"
     [[ -z "$scope_anchor_file" ]] || emit_kv SCOPE_ANCHOR_FILE "$scope_anchor_file"
     emit_kv NIT_ACCEPTED_COUNT "${NIT_ACCEPTED_COUNT:-0}"
     emit_kv NON_NIT_ACCEPTED_COUNT "${NON_NIT_ACCEPTED_COUNT:-0}"
@@ -240,6 +252,7 @@ write_step3_result_env() {
         "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
         "VOTER_1_PARSE_RATE_STATUS=${VOTER_1_PARSE_RATE_STATUS:-}" \
+        "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}" \
         "COLLECT_OK_COUNT=${COLLECT_OK_COUNT:-0}" \
         "COLLECT_FAILURE_COUNT=${COLLECT_FAILURE_COUNT:-0}"
     )
@@ -661,6 +674,34 @@ print(s)
 PY
 }
 
+
+plan_review_record_prune_round() {
+    local manifest_file="$1" classification_file="$2" label_map="$DESIGN_TMPDIR/plan-review-prune-label-map.tsv"
+    local record_out record_rc row slot label
+    [[ -n "$manifest_file" && -f "$manifest_file" ]] || return 0
+    [[ -n "$classification_file" && -f "$classification_file" ]] || return 0
+    : > "$label_map"
+    while IFS= read -r row || [[ -n "$row" ]]; do
+        [[ -n "$row" ]] || continue
+        slot=$(printf '%s' "$row" | jq -r '.slot // empty')
+        [[ -n "$slot" ]] || continue
+        label=$(plan_slot_human_label "$slot")
+        printf '%s\t%s\n' "$slot" "$label" >> "$label_map"
+    done < "$manifest_file"
+    set +e
+    record_out=$("$PLUGIN_ROOT/scripts/reviewer-prune.sh" record \
+        --ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv" \
+        --round "$PRUNE_ROUND_NUM" \
+        --manifest "$manifest_file" \
+        --classification "$classification_file" \
+        --label-map "$label_map" 2>&1)
+    record_rc=$?
+    set -e
+    if [[ "$record_rc" -ne 0 ]]; then
+        emit_kv WARN "plan-review reviewer-prune record failed for round $PRUNE_ROUND_NUM: $(printf '%s' "$record_out" | tail -n 1 | sanitize_diagnostic_line)"
+    fi
+}
+
 plan_review_slot_for_reviewer() {
     python3 - "$1" "$2" <<'PY'
 import json, os, sys
@@ -767,7 +808,9 @@ _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --cursor-present "$CURSOR_PRESENT" \
     --plan-file "$PLAN_FILE" \
     --feature-file "$SCOPE_ANCHOR_FILE" \
-    --timeout "$PANEL_TIMEOUT")
+    --timeout "$PANEL_TIMEOUT" \
+    --prune-round-num "$PRUNE_ROUND_NUM" \
+    --prune-ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv")
 
 PANEL_DISPATCH_OK="true"
 PANEL_PATHS_FILE=""
@@ -779,6 +822,9 @@ DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
 ALL_SLOTS_DROPPED="false"
 DROPPED_SLOTS_FILE=""
+PANEL_PRUNED_EMPTY=false
+PANEL_MANIFEST="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+PRUNED_COMBOS=""
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -793,9 +839,33 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         DYNAMIC_SLOT_COUNT) DYNAMIC_SLOT_COUNT="$_value" ;;
         ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         DROPPED_SLOTS_FILE) DROPPED_SLOTS_FILE="$_value" ;;
+        PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$_value" ;;
+        PANEL_MANIFEST) PANEL_MANIFEST="$_value" ;;
+        PRUNED_COMBOS) PRUNED_COMBOS="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<< "$_panel_raw"
+
+if [[ "${PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
+    write_empty_review_artifacts "Round skipped: all reviewer combos pruned." "$round_num"
+    : > "$DESIGN_TMPDIR/ballot.txt"
+    _restore_prior_round_oos "${_prior_cum_oos:-}"
+    TALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty
+    AGGREGATOR_STATUS=skipped-pruned-empty
+    ACCEPTED_COUNT=0
+    IMPORTANT_ACCEPTED_COUNT=0
+    NIT_ACCEPTED_COUNT=0
+    NON_NIT_ACCEPTED_COUNT=0
+    DEGRADED_PANEL=0
+    VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    VOTER_1_PARSE_RATE_STATUS=SKIPPED
+    LOOP_STATUS=complete
+    COLLECT_OK_COUNT=0
+    COLLECT_FAILURE_COUNT=0
+    [[ -n "${PRUNED_COMBOS:-}" ]] && emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
+    emit_kv WARN "plan-review: round ${PRUNE_ROUND_NUM} skipped — all combos pruned"
+    _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
+fi
 
 printf '%s\n' "$_panel_raw"
 
@@ -880,7 +950,7 @@ if [[ -s "$_collect_err_tmp" ]]; then
 fi
 rm -f "$_collect_err_tmp"
 
-_manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+_manifest="${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}"
 _slot_lines=()
 while IFS= read -r _srow || [[ -n "$_srow" ]]; do
     [[ -n "$_srow" ]] || continue
@@ -1260,7 +1330,9 @@ if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/n
     VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     VOTER_1_PARSE_RATE_STATUS=SKIPPED
     LOOP_STATUS=complete
-    return 0
+    plan_review_record_prune_round "$_manifest" "$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
+    _restore_prior_round_oos "${_prior_cum_oos:-}"
+    _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
 fi
 
 python3 - "$DESIGN_TMPDIR/findings.md" "$DESIGN_TMPDIR/findings-in-scope.md" "$DESIGN_TMPDIR/findings-oos.md" <<'PY'
@@ -1565,6 +1637,9 @@ LOOP_STATUS="complete"
 
 [[ -z "$VOTER_1_PARSE_RATE_STATUS" ]] && VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "ok" || "${TALLY_PLAN_REVIEW_STATUS:-}" == "complete" ]]; then
+    plan_review_record_prune_round "${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}" "$_findings_classification_out"
+fi
 return 0
 }
 

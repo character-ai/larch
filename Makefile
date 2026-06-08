@@ -23,7 +23,7 @@ PYTHON ?= python3
 .PHONY: test-persist-implement-run-flags
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state
-.PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing
+.PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -81,7 +81,7 @@ lint-awk-multibyte-regex:
 # appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20
 
-test-harnesses-1: test-check-reviewers
+test-harnesses-1: test-check-reviewers test-reviewer-prune
 
 test-harnesses-2: test-launch-cursor-ci test-compose-review-findings test-render-findings-batch test-render-run-summary test-larch-logs-batches test-check-main-sync test-write-design-current-env test-rebase-push-keep-on-conflict test-record-plan-review-round-timing test-check-stale-plugin test-relevant-checks-byte-budget test-gh-run-logs test-external-tool-registry test-legacy-title-prefix-literals-scope test-implement-relevant-checks-anti-halt
 
@@ -130,6 +130,9 @@ test-scrub-log-secrets:
 
 test-redact-tmpdir-paths:
 	bash scripts/harness-timer.sh $@ bash scripts/test-redact-tmpdir-paths.sh
+
+test-reviewer-prune:
+	bash scripts/harness-timer.sh $@ bash scripts/test-reviewer-prune.sh
 
 test-read-design-classification:
 	bash scripts/harness-timer.sh $@ bash scripts/test-read-design-classification.sh

@@ -333,6 +333,14 @@ exclude = [
   # the same Makefile-only pattern as the other run-log test-* harnesses above.
   "scripts/test-scrub-log-secrets.sh",
   "scripts/test-scrub-log-secrets.md",
+  # scripts/reviewer-prune.sh is reached through Bash-to-Bash calls from
+  # review dispatchers; agent-lint does not follow those variable-expanded edges.
+  "scripts/reviewer-prune.sh",
+  "scripts/reviewer-prune.md",
+  # scripts/test-reviewer-prune.sh is the Makefile-only regression harness for
+  # scripts/reviewer-prune.sh conditional-spawning ledger/filter behavior.
+  "scripts/test-reviewer-prune.sh",
+  "scripts/test-reviewer-prune.md",
   # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
   # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
   # agent-lint does not follow Bash-to-Bash launcher edges. The launcher

@@ -138,6 +138,7 @@ DEGRADED_PANEL=""
 ROUNDS_COMPLETED=""
 AGGREGATOR_STATUS=""
 VOTING_TALLY_FILE=""
+PANEL_PRUNED_EMPTY="false"
 STEP3_REVIEW_CAP_REACHED=false
 STEP3_REVIEW_ROUND_NUM=""
 REVIEW_ROUND_COUNT="0"
@@ -252,6 +253,7 @@ else
                         "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
                         "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
                         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
+                        "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}" \
                         "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
                     emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
                     emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
@@ -298,7 +300,8 @@ else
             --feature-file "$_feature_file" \
             --codex-present "${CODEX_PRESENT:-false}" \
             --cursor-present "${CURSOR_PRESENT:-false}" \
-            --round-num "$ROUND_NUM")
+            --round-num "$ROUND_NUM" \
+            --prune-round-num "$STEP3_REVIEW_ROUND_NUM")
         _plan_review_rc=$?
         set -e
 
@@ -308,12 +311,13 @@ else
         TALLY_PLAN_REVIEW_STATUS=""
         AGGREGATOR_STATUS=""
         VOTING_TALLY_FILE=""
+        PANEL_PRUNED_EMPTY="false"
         IMPORTANT_ACCEPTED_COUNT=""
         while IFS= read -r _line || [[ -n "$_line" ]]; do
             _key="${_line%%=*}"
             _value="${_line#*=}"
             case "$_key" in
-                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
+                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE | PANEL_PRUNED_EMPTY)
                     printf -v "$_key" '%s' "$_value"
                     ;;
                 WARN) emit_kv WARN "$_value" ;;
@@ -327,14 +331,14 @@ else
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
                     case "$_key" in
-                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
+                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE | PANEL_PRUNED_EMPTY)
                             printf -v "$_key" '%s' "$_value"
                             ;;
                     esac
                 done < <(phase_driver_read_result_env "$INNER_RESULT_ENV" \
                     LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
                     REASON REVISE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
-                    TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS SCOPE_ANCHOR_FILE)
+                    TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS SCOPE_ANCHOR_FILE PANEL_PRUNED_EMPTY)
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
@@ -379,6 +383,7 @@ emit_kv ROUNDS_COMPLETED "${ROUNDS_COMPLETED:-}"
 emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
 emit_kv AGGREGATOR_STATUS "${AGGREGATOR_STATUS:-}"
 emit_kv VOTING_TALLY_FILE "${VOTING_TALLY_FILE:-}"
+emit_kv PANEL_PRUNED_EMPTY "${PANEL_PRUNED_EMPTY:-false}"
 [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || emit_kv SCOPE_ANCHOR_FILE "${SCOPE_ANCHOR_FILE:-}"
 emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
 
@@ -394,6 +399,7 @@ result_env_kvs=(
     "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
     "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
     "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
+    "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}" \
     "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
 )
 [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || result_env_kvs+=("SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}")
