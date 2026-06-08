@@ -63,7 +63,28 @@ jobs:
         # from SKIP to restore CI coverage. Issue #1034.
         env:
           SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
-        run: make lint-only
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          for attempt in 1 2 3; do
+            set +e
+            make lint-only 2>&1 | tee "$log"
+            rc=${PIPESTATUS[0]}
+            set -e
+
+            if [ "$rc" -eq 0 ]; then
+              exit 0
+            fi
+            if ! grep -Fq 'failed to download https://github.com/zhupanov/agent-lint/releases/download/' "$log"; then
+              exit "$rc"
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit "$rc"
+            fi
+
+            echo "agent-lint release download failed; retrying make lint-only" >&2
+            sleep 10
+          done
 
   # Local bash/python linters — split from `lint` into a parallel job so
   # both halves run concurrently. Runs lint-skill-invocations,
