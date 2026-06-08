@@ -52,6 +52,10 @@
 
 === larch-quiet-read-session-env-key.sh-68977.log ===
 
+=== larch-quiet-read-session-env-key.sh-84920.log ===
+
+=== larch-quiet-read-session-env-key.sh-84961.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-39738.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-92276.log ===
@@ -66,6 +70,13 @@ ci_monitor: poll 4/180 pending after 44s; sleeping 10s
 ci_monitor: poll 1/180 pending after 4s; sleeping 10s
 ci_monitor: poll 2/180 pending after 17s; sleeping 10s
 ci_monitor: poll 3/180 pending after 31s; sleeping 10s
+ci_monitor: poll 4/180 pending after 44s; sleeping 10s
+
+=== larch-quiet-ship.py-85004.log ===
+ship.py: pr-create: PR
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: poll 3/180 pending after 30s; sleeping 10s
 ci_monitor: poll 4/180 pending after 44s; sleeping 10s
 
 === larch-quiet-step-7a.sh-56028.log ===
