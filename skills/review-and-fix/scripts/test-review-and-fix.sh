@@ -209,14 +209,19 @@ cat > "$TMP/review-core-stub.sh" <<'EOF_CORE'
 set -euo pipefail
 out=""
 round="1"
+prune_ledger=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir) out="$2"; shift 2 ;;
     --round-num) round="$2"; shift 2 ;;
+    --prune-ledger) prune_ledger="$2"; shift 2 ;;
     *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
   esac
 done
 mkdir -p "$out"
+if [[ -n "${TEST_CORE_ARGV_LOG:-}" ]]; then
+  printf 'round=%s\nprune_ledger=%s\n' "$round" "$prune_ledger" >> "$TEST_CORE_ARGV_LOG"
+fi
 : > "$out/findings.md"
 : > "$out/accepted-findings.md"
 : > "$out/rejected-findings.md"
@@ -294,6 +299,9 @@ EOF_REJECTED
     printf 'REVIEW_CORE_STATUS=aggregator-validation-exhausted\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     exit 2
     ;;
+  prune-skipped)
+    printf 'REVIEW_CORE_STATUS=prune-skipped\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=waterfall\nPANEL_SHAPE=hard\nPANEL_PRUNED_EMPTY=true\n' "$round" "$out" "$out"
+    ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
@@ -331,6 +339,23 @@ run_review_and_fix() {
 }
 
 if section_runs dispatch; then
+work_prune_skipped="$TMP/prune-skipped"
+make_work_repo "$work_prune_skipped"
+impl_prune="$work_prune_skipped/implement"
+mkdir -p "$impl_prune"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$impl_prune/session-env.sh"
+core_argv_log="$TMP/prune-core-argv.log"
+set +e
+out_prune=$(TEST_CORE_STATUS=prune-skipped TEST_CORE_ARGV_LOG="$core_argv_log" run_review_and_fix "$work_prune_skipped" \
+    --implement-tmpdir "$impl_prune" --mode diff --round-num 3 \
+    --session-env-path "$impl_prune/session-env.sh" --run-id prune-skipped-run 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out_prune" >&2; fail "prune-skipped expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=prune-skipped' <<< "$out_prune" || fail "prune-skipped status missing"
+grep -Fq "prune_ledger=$impl_prune/reviewer-prune-ledger.tsv" "$core_argv_log" || fail "review-and-fix did not pass prune ledger"
+pass "prune-skipped status and ledger forwarding"
+
 work_agg_exhaust="$TMP/agg-validation-exhausted-prop"
 make_work_repo "$work_agg_exhaust"
 impl_agg="$work_agg_exhaust/implement"

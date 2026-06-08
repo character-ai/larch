@@ -43,11 +43,13 @@ set -euo pipefail
 tmp=""
 panel="hard"
 round_num="1"
+prune_ledger=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
     --panel) panel="$2"; shift 2 ;;
     --round-num) round_num="$2"; shift 2 ;;
+    --prune-ledger) prune_ledger="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
@@ -98,6 +100,16 @@ printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external_outputs"
 printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude_outputs"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
+if [[ "${TEST_PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
+  : > "$tmp/panel-manifest.ndjson"
+  printf 'PANEL_PRUNED_EMPTY=true\n'
+  printf 'PRUNED_COMBOS=cursor:security,codex:security\n'
+  printf 'EXTERNAL_OUTPUT_FILES=\nCLAUDE_OUTPUT_FILES=\n'
+  printf 'STATIC_SLOT_COUNT=0\nSLOT_COUNT=0\nDYNAMIC_SLOTS=0\n'
+  printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
+  printf 'DISPATCH_OK=true\n'
+  exit 0
+fi
 printf 'SCOUT_STATUS=%s\n' "${TEST_SCOUT_STATUS:-na}"
 if [[ -n "${TEST_SCOUT_FAIL_REASON:-}" ]]; then
   printf 'SCOUT_FAIL_REASON=%s\n' "$TEST_SCOUT_FAIL_REASON"
@@ -121,11 +133,31 @@ if [[ "${TEST_DROPPED_ARCHETYPE:-}" == "testing" ]]; then
   printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
 fi
 printf 'DISPATCH_OK=true\n'
-cat > "$tmp/panel-manifest.ndjson" <<EOF
+if [[ -n "${TEST_DISPATCH_ARGV_LOG:-}" ]]; then
+  printf 'round=%s\nprune_ledger=%s\n' "$round_num" "$prune_ledger" >> "$TEST_DISPATCH_ARGV_LOG"
+fi
+if [[ "${TEST_FULL_STATIC_MANIFEST:-false}" == "true" ]]; then
+  : > "$tmp/panel-manifest.ndjson"
+  for slot in security correctness edge-cases testing; do
+    printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
+  done
+elif [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
+  : > "$tmp/panel-manifest.ndjson"
+  for slot in security correctness edge-cases testing; do
+    printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
+  done
+elif [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
+  : > "$tmp/panel-manifest.ndjson"
+  for slot in security correctness edge-cases testing; do
+    printf '{"slot":"%s","tool":"cursor","output":"%s/cursor-specialist-%s-output-phase3.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
+  done
+else
+  cat > "$tmp/panel-manifest.ndjson" <<EOF
 {"slot":"security","tool":"codex","output":"$external","agent":"agents/reviewer-security.md"}
 {"slot":"security","tool":"cursor","output":"$tmp/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
 {"slot":"generic","tool":"claude","output":"$claude","agent":"agents/reviewer-generic.md"}
 EOF
+fi
 STUB
     cat > "$TMP/collect.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -536,6 +568,7 @@ run_core() {
     local outdir="$1" mode="${2:-diff}" session_env="${3:-}"
     local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
+    [[ -n "${TEST_PRUNE_LEDGER:-}" ]] && args+=(--prune-ledger "$TEST_PRUNE_LEDGER")
     LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
@@ -598,8 +631,19 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 4 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 4' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
 
+prune_ledger="$TMP/reviewer-prune-ledger.tsv"
+dispatch_argv_log="$TMP/dispatch-argv.log"
+out=$(TEST_FINDINGS=0 TEST_PRUNE_LEDGER="$prune_ledger" TEST_DISPATCH_ARGV_LOG="$dispatch_argv_log" run_core "$TMP/zero-prune-ledger")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq "prune_ledger=$prune_ledger" "$dispatch_argv_log" || { echo "FAIL: review-core did not forward --prune-ledger" >&2; exit 1; }
+grep -Fq $'1\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$prune_ledger" || { echo "FAIL: zero-findings round did not write prune ledger row" >&2; cat "$prune_ledger" >&2; exit 1; }
+
+out=$(TEST_PANEL_PRUNED_EMPTY=true run_core "$TMP/prune-skipped")
+assert_contains "$out" 'REVIEW_CORE_STATUS=prune-skipped'
+assert_contains "$out" 'PANEL_PRUNED_EMPTY=true'
+
 threshold_argv_log="$TMP/threshold-argv.log"
-out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=claude-fallback TEST_THRESHOLD_ARGV_LOG="$threshold_argv_log" run_core "$TMP/claude-fallback")
+out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=cap-hit-all TEST_THRESHOLD_ARGV_LOG="$threshold_argv_log" run_core "$TMP/claude-fallback")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'cursor-specialist-security-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
 
@@ -615,7 +659,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: coverage gate should reject collector-failed external static files" >&2; echo "$out" >&2; exit 1; }
 assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
-grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): security,correctness,edge-cases,testing' "$TMP/external-files-coverage/review-core-threshold.env" || {
+grep -Fq 'COVERAGE_GATE_REASON=no successful launched reviewer output' "$TMP/external-files-coverage/review-core-threshold.env" || {
     echo "FAIL: coverage gate should reject stale/collector-rejected static files" >&2
     exit 1
 }
@@ -632,7 +676,7 @@ grep -Fq 'COVERAGE_GATE_REASON=' "$TMP/cap-hit-coverage/review-core-threshold.en
 }
 
 set +e
-out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing run_core "$TMP/coverage-failed" 2>&1)
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_FULL_STATIC_MANIFEST=true TEST_COLLECTOR_VARIANT=missing-testing run_core "$TMP/coverage-failed" 2>&1)
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: missing static archetype coverage should exit 2" >&2; echo "$out" >&2; exit 1; }
@@ -646,7 +690,7 @@ out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_THRESHOLD_OK=true TEST_STATIC
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 
 set +e
-out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing-with-drops TEST_DROPPED_ARCHETYPE=testing TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/dropped-archetype-coverage" 2>&1)
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_FULL_STATIC_MANIFEST=true TEST_COLLECTOR_VARIANT=missing-testing-with-drops TEST_DROPPED_ARCHETYPE=testing TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/dropped-archetype-coverage" 2>&1)
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: missing both peers for one static archetype should exit 2" >&2; echo "$out" >&2; exit 1; }
@@ -789,6 +833,11 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/main-agent/findings-clas
 }
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
     "$TMP/main-agent/review-summary.json" >/dev/null || { echo "FAIL: main-agent review-summary.json missing summary output" >&2; exit 1; }
+
+main_agent_prune_ledger="$TMP/main-agent-prune-ledger.tsv"
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_PRUNE_LEDGER="$main_agent_prune_ledger" run_core "$TMP/main-agent-prune")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+[[ ! -s "$main_agent_prune_ledger" ]] || { echo "FAIL: main-agent-vote-required should not write prune ledger rows" >&2; cat "$main_agent_prune_ledger" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'

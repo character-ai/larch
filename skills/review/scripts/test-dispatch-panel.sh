@@ -847,6 +847,46 @@ fi
         || { echo "FAIL: regression3 prod-shape — execution-issues warning not written for production-shape tmpdir" >&2; exit 1; }
 )
 
+# Conditional pruning: two zero-yield prior rounds drop every combo before waterfall.
+prune_dir="$TMP/prune-all"
+mkdir -p "$prune_dir"
+seed_case_inputs "$prune_dir"
+prune_ledger="$prune_dir/reviewer-prune-ledger.tsv"
+cat >"$prune_ledger" <<'TSV'
+round	tool	slot	label	accepted_count
+1	cursor	security	cursor-specialist-security-output.txt	0
+1	codex	security	codex-specialist-security-output.txt	0
+1	cursor	correctness	cursor-specialist-correctness-output.txt	0
+1	codex	correctness	codex-specialist-correctness-output.txt	0
+1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
+1	codex	edge-cases	codex-specialist-edge-cases-output.txt	0
+1	cursor	testing	cursor-specialist-testing-output.txt	0
+1	codex	testing	codex-specialist-testing-output.txt	0
+2	cursor	security	cursor-specialist-security-output.txt	0
+2	codex	security	codex-specialist-security-output.txt	0
+2	cursor	correctness	cursor-specialist-correctness-output.txt	0
+2	codex	correctness	codex-specialist-correctness-output.txt	0
+2	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
+2	codex	edge-cases	codex-specialist-edge-cases-output.txt	0
+2	cursor	testing	cursor-specialist-testing-output.txt	0
+2	codex	testing	codex-specialist-testing-output.txt	0
+TSV
+prune_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$prune_dir/waterfall.argv" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$prune_dir/review.diff" \
+    --review-tmpdir "$prune_dir" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$prune_dir/plan.md" \
+    --round-num 3 \
+    --prune-ledger "$prune_ledger")
+printf '%s
+' "$prune_out" | grep -q '^PANEL_PRUNED_EMPTY=true$' || { echo "FAIL: prune all should mark PANEL_PRUNED_EMPTY" >&2; exit 1; }
+[[ ! -e "$prune_dir/waterfall.argv" ]] || { echo "FAIL: prune all should skip waterfall" >&2; exit 1; }
+[[ -s "$prune_dir/panel-manifest.pre-prune.ndjson" ]] || { echo "FAIL: prune all should preserve pre-prune manifest" >&2; exit 1; }
+[[ ! -s "$prune_dir/panel-manifest.ndjson" ]] || { echo "FAIL: pruned canonical manifest should be empty" >&2; exit 1; }
+
 fi  # end section: core regressions
 
 echo "All assertions passed."

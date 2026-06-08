@@ -27,6 +27,8 @@ DESCRIPTION_TEXT=""
 PANEL="hard"
 RUN_ID=""
 ROUND_NUM="1"
+PRUNE_LEDGER=""
+REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
 # Non-empty process env only: set-but-empty must fall through to default 0
 # (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
 if [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
         --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
+        --prune-ledger) PRUNE_LEDGER="${2:?--prune-ledger requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "review-core.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -113,6 +116,98 @@ record_findings_classification_round() {
     mv -f "$tmp_file" "$map_file"
     emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$classification_file"
     emit_kv "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_${ROUND_NUM}" "$classification_file"
+}
+
+
+record_reviewer_prune_round() {
+    local classification_file="$1" record_out=""
+    [[ -n "$PRUNE_LEDGER" ]] || return 0
+    [[ -n "$panel_manifest" && -f "$panel_manifest" ]] || return 0
+    [[ -n "$classification_file" && -f "$classification_file" ]] || return 0
+    set +e
+    record_out=$("$REVIEWER_PRUNE_SH" record \
+        --ledger "$PRUNE_LEDGER" \
+        --round "$ROUND_NUM" \
+        --manifest "$panel_manifest" \
+        --classification "$classification_file" 2>&1)
+    record_rc=$?
+    set -e
+    if [[ "$record_rc" -ne 0 ]]; then
+        emit_kv WARN "reviewer-prune record failed for round $ROUND_NUM: $(printf '%s' "$record_out" | tail -n 1 | sanitize_diagnostic_line)"
+    fi
+}
+
+snapshot_review_oos_state() {
+    local stem="$1" parent_dir=""
+    if [[ -f "$REVIEW_TMPDIR/oos-accepted-review.md" ]]; then
+        cp -f "$REVIEW_TMPDIR/oos-accepted-review.md" "$REVIEW_TMPDIR/${stem}.oos-accepted-review.before.md"
+    else
+        rm -f "$REVIEW_TMPDIR/${stem}.oos-accepted-review.before.md"
+    fi
+    if [[ -f "$REVIEW_TMPDIR/accumulated-oos.md" ]]; then
+        cp -f "$REVIEW_TMPDIR/accumulated-oos.md" "$REVIEW_TMPDIR/${stem}.accumulated-oos.before.md"
+    else
+        rm -f "$REVIEW_TMPDIR/${stem}.accumulated-oos.before.md"
+    fi
+    if [[ -n "$SESSION_ENV_PATH" ]]; then
+        parent_dir="$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        parent_dir="$IMPLEMENT_TMPDIR"
+    fi
+    if [[ -n "$parent_dir" && -f "$parent_dir/oos-accepted-review.md" ]]; then
+        cp -f "$parent_dir/oos-accepted-review.md" "$REVIEW_TMPDIR/${stem}.parent-oos-accepted-review.before.md"
+    else
+        rm -f "$REVIEW_TMPDIR/${stem}.parent-oos-accepted-review.before.md"
+    fi
+    if [[ -n "$parent_dir" && -f "$parent_dir/accumulated-oos.md" ]]; then
+        cp -f "$parent_dir/accumulated-oos.md" "$REVIEW_TMPDIR/${stem}.parent-accumulated-oos.before.md"
+    else
+        rm -f "$REVIEW_TMPDIR/${stem}.parent-accumulated-oos.before.md"
+    fi
+}
+
+restore_review_oos_state() {
+    local stem="$1" parent_dir=""
+    if [[ -f "$REVIEW_TMPDIR/${stem}.oos-accepted-review.before.md" ]]; then
+        cp -f "$REVIEW_TMPDIR/${stem}.oos-accepted-review.before.md" "$REVIEW_TMPDIR/oos-accepted-review.md"
+    else
+        : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    fi
+    if [[ -f "$REVIEW_TMPDIR/${stem}.accumulated-oos.before.md" ]]; then
+        cp -f "$REVIEW_TMPDIR/${stem}.accumulated-oos.before.md" "$REVIEW_TMPDIR/accumulated-oos.md"
+    fi
+    if [[ -n "$SESSION_ENV_PATH" ]]; then
+        parent_dir="$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        parent_dir="$IMPLEMENT_TMPDIR"
+    fi
+    if [[ -n "$parent_dir" ]]; then
+        if [[ -f "$REVIEW_TMPDIR/${stem}.parent-oos-accepted-review.before.md" ]]; then
+            cp -f "$REVIEW_TMPDIR/${stem}.parent-oos-accepted-review.before.md" "$parent_dir/oos-accepted-review.md"
+        fi
+        if [[ -f "$REVIEW_TMPDIR/${stem}.parent-accumulated-oos.before.md" ]]; then
+            cp -f "$REVIEW_TMPDIR/${stem}.parent-accumulated-oos.before.md" "$parent_dir/accumulated-oos.md"
+        fi
+    fi
+}
+
+collector_success_count() {
+    local collector_file="$1" count=0 line current_status=""
+    [[ -n "$collector_file" && -f "$collector_file" ]] || { printf '0\n'; return 0; }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" ]]; then
+            if [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]]; then
+                count=$((count + 1))
+            fi
+            current_status=""
+            continue
+        fi
+        case "$line" in STATUS=*) current_status="${line#STATUS=}" ;; esac
+    done < "$collector_file"
+    if [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]]; then
+        count=$((count + 1))
+    fi
+    printf '%s\n' "$count"
 }
 
 execution_issues_log() {
@@ -225,10 +320,12 @@ emit_zero_findings_branch() {
     [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && zero_tally_args+=(--manifest-file "$panel_manifest")
     [[ -f "$collector_results_file" ]] && zero_tally_args+=(--collector-results-file "$collector_results_file")
     [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
+    snapshot_review_oos_state zero-findings
     "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
     zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
     zero_findings_classification_tsv_file=$(kv_get "$zero_findings_tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
     record_findings_classification_round "$zero_findings_classification_tsv_file"
+    record_reviewer_prune_round "$zero_findings_classification_tsv_file"
     zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
     zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
     zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
@@ -252,8 +349,8 @@ emit_zero_findings_branch() {
     [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && zero_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
     if emit_tally_with_failure_isolation "5" "zero-findings" "$zero_emit_out" "${zero_emit_args[@]}"; then
         copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
-        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
     fi
+    restore_review_oos_state zero-findings
     flush_round_log
     emit_kv REVIEW_CORE_STATUS zero-findings
     emit_kv ROUND_NUM "$ROUND_NUM"
@@ -474,11 +571,29 @@ static_archetype_coverage_ok() {
             fi
         fi
     done
-    for slug in security correctness edge-cases testing; do
+    expected_file="$REVIEW_TMPDIR/static-expected-slugs.txt"
+    : > "$expected_file"
+    if [[ -n "${panel_manifest:-}" && -f "$panel_manifest" ]]; then
+        while IFS= read -r _expected_row || [[ -n "$_expected_row" ]]; do
+            [[ -n "$_expected_row" ]] || continue
+            _expected_output=$(printf '%s' "$_expected_row" | jq -r 'select(has("agent")) | .output // empty' 2>/dev/null || true)
+            [[ -n "$_expected_output" ]] || continue
+            if slug=$(static_slug_for_reviewer_file "$(basename "$_expected_output")" 2>/dev/null); then
+                printf '%s\n' "$slug" >> "$expected_file"
+            fi
+        done < "$panel_manifest"
+    else
+        printf '%s\n' security correctness edge-cases testing > "$expected_file"
+    fi
+    if [[ ! -s "$expected_file" ]]; then
+        return 0
+    fi
+    while IFS= read -r slug || [[ -n "$slug" ]]; do
+        [[ -n "$slug" ]] || continue
         if ! grep -Fxq "$slug" "$success_file" 2>/dev/null; then
             missing="${missing}${missing:+,}$slug"
         fi
-    done
+    done < <(sort -u "$expected_file")
     if [[ -n "$missing" ]]; then
         printf 'no successful static reviewer for archetype(s): %s' "$missing"
         return 1
@@ -541,6 +656,7 @@ dispatch_args=(
 [[ -n "$FEATURE_FILE" ]] && dispatch_args+=(--feature-file "$FEATURE_FILE")
 [[ -n "$DESCRIPTION_TEXT" ]] && dispatch_args+=(--description-text "$DESCRIPTION_TEXT")
 [[ -n "$SESSION_ENV_PATH" ]] && dispatch_args+=(--session-env-path "$SESSION_ENV_PATH")
+[[ -n "$PRUNE_LEDGER" ]] && dispatch_args+=(--prune-ledger "$PRUNE_LEDGER")
 [[ -f "$REVIEW_TMPDIR/competition-notice.md" ]] && dispatch_args+=(--competition-notice-file "$REVIEW_TMPDIR/competition-notice.md")
 "$DISPATCH_PANEL_SH" "${dispatch_args[@]}" > "$dispatch_out"
 
@@ -555,12 +671,16 @@ dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
 scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
 scout_fail_reason=$(kv_get "$dispatch_out" SCOUT_FAIL_REASON)
 static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
+panel_pruned_empty=$(kv_get "$dispatch_out" PANEL_PRUNED_EMPTY)
+pruned_combos=$(kv_get "$dispatch_out" PRUNED_COMBOS)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
 scout_status="${scout_status:-na}"
 scout_fail_reason="${scout_fail_reason:-}"
 dynamic_slots="${dynamic_slots:-0}"
 static_slot_count="${static_slot_count:-0}"
+panel_pruned_empty="${panel_pruned_empty:-false}"
+pruned_combos="${pruned_combos:-}"
 {
     printf 'SCOUT_STATUS=%s\n' "$scout_status"
     [[ -n "$scout_fail_reason" ]] && printf 'SCOUT_FAIL_REASON=%s\n' "$scout_fail_reason"
@@ -571,6 +691,37 @@ emit_kv SCOUT_STATUS "$scout_status"
 [[ -n "$scout_fail_reason" ]] && emit_kv SCOUT_FAIL_REASON "$scout_fail_reason"
 emit_kv DYNAMIC_SLOTS "$dynamic_slots"
 [[ -n "$scout_manifest" ]] && emit_kv SCOUT_MANIFEST "$scout_manifest"
+[[ -n "$pruned_combos" ]] && emit_kv PRUNED_COMBOS "$pruned_combos"
+emit_kv PANEL_PRUNED_EMPTY "$panel_pruned_empty"
+
+if [[ "$panel_pruned_empty" == "true" ]]; then
+    snapshot_review_oos_state prune-skipped
+    : > "$REVIEW_TMPDIR/findings.md"
+    : > "$REVIEW_TMPDIR/accepted-findings.md"
+    : > "$REVIEW_TMPDIR/rejected-findings.md"
+    : > "$REVIEW_TMPDIR/oos.md"
+    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    {
+        printf '# Code Review Voting Tally\n\n'
+        printf 'Round skipped: all reviewer combos pruned.\n'
+    } > "$REVIEW_TMPDIR/voting-tally.md"
+    restore_review_oos_state prune-skipped
+    flush_round_log
+    larch_err "→ review: round $ROUND_NUM skipped — all reviewer combos pruned"
+    emit_kv REVIEW_CORE_STATUS prune-skipped
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE "$panel_mode"
+    emit_kv PANEL_SHAPE "$panel_shape"
+    exit 0
+fi
 
 collect_out="$REVIEW_TMPDIR/review-core-collect.env"
 collect_args=(--mode "$MODE" --timeout 1860 --findings-file "$REVIEW_TMPDIR/findings.md" --oos-file "$REVIEW_TMPDIR/oos.md")
@@ -629,6 +780,19 @@ threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
 threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
+if [[ "$threshold_ok" != "false" ]]; then
+    launched_success_count=$(collector_success_count "$collector_results_file")
+    if (( launched_success_count == 0 )); then
+        threshold_ok=false
+        threshold_reason="no successful launched reviewer output"
+        {
+            cat "$threshold_out"
+            printf 'COVERAGE_GATE_OK=false\n'
+            printf 'COVERAGE_GATE_REASON=%s\n' "$threshold_reason"
+        } > "${threshold_out}.tmp"
+        mv -f "${threshold_out}.tmp" "$threshold_out"
+    fi
+fi
 if [[ "$threshold_ok" != "false" ]]; then
     coverage_reason=$(static_archetype_coverage_ok "$collector_results_file" "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}" || true)
     if [[ -n "$coverage_reason" ]]; then
@@ -911,6 +1075,8 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     [[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
     exit 0
 fi
+
+record_reviewer_prune_round "$findings_classification_tsv_file"
 
 emit_out="$REVIEW_TMPDIR/review-core-emit.env"
 emit_args=(

@@ -98,3 +98,7 @@ Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still d
 `review-core.sh` emits `→ review: consolidating findings` immediately before the `collect-findings.sh` invocation. The existing `⚠ review-core: emit-tally failed …` breadcrumb uses the same `larch_err` path, so both lines are operator-visible on stderr and mirrored into the quiet log.
 
 Harness: `skills/review/scripts/test-review-core.sh`, wired through `make test-review-core`. The harness uses environment-variable seams (`REVIEW_CORE_*_SH`) to stub helper scripts without launching external reviewers.
+
+## Conditional reviewer pruning
+
+`--prune-ledger FILE` is forwarded to `dispatch-panel.sh` so rounds 3-4 can filter `panel-manifest.ndjson` through `scripts/reviewer-prune.sh`. `review-core.sh` consumes the canonical post-filter manifest for threshold inputs, yield attribution, and the static coverage gate; the coverage gate derives expected static archetypes from the filtered manifest. `PANEL_PRUNED_EMPTY=true` returns `REVIEW_CORE_STATUS=prune-skipped` with empty artifacts before collection/threshold/aggregation/voting. Settled zero-findings and normal tally paths call `reviewer-prune.sh record` with the filtered manifest and findings-classification TSV; record failures emit `WARN` and do not change the settled review status. Empty zero-findings/prune-skipped paths snapshot and restore cumulative OOS mirrors so prior accepted OOS state is not truncated.

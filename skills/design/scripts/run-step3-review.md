@@ -65,3 +65,7 @@ Stops before semantic finding dedup (#6), Gate B (Step 3.5), and `main-agent-vot
 ## Scope anchor result env
 
 `run-step3-review.sh` launches plan review against the staged binding scope anchor at `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` (materialized from the originating issue text). It parses `SCOPE_ANCHOR_FILE` from the inner `.step3-plan-review-result.env` / stdout fallback, validates that the path is a regular non-empty file under `$DESIGN_TMPDIR`, and emits/persists it only when both `TALLY_PLAN_REVIEW_STATUS` is `ok` or `main-agent-vote-required` and `LOOP_STATUS` is `complete` or `main-agent-vote-required`. `panel-failed`, `tally-error`, cap, and other non-terminal paths omit the key. MainAgent anchoring stays in `SKILL.md`; the driver does not add tally flags.
+
+## Prune-round threading
+
+`run-step3-review.sh` passes the pending review-round counter (`STEP3_REVIEW_ROUND_NUM`) to `plan-review-loop.sh --prune-round-num` while leaving `--round-num` as the artifact round index. It persists `PANEL_PRUNED_EMPTY` from both loop stdout and `.step3-plan-review-result.env` into `.step3-review-result.env` so `plan-review-continuation.sh` can continue pruned-empty rounds toward the round-5 re-probe.

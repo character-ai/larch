@@ -266,6 +266,16 @@ run_implement_loop() {
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
                 ;;
+            prune-skipped)
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
+                if (( round_num < effective_round_cap )); then
+                    IRF_LAST_ROUND_STATUS=prune-skipped
+                    round_num=$((round_num + 1))
+                    continue
+                fi
+                step5_emit_final_envelope complete false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
+                exit 0
+                ;;
             converged-small-changes|no-changes|no-findings|in-scope-filtered-out|complete)
                 _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope complete false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"

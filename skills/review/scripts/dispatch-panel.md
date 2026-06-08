@@ -31,3 +31,7 @@ On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 `dispatch-panel.sh` emits one operator-visible launch line immediately before the waterfall dispatch, after static and dynamic slots are finalized: `→ review: launching N reviewers (X Cursor static, Y Codex static, Z dynamic)`. It is written via `larch_err`, so it appears on stderr regardless of `LARCH_QUIET_BREADCRUMBS`; when quiet mode is active the line is also mirrored into the quiet log for failure-tail visibility. The `total > 0` gate suppresses the line when no reviewers are launched.
 
 Harness: `skills/review/scripts/test-dispatch-panel.sh`, wired through `make test-dispatch-panel`.
+
+## Conditional reviewer pruning
+
+`--prune-ledger FILE` enables the shared `scripts/reviewer-prune.sh filter` hook after static and dynamic rows are finalized and before the waterfall launches. When rows are removed, the unfiltered manifest is copied to `panel-manifest.pre-prune.ndjson` and the canonical `panel-manifest.ndjson` is atomically replaced with the filtered rows; `PANEL_MANIFEST` still points at the canonical basename. A filtered-empty panel emits `PANEL_PRUNED_EMPTY=true`, empty output-file KVs, `DISPATCH_OK=true`, zero slot counts, and returns before the waterfall so the caller can advance the round without treating it as degraded.

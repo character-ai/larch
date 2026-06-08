@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--prune-ledger FILE] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -39,6 +39,8 @@ DYNAMIC_SLOTS=0
 SCOUT_MANIFEST=""
 DIFF_MODE=""
 ROUND_NUM="1"
+PRUNE_LEDGER=""
+REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,6 +62,7 @@ while [[ $# -gt 0 ]]; do
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
+        --prune-ledger) PRUNE_LEDGER="${2:?--prune-ledger requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-panel.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -445,6 +448,61 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
 fi
 append_scout_parse_issue
 
+recount_manifest_slots() {
+    static_slot_count=$(jq -r 'select(has("agent")) | .tool' "$manifest" | wc -l | awk '{print $1}')
+    static_cursor=$(jq -r 'select(has("agent") and .tool == "cursor") | .slot' "$manifest" | wc -l | awk '{print $1}')
+    static_codex=$(jq -r 'select(has("agent") and .tool == "codex") | .slot' "$manifest" | wc -l | awk '{print $1}')
+    DYNAMIC_SLOTS=$(jq -r 'select(has("prompt_file")) | .slot' "$manifest" | wc -l | awk '{print $1}')
+}
+
+PRUNE_ACTIVE=false
+PRUNED_COUNT=0
+PRUNED_COMBOS=""
+PANEL_PRUNED_EMPTY=false
+if [[ -n "$PRUNE_LEDGER" ]]; then
+    prune_tmp=$(mktemp "$REVIEW_TMPDIR/panel-manifest.pruned.XXXXXX")
+    prune_out=$(LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter --ledger "$PRUNE_LEDGER" --round "$ROUND_NUM" --manifest "$manifest" --out "$prune_tmp")
+    while IFS= read -r prune_line || [[ -n "$prune_line" ]]; do
+        prune_key="${prune_line%%=*}"
+        prune_value="${prune_line#*=}"
+        case "$prune_key" in
+            PRUNE_ACTIVE) PRUNE_ACTIVE="$prune_value" ;;
+            PRUNED_COUNT) PRUNED_COUNT="$prune_value" ;;
+            PRUNED_COMBOS) PRUNED_COMBOS="$prune_value" ;;
+            PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$prune_value" ;;
+            WARN) emit_kv WARN "$prune_value" ;;
+        esac
+    done <<< "$prune_out"
+    case "$PRUNED_COUNT" in ''|*[!0-9]*) PRUNED_COUNT=0 ;; esac
+    if [[ "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
+        cp -f "$manifest" "$REVIEW_TMPDIR/panel-manifest.pre-prune.ndjson"
+        mv -f "$prune_tmp" "$manifest"
+        recount_manifest_slots
+    else
+        rm -f "$prune_tmp"
+    fi
+fi
+
+if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
+    emit_kv EXTERNAL_OUTPUT_FILES ""
+    emit_kv CLAUDE_OUTPUT_FILES ""
+    emit_kv PANEL_MODE waterfall
+    emit_kv PANEL_SHAPE "$PANEL"
+    emit_kv SCOUT_STATUS "$SCOUT_STATUS"
+    [[ -n "$SCOUT_FAIL_REASON" ]] && emit_kv SCOUT_FAIL_REASON "$SCOUT_FAIL_REASON"
+    emit_kv DYNAMIC_SLOTS 0
+    emit_kv STATIC_SLOT_COUNT 0
+    emit_kv SLOT_COUNT 0
+    [[ -n "$SCOUT_MANIFEST" ]] && emit_kv SCOUT_MANIFEST "$SCOUT_MANIFEST"
+    emit_kv PANEL_MANIFEST "$manifest"
+    emit_kv DISPATCH_OK true
+    emit_kv STATIC_DISPATCH_OK true
+    emit_kv DYNAMIC_DISPATCH_OK true
+    emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
+    emit_kv PANEL_PRUNED_EMPTY true
+    exit 0
+fi
+
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
     larch_err "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex static, $DYNAMIC_SLOTS dynamic)"
@@ -505,6 +563,8 @@ emit_kv STATIC_SLOT_COUNT "$static_slot_count"
 emit_kv SLOT_COUNT "$((static_slot_count + DYNAMIC_SLOTS))"
 [[ -n "$SCOUT_MANIFEST" ]] && emit_kv SCOUT_MANIFEST "$SCOUT_MANIFEST"
 emit_kv PANEL_MANIFEST "$manifest"
+emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
+emit_kv PANEL_PRUNED_EMPTY "$PANEL_PRUNED_EMPTY"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"

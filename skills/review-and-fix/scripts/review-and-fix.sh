@@ -191,6 +191,31 @@ convergence_candidate_status() {
     esac
 }
 
+clear_reviewer_prune_round() {
+    local ledger="$1" round="$2" work_dir="$3" helper="$PLUGIN_ROOT/scripts/reviewer-prune.sh"
+    local empty_manifest empty_classification clear_out clear_rc
+    [[ -n "$ledger" && -x "$helper" ]] || return 0
+    mkdir -p "$work_dir"
+    empty_manifest="$work_dir/reviewer-prune-clear-empty.ndjson"
+    empty_classification="$work_dir/reviewer-prune-clear-classification.tsv"
+    : > "$empty_manifest"
+    printf 'finding_id\treviewer_slots\tvoting_result\n' > "$empty_classification"
+    set +e
+    clear_out=$("$helper" record --ledger "$ledger" --round "$round" --manifest "$empty_manifest" --classification "$empty_classification" 2>&1)
+    clear_rc=$?
+    set -e
+    if [[ "$clear_rc" -ne 0 ]]; then
+        emit_kv WARN "reviewer-prune clear failed for round $round: $(printf '%s' "$clear_out" | tail -n 1 | sanitize_diagnostic_line)"
+    fi
+}
+
+reviewer_prune_status_records() {
+    case "$1" in
+        ok|fix-required|cap-reached|zero-findings) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 count_findings() {
     local file="$1"
     if [[ -s "$file" ]]; then
@@ -1354,6 +1379,7 @@ _implement_round_body() {
         --panel hard
         --round-num "$round_num_dec"
         --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
+        --prune-ledger "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"
     )
     [[ -n "$DIFF_FILE" ]] && core_args+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && core_args+=(--commit-count "$COMMIT_COUNT")
@@ -1398,7 +1424,10 @@ _implement_round_body() {
         if [[ ! -f "$degraded_retry_flag" ]]; then
             touch "$degraded_retry_flag"
             append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
+            set +e
             IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+            core_rc=$?
+            set -e
             touch "$degraded_retry_done"
             core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
             accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
@@ -1414,6 +1443,9 @@ _implement_round_body() {
             core_status="${core_status:-unknown}"
             accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
             rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
+            if ! reviewer_prune_status_records "$core_status"; then
+                clear_reviewer_prune_round "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv" "$round_num_dec" "$round_dir"
+            fi
             if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
                 larch_err "⚠ /implement Step 5: round ${round_num_dec} panel retry also degraded; proceeding best-effort."
             else
@@ -1597,6 +1629,9 @@ _implement_round_body() {
                 status="in-scope-filtered-out"
                 larch_err "⚠ review-and-fix: round $round_num_dec — all accepted findings scrubbed; nothing to apply"
             fi
+            ;;
+        prune-skipped)
+            status="prune-skipped"
             ;;
         zero-findings|ok)
             status="complete"

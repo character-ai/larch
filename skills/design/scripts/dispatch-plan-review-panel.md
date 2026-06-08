@@ -21,3 +21,7 @@ The script passes through waterfall dispatcher KVs including `FALLBACK_COUNT`, `
 ## Feature/scope anchor forwarding
 
 `--feature-file` is the staged scope anchor under `$DESIGN_TMPDIR`, not brainstorm-merged context. The dispatcher forwards it into static role renders, the generic fallback render, and the shared prompt tail used by dynamic slots. No baseline file is forwarded.
+
+## Conditional reviewer pruning
+
+`--prune-round-num N --prune-ledger FILE` enables `scripts/reviewer-prune.sh filter` after `plan-review-slots.ndjson` is fully built and before the waterfall dispatch. When rows are removed, the unfiltered manifest is copied to `plan-review-slots.pre-prune.ndjson` and the canonical `plan-review-slots.ndjson` is atomically replaced, so degradation math and downstream mapping use filtered counts. If the filtered manifest is empty, the dispatcher emits success KVs with `PANEL_PRUNED_EMPTY=true`, zero dynamic slots, `DEGRADED_ROUND=false`, an empty `PANEL_PATHS_FILE`, and exits before the waterfall. The both-externals-absent generic Claude path does not build a manifest and is not pruned.
