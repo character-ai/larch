@@ -49,6 +49,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Remove stale larch session temp directories from <code>~/.cache/larch/sessions/</code> and <code>/tmp</code> by bounded nested-activity scan (<code>LARCH_CLEANUP_RETENTION_DAYS</code>, default 7): a directory is deleted only when the <code>find -maxdepth 5</code> nested scan finds no file newer than the cutoff, so a directory with fresh deep activity is retained even when its top-level mtime is stale. Reaps dangling <code>current-design-env-*.sh</code> symlinks. Always runnable regardless of concurrent Claude sessions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#gc-run-logs"><code>/gc-run-logs</code></a></td>
+      <td><code>[--older-than DAYS] [--delete] [--dry-run]</code></td>
+    </tr>
+    <tr><td colspan="2">Age-based retention policy for committed <code>larch-logs/</code> run directories. Slims qualifying dirs (default: older than 90 days) to the consumer-core keep set (token/timing reports, findings, manifest); <code>--delete</code> fully removes them. Creates a log-only PR for operator merge. Operator-invoked only — never runs implicitly.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#block-issue"><code>/block-issue</code></a></td>
       <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt;</code></td>
     </tr>

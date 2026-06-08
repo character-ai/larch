@@ -4,6 +4,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 - [`/alias`](#alias)
 - [`/cleanup`](#cleanup)
+- [`/gc-run-logs`](#gc-run-logs)
 - [`/design`](#design)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
@@ -45,6 +46,14 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
 Remove stale larch session temp directories from `~/.cache/larch/sessions/` and `/tmp` by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Directories are removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Matching loose `/tmp` files are removed by top-level age and pattern match. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active.
+
+## `/gc-run-logs`
+
+**Arguments**: `[--older-than DAYS] [--delete] [--dry-run]`
+
+**Source**: [`skills/gc-run-logs/SKILL.md`](../skills/gc-run-logs/SKILL.md)
+
+Age-based retention policy for committed `larch-logs/` run directories. Slims qualifying run dirs (older than `--older-than DAYS`, default 90) to the consumer-core keep set: `manifest.json`, `final-summary.md`, token/timing reports, findings, and execution issues. All other files and subdirectories (round forensics, aggregator artifacts, voter outputs) are removed. `--delete` fully removes qualifying dirs instead of slimming; content remains recoverable via git history. `--dry-run` previews the plan without changes. Creates a log-only PR for operator review and merge; never runs implicitly.
 
 ## `/design`
 
