@@ -1,0 +1,4 @@
+[sergey-zhupanov/implementing-logs-size-reduction-phase-3-3716 b93529f45] feat(larch-logs): Phase 3c — consolidate per-round sidecars into round-meta.json, pool archetypes
+ 6 files changed, 563 insertions(+), 17 deletions(-)
+ create mode 100644 scripts/consolidate-round-sidecars.md
+ create mode 100755 scripts/consolidate-round-sidecars.sh
