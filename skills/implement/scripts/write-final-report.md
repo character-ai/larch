@@ -86,6 +86,32 @@ renderer omits those flags and the bullet shows `N/A`.
 `compose_self_fallback` emits `- **Lines (PR diff)**: …` for schema parity
 (`N/A` when counts are unavailable).
 
+## Review phase detail (per-round, issue #3774)
+
+Before composing the note appendix, the script runs
+[`scripts/render-review-phase-detail.sh`](../../../scripts/render-review-phase-detail.md)
+with `--rounds-root "$IMPLEMENT_TMPDIR"`,
+`--findings-file "$run_dir/review-findings-full.jsonl"`,
+`--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, and `--skill implement`,
+capturing the rendered **Review Phase Detail** markdown to a temp file. That file
+is `cat` into the note block (after the existing notes), so the section lands in
+the `--note-lines-file` appendix that `render-run-summary.sh` emits after the
+`<!-- larch:run-summary v=1 -->` sentinel.
+
+The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
+time, cost, reviewers launched), a Total row, the top reviewers by suggestions
+accepted (`vendor/archetype`), and a failed-reviewer-slot breakdown. The Cost
+column is an em-dash placeholder: the dollar-primary cost line stays single-source
+in `render-run-summary.sh`, and per-round token cost is not instrumented.
+
+The helper is best-effort and renders **nothing** when there were no panel review
+rounds (for example `--self-review` runs, where Step 5 does no panel review), so
+the note block is unchanged in that case; a render failure is swallowed
+(`|| : >"$review_detail_file"`) and never blocks the report. `/design`'s plan
+review uses a different data model (no per-round `round-meta.json`), so this
+injection is `/implement`-only — see the helper's `.md` for the `/design`
+follow-up.
+
 ## Token-data-missing primary path
 
 When no usable token JSON exists, or the JSON is unparseable / lacks

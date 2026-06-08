@@ -1690,6 +1690,19 @@ exclude = [
   # edge that G004 dead-script reachability cannot discover.
   "scripts/compute-pr-line-counts.sh",
   "scripts/compute-pr-line-counts.md",
+  # scripts/render-review-phase-detail.sh (issue #3774) renders the per-round
+  # review-phase detail section. It is invoked at runtime only from
+  # skills/implement/scripts/write-final-report.sh via a variable-expanded shell
+  # edge that G004 dead-script reachability cannot discover (same pattern as
+  # compute-pr-line-counts.sh above).
+  "scripts/render-review-phase-detail.sh",
+  "scripts/render-review-phase-detail.md",
+  # scripts/test-render-review-phase-detail.sh is the regression harness for the
+  # review-phase detail renderer. It is referenced from Makefile and from the
+  # primary script's sibling contract, not from SKILL.md runtime prose — same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-render-review-phase-detail.sh",
+  "scripts/test-render-review-phase-detail.md",
   # scripts/test-upsert-diagrams-comment.sh is the offline harness for the
   # shared larch:diagrams helper. It is referenced from Makefile and from the
   # helper's sibling contract rather than from SKILL.md runtime prose.
