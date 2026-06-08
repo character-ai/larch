@@ -6,6 +6,8 @@
 
 === larch-quiet-check-contains-pins.sh-33395.log ===
 
+=== larch-quiet-check-contains-pins.sh-68701.log ===
+
 === larch-quiet-check-review-changes.sh-6384.log ===
 
 === larch-quiet-cli.py-13840.log ===
@@ -13,6 +15,8 @@
 === larch-quiet-cli.py-34092.log ===
 
 === larch-quiet-cli.py-48997.log ===
+
+=== larch-quiet-cli.py-50834.log ===
 
 === larch-quiet-commit-implementation.sh-68572.log ===
 [sergey-zhupanov/implementing-bug-urgent-preserve-vendor-3713 d94efa7ad] Preserve vendor-agent error diagnostics in committed run logs (#3713): central failure-diag carrier composed by run-external-agent.sh on failure, carrier library helpers (write_failure_diag/resolve_failure_diagnostic_source/external_stream_reset/append_vendor_failure_diagnostics/resolve_execution_issues_log), append-tool-failure fail-closed backstop, launch-review incident fix plus launch-claude-subprocess and implement-launcher give-up wiring, vendor-failure-diagnostics batch + idempotent flush helper wired into step-7a/larch-log-flush/refresh-run-logs/implement-finalize, design/implement publish gating (raw streams excluded, carrier committed+redacted), audit doc, tests, and .md siblings.
@@ -35,6 +39,10 @@
 [sergey-zhupanov/implementing-bug-urgent-preserve-vendor-3713 09872c628] Address self-review feedback (#3713): guard launch-review carrier recompose; subshell-isolate append_vendor_failure_diagnostics redaction pipe to prevent pipefail leak
  2 files changed, 11 insertions(+), 5 deletions(-)
 
+=== larch-quiet-git-commit.sh-89720.log ===
+[sergey-zhupanov/implementing-bug-urgent-preserve-vendor-3713 47850b761] Fix CI failure (main-agent): add vendor-failure-diagnostics to test-larch-logs-batches expected batch list (#3713 slug drift)
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
 === larch-quiet-git-stage.sh-90632.log ===
 
 === larch-quiet-lint-mermaid-fences.sh-19760.log ===
@@ -54,6 +62,26 @@
 === larch-quiet-lint-mermaid-fences.sh-19778.log ===
 
 === larch-quiet-lint-mermaid-fences.sh-19781.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21388.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21389.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21390.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21391.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21394.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21395.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21399.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21400.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21401.log ===
+
+=== larch-quiet-lint-mermaid-fences.sh-21402.log ===
 
 === larch-quiet-lint-mermaid-fences.sh-3525.log ===
 
@@ -97,6 +125,12 @@
 
 === larch-quiet-read-session-env-key.sh-1815.log ===
 
+=== larch-quiet-read-session-env-key.sh-20357.log ===
+
+=== larch-quiet-read-session-env-key.sh-20394.log ===
+
+=== larch-quiet-read-session-env-key.sh-20430.log ===
+
 === larch-quiet-read-session-env-key.sh-39684.log ===
 
 === larch-quiet-read-session-env-key.sh-39712.log ===
@@ -123,11 +157,18 @@
 
 === larch-quiet-rebase-push.sh-90737.log ===
 
+=== larch-quiet-refresh-run-logs.sh-89822.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.r6RB4t
+
 === larch-quiet-run-relevant-checks-captured.sh-10839.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-76715.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-94881.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-9561.log ===
 
 === larch-quiet-run-step3-review.sh-12889.log ===
 
@@ -137,6 +178,14 @@
 
 === larch-quiet-run-step3-review.sh-15711.log ===
 
+=== larch-quiet-run-step3-review.sh-38321.log ===
+
+=== larch-quiet-run-step3-review.sh-38715.log ===
+
+=== larch-quiet-ship.py-20458.log ===
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+
 === larch-quiet-snapshot-plan-round.sh-13215.log ===
 
 === larch-quiet-snapshot-plan-round.sh-13259.log ===
@@ -144,6 +193,10 @@
 === larch-quiet-snapshot-plan-round.sh-15626.log ===
 
 === larch-quiet-snapshot-plan-round.sh-15670.log ===
+
+=== larch-quiet-snapshot-plan-round.sh-38624.log ===
+
+=== larch-quiet-snapshot-plan-round.sh-38672.log ===
 
 === larch-quiet-step-7a.sh-17635.log ===
 FLUSH_STATUS=ok
