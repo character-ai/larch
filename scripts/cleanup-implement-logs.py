@@ -129,6 +129,19 @@ def delete_identical_aggregator(run_dir: Path, execute: bool, stats: Stats) -> N
             continue
         if filecmp.cmp(str(agg), str(findings), shallow=False):
             _delete(agg, execute, "aggregator_deleted", stats)
+    # Clean up orphaned aggregator sidecars (e.g. .meta committed when the Phase 1
+    # deny skipped the .txt but the sidecar slipped through).
+    for ext in _SIDECAR_EXTS:
+        for sidecar in run_dir.rglob(f"aggregator-output.txt{ext}"):
+            parent = sidecar.parent / "aggregator-output.txt"
+            if not parent.exists():
+                if execute:
+                    try:
+                        sidecar.unlink()
+                    except OSError as exc:
+                        stats.errors.append(f"unlink orphan {sidecar}: {exc}")
+                        continue
+                stats.aggregator_deleted += 1
 
 
 # ---------------------------------------------------------------------------
