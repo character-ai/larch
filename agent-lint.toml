@@ -691,6 +691,14 @@ exclude = [
   # scripts/generate-topology-docs.sh is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
   "scripts/generate-topology-docs.sh",
+  # scripts/consolidate-round-sidecars.sh is the one-shot operator migration
+  # script for Phase 3c (issue #3716): converts committed round directories
+  # from individual sidecar files to round-meta.json and pools reviewer-dyn-*.md
+  # archetypes. It has no Skill or hook caller — operators invoke it once from
+  # the terminal after deploying the Phase 3c code changes. agent-lint's G004
+  # dead-script graph cannot discover operator-terminal invocations.
+  "scripts/consolidate-round-sidecars.sh",
+  "scripts/consolidate-round-sidecars.md",
   # scripts/measure-*.sh are opt-in human-run measurement helpers for prompt
   # and run-log cost analysis. They have no Skill or hook caller by design, so
   # agent-lint's G004/dead-script graph cannot discover a structured
