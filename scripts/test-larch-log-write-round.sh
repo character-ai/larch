@@ -173,7 +173,7 @@ out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-i
 [[ "$out" == *"LOG_WRITTEN=true"* ]] || fail "write-round should report write: $out"
 
 round_dir="$log_root/implement/run123/round-1"
-assert_file "$round_dir/findings.md" "findings"
+assert_not_file "$round_dir/findings.md" "findings excluded (projection of review-findings-full.jsonl)"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.meta" "static codex meta sidecar excluded"
 assert_not_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phased static cursor meta sidecar excluded"
 assert_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body included"
@@ -221,8 +221,6 @@ assert_not_file "$round_dir/codex-specialist-security-output.txt.dirty-tree" "ex
 assert_not_file "$round_dir/codex-specialist-security-output.txt.untracked-baseline" "excluded untracked baseline sidecar"
 assert_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-retry first-pass sidecar included"
 
-assert_grep '<TMPDIR>' "$round_dir/findings.md" "tmpdir path redacted"
-assert_grep '<REDACTED-TOKEN>' "$round_dir/findings.md" "secret redacted"
 assert_not_grep '^CMD_JSON=' "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase CMD_JSON stripped"
 assert_not_grep '^CMD_JSON=' "$round_dir/codex-specialist-security-output-phase2.txt.meta" "static codex phase CMD_JSON stripped"
 assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex CMD_JSON stripped"
@@ -246,7 +244,7 @@ exit 1
 EOF
 chmod +x "$python_only_bin/jq"
 PATH="$python_only_bin:$PATH" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 2 --source-dir "$source_dir" >/dev/null
-assert_file "$log_root/implement/run123/round-2/findings.md" "round-2 findings"
+assert_not_file "$log_root/implement/run123/round-2/findings.md" "round-2 findings excluded (projection)"
 assert_json_result_stripped "$log_root/implement/run123/round-2/cursor-vote-output.txt.json" "python fallback strips cursor .result"
 
 excluded_only_source="$TMP/round-empty"

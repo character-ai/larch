@@ -95,24 +95,13 @@ if grep -q '"steps_ran": {}' "$manifest" || grep -q '"steps_ran":{}' "$manifest"
 echo "=== replace write is redacted and idempotent ==="
 payload="$TMP/payload.md"
 cat > "$payload" <<'EOF'
-## Goal
-Verify redaction.
-
-## Implementation Plan
-Write a sectioned plan-goals-test payload that includes a token-like secret so
-the larch-log write path can prove redaction while still satisfying the
-plan-goals sanitizer contract.
-
-token eyJfakeheadr12.fakepayload34.fakesign5678
-
-## Test plan
-Run scripts/test-larch-log.sh.
+parent-issue test content with a token eyJfakeheadr12.fakepayload34.fakesign5678
 EOF
-out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch plan-goals-test --input-file "$payload")"
+out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch parent-issue --input-file "$payload")"
 assert_contains "$out" "LOG_WRITTEN=true" "write emits written"
-log_file="$LARCH_LOG_ROOT/implement/abc123/plan-goals-test.md"
+log_file="$LARCH_LOG_ROOT/implement/abc123/parent-issue.md"
 if grep -q '<REDACTED-TOKEN>' "$log_file"; then pass "write redacts token"; else fail "write redacts token"; fi
-out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch plan-goals-test --input-file "$payload")"
+out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch parent-issue --input-file "$payload")"
 assert_contains "$out" "UNCHANGED=true" "write unchanged retry"
 
 echo "=== append writes newline-delimited records ==="
@@ -259,7 +248,7 @@ cat > "$_cpayload" <<'EOF'
 Verify staged commit copying.
 
 ## Implementation Plan
-Write a valid plan-goals-test payload into an explicit staging log root, then
+Write a valid parent-issue payload into an explicit staging log root, then
 commit the run so the harness can verify the batch is copied into the fake repo
 under larch-logs/implement/<run-id>/.
 
@@ -267,7 +256,7 @@ under larch-logs/implement/<run-id>/.
 Run scripts/test-larch-log.sh.
 EOF
 (cd "$_repo" && "$LARCH_LOG" init --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --issue 42) >/dev/null
-(cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch parent-issue --input-file "$_cpayload") >/dev/null
 mkdir -p "$_staging/breadcrumbs"
 printf 'legacy ndjson must not publish\n' > "$_staging/breadcrumbs/foo.ndjson"
 PEM_BEGIN_Q='-----BEGIN RSA PRIVATE ''KEY-----'
@@ -287,7 +276,7 @@ else
 fi
 _commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid")"
 assert_contains "$_commit_out" "LOG_WRITTEN=true" "commit reports written"
-_batch="$_repo/larch-logs/implement/$_rid/plan-goals-test.md"
+_batch="$_repo/larch-logs/implement/$_rid/parent-issue.md"
 if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<skill>/<run-id>/"; else fail "commit copies batch to repo (missing $_batch)"; fi
 if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.ndjson" ]; then
     pass "commit does not publish legacy ndjson stream files"
@@ -396,7 +385,7 @@ git -C "$_bc_traversal_repo" add .
 git -C "$_bc_traversal_repo" commit -q -m "init"
 git -C "$_bc_traversal_repo" checkout -q -b feature-breadcrumb-traversal
 (cd "$_bc_traversal_repo" && "$LARCH_LOG" init --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" --issue 42) >/dev/null
-(cd "$_bc_traversal_repo" && "$LARCH_LOG" write --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_traversal_repo" && "$LARCH_LOG" write --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 _bc_traversal_rc=0
 (cd "$_bc_traversal_repo" && with_implement_tmpdir "$_bc_traversal_staging" "$LARCH_LOG" commit --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" >/dev/null 2>&1) || _bc_traversal_rc=$?
 if [ "$_bc_traversal_rc" -ne 0 ]; then pass "commit rejects symlinked quiet log"; else fail "commit should reject symlinked quiet log"; fi
@@ -414,7 +403,7 @@ git -C "$_bc_fail_repo" add .
 git -C "$_bc_fail_repo" commit -q -m "init"
 git -C "$_bc_fail_repo" checkout -q -b feature-breadcrumb-fail
 (cd "$_bc_fail_repo" && "$LARCH_LOG" init --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --issue 42) >/dev/null
-(cd "$_bc_fail_repo" && "$LARCH_LOG" write --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_fail_repo" && "$LARCH_LOG" write --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'raw breadcrumb\n' > "$_bc_fail_staging/raw-quiet.log"
 ln -s "$_bc_fail_staging/raw-quiet.log" "$_bc_fail_staging/larch-quiet-bad.sh-1.log"
 _bc_fail_rc=0
@@ -443,7 +432,7 @@ git -C "$_bc_source_link_repo" add .
 git -C "$_bc_source_link_repo" commit -q -m "init"
 git -C "$_bc_source_link_repo" checkout -q -b feature-breadcrumb-source-link
 (cd "$_bc_source_link_repo" && "$LARCH_LOG" init --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --issue 42) >/dev/null
-(cd "$_bc_source_link_repo" && "$LARCH_LOG" write --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_source_link_repo" && "$LARCH_LOG" write --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 _bc_source_link_rc=0
 (cd "$_bc_source_link_repo" && IMPLEMENT_TMPDIR="$_bc_source_link_staging" LARCH_BREADCRUMB_SOURCE_DIR="$TMP/breadcrumbs" \
     "$LARCH_LOG" commit --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" >/dev/null 2>&1) || _bc_source_link_rc=$?
@@ -466,7 +455,7 @@ git -C "$_bc_hardlink_repo" add .
 git -C "$_bc_hardlink_repo" commit -q -m "init"
 git -C "$_bc_hardlink_repo" checkout -q -b feature-breadcrumb-hardlink
 (cd "$_bc_hardlink_repo" && "$LARCH_LOG" init --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" --issue 42) >/dev/null
-(cd "$_bc_hardlink_repo" && "$LARCH_LOG" write --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_hardlink_repo" && "$LARCH_LOG" write --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'hardlink quiet\n' > "$_bc_hardlink_staging/source-quiet.log"
 ln "$_bc_hardlink_staging/source-quiet.log" "$_bc_hardlink_staging/larch-quiet-hardlink.sh-1.log"
 _bc_hardlink_rc=0
@@ -491,7 +480,7 @@ git -C "$_bc_redact_repo" add .
 git -C "$_bc_redact_repo" commit -q -m "init"
 git -C "$_bc_redact_repo" checkout -q -b feature-breadcrumb-redact
 (cd "$_bc_redact_repo" && "$LARCH_LOG" init --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" --issue 42) >/dev/null
-(cd "$_bc_redact_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_redact_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'breadcrumb redactor failure fixture\n' > "$_bc_redact_staging/larch-quiet-fail.sh-1.log"
 _orig_redact="$SCRIPT_DIR/redact-secrets.sh"
 _saved_redact="$TMP/redact-secrets.original.sh"
@@ -526,7 +515,7 @@ git -C "$_bc_tmpdir_repo" add .
 git -C "$_bc_tmpdir_repo" commit -q -m "init"
 git -C "$_bc_tmpdir_repo" checkout -q -b feature-breadcrumb-tmpdir-redact
 (cd "$_bc_tmpdir_repo" && "$LARCH_LOG" init --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --issue 42) >/dev/null
-(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" write --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" write --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'quiet tmpdir /tmp/tmpdir-redact-fixture\n' > "$_bc_tmpdir_staging/larch-quiet-tmpdir-fail.sh-1.log"
 _orig_tmpdir_redact="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 _saved_tmpdir_redact="$TMP/redact-tmpdir-paths.original.sh"
@@ -561,7 +550,7 @@ git -C "$_bc_redact_keep_repo" add .
 git -C "$_bc_redact_keep_repo" commit -q -m "init"
 git -C "$_bc_redact_keep_repo" checkout -q -b feature-breadcrumb-redact-keep
 (cd "$_bc_redact_keep_repo" && "$LARCH_LOG" init --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" --issue 42) >/dev/null
-(cd "$_bc_redact_keep_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_redact_keep_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'keep-me quiet\n' > "$_bc_redact_keep_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_redact_keep_repo" && with_implement_tmpdir "$_bc_redact_keep_staging" "$LARCH_LOG" commit --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run") >/dev/null
 printf 'breadcrumb redactor failure fixture\n' > "$_bc_redact_keep_staging/larch-quiet-fail.sh-1.log"
@@ -590,7 +579,7 @@ git -C "$_bc_mv_repo" add .
 git -C "$_bc_mv_repo" commit -q -m "init"
 git -C "$_bc_mv_repo" checkout -q -b feature-breadcrumb-mv-fail
 (cd "$_bc_mv_repo" && "$LARCH_LOG" init --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" --issue 42) >/dev/null
-(cd "$_bc_mv_repo" && "$LARCH_LOG" write --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_mv_repo" && "$LARCH_LOG" write --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'first quiet\n' > "$_bc_mv_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_mv_repo" && "$LARCH_LOG" commit --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run") >/dev/null
 printf 'second quiet\n' > "$_bc_mv_staging/larch-quiet-second.sh-1.log"
@@ -636,7 +625,7 @@ git -C "$_bc_scope_repo" add .
 git -C "$_bc_scope_repo" commit -q -m "init"
 git -C "$_bc_scope_repo" checkout -q -b feature-breadcrumb-scope
 (cd "$_bc_scope_repo" && "$LARCH_LOG" init --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" --issue 42) >/dev/null
-(cd "$_bc_scope_repo" && "$LARCH_LOG" write --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_scope_repo" && "$LARCH_LOG" write --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 (cd "$_bc_scope_repo" && with_implement_tmpdir "$_bc_scope_staging" "$LARCH_LOG" commit --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run") >/dev/null
 if [ ! -e "$_bc_scope_repo/larch-logs/implement/$_bc_scope_run/breadcrumbs/larch-quiet-outside.sh-1.log" ]; then
     pass "commit does not publish quiet logs outside session tmpdir"
@@ -657,7 +646,7 @@ git -C "$_bc_missing_repo" add .
 git -C "$_bc_missing_repo" commit -q -m "init"
 git -C "$_bc_missing_repo" checkout -q -b feature-breadcrumb-missing
 (cd "$_bc_missing_repo" && "$LARCH_LOG" init --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run" --issue 42) >/dev/null
-(cd "$_bc_missing_repo" && "$LARCH_LOG" write --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_missing_repo" && "$LARCH_LOG" write --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'first quiet\n' > "$_bc_missing_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_missing_repo" && with_implement_tmpdir "$_bc_missing_staging" "$LARCH_LOG" commit --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run") >/dev/null
 rm -f "$_bc_missing_staging"/larch-quiet-*-*.log
@@ -682,7 +671,7 @@ git -C "$_bc_empty_repo" add .
 git -C "$_bc_empty_repo" commit -q -m "init"
 git -C "$_bc_empty_repo" checkout -q -b feature-breadcrumb-empty
 (cd "$_bc_empty_repo" && "$LARCH_LOG" init --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run" --issue 42) >/dev/null
-(cd "$_bc_empty_repo" && "$LARCH_LOG" write --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+(cd "$_bc_empty_repo" && "$LARCH_LOG" write --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run" --batch parent-issue --input-file "$_cpayload") >/dev/null
 printf 'first quiet\n' > "$_bc_empty_staging/larch-quiet-existing.sh-1.log"
 (cd "$_bc_empty_repo" && with_implement_tmpdir "$_bc_empty_staging" "$LARCH_LOG" commit --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run") >/dev/null
 rm -f "$_bc_empty_staging"/larch-quiet-*-*.log
@@ -747,7 +736,7 @@ cat > "$_stale_payload" <<'EOF'
 Verify stale staging directories are ignored.
 
 ## Implementation Plan
-Write a valid plan-goals-test payload for the fresh run while a stale run
+Write a valid parent-issue payload for the fresh run while a stale run
 directory already exists in the same staging root.
 
 ## Test plan
@@ -757,15 +746,15 @@ EOF
 (cd "$_stale_repo" && "$LARCH_LOG" init --log-root "$_stale_staging/larch-logs" \
     --skill implement --run-id "$_fresh_run" --issue 99) >/dev/null
 (cd "$_stale_repo" && "$LARCH_LOG" write --log-root "$_stale_staging/larch-logs" \
-    --skill implement --run-id "$_fresh_run" --batch plan-goals-test \
+    --skill implement --run-id "$_fresh_run" --batch parent-issue \
     --input-file "$_stale_payload") >/dev/null
 (cd "$_stale_repo" && "$LARCH_LOG" commit --log-root "$_stale_staging/larch-logs" \
     --skill implement --run-id "$_fresh_run") >/dev/null
 # Assert: fresh run files exist in repo
-if [ -f "$_stale_repo/larch-logs/implement/$_fresh_run/plan-goals-test.md" ]; then
-    pass "commit includes fresh run plan-goals-test.md"
+if [ -f "$_stale_repo/larch-logs/implement/$_fresh_run/parent-issue.md" ]; then
+    pass "commit includes fresh run parent-issue.md"
 else
-    fail "commit did not include fresh run plan-goals-test.md"
+    fail "commit did not include fresh run parent-issue.md"
 fi
 # Assert: stale run dir was NOT copied or staged into the repo
 if [ ! -e "$_stale_repo/larch-logs/implement/$_stale_run" ]; then
@@ -803,14 +792,14 @@ cat > "$_spayload" <<'EOF'
 Verify post-merge flush suppression.
 
 ## Implementation Plan
-Stage a valid plan-goals-test payload, create the post-merge sentinel, and run
+Stage a valid parent-issue payload, create the post-merge sentinel, and run
 the flush helper. The helper must exit successfully without creating a commit.
 
 ## Test plan
 Run scripts/test-larch-log.sh.
 EOF
 (cd "$_sentinel_repo" && "$LARCH_LOG" init --log-root "$_sentinel_impl/larch-logs" --skill implement --run-id "$_sentinel_run" --issue 42) >/dev/null
-(cd "$_sentinel_repo" && "$LARCH_LOG" write --log-root "$_sentinel_impl/larch-logs" --skill implement --run-id "$_sentinel_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+(cd "$_sentinel_repo" && "$LARCH_LOG" write --log-root "$_sentinel_impl/larch-logs" --skill implement --run-id "$_sentinel_run" --batch parent-issue --input-file "$_spayload") >/dev/null
 _sentinel_head_before=$(git -C "$_sentinel_repo" rev-parse HEAD)
 if (cd "$_sentinel_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=$_sentinel_impl" "LARCH_NO_LOGS_COMMIT=false" "$LARCH_LOG_FLUSH"); then
     pass "flush exits 0 with post-merge sentinel"
@@ -848,7 +837,7 @@ cat > "$_checkpoint_impl/execution-issues.md" <<'EOF'
 - logged after an empty Step 7a checkpoint
 EOF
 (cd "$_checkpoint_repo" && "$LARCH_LOG" init --log-root "$_checkpoint_impl/larch-logs" --skill implement --run-id "$_checkpoint_run" --issue 44) >/dev/null
-(cd "$_checkpoint_repo" && "$LARCH_LOG" write --log-root "$_checkpoint_impl/larch-logs" --skill implement --run-id "$_checkpoint_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+(cd "$_checkpoint_repo" && "$LARCH_LOG" write --log-root "$_checkpoint_impl/larch-logs" --skill implement --run-id "$_checkpoint_run" --batch parent-issue --input-file "$_spayload") >/dev/null
 _checkpoint_head_before=$(git -C "$_checkpoint_repo" rev-parse HEAD)
 if (cd "$_checkpoint_repo" && env "PATH=${PATH:-}" "CLAUDE_PLUGIN_ROOT=$REPO_ROOT" "IMPLEMENT_TMPDIR=$_checkpoint_impl" "LARCH_NO_LOGS_COMMIT=false" "$LARCH_LOG_FLUSH"); then
     pass "checkpoint flush exits 0"
@@ -885,7 +874,7 @@ git -C "$_commit_sentinel_repo" add .
 git -C "$_commit_sentinel_repo" commit -q -m "init"
 printf 'MERGE_RESULT=merged\n' > "$_commit_sentinel_impl/post-merge-sentinel"
 (cd "$_commit_sentinel_repo" && "$LARCH_LOG" init --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run" --issue 43) >/dev/null
-(cd "$_commit_sentinel_repo" && "$LARCH_LOG" write --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+(cd "$_commit_sentinel_repo" && "$LARCH_LOG" write --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run" --batch parent-issue --input-file "$_spayload") >/dev/null
 _commit_sentinel_head_before=$(git -C "$_commit_sentinel_repo" rev-parse HEAD)
 _commit_sentinel_stderr="$TMP/commit-sentinel-stderr.txt"
 _commit_sentinel_rc=0
@@ -924,7 +913,7 @@ git -C "$_default_repo" branch -M trunk
 git -C "$_default_repo" update-ref refs/remotes/origin/trunk HEAD
 git -C "$_default_repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
 (cd "$_default_repo" && "$LARCH_LOG" init --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run" --issue 44) >/dev/null
-(cd "$_default_repo" && "$LARCH_LOG" write --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+(cd "$_default_repo" && "$LARCH_LOG" write --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run" --batch parent-issue --input-file "$_spayload") >/dev/null
 _default_head_before=$(git -C "$_default_repo" rev-parse HEAD)
 _default_stderr="$TMP/default-branch-stderr.txt"
 _default_rc=0
@@ -1020,11 +1009,11 @@ else
     fail "write-round must deny dyn-*-prompt.md (archetype def in reviewer-dyn-*.md is canonical)"
 fi
 
-# Test 4: no-regression — existing allowed files still committed
-if [ -f "$_wr_round/findings.md" ]; then
-    pass "write-round no-regression: findings.md still committed"
+# Test 4: projection files are denied (Phase 3a)
+if [ ! -f "$_wr_round/findings.md" ]; then
+    pass "write-round no-regression: findings.md correctly excluded (projection)"
 else
-    fail "write-round no-regression: findings.md missing"
+    fail "write-round must exclude findings.md (projection of review-findings-full.jsonl)"
 fi
 if [ -f "$_wr_round/scout-archetype-yield.tsv" ]; then
     pass "write-round commits scout-archetype-yield.tsv"
@@ -1104,7 +1093,15 @@ printf 'forbidden raw output\n' > "$_wr_plain_source/cursor-specialist-plan-outp
     --source-dir "$_wr_plain_source" >/dev/null
 
 _wr_plain_round="$_wr_plain_staging/larch-logs/implement/$_wr_plain_run/round-1"
-for _plain_expected in findings.md accepted-findings.md rejected-findings.md voting-tally.md; do
+# findings.md and accepted-findings.md are projections — denied at staging (Phase 3a).
+for _plain_denied in findings.md accepted-findings.md; do
+    if [ ! -f "$_wr_plain_round/$_plain_denied" ]; then
+        pass "write-round plain fixture excludes $_plain_denied (projection)"
+    else
+        fail "write-round plain fixture must not commit $_plain_denied (projection)"
+    fi
+done
+for _plain_expected in rejected-findings.md voting-tally.md; do
     if [ -f "$_wr_plain_round/$_plain_expected" ]; then
         pass "write-round plain fixture keeps $_plain_expected"
     else
