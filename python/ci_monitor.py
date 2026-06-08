@@ -1357,7 +1357,7 @@ def evaluate_failure(
             failed_verify=last_verify,
             detail=f"verify-failed after outer cap: {jobs}",
         )
-    return FixResult(status="waterfall-failed", detail="outer fix attempts exhausted")
+    return FixResult(status="fix-exhausted", detail=_fix_exhausted_detail(last_classified, last_logs))
 
 
 def monitor(

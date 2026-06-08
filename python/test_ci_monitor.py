@@ -1041,7 +1041,9 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
     )
     assert launch_count == 0
     assert sleeps
-    assert fix.status == "waterfall-failed"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_deterministic_no_rerun() -> None:
@@ -1080,7 +1082,9 @@ def test_evaluate_failure_deterministic_no_rerun() -> None:
         sleep_fn=lambda _s: None,
     )
     assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)
-    assert fix.status == "waterfall-failed"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
@@ -1191,7 +1195,9 @@ def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> 
         if c[:3] == ("gh", "run", "view") and "--log-failed" in c
     ]
     assert len(log_calls) == 3
-    assert fix.status == "waterfall-failed"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
@@ -1224,8 +1230,9 @@ def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_calls
-    assert fix.status == "waterfall-failed"
-    assert fix.detail != "ci-fix-exhausted"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
@@ -1281,8 +1288,9 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_calls
-    assert fix.status == "waterfall-failed"
-    assert fix.detail != "ci-fix-exhausted"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> None:
@@ -1409,8 +1417,9 @@ def test_evaluate_failure_launcher_exhausted_stalls() -> None:
         launch_fn=lambda _t: TierAttempt("cursor", 0, 1, LaunchFailure("none", "")),
         sleep_fn=lambda _s: None,
     )
-    assert fix.status == "waterfall-failed"
-    assert fix.detail != "ci-fix-exhausted"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
@@ -1456,7 +1465,9 @@ def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_count == 0
-    assert fix.status == "waterfall-failed"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
 
 
 def test_evaluate_failure_error_logs_defers_fix() -> None:
@@ -1489,12 +1500,14 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_count == 0
-    assert fix.status == "waterfall-failed"
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
 def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
-    """#3405: vendor-only push failure → STALLED (no CI_FIX_REBASE_PENDING retry)."""
+    """#3405: vendor-only push failure → NEEDS_USER_INPUT (ci-fix-exhausted)."""
     monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
     launch_calls: list[str] = []
 
@@ -1546,7 +1559,9 @@ def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
         transient_retries=1,
     )
     assert launch_calls
-    assert result.result.outcome == Outcome.STALLED
+    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
+    assert result.result.detail is not None
+    assert result.result.detail.startswith("ci-fix-exhausted")
     assert runner.calls.count(("git", "push", "origin", "feature")) == 1
     assert ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed") in runner.calls
     assert ("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs") in runner.calls
