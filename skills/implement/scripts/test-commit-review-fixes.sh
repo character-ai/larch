@@ -31,6 +31,10 @@ out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/
 assert_contains 'COMMITTED=true' "$out" 'happy path emits committed true'
 assert_contains 'Address code review feedback' "$(cat "$TMP_ROOT/args.log")" 'default message used'
 
+# Bash 3.2 regression: no-arg invocation must not abort on FILES[@] unbound variable
+out_noarg=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args-noarg.log" "$HELPER")
+assert_contains 'COMMITTED=true' "$out_noarg" 'no-arg invocation emits committed true'
+
 set +e
 failed=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args.log" GIT_COMMIT_RC=9 GIT_COMMIT_ERR='commit hook failed' "$HELPER" file.txt 2>/dev/null)
 rc=$?
