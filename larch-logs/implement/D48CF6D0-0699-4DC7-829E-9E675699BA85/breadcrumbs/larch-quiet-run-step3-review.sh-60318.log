@@ -1,2 +1,0 @@
-Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview] [--round-cap N]
-run-step3-review.sh: --design-tmpdir is required

@@ -1,4 +1,0 @@
-ci_monitor: poll 1/180 pending after 5s; sleeping 10s
-ci_monitor: poll 2/180 pending after 18s; sleeping 10s
-ci_monitor: poll 3/180 pending after 32s; sleeping 10s
-ci_monitor: poll 4/180 pending after 45s; sleeping 10s
