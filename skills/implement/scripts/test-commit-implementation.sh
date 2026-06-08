@@ -32,6 +32,15 @@ assert_contains 'COMMITTED=true' "$out" 'happy path emits committed true'
 assert_contains 'SHA=' "$out" 'happy path emits SHA key'
 assert_contains '-m Implement thing file.txt' "$(cat "$TMP_ROOT/args.log")" 'passes message and files'
 
+# Bash 3.2 regression: no positional files must not abort on FILES[@] unbound variable
+out_nofiles=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args-nofiles.log" "$HELPER" --message "Implement thing")
+assert_contains 'COMMITTED=true' "$out_nofiles" 'no-files invocation emits committed true'
+if [[ "$(cat "$TMP_ROOT/args-nofiles.log")" == *"FILES"* ]]; then
+    fail 'no-files invocation must not pass FILES literal to git-commit'
+else
+    pass 'no-files invocation passes no extra args to git-commit'
+fi
+
 printf 'file.txt\0' > "$TMP_ROOT/paths.nul"
 out_pathspec=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/pathspec-args.log" "$HELPER" --message "Recover thing" --pathspec-from-file "$TMP_ROOT/paths.nul" --pathspec-file-nul ignored.txt)
 assert_contains 'COMMITTED=true' "$out_pathspec" 'pathspec mode emits committed true'

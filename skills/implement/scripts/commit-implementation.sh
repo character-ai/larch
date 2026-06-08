@@ -52,7 +52,7 @@ if [[ -n "$PATHSPEC_FROM_FILE" ]]; then
         commit_args+=(--pathspec-file-nul)
     fi
 else
-    commit_args+=("${FILES[@]}")
+    commit_args+=(${FILES[@]+"${FILES[@]}"})
 fi
 
 if "$PLUGIN_ROOT/scripts/git-commit.sh" "${commit_args[@]}" >"$out_file" 2>"$err_file"; then
