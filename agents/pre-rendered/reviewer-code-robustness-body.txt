@@ -50,8 +50,16 @@ correctly without your finding — however real or valuable — it is NOT in-sco
 Out-of-Scope Observations instead.
 
 "Cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice,"
-"while we're here," refactors, renames, added configurability, and defensive handling for inputs
-the feature cannot produce are Out-of-Scope signals — never In-Scope.
+"while we're here," refactors, renames, added configurability, defensive handling for inputs the
+feature cannot produce, performance / micro-optimization claims when the feature already meets its
+stated performance requirement, and cross-shell / cross-OS / tool-version portability speculation
+for shells, platforms, or tool versions the project does not target are Out-of-Scope signals —
+never In-Scope.
+
+Default a test finding to Out-of-Scope. A test is In-Scope only when it covers a new,
+currently-uncovered, risk-bearing execution path THIS feature introduces; a test that could merely
+exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
+is a Nit → Out-of-Scope, never In-Scope.
 
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: you earn 0 if at least one judge found it credible and -1 if none did. The safe

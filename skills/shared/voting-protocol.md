@@ -87,7 +87,9 @@ You are a {VOTER_ROLE} participating in a voting panel. You will be presented wi
 
 Default-deny. If you are unsure whether a finding clears a necessity gate, vote NO. "Legitimate but not necessary" is a NO.
 
-Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, or "best practice" — those are Out-of-Scope signals, not acceptance signals.
+**Severity floor (mandatory):** Vote **NO** on any *in-scope* finding whose stated severity is nit (code review and plan review) regardless of how real or credible it is — a Nit can never clear the necessity gate. Treat a latent finding as NO **unless** it is a genuine Correctness defect on the execution path THIS feature introduces or an Introduced-regression (gates 2/3); latent + merely-real is a NO. This floor does **not** apply to out-of-scope (OOS) ballot rows, which are judged on whether the problem is worth filing.
+
+Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, "best practice", a performance / micro-optimization when the feature already meets its stated performance requirement, or cross-shell / cross-OS / tool-version portability speculation — those are Out-of-Scope signals, not acceptance signals.
 
 **OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `skills/shared/scripts/render-voter-prompt.sh` for grammar-specific OOS wording (see the prose paragraph immediately above this fenced template for the canonical lowest-common-denominator clause). In this template's structural shape: YES files a GitHub issue for future tracking; NO means trivial/incorrect or not worth tracking. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use NO for trivial, incorrect, or not-issue-worthy observations.
 
