@@ -261,10 +261,30 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: zhupanov/agent-lint@v2.3.2
+      # The zhupanov/agent-lint action installs this same release asset via
+      # single-shot curl. Install the pinned CLI directly so CI can cache it
+      # and retry transient GitHub release-asset failures.
+      - name: Cache agent-lint binary
+        id: cache-agent-lint
+        uses: actions/cache@v5
         with:
-          github-token: ${{ github.token }}
-          pedantic: true
+          path: /usr/local/bin/agent-lint
+          key: agent-lint-bin-${{ runner.os }}-2.3.2
+      - name: Install agent-lint v2.3.2
+        if: steps.cache-agent-lint.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          curl -sSfL --retry 3 --retry-delay 2 --retry-all-errors --connect-timeout 10 \
+            -o "$tmp/agent-lint.tgz" \
+            https://github.com/zhupanov/agent-lint/releases/download/v2.3.2/agent-lint-v2.3.2-x86_64-unknown-linux-musl.tar.gz
+          tar -xzf "$tmp/agent-lint.tgz" -C "$tmp"
+          sudo install -m 0755 "$tmp/agent-lint" /usr/local/bin/agent-lint
+          rm -rf "$tmp"
+      - name: Verify agent-lint
+        run: agent-lint --version
+      - name: Run agent-lint
+        run: agent-lint --pedantic .
       - uses: agent-sh/agnix@v0.17.0
         with:
           target: 'claude-code'
