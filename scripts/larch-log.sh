@@ -475,7 +475,7 @@ case "$cmd" in
         # Compose round-meta.json from the collected sidecar files.
         if [ -s "$sidecar_paths" ]; then
             : > "$round_tmp"
-            python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF'
+            python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF' || true
 import json, os, sys
 
 src = sys.argv[1]
@@ -568,7 +568,7 @@ PYEOF
                 if [ -f "$_pm" ] && [ -s "$_refs_tmp" ]; then
                     _pm_new="$(mktemp "${TMPDIR:-/tmp}/larch-log-pm.XXXXXX")" || true
                     if [ -n "$_pm_new" ]; then
-                        python3 - "$_pm" "$_refs_tmp" > "$_pm_new" <<'PYEOF'
+                        python3 - "$_pm" "$_refs_tmp" > "$_pm_new" <<'PYEOF' || true
 import json, sys
 
 pm_path, refs_path = sys.argv[1], sys.argv[2]

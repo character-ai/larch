@@ -44,10 +44,12 @@ Primary verbs:
   posture in [SECURITY.md](../SECURITY.md).
   Dynamic reviewer prompt files (`dyn-*-prompt.md`) are excluded — each
   re-embeds the full diff, plan, and feature description; only the archetype
-  section differs and is already captured by the committed `reviewer-dyn-*.md`
-  definition. Raw scout manifests (`scout-round*-manifest.json.raw`) are
-  excluded — byte-identical to the cooked `.json` in nearly all committed runs;
-  the cooked `.json` is canonical.
+  section differs and is captured by the archetype pool (see below).
+  Raw scout manifests (`scout-round*-manifest.json.raw`) are excluded —
+  byte-identical to the cooked `.json` in nearly all committed runs; the
+  cooked `.json` is canonical. Cross-round identical `scout-round*-manifest.json`
+  files are also skipped: round N's manifest is omitted when it is byte-identical
+  to the same-named file in round N-1 (via `cmp -s`).
   Proposal-stage finding aggregates — `findings.md`, `accepted-findings.md`,
   `oos.md`, and `rejected-findings-full.md` — are explicitly denied.
   `review-findings-full.jsonl` is the canonical store; `scripts/render-findings-view.sh`
@@ -61,14 +63,37 @@ Primary verbs:
   8 KB with the same marker.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-archetype-yield.tsv`),
-  dynamic-archetype files (`reviewer-dyn-*.md`), voter parse-retry first-pass
-  sidecars (`*-vote-output-first-pass.txt`), and NS-retry specialist first-pass
-  sidecars (`*-output-first-pass.txt`). Files under `dynamic-archetypes/`
-  inside `--source-dir` are walked one level deep and flattened to the round
-  root (no nested `dynamic-archetypes/` directory in committed output).
+  voter parse-retry first-pass sidecars (`*-vote-output-first-pass.txt`),
+  and NS-retry specialist first-pass sidecars (`*-output-first-pass.txt`).
+  Files under `dynamic-archetypes/` inside `--source-dir` are walked one
+  level deep and flattened to the round root (no nested `dynamic-archetypes/`
+  directory in committed output).
   `aggregator-output.txt` is skipped when byte-identical to `findings.md`
   in the same source directory (avoids committing a duplicate of the staged
   aggregate).
+
+  **`round-meta.json` (Phase 3c)** — seven per-round sidecar files
+  (`review-tally.env`, `collector-results.env`, `collect-agent-results.log`,
+  `review-summary.json`, `coder.env`, `coder-codex.wrapper.log`,
+  `coder-cursor.wrapper.log`) are consolidated into a single JSON object at
+  `round-N/round-meta.json` rather than committed individually. The object has
+  named sections: `tally` (KV from `review-tally.env`), `collector` (raw text),
+  `collect_log` (raw text), `summary` (JSON passthrough of `review-summary.json`),
+  `coder` (KV from `coder.env`), and `wrapper_logs.{cursor,codex}` (raw text).
+  Sections absent from the source directory are omitted. The file is redacted
+  through the same path as other round artifacts.
+
+  **Archetype pool (Phase 3c)** — `reviewer-dyn-*.md` archetype definition
+  files are not committed per-round. Instead each unique definition is written
+  once to `larch-logs/shared/archetypes/<sha256-12>.md` (content-addressed,
+  idempotent: existing hash → no write). The corresponding `panel-manifest.ndjson`
+  entries for `dyn-*` slots receive a new `archetype_ref` field containing the
+  SHA256-12 identifier. The pool directory is inside the log root and is copied
+  to `larch-logs/shared/` by `commit`.
+
+  **Retroactive sweep** — `scripts/consolidate-round-sidecars.sh` migrates
+  existing committed round directories to the new layout (see that script for
+  usage; invoke once from a dedicated log-only PR).
   Raw `*.events.jsonl` files remain excluded by design, including local Codex
   telemetry inputs such as `codex.events.jsonl`, `coder-codex.events.jsonl`, and
   `<output-base>.events.jsonl`; they may contain prompts, responses, repo
@@ -84,7 +109,11 @@ Primary verbs:
   refresh paths. This rejection is unconditional — no bypass env var is
   honored (see `skills/implement/SKILL.md` NEVER #19). During the commit copy
   it treats `breadcrumbs/` as a commit-only artifact class sourced from the
-  session tmpdir, not from the batch table.
+  session tmpdir, not from the batch table. It also copies the shared archetype
+  pool from `<LARCH_LOG_ROOT>/shared/` to `larch-logs/shared/` in the repo when
+  that directory is present, and includes `larch-logs/shared` in the git
+  `add`/`status`/`diff`/`commit` pathspecs so new pool entries ride the same
+  flush commit as the per-run data.
 
 Every verb emits a quiet KEY=value envelope:
 

@@ -46,6 +46,12 @@ A `name` in the selected `scans-$SKILL.tsv` with no matching `case` arm emits an
 
 **`oos-silent-drop`** (retroactive disposition heuristic over canonical `oos-accepted-{main-agent,design,review}.md`): counts non-security `### OOS_*` blocks (same awk contract as `scripts/oos-disposition-gate.sh`), then requires evidence that each block terminated with a filed GitHub issue URL (union of `oos-issues.ndjson` + `oos-issues-created.md`), sufficient `Inline-triage rule` breadcrumbs (prefers `session-transcript.jsonl` / `codex-commit-message.txt` under the run dir when present; otherwise a `git log` walk only when `--run-dir` is the repository worktree root — subdirectory run logs without those artifacts contribute zero inline-triage hits rather than borrowing an enclosing checkout's history), or explicit rejected-OOS markers derived from `oos-issues.ndjson`. NDJSON fields (when not `skip`): `non_security_oos_blocks`, `issue_urls`, `inline_triage_hits`, `rejected_oos_markers`; `fail` lines may add `detail` (JSON string).
 
+**`coder-tool`** (Phase 3c migration note): reads `CODER_TOOL` from
+`round-meta.json` (`.coder.CODER_TOOL` via jq) for rounds produced after Phase 3c
+(issue #3716). Falls back to `coder.env` for older rounds where `round-meta.json`
+is absent. After running `scripts/consolidate-round-sidecars.sh` the fallback
+branch will never be taken.
+
 `cross-cutting` summarizes manifest integrity with **version-aware** rules (mirrors `audit-scan-run.sh` `jq`):
 
 - **`schema_version` &lt; 2 (or non-numeric / absent — treated as v1-style):** `ended_at_null` is `true` when `ended_at` is empty after string coercion; `pr_number_null` is `true` when `pr_number` is JSON null or stringifies to empty. These flags match the older NDJSON “missing field” mental model.

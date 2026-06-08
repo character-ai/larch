@@ -408,14 +408,41 @@ aggregator fails (so execution issues can point at committed paths instead of
 per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
 `scripts/larch-log.sh` because the aggregates already cover their content),
-panel manifest, code-voter slots, collector/tally env files, coder dispatch
-state (env, prompt, tool log, wrapper logs), and any later registered coder
-artifacts. The `review-core.sh` flush is the first
-snapshot for the round; `review-and-fix.sh` may run one more `write-round`
-after coder application so the committed round directory reflects the full
-round state before the later shared log-commit paths copy it into
+panel manifest (with `archetype_ref` for dynamic slots — see below),
+code-voter slots, and any later registered coder artifacts. The `review-core.sh`
+flush is the first snapshot for the round; `review-and-fix.sh` may run one more
+`write-round` after coder application so the committed round directory reflects
+the full round state before the later shared log-commit paths copy it into
 `larch-logs/implement/<RUN_ID>/round-<N>/` in the repo. There is no per-round
 commit.
+
+**`round-meta.json`** (Phase 3c, issue #3716) — the seven smallest per-round
+sidecar files are consolidated into one JSON object rather than committed
+individually. Sections:
+
+| Section | Source file |
+|---|---|
+| `tally` | `review-tally.env` (KV → JSON object) |
+| `collector` | `collector-results.env` (raw text) |
+| `collect_log` | `collect-agent-results.log` (raw text) |
+| `summary` | `review-summary.json` (JSON passthrough) |
+| `coder` | `coder.env` (KV → JSON object) |
+| `wrapper_logs.cursor` | `coder-cursor.wrapper.log` (raw text) |
+| `wrapper_logs.codex` | `coder-codex.wrapper.log` (raw text) |
+
+Absent sections are omitted. The audit scan `coder-tool` reads `round-meta.json`
+as the primary source (`.coder.CODER_TOOL` via jq), falling back to `coder.env`
+for rounds predating Phase 3c.
+
+**Archetype pool** (Phase 3c) — `reviewer-dyn-*.md` archetype definitions are
+no longer committed per-round. Each unique definition is written once to
+`larch-logs/shared/archetypes/<sha256-12>.md` (content-addressed, idempotent).
+Entries in `panel-manifest.ndjson` for `dyn-*` slots carry an `archetype_ref`
+field (the SHA256-12 identifier). To resolve an archetype: look up
+`archetype_ref` in `panel-manifest.ndjson`, then read
+`larch-logs/shared/archetypes/<archetype_ref>.md`. The pool grows monotonically;
+retroactive migration of pre-Phase-3c directories is handled by
+`scripts/consolidate-round-sidecars.sh`.
 
 ## Tracking issue comments
 
