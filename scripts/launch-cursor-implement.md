@@ -59,3 +59,11 @@ Coverage is split into two slices:
 - Optional local smoke gated on `CURSOR_PRESENT=true`: launches a real `cursor agent` against a tiny canned prompt. This is for local development only and is not wired into the Makefile.
 
 **Makefile wiring**: `make test-cursor-implementer` runs the always-on offline slice. `make test-harnesses` includes that target.
+
+## Vendor failure-diagnostics batch (#3713)
+
+`append_launch_failure` appends the launcher's diagnostic source to the durable
+`vendor-failure-diagnostics` batch via `append_vendor_failure_diagnostics`, in
+addition to the `execution-issues.md` entry. The carrier itself is saved by
+`run-external-agent.sh` (this launcher routes through it). See
+`docs/vendor-agent-diagnostics-audit.md`.

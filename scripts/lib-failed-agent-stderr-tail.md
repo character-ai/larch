@@ -42,6 +42,45 @@ Optional 4th positional argument `explicit_sink`: in default (non-capture) mode,
 - **`emit_failed_agent_stderr_tail_larch_err`** — fenced tail via `larch_err` (quiet-init callers).
 - **`_emit_failed_agent_stderr_tail_line`** — single sanitized line via `larch_err` or `>&2` fallback.
 
+## Vendor-agent failure-diagnostics carrier (#3713)
+
+A second function family composes a single committed failure carrier so a failed
+vendor launch at any site leaves enough committed diagnostics to distinguish
+health-gate fast-fail vs mid-run crash vs timeout (124) vs auth vs quota.
+
+- **`write_failure_diag OUTPUT [--sink P] [--history P] [--events P]`** — compose
+  `${OUTPUT}.failure-diag` from the source list (`.sidecar.history`, filtered
+  `.events.history`, `--sink`, `.sidecar`, `.diag`, filtered `.events.jsonl`,
+  `.stderr`, `.launch-stderr`, `.launcher-stderr`) as labeled, bounded sections.
+  Event / transcript streams are folded to failure-shaped lines only (success
+  bulk stripped); diagnostic streams are included as bounded tails. Append-with-
+  header when the carrier already exists. Returns 0 when the carrier is non-empty.
+  Applies content folding + byte caps only — secret/tmpdir redaction happens
+  downstream at publish / `append_vendor_failure_diagnostics`.
+- **`resolve_failure_diagnostic_source OUTPUT [--sink P] [--history P] [--events P]`**
+  — print the best available source: carrier first, else the first non-empty
+  fallback across the source list (including `-retry` / `-ns-retry` carrier
+  candidates). Returns 1 when all candidates are empty.
+- **`external_stream_reset TARGET HISTORY [LABEL]`** — archive a bounded tail of a
+  per-attempt stream to an append-only HISTORY (with an attempt header) when
+  TARGET is non-empty, then truncate TARGET. Replaces bare `: > "$SIDECAR"`
+  truncations so per-attempt stderr survives. `/dev/null` no-op.
+- **`append_vendor_failure_diagnostics --source P --site L [--tmpdir D] [--exit-code N]`**
+  — append a resolved, **redacted** excerpt as a per-slot part file under
+  `$tmpdir/vendor-failure-diagnostics.parts/` (the SOLE durable implement flush
+  path; `scripts/flush-vendor-failure-diagnostics.sh` merges parts → batch).
+  Per-slot staging avoids interleaved concurrent appends without `flock`. Empty
+  source → synthesized `no diagnostics captured (exit N)`. Best-effort.
+- **`resolve_execution_issues_log`** — shared log-location resolver, precedence
+  `LARCH_EXECUTION_ISSUES_LOG` → `dirname(SESSION_ENV_PATH)` → `IMPLEMENT_TMPDIR`
+  → `DESIGN_TMPDIR` → `REVIEW_TMPDIR`.
+
+Tunables: `LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES` (default **120**) per-section
+tail lines; `vendor_failure_diag_byte_cap` returns **16384**. Producers:
+`scripts/run-external-agent.sh` (central carrier in the EXIT trap),
+`scripts/launch-review.sh`, `scripts/launch-claude-subprocess.sh`, the implement
+launchers. See `docs/vendor-agent-diagnostics-audit.md` for the per-site audit.
+
 ## Harness
 
 `scripts/test-lib-failed-agent-stderr-tail.sh` — Makefile target `test-lib-failed-agent-stderr-tail`.

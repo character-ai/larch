@@ -145,20 +145,29 @@ assert_contains "redaction: token replaced" "$redact_log" "<REDACTED-TOKEN>"
 assert_contains "redaction: non-secret preserved" "$redact_log" "safe text"
 assert_not_contains "redaction: raw token absent" "$redact_log" "$secret_token"
 
+# #3713 fail-closed backstop: a missing --output-file no longer exits 2; it
+# synthesizes a "no diagnostics captured (exit N)" body so the failure is logged
+# with non-empty content (execution-issues.md error blocks are never empty).
 missing_log="$TMPDIR_BASE/missing-log.md"
-printf 'unchanged\n' > "$missing_log"
+: > "$missing_log"
 set +e
-missing_out=$("$SCRIPT" --log "$missing_log" --site "missing" --tool "tool" --exit-code 1 --category "Tool Failures" --output-file "$TMPDIR_BASE/does-not-exist" 2>&1)
+"$SCRIPT" --log "$missing_log" --site "missing" --tool "tool" --exit-code 7 --category "Tool Failures" --output-file "$TMPDIR_BASE/does-not-exist" >/dev/null 2>&1
 missing_rc=$?
 set -e
-assert_rc "missing input: exits non-zero" "$missing_rc" 2
-printf '%s\n' "$missing_out" > "$TMPDIR_BASE/missing-out.txt"
-assert_contains "missing input: diagnostic" "$TMPDIR_BASE/missing-out.txt" "FAILED=true"
-if [ "$(cat "$missing_log")" = "unchanged" ]; then
-    ok "missing input: log unchanged"
-else
-    fail "missing input: log unchanged"
-fi
+assert_rc "missing input: backstop exits 0" "$missing_rc" 0
+assert_contains "missing input: synthesized line" "$missing_log" "no diagnostics captured (exit 7)"
+assert_contains "missing input: header present" "$missing_log" "- **Step missing — tool failed (exit 7)**:"
+
+# Zero-byte input also triggers the backstop (never an empty fenced block).
+zero_log="$TMPDIR_BASE/zero-log.md"
+: > "$zero_log"
+: > "$TMPDIR_BASE/zero-input.txt"
+set +e
+"$SCRIPT" --log "$zero_log" --site "zero" --tool "codex" --exit-code 124 --category "External Reviewer Issues" --output-file "$TMPDIR_BASE/zero-input.txt" >/dev/null 2>&1
+zero_rc=$?
+set -e
+assert_rc "zero-byte input: backstop exits 0" "$zero_rc" 0
+assert_contains "zero-byte input: synthesized line" "$zero_log" "no diagnostics captured (exit 124)"
 
 atomic_log="$TMPDIR_BASE/atomic-log.md"
 printf 'original\n' > "$atomic_log"

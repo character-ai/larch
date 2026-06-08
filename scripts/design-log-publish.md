@@ -279,3 +279,13 @@ Offline harness: `scripts/test-design-log-publish.sh` (Makefile target
 ## Recent contract coverage
 
 - `--repo` is validated as `OWNER/REPO`; malformed values exit 1 before `gh` / network work and do not emit a success envelope.
+
+## Vendor failure-diagnostics carrier exclusions (#3713)
+
+`design_artifact_excluded` keeps raw per-attempt diagnostic archives out of git —
+`*.sidecar`, `*.diag`, `*.events.jsonl`, plus the `#3713` additions
+`*.sidecar.history`, `*.events.history`, the scout tier raw stems `*.raw.cursor` /
+`*.raw.claude`, and `scout-plan-manifest.json.raw.{meta,stderr,prompt}`. None of
+those arms end in `.failure-diag`, so the composed `*.failure-diag` carrier falls
+through to the default-include path and is staged + redacted like any other
+committed artifact. See `docs/vendor-agent-diagnostics-audit.md`.

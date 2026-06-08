@@ -74,6 +74,16 @@ that must continue after a tool failure should invoke this helper
 best-effort, usually with `|| true` after capturing its own command's
 output.
 
+## Fail-closed backstop (#3713)
+
+A **missing or zero-byte** `--output-file` no longer exits 2. Instead the helper
+synthesizes a one-line body `no diagnostics captured (exit <N>)` (using
+`--exit-code`) and logs it normally, so an `execution-issues.md` failure entry is
+**never an empty fenced block** when the upstream diagnostic stream was lost
+(e.g. a sidecar truncated by a retry loop, or a health-gate fast-fail that left
+the sidecar empty). The synthesized body still flows through `--redact` when
+present. A redaction-helper failure on a non-empty input is still a hard exit 2.
+
 ## Invariants
 
 - Bash 3.2 portable.
@@ -81,14 +91,15 @@ output.
 - The write is delegated to `append-execution-issue.sh`, preserving its
   sibling-temp plus `mv` atomic insertion behavior and its cross-process
   serialization via `mkdir` mutex (see `scripts/append-execution-issue.md`).
-- Missing input files fail before the log is modified.
+- Missing / zero-byte input files trigger the fail-closed backstop above
+  (synthesized non-empty body), not a pre-write failure.
 
 ## Harness
 
 `scripts/test-append-tool-failure.sh` covers single-line, multi-line,
 large-content, category routing, custom status labels, verdict /
-retry-count suffixes, transient-only omission, redaction, missing-input
-failure, and delegate failure atomicity. It is intended to run directly
+retry-count suffixes, transient-only omission, redaction, the missing /
+zero-byte fail-closed backstop, and delegate failure atomicity. It is intended to run directly
 and through the relevant-checks script harness.
 
 ## Edit In Sync

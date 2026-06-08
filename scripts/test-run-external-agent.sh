@@ -625,6 +625,32 @@ else
     fail "collect-agent-results.sh must use shared stderr-tail fence helper"
 fi
 
+# --- #3713: central failure-diagnostics carrier ---
+CARRIER_DIR="$TMPDIR/carrier"
+mkdir -p "$CARRIER_DIR"
+# Failure path composes ${output}.failure-diag before the .done sentinel.
+# Use a non-codex/cursor tool label so the launch-time health gate is skipped.
+cf_out="$CARRIER_DIR/codex-fail.txt"
+# --stderr-sink names the same file the caller redirects fd2 to; the wrapper only
+# records the path (it does not read it during the run — the EXIT trap reads it
+# after the child writes), so the SC2094 read/write-same-file note is a false
+# positive here. This mirrors the real launcher pattern (`--stderr-sink "$SIDECAR"
+# ... 2>"$SIDECAR"`).
+# shellcheck disable=SC2094
+"$WRAPPER" --tool faketool --output "$cf_out" --timeout 5 --stderr-sink "$CARRIER_DIR/sink.log" -- \
+    bash -c 'echo "Error: quota exceeded usage limit" >&2; echo "fatal panic" >&2; exit 7' \
+    2>"$CARRIER_DIR/sink.log" || true
+assert_file_content "carrier .done written" "${cf_out}.done" "7"
+if [[ -s "${cf_out}.failure-diag" ]]; then pass; else fail "carrier: ${cf_out}.failure-diag should be non-empty on failure"; fi
+assert_grep "carrier captured stderr" "quota exceeded usage limit" "${cf_out}.failure-diag"
+
+# Retry-then-success: a successful run clears a stale carrier (entry+success clear).
+cs_out="$CARRIER_DIR/codex-ok.txt"
+printf 'stale carrier\n' > "${cs_out}.failure-diag"
+"$WRAPPER" --tool faketool --output "$cs_out" --timeout 5 --capture-stdout -- \
+    bash -c 'echo ok-output; exit 0' 2>/dev/null || true
+if [[ -e "${cs_out}.failure-diag" ]]; then fail "carrier: success must leave no failure-diag"; else pass; fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

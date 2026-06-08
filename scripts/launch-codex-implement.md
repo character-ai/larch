@@ -52,3 +52,11 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 **Test harness**: `skills/implement/scripts/test-codex-implementer.sh` PATH-stubs `codex` and exercises flag validation, timeout validation, missing input files, manifest/qa-pending parent validation, missing-session-tmpdir validation, env-derived timing fallback, model-args preflight envelopes and retry classification, the five-line `KEY=VALUE` stdout envelope, transcript detection via `--output-last-message`, Codex argv shape/model forwarding including `--add-dir`, per-invocation `CODEX_HOME` config, dynamic-only prompt sidecar, fail-closed parse diagnostics appended to the sidecar, and resume prompt composition. `skills/implement/scripts/test-step2-dispatch.sh` remains the dispatcher harness for Step 2 branches that do not call this launcher (claude_fallback, argument validation, resume-cap bail).
 
 **Makefile wiring**: directly exercised by `make test-codex-implementer` and included in `make test-harnesses-3`; dispatcher-only paths remain covered by `make test-step2-dispatch`.
+
+## Vendor failure-diagnostics batch (#3713)
+
+`append_launch_failure` appends the launcher's diagnostic source to the durable
+`vendor-failure-diagnostics` batch via `append_vendor_failure_diagnostics`, in
+addition to the `execution-issues.md` entry. The carrier itself is saved by
+`run-external-agent.sh` (this launcher routes through it). See
+`docs/vendor-agent-diagnostics-audit.md`.

@@ -41,6 +41,14 @@ if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "
         >/dev/null 2>&1 || true
 fi
 
+# #3713: stage the vendor-failure-diagnostics batch from per-slot parts before
+# the commit below (no-op when no vendor-agent failures occurred this run).
+"$SCRIPT_DIR/flush-vendor-failure-diagnostics.sh" \
+    --tmpdir "$IMPLEMENT_TMPDIR" \
+    --run-id "$run_id" \
+    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+    >/dev/null 2>&1 || true
+
 # Capture the commit's stdout contract so a secret-scrub warning is not lost:
 # larch-log.sh commit emits SECRET_SCRUB_VIOLATIONS=<n> when the pre-flush gate
 # redacted a secret. This script's stderr IS surfaced by its caller (unlike the

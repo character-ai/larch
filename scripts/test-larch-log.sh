@@ -141,6 +141,18 @@ assert_round_artifact_included "scout-archetype-yield.tsv" "0" "round artifact i
 assert_round_artifact_included "codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
 assert_round_artifact_included "coder-codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
 assert_round_artifact_included "foo.events.jsonl" "1" "round artifact excludes arbitrary events jsonl"
+# #3713 F14: the per-output failure carrier and its raw archives are denied in the
+# write-round path (the vendor-failure-diagnostics batch is the sole durable path).
+assert_round_artifact_included "codex-output.txt.failure-diag" "1" "round artifact excludes failure-diag carrier (F14)"
+assert_round_artifact_included "codex-output.txt.sidecar.history" "1" "round artifact excludes sidecar.history archive"
+assert_round_artifact_included "codex-output.txt.events.history" "1" "round artifact excludes events.history archive"
+# #3713: the vendor-failure-diagnostics batch slug is registered (replace/.txt/none).
+_vfd_slug=$(bash -c 'source "'"$REPO_ROOT"'/scripts/larch-log-batches.sh"; larch_log_batch_info vendor-failure-diagnostics' 2>/dev/null || true)
+if [ "$_vfd_slug" = ".txt replace none" ]; then
+    pass "vendor-failure-diagnostics slug registered"
+else
+    fail "vendor-failure-diagnostics slug wrong/absent: '$_vfd_slug'"
+fi
 assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
 assert_round_artifact_included "dyn-api-contract-codex-output.txt" "0" "round artifact includes dynamic codex raw output"
 assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt" "0" "round artifact includes dynamic codex phased output"

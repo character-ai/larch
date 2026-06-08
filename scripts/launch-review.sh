@@ -20,6 +20,14 @@ source "$SCRIPT_DIR/lib-dirty-tree-sidecar.sh"
 # shellcheck source=scripts/lib-quiet.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-quiet.sh"
+# #3713: vendor-agent failure-diagnostics carrier helpers (external_stream_reset,
+# write_failure_diag, resolve_failure_diagnostic_source,
+# append_vendor_failure_diagnostics). launch-review.sh did NOT source this lib
+# before; without it, retry truncations dropped per-attempt stderr and give-up
+# logged a truncated (empty) sidecar.
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() {
@@ -81,6 +89,12 @@ append_launch_failure() {
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "External Reviewer Issues" --output-file "$diag_file" \
         "${_args[@]}" --redact >/dev/null 2>&1 || true
+    # #3713: also append the resolved carrier to the durable vendor-failure
+    # batch (no-op unless IMPLEMENT_TMPDIR is set; the helper redacts + stages a
+    # per-slot part for the flush helper).
+    if declare -f append_vendor_failure_diagnostics >/dev/null 2>&1; then
+        append_vendor_failure_diagnostics --source "$diag_file" --site "$site $tool_label" --exit-code "$rc" || true
+    fi
 }
 
 _launch_codex() {
@@ -628,20 +642,28 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             _jitter=$(( RANDOM % 2 ))
             sleep $(( _backoff + _jitter )) || true
         fi
-        : > "$SIDECAR" 2>/dev/null || true
+        external_stream_reset "$SIDECAR" "${OUTPUT}.sidecar.history" "attempt"
         continue
     fi
     if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR"; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
-        : > "$SIDECAR" 2>/dev/null || true
+        external_stream_reset "$SIDECAR" "${OUTPUT}.sidecar.history" "attempt"
         continue
     fi
     break
 done
 
 if (( EXIT_CODE != 0 )); then
+    # Compute the verdict BEFORE composing/resolving the carrier so the
+    # classifier reads the live final-attempt sidecar (verdict-before-reset).
     _VERDICT=$(external_failure_verdict "codex" "$SIDECAR")
-    append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
+    # #3713: compose + resolve the failure carrier (carrier-preferred, else
+    # sidecar.history / sidecar / diag) so give-up logs real diagnostics even
+    # when the final attempt left an empty sidecar (health-gate fast-fail).
+    write_failure_diag "$OUTPUT" --sink "$SIDECAR" --events "$CODEX_EVENTS" >/dev/null 2>&1 || true
+    _CARRIER=$(resolve_failure_diagnostic_source "$OUTPUT" --sink "$SIDECAR" --events "$CODEX_EVENTS" || true)
+    [[ -n "$_CARRIER" ]] || _CARRIER="$SIDECAR"
+    append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$_CARRIER" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
 if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" ]]; then
@@ -1068,7 +1090,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         && external_is_transient_infra_failure "cursor" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
         _cursor_transient_backoff
-        : > "$SIDECAR" 2>/dev/null || true
+        external_stream_reset "$SIDECAR" "${OUTPUT}.sidecar.history" "attempt"
         continue
     fi
     if (( EXIT_CODE == 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
@@ -1080,24 +1102,31 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         && jq -e '(.result // "") == ""' "$OUTPUT" >/dev/null 2>&1; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
         _cursor_transient_backoff
-        : > "$SIDECAR" 2>/dev/null || true
+        external_stream_reset "$SIDECAR" "${OUTPUT}.sidecar.history" "attempt"
         continue
     fi
     if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) \
         && { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; }; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
-        : > "$SIDECAR" 2>/dev/null || true
-        : > "${OUTPUT}.diag" 2>/dev/null || true
+        external_stream_reset "$SIDECAR" "${OUTPUT}.sidecar.history" "cursor auth attempt"
+        external_stream_reset "${OUTPUT}.diag" "${OUTPUT}.sidecar.history" "cursor auth diag"
         continue
     fi
     break
 done
 
 if (( EXIT_CODE != 0 )); then
+    # Verdict-before-reset: classify from the live final-attempt sidecar/diag.
     _VERDICT=$(external_failure_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
-    _FAILURE_OUTPUT="$SIDECAR"
-    if [[ ! -s "$_FAILURE_OUTPUT" && -s "${OUTPUT}.diag" ]]; then
-        _FAILURE_OUTPUT="${OUTPUT}.diag"
+    # #3713: compose + resolve the failure carrier so give-up logs real
+    # diagnostics even when the final attempt left an empty sidecar.
+    write_failure_diag "$OUTPUT" --sink "$SIDECAR" >/dev/null 2>&1 || true
+    _FAILURE_OUTPUT=$(resolve_failure_diagnostic_source "$OUTPUT" --sink "$SIDECAR" || true)
+    if [[ -z "$_FAILURE_OUTPUT" ]]; then
+        _FAILURE_OUTPUT="$SIDECAR"
+        if [[ ! -s "$_FAILURE_OUTPUT" && -s "${OUTPUT}.diag" ]]; then
+            _FAILURE_OUTPUT="${OUTPUT}.diag"
+        fi
     fi
     append_launch_failure "review Step 2" "cursor-review" "$EXIT_CODE" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi

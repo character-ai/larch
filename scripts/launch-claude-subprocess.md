@@ -23,3 +23,13 @@ Harness: `scripts/test-launch-claude-subprocess.sh`, wired into `make lint` thro
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 
 Edit in sync: update this file, the harness, `SECURITY.md`, `scripts/dispatch-code-voters.sh`, and `skills/review/scripts/dispatch-panel.sh` when argv grammar, sidecar grammar, path validation, or read-only wording changes.
+
+## Vendor failure-diagnostics carrier (#3713 F7)
+
+This launcher owns `${OUTPUT}`, so it clears `${OUTPUT}.failure-diag` at launch
+start and on success (the retry-then-success guard), and composes the carrier via
+`write_failure_diag` (sink = the subprocess `${OUTPUT}.stderr`) on any nonzero
+exit. Site-aware execution-issues / batch logging is intentionally left to the
+wrappers that know the tmpdir + site (`launch-claude-review.sh`,
+`scout-dynamic-archetypes.sh`, `generate-code-flow-diagram.sh`). See
+`docs/vendor-agent-diagnostics-audit.md`.

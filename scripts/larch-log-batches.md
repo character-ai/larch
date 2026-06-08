@@ -111,3 +111,14 @@ Compose the body in a shell variable or temp file first, then pass via
 `--arg body "$BODY"` so `jq` handles JSON string escaping (newlines, quotes,
 etc.) without shell word-splitting or glob expansion. For file-backed content,
 `--rawfile` is also safe.
+
+## vendor-failure-diagnostics batch (#3713)
+
+The `vendor-failure-diagnostics .txt replace none` slug is the durable carrier
+for vendor-agent launch failures. Producers append redacted per-slot parts via
+`append_vendor_failure_diagnostics` (`scripts/lib-failed-agent-stderr-tail.sh`);
+`scripts/flush-vendor-failure-diagnostics.sh` merges parts into
+`vendor-failure-diagnostics.txt` and writes the batch. `replace` mode is used (not
+`append`) because the helper derives the full batch from the parts set on every
+flush, so repeated pre-commit flushes converge idempotently. See
+`docs/vendor-agent-diagnostics-audit.md`.

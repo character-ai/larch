@@ -78,7 +78,12 @@ round_artifact_included() {
         cursor-specialist-*-output-phase*.txt|cursor-specialist-*-output-phase*.txt.*|cursor-specialist-*-output-retry.txt|cursor-specialist-*-output-retry.txt.*|codex-specialist-*-output-phase*.txt|codex-specialist-*-output-phase*.txt.*|codex-specialist-*-output-retry.txt|codex-specialist-*-output-retry.txt.*)
             return 1
             ;;
-        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
+        # `*.failure-diag` is DENIED in the per-output write-round path on
+        # purpose (#3713 F14): the canonical durable implement carrier is the
+        # `vendor-failure-diagnostics` batch (sole durable path), so committing
+        # the per-output carrier here too would double-commit. The raw
+        # `*.sidecar.history` / `*.events.history` archives are never committed.
+        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*.sidecar.history|*.events.history|*.failure-diag|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
             return 1
             ;;
         # Excluded vote prompts (the ballot is byte-identical across voters

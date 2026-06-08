@@ -8,7 +8,13 @@ design_round_artifact_included() {
         cursor-plan-*-output.txt|codex-primary-plan-*-output.txt|dyn-*-output.txt)
             return 1
             ;;
-        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl)
+        # #3713: preserve the composed vendor-failure carrier in round snapshots
+        # so design plan-review rounds don't drop it; the raw archives below stay
+        # excluded.
+        *.failure-diag)
+            return 0
+            ;;
+        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.sidecar.history|*.events.jsonl|*.events.history)
             return 1
             ;;
         *-output.txt.prompt|*-output.txt.meta|*-output.txt.json|*-output.txt.cap-hit|*-vote-prompt.txt)

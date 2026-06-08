@@ -37,3 +37,9 @@ Business commits must **not** tail-call this helper (for example `scripts/git-co
 
 Keep this file synchronized with `scripts/larch-log.md`, `scripts/ship-pr.md`,
 and `skills/implement/SKILL.md` when log-flush ownership changes.
+
+## Vendor failure-diagnostics flush (#3713)
+
+Calls `scripts/flush-vendor-failure-diagnostics.sh` (best-effort, no commit)
+before the log commit/push so the `vendor-failure-diagnostics` batch carries any
+vendor-agent failure carriers staged this run. No-op when no failures occurred.

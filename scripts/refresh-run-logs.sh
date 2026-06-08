@@ -78,6 +78,13 @@ fi
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
+# #3713: stage the vendor-failure-diagnostics batch from per-slot parts so a
+# CI-retry / rebase push carries the latest vendor failure carriers (no-op when
+# no vendor-agent failures occurred this run).
+"$SCRIPT_DIR/flush-vendor-failure-diagnostics.sh" \
+    --tmpdir "$IMPL_TMPDIR" \
+    --run-id "$run_id" \
+    --log-root "$log_root" 2>/dev/null || true
 # Re-capture session transcript so CI-retry pushes carry the most recent turns.
 # Use the already-exported LARCH_CLAUDE_SOURCE_FILE (set by the session-env block above
 # when session-env.sh exists); falls back to empty string if missing, which causes the

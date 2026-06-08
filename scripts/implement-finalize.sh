@@ -978,6 +978,16 @@ run_teardown() {
     larch_flush_run_id=$(read_state RUN_ID)
     post_merge_sentinel="$IMPLEMENT_TMPDIR/post-merge-sentinel"
     flush_execution_issues_safety_net
+    # #3713 F13: mirror the execution-issues safety net for the vendor-failure
+    # carrier batch. The flush helper only stages the batch (larch-log.sh write);
+    # the commit is owned by the pre-merge flush sites (NEVER #16 / post-merge
+    # sentinel guard inside larch-log.sh commit), so this is a no-op post-merge.
+    if [ -n "$larch_flush_run_id" ]; then
+        "$SCRIPT_DIR/flush-vendor-failure-diagnostics.sh" \
+            --tmpdir "$IMPLEMENT_TMPDIR" \
+            --run-id "$larch_flush_run_id" \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" >/dev/null 2>&1 || true
+    fi
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
         manifest_path_teardown="$IMPLEMENT_TMPDIR/larch-logs/implement/$larch_flush_run_id/manifest.json"
         larch_recovery_ok=true

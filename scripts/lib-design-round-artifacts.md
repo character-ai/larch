@@ -35,3 +35,9 @@ Note: `ballot.txt` remains in the include list (copied into round-N/ during the 
 The revise include set is empty. Step 3 no longer runs inter-round revise, so newly published design logs must not include revise prompts, outputs, or candidate patches.
 
 Anything under `revise/` is excluded.
+
+## Vendor failure-diagnostics carrier (#3713)
+
+`design_round_artifact_included` returns 0 for `*.failure-diag` so the composed
+vendor-failure carrier is preserved in plan-review round snapshots; the raw
+`*.sidecar.history` / `*.events.history` archives remain excluded.
