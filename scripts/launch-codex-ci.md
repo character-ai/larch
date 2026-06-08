@@ -19,7 +19,7 @@ The launcher builds a fixed prompt containing only trusted path and identifier v
 
 - Inline `PROMPT` body now carries the Codex subprocess-tool prohibition matching `agents/_implementer-base.md` Hard guard #9 (issue #2991): the CI fixer must not spawn persistent interactive subprocess sessions and must use heredocs / pipes / input files for subprocess input. The signature phrase `persistent interactive subprocess` is grep-pinned in `scripts/test-launch-codex-ci.sh`.
 
-When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.sidecar` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count.
+When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.sidecar` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count. The launcher also calls `append_vendor_failure_diagnostics` (from `scripts/lib-failed-agent-stderr-tail.sh`, sourced at startup) to stage the per-slot failure diagnostic for the `vendor-failure-diagnostics` larch-log batch committed at Step 7a.
 
 ## Machine-readable failure classification
 
