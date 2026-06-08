@@ -257,6 +257,18 @@ def _summary_from_manifest(ctx: RunContext) -> str:
     return "- Implement requested changes.\n"
 
 
+def _write_ci_fix_detail_log(ctx: RunContext, detail: str) -> str:
+    """Write the ci-fix exhaustion detail text to a tmpdir file; return path or empty."""
+    if not detail or not ctx.tmpdir or not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return ""
+    try:
+        path = Path(ctx.tmpdir) / "ci-fix-exhausted-detail.log"
+        _ = path.write_text(detail, encoding="utf-8")
+        return str(path)
+    except OSError:
+        return ""
+
+
 def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     issue = ctx.issue_number or ctx.issue
     prefix = f"Fixes #{issue}: " if issue and str(issue).isdigit() else ""
@@ -335,7 +347,7 @@ def _terminal_overlay_fields(
     return {
         "EXIT_CODE": _terminal_exit_code(result),
         "STALL_TRACKING": _state_bool(value=result is Outcome.STALLED),
-        "STALL_STEP": step if result is Outcome.STALLED else "",
+        "STALL_STEP": step if result is Outcome.STALLED or step else "",
         "BAIL_REASON": ctx.final_bail_reason,
         "BAIL_NEEDS_USER_INPUT": _state_bool(value=ctx.bail_needs_user_input),
         "FAILED_RUN_ID": failed_run_id,
@@ -1417,15 +1429,26 @@ def run_ship(
                         pr_url=working.pr_url,
                         detail=monitor.result.detail or "transient retry cap",
                     )
+                _bail_ctx = working
+                _bail_detail_log = ""
+                _bail_step = monitor.result.detail or "ci-monitor"
+                if (
+                    monitor.result.outcome is Outcome.NEEDS_USER_INPUT
+                    and (monitor.result.detail or "").startswith("ci-fix-exhausted")
+                ):
+                    _bail_ctx = working.with_(final_bail_reason=config.NEEDS_USER_CI_FIX_EXHAUSTED)
+                    _bail_detail_log = _write_ci_fix_detail_log(working, monitor.result.detail or "")
+                    _bail_step = "10"
                 _write_terminal_state(
-                    working,
+                    _bail_ctx,
                     monitor.result.outcome,
-                    monitor.result.detail or "ci-monitor",
+                    _bail_step,
                     iteration=persisted[0],
                     rebase_count=persisted[1],
                     fix_attempts=persisted[2],
                     transient_retries=persisted[3],
                     failed_run_id=monitor.failed_run_id or "",
+                    bail_failure_detail_log=_bail_detail_log,
                 )
                 return _step_result_to_ship(
                     monitor.result,

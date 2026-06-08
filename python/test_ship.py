@@ -1987,6 +1987,73 @@ def test_ctx_from_args_rehydrates_cli_state_file(tmp_path: Path, monkeypatch: py
     assert ctx.stall_step == "seeded"
 
 
+# ---------------------------------------------------------------------------
+# ci-fix-exhausted envelope tests (issue #3726)
+# ---------------------------------------------------------------------------
+
+def test_ci_fix_exhausted_write_detail_log_returns_path(tmp_path: Path) -> None:
+    """_write_ci_fix_detail_log writes the detail text and returns the file path."""
+    ctx = _ctx(tmp_path)
+    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
+    path = ship._write_ci_fix_detail_log(ctx, ci_detail)  # pyright: ignore[reportPrivateUsage]
+    assert path
+    assert Path(path).read_text(encoding="utf-8") == ci_detail
+
+
+def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> None:
+    """_write_terminal_state for NEEDS_USER_INPUT/ci-fix-exhausted persists BAIL_REASON, BAIL_FAILURE_DETAIL_LOG, STALL_STEP."""
+    state_file = tmp_path / "ship-pr-state.sh"
+    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py\n"
+    ctx = _ctx(tmp_path, state_file=str(state_file), final_bail_reason="ci-fix-exhausted")
+    detail_log_path = ship._write_ci_fix_detail_log(ctx, ci_detail)  # pyright: ignore[reportPrivateUsage]
+
+    ship._write_terminal_state(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        Outcome.NEEDS_USER_INPUT,
+        "10",
+        bail_failure_detail_log=detail_log_path,
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "BAIL_REASON=ci-fix-exhausted\n" in state
+    assert f"BAIL_FAILURE_DETAIL_LOG={detail_log_path}\n" in state
+    assert "STALL_STEP=10\n" in state
+
+
+def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path) -> None:
+    """Stall-recovery classifier on the new envelope yields ci-fix-exhausted/step8-shippr."""
+    stall_recovery = Path(__file__).resolve().parents[1] / "skills" / "implement" / "scripts" / "stall-recovery-report.sh"
+    if not stall_recovery.exists():
+        pytest.skip("stall-recovery-report.sh not found — skipping integration check")
+
+    ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py asserted False\n"
+    detail_log = tmp_path / "ci-fix-exhausted-detail.log"
+    _ = detail_log.write_text(ci_detail, encoding="utf-8")
+
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        f"PHASE=stalled\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
+        f"BAIL_REASON=ci-fix-exhausted\nBAIL_FAILURE_DETAIL_LOG={detail_log}\n"
+        f"STALL_TRACKING=false\nSTALL_STEP=10\nEXIT_CODE=3\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "session-env.sh").write_text("", encoding="utf-8")
+
+    completed = subprocess.run(
+        ["bash", str(stall_recovery), "classify",
+         "--implement-tmpdir", str(tmp_path),
+         "--in-memory-stall-tracking", "true",
+         "--failure-detail-log", str(detail_log)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    out = completed.stdout
+    assert "FAILURE_CLASS=ci-fix-exhausted" in out, f"unexpected classify output: {out}"
+    assert "RESUME_HINT=step8-shippr" in out, f"unexpected classify output: {out}"
+
+
 def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     class FailingJournal:
         def __init__(self, *_args: object) -> None:
