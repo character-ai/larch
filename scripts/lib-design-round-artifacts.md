@@ -20,7 +20,7 @@ Any allowlist change MUST update, in the same commit:
 
 ## Top-level `round-N/` allowlist
 
-**Include basenames:** `findings.md`, `findings-oos.md`, `findings-classification.tsv`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `round-start-s`, `plan.txt` (round 1 only; see below). `findings-in-scope.md` is dropped from the include set (#3715); it is a strict subset of `findings.md` and is recoverable from `findings-classification.tsv` plus `findings-oos.md`.
+**Include basenames:** `findings.md`, `findings-oos.md`, `findings-classification.tsv`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `round-start-s`, `plan.txt` (round 1 only; see below). `accepted-plan-findings.md` and `rejected-findings.md` are dropped from the round-level include set (#3721) — they are cumulative across rounds (round N's copy is a prefix-snapshot of round N+1's), so the top-level copies in `$DESIGN_TMPDIR/` are kept and the round-level duplicates are dropped; per-round outcome attribution is preserved by each round's `findings-classification.tsv` plus `findings.md`. `findings-in-scope.md` is also dropped from the include set (#3715); it is a strict subset of `findings.md` and is recoverable from `findings-classification.tsv` plus `findings-oos.md`.
 
 **Include patterns:** `*-vote-output.txt`, `*-vote-output-first-pass.txt`, `voter*-diag.txt`.
 

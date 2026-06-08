@@ -52,7 +52,11 @@ branch by:
    `*-plan-voter-prompt.txt`, `aggregator-prompt.md`, `aggregate-untagged-input.md`,
    `findings-in-scope.pre-dedup.md`, `findings-in-scope.pre-aggregation.md`,
    `scout-plan-manifest.json.raw`, `scout-plan-manifest.json.raw.prompt`,
-   `*-vote-output.txt.meta`, `*-vote-output.txt.json`. The exclusion list is
+   `*-vote-output.txt.meta`, `*-vote-output.txt.json`. Phase 3d exclusions per
+   #3721: `issue-body.txt` (raw tracking-issue body; canonical home is the
+   GitHub issue), `issue.json` (JSON snapshot of the same issue), and
+   `architecture-diagram.md` (same Mermaid body lives in the `larch:diagrams`
+   issue comment). The exclusion list is
    also consulted for round-level files encountered in the round staging loop
    (so ballot.txt in a round directory is silently skipped rather than erroring).
    All other top-level basenames pass through (deny-only model). `findings.md` /

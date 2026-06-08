@@ -33,8 +33,8 @@ assert_included findings.md
 assert_excluded findings-in-scope.md
 assert_included findings-oos.md
 assert_included findings-classification.tsv
-assert_included accepted-plan-findings.md
-assert_included rejected-findings.md
+assert_excluded accepted-plan-findings.md
+assert_excluded rejected-findings.md
 assert_included oos.md
 # Canonical pin for issue #3143 group A (oos-accepted-design.md allowlist coverage).
 assert_included oos-accepted-design.md
