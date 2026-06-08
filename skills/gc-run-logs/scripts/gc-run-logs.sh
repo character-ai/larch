@@ -101,11 +101,12 @@ fi
 # ---------------------------------------------------------------------------
 # Compute cutoff datetime string (ISO 8601, UTC)
 # ---------------------------------------------------------------------------
-CUTOFF_DT="$(python3 -c "
-import datetime, sys
-d = datetime.datetime.utcnow() - datetime.timedelta(days=$OLDER_THAN)
+CUTOFF_DT="$(python3 <<PY
+import datetime
+d = datetime.datetime.utcnow() - datetime.timedelta(days=${OLDER_THAN})
 print(d.strftime('%Y-%m-%dT%H:%M:%SZ'))
-")" || {
+PY
+)" || {
     larch_err "gc-run-logs: failed to compute cutoff date"
     emit_kv STATUS "error"
     exit 2

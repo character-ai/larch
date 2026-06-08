@@ -38,6 +38,8 @@ This preserves `/report-tokens` cost-trend history indefinitely while shedding r
 
 <!-- step:1 — Run gc-run-logs -->
 
+Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/gc-run-logs/scripts/gc-run-logs.md`.
+
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/gc-run-logs/scripts/gc-run-logs.sh" <flags>
 ```
