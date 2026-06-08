@@ -1,3 +1,0 @@
-[sergey-zhupanov/implementing-design-review-anchor-scout-3511 8697c0537] fix: commit render-main-agent-scope-anchor.sh missed by review coder
- 1 file changed, 51 insertions(+)
- create mode 100755 skills/design/scripts/render-main-agent-scope-anchor.sh
