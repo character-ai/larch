@@ -91,6 +91,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Analyze structured token reports from committed larch run logs, price Claude/Codex/Cursor runs through `scripts/token-cost.sh`, plot skill-aware trends, and print cost-reduction suggestions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#fluff-analysis"><code>/fluff-analysis</code></a></td>
+      <td><code>[--include-in-progress] [--cutoff ISO8601] [--min-group N]</code></td>
+    </tr>
+    <tr><td colspan="2">Characterize review <strong>fluff</strong> from committed larch run logs — which <code>/design</code> and <code>/implement</code> review suggestions get rejected, deferred to OOS, or accepted-but-low-value — by acceptance baselines, low-acceptance semantic groups, severity cuts, and reviewer-lane splits, then print data-driven recommendations for tightening the reviewer self-filter and judge (voter) instructions.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#relevant-checks-script"><code>scripts/relevant-checks.sh</code></a></td>
       <td><em>(none)</em></td>
     </tr>

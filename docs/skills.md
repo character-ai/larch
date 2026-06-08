@@ -103,6 +103,14 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 Analyze structured token reports from committed `larch-logs/<skill>/*/` run directories in the current larch repository. The skill requires `--skill=design|implement`, prices runs through `scripts/token-cost.sh`, writes a durable `Cache JSON:` NDJSON snapshot under a temp directory, optionally plots cost-over-time PNGs, and optionally posts a skill-prefixed GitHub issue. `--skill=implement` uses one aggregate graph and one per-day table set; `--skill=design` keeps the SIMPLE/HARD split. Filed issues omit raw per-issue JSON and the removed reported-vs-estimated comparison. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
 
+## `/fluff-analysis`
+
+**Arguments**: `[--include-in-progress] [--cutoff ISO8601] [--min-group N] [--log-root DIR] [--out FILE]`
+
+**Source**: [`skills/fluff-analysis/SKILL.md`](../skills/fluff-analysis/SKILL.md)
+
+Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed `larch-logs/design/*/` and `larch-logs/implement/*/` run directories in the current repository. The analyzer normalizes every review finding (outcome, reviewer/voter severity, multi-label semantic tags) and prints a markdown report: acceptance baselines, low-acceptance semantic groups (distinguishing reject-heavy true fluff from OOS-heavy valid-but-deferred), a testing breakdown, severity/quality/uncertain correlations, reviewer-lane splits, an accepted-but-low-value proxy, an optional `--cutoff` pre/post comparison, and data-driven recommendations. Keyword tags are directional; severity and outcome cuts are exact. `--include-in-progress` additionally reads un-flushed `/design` session temp dirs (racy snapshot, off by default). This is the standing tool behind `[Analysis Report]` issues; re-run it as the corpus grows to track whether necessity-gate changes (`skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run. Skill-local Python is not covered by `make py-lint` (scoped to `python/`).
+
 ## Relevant checks script
 
 **Path**: `scripts/relevant-checks.sh`
