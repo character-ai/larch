@@ -1,0 +1,4 @@
+[sergey-zhupanov/implementing-logs-size-reduction-phase-2-3709 85ef81000] Retroactive cleanup of committed /implement run logs (Phase 2, #3709)
+ 2 files changed, 503 insertions(+)
+ create mode 100644 scripts/cleanup-implement-logs.md
+ create mode 100644 scripts/cleanup-implement-logs.py
