@@ -37,6 +37,7 @@ larch-logs/
       final-summary.md
       oos-issues.ndjson
       run-statistics.md
+      vendor-failure-diagnostics.txt
       token-report.json
       timing-report.json
       execution-issues.ndjson
@@ -362,6 +363,12 @@ Two sub-blocks per record: accepted OOS observations that were filed as GitHub i
 **Mode**: replace. **Written**: Step 9a.1.
 
 Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics.
+
+### vendor-failure-diagnostics.txt
+
+**Mode**: replace. **Written**: Step 7a pre-ship flush via `scripts/flush-vendor-failure-diagnostics.sh`, when at least one vendor-agent slot logged a failure diagnostic during the run.
+
+Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_failure_diagnostics` in `scripts/lib-failed-agent-stderr-tail.sh`. Each slot entry is redacted (tmpdir paths and secrets) before being staged as a part under `$IMPLEMENT_TMPDIR/vendor-failure-diagnostics.parts/`; the flush helper concatenates all parts and writes the combined `vendor-failure-diagnostics.txt` batch. CI scripts (`launch-codex-ci.sh`, `launch-cursor-ci.sh`, `launch-claude-ci.sh`) and implement launchers (`launch-codex-implement.sh`, `launch-cursor-implement.sh`) feed this batch; reviewer launchers (`launch-review.sh`) also contribute when `IMPLEMENT_TMPDIR` is set. **Availability caveat**: runs that bail before Step 7a (e.g., Step 2 dispatcher stall or Step 5 review stall) do not flush this batch; diagnostic parts then remain in the session tmpdir and are removed at Step 18 cleanup. The batch is absent in the committed run log for such early-bail runs.
 
 ### token-report.json
 

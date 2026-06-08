@@ -105,6 +105,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "$RES
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
+> **Diagnostic note**: this lane uses `run-external-agent.sh` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
+
 **Cursor fallback** (if `cursor_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 
 ## Codex Reviewer (if `codex_available`)

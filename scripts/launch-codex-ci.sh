@@ -13,6 +13,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-codex-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 
 ROLE=""
 OUTPUT=""
@@ -46,6 +49,11 @@ append_launch_failure() {
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "Tool Failures" --output-file "$diag_file" \
         "${_args[@]}" --redact >/dev/null 2>&1 || true
+    # #3713: also append the launcher's diagnostic source to the durable
+    # vendor-failure batch (no-op when IMPLEMENT_TMPDIR is unset).
+    if declare -f append_vendor_failure_diagnostics >/dev/null 2>&1; then
+        append_vendor_failure_diagnostics --source "$diag_file" --site "$site $tool_label" --exit-code "$rc" || true
+    fi
 }
 
 while [ $# -gt 0 ]; do

@@ -22,4 +22,6 @@ The launcher accepts the same review context flags as `launch-review.sh` (`--mod
 
 **Failed-agent stderr tail:** agent failures write `${output}.stderr-tail` in `launch-claude-subprocess.sh` before `${output}.done`. When the subprocess exits non-zero and no sidecar exists yet, this launcher writes the tail from the captured subprocess stderr file (additive to the full stderr re-emit above).
 
+**Wrapper-validation failure-diag stub:** the EXIT trap writes a one-line `wrapper-exit: rc=<N> (argv/ctx validation failure)` stub to `${OUTPUT}.failure-diag` when the launcher exits non-zero and `OUTPUT` is set but `launch-claude-subprocess.sh` has not yet written its own `*.failure-diag` (i.e., the subprocess never ran). This stub is advisory only; it does not flow through `append_vendor_failure_diagnostics` because `IMPLEMENT_TMPDIR` is absent in the wrapper-validation-failure context.
+
 Regression harness: `scripts/test-launch-claude-review.sh`.

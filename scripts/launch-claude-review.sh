@@ -83,8 +83,15 @@ TEMP_PROMPT=""
 SUBPROCESS_STDERR=""
 # shellcheck disable=SC2317
 cleanup() {
+    local _rc="$?"
     [[ -n "$TEMP_PROMPT" ]] && rm -f "$TEMP_PROMPT"
     [[ -n "$SUBPROCESS_STDERR" ]] && rm -f "$SUBPROCESS_STDERR"
+    # Write a stub failure-diag for wrapper-only exits (argv/ctx validation
+    # errors) where launch-claude-subprocess.sh never ran and wrote its own diag.
+    if [[ "$_rc" -ne 0 && -n "${OUTPUT:-}" && ! -f "${OUTPUT}.failure-diag" ]]; then
+        printf 'wrapper-exit: rc=%s (argv/ctx validation failure)\n' "$_rc" \
+            > "${OUTPUT}.failure-diag" 2>/dev/null || true
+    fi
     return 0
 }
 trap cleanup EXIT
