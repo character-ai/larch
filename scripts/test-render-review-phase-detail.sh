@@ -136,20 +136,45 @@ JSON
         printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000300\t300\t1\t0\t0\t-\n'
         printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001300\t300\t0\t0\t0\t-\n'
     } >"$CR/timing-ledger.tsv"
+    # Pre-compute timestamps; guard each iso() call so a python3 failure surfaces as FAIL:.
+    _ts1="$(iso 1700000100)" || fail "iso() python3 failed for ts 1700000100 (rc=$?)"
+    _ts2="$(iso 1700000160)" || fail "iso() python3 failed for ts 1700000160 (rc=$?)"
+    _ts3="$(iso 1700002800)" || fail "iso() python3 failed for ts 1700002800 (rc=$?)"
     # codex + claude_sub land in round-1 window; cursor is outside both (must be excluded).
     {
-        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"%s"}\n' "$(iso 1700000100)"
-        printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"%s"}\n' "$(iso 1700000160)"
-        printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"%s"}\n' "$(iso 1700002800)"
+        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"%s"}\n' "$_ts1"
+        printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"%s"}\n' "$_ts2"
+        printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"%s"}\n' "$_ts3"
     } >"$CR/token-ledger.jsonl"
-    exp1="$(bash "$REPO/scripts/token-cost.sh" --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
+    # Guard token-cost.sh: split producer from post-processor so pipefail cannot mask which side failed.
+    if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null)"; then
+        fail "token-cost.sh failed (rc=$?)"
+    fi
+    exp1="$(printf '%s\n' "$_tc_out" | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
     COUT="$WORK/cost-section.md"
-    "$HELPER" --rounds-root "$CR" --timing-ledger "$CR/timing-ledger.tsv" --token-ledger "$CR/token-ledger.jsonl" --skill implement --output "$COUT"
+    # Guard renderer call.
+    "$HELPER" --rounds-root "$CR" --timing-ledger "$CR/timing-ledger.tsv" --token-ledger "$CR/token-ledger.jsonl" --skill implement --output "$COUT" || fail "render-review-phase-detail.sh failed (rc=$?)"
     grep -Fq -- "| 1 | 1 | 1 | 0 | 0 | 5m 00s | \$$exp1 | 2 |" "$COUT" || fail "round-1 vendor cost wrong (exp \$$exp1): $(grep -F '| 1 |' "$COUT" || true)"
     grep -Fq -- "| 2 | 0 | 0 | 0 | 0 | 5m 00s | \$0.00 | 2 |" "$COUT" || fail "round-2 empty-window cost should be \$0.00: $(grep -F '| 2 |' "$COUT" || true)"
     exptot="$(awk -v a="$exp1" 'BEGIN{printf "%.2f", a+0}')"
     grep -Fq -- "| **Total** | **1** | **1** | **0** | **0** | **10m 00s** | **\$$exptot** | **4** |" "$COUT" || fail "total vendor cost wrong (exp \$$exptot): $(grep -F 'Total' "$COUT" || true)"
     pass "per-round VENDOR cost: in-window priced, out-of-window excluded, empty window = \$0.00"
+    # Regression: forced token-cost.sh failure must emit FAIL:, not bare abort (#3781).
+    _bad_repo="$WORK/bad-repo"; mkdir -p "$_bad_repo/scripts"
+    printf '#!/bin/sh\nexit 1\n' > "$_bad_repo/scripts/token-cost.sh"
+    chmod +x "$_bad_repo/scripts/token-cost.sh"
+    _reg_out="$WORK/reg-fail.txt"
+    set +e
+    (
+        REPO="$_bad_repo"
+        if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" 2>/dev/null)"; then
+            fail "token-cost.sh failed (rc=$?)"
+        fi
+    ) >"$_reg_out" 2>&1
+    _reg_rc=$?
+    set -e
+    command grep -Fq 'FAIL:' "$_reg_out" || fail "regression: forced subprocess failure must produce FAIL: diagnostic (got rc=$_reg_rc)"
+    pass "regression: forced subprocess failure surfaces FAIL: diagnostic"
 else
     printf 'SKIP: python3 or jq fromdateiso8601 unavailable; per-round vendor cost test skipped\n'
 fi
