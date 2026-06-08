@@ -659,8 +659,10 @@ if (( EXIT_CODE != 0 )); then
     _VERDICT=$(external_failure_verdict "codex" "$SIDECAR")
     # #3713: compose + resolve the failure carrier (carrier-preferred, else
     # sidecar.history / sidecar / diag) so give-up logs real diagnostics even
-    # when the final attempt left an empty sidecar (health-gate fast-fail).
-    write_failure_diag "$OUTPUT" --sink "$SIDECAR" --events "$CODEX_EVENTS" >/dev/null 2>&1 || true
+    # when the final attempt left an empty sidecar (health-gate fast-fail). Only
+    # compose as a fallback when run-external-agent.sh's EXIT trap did not already
+    # write a non-empty carrier, to avoid append-with-header double-composition.
+    [[ -s "${OUTPUT}.failure-diag" ]] || write_failure_diag "$OUTPUT" --sink "$SIDECAR" --events "$CODEX_EVENTS" >/dev/null 2>&1 || true
     _CARRIER=$(resolve_failure_diagnostic_source "$OUTPUT" --sink "$SIDECAR" --events "$CODEX_EVENTS" || true)
     [[ -n "$_CARRIER" ]] || _CARRIER="$SIDECAR"
     append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$_CARRIER" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
@@ -1119,8 +1121,10 @@ if (( EXIT_CODE != 0 )); then
     # Verdict-before-reset: classify from the live final-attempt sidecar/diag.
     _VERDICT=$(external_failure_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
     # #3713: compose + resolve the failure carrier so give-up logs real
-    # diagnostics even when the final attempt left an empty sidecar.
-    write_failure_diag "$OUTPUT" --sink "$SIDECAR" >/dev/null 2>&1 || true
+    # diagnostics even when the final attempt left an empty sidecar. Only compose
+    # as a fallback when run-external-agent.sh's EXIT trap did not already write a
+    # non-empty carrier, to avoid append-with-header double-composition.
+    [[ -s "${OUTPUT}.failure-diag" ]] || write_failure_diag "$OUTPUT" --sink "$SIDECAR" >/dev/null 2>&1 || true
     _FAILURE_OUTPUT=$(resolve_failure_diagnostic_source "$OUTPUT" --sink "$SIDECAR" || true)
     if [[ -z "$_FAILURE_OUTPUT" ]]; then
         _FAILURE_OUTPUT="$SIDECAR"

@@ -502,7 +502,9 @@ append_vendor_failure_diagnostics() {
     } > "$raw" 2>/dev/null || { rm -f "$raw"; return 0; }
     red=$(mktemp "${TMPDIR:-/tmp}/larch-vendor-failure-red.XXXXXX" 2>/dev/null) || { rm -f "$raw"; return 0; }
     if [[ -x "$redact_tmpdir" && -x "$redact" ]]; then
-        if ! { set +o pipefail 2>/dev/null || true; "$redact_tmpdir" < "$raw" | "$redact" > "$red"; } 2>/dev/null; then
+        # Run the redaction pipe in a subshell so `set +o pipefail` cannot leak
+        # the disabled state back to callers that run under `set -euo pipefail`.
+        if ! ( set +o pipefail; "$redact_tmpdir" < "$raw" | "$redact" > "$red" ) 2>/dev/null; then
             cp "$raw" "$red" 2>/dev/null || true
         fi
     else
