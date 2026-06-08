@@ -1,4 +1,0 @@
-[sergey-zhupanov/implementing-logs-size-reduction-phase-4-3718 8c5af334c] logs-size-reduction Phase 4: prose-and-errors-only session transcripts (v3)
- 428 files changed, 610 insertions(+), 83868 deletions(-)
- create mode 100644 scripts/retro-v3-sweep.md
- create mode 100644 scripts/retro-v3-sweep.py
