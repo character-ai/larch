@@ -834,6 +834,11 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/main-agent/findings-clas
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
     "$TMP/main-agent/review-summary.json" >/dev/null || { echo "FAIL: main-agent review-summary.json missing summary output" >&2; exit 1; }
 
+main_agent_prune_ledger="$TMP/main-agent-prune-ledger.tsv"
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_PRUNE_LEDGER="$main_agent_prune_ledger" run_core "$TMP/main-agent-prune")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+[[ ! -s "$main_agent_prune_ledger" ]] || { echo "FAIL: main-agent-vote-required should not write prune ledger rows" >&2; cat "$main_agent_prune_ledger" >&2; exit 1; }
+
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'SCOUT_STATUS=ok'

@@ -1634,6 +1634,7 @@ write_collect_no_findings
 write_voters_three
 out_zd=$(run_loop "$DZD" 1)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero findings should stay degraded"
+[[ ! -s "$DZD/reviewer-prune-ledger.tsv" ]] || fail "degraded zero findings should not write prune ledger rows"
 
 
 echo "=== single-pass: zero findings + no collector OK → degraded-empty-collector ==="
@@ -1647,6 +1648,7 @@ write_collect_no_findings
 write_voters_three
 out_z0=$(run_loop "$DZ0" 1)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "no collector OK should surface degraded-empty-collector"
+[[ ! -s "$DZ0/reviewer-prune-ledger.tsv" ]] || fail "degraded-empty-collector should not write prune ledger rows"
 
 
 echo "=== single-pass: stale session-root review artifacts cleared before round ==="

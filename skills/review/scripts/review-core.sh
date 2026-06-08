@@ -1023,7 +1023,6 @@ findings_classification_tsv_file=$(kv_get "$tally_out" FINDINGS_CLASSIFICATION_T
 [[ -n "$voting_skipped_warning" ]] && emit_kv VOTING_SKIPPED_WARNING "$voting_skipped_warning"
 [[ -n "$yield_tsv_file" ]] && emit_kv YIELD_TSV_FILE "$yield_tsv_file"
 record_findings_classification_round "$findings_classification_tsv_file"
-record_reviewer_prune_round "$findings_classification_tsv_file"
 accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"
@@ -1076,6 +1075,8 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     [[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
     exit 0
 fi
+
+record_reviewer_prune_round "$findings_classification_tsv_file"
 
 emit_out="$REVIEW_TMPDIR/review-core-emit.env"
 emit_args=(

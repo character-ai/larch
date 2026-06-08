@@ -702,6 +702,21 @@ plan_review_record_prune_round() {
     fi
 }
 
+plan_review_should_record_prune_round() {
+    local loop_status="${1:-${LOOP_STATUS:-}}"
+    local accepted_count="${2:-${ACCEPTED_COUNT:-0}}"
+    local degraded_panel="${3:-${DEGRADED_PANEL:-0}}"
+    local collector_ok="${4:-${collect_ok_count:-0}}"
+    [[ "$loop_status" == "complete" ]] || return 1
+    case "$accepted_count" in ''|*[!0-9]*) accepted_count=0 ;; esac
+    case "$collector_ok" in ''|*[!0-9]*) collector_ok=0 ;; esac
+    if (( accepted_count == 0 )); then
+        [[ "$degraded_panel" != "1" ]] || return 1
+        (( collector_ok > 0 )) || return 1
+    fi
+    return 0
+}
+
 plan_review_slot_for_reviewer() {
     python3 - "$1" "$2" <<'PY'
 import json, os, sys
@@ -1347,7 +1362,9 @@ if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/n
         LOOP_STATUS=complete
         LOOP_REASON=""
     fi
-    plan_review_record_prune_round "$_manifest" "$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
+    if plan_review_should_record_prune_round "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$collect_ok_count"; then
+        plan_review_record_prune_round "$_manifest" "$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
+    fi
     _restore_prior_round_oos "${_prior_cum_oos:-}"
     _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
 fi
@@ -1654,9 +1671,6 @@ LOOP_STATUS="complete"
 
 [[ -z "$VOTER_1_PARSE_RATE_STATUS" ]] && VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
-if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "ok" || "${TALLY_PLAN_REVIEW_STATUS:-}" == "complete" ]]; then
-    plan_review_record_prune_round "${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}" "$_findings_classification_out"
-fi
 return 0
 }
 
@@ -1758,6 +1772,12 @@ elif [[ "$ACCEPTED_COUNT" -eq 0 && "$DEGRADED_PANEL" -eq 1 ]]; then
 else
     LOOP_STATUS=complete
     LOOP_REASON=""
+fi
+
+if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "ok" || "${TALLY_PLAN_REVIEW_STATUS:-}" == "complete" ]]; then
+    if plan_review_should_record_prune_round "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$collect_ok_count"; then
+        plan_review_record_prune_round "${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}" "$_findings_classification_out"
+    fi
 fi
 
 _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
