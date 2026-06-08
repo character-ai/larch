@@ -122,18 +122,33 @@ round_artifact_included() {
         dyn-*-codex-output.txt|dyn-*-codex-output-phase*.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output-phase*.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output-phase*.txt.json|dyn-*-codex-output.txt.cap-hit|dyn-*-codex-output-phase*.txt.cap-hit)
             return 0
             ;;
-        findings-classification.tsv|scout-archetype-yield.tsv|rejected-findings.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
+        findings-classification.tsv|scout-archetype-yield.tsv|rejected-findings.md|oos-accepted-review.md|review-round-summary.md|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-dirty-tree-summary.env|panel-manifest.ndjson|code-voter-slots.ndjson|coder-prompt.md|coder-tool.txt|coder-cursor.log)
             return 0
             ;;
         cursor-ci-stall-*.json)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-vote-output-first-pass.txt|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json|reviewer-dyn-*.md)
+        # Archetype definition files are pooled in larch-logs/shared/archetypes/
+        # and referenced by hash via archetype_ref in panel-manifest.ndjson;
+        # they are not committed individually per round.
+        reviewer-dyn-*.md)
+            return 1
+            ;;
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-vote-output-first-pass.txt|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json)
             return 0
             ;;
         *)
             return 1
             ;;
+    esac
+}
+
+# Returns 0 when the file should be consolidated into round-meta.json rather
+# than committed as an individual artifact.
+is_round_sidecar_file() {
+    case "$1" in
+        review-tally.env|collector-results.env|collect-agent-results.log|review-summary.json|coder.env|coder-codex.wrapper.log|coder-cursor.wrapper.log) return 0 ;;
+        *) return 1 ;;
     esac
 }
 
@@ -359,7 +374,8 @@ case "$cmd" in
 
     write-round)
         LOG_ROOT=""; SKILL=""; RUN_ID=""; ROUND_NUM=""; SOURCE_DIR=""
-        round_dir=""; written=false; found=false; round_tmp=""; src=""; name=""; dest=""; dynamic_dir=""; seen_round_artifacts=""
+        round_dir=""; prev_round_dir=""; written=false; found=false; round_tmp=""; src=""; name=""; dest=""
+        dynamic_dir=""; seen_round_artifacts=""; sidecar_paths=""; archetype_paths=""
         while [ $# -gt 0 ]; do
             case "$1" in
                 --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
@@ -380,17 +396,43 @@ case "$cmd" in
         [ ! -L "$dynamic_dir" ] || larch_log_fail 2 "dynamic-archetypes must not be a symlink: $dynamic_dir"
 
         round_dir="$(larch_log_run_dir "$SKILL" "$RUN_ID")/round-$ROUND_NUM"
+        prev_round_dir="$(larch_log_run_dir "$SKILL" "$RUN_ID")/round-$((ROUND_NUM - 1))"
         mkdir -p "$round_dir" || larch_log_fail 2 "cannot create round log directory: $round_dir"
         written=false
         found=false
         round_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round.XXXXXX")" || larch_log_fail 2 "cannot create round artifact temp"
         seen_round_artifacts="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-seen.XXXXXX")" || larch_log_fail 2 "cannot create round basename temp"
-        trap 'rm -f "${round_tmp:-}" "${seen_round_artifacts:-}"' EXIT
+        sidecar_paths="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-sidecars.XXXXXX")" || larch_log_fail 2 "cannot create sidecar paths temp"
+        archetype_paths="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-archetypes.XXXXXX")" || larch_log_fail 2 "cannot create archetype paths temp"
+        trap 'rm -f "${round_tmp:-}" "${seen_round_artifacts:-}" "${sidecar_paths:-}" "${archetype_paths:-}"' EXIT
+
         while IFS= read -r src || [ -n "$src" ]; do
             name="$(basename "$src")"
+
+            # Sidecar files: collect for round-meta.json composition; not staged individually.
+            if is_round_sidecar_file "$name"; then
+                [ -f "$src" ] || continue
+                [ ! -L "$src" ] || continue
+                found=true
+                printf '%s\t%s\n' "$name" "$src" >> "$sidecar_paths"
+                continue
+            fi
+
+            # Archetype definition files: collect for pool; not staged individually.
+            case "$name" in
+                reviewer-dyn-*.md)
+                    [ -f "$src" ] || continue
+                    [ ! -L "$src" ] || continue
+                    found=true
+                    printf '%s\n' "$src" >> "$archetype_paths"
+                    continue
+                    ;;
+            esac
+
             round_artifact_included "$name" || continue
             [ -f "$src" ] || continue
             [ ! -L "$src" ] || continue
+
             # Skip aggregator output when byte-identical to findings.md (the staged
             # aggregate); avoids committing a third copy of the same content.
             case "$name" in
@@ -398,7 +440,17 @@ case "$cmd" in
                     _agg_findings="${src%/*}/findings.md"
                     [ -f "$_agg_findings" ] && cmp -s "$src" "$_agg_findings" && continue
                     ;;
+                # Scout manifest cross-round dedup: skip when identical to the
+                # same-named file from the previous committed round.
+                scout-round*-manifest.json)
+                    _prev_m="$prev_round_dir/$name"
+                    if [ -f "$_prev_m" ] && cmp -s "$src" "$_prev_m"; then
+                        found=true
+                        continue
+                    fi
+                    ;;
             esac
+
             prev_src="$(awk -F '\t' -v target="$name" '$1 == target { print $2; exit }' "$seen_round_artifacts")"
             if [ -n "$prev_src" ]; then
                 larch_log_fail 2 "duplicate round artifact basename '$name' from $src and $prev_src"
@@ -419,6 +471,145 @@ case "$cmd" in
                 find "$dynamic_dir" -maxdepth 1 -type f -print
             fi
         } | LC_ALL=C sort)
+
+        # Compose round-meta.json from the collected sidecar files.
+        if [ -s "$sidecar_paths" ]; then
+            : > "$round_tmp"
+            python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF' || true
+import json, os, sys
+
+src = sys.argv[1]
+out = {}
+
+def read_kv(path):
+    d = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if '=' in line and not line.startswith('#'):
+                k, _, v = line.partition('=')
+                d[k.strip()] = v.strip()
+    return d
+
+def read_raw(path):
+    with open(path) as f:
+        return f.read()
+
+def read_json(path):
+    with open(path) as f:
+        try:
+            return json.load(f)
+        except Exception:
+            return f.read()
+
+for key, fname, kind in [
+    ('tally',       'review-tally.env',          'kv'),
+    ('collector',   'collector-results.env',      'raw'),
+    ('collect_log', 'collect-agent-results.log',  'raw'),
+    ('summary',     'review-summary.json',        'json'),
+    ('coder',       'coder.env',                  'kv'),
+]:
+    path = os.path.join(src, fname)
+    if not os.path.isfile(path):
+        continue
+    if kind == 'kv':
+        out[key] = read_kv(path)
+    elif kind == 'raw':
+        out[key] = read_raw(path)
+    else:
+        out[key] = read_json(path)
+
+wl = {}
+for tool, fname in [('cursor', 'coder-cursor.wrapper.log'), ('codex', 'coder-codex.wrapper.log')]:
+    path = os.path.join(src, fname)
+    if os.path.isfile(path):
+        wl[tool] = read_raw(path)
+if wl:
+    out['wrapper_logs'] = wl
+
+if out:
+    sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')
+PYEOF
+            if [ -s "$round_tmp" ]; then
+                _rm_raw="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-meta-red.XXXXXX")" || larch_log_fail 2 "cannot create round-meta redact temp"
+                larch_log_redact_file "$round_tmp" "$_rm_raw"
+                dest="$round_dir/round-meta.json"
+                if [ -f "$dest" ] && cmp -s "$_rm_raw" "$dest"; then
+                    rm -f "$_rm_raw"
+                else
+                    mv -f "$_rm_raw" "$dest" || { rm -f "$_rm_raw"; larch_log_fail 2 "cannot write round-meta.json"; }
+                    written=true
+                fi
+            fi
+        fi
+
+        # Pool reviewer-dyn-*.md archetypes into larch-logs/shared/archetypes/
+        # using content-addressed hashing (idempotent: existing hash → no write).
+        # Updates panel-manifest.ndjson with archetype_ref for dynamic slots.
+        if [ -s "$archetype_paths" ]; then
+            _pool_dir="$(larch_log_root)/shared/archetypes"
+            mkdir -p "$_pool_dir" || true
+            _refs_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-archetype-refs.XXXXXX")" || true
+            if [ -n "$_refs_tmp" ]; then
+                while IFS= read -r _arch_src || [ -n "$_arch_src" ]; do
+                    [ -f "$_arch_src" ] || continue
+                    _arch_sha="$(larch_log_sha256 "$_arch_src" | cut -c1-12 2>/dev/null || true)"
+                    [ -n "$_arch_sha" ] || continue
+                    _pool_path="$_pool_dir/$_arch_sha.md"
+                    if [ ! -f "$_pool_path" ]; then
+                        cp "$_arch_src" "$_pool_path" || continue
+                    fi
+                    _arch_name="$(basename "$_arch_src")"
+                    printf '%s\t%s\n' "$_arch_name" "$_arch_sha" >> "$_refs_tmp"
+                done < "$archetype_paths"
+
+                # Update panel-manifest.ndjson with archetype_ref for dynamic slots.
+                _pm="$round_dir/panel-manifest.ndjson"
+                if [ -f "$_pm" ] && [ -s "$_refs_tmp" ]; then
+                    _pm_new="$(mktemp "${TMPDIR:-/tmp}/larch-log-pm.XXXXXX")" || true
+                    if [ -n "$_pm_new" ]; then
+                        python3 - "$_pm" "$_refs_tmp" > "$_pm_new" <<'PYEOF' || true
+import json, sys
+
+pm_path, refs_path = sys.argv[1], sys.argv[2]
+refs = {}
+with open(refs_path) as f:
+    for line in f:
+        line = line.strip()
+        if '\t' in line:
+            fname, sha12 = line.split('\t', 1)
+            if fname.startswith('reviewer-dyn-') and fname.endswith('.md'):
+                slot = 'dyn-' + fname[len('reviewer-dyn-'):-len('.md')]
+                refs[slot] = sha12
+lines = []
+with open(pm_path) as f:
+    for line in f:
+        stripped = line.rstrip('\n')
+        if not stripped.strip():
+            lines.append(line)
+            continue
+        try:
+            obj = json.loads(stripped)
+            slot = obj.get('slot', '')
+            if slot in refs and 'archetype_ref' not in obj:
+                obj['archetype_ref'] = refs[slot]
+            lines.append(json.dumps(obj, ensure_ascii=False) + '\n')
+        except (json.JSONDecodeError, ValueError):
+            lines.append(line)
+sys.stdout.write(''.join(lines))
+PYEOF
+                        if [ -s "$_pm_new" ] && ! cmp -s "$_pm_new" "$_pm"; then
+                            mv -f "$_pm_new" "$_pm"
+                            written=true
+                        else
+                            rm -f "$_pm_new"
+                        fi
+                    fi
+                fi
+                rm -f "$_refs_tmp"
+            fi
+        fi
+
         if [ "$found" = false ]; then
             larch_log_emit_success "$round_dir" false true
         else
@@ -595,6 +786,19 @@ case "$cmd" in
         if [ "$src_path" != "$repo_path" ]; then
             larch_log_copy_run_tree_without_breadcrumbs "$src_path" "$repo_path"
         fi
+        # Copy shared archetype pool from the log root into the repo if present.
+        # The pool lives at <LARCH_LOG_ROOT>/shared/archetypes/ (written by
+        # write-round) and is committed alongside the per-run tree so archetypes
+        # are content-addressed once across all runs.
+        _commit_shared_src="$(larch_log_root)/shared"
+        _commit_shared_repo="$REPO_ROOT/larch-logs/shared"
+        if [ -d "$_commit_shared_src" ]; then
+            mkdir -p "$_commit_shared_repo" || larch_log_fail 3 "cannot create shared archetype pool directory in repo"
+            for _commit_shared_item in "$_commit_shared_src"/*; do
+                [ -e "$_commit_shared_item" ] || continue
+                cp -rp "$_commit_shared_item" "$_commit_shared_repo/" || larch_log_fail 3 "cannot copy shared archetypes to repo"
+            done
+        fi
         larch_log_publish_breadcrumbs "$breadcrumbs_source" "$repo_path"
         # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.)
         # from the staged run tree before commit. Fail-closed — refuse to commit
@@ -615,22 +819,27 @@ case "$cmd" in
             printf 'SECRET_SCRUB_VIOLATIONS=%s\n' "$scrub_n"
             printf 'larch-log.sh: WARNING — scrub-log-secrets.sh redacted %s secret-shaped value(s) from %s run %s logs before flush; ROTATE the affected credential(s)\n' "$scrub_n" "$SKILL" "$RUN_ID" >&2
         fi
-        # Scope all git operations to exactly this run's directory, not the broader
-        # skill parent. Building the pathspec explicitly hardens add/status/diff
-        # against prefix math mistakes and untracked-file omissions.
+        # Scope all git operations to the per-run directory, and conditionally
+        # to the shared archetype pool when it exists. Building the pathspec
+        # explicitly hardens add/status/diff against prefix math mistakes and
+        # untracked-file omissions.
         rel="larch-logs/$SKILL/$RUN_ID"
+        _shared_rel=""
+        if [ -d "$REPO_ROOT/larch-logs/shared" ]; then
+            _shared_rel="larch-logs/shared"
+        fi
         # Check status first: git diff alone misses untracked files.
-        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" | grep -q .; then
+        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" ${_shared_rel:+"$_shared_rel"} | grep -q .; then
             larch_log_emit_success "$repo_path" false true
             exit 0
         fi
-        git -C "$REPO_ROOT" add -- "$rel" || larch_log_fail 3 "git add failed"
-        if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel"; then
+        git -C "$REPO_ROOT" add -- "$rel" ${_shared_rel:+"$_shared_rel"} || larch_log_fail 3 "git add failed"
+        if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel" ${_shared_rel:+"$_shared_rel"}; then
             larch_log_emit_success "$repo_path" false true
             exit 0
         fi
-        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" >/dev/null || {
-            git -C "$REPO_ROOT" reset HEAD -- "$rel" 2>/dev/null || true
+        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" ${_shared_rel:+"$_shared_rel"} >/dev/null || {
+            git -C "$REPO_ROOT" reset HEAD -- "$rel" ${_shared_rel:+"$_shared_rel"} 2>/dev/null || true
             larch_log_fail 3 "git commit failed"
         }
         commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"

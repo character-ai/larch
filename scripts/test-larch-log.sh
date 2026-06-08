@@ -997,11 +997,21 @@ else
     fail "write-round must deny scout-round1-manifest.json.raw (cooked .json is canonical)"
 fi
 
-# Test 3: dynamic-archetypes flattened to round root (not in a subdir)
-if [ -f "$_wr_round/reviewer-dyn-api-contract.md" ] && [ ! -d "$_wr_round/dynamic-archetypes" ]; then
-    pass "write-round flattens reviewer-dyn-*.md to round root"
+# Test 3: dynamic-archetypes pooled (Phase 3c — not committed to round root)
+if [ ! -f "$_wr_round/reviewer-dyn-api-contract.md" ] && [ ! -d "$_wr_round/dynamic-archetypes" ]; then
+    pass "write-round pools reviewer-dyn-*.md to shared/archetypes (not in round root)"
 else
-    fail "write-round must flatten reviewer-dyn-*.md (missing or still in subdir)"
+    fail "write-round must not commit reviewer-dyn-*.md to round root (Phase 3c: pool it)"
+fi
+_wr_pool_dir="$_wr_staging/larch-logs/shared/archetypes"
+_wr_pool_hit=false
+for _wr_pool_f in "$_wr_pool_dir"/*.md; do
+    [ -f "$_wr_pool_f" ] && _wr_pool_hit=true && break
+done
+if [ "$_wr_pool_hit" = true ]; then
+    pass "write-round wrote reviewer-dyn-*.md to shared archetype pool"
+else
+    fail "write-round must write reviewer-dyn-*.md to shared archetype pool (missing)"
 fi
 if [ ! -f "$_wr_round/dyn-api-contract-prompt.md" ]; then
     pass "write-round denies dyn-*-prompt.md"
@@ -1114,7 +1124,10 @@ else
     fail "write-round plain fixture wrote unexpected artifacts"
 fi
 
-echo "=== write-round rejects duplicate basenames across root and dynamic-archetypes ==="
+echo "=== write-round tolerates duplicate reviewer-dyn-*.md across root and dynamic-archetypes ==="
+# Phase 3c: reviewer-dyn-*.md files are pooled by content hash, so duplicate basenames
+# are silently deduplicated — both copies go to the pool (idempotent for same content,
+# two separate pool entries for different content). write-round should succeed.
 _wr_dup_staging="$TMP/wr-dup-staging"
 _wr_dup_run="wrround-dup-001"
 _wr_dup_source="$TMP/wr-source-dup"
@@ -1133,10 +1146,10 @@ _wr_dup_output=$("$LARCH_LOG" write-round \
     --round 1 \
     --source-dir "$_wr_dup_source" \
     2>"$_wr_dup_stderr") || _wr_dup_rc=$?
-if [ "$_wr_dup_rc" -ne 0 ] && printf '%s\n' "$_wr_dup_output" | grep -Fq "duplicate round artifact basename 'reviewer-dyn-api-contract.md'"; then
-    pass "write-round rejects duplicate flattened basenames"
+if [ "$_wr_dup_rc" -eq 0 ]; then
+    pass "write-round tolerates duplicate reviewer-dyn-*.md basenames (pooled, not staged individually)"
 else
-    fail "write-round must reject duplicate flattened basenames"
+    fail "write-round must succeed with duplicate reviewer-dyn-*.md basenames (Phase 3c: pool them)"
 fi
 
 echo "=== write-round rejects symlinked dynamic-archetypes ==="

@@ -141,7 +141,13 @@ EOF
 
 printf '# Round summary\n' > "$source_dir/review-round-summary.md"
 printf 'finding_id\treviewer_slots\tvoting_result\n' > "$source_dir/findings-classification.tsv"
-printf 'CODER_STATUS=skipped\n' > "$source_dir/coder.env"
+# Sidecar files consolidated into round-meta.json
+printf 'CODER_STATUS=skipped\nCODER_TOOL=cursor\n' > "$source_dir/coder.env"
+printf 'FINDING_1_ACCEPTED=true\nACCEPTED_COUNT=1\n' > "$source_dir/review-tally.env"
+printf 'REVIEWER_FILE=<TMPDIR>/r1\nTOOL=cursor\nSTATUS=OK\n' > "$source_dir/collector-results.env"
+printf 'REVIEWER_FILE=<TMPDIR>/r1\nTOOL=cursor\nSTATUS=OK\n' > "$source_dir/collect-agent-results.log"
+printf '{"schema_version":2,"rounds_completed":1}\n' > "$source_dir/review-summary.json"
+printf 'wrapper line\n' > "$source_dir/coder-cursor.wrapper.log"
 printf 'excluded\n' > "$source_dir/random-notes.txt"
 printf 'excluded\n' > "$source_dir/session-env.sh"
 printf 'excluded\n' > "$source_dir/coder-output.log"
@@ -198,7 +204,10 @@ assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
 assert_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
 assert_file "$round_dir/review-round-summary.md" "summary"
 assert_file "$round_dir/findings-classification.tsv" "findings classification TSV"
-assert_file "$round_dir/coder.env" "optional coder env"
+assert_file "$round_dir/round-meta.json" "round-meta.json composed from sidecar files"
+assert_not_file "$round_dir/coder.env" "coder.env must not be committed individually (consolidated into round-meta.json)"
+assert_not_file "$round_dir/review-tally.env" "review-tally.env must not be committed individually"
+assert_not_file "$round_dir/collector-results.env" "collector-results.env must not be committed individually"
 assert_not_file "$round_dir/random-notes.txt" "unregistered file"
 assert_not_file "$round_dir/session-env.sh" "session env"
 assert_not_file "$round_dir/coder-output.log" "excluded coder transcript"
@@ -232,6 +241,23 @@ assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output.txt.json" 
 assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase .result field should be stripped"
 assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase .result field should be stripped"
 assert_round_order
+
+# Verify round-meta.json has expected sections from sidecar files
+python3 - "$round_dir/round-meta.json" <<'PYEOF' || fail "round-meta.json missing expected sidecar sections"
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+assert 'tally' in data, "missing tally section"
+assert 'coder' in data, "missing coder section"
+assert data['coder'].get('CODER_TOOL') == 'cursor', f"coder.CODER_TOOL expected 'cursor', got {data['coder'].get('CODER_TOOL')!r}"
+assert 'summary' in data, "missing summary section"
+assert 'collector' in data, "missing collector section"
+assert 'collect_log' in data, "missing collect_log section"
+assert 'wrapper_logs' in data, "missing wrapper_logs section"
+assert 'cursor' in data['wrapper_logs'], "missing wrapper_logs.cursor"
+PYEOF
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"
 [[ "$out" == *"UNCHANGED=true"* ]] || fail "write-round retry should be unchanged: $out"

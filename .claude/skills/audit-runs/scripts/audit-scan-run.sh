@@ -568,13 +568,22 @@ scan_cache_freshness() {
 }
 
 # ---- Scan: coder-tool ----
+# Reads CODER_TOOL from round-meta.json (new consolidated format) with
+# fallback to coder.env for rounds predating Phase 3c consolidation.
 scan_coder_tool() {
     local by_round="{}"
-    for f in "$RUN_DIR"/round-*/coder.env; do
-        [ -f "$f" ] || continue
-        round_dir=$(dirname "$f")
+    for round_dir in "$RUN_DIR"/round-*/; do
+        [ -d "$round_dir" ] || continue
         round_name=$(basename "$round_dir")
-        tool=$(grep -oE 'CODER_TOOL=[^[:space:]]+' "$f" 2>/dev/null | grep -oE '[^=]+$' || true)
+        tool=""
+        meta_f="${round_dir}round-meta.json"
+        env_f="${round_dir}coder.env"
+        if [ -f "$meta_f" ]; then
+            tool=$(jq -r '.coder.CODER_TOOL // empty' "$meta_f" 2>/dev/null || true)
+        fi
+        if [ -z "$tool" ] && [ -f "$env_f" ]; then
+            tool=$(grep -oE 'CODER_TOOL=[^[:space:]]+' "$env_f" 2>/dev/null | grep -oE '[^=]+$' || true)
+        fi
         if [ -n "$tool" ]; then
             by_round=$(printf '%s' "$by_round" | jq --arg k "$round_name" --arg v "$tool" '. + {($k): $v}' 2>/dev/null || true)
         fi
