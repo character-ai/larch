@@ -331,6 +331,14 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # Phase 3d exclusions (#3721 logs-size-reduction): GitHub-redundant snapshots.
+    # issue-body.txt / issue.json: canonical home is the GitHub issue itself.
+    # architecture-diagram.md: same Mermaid body is upserted into the larch:diagrams comment.
+    case "$name" in
+        issue-body.txt|issue.json|architecture-diagram.md)
+            return 0
+            ;;
+    esac
     # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
     case "$name" in
         cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)

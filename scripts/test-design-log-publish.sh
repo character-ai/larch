@@ -522,6 +522,15 @@ printf 'vote meta\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.meta"
 printf 'vote json\n' >"$TMP/design/cursor-plan-arch-vote-output.txt.json"
 # Phase 3b exclusions per #3715:
 printf 'in-scope findings\n' >"$TMP/design/findings-in-scope.md"
+# Phase 3d exclusions per #3721 (GitHub-redundant snapshots):
+printf 'issue body snapshot\n' >"$TMP/design/issue-body.txt"
+printf '{"number":42}\n' >"$TMP/design/issue.json"
+cat >"$TMP/design/architecture-diagram.md" <<'ARCHDIAG'
+```mermaid
+graph TD
+  A-->B
+```
+ARCHDIAG
 printf 'round 1\n2\n' >"$TMP/design/timing-ledger.tsv"
 : >"$TMP/design/timing-ledger.tsv.lock"
 printf 'scout dynamic prompt\n' >"$TMP/design/scout-dynamic-archetypes-prompt.md"
@@ -642,7 +651,10 @@ for denied in \
     "scout-dynamic-archetypes-prompt.md" \
     "plan.txt.before-revise" \
     "composed-plan.md" \
-    "aggregator-output.txt"; do
+    "aggregator-output.txt" \
+    "issue-body.txt" \
+    "issue.json" \
+    "architecture-diagram.md"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"

@@ -1729,4 +1729,9 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
+  # scripts/retro-sweep-design-logs-phase3d.sh is an operator-run one-time
+  # sweep script (#3721). It is not invoked from runtime skill prose or hooks;
+  # its contract lives in the sibling scripts/retro-sweep-design-logs-phase3d.md.
+  "scripts/retro-sweep-design-logs-phase3d.sh",
+  "scripts/retro-sweep-design-logs-phase3d.md",
 ]

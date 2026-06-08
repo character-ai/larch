@@ -199,12 +199,12 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step
 
 #### Voting
 
-- `accepted-plan-findings.md`
-- `rejected-findings.md`
 - `oos.md`
 - `oos-accepted-design.md`
 - `ballot.txt` (session snapshot; excluded from committed log by publisher)
 - `voting-tally.md`
+
+`accepted-plan-findings.md` and `rejected-findings.md` are excluded from committed round directories (#3721) — they are cumulative across rounds (round N's copy is a prefix-snapshot of round N+1's); only the top-level copies in the design run directory are kept. Per-round outcome attribution is preserved by each round's `findings-classification.tsv` joined with `findings.md`.
 
 #### Manifests and voter diagnostics
 
