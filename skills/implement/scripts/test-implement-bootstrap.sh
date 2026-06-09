@@ -96,14 +96,31 @@ assert_rc() {
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-ib-test.XXXXXX)
-    mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX_TMP"
+    mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX/python/stubs/session" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
-    cp "$REPO_ROOT/python/cli.py" "$SANDBOX/scripts/"
-    cp "$REPO_ROOT/python/cli.py" "$SANDBOX/scripts/"
-    chmod +x "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/python/cli.py session write-env" "$SANDBOX/python/cli.py session read-key" "$SANDBOX/scripts/append-execution-issue.sh"
+    cp "$REPO_ROOT"/python/*.py "$SANDBOX/python/"
+    mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
+    cat >"$SANDBOX/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+    chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/scripts/append-execution-issue.sh"
 
     cat >"$SANDBOX/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -145,15 +162,15 @@ exit 2
 STUB
     chmod +x "$SANDBOX/scripts/create-branch.sh"
 
-    cat >"$SANDBOX/python/cli.py session entry-gate" <<'STUB'
+    cat >"$SANDBOX/python/stubs/session/entry-gate" <<'STUB'
 #!/usr/bin/env bash
 echo ENTRY_GATE=strict
 echo SKIP_BRANCH_CHECK=false
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py session entry-gate"
+    chmod +x "$SANDBOX/python/stubs/session/entry-gate"
 
-    cat >"$SANDBOX/python/cli.py session write-id" <<STUB
+    cat >"$SANDBOX/python/stubs/session/write-id" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >>"$SANDBOX/invoke-log.txt"
 while [ \$# -gt 0 ]; do
@@ -164,7 +181,7 @@ while [ \$# -gt 0 ]; do
 done
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py session write-id"
+    chmod +x "$SANDBOX/python/stubs/session/write-id"
 
     cat >"$SANDBOX/scripts/token-claude-source.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -384,10 +401,10 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/snapshot-untracked.sh"
 
-    cat >"$SANDBOX/python/cli.py session persist-run-flags" <<'STUB'
+    cat >"$SANDBOX/python/stubs/session/persist-run-flags" <<'STUB'
 #!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'persist-implement-run-flags %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+sandbox_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+printf 'persist-implement-run-flags %s\n' "$*" >>"$sandbox_root/invoke-log.txt"
 if [ "${SANDBOX_PERSIST_FLAGS_EXIT:-0}" -ne 0 ]; then
   printf 'persist failure\n' >&2
   exit "$SANDBOX_PERSIST_FLAGS_EXIT"
@@ -404,7 +421,7 @@ done
 [ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nEMERGENCY_REQUESTED=%s\n' "$emergency" >"$tmpdir/run-flags.sh"
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py session persist-run-flags"
+    chmod +x "$SANDBOX/python/stubs/session/persist-run-flags"
 
     cat >"$SANDBOX/scripts/check-mid-run-dirty-tree.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -518,7 +535,7 @@ STUB
 }
 
 write_gp1_session_setup() {
-    cat >"$SANDBOX/python/cli.py session setup" <<STUB
+    cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -530,7 +547,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py session setup"
+    chmod +x "$SANDBOX/python/stubs/session/setup"
 }
 
 run_bootstrap() {
@@ -685,7 +702,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- GP-repo-unavail-tracking ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -697,7 +714,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "GP-repo-unavail-tracking exit 0"
 assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-tracking branch"
@@ -711,7 +728,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- GP-repo-unavail-plan ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -723,7 +740,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runRepoSkip --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "GP-repo-unavail-plan exit 0"
@@ -739,7 +756,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- GP4 repo_unavailable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -751,7 +768,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-gp4.XXXXXX")
 out=$(run_bootstrap --up-to-phase infra 2>"$stderrf") && rc=$? || rc=$?
 err=$(cat "$stderrf")
@@ -1129,7 +1146,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-implicit-codex ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1141,7 +1158,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=false
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodex --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-codex exit 0"
@@ -1153,7 +1170,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-implicit-claude ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1165,7 +1182,7 @@ echo CODEX_BINARY_FOUND=false
 echo CURSOR_BINARY_FOUND=false
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-claude.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderClaude --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
@@ -1185,7 +1202,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-cursor-happy ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1197,7 +1214,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitCursor --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-explicit-cursor-happy exit 0"
@@ -1209,7 +1226,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-codex-happy ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1221,7 +1238,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitCodex --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-explicit-codex-happy exit 0"
@@ -1233,7 +1250,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-claude-happy ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1245,7 +1262,7 @@ echo CODEX_BINARY_FOUND=false
 echo CURSOR_BINARY_FOUND=false
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitClaude --preflight-tmpdir "$SANDBOX/preflight" --coder claude 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-explicit-claude-happy exit 0"
@@ -1257,7 +1274,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-unavailable-binary-missing ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1269,7 +1286,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=false
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-explicit.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicit --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>"$stderrf") && rc=$? || rc=$?
@@ -1286,7 +1303,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-unavailable-undeterminable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1298,7 +1315,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-undetermined.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderUndetermined --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>"$stderrf") && rc=$? || rc=$?
@@ -1314,7 +1331,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-unavailable-runtime-probe-failed ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1326,7 +1343,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-runtime-failed.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderRuntimeFail --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
@@ -1342,7 +1359,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-codex-binary-missing ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1354,7 +1371,7 @@ echo CODEX_BINARY_FOUND=false
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-codex-binary-missing.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodexBinaryMissing --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
@@ -1371,7 +1388,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-explicit-both-external-unavailable (#3207: codex -> cursor -> claude) ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1383,7 +1400,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-both-unavail.XXXXXX")
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderBothUnavail --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
@@ -1399,7 +1416,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B5-coder-skip-repo-unavailable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
@@ -1411,7 +1428,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderRepoUnavailable --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-skip-repo-unavailable exit 0"
@@ -1426,7 +1443,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -1450,7 +1467,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingFeature --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-skip-missing-feature-description setup plan exit 0"
@@ -1684,7 +1701,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -1708,7 +1725,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B7-plan-dirty-tree resume first pass exit 0"
@@ -1803,7 +1820,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -1827,7 +1844,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyFalse --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
@@ -1849,7 +1866,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -1873,7 +1890,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(LARCH_TEST_POSTED=false SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDeferredResume --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-plan-dirty-resume first pass exit 0"
@@ -1922,7 +1939,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -1946,7 +1963,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergency --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
@@ -1978,7 +1995,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -2002,7 +2019,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyResume --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
@@ -2035,7 +2052,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -2059,7 +2076,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResumeRetry --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B7-plan-dirty-tree resume re-bail first pass exit 0"
@@ -2085,7 +2102,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<STUB
+cat >"$SANDBOX/python/stubs/session/setup" <<STUB
 #!/usr/bin/env bash
 count_file="$SANDBOX/session-setup-count.txt"
 count=0
@@ -2109,7 +2126,7 @@ echo CODEX_BINARY_FOUND=true
 echo CURSOR_BINARY_FOUND=true
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 write_preflight_plan
 out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B7-coder-dirty-tree resume first pass exit 0"
@@ -2397,7 +2414,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-cat >"$SANDBOX/python/cli.py session write-id" <<'STUB'
+cat >"$SANDBOX/python/stubs/session/write-id" <<'STUB'
 #!/usr/bin/env bash
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -2407,7 +2424,7 @@ while [ $# -gt 0 ]; do
 done
 exit 0
 STUB
-chmod +x "$SANDBOX/python/cli.py session write-id"
+chmod +x "$SANDBOX/python/stubs/session/write-id"
 out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B-empty-run-id-derivation exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B-empty-run-id-derivation bail reason"
@@ -2438,12 +2455,12 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 # --- B-preflight ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
-cat >"$SANDBOX/python/cli.py session setup" <<'STUB'
+cat >"$SANDBOX/python/stubs/session/setup" <<'STUB'
 #!/usr/bin/env bash
 echo PREFLIGHT_ERROR=Not on main branch
 exit 1
 STUB
-chmod +x "$SANDBOX/python/cli.py session setup"
+chmod +x "$SANDBOX/python/stubs/session/setup"
 set +e
 out=$(run_bootstrap --up-to-phase infra 2>/dev/null)
 rc=$?
@@ -2459,12 +2476,12 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-cat >"$SANDBOX/python/cli.py session entry-gate" <<'STUB'
+cat >"$SANDBOX/python/stubs/session/entry-gate" <<'STUB'
 #!/usr/bin/env bash
 echo "GATE_ERROR=internal contract violation" >&2
 exit 1
 STUB
-chmod +x "$SANDBOX/python/cli.py session entry-gate"
+chmod +x "$SANDBOX/python/stubs/session/entry-gate"
 set +e
 out=$(run_bootstrap --up-to-phase infra 2>/dev/null)
 rc=$?

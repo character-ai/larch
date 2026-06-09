@@ -85,7 +85,7 @@ external_launch_health_gate_timeout() {
     for session_file in "${SESSION_ENV_PATH:-}" "${IMPLEMENT_TMPDIR:+${IMPLEMENT_TMPDIR}/session-env.sh}"; do
         [[ -n "$session_file" ]] || continue
         candidate=""
-        if candidate=$("$script_dir/read-session-env-key.sh" \
+        if candidate=$(python3 "$script_dir/../python/cli.py" session read-key \
             --file "$session_file" \
             --key LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT \
             --default "" 2>/dev/null); then

@@ -98,7 +98,6 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/lib-submodule-prohibition.sh" "$dir/lib-submodule-prohibition.sh"
     cp "$SOURCE_SCRIPTS/parse-codex-usage.sh" "$dir/parse-codex-usage.sh"
     cp "$SOURCE_SCRIPTS/token-ledger.sh" "$dir/token-ledger.sh"
-    cp "$SOURCE_SCRIPTS/read-session-env-key.sh" "$dir/read-session-env-key.sh"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
     cp "$SOURCE_SCRIPTS/lib-failed-agent-stderr-tail.sh" "$dir/lib-failed-agent-stderr-tail.sh"
     cp "$SOURCE_SCRIPTS/redact-tmpdir-paths.sh" "$dir/redact-tmpdir-paths.sh"
@@ -164,7 +163,6 @@ EOF
         "$dir/lib-cursor-launcher-common.sh" \
         "$dir/parse-codex-usage.sh" \
         "$dir/token-ledger.sh" \
-        "$dir/read-session-env-key.sh" \
         "$dir/git-commit.sh"
 }
 

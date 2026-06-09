@@ -177,7 +177,12 @@ def _validate_writer_keys(data: dict[str, str], allowed: frozenset[str]) -> None
 
 
 def cleanup_cache_sessions_root() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or f"{os.environ.get('HOME', TMP_FALLBACK)}/.cache"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        base = xdg
+    else:
+        home = os.environ.get("HOME", "")
+        base = f"{home}/.cache" if home else f"{TMP_FALLBACK}/.cache"
     return Path(base) / "larch" / "sessions"
 
 
@@ -194,12 +199,21 @@ def _under(path: Path, root: Path) -> bool:
     return resolved == resolved_root or resolved_root in resolved.parents
 
 
+def _strictly_under(path: Path, root: Path) -> bool:
+    try:
+        resolved = _resolved(path)
+        resolved_root = _resolved(root)
+    except OSError:
+        return False
+    return resolved_root in resolved.parents
+
+
 def is_allowed_session_tmpdir(path: str | Path) -> bool:
     candidate = Path(path)
     if not str(candidate):
         return False
     roots = (TMP_ROOT, Path("/private/tmp"), Path("/var/folders"), Path("/private/var/folders"), cleanup_cache_sessions_root())
-    return any(_under(candidate, root) for root in roots)
+    return any(_strictly_under(candidate, root) for root in roots)
 
 
 def _writer_target_allowed(path: str | Path) -> bool:
@@ -218,12 +232,17 @@ def _atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: i
         raise OSError(f"refusing to write symlinked path: {path}")
     if create_parent:
         path.parent.mkdir(parents=True, exist_ok=True)
-    tmp: Path | None = None
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    if tmp.is_symlink():
+        raise OSError(f"refusing to write symlinked temp path: {tmp}")
+    with suppress(FileNotFoundError):
+        tmp.unlink()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     fd: int | None = None
     try:
-        fd, name = tempfile.mkstemp(prefix=f".{path.name}.tmp.", dir=str(path.parent), text=True)
-        tmp = Path(name)
-        tmp.chmod(mode)
+        fd = os.open(tmp, flags, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             fd = None
             handle.write(text)
@@ -233,10 +252,9 @@ def _atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: i
     finally:
         if fd is not None:
             os.close(fd)
-        if tmp is not None:
-            with suppress(OSError):
-                if tmp.exists() and not tmp.is_symlink():
-                    tmp.unlink()
+        with suppress(OSError):
+            if tmp.exists() and not tmp.is_symlink():
+                tmp.unlink()
 
 
 def _kv_text(data: dict[str, str] | Iterable[tuple[str, str]]) -> str:
@@ -543,6 +561,21 @@ def _design_symlink_path(pid: str) -> Path:
     return home / ".cache" / "larch" / "sessions" / (f"current-design-env-{pid}.sh" if pid else "current-design-env.sh")
 
 
+def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
+    expected = _design_symlink_path(pid)
+    if symlink_path != expected:
+        msg = f"design current-env symlink path mismatch: {symlink_path}"
+        raise ValueError(msg)
+    ancestor = symlink_path.parent
+    while True:
+        if ancestor.is_symlink():
+            msg = f"refusing symlinked ancestor for design current-env link: {ancestor}"
+            raise OSError(msg)
+        if ancestor == ancestor.parent:
+            break
+        ancestor = ancestor.parent
+
+
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
     for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "issue-number", "claude-pid"):
@@ -575,6 +608,8 @@ def write_design_env_main(argv: list[str]) -> int:
             raise ValueError("Invalid --output: must be an absolute path")
         if not _writer_target_allowed(out_path):
             raise ValueError(f"output path not under allowed session root: {out_path}")
+        if not _safe_output_parent(out_path):
+            raise OSError(f"output parent is not a writable directory: {out_path.parent}")
         plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
         if plugin_root and not _validate_plugin_root_value(plugin_root):
             raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
@@ -634,6 +669,7 @@ def write_design_env_main(argv: list[str]) -> int:
         symlink_path = _design_symlink_path(args.claude_pid)
         if not args.claude_pid:
             _err("WARNING=write-design-current-env.sh: --claude-pid omitted; using legacy current-design-env.sh symlink (transition shim; pass --claude-pid)")
+        _validate_design_current_env_link(symlink_path, args.claude_pid)
         symlink_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_link = symlink_path.with_name(f".{symlink_path.name}.tmp.{os.getpid()}")
         with suppress(FileNotFoundError):
@@ -676,7 +712,15 @@ def read_key_main(argv: list[str]) -> int:
     value = ""
     found = False
     prefix = f"{args.key}="
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        if args.default is not None:
+            _emit(args.default)
+            return 0
+        _err(f"read-session-env-key.sh: cannot read {args.file}")
+        return 1
+    for line in lines:
         if line.startswith(prefix):
             value = line[len(prefix):]
             found = True
@@ -711,14 +755,18 @@ def write_id_main(argv: list[str]) -> int:
         return 1
     out = Path(args.output)
     try:
+        if not _writer_target_allowed(out):
+            raise OSError(f"output path not under allowed session root: {out}")
         out.parent.mkdir(parents=True, exist_ok=True)
+        if not _safe_output_parent(out):
+            raise OSError(f"output parent is not a writable directory: {out.parent}")
         if out.is_file() and out.stat().st_size > 0:
             return 0
         _atomic_write(out, _uuid_or_basename(out.parent) + "\n")
         return 0
     except OSError as exc:
-        print("FAILED=true")
-        print(f"ERROR={exc}")
+        _emit_kv("FAILED", "true")
+        _emit_kv("ERROR", str(exc))
         return 1
 
 
@@ -745,9 +793,14 @@ def persist_run_flags_main(argv: list[str]) -> int:
             "EMERGENCY_REQUESTED": args.emergency_requested,
             "SELF_REVIEW_REQUESTED": args.self_review_requested,
         }
+        target = Path(args.implement_tmpdir) / "run-flags.sh"
+        if not _writer_target_allowed(target):
+            raise ValueError(f"output path not under allowed session root: {target}")
+        if not _safe_output_parent(target):
+            raise OSError(f"output parent is not a writable directory: {target.parent}")
         _validate_writer_keys(data, RUN_FLAG_KEYS)
         _validate_no_newlines(data)
-        _atomic_write(Path(args.implement_tmpdir) / "run-flags.sh", _kv_text(data))
+        _atomic_write(target, _kv_text(data))
         print("RUN_FLAGS_PERSISTED=true")
         return 0
     except (OSError, SystemExit, ValueError) as exc:
@@ -790,9 +843,13 @@ def write_run_params_main(argv: list[str]) -> int:
         out = Path(args.output)
         if not out.is_absolute():
             raise ValueError(f"--output must be absolute: {out}")
+        if not _writer_target_allowed(out):
+            raise ValueError(f"output path not under allowed session root: {out}")
         if not out.parent.is_dir():
             _err(f"write-run-params.sh: output directory not found: {out.parent}")
             return 1
+        if not _safe_output_parent(out):
+            raise OSError(f"output parent is not a writable directory: {out.parent}")
         payload = {
             "schema_version": 3,
             "design_classification": args.classification,
@@ -833,7 +890,12 @@ def read_classification_main(argv: list[str]) -> int:
             return 0
     except (OSError, json.JSONDecodeError, AttributeError):
         pass
-    text = target.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        warn(f"run-params not readable: {path}")
+        print("HARD")
+        return 0
     if re.search(r'"design_classification"\s*:\s*"SIMPLE"', text):
         print("SIMPLE")
     elif re.search(r'"design_classification"\s*:\s*"HARD"', text):
@@ -854,6 +916,8 @@ def restore_finalize_state_main(argv: list[str]) -> int:
         tmpdir = Path(args.implement_tmpdir)
         if not tmpdir.is_dir():
             raise ValueError("--implement-tmpdir must exist")
+        if not _writer_target_allowed(tmpdir):
+            raise ValueError(f"--implement-tmpdir not under allowed session root: {tmpdir}")
     except (SystemExit, ValueError) as exc:
         _plain_err(f"restore-finalize-state.sh: {exc}")
         return 2
@@ -944,9 +1008,8 @@ def entry_gate_main(argv: list[str]) -> int:
         args, extra = parser.parse_known_args(argv)
     except SystemExit:
         return 4
-    logging_util.quiet_init(argv0="session-entry-gate.sh")
     def fail(message: str) -> int:
-        print(f"GATE_ERROR={message}", file=sys.stderr)
+        _plain_err(f"GATE_ERROR={message}")
         return 4
     if extra:
         return fail(f"unknown argument: {extra[0]}")
@@ -971,6 +1034,7 @@ def entry_gate_main(argv: list[str]) -> int:
     if (args.mode == "design" and branch_info == "true") or args.is_user_branch == "true":
         entry_gate = "continue"
         skip_branch_check = "true"
+    logging_util.quiet_init(argv0="session-entry-gate.sh")
     _emit_kv("ENTRY_GATE", entry_gate)
     _emit_kv("SKIP_BRANCH_CHECK", skip_branch_check)
     return 0
@@ -1202,10 +1266,14 @@ def local_cleanup_main(argv: list[str]) -> int:
         if ahead_before > 0:
             subjects = proc.run(["git", "log", "origin/main..HEAD", "--format=%s"])
             subject_lines = [line for line in subjects.stdout.splitlines() if line]
-            all_flushes = bool(subject_lines) and subjects.returncode == 0 and all(line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines)
+            all_flushes = subjects.returncode == 0 and (
+                not subject_lines or all(line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines)
+            )
             diff = proc.run(["git", "diff", "--name-only", pre_fetch_sha, "HEAD"])
             diff_lines = [line for line in diff.stdout.splitlines() if line]
-            larch_only = bool(diff_lines) and diff.returncode == 0 and all(line.startswith("larch-logs/") for line in diff_lines)
+            larch_only = diff.returncode == 0 and (
+                not diff_lines or all(line.startswith("larch-logs/") for line in diff_lines)
+            )
             if all_flushes and larch_only:
                 print(f"⚠ Dropping {ahead_before} prior-run larch-log flush commit(s) before pull...", file=sys.stderr)
                 _ = proc.run(["git", "reset", "--hard", "origin/main"])

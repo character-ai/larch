@@ -45,6 +45,10 @@ kv() {
     awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file"
 }
 
+read_session_key() {
+    python3 "$REPO_ROOT/python/cli.py" session read-key "$@"
+}
+
 run_capture() {
     local out=$1
     shift
@@ -790,10 +794,10 @@ EOF
 run_capture "$SANDBOX/case20m-normalize-create.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
 assert_eq 0 "$RC" "20: normalize create exits 0"
 assert_eq true "$(kv NORMALIZED "$SANDBOX/case20m-normalize-create.out")" "20: normalize create emits true"
-assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize create writes canonical ISSUE_NUMBER"
-assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize create writes canonical ISSUE_URL"
-assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create strips raw ISSUE_1 metadata"
-assert_eq "" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_1_URL --default "")" "20: normalize create strips source ISSUE_1_URL"
+assert_eq 123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize create writes canonical ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize create writes canonical ISSUE_URL"
+assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create strips raw ISSUE_1 metadata"
+assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_1_URL --default "")" "20: normalize create strips source ISSUE_1_URL"
 
 dir=$(make_tmp case20n-normalize-dedup)
 cat >"$dir/issue.out" <<'EOF'
@@ -806,8 +810,8 @@ ISSUE_1_DUPLICATE_OF_URL=https://github.com/example/repo/issues/456
 EOF
 run_capture "$SANDBOX/case20n-normalize-dedup.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
 assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n-normalize-dedup.out")" "20: normalize dedup emits true"
-assert_eq 456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize dedup writes duplicate canonical ISSUE_NUMBER"
-assert_eq https://github.com/example/repo/issues/456 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize dedup writes duplicate canonical ISSUE_URL"
+assert_eq 456 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize dedup writes duplicate canonical ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/456 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize dedup writes duplicate canonical ISSUE_URL"
 
 dir=$(make_tmp case20n2-normalize-dedup-invalid-url-keeps-create)
 cat >"$dir/issue.out" <<'EOF'
@@ -822,8 +826,8 @@ ISSUE_1_DUPLICATE_OF_URL=not-a-url
 EOF
 run_capture "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
 assert_eq true "$(kv NORMALIZED "$SANDBOX/case20n2-normalize-dedup-invalid-url-keeps-create.out")" "20: normalize invalid dedup URL keeps valid create metadata"
-assert_eq 123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize invalid dedup URL keeps create ISSUE_NUMBER"
-assert_eq https://github.com/example/repo/issues/123 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize invalid dedup URL keeps create ISSUE_URL"
+assert_eq 123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize invalid dedup URL keeps create ISSUE_NUMBER"
+assert_eq https://github.com/example/repo/issues/123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize invalid dedup URL keeps create ISSUE_URL"
 
 dir=$(make_tmp case20n3-normalize-dedup-missing-url)
 printf 'ISSUE_NUMBER=stale\n' >"$dir/stall-recovery-issue.env"
@@ -1103,22 +1107,22 @@ write_state "$dir" 8 ci-initial "adopted-issue-closed" "BAIL_FAILURE_DETAIL_LOG=
 run_capture "$SANDBOX/case22-clear-success.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall success exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-success.out")" "22: clear-stall success emits CLEARED=true"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall sets STALL_TRACKING=false on disk"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall sets STALL_TRACKING=false on disk"
 if grep -q '^STALL_STEP=$' "$dir/ship-pr-state.sh"; then
     pass "22: clear-stall clears STALL_STEP on disk"
 else
     fail "22: clear-stall clears STALL_STEP on disk"
 fi
-assert_eq ci-initial "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: clear-stall preserves PHASE"
-assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: clear-stall preserves EXIT_CODE"
-assert_eq adopted-issue-closed "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: clear-stall preserves BAIL_REASON"
-assert_eq "$dir/failure.log" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: clear-stall preserves BAIL_FAILURE_DETAIL_LOG"
+assert_eq ci-initial "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: clear-stall preserves PHASE"
+assert_eq 4 "$(read_session_key --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: clear-stall preserves EXIT_CODE"
+assert_eq adopted-issue-closed "$(read_session_key --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: clear-stall preserves BAIL_REASON"
+assert_eq "$dir/failure.log" "$(read_session_key --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: clear-stall preserves BAIL_FAILURE_DETAIL_LOG"
 
 dir=$(make_tmp case22-clear-absent)
 run_capture "$SANDBOX/case22-clear-absent.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall absent state exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-absent.out")" "22: clear-stall absent state emits CLEARED=true"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall absent state writes STALL_TRACKING=false"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall absent state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-malformed)
 printf 'not valid\n' >"$dir/ship-pr-state.sh"
@@ -1141,27 +1145,27 @@ PR_URL=https://example.test/pr/1
 EOF
 run_capture "$SANDBOX/case22-clear-append.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-append.out")" "22: clear-stall append-when-absent emits CLEARED=true"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall append-when-absent writes STALL_TRACKING=false"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall append-when-absent writes STALL_TRACKING=false"
 if grep -q '^STALL_STEP=$' "$dir/ship-pr-state.sh"; then
     pass "22: clear-stall append-when-absent writes empty STALL_STEP"
 else
     fail "22: clear-stall append-when-absent writes empty STALL_STEP"
 fi
-assert_eq https://example.test/pr/1 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PR_URL --default "")" "22: clear-stall append-when-absent preserves PR_URL"
+assert_eq https://example.test/pr/1 "$(read_session_key --file "$dir/ship-pr-state.sh" --key PR_URL --default "")" "22: clear-stall append-when-absent preserves PR_URL"
 
 dir=$(make_tmp case22-clear-empty)
 : >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-clear-empty.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall empty state exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-empty.out")" "22: clear-stall empty state emits CLEARED=true"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall empty state writes STALL_TRACKING=false"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall empty state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-comments)
 printf '# comment only\n\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-clear-comments.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall comment-only state exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-comments.out")" "22: clear-stall comment-only state emits CLEARED=true"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall comment-only state writes STALL_TRACKING=false"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall comment-only state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-mv-fail)
 write_state "$dir" 8 ci-initial
@@ -1177,42 +1181,42 @@ run_capture "$SANDBOX/case22-clear-mv-fail.out" env PATH="$fail_bin:$PATH" "$SCR
 assert_eq 1 "$RC" "22: clear-stall mv failure exits 1"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-mv-fail.out")" "22: clear-stall mv failure emits CLEARED=false"
 assert_eq "$before_clear" "$(cat "$dir/ship-pr-state.sh")" "22: clear-stall mv failure leaves ship-pr-state.sh unchanged"
-assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall mv failure leaves STALL_TRACKING=true on disk"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall mv failure leaves STALL_TRACKING=true on disk"
 
 dir=$(make_tmp case22-seed-rewrite)
 write_state "$dir" 8 ci-initial "first-fixer-non-health" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
 run_capture "$SANDBOX/case22-seed-rewrite.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir" --stall-step 5 --phase review
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-rewrite.out")" "22: seed-terminal-state rewrite emits SEEDED=true"
 assert_eq rewrite "$(kv SEED_MODE "$SANDBOX/case22-seed-rewrite.out")" "22: seed-terminal-state rewrite emits SEED_MODE=rewrite"
-assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state rewrite keeps STALL_TRACKING=true"
-assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite refreshes STALL_STEP"
-assert_eq review "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite refreshes PHASE"
-assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state rewrite preserves EXIT_CODE"
-assert_eq first-fixer-non-health "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: seed-terminal-state rewrite preserves BAIL_REASON"
-assert_eq "$dir/failure.log" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: seed-terminal-state rewrite preserves BAIL_FAILURE_DETAIL_LOG"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state rewrite keeps STALL_TRACKING=true"
+assert_eq 5 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite refreshes STALL_STEP"
+assert_eq review "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite refreshes PHASE"
+assert_eq 4 "$(read_session_key --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state rewrite preserves EXIT_CODE"
+assert_eq first-fixer-non-health "$(read_session_key --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: seed-terminal-state rewrite preserves BAIL_REASON"
+assert_eq "$dir/failure.log" "$(read_session_key --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: seed-terminal-state rewrite preserves BAIL_FAILURE_DETAIL_LOG"
 
 dir=$(make_tmp case22-seed-empty)
 : >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-seed-empty.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir"
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-empty.out")" "22: seed-terminal-state empty file emits SEEDED=true"
 assert_eq seed "$(kv SEED_MODE "$SANDBOX/case22-seed-empty.out")" "22: seed-terminal-state empty file uses SEED_MODE=seed"
-assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state empty file seeds STALL_TRACKING=true"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state empty file seeds STALL_TRACKING=true"
 
 dir=$(make_tmp case22-seed-comments)
 printf '# header\n\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-seed-comments.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir" --stall-step 5 --phase review
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-comments.out")" "22: seed-terminal-state comment-only file emits SEEDED=true"
 assert_eq seed "$(kv SEED_MODE "$SANDBOX/case22-seed-comments.out")" "22: seed-terminal-state comment-only file uses SEED_MODE=seed"
-assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state comment-only file honors stall-step override"
+assert_eq 5 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state comment-only file honors stall-step override"
 
 dir=$(make_tmp case22-seed-fresh)
 run_capture "$SANDBOX/case22-seed-fresh.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir"
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-fresh.out")" "22: seed-terminal-state fresh emits SEEDED=true"
 assert_eq seed "$(kv SEED_MODE "$SANDBOX/case22-seed-fresh.out")" "22: seed-terminal-state fresh emits SEED_MODE=seed"
-assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state fresh sets STALL_TRACKING=true"
-assert_eq ci-initial "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state fresh seeds PHASE=ci-initial"
-assert_eq 8 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state fresh seeds STALL_STEP=8"
-assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state fresh seeds EXIT_CODE=4"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state fresh sets STALL_TRACKING=true"
+assert_eq ci-initial "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state fresh seeds PHASE=ci-initial"
+assert_eq 8 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state fresh seeds STALL_STEP=8"
+assert_eq 4 "$(read_session_key --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state fresh seeds EXIT_CODE=4"
 if grep -q '^BAIL_REASON=$' "$dir/ship-pr-state.sh"; then
     pass "22: seed-terminal-state fresh seeds empty BAIL_REASON"
 else
@@ -1251,7 +1255,7 @@ run_capture "$SANDBOX/case22-seed-mv-fail.out" env PATH="$fail_bin:$PATH" "$SCRI
 assert_eq 1 "$RC" "22: seed-terminal-state mv failure exits 1"
 assert_eq false "$(kv SEEDED "$SANDBOX/case22-seed-mv-fail.out")" "22: seed-terminal-state mv failure emits SEEDED=false"
 assert_eq "$before_seed" "$(cat "$dir/ship-pr-state.sh")" "22: seed-terminal-state mv failure leaves ship-pr-state.sh unchanged"
-assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state mv failure leaves STALL_TRACKING=true on disk"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state mv failure leaves STALL_TRACKING=true on disk"
 
 noop_mv_bin="$SANDBOX/noop-mv-bin"
 mkdir -p "$noop_mv_bin"
@@ -1293,14 +1297,32 @@ cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$read_stub_root/skills/im
 cp "$SCRIPT_DIR/stall-recovery-report.md" "$read_stub_root/skills/implement/scripts/"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$read_stub_root/scripts/"
 cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$read_stub_root/scripts/"
-cp "$REPO_ROOT/python/cli.py" "$read_stub_root/scripts/read-session-env-key.real.sh"
-chmod +x "$read_stub_root/skills/implement/scripts/stall-recovery-report.sh" \
-  "$read_stub_root/scripts/read-session-env-key.real.sh"
-cat >"$read_stub_root/python/cli.py session read-key" <<'STUB'
+mkdir -p "$read_stub_root/python/stubs/session"
+cp "$REPO_ROOT"/python/*.py "$read_stub_root/python/"
+mv "$read_stub_root/python/cli.py" "$read_stub_root/python/real-cli.py"
+chmod +x "$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
+cat >"$read_stub_root/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+chmod +x "$read_stub_root/python/cli.py"
+cat >"$read_stub_root/python/stubs/session/read-key" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-stub_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-real="$stub_dir/read-session-env-key.real.sh"
+real="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/real-cli.py"
 args=("$@")
 file="" key=""
 index=0
@@ -1333,9 +1355,9 @@ case "${STALL_READ_STUB:-}" in
     esac
     ;;
 esac
-exec "$real" "${args[@]}"
+exec python3 "$real" session read-key "${args[@]}"
 STUB
-chmod +x "$read_stub_root/python/cli.py session read-key"
+chmod +x "$read_stub_root/python/stubs/session/read-key"
 read_stub_script="$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
 
 dir=$(make_tmp case22-clear-temp-read-wrong)
@@ -1356,7 +1378,7 @@ run_capture "$SANDBOX/case22-clear-dest-read-fail.out" env \
   "$read_stub_script" clear-stall --implement-tmpdir "$dir"
 assert_eq 1 "$RC" "22: clear-stall destination read failure exits 1"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dest-read-fail.out")" "22: clear-stall destination read failure emits CLEARED=false"
-assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall destination read failure exercises post-mv assertion"
+assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall destination read failure exercises post-mv assertion"
 
 dir=$(make_tmp case22-seed-dest-read-fail)
 write_state "$dir" 8 ci-initial
@@ -1425,8 +1447,8 @@ EXIT_CODE=4
 EOF
 run_capture "$SANDBOX/case22-seed-awk-metachar.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir" --stall-step 5 --phase review
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-awk-metachar.out")" "22: seed-terminal-state rewrite sanitizes metacharacter PHASE from disk"
-assert_eq review "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
-assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
+assert_eq review "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
+assert_eq 5 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

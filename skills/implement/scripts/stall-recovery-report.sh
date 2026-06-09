@@ -216,7 +216,7 @@ cmd_clear_stall() {
             rm -f "$tmp"
             emit_cleared_false_exit 1
         fi
-        tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+        tracking=$(kv_get "$tmp" STALL_TRACKING "") || {
             rm -f "$tmp"
             emit_cleared_false_exit 1
         }
@@ -225,7 +225,7 @@ cmd_clear_stall() {
             emit_cleared_false_exit 1
         fi
         mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-        tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
+        tracking=$(kv_get "$state" STALL_TRACKING "") || emit_cleared_false_exit 1
         if [ "$tracking" != false ]; then
             emit_cleared_false_exit 1
         fi
@@ -252,7 +252,7 @@ cmd_clear_stall() {
             emit_cleared_false_exit 1
         fi
     fi
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+    tracking=$(kv_get "$tmp" STALL_TRACKING "") || {
         rm -f "$tmp"
         emit_cleared_false_exit 1
     }
@@ -261,7 +261,7 @@ cmd_clear_stall() {
         emit_cleared_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
+    tracking=$(kv_get "$state" STALL_TRACKING "") || emit_cleared_false_exit 1
     if [ "$tracking" != false ]; then
         emit_cleared_false_exit 1
     fi
@@ -338,7 +338,7 @@ cmd_seed_terminal_state() {
         emit_seeded_false_exit 1
     fi
 
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+    tracking=$(kv_get "$tmp" STALL_TRACKING "") || {
         rm -f "$tmp"
         emit_seeded_false_exit 1
     }
@@ -347,7 +347,7 @@ cmd_seed_terminal_state() {
         emit_seeded_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_seeded_false_exit 1
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_seeded_false_exit 1
+    tracking=$(kv_get "$state" STALL_TRACKING "") || emit_seeded_false_exit 1
     if [ "$tracking" != true ]; then
         emit_seeded_false_exit 1
     fi
