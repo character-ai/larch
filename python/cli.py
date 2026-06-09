@@ -15,6 +15,12 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("ship", "pr"): ("ship", "main"),
     ("report-tokens", "analyze"): ("report_tokens_cli", "main"),
     ("lint", "retired-scripts"): ("migration_lint", "main"),
+    ("lint", "mermaid-fences"): ("lint_mermaid_fences", "main"),
+    ("lint", "skill-md-flag-signature"): ("lint_skill_md_flag_signature", "main"),
+    ("lint", "readability-preamble"): ("lint_readability_preamble", "main"),
+    ("lint", "gh-body-inline"): ("lint_gh_body_inline", "main"),
+    ("lint", "codex-exec-auth"): ("lint_codex_exec_auth", "main"),
+    ("lint", "skill-invocations"): ("lint_skill_invocations", "main"),
 }
 
 

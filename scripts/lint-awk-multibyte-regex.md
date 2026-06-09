@@ -3,7 +3,7 @@
 `scripts/lint-awk-multibyte-regex.sh` is a static lint that rejects non-ASCII
 bytes inside dynamic awk regex contexts across repo-wide `*.sh` and `*.awk`
 files. It closes issue #3134 and complements PR character-ai/larch#3144, which
-fixed the em-dash regression in `scripts/lint-readability-preamble.sh`.
+fixed the em-dash regression in `python3 python/cli.py lint readability-preamble`.
 
 ## Scope
 
@@ -24,7 +24,7 @@ the literal shell token (single-quoted, double-quoted, or unquoted). Continuatio
 lines ending in `\` are joined before matching. Rule id: `awk-v-nonascii`.
 
 Historical example (Rule 1): an em-dash inside `orchestrator_style_re` passed as
-`awk -v style_re='… — …'` in `scripts/lint-readability-preamble.sh` before
+`awk -v style_re='… — …'` in `python3 python/cli.py lint readability-preamble` before
 `# 3144`.
 
 **Rule 2 — non-ASCII inside an awk body at a regex callsite.** The linter tracks

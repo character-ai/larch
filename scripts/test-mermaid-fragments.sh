@@ -7,10 +7,8 @@ export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SANITIZE="$SCRIPT_DIR/sanitize-mermaid-fragment.sh"
-LINT="$SCRIPT_DIR/lint-mermaid-fences.sh"
 
 [ -x "$SANITIZE" ] || { echo "FAIL: sanitizer not executable"; exit 1; }
-[ -x "$LINT" ] || { echo "FAIL: lint helper not executable"; exit 1; }
 
 tmpdir="$(mktemp -d -t mermaid-fragments-test-XXXXXX)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -244,47 +242,5 @@ EOF
 aggregated_tokens="$(awk '/^REASON_TOKEN=/{sub(/^REASON_TOKEN=/, ""); sub(/[[:space:]].*$/, ""); print}' "$reasons_agg" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 [ "$aggregated_tokens" = "future=token normal-token" ] || fail "warnings-token aggregation expected 'future=token normal-token' got '$aggregated_tokens'"
 ok "warnings-token aggregation preserves embedded equals"
-
-nested="$tmpdir/nested.md"
-cat > "$nested" <<'EOF'
-````markdown
-```mermaid
-flowchart TD
-  A[bad|example]
-```
-````
-EOF
-set +e
-lint_out="$("$LINT" "$nested" 2>&1)"
-lint_rc=$?
-set -e
-if [ "$lint_rc" -eq 2 ]; then
-    ok "lint nested-fence fixture skipped without mmdc"
-elif [ "$lint_rc" -eq 0 ]; then
-    ok "lint nested-fence fixture"
-else
-    fail "lint nested-fence fixture rc=$lint_rc output=$lint_out"
-fi
-
-repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
-skip_dir="$repo_root/larch-logs/mermaid-explicit-skip-test-$$"
-mkdir -p "$skip_dir"
-trap 'rm -rf "$tmpdir" "$skip_dir"' EXIT
-cat > "$skip_dir/invalid.md" <<'EOF'
-```mermaid
-flowchart TD
-  A[bad|example]
-```
-EOF
-set +e
-(
-    cd "$repo_root" || exit 1
-    "$LINT" "larch-logs/mermaid-explicit-skip-test-$$/invalid.md"
-) >"$tmpdir/explicit-skip.out" 2>"$tmpdir/explicit-skip.err"
-skip_rc=$?
-set -e
-[ "$skip_rc" -eq 0 ] || fail "lint explicit larch-logs skip rc=$skip_rc stdout=$(cat "$tmpdir/explicit-skip.out") stderr=$(cat "$tmpdir/explicit-skip.err")"
-grep -qF "INFO: no Markdown files to lint" "$tmpdir/explicit-skip.out" || fail "lint explicit larch-logs skip did not report no Markdown files"
-ok "lint explicit larch-logs skip"
 
 echo "Results: $pass passed"

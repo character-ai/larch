@@ -84,14 +84,6 @@ suppress = [
 # matching the same Makefile-only pattern as the other test-* harnesses above.
 # Both are documented in scripts/verify-skill-called.md (sibling contract).
 #
-# scripts/test-lint-skill-invocations.sh is the regression harness for
-# scripts/lint-skill-invocations.py (the skill-invocation documentation lint).
-# The lint script itself IS structurally referenced from .pre-commit-config.yaml
-# (local hook `lint-skill-invocations`) and is therefore not excluded; the test
-# harness is referenced only from Makefile (test-lint-skill-invocations target)
-# and scripts/lint-skill-invocations.md (sibling contract), matching the same
-# Makefile-only pattern as the other test-* harnesses above.
-#
 # scripts/test-lint-literal-counts.sh is the regression harness for
 # scripts/lint-literal-counts.py (the drift-prone literal item-count markdown
 # lint). The lint script itself IS structurally referenced from
@@ -114,19 +106,9 @@ suppress = [
 # black-box regression harness. Both are Makefile-only from agent-lint's
 # reachability perspective, so both are excluded with their sibling contracts.
 #
-# scripts/lint-readability-preamble.sh is a pre-commit / Makefile-only lint for
-# /design readability prompt registrations. scripts/test-lint-readability-preamble.sh
-# is its black-box harness. Both are excluded with sibling docs because agent-lint
-# does not treat pre-commit or Makefile wiring as structured runtime invocation.
-#
-# scripts/lint-renderer-substitution-safety.sh and
-# scripts/lint-skill-md-flag-signature.sh are pre-commit / Makefile-only lints,
-# and their `test-*` companions are black-box harnesses. Exclude them with their
-# sibling contracts like the adjacent lint harnesses.
-#
-# scripts/lint-gh-body-inline.sh is a pre-commit / Makefile-only lint for
-# file-backed GitHub CLI body payloads. scripts/test-lint-gh-body-inline.sh is
-# its black-box harness. Same reachability pattern as lint-readability-preamble.
+# scripts/lint-renderer-substitution-safety.sh and scripts/lint-bare-grep-probe.sh are
+# pre-commit / Makefile-only lints. The renderer-substitution and bare-grep
+# harnesses remain shell-based and are excluded with their sibling contracts.
 #
 # scripts/lint-bare-grep-probe.sh is a pre-commit / Makefile-only lint that
 # rejects bare top-level grep probes in orchestrator-facing markdown fences
@@ -180,7 +162,7 @@ suppress = [
 # `<path>/SKILL.md § <heading>` citation in skills/shared/subskill-invocation.md
 # (closes #236). The harness enforces heading-anchor resolution against the
 # referenced SKILL.md files — a contract orthogonal to the invocation-wording
-# contract enforced by scripts/lint-skill-invocations.py. It is referenced
+# contract enforced by `python3 python/cli.py lint skill-invocations`. It is referenced
 # only from Makefile (test-subskill-anchors target) and
 # scripts/test-subskill-anchors.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
@@ -488,8 +470,6 @@ exclude = [
   # 4-core runners. agent-lint's G004/dead-script rule scans SKILL.md /
   # CLAUDE.md / hooks.json / settings.json for invocation refs and does NOT
   # follow `.pre-commit-config.yaml` entries. Same pattern as other
-  # pre-commit-only scripts (e.g., scripts/lint-skill-invocations.py would be
-  # flagged for the same reason if .py files were in scope). Sibling contract:
   # scripts/pre-commit-shellcheck.md.
   "scripts/pre-commit-shellcheck.sh",
   "scripts/pre-commit-shellcheck.md",
@@ -497,6 +477,7 @@ exclude = [
   # by the `bash-syntax-check` pre-commit hook in `.pre-commit-config.yaml`.
   # Same exemption rationale as pre-commit-shellcheck.sh above: agent-lint
   # G004 does not follow .pre-commit-config.yaml entries.
+  # Sibling contract:
   "scripts/pre-commit-bash-syntax.sh",
   "scripts/pre-commit-bash-syntax.md",
   "scripts/test-sessionstart-health.sh",
@@ -593,7 +574,7 @@ exclude = [
   "scripts/test-session-setup-presence-defaults.sh",
   "scripts/test-session-setup-presence-defaults.md",
   # scripts/test-mermaid-fragments.sh is the regression harness for
-  # sanitize-mermaid-fragment.sh and lint-mermaid-fences.sh. Referenced only
+  # sanitize-mermaid-fragment.sh. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
   # matching the Makefile-only harness pattern above.
   "scripts/test-mermaid-fragments.sh",
@@ -917,7 +898,6 @@ exclude = [
   "scripts/parse-codex-usage.md",
   "scripts/test-parse-codex-usage.sh",
   "scripts/test-parse-codex-usage.md",
-  "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
@@ -926,32 +906,15 @@ exclude = [
   "scripts/lint-bash32.md",
   "scripts/test-lint-bash32.sh",
   "scripts/test-lint-bash32.md",
-  "scripts/lint-readability-preamble.sh",
-  "scripts/lint-readability-preamble.md",
-  "scripts/test-lint-readability-preamble.sh",
-  "scripts/test-lint-readability-preamble.md",
   "scripts/lint-renderer-substitution-safety.sh",
   "scripts/lint-renderer-substitution-safety.md",
   "scripts/test-lint-renderer-substitution-safety.sh",
   "scripts/test-lint-renderer-substitution-safety.md",
-  "scripts/lint-skill-md-flag-signature.sh",
-  "scripts/lint-skill-md-flag-signature.md",
-  "scripts/test-lint-skill-md-flag-signature.sh",
-  "scripts/test-lint-skill-md-flag-signature.md",
-  "scripts/lint-gh-body-inline.sh",
-  "scripts/lint-gh-body-inline.md",
-  "scripts/test-lint-gh-body-inline.sh",
-  "scripts/test-lint-gh-body-inline.md",
   "scripts/lint-bare-grep-probe.sh",
   "scripts/lint-bare-grep-probe.md",
   "scripts/test-lint-bare-grep-probe.sh",
   "scripts/test-lint-bare-grep-probe.md",
-  # scripts/lint-codex-exec-auth.sh — Makefile/pre-commit-only linter (issue #3475).
   # scripts/launch-codex-exec.sh — markdown-fence + lint-fix-loop launcher-variable indirection.
-  "scripts/lint-codex-exec-auth.sh",
-  "scripts/lint-codex-exec-auth.md",
-  "scripts/test-lint-codex-exec-auth.sh",
-  "scripts/test-lint-codex-exec-auth.md",
   "scripts/launch-codex-exec.sh",
   "scripts/launch-codex-exec.md",
   "scripts/test-launch-codex-exec.sh",
