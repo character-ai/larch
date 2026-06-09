@@ -96,6 +96,7 @@ chmod +x "$FAKE_PLUGIN/python/cli.py"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdir.sh"
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$FAKE_SCRIPTS/append-execution-issue.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
@@ -807,9 +808,10 @@ set +e
 run_subject "$D32" --with-plan-size --snapshot-original
 rc=$?
 set -e
-assert_rc "drift trigger rc" 14 "$rc"
-assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "drift trigger status"
-assert_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger section"
+assert_rc "drift trigger rc" 0 "$rc"
+assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-advisory "drift trigger status"
+assert_not_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger no section"
+assert_contains "$D32/execution-issues.md" 'drift advisory' "drift trigger warning logged"
 
 D33="$TMP/drift-hard-precedence"
 setup_design_tmp "$D33" full HARD

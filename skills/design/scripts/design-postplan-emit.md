@@ -58,9 +58,8 @@ Allowlisted keys for orchestrator reads (never `source`):
 | `11` | Pause requested (orchestrator runs `design-pause-save.sh`) |
 | `12` | Hard trigger (`HARD_TRIGGER_FIRED=true`; hard wins over partition) |
 | `13` | `partition_requested=true` without hard trigger |
-| `14` | Drift trigger (`DRIFT_TRIGGER_FIRED=true`; hard and partition both take precedence) |
 
-**Precedence**: hard → partition → defects (validator handoff, rc **10**) → drift when more than one applies. When `VALIDATE_STATUS=defects-found`, validator defects win over drift even if `check-plan-size.sh` also fired drift.
+**Precedence**: hard → partition → defects (validator handoff, rc **10**). Drift (`DRIFT_TRIGGER_FIRED=true`) no longer exits with a non-zero code; it records a `Warnings` entry in `execution-issues.md` via `append-tool-failure.sh` and exits `0` (with `PLAN_SIZE_STATUS=drift-advisory`).
 
 ## Plan-size nonfatal failures (merged)
 
