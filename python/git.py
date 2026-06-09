@@ -524,6 +524,16 @@ def try_rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str | 
     return result.stdout.strip()
 
 
+def local_branch_exists(runner: Runner, branch: str, *, cwd: str | None = None) -> bool:
+    """True when ``refs/heads/<branch>`` exists (tags/remotes do not match)."""
+    result = _run(
+        runner,
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=cwd,
+    )
+    return result.returncode == 0
+
+
 def try_merge_base(
     runner: Runner,
     left: str,

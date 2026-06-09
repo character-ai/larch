@@ -6,13 +6,14 @@ from __future__ import annotations
 import argparse
 import tempfile
 
+import logging_util
 import merge
 import proc
 from run_context import RunContext
 
 
 def _emit_kv(key: str, value: object) -> None:
-    print(f"{key}={value}")
+    logging_util.emit_kv(key, str(value))
 
 
 def pr_main(argv: list[str]) -> int:

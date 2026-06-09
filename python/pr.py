@@ -164,7 +164,7 @@ def create_branch(
     err = git.validate_base_remote_ref(base_remote, base_ref)
     if err is not None:
         return CreateBranchResult("invalid", branch, base, exit_code=2)
-    if git.try_rev_parse(runner, branch, cwd=cwd):
+    if git.local_branch_exists(runner, branch, cwd=cwd):
         return CreateBranchResult("exists", branch, base, exit_code=1)
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:

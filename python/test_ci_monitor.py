@@ -238,6 +238,38 @@ def test_gather_status_fetch_fail_pending() -> None:
     assert status.behind_count == 0
 
 
+def test_gather_status_pr_view_failure_still_probes_checks() -> None:
+    responses = _status(status="pass")
+    responses[
+        (
+            "gh",
+            "pr",
+            "view",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "number,url,state,headRefName,mergedAt,mergeStateStatus",
+        )
+    ] = _cr(("gh", "pr", "view"), rc=1)
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "pass"
+    assert status.conflicted is True
+
+
+def test_gather_status_behind_probe_fail_preserves_checks_status() -> None:
+    responses = _status(status="pass")
+    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
+        ("git", "rev-list", "--count"),
+        rc=1,
+    )
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "pass"
+    assert status.behind_count == 0
+
+
 def test_gather_status_empty_checks_grace() -> None:
     responses = _status(status="empty")
     runner = RecordingRunner(responses)

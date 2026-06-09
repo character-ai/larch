@@ -484,7 +484,21 @@ def rebase_push(
     if not branch:
         return RebasePushResult(exit_code=2, push_error="Not on a branch (detached HEAD) before push")
     push_remote = git.resolve_branch_push_remote(runner, branch, cwd=cwd)
-    push_result = git.force_push_recovery(runner, remote=push_remote, cwd=cwd)
+    _ = git.fetch(runner, push_remote, branch, cwd=cwd)
+    expected_remote_oid = git.try_rev_parse(runner, f"{push_remote}/{branch}", cwd=cwd)
+    if expected_remote_oid is None:
+        remote_probe = runner.run(
+            ["git", "ls-remote", "--heads", push_remote, f"refs/heads/{branch}"],
+            cwd=cwd,
+        )
+        if remote_probe.returncode == 0 and remote_probe.stdout.strip():
+            expected_remote_oid = remote_probe.stdout.strip().split()[0]
+    push_result = git.force_push_recovery(
+        runner,
+        remote=push_remote,
+        expected_remote_oid=expected_remote_oid,
+        cwd=cwd,
+    )
     if push_result.pushed:
         return RebasePushResult(exit_code=0)
     return RebasePushResult(exit_code=2, push_error=push_result.status)

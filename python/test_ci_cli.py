@@ -25,6 +25,68 @@ def test_decide_usage_exit_one():
     assert ci_cli.decide_main([]) == 1
 
 
+def test_decide_rejects_invalid_status():
+    assert (
+        ci_cli.decide_main(
+            [
+                "--status",
+                "bogus",
+                "--behind",
+                "0",
+                "--iteration",
+                "0",
+                "--rebase-count",
+                "0",
+                "--fix-attempts",
+                "0",
+            ],
+        )
+        == 1
+    )
+
+
+def test_decide_rejects_negative_counter():
+    assert (
+        ci_cli.decide_main(
+            [
+                "--status",
+                "pass",
+                "--behind",
+                "-1",
+                "--iteration",
+                "0",
+                "--rebase-count",
+                "0",
+                "--fix-attempts",
+                "0",
+            ],
+        )
+        == 1
+    )
+
+
+def test_decide_rejects_malformed_conflicted():
+    assert (
+        ci_cli.decide_main(
+            [
+                "--status",
+                "pass",
+                "--behind",
+                "0",
+                "--conflicted",
+                "maybe",
+                "--iteration",
+                "0",
+                "--rebase-count",
+                "0",
+                "--fix-attempts",
+                "0",
+            ],
+        )
+        == 1
+    )
+
+
 def test_decide_accepts_legacy_flags(capsys):
     assert (
         ci_cli.decide_main(

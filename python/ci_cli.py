@@ -17,7 +17,7 @@ import proc
 
 
 def _emit_kv(key: str, value: object) -> None:
-    print(f"{key}={value}")
+    logging_util.emit_kv(key, str(value))
 
 
 def _parse(parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
@@ -60,6 +60,14 @@ def status_main(argv: list[str]) -> int:
     return 0
 
 
+_VALID_CI_STATUS = frozenset({"pass", "fail", "pending", "merged", "error"})
+
+
+def _decide_usage(message: str) -> int:
+    print(message, file=sys.stderr)
+    return 1
+
+
 def decide_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci decide")
     parser.add_argument("--ci-status", "--status", dest="ci_status", required=True)
@@ -72,12 +80,27 @@ def decide_main(argv: list[str]) -> int:
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
         return args
+    if args.ci_status not in _VALID_CI_STATUS:
+        return _decide_usage(
+            f"ERROR: --status must be pass|fail|pending|merged|error, got: {args.ci_status}",
+        )
+    for name in ("behind_count", "iteration", "rebase_count", "fix_attempts"):
+        value = getattr(args, name)
+        if value < 0:
+            return _decide_usage(
+                f"ERROR: {name} must be a non-negative integer, got: {value}",
+            )
+    conflicted_raw = args.conflicted.lower()
+    if conflicted_raw not in ("true", "false"):
+        return _decide_usage(
+            f"ERROR: --conflicted must be true or false, got: {args.conflicted}",
+        )
     decision = ci_monitor.decide(
         ci_monitor.CiStatus(
             status=args.ci_status,
             behind_count=args.behind_count,
             failed_run_id=args.failed_run_id or None,
-            conflicted=args.conflicted.lower() == "true",
+            conflicted=conflicted_raw == "true",
         ),
         iteration=args.iteration,
         rebase_count=args.rebase_count,

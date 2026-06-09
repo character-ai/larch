@@ -289,3 +289,30 @@ def test_ensure_pr_threads_base_to_create() -> None:
     create_call = next(call for call in runner.calls if call[:3] == ["gh", "pr", "create"])
     assert "--base" in create_call
     assert "main" in create_call
+
+
+def test_create_branch_ignores_tag_with_same_name() -> None:
+    branch = "dev-user/feature"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "config", "user.name"), 0, "Dev-User\n", "", 0.01),
+            CommandResult(
+                ("git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"),
+                1,
+                "",
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "checkout", "-b", branch, "origin/main"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = pr_module.create_branch(runner, branch=branch)
+    assert result.status == "created"
+    assert result.exit_code == 0

@@ -9,12 +9,13 @@ import sys
 from pathlib import Path
 
 import git
+import logging_util
 import phantom
 import proc
 
 
 def _emit_kv(key: str, value: object) -> None:
-    print(f"{key}={value}")
+    logging_util.emit_kv(key, str(value))
 
 
 def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:

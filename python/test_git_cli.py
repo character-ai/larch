@@ -43,3 +43,10 @@ def test_clean_tree_fail_closed_probe_error(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "CLEAN=unknown" in out
     assert "PROBE_ERROR=git exited 128" in out
+
+
+def test_emit_kv_rejects_multiline_values() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="newline"):
+        git_cli._emit_kv("ERROR", "line1\nline2")  # pyright: ignore[reportPrivateUsage]

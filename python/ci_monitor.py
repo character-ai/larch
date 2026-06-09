@@ -389,14 +389,15 @@ def gather_status(
     cwd: str | None = None,
 ) -> CiStatus:
     """Port of ci-status.sh."""
+    conflicted = True
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
-        return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=True)
-    if pr_info.state.upper() == "MERGED":
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
-
-    conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
+        pr_info = None
+    if pr_info is not None:
+        if pr_info.state.upper() == "MERGED":
+            return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+        conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:
@@ -419,7 +420,7 @@ def gather_status(
     )
     if behind_raw is None:
         return CiStatus(
-            status="pending",
+            status=status,
             behind_count=0,
             failed_run_id=failed_run_id,
             conflicted=conflicted,
