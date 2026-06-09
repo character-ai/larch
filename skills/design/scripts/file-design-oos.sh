@@ -239,15 +239,18 @@ cmd_prepare() {
   if [[ -f "$issue_sentinel" ]]; then
     _sent_created=$(awk -F= '$1=="ISSUES_CREATED"{print $2; exit}' \
       "$issue_sentinel" 2>/dev/null || printf '0')
-    case "$_sent_created" in
-      ''|*[!0-9]*|0) ;;
-      *)
-        emit_kv FILE_DESIGN_OOS_STATUS skip-already-filed-sentinel
-        printf 'WARN=file-design-oos prepare: oos-issue-sentinel present (ISSUES_CREATED=%s) but oos-issues-created.md absent; skipping re-file\n' \
-          "$_sent_created"
-        exit 0
-        ;;
-    esac
+    _sent_failed=$(awk -F= '$1=="ISSUES_FAILED"{print $2; exit}' \
+      "$issue_sentinel" 2>/dev/null || printf '0')
+    _sent_deduped=$(awk -F= '$1=="ISSUES_DEDUPLICATED"{print $2; exit}' \
+      "$issue_sentinel" 2>/dev/null || printf '0')
+    case "$_sent_created" in ''|*[!0-9]*) _sent_created=0 ;; esac
+    case "$_sent_failed" in ''|*[!0-9]*) _sent_failed=0 ;; esac
+    case "$_sent_deduped" in ''|*[!0-9]*) _sent_deduped=0 ;; esac
+    if [[ "$_sent_failed" -eq 0 ]] && [[ $(( _sent_created + _sent_deduped )) -gt 0 ]]; then
+      emit_kv FILE_DESIGN_OOS_STATUS skip-already-filed-sentinel
+      emit_kv WARN "file-design-oos prepare: oos-issue-sentinel present (ISSUES_CREATED=${_sent_created} ISSUES_DEDUPLICATED=${_sent_deduped}) but oos-issues-created.md absent; skipping re-file"
+      exit 0
+    fi
   fi
 
   if [[ -n "$cache_p" && -f "$cache_p" && -s "$cache_p" ]]; then
@@ -340,9 +343,12 @@ cmd_annotate() {
   local stdout_file="$ISSUE_STDOUT_FILE"
 
   if [[ ! -s "$stdout_file" ]]; then
-    printf 'FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout\n'
-    printf 'WARN=file-design-oos annotate: issue-stdout-file empty or missing (%s); oos-issues-created.md not written\n' \
-      "$stdout_file"
+    emit_kv FILE_DESIGN_OOS_STATUS annotate-skipped-empty-stdout
+    emit_kv WARN "file-design-oos annotate: issue-stdout-file empty or missing (${stdout_file}); oos-issues-created.md not written"
+    local issue_sent="$d/oos-issue-sentinel"
+    if [[ -f "$issue_sent" && -s "$issue_sent" ]]; then
+      sync_cross_session_oos_cache "$d" "$issue_sent"
+    fi
     return 0
   fi
   if [[ ! -f "$order" ]]; then
