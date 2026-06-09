@@ -66,6 +66,22 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-specialist-security
     codex-specialist-edge-cases
     codex-specialist-plan-fidelity
+    cursor-phase1-security
+    cursor-phase1-correctness
+    cursor-phase1-edge-cases
+    cursor-phase1-testing
+    cursor-phase2-security
+    cursor-phase2-correctness
+    cursor-phase2-edge-cases
+    cursor-phase2-testing
+    codex-phase1-security
+    codex-phase1-correctness
+    codex-phase1-edge-cases
+    codex-phase1-testing
+    codex-phase2-security
+    codex-phase2-correctness
+    codex-phase2-edge-cases
+    codex-phase2-testing
     codex-debate-thesis
     codex-debate-antithesis
     cursor-debate-thesis

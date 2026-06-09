@@ -225,6 +225,11 @@ launch_slot() {
     local agent="${slot_agents[$idx]}"
     local prompt_file="${slot_prompts[$idx]}"
     local timing="${tool}-${phase}-${slot_names[$idx]}"
+    # Clamp to timing-ledger 64-char grammar limit; strip any trailing hyphen.
+    if (( ${#timing} > 64 )); then
+        timing="${timing:0:64}"
+        case "$timing" in *-) timing="${timing%-}" ;; esac
+    fi
     mkdir -p "$(dirname "$output")"
     if [[ "$tool" == "claude" ]]; then
         (

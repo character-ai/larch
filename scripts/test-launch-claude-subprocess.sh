@@ -438,4 +438,27 @@ LARCH_TOKEN_LEDGER="$plain_ledger" PATH="$BIN:$PATH" "$SCRIPT" \
 grep -Fq 'plain non-json reviewer output' "$TMP/out-plain.txt" || fail "claude_sub plain path: non-JSON output not preserved"
 [[ ! -f "$plain_ledger" ]] || grep -Fvq 'claude_sub' "$plain_ledger" || fail "claude_sub plain path: ledger row recorded from non-JSON output"
 
+# record-vendor-task warnings must reach stderr (guard against >/dev/null 2>&1 revert).
+# Use a valid-grammar but unknown task kind to trigger the allow-list warning while
+# keeping STATUS=OK so the launcher exit is still clean.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+cat <<'JSON'
+{"type":"result","subtype":"success","is_error":false,"result":"stub output for ledger warning test","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}
+JSON
+STUB
+chmod +x "$BIN/claude"
+ledger_warn_out="$TMP/out-ledger-warn.txt"
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$prompt" \
+    --output-file "$ledger_warn_out" \
+    --timeout 5 \
+    --timing-task-kind unknown-test-kind-for-harness \
+    >"$TMP/ledger-warn-stdout" 2>"$TMP/ledger-warn-stderr" \
+    || fail "ledger-warn path: launch failed unexpectedly"
+grep -Fq 'STATUS=OK' "$TMP/ledger-warn-stdout" || fail "ledger-warn path: STATUS=OK missing from stdout"
+grep -Fq 'unknown task-kind' "$TMP/ledger-warn-stderr" || fail "ledger-warn path: timing-ledger warning missing from stderr (>/dev/null 2>&1 must not suppress it)"
+
 echo "All assertions passed."
