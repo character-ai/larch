@@ -54,6 +54,14 @@ def test_dispatch_ship_pr_calls_ship_main() -> None:
     assert rc == 0
 
 
+def test_dispatch_ship_design_log_calls_design_log_main() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"design_log_ship": MagicMock(main=mock_main)}):
+        rc = cli.main(["ship", "design-log", "--pr-number", "1"])
+    mock_main.assert_called_once_with(["--pr-number", "1"])
+    assert rc == 0
+
+
 def test_dispatch_report_tokens_analyze() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"report_tokens_cli": MagicMock(main=mock_main)}):

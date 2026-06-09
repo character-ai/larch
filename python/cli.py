@@ -12,6 +12,7 @@ import importlib
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
     ("report-tokens", "analyze"): ("report_tokens_cli", "main"),
     ("lint", "retired-scripts"): ("migration_lint", "main"),

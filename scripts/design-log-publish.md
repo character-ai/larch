@@ -82,17 +82,37 @@ branch by:
    `pause design run` in the subject; the default `--reason final` uses
    `flush design run`.
 7. Pushing the disposable branch, creating a PR with `gh pr create --head`
-   (not `create-pr.sh`), then running a two-phase required-check gate before
-   `git worktree remove --force`:
+   (not `create-pr.sh`), resolving the repository slug for the CI/merge gate,
+   then running a two-phase required-check gate before `git worktree remove --force`:
    - Registration wait: the script records the post-push commit and polls until
      required checks are reported for that pushed head. Registration requires
      both a parseable, non-empty `gh pr checks --required --json bucket` array
      and `gh pr view --json headRefOid` matching the pushed commit. "No checks
      reported yet" and checks attached to a stale prior PR head are transient
      within the bounded grace, not CI failures.
-   - Completion watch: only after registration does it call
-     `gh pr checks --required --watch --fail-fast`, then squash-merges with
-     `gh pr merge --squash --admin --delete-branch` once required checks pass.
+   - Completion wait: only after registration does it delegate to
+     `python/cli.py ship design-log` (`python/design_log_ship.py`). The Python
+     helper polls required checks only (`ci_monitor.checks_status(required=True)`,
+     equivalent to `gh pr checks --required`) and uses checks-only / PR-state-only
+     probes; it deliberately does not call the full `poll_ci()` / `gather_status()`
+     path because those run git fetch, behind-count, and merge-state probes that
+     are irrelevant to an already-green log-only PR.
+   Required-mode classification fails closed: admin merge happens only when every
+   required row is explicitly pass/success. Cancelled, skipped/skipping, unknown,
+   missing-bucket, pending, empty/no-checks, read-error, and any other non-pass
+   classification do not merge.
+   Design-log PRs get one bounded failed-run rerun using
+   `CI_MONITOR_TRANSIENT_RERUN_MAX=1`. Failed logs are collected for diagnostics
+   and readiness; transient signatures are recorded when present, but the log-only
+   path may rerun once even without a network signature. Failed-log readiness
+   polling and post-rerun stale-row settle polling are both bounded by the
+   checks wait budget derived from `CI_WAIT_TIMEOUT_SEC / CI_WAIT_POLL_INTERVAL_SEC`,
+   so an immediately re-observed stale failed check row does not prematurely
+   exhaust the rerun path while GitHub propagates the rerun.
+   The squash admin merge is also owned by Python, wraps
+   `gh pr merge --admin --squash --delete-branch` in transient retry, and runs
+   from the consumer repository root (`$REPO_ROOT`), not the disposable worktree
+   and not the plugin checkout.
    `--admin` is retained because the repo's review ruleset has no bot reviewer,
    so a server-side `--auto` merge would be enabled but never complete; the gate
    bypasses review only after CI is registered for the current head and passes.
@@ -104,8 +124,12 @@ branch by:
    leak onto the `KEY=value` contract stream. Registration timeout emits a
    dedicated `did not register within` diagnostic with the timeout/probe budget,
    redacts the last captured checks/head diagnostics, sets `merge_rc=1`, and
-   explicitly skips `--watch`. A non-zero completion watch keeps the distinct
-   `required CI checks did not pass` diagnostic.
+   skips the Python completion helper. A completion failure preserves
+   `PUBLISH_OK=false` and recovery metadata; `already_merged` races are treated
+   as idempotent `PUBLISH_OK=true`. If repository resolution fails before the
+   merge gate, the script logs a clear error and does not invoke Python with an
+   empty repo. Direct Python CLI calls with an explicit invalid non-empty
+   `--repo` are usage errors (exit 2) and do not fall back to cwd repo resolution.
 
 ## Empty Porcelain (Final)
 
@@ -161,8 +185,8 @@ all expected failures before a successful `git push`, and on post-push paths
 that still parse cleanly via stdout alone. Exit `1` on `git push` failure,
 `gh pr create` failure after push (when list recovery also fails), required-check
 registration timeout for the pushed head, a required status check that does not
-pass during the `gh pr checks --required --watch` gate (the publish refuses to
-merge), and `gh pr merge` failure after a successful create — while still emitting
+pass during the Python required-check completion gate (the publish refuses to
+merge), and merge failure after a successful create — while still emitting
 `PUBLISH_OK=false` (and `RECOVERY_BRANCH=…` when applicable). Callers that
 already parse `PUBLISH_OK` need no change; callers that want fail-closed
 signaling can additionally check the exit code.
@@ -191,17 +215,19 @@ Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_valid
 Design log bytes follow the same tmpdir + secrets redaction pipeline as
 implement round artifacts. Dropping the `[skip ci]` marker means CI runs on the publish PR; the script
 first waits for required checks to register on the pushed commit head, then
-waits for those checks with `gh pr checks --required --watch --fail-fast`, and
-refuses to merge on registration timeout, head mismatch within the grace, or a
-required-check failure. The merge itself is `gh pr merge --squash --admin
---delete-branch`: `--admin` bypasses the review-required branch protection (this
+delegates the required-check-only completion wait, single bounded failed-run
+rerun, and transient-retried merge to `python/cli.py ship design-log`. It
+refuses to merge on registration timeout, head mismatch within the grace,
+required-check failure after the bounded rerun path, unresolved repository, or
+merge failure. The merge itself is `gh pr merge --squash --admin --delete-branch`:
+`--admin` bypasses the review-required branch protection (this
 repo's review ruleset has no bot reviewer, so a server-side `--auto` merge
 would enable but never complete), and requires a `gh` OAuth token with `repo`
 (or equivalent) including admin-merge privileges. It bypasses only review — not
-CI, which the registration-plus-watch gate has already enforced. Orgs that
+CI, which the registration-plus-Python-required-check gate has already enforced. Orgs that
 forbid admin merges see `PUBLISH_OK=false` while the disposable branch may still
 exist remotely — operators reconcile manually. When `git push` succeeds but
-registration, CI-watch, PR create, or merge fails, stderr notes the remote
+registration, Python completion, PR create, or merge fails, stderr notes the remote
 branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 `SECURITY.md` for the consolidated note.
 

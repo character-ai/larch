@@ -31,5 +31,9 @@ Or `make test-design-log-publish`.
 ## Recent contract coverage
 
 - Covers malformed `--repo` as an exit-1 structural argv failure while valid `owner/repo` and omitted `--repo` remain accepted.
+- Covers the Python bridge used after required-check registration: child stdout is parsed for `PUBLISH_OK=`, failures preserve the recovery branch, and legacy `gh pr checks --required --watch --fail-fast` expectations are absent.
+- Covers repository resolution before the CI/merge gate, including unresolved-repository failure without invoking the Python bridge.
+- Covers required-check-only Python/gh-stub polling, bounded failed-run rerun fixtures, final already-merged guard fixtures, and `gh pr merge --admin --squash --delete-branch` running from `$REPO_ROOT` rather than the disposable worktree.
+- Covers quiet-capture behavior: the parent parses `PUBLISH_OK=` from captured child stdout and does not replay the child's output.
 - Covers pause publish staging for `step-*` sentinels and the four driver
   phase-sentinel basenames while rejecting arbitrary `.completed/` basenames.
