@@ -39,6 +39,7 @@ _JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
 _LAUNCHER_EXIT_RE = re.compile(r"^LAUNCHER_EXIT=(\d+)", re.MULTILINE)
+_PR_CHECKS_STATUS_FIELD_MIN_PARTS = 2
 
 SleepFn = Callable[[float], None]
 ClockFn = Callable[[], float]
@@ -182,20 +183,21 @@ def _gh_pr_checks(
     pr: int,
     repo: str,
     cwd: str | None,
+    required: bool = False,
 ) -> CommandResult:
-    return runner.run(
-        [
-            "gh",
-            "pr",
-            "checks",
-            str(pr),
-            "--repo",
-            repo,
-            "--json",
-            "name,state,bucket,link",
-        ],
-        cwd=cwd,
-    )
+    argv = [
+        "gh",
+        "pr",
+        "checks",
+        str(pr),
+        "--repo",
+        repo,
+        "--json",
+        "name,state,bucket,link",
+    ]
+    if required:
+        argv.append("--required")
+    return runner.run(argv, cwd=cwd)
 
 
 def _warn_stderr(message: str) -> None:
@@ -288,7 +290,12 @@ def _checks_json_is_array(checks_json: str) -> bool:
     return isinstance(parsed, list)
 
 
-def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
+def _row_run_id(row: dict[str, object]) -> str | None:
+    link = str(row.get("link", ""))
+    return _extract_run_id(link)
+
+
+def _classify_checks_json(checks_json: str, *, required: bool = False) -> tuple[str, str | None]:
     try:
         parsed = json.loads(checks_json or "[]")
     except json.JSONDecodeError:
@@ -296,33 +303,73 @@ def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
     rows = _parse_check_rows(parsed)
     if not rows:
         return "empty", None
+    if required:
+        pending = [row for row in rows if row.get("bucket") == "pending"]
+        if pending:
+            return "pending", None
+        failed = [row for row in rows if row.get("bucket") == "fail"]
+        if failed:
+            return "fail", _row_run_id(failed[0])
+        non_pass = [row for row in rows if row.get("bucket") != "pass"]
+        if non_pass:
+            return "fail", _row_run_id(non_pass[0])
+        return "pass", None
     failed = [row for row in rows if row.get("bucket") == "fail"]
     pending = [row for row in rows if row.get("bucket") == "pending"]
     if failed:
-        link = str(failed[0].get("link", ""))
-        return "fail", _extract_run_id(link)
+        return "fail", _row_run_id(failed[0])
     if pending:
         return "pending", None
     return "pass", None
 
 
-def _classify_checks_text(text: str) -> tuple[str, str | None]:
+def _pr_checks_text_status_field(line: str) -> str:
+    parts = line.split("\t")
+    if len(parts) >= _PR_CHECKS_STATUS_FIELD_MIN_PARTS:
+        return parts[1].strip()
+    return line.strip()
+
+
+def _checks_json_from_result(checks: CommandResult) -> str:
+    if _checks_json_is_array(checks.stdout):
+        return checks.stdout
+    return checks.stdout if checks.returncode == 0 else ""
+
+
+def _classify_checks_text(text: str, *, required: bool = False) -> tuple[str, str | None]:
     if not text.strip():
         return "empty", None
-    if re.search(r"\bfail", text, flags=re.IGNORECASE):
-        failed_line = next(
-            (line for line in text.splitlines() if re.search(r"\bfail", line, flags=re.IGNORECASE)),
-            "",
+    if required:
+        fail_re = (
+            r"\b(fail(?:ed|ure|ing)?|error|cancel(?:led|ed)?|skip(?:ped|ping)?|"
+            r"unknown|timed?\s*out|action\s+required|neutral|stale)\b"
         )
+        pending_re = r"\b(pending|in_progress|in progress|queued|waiting|requested|expected)\b"
+        pass_re = r"\b(pass(?:ed|ing)?|success(?:ful)?|succeed(?:ed)?|completed)\b"
+    else:
+        fail_re = r"\bfail"
+        pending_re = r"\b(pending|in_progress|in progress|queued)\b"
+        pass_re = r"\b(pass(?:ed|ing)?|success(?:ful)?|succeed(?:ed)?|completed)\b"
+
+    lines = [line for line in text.splitlines() if line.strip()]
+
+    def _classify_field(line: str) -> str:
+        return _pr_checks_text_status_field(line) if required else line
+
+    failed_line = next(
+        (line for line in lines if re.search(fail_re, _classify_field(line), flags=re.IGNORECASE)),
+        "",
+    )
+    if failed_line:
         link_match = re.search(r"https://\S+", failed_line)
         run_id = _extract_run_id(link_match.group(0)) if link_match else None
         return "fail", run_id
-    if re.search(
-        r"\b(pending|in_progress|queued)",
-        text,
-        flags=re.IGNORECASE,
-    ):
+    if any(re.search(pending_re, _classify_field(line), flags=re.IGNORECASE) for line in lines):
         return "pending", None
+    if required and not any(
+        re.search(pass_re, _classify_field(line), flags=re.IGNORECASE) for line in lines
+    ):
+        return "fail", None
     return "pass", None
 
 
@@ -332,8 +379,15 @@ def _read_pr_checks_text(
     pr: int,
     repo: str,
     cwd: str | None,
+    required: bool = False,
 ) -> str:
-    result = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
+    if required:
+        result = runner.run(
+            ["gh", "pr", "checks", str(pr), "--repo", repo, "--required"],
+            cwd=cwd,
+        )
+    else:
+        result = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
     if result.returncode == 0:
         return result.stdout
     return ""
@@ -347,35 +401,58 @@ def _resolve_checks_status(
     empty_checks_grace: int,
     sleep_fn: SleepFn,
     cwd: str | None,
+    required: bool = False,
 ) -> tuple[str, str | None]:
     """Classify PR checks with JSON-first and text fallback (ci-status.sh parity)."""
-    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-    checks_json = checks.stdout if checks.returncode == 0 else ""
+    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+    checks_json = _checks_json_from_result(checks)
 
     if _checks_json_is_array(checks_json):
-        bucket_status, run_id = _classify_checks_json(checks_json)
+        bucket_status, run_id = _classify_checks_json(checks_json, required=required)
         if bucket_status == "empty" and empty_checks_grace > 0:
             sleep_fn(float(empty_checks_grace))
-            checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-            checks_json = checks.stdout if checks.returncode == 0 else ""
+            checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd, required=required)
+            checks_json = _checks_json_from_result(checks)
             if _checks_json_is_array(checks_json):
-                bucket_status, run_id = _classify_checks_json(checks_json)
+                bucket_status, run_id = _classify_checks_json(checks_json, required=required)
         if bucket_status == "empty":
-            text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+            text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
             if text.strip():
-                return _classify_checks_text(text)
+                return _classify_checks_text(text, required=required)
             return ("NO_CHECKS", None) if empty_checks_grace > 0 else ("pending", None)
         return bucket_status, run_id
 
-    text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+    text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     if not text.strip() and empty_checks_grace > 0:
         sleep_fn(float(empty_checks_grace))
-        text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+        text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd, required=required)
     if text.strip():
-        return _classify_checks_text(text)
+        return _classify_checks_text(text, required=required)
     if empty_checks_grace > 0:
         return "NO_CHECKS", None
     return "pending", None
+
+
+def checks_status(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    empty_checks_grace: int = 0,
+    sleep_fn: SleepFn = time.sleep,
+    cwd: str | None = None,
+    required: bool = False,
+) -> tuple[str, str | None]:
+    """Checks-only status classifier without PR/git merge-state probes."""
+    return _resolve_checks_status(
+        runner,
+        pr=pr,
+        repo=repo,
+        empty_checks_grace=empty_checks_grace,
+        sleep_fn=sleep_fn,
+        cwd=cwd,
+        required=required,
+    )
 
 
 def gather_status(
@@ -388,6 +465,7 @@ def gather_status(
     empty_checks_grace: int = 0,
     sleep_fn: SleepFn = time.sleep,
     cwd: str | None = None,
+    required: bool = False,
 ) -> CiStatus:
     """Port of ci-status.sh."""
     conflicted = True
@@ -406,13 +484,14 @@ def gather_status(
     if fetch.returncode != 0:
         return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
 
-    status, failed_run_id = _resolve_checks_status(
+    status, failed_run_id = checks_status(
         runner,
         pr=pr,
         repo=repo,
         empty_checks_grace=empty_checks_grace,
         sleep_fn=sleep_fn,
         cwd=cwd,
+        required=required,
     )
 
     behind_raw = _behind_count(
@@ -462,6 +541,7 @@ def poll_ci(
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
     cwd: str | None = None,
+    required: bool = False,
 ) -> tuple[CiStatus, Decision]:
     """Port of ci-wait.sh poll loop."""
     max_polls = max(1, math.ceil(timeout / config.CI_WAIT_POLL_INTERVAL_SEC))
@@ -490,6 +570,7 @@ def poll_ci(
             empty_checks_grace=empty_checks_grace,
             sleep_fn=sleep_fn,
             cwd=cwd,
+            required=required,
         )
 
         if not status.status or status.status == "error":

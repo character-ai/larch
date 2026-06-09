@@ -878,6 +878,15 @@ def test_pr_merge_builds_admin_argv() -> None:
     assert "--admin" in runner.calls[0]
 
 
+def test_pr_merge_delete_branch_flag() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "merge", "3"), 0, "", "", 0.01)],
+    )
+    result = gh.pr_merge(runner, 3, repo="o/r", delete_branch=True)
+    assert result.returncode == 0
+    assert "--delete-branch" in runner.calls[0]
+
+
 def test_pr_merge_state_read() -> None:
     runner = RecordingRunner(
         responses=[

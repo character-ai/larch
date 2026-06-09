@@ -72,7 +72,15 @@ resolve_pr_head_oid() {
 }
 
 if [[ "$1" == "repo" ]] && [[ "$2" == "view" ]]; then
-    printf '{"nameWithOwner":"owner/repo"}\n'
+    if [[ "${GH_STUB_REPO_VIEW_FAIL:-0}" == "1" ]]; then
+        echo "repo unavailable" >&2
+        exit 1
+    fi
+    if has_arg --jq "$@"; then
+        printf 'owner/repo\n'
+    else
+        printf '{"nameWithOwner":"owner/repo"}\n'
+    fi
     exit 0
 fi
 if [[ "$1" == "pr" ]]; then
@@ -154,6 +162,10 @@ if [[ "$1" == "pr" ]]; then
                     printf '[]\n'
                     exit "${GH_STUB_CHECKS_JSON_RC:-0}"
                 fi
+                if [[ -n "${GH_STUB_CHECKS_JSON_PENDING_FIRST:-}" && "$checks_probe" -le "$GH_STUB_CHECKS_JSON_PENDING_FIRST" ]]; then
+                    printf '[{"name":"ci","bucket":"pending"}]\n'
+                    exit "${GH_STUB_CHECKS_JSON_RC:-0}"
+                fi
                 if [[ -n "${GH_STUB_CHECKS_JSON_OUT:-}" ]]; then
                     printf '%s\n' "$GH_STUB_CHECKS_JSON_OUT"
                 else
@@ -161,18 +173,29 @@ if [[ "$1" == "pr" ]]; then
                 fi
                 exit "${GH_STUB_CHECKS_JSON_RC:-0}"
             fi
-            if has_arg --watch "$@" && has_arg --fail-fast "$@" && has_arg --required "$@"; then
+            if has_arg --required "$@"; then
                 if [[ -n "${GH_STUB_CHECKS_RC:-}" && "${GH_STUB_CHECKS_RC}" != "0" ]]; then
                     echo "${GH_STUB_CHECKS_OUT:-some required checks failed}"
                     exit "${GH_STUB_CHECKS_RC}"
                 fi
-                echo "${GH_STUB_CHECKS_OUT:-all checks passing}"
+                echo "${GH_STUB_CHECKS_OUT:-all required checks passing}"
                 exit 0
             fi
             echo "STUB ERROR: unhandled pr checks $*" >&2
             exit 99
             ;;
         merge)
+            if [[ -n "${TEST_CLONE_ROOT:-}" ]]; then
+                expected_merge_pwd=$(cd "$TEST_CLONE_ROOT" && pwd -P)
+                actual_merge_pwd=$(pwd -P)
+            else
+                expected_merge_pwd=""
+                actual_merge_pwd=""
+            fi
+            if [[ -n "${expected_merge_pwd:-}" && "$actual_merge_pwd" != "$expected_merge_pwd" ]]; then
+                echo "stub pr merge must run from TEST_CLONE_ROOT, got $actual_merge_pwd" >&2
+                exit 98
+            fi
             if [[ -n "${GH_STUB_MERGE_RC:-}" && "${GH_STUB_MERGE_RC}" != "0" ]]; then
                 exit "${GH_STUB_MERGE_RC}"
             fi
@@ -219,6 +242,11 @@ if [[ "$1" == "pr" ]]; then
                     printf '{"headRefOid":"%s"}\n' "$oid"
                     exit 0
                     ;;
+                *number,url,state,headRefName,mergedAt,mergeStateStatus*)
+                    pr_state="${GH_STUB_PR_VIEW_STATE:-OPEN}"
+                    printf '{"number":101,"url":"https://github.com/owner/repo/pull/101","state":"%s","headRefName":"larch-log-design","mergedAt":null,"mergeStateStatus":"CLEAN"}\n' "$pr_state"
+                    exit 0
+                    ;;
             esac
             echo '{"url":"https://github.com/owner/repo/pull/101"}'
             exit 0
@@ -240,6 +268,29 @@ if [[ "$1" == "pr" ]]; then
                 echo '101'
             else
                 echo '[{"number":101}]'
+            fi
+            exit 0
+            ;;
+    esac
+fi
+if [[ "$1" == "run" ]]; then
+    case "$2" in
+        view)
+            if [[ "${GH_STUB_RUN_VIEW_IN_PROGRESS:-0}" == "1" ]]; then
+                echo "is still in progress; logs will be available" >&2
+                exit 1
+            fi
+            if [[ -n "${GH_STUB_RUN_VIEW_RC:-}" && "${GH_STUB_RUN_VIEW_RC}" != "0" ]]; then
+                echo "${GH_STUB_RUN_VIEW_OUT:-run log unavailable}" >&2
+                exit "${GH_STUB_RUN_VIEW_RC}"
+            fi
+            echo "${GH_STUB_RUN_VIEW_OUT:-Could not resolve host: api.github.com}"
+            exit 0
+            ;;
+        rerun)
+            if [[ -n "${GH_STUB_RERUN_RC:-}" && "${GH_STUB_RERUN_RC}" != "0" ]]; then
+                echo "${GH_STUB_RERUN_OUT:-rerun failed}" >&2
+                exit "${GH_STUB_RERUN_RC}"
             fi
             exit 0
             ;;
@@ -575,9 +626,9 @@ grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/vote
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
 grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected gh pr checks (required CI wait) before merge"
-[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "happy path should register checks on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
-[[ "$(grep -c 'pr checks' "$GH_STUB_LOG")" == "2" ]] || fail "happy path should run one registration probe and one checks watch"
-[[ "$(grep 'pr checks' "$GH_STUB_LOG" | grep -c -- '--watch')" == "1" ]] || fail "happy path should invoke exactly one checks watch"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "3" ]] || fail "happy path should register checks once then Python should poll twice, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+[[ "$(grep -c 'pr checks' "$GH_STUB_LOG")" == "3" ]] || fail "happy path should run one registration probe plus Python required-check polls"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "happy path must not invoke legacy checks watch"
 grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "expected gh pr merge --admin in log"
 ! grep -Fq -- '--auto' "$GH_STUB_LOG" || fail "gh pr merge must not use --auto (review gate would never complete it)"
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
@@ -1155,21 +1206,52 @@ printf 'c\n' >"$TMPCI/design/cifail.txt"
 ci_stderr="$TMPCI/cifail.stderr"
 set +e
 out_ci=$(
-    (cd "$clone_ci" && GH_STUB_CHECKS_RC=8 GH_STUB_CHECKS_OUT='required check failed' bash "$PUBLISH" --design-tmpdir "$TMPCI/design" --run-id "RUNCIFAIL1" --issue 7 --repo owner/repo) 2>"$ci_stderr"
+    (cd "$clone_ci" && GH_STUB_CHECKS_JSON_OUT='[{"name":"ci","bucket":"cancelled"}]' bash "$PUBLISH" --design-tmpdir "$TMPCI/design" --run-id "RUNCIFAIL1" --issue 7 --repo owner/repo) 2>"$ci_stderr"
 )
 rc_ci=$?
 set -e
 [[ "$out_ci" == *"PUBLISH_OK=false"* ]] || fail "ci fail PUBLISH_OK: $out_ci"
 [[ "$rc_ci" -eq 1 ]] || fail "ci fail should exit 1 (got $rc_ci)"
 [[ "$out_ci" == *"RECOVERY_BRANCH=larch-log-design-RUNCIFAIL1"* ]] || fail "ci fail RECOVERY_BRANCH: $out_ci"
-grep -q 'required CI checks did not pass' "$ci_stderr" || fail "ci fail stderr missing did-not-pass diagnostic"
+grep -q 'CI+merge via ship design-log did not pass' "$ci_stderr" || fail "ci fail stderr missing Python bridge diagnostic"
 ! grep -q 'did not register within' "$ci_stderr" || fail "ci fail stderr must not use registration-timeout wording"
 grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected pr checks in stub log"
-grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "ci fail should invoke --watch"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "ci fail must not invoke legacy checks watch"
 ! grep -q 'pr merge' "$GH_STUB_LOG" || fail "gh pr merge must NOT run when required CI checks fail"
 rm -rf "$TMPCI"
 
-echo "=== registration race waits for checks before watch/merge ==="
+echo "=== unresolved repo fails CI+merge gate before Python bridge ==="
+TMPNOREPO=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-no-repo.XXXXXX")
+clone_norepo=$(setup_clone_with_origin_head "$TMPNOREPO")
+stub_norepo="$TMPNOREPO/stub"
+GH_STUB_LOG="$TMPNOREPO/gh-no-repo.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_norepo"
+export PATH="$stub_norepo:$PATH"
+export TEST_CLONE_ROOT="$clone_norepo"
+export TEST_MERGE_BRANCH="larch-log-design-RUNNOREPO1"
+export GH_STUB_REPO_VIEW_FAIL=1
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST
+mkdir -p "$TMPNOREPO/design"
+printf 'norepo\n' >"$TMPNOREPO/design/norepo.txt"
+norepo_stderr="$TMPNOREPO/norepo.stderr"
+set +e
+out_norepo=$(
+    (cd "$clone_norepo" && bash "$PUBLISH" --design-tmpdir "$TMPNOREPO/design" --run-id "RUNNOREPO1" --issue 8) 2>"$norepo_stderr"
+)
+rc_norepo=$?
+set -e
+[[ "$out_norepo" == *"PUBLISH_OK=false"* ]] || fail "unresolved repo PUBLISH_OK: $out_norepo"
+[[ "$rc_norepo" -eq 1 ]] || fail "unresolved repo should exit 1 (got $rc_norepo)"
+[[ "$out_norepo" == *"RECOVERY_BRANCH=larch-log-design-RUNNOREPO1"* ]] || fail "unresolved repo RECOVERY_BRANCH: $out_norepo"
+grep -q 'could not resolve repository for CI+merge gate' "$norepo_stderr" || fail "unresolved repo stderr missing clear diagnostic"
+! grep -q 'pr checks' "$GH_STUB_LOG" || fail "unresolved repo must not poll checks"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "unresolved repo must not merge"
+unset GH_STUB_REPO_VIEW_FAIL
+rm -rf "$TMPNOREPO"
+
+echo "=== registration race waits for checks before Python merge ==="
 TMPREG=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-race.XXXXXX")
 clone_reg=$(setup_clone_with_origin_head "$TMPREG")
 stub_reg="$TMPREG/stub"
@@ -1190,8 +1272,8 @@ out_reg=$(cd "$clone_reg" && bash "$PUBLISH" --design-tmpdir "$TMPREG/design" --
 [[ "$out_reg" == *"PUBLISH_OK=true"* ]] || fail "registration race PUBLISH_OK: $out_reg"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "registration race should merge"
 grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "registration race merge should keep --admin"
-grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "registration race should invoke --watch after registration"
-[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "3" ]] || fail "registration race probe count mismatch: $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "registration race must not invoke legacy checks watch"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "5" ]] || fail "registration race probe count mismatch: $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 unset GH_STUB_CHECKS_JSON_EMPTY_FIRST
 rm -rf "$TMPREG"
 
@@ -1277,16 +1359,16 @@ export PATH="$stub_regrc:$PATH"
 export TEST_CLONE_ROOT="$clone_regrc"
 export TEST_MERGE_BRANCH="larch-log-design-RUNREGRC1"
 export GH_STUB_CHECKS_JSON_RC=8
-export GH_STUB_CHECKS_JSON_OUT='[{"name":"ci","bucket":"pending"}]'
+export GH_STUB_CHECKS_JSON_PENDING_FIRST=1
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPREGRC/design"
 printf 'pending\n' >"$TMPREGRC/design/pending.txt"
 out_regrc=$(cd "$clone_regrc" && bash "$PUBLISH" --design-tmpdir "$TMPREGRC/design" --run-id "RUNREGRC1" --issue 23 --repo owner/repo)
 [[ "$out_regrc" == *"PUBLISH_OK=true"* ]] || fail "nonzero registration rc PUBLISH_OK: $out_regrc"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "nonzero registration rc should merge"
-grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc should still watch"
-[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "nonzero registration rc should register on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
-unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_OUT
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc must not invoke legacy checks watch"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "3" ]] || fail "nonzero registration rc should register on first JSON probe then Python should poll twice, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_PENDING_FIRST
 rm -rf "$TMPREGRC"
 
 echo "=== registration pr view failure refuses merge ==="
@@ -1351,7 +1433,7 @@ unset GH_STUB_PR_HEAD_OID_STALE
 export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
 rm -rf "$TMPSTALE"
 
-echo "=== stale head never aligns skips watch and merge ==="
+echo "=== stale head never aligns skips Python merge ==="
 TMPSTALEN=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-never.XXXXXX")
 clone_stalen=$(setup_clone_with_origin_head "$TMPSTALEN")
 stub_stalen="$TMPSTALEN/stub"

@@ -548,6 +548,7 @@ def pr_merge(
     repo: str,
     merge_method: str = "squash",
     admin: bool = False,
+    delete_branch: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     flag_map = {
@@ -569,6 +570,8 @@ def pr_merge(
     ]
     if admin:
         argv.append("--admin")
+    if delete_branch:
+        argv.append("--delete-branch")
     return _gh(runner, argv, cwd=cwd)
 
 

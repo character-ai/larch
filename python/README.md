@@ -18,6 +18,9 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
 - `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
   the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
   run the fixer waterfall, and return the GOTO-Rebase signal.
+- `design_log_ship.py` — CI-wait (required checks, checks-only) plus bounded failed-run
+  rerun and transient-retried squash-admin-merge for design-log PRs; invoked via
+  `python/cli.py ship design-log`.
 - **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `file_oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`

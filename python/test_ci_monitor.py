@@ -1999,3 +1999,146 @@ def test_monitor_timeout_bail_stalled() -> None:
     )
     assert result.result.outcome == Outcome.STALLED
     assert "Timeout" in (result.result.detail or "")
+
+
+def test_checks_status_required_true_is_checks_only_and_uses_required_json() -> None:
+    responses = {
+        (
+            "gh",
+            "pr",
+            "checks",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "name,state,bucket,link",
+            "--required",
+        ): _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}])),
+    }
+    runner = RecordingRunner(responses)
+    status, run_id = ci_monitor.checks_status(runner, pr=1, repo="o/r", required=True)
+    assert status == "pass"
+    assert run_id is None
+    assert runner.calls == [
+        (
+            "gh",
+            "pr",
+            "checks",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "name,state,bucket,link",
+            "--required",
+        ),
+    ]
+
+
+def test_gather_status_required_true_passes_required_to_json_checks() -> None:
+    responses = _status(status="pass")
+    responses[
+        (
+            "gh",
+            "pr",
+            "checks",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "name,state,bucket,link",
+            "--required",
+        )
+    ] = _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}]))
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r", required=True)
+    assert status.status == "pass"
+    assert (
+        "gh",
+        "pr",
+        "checks",
+        "1",
+        "--repo",
+        "o/r",
+        "--json",
+        "name,state,bucket,link",
+        "--required",
+    ) in runner.calls
+
+
+def test_poll_ci_required_true_forwards_required_to_gather() -> None:
+    responses = _status(status="pass")
+    responses[
+        (
+            "gh",
+            "pr",
+            "checks",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "name,state,bucket,link",
+            "--required",
+        )
+    ] = _cr(("gh", "pr", "checks"), stdout=json.dumps([{"name": "ci", "bucket": "pass"}]))
+    runner = RecordingRunner(responses)
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        required=True,
+    )
+    assert status.status == "pass"
+    assert decision.action == "merge"
+    assert any(call[-1] == "--required" for call in runner.calls if call[:3] == ("gh", "pr", "checks"))
+
+
+def test_required_text_fallback_invokes_gh_required_not_public_helper() -> None:
+    responses = {
+        (
+            "gh",
+            "pr",
+            "checks",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "name,state,bucket,link",
+            "--required",
+        ): _cr(("gh", "pr", "checks"), rc=1),
+        ("gh", "pr", "checks", "1", "--repo", "o/r", "--required"): _cr(
+            ("gh", "pr", "checks"),
+            stdout="all required checks passed",
+        ),
+    }
+    runner = RecordingRunner(responses)
+    status, _ = ci_monitor.checks_status(runner, pr=1, repo="o/r", required=True)
+    assert status == "pass"
+    assert ("gh", "pr", "checks", "1", "--repo", "o/r", "--required") in runner.calls
+    assert ("gh", "pr", "checks", "1", "--repo", "o/r") not in runner.calls
+
+
+def test_required_json_classifier_pass_only_when_every_row_passes() -> None:
+    rows = json.dumps([{"bucket": "pass"}, {"bucket": "pass"}])
+    assert ci_monitor._classify_checks_json(rows, required=True) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("bucket", ["cancelled", "skipping", "unknown", "", None])
+def test_required_json_classifier_fails_closed_for_non_pass_buckets(bucket: object) -> None:
+    row: dict[str, object] = {"name": "ci", "link": "https://github.com/o/r/actions/runs/77"}
+    if bucket is not None:
+        row["bucket"] = bucket
+    assert ci_monitor._classify_checks_json(json.dumps([row]), required=True) == ("fail", "77")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_required_text_fallback_ambiguous_output_is_not_pass() -> None:
+    assert ci_monitor._classify_checks_text("check status unavailable", required=True)[0] == "fail"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_default_optional_json_classifier_unchanged_for_unknown_bucket() -> None:
+    assert ci_monitor._classify_checks_json(json.dumps([{"bucket": "cancelled"}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]

@@ -345,10 +345,6 @@ cmd_annotate() {
   if [[ ! -s "$stdout_file" ]]; then
     emit_kv FILE_DESIGN_OOS_STATUS annotate-skipped-empty-stdout
     emit_kv WARN "file-design-oos annotate: issue-stdout-file empty or missing (${stdout_file}); oos-issues-created.md not written"
-    local issue_sent="$d/oos-issue-sentinel"
-    if [[ -f "$issue_sent" && -s "$issue_sent" ]]; then
-      sync_cross_session_oos_cache "$d" "$issue_sent"
-    fi
     return 0
   fi
   if [[ ! -f "$order" ]]; then

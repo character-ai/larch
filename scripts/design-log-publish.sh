@@ -872,6 +872,15 @@ if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
 fi
 
 gh_repo_args=()
+if [[ -z "${REPO:-}" ]]; then
+    REPO=$("${SCRIPT_DIR}/resolve-repo.sh" 2>/dev/null || true)
+fi
+if [[ -z "${REPO:-}" ]]; then
+    REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+fi
+if [[ -n "${REPO:-}" ]] && ! validate_repo "$REPO"; then
+    REPO=""
+fi
 if [[ -n "$REPO" ]]; then
     gh_repo_args+=(--repo "$REPO")
 fi
@@ -923,7 +932,7 @@ create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") ||
     exit 0
 }
 if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
-    gh pr create "${gh_repo_args[@]}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
+    gh pr create "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
         --title "chore(larch-logs): design run ${RUN_ID}" \
         --body-file "$PR_BODY_TMP"; then
     create_rc=0
@@ -951,7 +960,7 @@ if [[ -z "$PR_NUM" ]]; then
         exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
-        gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
+        gh pr list "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
         list_rc=0
     else
         list_rc=${_WTR_RC:-1}
@@ -980,7 +989,7 @@ if [[ -z "$PR_NUM" ]]; then
         exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
-        gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url'; then
+        gh pr view "${gh_repo_args[@]+"${gh_repo_args[@]}"}" "$PR_NUM" --json url --jq '.url'; then
         PR_URL=$_WTR_OUT
     else
         PR_URL=""
@@ -1010,7 +1019,10 @@ last_view_err=""
 reg_probe=1
 non_array_checks_json_logged=false
 
-if [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
+if [[ -z "${REPO:-}" ]]; then
+    larch_err "design-log-publish: could not resolve repository for CI+merge gate"
+    merge_rc=2
+elif [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
     larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (0/${REG_MAX_PROBES} probes; pushed head SHA unavailable) for PR $PR_NUM; refusing to merge"
     merge_rc=1
 else
@@ -1027,7 +1039,7 @@ else
     while [[ "$reg_probe" -le "$REG_MAX_PROBES" && "$SECONDS" -le "$REG_DEADLINE" ]]; do
         : >"$reg_checks_err_file"
         set +e
-        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --json bucket 2>"$reg_checks_err_file")
+        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --required --json bucket 2>"$reg_checks_err_file")
         reg_checks_rc=$?
         set -e
         last_checks_out="$reg_checks_out"
@@ -1044,7 +1056,7 @@ else
         if [[ "$checks_json_nonempty" == true ]]; then
             : >"$reg_view_fail_file"
             if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
-                gh pr view "$PR_NUM" "${gh_repo_args[@]}" --json headRefOid; then
+                gh pr view "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --json headRefOid; then
                 view_rc=0
             else
                 view_rc=$_WTR_RC
@@ -1086,24 +1098,34 @@ else
         larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (probe ${reg_probe}/${REG_MAX_PROBES}; stop=${reg_stop_reason}; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
         merge_rc=1
     else
-        set +e
-        ci_wait_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --watch --fail-fast 2>&1)
-        ci_rc=$?
-        set -e
-        if [[ "$ci_rc" -ne 0 ]]; then
-            larch_err "design-log-publish: required CI checks did not pass (rc=$ci_rc) for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${ci_wait_out:-unknown}")"
-            merge_rc="$ci_rc"
+        if [[ -z "${REPO:-}" ]]; then
+            larch_err "design-log-publish: could not resolve repository for CI+merge gate"
+            merge_rc=2
         else
-            merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
-                larch_err "design-log-publish: mktemp failed for merge capture"
-                emit_publish_failure "$PR_NUM" "${PR_URL:-}"
-                exit 1
-            }
-            if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
-                gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
-                merge_rc=0
+            set +e
+            _dlship_out=$(python3 "${SCRIPT_DIR}/../python/cli.py" ship design-log \
+                --pr-number "$PR_NUM" \
+                --repo "$REPO" \
+                --base-remote origin \
+                --base-ref "$ORIGIN_DEFAULT" \
+                --cwd "$WT_DIR" \
+                --merge-cwd "$REPO_ROOT" 2>&1)
+            _dlship_rc=$?
+            set -e
+            if [[ "${_dlship_rc:-0}" -ne 0 ]]; then
+                larch_err "design-log-publish: ship design-log failed (rc=$_dlship_rc)"
+                merge_rc="$_dlship_rc"
             else
-                merge_rc=$_WTR_RC
+                _dlship_ok=""
+                while IFS= read -r _line || [[ -n "$_line" ]]; do
+                    case "$_line" in PUBLISH_OK=*) _dlship_ok="${_line#PUBLISH_OK=}" ;; esac
+                done <<<"${_dlship_out:-}"
+                if [[ "$_dlship_ok" == "true" ]]; then
+                    merge_rc=0
+                else
+                    larch_err "design-log-publish: CI+merge via ship design-log did not pass (PUBLISH_OK=${_dlship_ok:-empty})"
+                    merge_rc=1
+                fi
             fi
         fi
     fi
