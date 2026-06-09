@@ -2,6 +2,27 @@
 
 === larch-quiet-append-execution-issue.sh-80730.log ===
 
+=== larch-quiet-check-contains-pins.sh-25073.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:194: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:195: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:230: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:250: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:251: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:272: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:296: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:297: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:332: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:358: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:384: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:412: could not resolve $out
+
 === larch-quiet-check-contains-pins.sh-26459.log ===
 UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
 UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
@@ -127,6 +148,8 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:353: coul
 
 === larch-quiet-cli.py-34766.log ===
 
+=== larch-quiet-cli.py-40457.log ===
+
 === larch-quiet-cli.py-63214.log ===
 
 === larch-quiet-cli.py-76121.log ===
@@ -136,6 +159,8 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:353: coul
 === larch-quiet-cli.py-79187.log ===
 
 === larch-quiet-cli.py-79447.log ===
+
+=== larch-quiet-cli.py-82348.log ===
 
 === larch-quiet-cli.py-87132.log ===
 
@@ -148,6 +173,10 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:353: coul
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 === larch-quiet-degraded-tools-gate.sh-21472.log ===
+
+=== larch-quiet-git-commit.sh-34788.log ===
+[sergey-zhupanov/implementing-refactor-design-step-3-revi-3771 d308b6d62] Fix CI failure (main-agent)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 === larch-quiet-git-current-branch.sh-19767.log ===
 
@@ -271,6 +300,18 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:353: coul
 
 === larch-quiet-persist-retally-step3-env.sh-66726.log ===
 
+=== larch-quiet-persist-retally-step3-env.sh-69566.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-69723.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-69816.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-69924.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-70040.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-70098.log ===
+
 === larch-quiet-persist-retally-step3-env.sh-77058.log ===
 
 === larch-quiet-persist-retally-step3-env.sh-77137.log ===
@@ -314,6 +355,8 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:353: coul
 === larch-quiet-persist-retally-step3-env.sh-96558.log ===
 
 === larch-quiet-persist-retally-step3-env.sh-96623.log ===
+
+=== larch-quiet-plan-review-loop.sh-20593.log ===
 
 === larch-quiet-plan-review-loop.sh-21339.log ===
 
@@ -359,6 +402,17 @@ plan-review-loop.sh: unknown option: --round-cap
 Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
 
 === larch-quiet-plan-review-loop.sh-67035.log ===
+plan-review-loop.sh: unknown option: --convergence-threshold
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-70273.log ===
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-70429.log ===
+plan-review-loop.sh: unknown option: --round-cap
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-70525.log ===
 plan-review-loop.sh: unknown option: --convergence-threshold
 Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
 
@@ -439,6 +493,16 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 
 === larch-quiet-read-session-env-key.sh-31315.log ===
 
+=== larch-quiet-read-session-env-key.sh-52103.log ===
+
+=== larch-quiet-read-session-env-key.sh-52129.log ===
+
+=== larch-quiet-read-session-env-key.sh-52152.log ===
+
+=== larch-quiet-read-session-env-key.sh-52175.log ===
+
+=== larch-quiet-read-session-env-key.sh-52200.log ===
+
 === larch-quiet-read-session-env-key.sh-59930.log ===
 
 === larch-quiet-read-session-env-key.sh-59962.log ===
@@ -462,6 +526,13 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 === larch-quiet-read-session-env-key.sh-88924.log ===
 
 === larch-quiet-rebase-push.sh-47897.log ===
+
+=== larch-quiet-refresh-run-logs.sh-34859.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.xIWtzn
+
+=== larch-quiet-run-relevant-checks-captured.sh-17986.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-28038.log ===
 
@@ -487,6 +558,9 @@ POSTPLAN_EMIT_STATUS=ok
 === larch-quiet-run-step3-review.sh-56098.log ===
 POSTPLAN_EMIT_STATUS=ok
 
+=== larch-quiet-run-step3-review.sh-57531.log ===
+POSTPLAN_EMIT_STATUS=ok
+
 === larch-quiet-run-step3-review.sh-64652.log ===
 POSTPLAN_EMIT_STATUS=ok
 
@@ -502,6 +576,15 @@ POSTPLAN_EMIT_STATUS=ok
 
 === larch-quiet-run-step3-review.sh-82871.log ===
 POSTPLAN_EMIT_STATUS=ok
+
+=== larch-quiet-ship.py-64164.log ===
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: poll 2/180 pending after 19s; sleeping 10s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: poll 4/180 pending after 45s; sleeping 10s
+ci_monitor: poll 5/180 pending after 59s; sleeping 10s
+
+=== larch-quiet-snapshot-plan-round.sh-24873.log ===
 
 === larch-quiet-snapshot-plan-round.sh-26161.log ===
 
