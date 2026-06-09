@@ -267,7 +267,7 @@ def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
 
-    def fake_run(argv: list[str], **kwargs: object) -> proc.CommandResult:
+    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
         if argv and argv[0] == "gh":
             raise FileNotFoundError("gh")
         if argv and "github-remote-repo.sh" in argv[0]:
