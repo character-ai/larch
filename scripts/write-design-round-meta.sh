@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-vote-tally.sh
+source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+
 usage() {
     printf '%s\n' 'Usage: write-design-round-meta.sh --round-dir DIR' >&2
 }
@@ -78,20 +83,129 @@ _parse_classification_tsv() {
     ' "$file" 2>/dev/null || printf '0\t0\t0\t0\t0\t0\n'
 }
 
+_counts_all_zero() {
+    [[ "${1:-}" == $'0\t0\t0\t0\t0\t0' ]]
+}
+
+_tsv_has_data_rows() {
+    local file="$1"
+    awk 'NR > 1 && NF > 0 { found = 1; exit } END { exit(found ? 0 : 1) }' "$file" 2>/dev/null
+}
+
+_extract_oos_block() {
+    local round_dir="$1" oos_id="$2"
+    python3 - "$round_dir" "$oos_id" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+round_dir = Path(sys.argv[1])
+oos_id = sys.argv[2]
+pattern = re.compile(rf"(?ms)^### {re.escape(oos_id)}:.*?(?=^### |\Z)")
+
+for name in ("findings-oos.md", "findings.md", "oos.md", "findings-in-scope.md"):
+    path = round_dir / name
+    if not path.is_file():
+        continue
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        continue
+    match = pattern.search(text)
+    if match:
+        sys.stdout.write(match.group(0))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+_adjust_security_oos_counts() {
+    local round_dir="$1" source="$2"
+    local id result block_file
+    case "$source" in
+        md)
+            while IFS=$'\t' read -r id result || [[ -n "$id" ]]; do
+                [[ -n "$id" ]] || continue
+                block_file="$(mktemp "${round_dir}/.oos-sec.XXXXXX")"
+                if _extract_oos_block "$round_dir" "$id" >"$block_file" 2>/dev/null \
+                    && [[ -s "$block_file" ]]; then
+                    if is_security_block "$block_file" 2>/dev/null; then
+                        case "$result" in
+                            accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
+                            rejected) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
+                        esac
+                    fi
+                fi
+                rm -f "$block_file"
+            done < <(awk -F'|' '
+                function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+                /^## Findings/ { in_findings = 1; next }
+                /^## / && in_findings { in_findings = 0 }
+                in_findings && NF >= 4 {
+                    item = trim($2)
+                    result = trim($(NF-1))
+                    if (result == "" || result ~ /^-+$/) {
+                        result = trim($(NF-2))
+                    }
+                    if (item ~ /^OOS_[0-9A-Za-z_]+$/ && (result == "accepted" || result == "rejected")) {
+                        print item "\t" result
+                    }
+                }
+            ' "$round_dir/voting-tally.md" 2>/dev/null)
+            ;;
+        tsv)
+            while IFS=$'\t' read -r id _ result _rest || [[ -n "$id" ]]; do
+                [[ -n "$id" ]] || continue
+                [[ "$id" =~ ^OOS_[0-9A-Za-z_]+$ ]] || continue
+                [[ "$result" == "accepted" || "$result" == "rejected" ]] || continue
+                block_file="$(mktemp "${round_dir}/.oos-sec.XXXXXX")"
+                if _extract_oos_block "$round_dir" "$id" >"$block_file" 2>/dev/null \
+                    && [[ -s "$block_file" ]]; then
+                    if is_security_block "$block_file" 2>/dev/null; then
+                        case "$result" in
+                            accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
+                            rejected) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
+                        esac
+                    fi
+                fi
+                rm -f "$block_file"
+            done < <(awk -F'\t' 'NR > 1 && $1 ~ /^OOS_/ { print $1 "\t" $3 }' \
+                "$round_dir/findings-classification.tsv" 2>/dev/null)
+            ;;
+    esac
+    if (( OOS_ACCEPTED_COUNT < 0 )); then OOS_ACCEPTED_COUNT=0; fi
+    if (( OOS_REJECTED_COUNT < 0 )); then OOS_REJECTED_COUNT=0; fi
+}
+
 _counts=""
+_count_source=""
+_md_counts=""
+_tsv_counts=""
 if [[ -f "$ROUND_DIR/voting-tally.md" ]]; then
-    _counts="$(_parse_tally_md "$ROUND_DIR/voting-tally.md")"
-elif [[ -f "$ROUND_DIR/findings-classification.tsv" ]]; then
-    _counts="$(_parse_classification_tsv "$ROUND_DIR/findings-classification.tsv")"
-else
-    _counts=$'0\t0\t0\t0\t0\t0'
+    _md_counts="$(_parse_tally_md "$ROUND_DIR/voting-tally.md")"
+    _counts="$_md_counts"
+    _count_source=md
 fi
+if [[ -f "$ROUND_DIR/findings-classification.tsv" ]]; then
+    _tsv_counts="$(_parse_classification_tsv "$ROUND_DIR/findings-classification.tsv")"
+    if [[ -z "$_counts" ]]; then
+        _counts="$_tsv_counts"
+        _count_source=tsv
+    elif _counts_all_zero "$_md_counts" && _tsv_has_data_rows "$ROUND_DIR/findings-classification.tsv"; then
+        _counts="$_tsv_counts"
+        _count_source=tsv
+    fi
+fi
+[[ -n "$_counts" ]] || _counts=$'0\t0\t0\t0\t0\t0'
 IFS=$'\t' read -r ACCEPTED_COUNT REJECTED_COUNT NEUTRAL_COUNT EXONERATED_COUNT OOS_ACCEPTED_COUNT OOS_REJECTED_COUNT <<EOF_COUNTS
 $_counts
 EOF_COUNTS
 for _v in ACCEPTED_COUNT REJECTED_COUNT NEUTRAL_COUNT EXONERATED_COUNT OOS_ACCEPTED_COUNT OOS_REJECTED_COUNT; do
     case "${!_v:-}" in ''|*[!0-9]*) printf -v "$_v" '%s' 0 ;; esac
 done
+if [[ -n "$_count_source" ]]; then
+    _adjust_security_oos_counts "$ROUND_DIR" "$_count_source"
+fi
 
 _panel_tmp="$ROUND_DIR/panel-manifest.ndjson.tmp"
 _meta_tmp="$ROUND_DIR/round-meta.json.tmp"
