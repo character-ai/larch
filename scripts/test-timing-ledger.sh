@@ -63,9 +63,25 @@ BAD="$TMP_BASE/bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind BadKind --start-s 1 --end-s 2 --output x 2>"$BAD"
 grep -Fq 'malformed task-kind' "$BAD"
+
+CLAUDE_WARN="$TMP_BASE/claude-warn.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
-    --vendor claude --task-kind claude-review --start-s 1 --end-s 2 --output x 2>"$BAD"
-grep -Fq 'vendor claude is only supported for task-kind claude-ci-fix' "$BAD"
+    --vendor claude --task-kind claude-review --start-s 61 --end-s 65 \
+    --output claude-review.txt --status OK 2>"$CLAUDE_WARN"
+grep -Fq $'\timplement\t-\tclaude\tclaude-review\t61\t65\t4\tclaude-review.txt\t0\tcomplete' "$LEDGER"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-code-voter --start-s 70 --end-s 73 \
+    --output claude-code-voter.txt --status OK 2>"$CLAUDE_WARN"
+grep -Fq $'\timplement\t-\tclaude\tclaude-code-voter\t70\t73\t3\tclaude-code-voter.txt\t0\tcomplete' "$LEDGER"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-phase3-security --start-s 74 --end-s 80 \
+    --output claude-phase3-security.txt --status ERROR 2>"$CLAUDE_WARN"
+grep -Fq $'\timplement\t-\tclaude\tclaude-phase3-security\t74\t80\t6\tclaude-phase3-security.txt\t0\tsignal' "$LEDGER"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-phase3-dyn-security --start-s 81 --end-s 90 \
+    --output claude-phase3-dyn-security.txt --status TIMEOUT 2>"$CLAUDE_WARN"
+grep -Fq 'unknown task-kind: claude-phase3-dyn-security' "$CLAUDE_WARN"
+grep -Fq $'\timplement\t-\tclaude\tclaude-phase3-dyn-security\t81\t90\t9\tclaude-phase3-dyn-security.txt\t0\tsignal' "$LEDGER"
 ROUND_BAD="$TMP_BASE/round-bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
     --skill review --step "bad" --round 1 --start-s 1 --end-s 2 --accepted 0 --rejected 0 2>"$ROUND_BAD"

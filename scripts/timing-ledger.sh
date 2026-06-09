@@ -191,20 +191,19 @@ cmd_record_vendor_task() {
     done
     [[ "$task_kind" =~ ^[a-z][a-z0-9-]{0,63}$ ]] || { warn "malformed task-kind: $task_kind"; return 1; }
     case "$vendor" in
-        codex|cursor) ;;
-        claude)
-            [[ "$task_kind" == "claude-ci-fix" ]] || {
-                warn "vendor claude is only supported for task-kind claude-ci-fix"
-                return 1
-            }
-            ;;
+        codex|cursor|claude) ;;
         *) warn "vendor must be codex, cursor, or claude"; return 1 ;;
     esac
     task_kind_allowed "$task_kind" || warn "unknown task-kind: $task_kind"
     is_uint "$start_s" || { warn "--start-s must be a non-negative integer"; return 1; }
     is_uint "$end_s" || { warn "--end-s must be a non-negative integer"; return 1; }
     is_uint "$exit_code" || { warn "--exit-code must be a non-negative integer"; return 1; }
-    case "$status" in complete|signal|unknown) ;; *) warn "--status must be complete, signal, or unknown"; return 1 ;; esac
+    case "$status" in
+        OK) status=complete ;;
+        ERROR|TIMEOUT) status=signal ;;
+        complete|signal|unknown) ;;
+        *) warn "--status must be complete, signal, unknown, OK, ERROR, or TIMEOUT"; return 1 ;;
+    esac
     local duration_s
     if (( end_s < start_s )); then
         warn "end_s precedes start_s; clamping duration_s to 0"
