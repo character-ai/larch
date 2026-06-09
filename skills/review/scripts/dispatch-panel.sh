@@ -557,26 +557,36 @@ if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" ]]; then
     waterfall_args+=(--no-fallback)
 fi
 
+set +e
 waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
+waterfall_rc=$?
+set -e
 all_outputs=""
 all_tools=""
 dispatch_ok="true"
 static_dispatch_ok="true"
 dynamic_dispatch_ok="true"
 dropped_slots_file=""
-while IFS= read -r line || [[ -n "$line" ]]; do
-    key="${line%%=*}"
-    value="${line#*=}"
-    case "$key" in
-        ALL_OUTPUT_FILES) all_outputs="$value" ;;
-        ALL_OUTPUT_TOOLS) all_tools="$value" ;;
-        DISPATCH_OK) dispatch_ok="$value" ;;
-        STATIC_DISPATCH_OK) static_dispatch_ok="$value" ;;
-        DYNAMIC_DISPATCH_OK) dynamic_dispatch_ok="$value" ;;
-        DROPPED_SLOTS_FILE) dropped_slots_file="$value" ;;
-        WARN) emit_kv WARN "$value" ;;
-    esac
-done <<< "$waterfall_output"
+if [[ "$waterfall_rc" -ne 0 ]]; then
+    emit_kv WARN "dispatch-with-waterfall exited rc=$waterfall_rc"
+    dispatch_ok="false"
+    static_dispatch_ok="false"
+    dynamic_dispatch_ok="false"
+else
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        key="${line%%=*}"
+        value="${line#*=}"
+        case "$key" in
+            ALL_OUTPUT_FILES) all_outputs="$value" ;;
+            ALL_OUTPUT_TOOLS) all_tools="$value" ;;
+            DISPATCH_OK) dispatch_ok="$value" ;;
+            STATIC_DISPATCH_OK) static_dispatch_ok="$value" ;;
+            DYNAMIC_DISPATCH_OK) dynamic_dispatch_ok="$value" ;;
+            DROPPED_SLOTS_FILE) dropped_slots_file="$value" ;;
+            WARN) emit_kv WARN "$value" ;;
+        esac
+    done <<< "$waterfall_output"
+fi
 
 external_outputs=()
 claude_outputs=()

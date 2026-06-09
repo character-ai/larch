@@ -374,6 +374,7 @@ if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
     exit 0
 fi
 
+set +e
 _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --slots-file "$_manifest" \
     --codex-present "$CODEX_PRESENT" \
@@ -384,6 +385,8 @@ _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
     --timeout "$TIMEOUT" \
     "${waterfall_extra[@]+"${waterfall_extra[@]}"}")
+_waterfall_rc=$?
+set -e
 
 DISPATCH_OK=""
 FALLBACK_COUNT=""
@@ -392,20 +395,31 @@ STATIC_DISPATCH_OK=""
 ALL_OUTPUT_FILES_PATH=""
 ALL_SLOTS_DROPPED=""
 
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-    [[ -n "$_line" ]] || continue
-    _key="${_line%%=*}"
-    _value="${_line#*=}"
-    case "$_key" in
-        DISPATCH_OK) DISPATCH_OK="$_value" ;;
-        FALLBACK_COUNT) FALLBACK_COUNT="$_value" ;;
-        COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
-        STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
-        ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
-        ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
-        WARN) emit_kv WARN "$_value" ;;
-    esac
-done <<<"$_dispatch_out"
+if [[ "$_waterfall_rc" -ne 0 ]]; then
+    emit_kv WARN "dispatch-with-waterfall exited rc=$_waterfall_rc"
+    DISPATCH_OK=false
+    STATIC_DISPATCH_OK=false
+    FALLBACK_COUNT=0
+    COMBINED_FALLBACK_COUNT=0
+    ALL_OUTPUT_FILES_PATH=""
+    ALL_SLOTS_DROPPED=true
+    _dispatch_out=""
+else
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -n "$_line" ]] || continue
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        case "$_key" in
+            DISPATCH_OK) DISPATCH_OK="$_value" ;;
+            FALLBACK_COUNT) FALLBACK_COUNT="$_value" ;;
+            COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
+            STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
+            ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
+            ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
+            WARN) emit_kv WARN "$_value" ;;
+        esac
+    done <<<"$_dispatch_out"
+fi
 
 : "${DISPATCH_OK:-}"
 

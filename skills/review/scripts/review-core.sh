@@ -684,7 +684,29 @@ dispatch_args=(
 [[ -n "$SESSION_ENV_PATH" ]] && dispatch_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$PRUNE_LEDGER" ]] && dispatch_args+=(--prune-ledger "$PRUNE_LEDGER")
 [[ -f "$REVIEW_TMPDIR/competition-notice.md" ]] && dispatch_args+=(--competition-notice-file "$REVIEW_TMPDIR/competition-notice.md")
+set +e
 "$DISPATCH_PANEL_SH" "${dispatch_args[@]}" > "$dispatch_out"
+dispatch_rc=$?
+set -e
+if [[ "$dispatch_rc" -ne 0 ]]; then
+    ensure_prune_decision_env
+    ensure_prune_nit_env
+    flush_round_log
+    emit_kv REVIEW_CORE_STATUS panel-failed
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE normal
+    emit_kv PANEL_SHAPE "$PANEL"
+    emit_kv THRESHOLD_REASON "dispatch-panel exited rc=$dispatch_rc"
+    exit 2
+fi
 
 external_outputs=$(kv_get "$dispatch_out" EXTERNAL_OUTPUT_FILES)
 claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)

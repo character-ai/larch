@@ -428,7 +428,7 @@ scan_ns_retry_sidecars() {
     local count=0
     local reasons_json
     local _reasons_list=""
-    local reason signals_json
+    local reason signals_json sidecar_f output_base signaled_bases=""
     signals_json=$(_audit_reviewer_signals_jq '
         map(.reviewer_signals // [])
         | add // []
@@ -445,6 +445,24 @@ scan_ns_retry_sidecars() {
         reason=$(_audit_normalize_ns_retry_reason_token "$reason")
         _reasons_list="${_reasons_list}${reason}"$'\n'
     done < <(printf '%s' "$signals_json" | jq -r '.[]' 2>/dev/null || true)
+    # Sidecar files with missing/unreadable meta can leave ns_retry_reason empty in
+    # reviewer_signals; preserve legacy file-presence semantics for those orphans.
+    signaled_bases=$(_audit_reviewer_signals_jq '
+        map(.reviewer_signals // [])
+        | add // []
+        | map(select((.ns_retry_reason // "") != "") | .output_basename)
+        | unique
+    ' || true)
+    for sidecar_f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
+        [ -f "$sidecar_f" ] || continue
+        output_base=$(basename "$sidecar_f")
+        output_base="${output_base%-ns-retry.txt}.txt"
+        if [ -n "$signaled_bases" ] && printf '%s' "$signaled_bases" | jq -e --arg base "$output_base" 'index($base) != null' >/dev/null 2>&1; then
+            continue
+        fi
+        count=$((count + 1))
+        _reasons_list="${_reasons_list}UNKNOWN"$'\n'
+    done
     # Build reasons JSON via jq so keys/values are always JSON-safe and keys sort for stable NDJSON.
     reasons_json=$(printf '%s' "$_reasons_list" | jq -Rs '
         split("\n")

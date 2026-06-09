@@ -889,6 +889,7 @@ _run_plan_review_round() {
     --cursor-present "$CURSOR_PRESENT" || true
 
 # --- Step 3: panel dispatch ---
+set +e
 _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
@@ -899,6 +900,23 @@ _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --round-num "$round_num" \
     --prune-round-num "$PRUNE_ROUND_NUM" \
     --prune-ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv")
+_panel_dispatch_rc=$?
+set -e
+if [[ "$_panel_dispatch_rc" -ne 0 ]]; then
+    write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
+    : > "$DESIGN_TMPDIR/ballot.txt"
+    TALLY_PLAN_REVIEW_STATUS=panel-failed
+    AGGREGATOR_STATUS=skipped
+    ACCEPTED_COUNT=0
+    IMPORTANT_ACCEPTED_COUNT=0
+    NIT_ACCEPTED_COUNT=0
+    NON_NIT_ACCEPTED_COUNT=0
+    DEGRADED_PANEL=1
+    VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    VOTER_1_PARSE_RATE_STATUS=SKIPPED
+    LOOP_STATUS=panel-failed
+    return 1
+fi
 
 PANEL_DISPATCH_OK="true"
 PANEL_PATHS_FILE=""
