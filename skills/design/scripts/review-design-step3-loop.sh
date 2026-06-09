@@ -108,6 +108,7 @@ step3_loop_persist_envelope() {
 step3_loop_write_completed_step3() {
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : >"$DESIGN_TMPDIR/.completed/step-3"
+    : >"$DESIGN_TMPDIR/.completed/step-3.5"
 }
 
 step3_loop_is_hard() {
