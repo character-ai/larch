@@ -120,6 +120,9 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 mkdir -p "$DESIGN_TMPDIR"
+if [[ ! -f "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv" ]]; then
+    printf 'round\ttool\tslot\tlabel\taccepted_count\n' > "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv"
+fi
 export DESIGN_TMPDIR
 
 if [[ -z "$FEATURE_FILE" ]]; then
@@ -772,6 +775,10 @@ plan_review_should_record_prune_round() {
     local accepted_count="${2:-${ACCEPTED_COUNT:-0}}"
     local degraded_panel="${3:-${DEGRADED_PANEL:-0}}"
     local collector_ok="${4:-${collect_ok_count:-0}}"
+    if [[ "$loop_status" == "main-agent-vote-required" ]]; then
+        (( collector_ok > 0 )) || return 1
+        return 0
+    fi
     [[ "$loop_status" == "complete" ]] || return 1
     case "$accepted_count" in ''|*[!0-9]*) accepted_count=0 ;; esac
     case "$collector_ok" in ''|*[!0-9]*) collector_ok=0 ;; esac
@@ -1830,6 +1837,10 @@ if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN
     _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
     _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
     _restore_prior_round_accepted_all "$_prior_accepted_all"
+    _mav_fc="$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/findings-classification.tsv"
+    if plan_review_should_record_prune_round "main-agent-vote-required" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$collect_ok_count"; then
+        plan_review_record_prune_round "${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}" "$_mav_fc"
+    fi
     _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
 fi
 

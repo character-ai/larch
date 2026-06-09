@@ -142,6 +142,43 @@ assert_contains "$REPORT_VERSION" "post accepted-low-value: 0.0% (0/1)" "post ac
 assert_contains "$REPORT_VERSION" "post tier-composition: important" "post tier composition line"
 assert_contains "$REPORT_VERSION" "| pre | nit | 1 | 0.0" "explicit body_severity drives pre nit tier"
 
+echo "== body_severity and focus_area survive prose cap =="
+LONG_PROSE=$(python3 -c "print('z' * 2500)")
+IMPL_CAP="$FIX/larch-logs/implement/RUN-IMPL-CAP"
+mkdir -p "$IMPL_CAP"
+cat > "$IMPL_CAP/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+python3 - "$IMPL_CAP/review-findings-full.jsonl" "$LONG_PROSE" <<'PY'
+import json, sys
+path, prose = sys.argv[1], sys.argv[2]
+row = {
+    "id": "FINDING_CAP",
+    "phase": "code-review",
+    "outcome": "accepted",
+    "reviewer_slots": ["cursor-specialist-testing-output.txt"],
+    "round_num": "1",
+    "category": "Cap probe",
+    "body_severity": "nit",
+    "focus_area": "testing",
+    "prose_body": prose,
+}
+open(path, "w", encoding="utf-8").write(json.dumps(row) + "\n")
+PY
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, (49, 0, 0))
+rec = next(r for r in records if r.get("finding_id") == "FINDING_CAP")
+assert rec["severity"] == "nit", rec
+assert rec.get("focus_area") == "testing", rec
+assert len(rec.get("text", "")) <= 2000, len(rec.get("text", ""))
+PY
+PASS=$((PASS + 1))
+echo "  ok: body_severity and focus_area extracted before prose cap"
+
 echo "== concise design TSV severity is consumed without findings.md =="
 python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
 import importlib.util, sys

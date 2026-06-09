@@ -155,6 +155,26 @@ _audit_oos_inline_triage_hits() {
     printf '0'
 }
 
+# Collect reviewer_signals[] from round-meta.json across all rounds (concise log carrier).
+_audit_reviewer_signals_jq() {
+    local jq_filter="$1"
+    local meta_f signals_any=false result=""
+    for meta_f in "$RUN_DIR"/round-*/round-meta.json; do
+        [ -f "$meta_f" ] || continue
+        if jq -e '.reviewer_signals | type == "array" and length > 0' "$meta_f" >/dev/null 2>&1; then
+            signals_any=true
+            break
+        fi
+    done
+    if [ "$signals_any" != true ]; then
+        printf 'unavailable'
+        return 1
+    fi
+    result=$(jq -sc "$jq_filter" "$RUN_DIR"/round-*/round-meta.json 2>/dev/null || true)
+    [ -n "$result" ] || return 1
+    printf '%s' "$result"
+}
+
 # Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
 _audit_normalize_ns_retry_reason_token() {
     local raw="$1"
@@ -408,22 +428,23 @@ scan_ns_retry_sidecars() {
     local count=0
     local reasons_json
     local _reasons_list=""
-    local reason meta raw_line
-    for f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
-        [ -f "$f" ] || continue
+    local reason signals_json
+    signals_json=$(_audit_reviewer_signals_jq '
+        map(.reviewer_signals // [])
+        | add // []
+        | map(select((.ns_retry_reason // "") != ""))
+        | map((.ns_retry_reason // "UNKNOWN") | tostring)
+    ' || true)
+    if [ "$signals_json" = "unavailable" ] || [ -z "$signals_json" ]; then
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
+        return
+    fi
+    while IFS= read -r reason; do
+        [ -n "$reason" ] || continue
         count=$((count + 1))
-        meta="${f}.meta"
-        reason=""
-        if [ -f "$meta" ]; then
-            # Last matching line wins (collector may append); strip fixed prefix so '=' in values is preserved.
-            raw_line=$(grep -E '^NS_RETRY_REASON=' "$meta" 2>/dev/null | tail -n 1 || true)
-            reason="${raw_line#NS_RETRY_REASON=}"
-            reason=$(printf '%s' "$reason" | tr -d '\r')
-        fi
-        [ -z "$reason" ] && reason="UNKNOWN"
         reason=$(_audit_normalize_ns_retry_reason_token "$reason")
         _reasons_list="${_reasons_list}${reason}"$'\n'
-    done
+    done < <(printf '%s' "$signals_json" | jq -r '.[]' 2>/dev/null || true)
     # Build reasons JSON via jq so keys/values are always JSON-safe and keys sort for stable NDJSON.
     reasons_json=$(printf '%s' "$_reasons_list" | jq -Rs '
         split("\n")
@@ -500,14 +521,21 @@ scan_codex_round1_adherence() {
 
 # ---- Scan: codex-generalist-waste ----
 scan_codex_generalist_waste() {
-    local f="$RUN_DIR/round-1/codex-generalist-output.txt"
-    if [ ! -f "$f" ]; then
-        emit "{\"scan\":\"codex-generalist-waste\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"no round-1/codex-generalist-output.txt\"}"
+    local meta_f="$RUN_DIR/round-1/round-meta.json" result_kind=""
+    if [ ! -f "$meta_f" ]; then
+        emit "{\"scan\":\"codex-generalist-waste\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
         return
     fi
-    local content
-    content=$(head -n 1 "$f" 2>/dev/null | tr -d '\r' | sed 's/[[:space:]]*$//' || true)
-    if [ "$content" = "NO_ISSUES_FOUND" ]; then
+    result_kind=$(jq -r '
+        (.reviewer_signals // [])
+        | map(select(.output_basename == "codex-generalist-output.txt"))
+        | .[0].result_kind // empty
+    ' "$meta_f" 2>/dev/null || true)
+    if [ -z "$result_kind" ]; then
+        emit "{\"scan\":\"codex-generalist-waste\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
+        return
+    fi
+    if [ "$result_kind" = "NO_ISSUES_FOUND" ]; then
         # Check timing
         local timing_f="$RUN_DIR/timing-report.json"
         local duration=0
@@ -593,16 +621,19 @@ scan_coder_tool() {
 
 # ---- Scan: trailing-content-no-issues-found ----
 scan_trailing_content_no_issues_found() {
-    local count=0
-    for f in "$RUN_DIR"/round-*/*-first-pass.txt; do
-        [ -f "$f" ] || continue
-        local first
-        first=$(head -n 1 "$f" 2>/dev/null | tr -d '\r' | sed 's/[[:space:]]*$//' || true)
-        [ "$first" = "NO_ISSUES_FOUND" ] || continue
-        if tail -n +2 "$f" 2>/dev/null | grep -qE '[^[:space:]]' 2>/dev/null; then
-            count=$((count + 1))
-        fi
-    done
+    local count=0 signals_json trailing
+    signals_json=$(_audit_reviewer_signals_jq '
+        map(.reviewer_signals // [])
+        | add // []
+        | map(select(.first_pass_trailing_content == true))
+        | length
+    ' || true)
+    if [ "$signals_json" = "unavailable" ] || [ -z "$signals_json" ]; then
+        emit "{\"scan\":\"trailing-content-no-issues-found\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
+        return
+    fi
+    count=$(printf '%s' "$signals_json" | tr -d '[:space:]')
+    case "$count" in ''|*[!0-9]*) count=0 ;; esac
     if [ "$count" -eq 0 ]; then
         emit "{\"scan\":\"trailing-content-no-issues-found\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
     else

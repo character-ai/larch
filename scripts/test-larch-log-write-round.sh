@@ -175,6 +175,10 @@ printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.sidecar"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.dirty-tree"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.untracked-baseline"
 printf 'first-pass narrative only\n' > "$source_dir/cursor-specialist-edge-cases-output-first-pass.txt"
+printf 'NO_ISSUES_FOUND\n' > "$source_dir/cursor-specialist-security-output.txt"
+printf 'NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN\n' > "$source_dir/cursor-specialist-security-output-ns-retry.txt.meta"
+printf 'PRUNE_ACTIVE=true\nPRUNE_STATUS=active-kept-all\n' > "$source_dir/prune-decision.env"
+printf 'PRUNED_COUNT=0\nSTATUS=skipped\n' > "$source_dir/prune-nit.env"
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"
 [[ "$out" == *"LOG_WRITTEN=true"* ]] || fail "write-round should report write: $out"
@@ -250,6 +254,42 @@ assert 'collector' in data, "missing collector section"
 assert 'collect_log' not in data, "collect_log should be omitted"
 assert 'wrapper_logs' in data, "missing wrapper_logs section"
 assert 'cursor' in data['wrapper_logs'], "missing wrapper_logs.cursor"
+signals = data.get('reviewer_signals') or []
+assert signals, "missing reviewer_signals when reviewer outputs exist"
+for key in ('output_basename', 'slot_label', 'result_kind', 'ns_retry_reason', 'first_pass_trailing_content'):
+    assert key in signals[0], f"reviewer_signals entry missing {key}"
+sec = next((s for s in signals if s.get('output_basename') == 'cursor-specialist-security-output.txt'), None)
+assert sec, "cursor-specialist-security-output signal missing"
+assert sec.get('ns_retry_reason') == 'NO_ISSUES_FOUND_TOO_THIN', sec.get('ns_retry_reason')
+PYEOF
+assert_file "$round_dir/prune-decision.env" "prune-decision.env included in concise round"
+assert_file "$round_dir/prune-nit.env" "prune-nit.env included in concise round"
+
+debug_source="$TMP/round-debug-cap"
+mkdir -p "$debug_source"
+python3 - "$debug_source" <<'PYEOF'
+import sys
+path = sys.argv[1] + "/cursor-vote-output.txt"
+with open(path, "wb") as fh:
+    fh.write(b"x" * 3000)
+PYEOF
+LARCH_FLUSH_DEBUG=1 "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 5 --source-dir "$debug_source" >/dev/null
+vote_path="$log_root/implement/run123/round-5/cursor-vote-output.txt"
+assert_file "$vote_path" "debug vote output included"
+vote_bytes=$(wc -c < "$vote_path" | tr -d '[:space:]')
+[[ "$vote_bytes" -lt 3000 ]] || fail "vote output should be truncated below source size (got $vote_bytes)"
+grep -Fq '[TRUNCATED: original' "$vote_path" || fail "vote output should carry truncation marker"
+
+reviewer_only_source="$TMP/round-reviewer-only"
+mkdir -p "$reviewer_only_source"
+printf 'NO_ISSUES_FOUND\n' > "$reviewer_only_source/codex-specialist-correctness-output.txt"
+out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 6 --source-dir "$reviewer_only_source")"
+[[ "$out" == *"LOG_WRITTEN=true"* ]] || fail "reviewer-only write-round should write round-meta: $out"
+assert_file "$log_root/implement/run123/round-6/round-meta.json" "reviewer-only round-meta.json"
+python3 - "$log_root/implement/run123/round-6/round-meta.json" <<'PYEOF' || fail "reviewer-only round-meta missing reviewer_signals"
+import json, sys
+data = json.load(open(sys.argv[1]))
+assert data.get("reviewer_signals"), data
 PYEOF
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"

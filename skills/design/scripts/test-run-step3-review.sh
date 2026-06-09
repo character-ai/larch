@@ -855,6 +855,37 @@ assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached symlinked outer st
 assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'cap-reached symlinked outer stdout tally'
 [[ -L "$D12B/.step3-review-result.env" ]] || fail 'cap-reached symlinked outer must remain a symlink'
 
+echo "=== SIMPLE binds ROUND_NUM to STEP3_REVIEW_ROUND_NUM ==="
+D_ROUND_SIMPLE="$TMP/simple-round-bind"
+write_common_inputs "$D_ROUND_SIMPLE" SIMPLE
+printf '1\n' >"$D_ROUND_SIMPLE/review-round-count.txt"
+stub="$(write_loop_stub "$D_ROUND_SIMPLE" 'printf "%s\n" "$*" >>"$DESIGN_TMPDIR/loop-argv.log"; printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n"; exit 0')"
+"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_ROUND_SIMPLE" >/dev/null
+grep -Fq -- '--round-num 2' "$D_ROUND_SIMPLE/loop-argv.log" || fail 'SIMPLE should pass review counter as --round-num'
+grep -Fq -- '--prune-round-num 2' "$D_ROUND_SIMPLE/loop-argv.log" || fail 'SIMPLE should pass review counter as --prune-round-num'
+
+echo "=== HARD binds ROUND_NUM to plan cursor not review counter ==="
+D_ROUND_HARD="$TMP/hard-round-bind"
+write_common_inputs "$D_ROUND_HARD" HARD
+printf '4\n' >"$D_ROUND_HARD/review-round-count.txt"
+printf 'plan after round 2\n' >"$D_ROUND_HARD/plan-after-round-2.txt"
+snap_stub="$D_ROUND_HARD/snapshot-plan-round-stub.sh"
+cat >"$snap_stub" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    read-cursor) printf 'ROUND_CURSOR=2\n'; exit 0 ;;
+    write-cursor) exit 0 ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$snap_stub"
+stub="$(write_loop_stub "$D_ROUND_HARD" 'printf "%s\n" "$*" >>"$DESIGN_TMPDIR/loop-argv.log"; printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n"; exit 0')"
+"${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_ROUND_HARD" >/dev/null
+grep -Fq -- '--round-num 3' "$D_ROUND_HARD/loop-argv.log" || fail 'HARD should advance cursor to round 3'
+grep -Fq -- '--round-num 4' "$D_ROUND_HARD/loop-argv.log" && fail 'HARD must not bind artifact dir to review-round-count'
+
 echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
     LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM ROUND_NUM \

@@ -503,6 +503,9 @@ printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
 printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
 printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
+printf 'ROUND=1\nPRUNE_ACTIVE=false\nPRUNE_STATUS=skipped\n' >"$TMP/design/plan-review/round-1/prune-decision.env"
+printf 'PRUNED_COUNT=0\nSTATUS=skipped\n' >"$TMP/design/plan-review/round-1/prune-nit.env"
+printf 'round\ttool\tslot\tlabel\taccepted_count\n' >"$TMP/design/reviewer-prune-ledger.tsv"
 printf '### FINDING_1:\n' >"$TMP/design/plan-review/round-1/findings.md"
 printf 'tally\n' >"$TMP/design/plan-review/round-1/voting-tally.md"
 printf '123\n' >"$TMP/design/plan-review/round-1/round-start-s"
@@ -615,6 +618,9 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan.txt" ]] || fail "plan.txt missing on main"
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/prune-decision.env" ]] || fail "prune-decision.env missing from published round"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/prune-nit.env" ]] || fail "prune-nit.env missing from published round"
+[[ -f "$clone/larch-logs/design/RUNPUB1/reviewer-prune-ledger.tsv" ]] || fail "reviewer-prune-ledger.tsv missing from published run root"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md should be concise-excluded"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/voting-tally.md" ]] || fail "plan-review voting-tally.md should be concise-excluded"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s should be concise-excluded"
@@ -1960,6 +1966,37 @@ git -C "$clone_dd" pull -q origin main
 [[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/findings.md" ]] || fail "deduped top-level findings.md should not be staged"
 [[ -f "$clone_dd/larch-logs/design/RUNDEDUP1/voting-tally.md" ]] || fail "non-duplicate voting-tally.md should be staged"
 [[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/plan-review/round-1/findings.md" ]] || fail "round-1/findings.md should be concise-excluded"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== five-round concise publish stays within byte budget ==="
+TMP5R=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-five-round.XXXXXX")
+clone5r=$(setup_clone_with_origin_head "$TMP5R")
+stub5r="$TMP5R/stub"
+make_gh_stub "$stub5r"
+export PATH="$stub5r:$PATH"
+export TEST_CLONE_ROOT="$clone5r"
+export TEST_MERGE_BRANCH="larch-log-design-RUN5R1"
+mkdir -p "$TMP5R/design"
+printf 'plan body\n' >"$TMP5R/design/plan.txt"
+printf 'round\ttool\tslot\tlabel\taccepted_count\n' >"$TMP5R/design/reviewer-prune-ledger.tsv"
+for r in 1 2 3 4 5; do
+    mkdir -p "$TMP5R/design/plan-review/round-$r"
+    printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP5R/design/plan-review/round-$r/findings-classification.tsv"
+    printf 'ROUND=%s\nPRUNE_ACTIVE=false\nPRUNE_STATUS=skipped\n' "$r" >"$TMP5R/design/plan-review/round-$r/prune-decision.env"
+    printf 'PRUNED_COUNT=0\nSTATUS=skipped\n' >"$TMP5R/design/plan-review/round-$r/prune-nit.env"
+    printf 'LOOP_STATUS=complete\n' >"$TMP5R/design/plan-review/round-$r/round-summary.env"
+done
+out5r=$(
+    (cd "$clone5r" && bash "$PUBLISH" --design-tmpdir "$TMP5R/design" --run-id "RUN5R1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out5r" == *"PUBLISH_OK=true"* ]] || fail "five-round publish should succeed: $out5r"
+git -C "$clone5r" pull -q origin main
+for r in 1 2 3 4 5; do
+    [[ -f "$clone5r/larch-logs/design/RUN5R1/plan-review/round-$r/findings-classification.tsv" ]] || fail "round-$r classification missing"
+    [[ -f "$clone5r/larch-logs/design/RUN5R1/plan-review/round-$r/prune-decision.env" ]] || fail "round-$r prune-decision missing"
+done
+run_bytes=$(find "$clone5r/larch-logs/design/RUN5R1" -type f -print0 | xargs -0 wc -c | awk '{s+=$1} END {print s+0}')
+[[ "$run_bytes" -lt 500000 ]] || fail "five-round concise publish exceeded byte budget ($run_bytes)"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "All design-log-publish harness assertions passed."

@@ -641,6 +641,9 @@ grep -Fq $'1\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$prune_
 out=$(TEST_PANEL_PRUNED_EMPTY=true run_core "$TMP/prune-skipped")
 assert_contains "$out" 'REVIEW_CORE_STATUS=prune-skipped'
 assert_contains "$out" 'PANEL_PRUNED_EMPTY=true'
+[[ -f "$TMP/prune-skipped/prune-decision.env" ]] || { echo "FAIL: prune-skipped early exit missing prune-decision.env" >&2; exit 1; }
+[[ -f "$TMP/prune-skipped/prune-nit.env" ]] || { echo "FAIL: prune-skipped early exit missing prune-nit.env" >&2; exit 1; }
+grep -Fq 'PRUNE_STATUS=' "$TMP/prune-skipped/prune-decision.env" || { echo "FAIL: prune-decision.env missing PRUNE_STATUS" >&2; exit 1; }
 
 threshold_argv_log="$TMP/threshold-argv.log"
 out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=cap-hit-all TEST_THRESHOLD_ARGV_LOG="$threshold_argv_log" run_core "$TMP/claude-fallback")

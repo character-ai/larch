@@ -629,13 +629,13 @@ def _section_severity(i_all, d_inscope):
     dby = collections.defaultdict(list)
     for rec in d_inscope:
         dby[modal(rec.get("v_severities", [])) or "(none)"].append(rec)
-    if any(dby.get(k) for k in ("major", "minor", "nit")):
+    if any(dby.get(k) for k in ("important", "latent", "nit")):
         out.append("")
         out.append("**design in-scope — modal voter severity → accept rate**")
         out.append("")
         out.append("| voter severity | n | acc% |")
         out.append("|---|--:|--:|")
-        for sev in ["blocker", "critical", "major", "important", "minor", "nit", "(none)"]:
+        for sev in ["blocker", "critical", "important", "latent", "nit", "(none)"]:
             sub = dby.get(sev)
             if not sub:
                 continue
@@ -673,9 +673,9 @@ def _section_accepted_low_value(i_all, d_inscope):
         out.append("- implement: **%.1f%%** of accepted findings were reviewer-severity nit/latent (%d/%d)"
                    % (pct(len(low), len(acc_impl)), len(low), len(acc_impl)))
     acc_d = [r for r in d_inscope if r["outcome"] == "accepted"]
-    low_d = [r for r in acc_d if modal(r.get("v_severities", [])) in ("nit", "minor")]
+    low_d = [r for r in acc_d if modal(r.get("v_severities", [])) in ("nit", "latent")]
     if acc_d:
-        out.append("- design: **%.1f%%** of accepted in-scope were modal-voter nit/minor (%d/%d)"
+        out.append("- design: **%.1f%%** of accepted in-scope were modal-voter nit/latent (%d/%d)"
                    % (pct(len(low_d), len(acc_d)), len(low_d), len(acc_d)))
     return out
 

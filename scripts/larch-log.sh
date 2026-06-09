@@ -475,8 +475,16 @@ case "$cmd" in
             fi
         } | LC_ALL=C sort)
 
-        # Compose round-meta.json from the collected sidecar files.
-        if [ -s "$sidecar_paths" ]; then
+        # Compose round-meta.json: reviewer_signals when reviewer outputs exist;
+        # sidecar-driven sections when sidecar_paths is non-empty.
+        _has_reviewer_outputs=false
+        if find "$SOURCE_DIR" -maxdepth 1 -type f \
+            \( -name '*-output.txt' -o -name 'dyn-*-output.txt' \) \
+            ! -name '*-vote-output*' ! -name '*-ns-retry*' ! -name '*-first-pass.txt' \
+            -print -quit 2>/dev/null | grep -q .; then
+            _has_reviewer_outputs=true
+        fi
+        if [ -s "$sidecar_paths" ] || [ "$_has_reviewer_outputs" = true ]; then
             : > "$round_tmp"
             python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF' || true
 import json, os, sys
@@ -615,18 +623,31 @@ for name in names:
     meta = manifest.get(name, {})
     first = first_substantive(path)
     ns_reason = ""
-    for suffix in (".ns-retry.meta", "-ns-retry.meta", ".ns-retry.json", "-ns-retry.json"):
-        spath = os.path.join(src, name + suffix)
-        if os.path.isfile(spath):
-            try:
-                raw = read_raw(spath).strip()
+    stem = os.path.splitext(name)[0]
+    for spath in (
+        os.path.join(src, stem + "-ns-retry.txt.meta"),
+        os.path.join(src, name + ".ns-retry.meta"),
+        os.path.join(src, name + "-ns-retry.meta"),
+        os.path.join(src, stem + "-ns-retry.json"),
+        os.path.join(src, name + ".ns-retry.json"),
+    ):
+        if not os.path.isfile(spath):
+            continue
+        try:
+            raw = read_raw(spath).strip()
+            for line in raw.splitlines():
+                if line.startswith("NS_RETRY_REASON="):
+                    ns_reason = line.partition("=")[2].strip()
+                    break
+            if not ns_reason:
                 try:
                     obj = json.loads(raw)
                     ns_reason = str(obj.get("reason") or obj.get("ns_retry_reason") or "")
                 except Exception:
                     ns_reason = raw.splitlines()[0] if raw else ""
-            except Exception:
-                ns_reason = ""
+        except Exception:
+            ns_reason = ""
+        if ns_reason:
             break
     first_pass = os.path.join(src, name[:-4] + "-first-pass.txt") if name.endswith(".txt") else ""
     signals.append({
@@ -722,14 +743,10 @@ PYEOF
             fi
         fi
 
-        if [ "$found" = false ]; then
-            larch_log_emit_success "$round_dir" false true
+        if [ "$written" = true ]; then
+            larch_log_emit_success "$round_dir" true false
         else
-            if [ "$written" = true ]; then
-                larch_log_emit_success "$round_dir" true false
-            else
-                larch_log_emit_success "$round_dir" false true
-            fi
+            larch_log_emit_success "$round_dir" false true
         fi
         ;;
 

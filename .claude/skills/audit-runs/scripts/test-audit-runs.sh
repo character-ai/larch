@@ -1344,8 +1344,15 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35_TMP/required-empty.tsv"
     mkdir -p "$R35_TMP/run/round-1"
     printf '%s\n' '{"id":"OOS_1","category":"code-quality","prose_body":"ok"}' > "$R35_TMP/run/review-findings-full.jsonl"
-    : > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt"
-    printf '%s\n' 'NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN' > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt.meta"
+    jq -nc '{
+        reviewer_signals: [{
+            output_basename: "panel-ns-retry-sidecar.txt",
+            slot_label: "panel-ns-retry-sidecar",
+            result_kind: "NO_ISSUES_FOUND",
+            ns_retry_reason: "NO_ISSUES_FOUND_TOO_THIN",
+            first_pass_trailing_content: false
+        }]
+    }' > "$R35_TMP/run/round-1/round-meta.json"
     printf '%s\n' '{"category":"Errors","body":"not a warning"}' > "$R35_TMP/run/execution-issues.ndjson"
     r35_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35_TMP/run" --pr 990035 \

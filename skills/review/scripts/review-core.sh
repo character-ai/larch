@@ -732,6 +732,8 @@ if [[ "$panel_pruned_empty" == "true" ]]; then
         printf 'Round skipped: all reviewer combos pruned.\n'
     } > "$REVIEW_TMPDIR/voting-tally.md"
     restore_review_oos_state prune-skipped
+    ensure_prune_decision_env
+    ensure_prune_nit_env
     flush_round_log
     larch_err "→ review: round $ROUND_NUM skipped — all reviewer combos pruned"
     emit_kv REVIEW_CORE_STATUS prune-skipped
