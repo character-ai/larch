@@ -350,8 +350,9 @@ def create_branch_main(argv: list[str]) -> int:
         base_remote=args.base_remote,
         base_ref=args.base_ref,
     )
-    _emit_kv("BRANCH_NAME", result.branch_name)
-    _emit_kv("ACTION", result.action)
+    if result.exit_code == 0:
+        _emit_kv("BRANCH_NAME", result.branch_name)
+        _emit_kv("ACTION", result.action)
     return result.exit_code
 
 
@@ -440,6 +441,9 @@ def checks_main(argv: list[str]) -> int:
     args = _parse(parser, argv)
     if args is None:
         return 1
+    repo_err = _validate_repo_arg(args.repo, script="gh-pr-checks.sh")
+    if repo_err is not None:
+        return repo_err
     result = gh.pr_checks_text_read(proc, args.pr, repo=args.repo)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
