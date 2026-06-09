@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import cli
+import importlib
 
 
 CLI_PATH = Path(__file__).with_name("cli.py")
@@ -94,6 +95,19 @@ def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
     allowed = {"import argparse", "import importlib", "import sys"}
     for imp in top_imports:
         assert imp in allowed, f"Unexpected top-level import in cli.py: {imp!r}"
+
+
+def test_affected_registry_targets_resolve_to_domain_modules() -> None:
+    affected = {"git", "push", "pr", "merge", "gh", "ci"}
+    retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli"}
+    checked = 0
+    for module_name, func_name in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
+        assert module_name not in retired
+        if module_name in affected:
+            module = importlib.import_module(module_name)
+            assert getattr(module, func_name) is not None
+            checked += 1
+    assert checked == 38
 
 
 # ---------------------------------------------------------------------------

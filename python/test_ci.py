@@ -1,12 +1,12 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false
-"""CLI contract tests for ci_cli."""
+"""CLI contract tests for ci."""
 
 from __future__ import annotations
 
 from proc import CommandResult
 from test_support import RecordingRunner
 
-import ci_cli
+import ci
 import ci_monitor
 
 
@@ -16,18 +16,18 @@ def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
 
 def test_behind_count_fail_open(monkeypatch, capsys):
     runner = RecordingRunner(responses=[_res(1, stderr="fetch failed")])
-    monkeypatch.setattr(ci_cli, "proc", runner)
-    assert ci_cli.behind_count_main([]) == 0
+    monkeypatch.setattr(ci, "proc", runner)
+    assert ci.behind_count_main([]) == 0
     assert "BEHIND_COUNT=0" in capsys.readouterr().out
 
 
 def test_decide_usage_exit_one():
-    assert ci_cli.decide_main([]) == 1
+    assert ci.decide_main([]) == 1
 
 
 def test_decide_rejects_invalid_status():
     assert (
-        ci_cli.decide_main(
+        ci.decide_main(
             [
                 "--status",
                 "bogus",
@@ -47,7 +47,7 @@ def test_decide_rejects_invalid_status():
 
 def test_decide_rejects_negative_counter():
     assert (
-        ci_cli.decide_main(
+        ci.decide_main(
             [
                 "--status",
                 "pass",
@@ -67,7 +67,7 @@ def test_decide_rejects_negative_counter():
 
 def test_decide_rejects_malformed_conflicted():
     assert (
-        ci_cli.decide_main(
+        ci.decide_main(
             [
                 "--status",
                 "pass",
@@ -89,7 +89,7 @@ def test_decide_rejects_malformed_conflicted():
 
 def test_decide_accepts_legacy_flags(capsys):
     assert (
-        ci_cli.decide_main(
+        ci.decide_main(
             [
                 "--status",
                 "pass",
@@ -110,14 +110,14 @@ def test_decide_accepts_legacy_flags(capsys):
 
 
 def test_status_usage_emits_error_kv_and_exits_zero(capsys):
-    assert ci_cli.status_main([]) == 0
+    assert ci.status_main([]) == 0
     out = capsys.readouterr().out
     assert "CI_STATUS=error" in out
     assert "BEHIND_COUNT=0" in out
 
 
 def test_status_rejects_invalid_base_ref(capsys):
-    assert ci_cli.status_main(["--pr", "1", "--repo", "o/r", "--base-ref", "bad ref"]) == 0
+    assert ci.status_main(["--pr", "1", "--repo", "o/r", "--base-ref", "bad ref"]) == 0
     captured = capsys.readouterr()
     assert "unsupported characters" in captured.err
     assert "CI_STATUS=error" in captured.out
@@ -127,7 +127,7 @@ def test_wait_rejects_negative_counter_before_output_file_cleanup(tmp_path, caps
     out_file = tmp_path / "wait.out"
     out_file.write_text("stale\n", encoding="utf-8")
     assert (
-        ci_cli.wait_main(
+        ci.wait_main(
             ["--pr", "1", "--repo", "o/r", "--iteration", "-1", "--output-file", str(out_file)],
         )
         == 1
@@ -137,7 +137,7 @@ def test_wait_rejects_negative_counter_before_output_file_cleanup(tmp_path, caps
 
 
 def test_failed_jobs_usage_exits_two():
-    assert ci_cli.failed_jobs_main([]) == 2
+    assert ci.failed_jobs_main([]) == 2
 
 
 def test_failed_jobs_classifies_legacy_fixable_jobs() -> None:
@@ -159,12 +159,12 @@ def test_wait_bail_exits_zero_and_emits_contract(monkeypatch, capsys):
     )
     decision = ci_monitor.Decision(action="bail", bail_reason="too many fixes")
     monkeypatch.setattr(
-        ci_cli.ci_monitor,
+        ci.ci_monitor,
         "poll_ci",
         lambda *_a, **_k: (status, decision),
     )
     assert (
-        ci_cli.wait_main(
+        ci.wait_main(
             [
                 "--pr",
                 "1",
@@ -187,9 +187,9 @@ def test_wait_output_file_publishes_on_poll_exception(monkeypatch, tmp_path):
     def _boom(*_args: object, **_kwargs: object) -> tuple[object, object]:
         raise RuntimeError("poll failed")
 
-    monkeypatch.setattr(ci_cli.ci_monitor, "poll_ci", _boom)
+    monkeypatch.setattr(ci.ci_monitor, "poll_ci", _boom)
     out_file = tmp_path / "wait.out"
-    assert ci_cli.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
+    assert ci.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
     text = out_file.read_text(encoding="utf-8")
     assert "ACTION=bail" in text
     assert "ci-wait.sh exited unexpectedly" in text
@@ -206,12 +206,12 @@ def test_wait_output_file_writes_done_sentinel(monkeypatch, tmp_path):
     )
     decision = ci_monitor.Decision(action="merge", bail_reason="")
     monkeypatch.setattr(
-        ci_cli.ci_monitor,
+        ci.ci_monitor,
         "poll_ci",
         lambda *_a, **_k: (status, decision),
     )
     out_file = tmp_path / "wait.out"
-    assert ci_cli.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
+    assert ci.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
     assert out_file.is_file()
     done = tmp_path / "wait.out.done"
     assert done.is_file()

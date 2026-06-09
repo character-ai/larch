@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """PR merge orchestration (parity with merge-pr.sh)."""
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
+import argparse
+import tempfile
 import config
 import gh
 import git
@@ -19,6 +22,7 @@ from errors import ShipError
 from proc import Runner
 from retry import with_transient_retry
 from run_context import RunContext
+import proc
 
 @dataclass(frozen=True)
 class MergeResult:
@@ -520,3 +524,39 @@ def _attempt_merge(
         result=config.MERGE_RESULT_ADMIN_FAILED,
         error=f"Admin merge failed: {admin_diag}; fallback merge failed: {plain_diag}",
     )
+
+
+# CLI entrypoint migrated from merge_cli.py.
+def _emit_kv(key: str, value: object) -> None:
+    logging_util.emit_kv(key, str(value))
+
+
+def pr_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py merge pr")
+    parser.add_argument("--pr", required=True, type=int)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--no-admin-fallback", action="store_true")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    ctx = RunContext(
+        branch="",
+        issue="",
+        repo=args.repo,
+        run_id="",
+        tmpdir=tempfile.gettempdir(),
+        merge=True,
+        draft=False,
+        forked=False,
+        manifest_path="",
+        tool_label="codex",
+        no_admin_fallback=args.no_admin_fallback,
+        repo_unavailable=False,
+        pr_number=args.pr,
+        no_logs_commit=True,
+    )
+    result = merge_pr(proc, ctx, post_flush=False)
+    _emit_kv("MERGE_RESULT", result.result)
+    _emit_kv("ERROR", result.error)
+    return 0

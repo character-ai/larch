@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import git as git_module
 import gh
@@ -490,3 +491,19 @@ def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) 
     result = pr_module.create_branch(runner, branch=branch)
     assert result.status == "created"
     assert [call[:2] for call in runner.calls].count(["git", "fetch"]) == 2
+
+
+# CLI contract tests migrated from test_pr_cli.py.
+def test_closes_issue_from_body_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    body = tmp_path / "body.md"
+    _ = body.write_text("Hello\n\nCloses #3670\n", encoding="utf-8")
+    assert pr_module.closes_issue_main(["--body-file", str(body)]) == 0
+    assert capsys.readouterr().out.strip() == "3670"
+
+
+def test_body_update_missing_file(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(pr_module, "proc", RecordingRunner())
+    assert pr_module.body_update_main(["--pr", "1", "--body-file", "/no/such/file"]) == 2
+    out = capsys.readouterr().out
+    assert "UPDATED=false" in out
+    assert "body file not found" in out

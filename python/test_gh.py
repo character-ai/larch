@@ -13,6 +13,7 @@ from errors import ShipError, TransientNetworkError
 from proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
+import json
 
 
 @dataclass
@@ -1025,3 +1026,47 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert result.returncode == 1
     assert "--repo" in runner.calls[0]
     assert "o/r" in runner.calls[0]
+
+
+# CLI contract tests migrated from test_gh_cli.py.
+def test_workflow_path_prefers_workflow_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    artifact = tmp_path / "artifact.json"
+    _ = artifact.write_text(json.dumps({"workflow_path": "HARD", "design_classification": "SIMPLE"}), encoding="utf-8")
+    assert gh.workflow_path_main([str(artifact)]) == 0
+    assert capsys.readouterr().out.strip() == "HARD"
+
+
+def test_run_logs_main_in_progress_exit_three(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "run", "view", "7"),
+                1,
+                "",
+                "run is still in progress; logs will be available when it is complete",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(gh, "proc", runner)
+    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 3
+    assert "Full log: https://github.com/o/r/actions/runs/7" in capsys.readouterr().out
+
+
+def test_run_logs_main_failure_exit_one(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[CommandResult(("gh", "run", "view", "7"), 1, "", "boom", 0.01)])
+    monkeypatch.setattr(gh, "proc", runner)
+    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 1
+    assert "boom" in capsys.readouterr().out
+
+
+def test_run_logs_main_tails_raw_log(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    raw = "\n".join(f"line-{idx}" for idx in range(105))
+    runner = RecordingRunner(responses=[CommandResult(("gh", "run", "view", "7"), 0, raw, "", 0.01)])
+    monkeypatch.setattr(gh, "proc", runner)
+    assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert "line-4" not in lines
+    assert "line-5" in lines
+    assert "line-104" in lines
