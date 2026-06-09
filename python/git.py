@@ -831,7 +831,7 @@ def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
         return False
     base = Path(rel)
     if not base.is_absolute():
-        base = Path(cwd or os.getcwd()) / base
+        base = Path(cwd) / base if cwd else Path.cwd() / base
     return (base / "rebase-merge").is_dir() or (base / "rebase-apply").is_dir()
 
 

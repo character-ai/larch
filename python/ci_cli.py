@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import re
 import sys
@@ -176,22 +177,20 @@ def wait_main(argv: list[str]) -> int:
         trap_exit = 1
         if not output_file:
             raise
-    finally:
-        if output_file and out_path is not None:
-            lines = _wait_output_lines(
-                status,
-                decision,
-                iteration=args.iteration,
-                elapsed=elapsed,
-            )
-            text = "\n".join(lines) + "\n"
-            if _publish_wait_output(text, output_file):
-                done_path = out_path.with_name(out_path.name + ".done")
-                try:
-                    _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
-                except OSError:
-                    pass
-            return 0
+
+    if output_file and out_path is not None:
+        lines = _wait_output_lines(
+            status,
+            decision,
+            iteration=args.iteration,
+            elapsed=elapsed,
+        )
+        text = "\n".join(lines) + "\n"
+        if _publish_wait_output(text, output_file):
+            done_path = out_path.with_name(out_path.name + ".done")
+            with contextlib.suppress(OSError):
+                _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
+        return 0
 
     lines = _wait_output_lines(
         status,
