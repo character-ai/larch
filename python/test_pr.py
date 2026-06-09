@@ -534,7 +534,6 @@ def test_create_main_detached_head_stderr_prefix(
 
     def detached_head(_runner: Runner, *, cwd: str | None = None) -> None:
         _ = cwd
-        return None
 
     monkeypatch.setattr(git_module, "try_current_branch", detached_head)
     assert pr_module.create_main(["--title", "t", "--body-file", str(body)]) == 2
