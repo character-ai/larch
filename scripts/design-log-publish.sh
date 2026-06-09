@@ -463,6 +463,9 @@ design_publish_remove_stale_excluded() {
     while IFS= read -r f || [[ -n "$f" ]]; do
         [[ -z "$f" ]] && continue
         base=$(basename "$f")
+        if [[ "${DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY:-false}" == "true" && "$f" == "$root/voting-tally.md" ]]; then
+            continue
+        fi
         if design_artifact_excluded "$base"; then
             rm -f "$f"
         fi
@@ -498,6 +501,7 @@ fi
 
 _top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
 ENUM_TOP_TMP="$_top_files"
+DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=false
 if ! find "$DESIGN_TMPDIR" -maxdepth 1 -type f | LC_ALL=C sort >"$_top_files"; then
     rm -f "$_top_files"
     ENUM_TOP_TMP=""
@@ -527,6 +531,7 @@ while IFS= read -r f || [[ -n "$f" ]]; do
     case "$b" in
         voting-tally.md)
             _include_excluded=true
+            DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=true
             ;;
     esac
     design_publish_stage_file "$f" "$RUN_DEST/$b" "$_include_excluded" || {
@@ -859,6 +864,7 @@ if [[ -z "$_porcelain" ]]; then
         exit 0
     fi
     if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "$rel" | grep -q .; then
+        design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
         emit_publish_result true "" ""
     else
         larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
@@ -1182,5 +1188,6 @@ if [[ "$merge_rc" -ne 0 ]]; then
     exit 1
 fi
 
+design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
 emit_publish_result true "$PR_NUM" "${PR_URL:-}"
 exit 0
