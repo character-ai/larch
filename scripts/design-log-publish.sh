@@ -395,6 +395,7 @@ design_publish_ancestor_within_root() {
 design_publish_stage_file() {
     local src="$1"
     local dest="$2"
+    local include_excluded="${3:-false}"
     local name trim_tmp redact_tmp redact_secrets
     name=$(basename "$src")
     if [[ -L "$src" ]]; then
@@ -403,7 +404,7 @@ design_publish_stage_file() {
     if [[ ! -f "$src" ]]; then
         return 0
     fi
-    if design_artifact_excluded "$name"; then
+    if [[ "$include_excluded" != "true" ]] && design_artifact_excluded "$name"; then
         return 0
     fi
     trim_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-trim.XXXXXX") || return 1
@@ -510,7 +511,13 @@ while IFS= read -r f || [[ -n "$f" ]]; do
             fi
             ;;
     esac
-    design_publish_stage_file "$f" "$RUN_DEST/$b" || {
+    _include_excluded=false
+    case "$b" in
+        voting-tally.md)
+            _include_excluded=true
+            ;;
+    esac
+    design_publish_stage_file "$f" "$RUN_DEST/$b" "$_include_excluded" || {
         larch_err "design-log-publish: staging failed for $f"
         emit_publish_result false
         exit 0
