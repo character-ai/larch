@@ -166,8 +166,8 @@ contains "$out" 'POSTPLAN_RC=12' 'postplan rc carried'
 [[ "$(cat "$D4/.step3-round-1.phase")" == awaiting-postplan-operator ]] || fail 'postplan operator should persist awaiting-postplan-operator phase'
 
 
-echo '=== postplan operator rc 10/13/14 envelopes ==='
-for spec in '10:hard' '13:partition' '14:drift'; do
+echo '=== postplan operator rc 10/13 envelopes ==='
+for spec in '10:hard' '13:partition'; do
     rc="${spec%%:*}"
     label="${spec#*:}"
     D_RC="$TMP/postplan-rc-$rc"
@@ -194,6 +194,32 @@ printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGR
     contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-operator-required' "postplan operator rc $rc envelope"
     contains "$out" "POSTPLAN_RC=$rc" "postplan rc $rc carried"
 done
+
+
+echo '=== postplan rc 14 routes to postplan-failed ==='
+D_RC14="$TMP/postplan-rc-14"
+write_common "$D_RC14"
+write_ok_stubs "$D_RC14"
+cat >"$D_RC14/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf 'POSTPLAN_EMIT_STATUS=drift\n' >"$dir/.design-postplan-emit-result.env"
+exit 14
+STUB
+chmod +x "$D_RC14/postplan-ok.sh"
+round_stub="$(write_round_stub "$D_RC14" "cat >\"$D_RC14/accepted-plan-findings.md\" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: issue
+FINDINGS
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
+out="$(run_loop "$D_RC14" "$round_stub")"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'postplan rc 14 failure envelope'
+contains "$out" 'POSTPLAN_RC=14' 'postplan rc 14 carried'
 
 
 echo '=== postplan rc 11 routes through pause helper ==='
