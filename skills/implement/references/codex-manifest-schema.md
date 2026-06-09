@@ -50,7 +50,7 @@
 | `bail_reason` (string) | absent or empty | absent or empty | required, non-empty |
 | `needs_qa.questions` (non-empty array) | absent | required, non-empty | absent |
 
-`oos_observations[]` contains only post-triage filed-OOS candidates. It excludes inline-folded rules 1-2 items from `skills/implement/SKILL.md`'s OOS triage policy, which are folded into the implementer's own commit with `Inline-triage rule N:` annotations in `commit_message`. It also excludes security findings, which route through SECURITY.md's private disclosure flow instead of the public OOS issue path. The array may be empty when every applicable item was folded inline or security-routed.
+`oos_observations[]` contains only post-triage filed-OOS candidates. It excludes inline-folded rules 1-2 items from the OOS triage policy in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`, which are folded into the implementer's own commit with `Inline-triage rule N:` annotations in `commit_message`. It also excludes security findings, which route through SECURITY.md's private disclosure flow instead of the public OOS issue path. The array may be empty when every applicable item was folded inline or security-routed.
 
 Optional fields MAY be present in the non-`complete` statuses but are not required and are not consumed by downstream SKILL.md steps.
 

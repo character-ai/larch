@@ -768,6 +768,22 @@ grep -Fq 'while IFS= read -r path' "$SHIP_PR_SH" \
 grep -Fq '**Terminal disposition invariant:**' "$REFS_DIR/execution-issues-tracking.md" \
   || fail "execution-issues-tracking.md must contain OOS Terminal disposition invariant paragraph"
 
+# shellcheck disable=SC2016
+grep -Fq '**MANDATORY — READ ENTIRE FILE** before applying the `Pre-existing Code Issues` dual-write gate: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`' "$SKILL_MD" \
+  || fail "SKILL.md Step 2.4 must contain execution-issues-tracking.md MANDATORY-READ for Pre-existing Code Issues dual-write gate"
+awk '
+  /### Self-review mode/ { in_sr = 1; seen_sr = 0; n_sr = 0 }
+  in_sr && /MANDATORY.*READ ENTIRE FILE.*execution-issues-tracking/ { seen_sr = 1 }
+  in_sr { n_sr++; if (n_sr > 20) in_sr = 0 }
+  /\*\*Exit 0\*\*: if .OOS_PENDING=true./ { in_exit0 = 1; seen_exit0 = 0; n_exit0 = 0 }
+  in_exit0 && /MANDATORY.*READ ENTIRE FILE.*execution-issues-tracking/ { seen_exit0 = 1 }
+  in_exit0 { n_exit0++; if (n_exit0 > 8) in_exit0 = 0 }
+  /\*\*OOS checkpoint\*\*: when .OOS_PENDING=true./ { in_chk = 1; seen_chk = 0; n_chk = 0 }
+  in_chk && /MANDATORY.*READ ENTIRE FILE.*execution-issues-tracking/ { seen_chk = 1 }
+  in_chk { n_chk++; if (n_chk > 8) in_chk = 0 }
+  END { exit(seen_sr && seen_exit0 && seen_chk ? 0 : 1) }
+' "$SKILL_MD" || fail "SKILL.md must have execution-issues-tracking.md MANDATORY-READ at Step 5 self-review, Exit 0 OOS, and OOS checkpoint"
+
 grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
 
