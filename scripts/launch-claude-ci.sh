@@ -253,7 +253,7 @@ DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledge
     --end-s "$END_S" \
     --output "$OUTPUT" \
     --exit-code "$LAUNCHER_EXIT" \
-    --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
+    --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" || true
 
 if (( LAUNCHER_EXIT != 0 )); then
     append_launch_failure "CI $ROLE" "claude-ci" "$LAUNCHER_EXIT" "${OUTPUT}.stderr" "" ""

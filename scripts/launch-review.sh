@@ -113,7 +113,7 @@ _emit_timing_record() {
         --output "$OUTPUT" \
         --exit-code "$rc" \
         --status "$status" \
-        >/dev/null 2>&1 || true
+        || true
 }
 
 OUTPUT=""
@@ -701,7 +701,7 @@ _emit_timing_record() {
         --output "$OUTPUT" \
         --exit-code "$rc" \
         --status "$status" \
-        >/dev/null 2>&1 || true
+        || true
 }
 
 OUTPUT=""

@@ -98,6 +98,21 @@ if [[ "$CLAUDE_SUMMARY" != "$expected_claude_summary" ]]; then
 fi
 echo "PASS: summary claude"
 
+# Terse mode with a Claude vendor row whose end_s >= last_terse_ts: regression for
+# the else-if branch of the claude counting loop.
+CLAUDE_TERSE_POST_MARK_LEDGER="$TMP_BASE/claude-terse-post-mark.tsv"
+cat > "$CLAUDE_TERSE_POST_MARK_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1	-	-	-	-	-	-	-	-
+v1	mark	20	implement	Step 2	-	-	-	-	-	-	-	-
+v1	vendor	25	implement	-	claude	claude-phase3-security	21	30	9	sec3.txt	0	complete
+EOF
+CLAUDE_TERSE_POST_MARK=$(LARCH_TEST_TIMING_NOW=40 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$CLAUDE_TERSE_POST_MARK_LEDGER" --since-last-mark --terse)
+expected_claude_terse_post_mark="Step 2: elapsed=00:00:20 vendor-tasks=1 (codex=0, cursor=0, claude=1)"
+if [[ "$CLAUDE_TERSE_POST_MARK" != "$expected_claude_terse_post_mark" ]]; then
+  echo "FAIL: terse claude (post-mark task): expected '$expected_claude_terse_post_mark' got '$CLAUDE_TERSE_POST_MARK'" >&2
+  exit 1
+fi
+echo "PASS: terse claude (post-mark task)"
 
 ROUND_LEDGER="$TMP_BASE/rounds.tsv"
 cat > "$ROUND_LEDGER" <<'EOF'
