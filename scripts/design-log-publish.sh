@@ -470,6 +470,12 @@ design_publish_remove_stale_excluded() {
             rm -f "$f"
         fi
     done < <(find "$root" -type f 2>/dev/null || true)
+    if [[ -d "$root/plan-review" ]]; then
+        while IFS= read -r f || [[ -n "$f" ]]; do
+            [[ -z "$f" ]] && continue
+            rm -f "$f"
+        done < <(find "$root/plan-review" -type f -path '*/round-*/reviewer-prune-ledger.tsv' 2>/dev/null || true)
+    fi
 }
 
 design_publish_breadcrumbs() {

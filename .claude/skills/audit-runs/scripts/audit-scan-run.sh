@@ -160,11 +160,11 @@ _audit_oos_inline_triage_hits() {
 # discard valid signals from other rounds.
 _audit_reviewer_signals_jq() {
     local jq_filter="$1"
-    local meta_f part signals_any=false has_output=false
+    local meta_f part signals_any=false
     local combined="[]" numeric_sum=0 numeric_mode=false
     for meta_f in "$RUN_DIR"/round-*/round-meta.json; do
         [ -f "$meta_f" ] || continue
-        if ! jq -e '.reviewer_signals | type == "array" and length > 0' "$meta_f" >/dev/null 2>&1; then
+        if ! jq -e '.reviewer_signals | type == "array"' "$meta_f" >/dev/null 2>&1; then
             continue
         fi
         signals_any=true
@@ -172,17 +172,18 @@ _audit_reviewer_signals_jq() {
         [ -n "$part" ] || continue
         [ "$part" = "null" ] && continue
         case "$part" in
-            ''|'[]'|'0') continue ;;
+            '') continue ;;
         esac
-        has_output=true
         if [[ "$part" =~ ^[0-9]+$ ]]; then
             numeric_mode=true
             numeric_sum=$((numeric_sum + part))
         elif [[ "$part" == \[* ]]; then
-            combined=$(jq -n -c --argjson a "$combined" --argjson b "$part" '$a + $b' 2>/dev/null || printf '%s' "$combined")
+            if [[ "$part" != '[]' ]]; then
+                combined=$(jq -n -c --argjson a "$combined" --argjson b "$part" '$a + $b' 2>/dev/null || printf '%s' "$combined")
+            fi
         fi
     done
-    if [ "$signals_any" != true ] || [ "$has_output" != true ]; then
+    if [ "$signals_any" != true ]; then
         printf 'unavailable'
         return 1
     fi
