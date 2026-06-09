@@ -163,6 +163,19 @@ assert_line "FALLBACK_COUNT=1" "$out"
 assert_line "ALL_OUTPUT_TOOLS=claude" "$out"
 grep -Fq "claude ok" "$TMPROOT/claude-slot-phase3.txt" || { echo "FAIL: phase3 claude output" >&2; exit 1; }
 
+manifest="$TMPROOT/slots-aggregator-phase3.ndjson"
+printf '{"slot":"aggregator","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/aggregator-slot.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true CURSOR_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=1" "$out"
+assert_line "ALL_OUTPUT_TOOLS=claude" "$out"
+grep -Fq "claude ok" "$TMPROOT/aggregator-slot-phase3.txt" \
+    || { echo "FAIL: aggregator slot phase3 claude output" >&2; exit 1; }
+
 manifest="$TMPROOT/slots-absent.ndjson"
 printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/absent-slot.txt" "$prompt" > "$manifest"
 out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \

@@ -77,6 +77,13 @@ grep -Fq $'\timplement\t-\tclaude\tclaude-code-voter\t70\t73\t3\tclaude-code-vot
     --vendor claude --task-kind claude-phase3-security --start-s 74 --end-s 80 \
     --output claude-phase3-security.txt --status ERROR 2>"$CLAUDE_WARN"
 grep -Fq $'\timplement\t-\tclaude\tclaude-phase3-security\t74\t80\t6\tclaude-phase3-security.txt\t0\tsignal' "$LEDGER"
+AGG_WARN="$TMP_BASE/agg-warn.txt"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
+    --vendor claude --task-kind claude-phase3-aggregator --start-s 91 --end-s 95 \
+    --output claude-phase3-aggregator.txt --status OK 2>"$AGG_WARN"
+grep -Fq $'\timplement\t-\tclaude\tclaude-phase3-aggregator\t91\t95\t4\tclaude-phase3-aggregator.txt\t0\tcomplete' "$LEDGER"
+grep -Fq 'unknown task-kind: claude-phase3-aggregator' "$AGG_WARN" \
+    && { echo "claude-phase3-aggregator should be allow-listed" >&2; exit 1; }
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor claude --task-kind claude-phase3-dyn-security --start-s 81 --end-s 90 \
     --output claude-phase3-dyn-security.txt --status TIMEOUT 2>"$CLAUDE_WARN"
