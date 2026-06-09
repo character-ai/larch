@@ -71,6 +71,26 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-MISSING-OOS" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_missing_oos" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 1 ' "$D/final-summary.md" || fail 'missing optional OOS artifact must not zero accepted findings'
 pass 'plan review counts accepted findings when optional OOS artifact is missing'
+
+# --- sentinel fallback: oos-issues-created.md absent, oos-issue-sentinel present ---
+rm -f "$D/oos-issues-created.md"
+cat >"$D/oos-issue-sentinel" <<'EOF'
+ISSUE_SENTINEL_VERSION=1
+ISSUES_CREATED=3
+ISSUES_DEDUPLICATED=0
+ISSUES_FAILED=0
+TIMESTAMP=2025-01-01T00:00:00Z
+EOF
+std_sentinel_oos="$TMP/std-sentinel-oos.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-SENTINEL-OOS" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_sentinel_oos" 2>/dev/null
+grep -q -- '- \*\*OOS filed\*\*: 3' "$D/final-summary.md" || fail 'sentinel fallback must show OOS count from sentinel when oos-issues-created.md is absent'
+grep -Fq -- 'URLs unavailable' "$D/final-summary.md" || fail 'sentinel fallback must note URLs unavailable when using sentinel count'
+cmp -s "$D/final-summary.md" "$std_sentinel_oos" || fail 'sentinel fallback stdout/file mismatch'
+pass 'sentinel fallback reports OOS count when oos-issues-created.md is absent'
+rm -f "$D/oos-issue-sentinel"
+: >"$D/oos-issues-created.md"
+
 cat >"$D/accepted-plan-findings-all.md" <<'EOF'
 ### FINDING_1: Security gap
 - **Reviewer**: Cursor-Pragmatic
