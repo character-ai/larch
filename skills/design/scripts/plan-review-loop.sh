@@ -915,6 +915,7 @@ if [[ "$_panel_dispatch_rc" -ne 0 ]]; then
     VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     VOTER_1_PARSE_RATE_STATUS=SKIPPED
     LOOP_STATUS=panel-failed
+    set +e
     return 1
 fi
 
@@ -1014,6 +1015,7 @@ if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" \
     VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     VOTER_1_PARSE_RATE_STATUS=SKIPPED
     LOOP_STATUS=panel-failed
+    set +e
     return 1
 fi
 
@@ -1665,6 +1667,7 @@ PY
         larch_err "plan-review-ballot: renumber failed on pre-dedup fallback (rc=$_ballot_rc)"
         LOOP_STATUS=panel-failed
         LOOP_REASON=panel-failed
+        set +e
         return 1
     fi
 fi
