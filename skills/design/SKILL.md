@@ -1292,6 +1292,7 @@ If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+: > "$DESIGN_TMPDIR/.completed/step-3"
 case "${STEP3_REVIEW_LOOP_STATUS:-}" in
   main-agent-apply-required|per-round-approval-required|postplan-operator-required) ;;
   '')
