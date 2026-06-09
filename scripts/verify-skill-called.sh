@@ -25,9 +25,9 @@
 #
 #   --commit-delta <expected> --before-count <N>
 #       VERIFIED=true only if the current commit count ahead of main (via
-#       count_commits in lib-count-commits.sh) increased by exactly
+#       `python3 "$PLUGIN_ROOT/python/cli.py" git count-commits`) increased by exactly
 #       <expected> since the caller captured <N> before the child skill
-#       ran. If count_commits reports a non-ok status (missing_main_ref
+#       ran. If git count-commits reports a non-ok status (missing_main_ref
 #       or git_error), VERIFIED=false and REASON reflects that status —
 #       the count comparison is short-circuited to prevent false-pass on
 #       corrupted git state (e.g., delta 0 vs before-count 0 would
@@ -232,15 +232,14 @@ case "$MODE" in
             exit 1
         fi
 
-        # shellcheck source=scripts/lib-count-commits.sh
-        source "$(dirname "${BASH_SOURCE[0]}")/lib-count-commits.sh"
+        PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
         # Use a temp file for the status side channel because bash's $(...)
         # command substitution creates a subshell — any global or exported
         # variable the subshell writes is lost. A file survives the subshell.
         status_file=$(mktemp "${TMPDIR:-/tmp}/verify-skill-called-status.XXXXXX")
         # shellcheck disable=SC2064  # status_file expansion is intentional at trap-registration time
         trap "rm -f '$status_file'" EXIT
-        actual_total=$(COUNT_COMMITS_STATUS_FILE="$status_file" count_commits)
+        actual_total=$(COUNT_COMMITS_STATUS_FILE="$status_file" python3 "$PLUGIN_ROOT/python/cli.py" git count-commits)
         COUNT_COMMITS_STATUS=$(cat "$status_file" 2>/dev/null || echo "")
 
         # Short-circuit on degraded git state — a raw count of 0 under

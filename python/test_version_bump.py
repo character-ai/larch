@@ -219,8 +219,8 @@ def test_apply_git_add_failure_rolls_back(tmp_path: Path) -> None:
             ("git", "status", "--porcelain"): CommandResult(
                 ("git", "status", "--porcelain"), 0, "", "", 0.01
             ),
-            ("git", "add", config.PLUGIN_JSON_PATH): CommandResult(
-                ("git", "add", config.PLUGIN_JSON_PATH), 1, "", "fatal", 0.01
+            ("git", "add", "--", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "add", "--", config.PLUGIN_JSON_PATH), 1, "", "fatal", 0.01
             ),
             ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH): CommandResult(
                 ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
@@ -270,8 +270,8 @@ def test_git_commit_argv_includes_message(tmp_path: Path) -> None:
                 "",
                 0.01,
             ),
-            ("git", "add", config.PLUGIN_JSON_PATH): CommandResult(
-                ("git", "add", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
+            ("git", "add", "--", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "add", "--", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
             ),
             (
                 "git",

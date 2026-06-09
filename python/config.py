@@ -13,6 +13,18 @@ EXIT_NEEDS_USER_INPUT: Final = 3
 EXIT_STALLED: Final = 4
 EXIT_TRANSIENT: Final = 6
 EXIT_INTERNAL_ERROR: Final = 1
+# Helper-script parity exits used by the sh-to-py CLI companions.
+EXIT_USAGE_ONE: Final = 1
+EXIT_USAGE_TWO: Final = 2
+EXIT_FORCE_PUSH_SETUP: Final = 2
+EXIT_REBASE_CONFLICT: Final = 1
+EXIT_REBASE_PUSH_FAILED: Final = 2
+EXIT_REBASE_ERROR: Final = 3
+EXIT_CHECK_MAIN_SYNC_BLOCKED: Final = 1
+EXIT_CHECK_MAIN_SYNC_ERROR: Final = 2
+EXIT_BEHIND_COUNT_USAGE: Final = 2
+EXIT_PHANTOM_PROBE_USAGE: Final = 2
+EXIT_GH_RUN_LOGS_IN_PROGRESS: Final = 3
 # report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
@@ -127,6 +139,7 @@ CI_MONITOR_LOG_TAIL_LINES: Final = 100
 CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",
+    "lint-local",
     "lint-mermaid",
     "shellcheck",
     "test-harnesses",
@@ -136,6 +149,7 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "agent-sync",
     "python-lint",
     "python-tests",
+    "bash32-check",
 })
 
 # Phase 5 — PR / merge / logging (live/default Python driver)

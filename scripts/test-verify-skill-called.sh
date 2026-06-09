@@ -11,8 +11,7 @@
 # Also exercises:
 #   - Argument-error paths (exit 1, no KEY=VALUE emitted).
 #   - Stdout contract (VERIFIED= and REASON= always emitted on exit-0 paths).
-#   - lib-count-commits.sh sourced from cwd-neutral context via
-#     a direct count_commits call (validates the source chain).
+#   - git count-commits CLI from cwd-neutral context, including all status tokens.
 #
 # Invariants asserted:
 #   - Exit 0 for pass AND fail outcomes (VERIFIED=true|false on stdout).
@@ -34,8 +33,8 @@ export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/verify-skill-called.sh"
-LIB="$REPO_ROOT/scripts/lib-count-commits.sh"
-for f in "$HELPER" "$LIB"; do
+CLI="$REPO_ROOT/python/cli.py"
+for f in "$HELPER" "$CLI"; do
     if [[ ! -f "$f" ]]; then
         echo "ERROR: required script not found: $f" >&2
         exit 1
@@ -379,34 +378,59 @@ rc=$?
 set -e
 assert_exit_eq "4c: multiple modes exit 1" "$rc" 1
 
-# --- Section 5: lib-count-commits.sh direct source chain ---------------------
-# Exercises direct sourcing of lib-count-commits.sh from repo and arbitrary
-# working directories after removal of the retired bump gate wrapper.
+# --- Section 5: git count-commits CLI statuses ------------------------------
+# Exercises the raw stdout count plus COUNT_COMMITS_STATUS_FILE side channel.
 
-echo "=== Section 5: cwd-neutral source chain ==="
+echo "=== Section 5: git count-commits CLI statuses ==="
 
 REPO_CHECK="$TMPROOT/repo-count-commits"
 setup_git_repo "$REPO_CHECK" 1 0
 
-# 5a — source lib-count-commits.sh via absolute path from a real repo cwd and
-# exercise count_commits directly.
-out=$(cd "$REPO_CHECK" && bash -c "source '$LIB'; count_commits" 2>&1) || true
+# 5a — ok status from a real repo cwd.
+status_file="$TMPROOT/count-status-ok"
+out=$(cd "$REPO_CHECK" && COUNT_COMMITS_STATUS_FILE="$status_file" python3 "$CLI" git count-commits 2>/dev/null) || true
 if [[ "$out" =~ ^[0-9]+$ ]]; then
     pass
 else
-    fail "5a: count_commits from repo cwd emitted count; got: $out"
+    fail "5a: git count-commits from repo cwd emitted count; got: $out"
 fi
-
-# 5b — source the lib directly via absolute path from arbitrary cwd
-(
-    cd /tmp
-    out=$(bash -c "source '$LIB'; count_commits" 2>&1) || true
-    echo "5b_out=$out"
-) > "$TMPROOT/section5b.log" 2>&1 || true
-if grep -q '5b_out=' "$TMPROOT/section5b.log"; then
+if [[ "$(cat "$status_file")" == "ok" ]]; then
     pass
 else
-    fail "5b: could not source lib-count-commits.sh from /tmp"
+    fail "5a: git count-commits wrote ok status"
+fi
+
+# 5b — missing_main_ref from arbitrary non-git cwd.
+status_file="$TMPROOT/count-status-missing"
+(
+    cd /tmp
+    out=$(COUNT_COMMITS_STATUS_FILE="$status_file" python3 "$CLI" git count-commits 2>/dev/null) || true
+    echo "5b_out=$out"
+) > "$TMPROOT/section5b.log" 2>&1 || true
+if grep -q '5b_out=0' "$TMPROOT/section5b.log" && [[ "$(cat "$status_file")" == "missing_main_ref" ]]; then
+    pass
+else
+    fail "5b: git count-commits should force 0 with missing_main_ref"
+fi
+
+# 5c — git_error when base exists but rev-list fails (PATH stub).
+STUB="$TMPROOT/git-error-bin"
+mkdir -p "$STUB"
+cat > "$STUB/git" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  "rev-parse --verify main") exit 0 ;;
+  "rev-list main..HEAD --count") exit 128 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$STUB/git"
+status_file="$TMPROOT/count-status-git-error"
+out=$(cd "$REPO_CHECK" && PATH="$STUB:$PATH" COUNT_COMMITS_STATUS_FILE="$status_file" python3 "$CLI" git count-commits 2>/dev/null) || true
+if [[ "$out" == "0" && "$(cat "$status_file")" == "git_error" ]]; then
+    pass
+else
+    fail "5c: git count-commits should force 0 with git_error"
 fi
 
 # --- Summary -----------------------------------------------------------------

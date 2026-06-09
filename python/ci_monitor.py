@@ -19,6 +19,7 @@ import config
 import gh
 import git
 import logging_util
+import rebase
 import redact
 import retry
 import run_logs
@@ -50,6 +51,7 @@ class CiStatus:
     behind_count: int
     failed_run_id: str | None
     conflicted: bool = False
+    pr_view_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -227,6 +229,30 @@ def _behind_count(
         return None
 
 
+def behind_count(
+    runner: Runner,
+    *,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    fetch: bool = True,
+    cwd: str | None = None,
+) -> int:
+    """Public ci-behind-count parity: validate labels, fail open to 0."""
+    if git.validate_base_remote_ref(base_remote, base_ref) is not None:
+        return 0
+    if fetch:
+        fetched = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        if fetched.returncode != 0:
+            return 0
+    value = _behind_count(
+        runner,
+        base_remote=base_remote,
+        base_ref=base_ref,
+        cwd=cwd,
+    )
+    return value if value is not None else 0
+
+
 def _squash_merge_race(
     runner: Runner,
     *,
@@ -236,7 +262,7 @@ def _squash_merge_race(
     cwd: str | None,
 ) -> bool:
     base = f"{base_remote}/{base_ref}"
-    subjects = git.log_subjects(runner, f"HEAD..{base}", cwd=cwd)
+    subjects = git.try_log_subjects(runner, f"HEAD..{base}", cwd=cwd)
     needle = f"(#{pr})"
     return any(needle in subject for subject in subjects.subjects)
 
@@ -250,6 +276,16 @@ def _parse_check_rows(parsed: object) -> list[dict[str, object]]:
         if isinstance(item, dict):
             out.append(cast("dict[str, object]", item))  # noqa: PERF401
     return out
+
+
+def _checks_json_is_array(checks_json: str) -> bool:
+    if not checks_json or checks_json.strip() in ("", "null"):
+        return False
+    try:
+        parsed = json.loads(checks_json)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, list)
 
 
 def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
@@ -270,6 +306,78 @@ def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
     return "pass", None
 
 
+def _classify_checks_text(text: str) -> tuple[str, str | None]:
+    if not text.strip():
+        return "empty", None
+    if re.search(r"\bfail", text, flags=re.IGNORECASE):
+        failed_line = next(
+            (line for line in text.splitlines() if re.search(r"\bfail", line, flags=re.IGNORECASE)),
+            "",
+        )
+        link_match = re.search(r"https://\S+", failed_line)
+        run_id = _extract_run_id(link_match.group(0)) if link_match else None
+        return "fail", run_id
+    if re.search(
+        r"\b(pending|in_progress|queued)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return "pending", None
+    return "pass", None
+
+
+def _read_pr_checks_text(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    cwd: str | None,
+) -> str:
+    result = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
+    if result.returncode == 0:
+        return result.stdout
+    return ""
+
+
+def _resolve_checks_status(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    empty_checks_grace: int,
+    sleep_fn: SleepFn,
+    cwd: str | None,
+) -> tuple[str, str | None]:
+    """Classify PR checks with JSON-first and text fallback (ci-status.sh parity)."""
+    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
+    checks_json = checks.stdout if checks.returncode == 0 else ""
+
+    if _checks_json_is_array(checks_json):
+        bucket_status, run_id = _classify_checks_json(checks_json)
+        if bucket_status == "empty" and empty_checks_grace > 0:
+            sleep_fn(float(empty_checks_grace))
+            checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
+            checks_json = checks.stdout if checks.returncode == 0 else ""
+            if _checks_json_is_array(checks_json):
+                bucket_status, run_id = _classify_checks_json(checks_json)
+        if bucket_status == "empty":
+            text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+            if text.strip():
+                return _classify_checks_text(text)
+            return ("NO_CHECKS", None) if empty_checks_grace > 0 else ("pending", None)
+        return bucket_status, run_id
+
+    text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+    if not text.strip() and empty_checks_grace > 0:
+        sleep_fn(float(empty_checks_grace))
+        text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+    if text.strip():
+        return _classify_checks_text(text)
+    if empty_checks_grace > 0:
+        return "NO_CHECKS", None
+    return "pending", None
+
+
 def gather_status(
     runner: Runner,
     *,
@@ -282,55 +390,30 @@ def gather_status(
     cwd: str | None = None,
 ) -> CiStatus:
     """Port of ci-status.sh."""
+    conflicted = True
+    pr_view_ok = True
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
-        return CiStatus(status="error", behind_count=0, failed_run_id=None, conflicted=False)
-    if pr_info.state.upper() == "MERGED":
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
-
-    conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
+        pr_info = None
+        pr_view_ok = False
+    if pr_info is not None:
+        if pr_info.state.upper() == "MERGED":
+            return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+        conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:
         return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
 
-    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-    checks_json = checks.stdout if checks.returncode == 0 else ""
-    status = "pending"
-    failed_run_id: str | None = None
-
-    if checks_json and checks_json.strip() not in ("", "null"):
-        bucket_status, run_id = _classify_checks_json(checks_json)
-        if bucket_status == "empty":
-            if empty_checks_grace > 0:
-                sleep_fn(float(empty_checks_grace))
-                checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-                checks_json = checks.stdout if checks.returncode == 0 else ""
-                bucket_status, run_id = _classify_checks_json(checks_json)
-            if bucket_status == "empty":
-                status = "NO_CHECKS" if empty_checks_grace > 0 else "pending"
-            else:
-                status = bucket_status
-                failed_run_id = run_id
-        else:
-            status = bucket_status
-            failed_run_id = run_id
-    elif empty_checks_grace > 0:
-        sleep_fn(float(empty_checks_grace))
-        checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-        checks_json = checks.stdout if checks.returncode == 0 else ""
-        if checks_json and checks_json.strip() not in ("", "null"):
-            bucket_status, run_id = _classify_checks_json(checks_json)
-            if bucket_status == "empty":
-                status = "NO_CHECKS"
-            else:
-                status = bucket_status
-                failed_run_id = run_id
-        else:
-            status = "NO_CHECKS"
-    else:
-        status = "pending"
+    status, failed_run_id = _resolve_checks_status(
+        runner,
+        pr=pr,
+        repo=repo,
+        empty_checks_grace=empty_checks_grace,
+        sleep_fn=sleep_fn,
+        cwd=cwd,
+    )
 
     behind_raw = _behind_count(
         runner,
@@ -340,10 +423,11 @@ def gather_status(
     )
     if behind_raw is None:
         return CiStatus(
-            status="pending",
+            status=status,
             behind_count=0,
             failed_run_id=failed_run_id,
             conflicted=conflicted,
+            pr_view_ok=pr_view_ok,
         )
     behind = behind_raw
     if behind > 0 and _squash_merge_race(
@@ -359,6 +443,7 @@ def gather_status(
         behind_count=behind,
         failed_run_id=failed_run_id,
         conflicted=conflicted,
+        pr_view_ok=pr_view_ok,
     )
 
 
@@ -384,11 +469,12 @@ def poll_ci(
     ci_failures = 0
     poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
     started_at = clock()
+    last_status = CiStatus(status="pending", behind_count=0, failed_run_id=None)
 
     while True:
         if checks >= max_polls:
             return (
-                CiStatus(status="pending", behind_count=0, failed_run_id=None),
+                last_status,
                 Decision(
                     action="bail",
                     bail_reason=f"Poll budget ({max_polls} polls / {int(timeout)}s) exhausted",
@@ -420,9 +506,13 @@ def poll_ci(
                 status="pending",
                 behind_count=status.behind_count,
                 failed_run_id=status.failed_run_id,
+                conflicted=status.conflicted,
+                pr_view_ok=status.pr_view_ok,
             )
         else:
             ci_failures = 0
+
+        last_status = status
 
         if status.status == "NO_CHECKS":
             return (
@@ -456,6 +546,9 @@ def poll_ci(
 
 
 def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:
+    raw_name = logging_util.sanitize_diagnostic_line(raw_name)
+    if not raw_name:
+        return "", "", True
     match = _MATRIX_SHARD_RE.match(raw_name)
     if match:
         return match.group(1), match.group(2), False
@@ -473,7 +566,10 @@ def classify_failed_jobs(jobs: tuple[FailedJob, ...]) -> ClassifiedJobs:
     fixable: list[JobClass] = []
     unfixable: list[JobClass] = []
     for job in jobs:
-        name, shard, malformed = _parse_job_name_shard(job.name)
+        sanitized = logging_util.sanitize_diagnostic_line(job.name)
+        if not sanitized:
+            continue
+        name, shard, malformed = _parse_job_name_shard(sanitized)
         if malformed or not _JOB_NAME_RE.match(name):
             row = JobClass(name=name, shard=shard, klass="no-local-equivalent")
         elif name in config.CI_FIXABLE_JOBS:
@@ -535,17 +631,18 @@ def collect_failed_logs(
         cwd=cwd,
     )
     combined = result.stdout + result.stderr
-    if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
-        return LogCollectResult(text="", state="in_progress")
-    if result.returncode != 0:
-        return LogCollectResult(text="", state="error")
     lines = combined.splitlines()
     tail = lines[-config.CI_MONITOR_LOG_TAIL_LINES :]
-    body = redact.redact("\n".join(tail))
+    body = "\n".join(tail)
     if body and not body.endswith("\n"):
         body += "\n"
     text = f"{pointer}\n{body}" if body.strip() else pointer + "\n"
-    return LogCollectResult(text=redact.redact(text), state="ready")
+    text = redact.redact(text)
+    if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
+        return LogCollectResult(text=text, state="in_progress")
+    if result.returncode != 0:
+        return LogCollectResult(text=text, state="error")
+    return LogCollectResult(text=text, state="ready")
 
 
 def rerun_failed(
@@ -799,7 +896,10 @@ def _write_failure_log(text: str, *, tmpdir: str | None = None) -> str | None:
     root.mkdir(parents=True, exist_ok=True)
     fd, path = tempfile.mkstemp(suffix=".redacted.log", dir=str(root))
     os.close(fd)
-    _ = Path(path).write_text(text, encoding="utf-8")
+    redacted = redact.redact(text)
+    log_path = Path(path)
+    _ = log_path.write_text(redacted, encoding="utf-8")
+    log_path.chmod(0o600)
     return path
 
 
@@ -889,9 +989,10 @@ def stage_and_push(
         for path in delta_paths:
             _ = runner.run(["git", "add", "--", path], cwd=cwd)
         commit_msg = f"Apply CI fixes ({commit_label})"
-        commit_script = str(_SCRIPTS_DIR / "git-commit.sh")
-        commit = runner.run(
-            [commit_script, "--no-trailer", "-m", commit_msg],
+        commit = git.commit_with_trailer(
+            runner,
+            commit_msg,
+            no_trailer=True,
             cwd=cwd,
         )
         if commit.returncode != 0:
@@ -923,20 +1024,15 @@ def stage_and_push(
             if not known_failed_jobs:
                 _warn_stderr("ship-pr: behind main but failed-jobs unknown; skipping defer-rebase")
             else:
-                rebase_script = str(_SCRIPTS_DIR / "rebase-push.sh")
-                rebased = runner.run(
-                    [
-                        rebase_script,
-                        "--no-push",
-                        "--keep-on-conflict",
-                        "--base-remote",
-                        base_remote,
-                        "--base-ref",
-                        base_ref,
-                    ],
+                rebased = rebase.rebase_push(
+                    runner,
+                    no_push=True,
+                    keep_on_conflict=True,
+                    base_remote=base_remote,
+                    base_ref=base_ref,
                     cwd=cwd,
                 )
-                did_rebase = rebased.returncode == 0
+                did_rebase = rebased.exit_code == 0
                 if not did_rebase:
                     _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False
@@ -1185,7 +1281,7 @@ def _fix_exhausted_detail(
     header = f"ci-fix-exhausted: {jobs}" if jobs else "ci-fix-exhausted"
     tail = logs.text if logs is not None and logs.state == "ready" else ""
     if tail.strip():
-        return f"{header}\n{tail.rstrip()}\n"
+        return f"{header}\n{redact.redact(tail).rstrip()}\n"
     return header
 
 

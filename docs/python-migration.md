@@ -33,6 +33,9 @@ this recipe.
    targets, CI workflow steps, and any bash helper that invoked the old script. Change
    every `scripts/old-script.sh` or `python/old_module.py` invocation to
    `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]`.
+   Bash callers should derive the plugin root from their local script directory
+   first (falling back to `${CLAUDE_PLUGIN_ROOT}`) so direct execution from a
+   checkout does not depend on a prehydrated environment variable.
 
 5. **Run retargeted `test-*.sh` harnesses once as a parity gate** — after consumer
    cutover, confirm the bash integration harnesses still pass against the new CLI
@@ -60,10 +63,16 @@ scripts/old-helper.sh    #1234
 
 Rules:
 
-- **Full repo-relative paths only.** The linter matches the full path as a
-  substring in tracked file content. It never matches bare basenames, so a live
-  file at `other/path/run-analysis.sh` will not be flagged for a retired path at
+- **Path-precise references only.** The linter matches the full repo-relative
+  manifest path and same-directory `$SCRIPT_DIR/<basename>.sh` /
+  `${SCRIPT_DIR}/<basename>.sh` forms derived from that manifest path. It never
+  matches repo-wide bare basenames, so a live file at
+  `other/path/run-analysis.sh` will not be flagged for a retired path at
   `scripts/old/run-analysis.sh`.
+- **`scripts/ship-pr.sh` retention carve-out.** Because the legacy bash driver
+  remains live during staged migration, matches in `scripts/ship-pr.sh` are
+  deletion blockers only when they look like live invocation/source forms.
+  Comment or prose mentions do not block retirement by themselves.
 - Exclusions from scanning: any file under a `larch-logs/` path segment,
   `CHANGELOG.md`, and the manifest file itself are never scanned.
 - **Do NOT write retired-path literals in test fixtures.** Build fixture paths

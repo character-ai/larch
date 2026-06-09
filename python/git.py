@@ -11,10 +11,15 @@ from pathlib import Path
 from dataclasses import dataclass
 
 import config
+import redact
 from errors import ShipError
 from proc import CommandResult, Runner
+from retry import with_transient_retry
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+_GIT_STAGE_BASE = 1
+_GIT_STAGE_OURS = 2
+_GIT_STAGE_THEIRS = 3
 
 
 def validate_base_remote_ref(base_remote: str, base_ref: str) -> str | None:
@@ -233,12 +238,21 @@ def commit(
     runner: Runner,
     message: str,
     *,
-    only: str | None = None,
+    only: bool = False,
+    paths: Sequence[str] = (),
+    pathspec_from_file: str | None = None,
+    pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     argv = ["git", "commit", "-m", message]
-    if only is not None:
-        argv.extend(["--only", only])
+    if only:
+        argv.append("--only")
+    if pathspec_from_file is not None:
+        argv.append(f"--pathspec-from-file={pathspec_from_file}")
+        if pathspec_file_nul:
+            argv.append("--pathspec-file-nul")
+    elif paths:
+        argv.extend(["--", *paths])
     return _run(runner, argv, cwd=cwd)
 
 
@@ -246,7 +260,11 @@ def commit_with_trailer(
     runner: Runner,
     message: str,
     *,
-    only: str | None = None,
+    only: bool = False,
+    no_trailer: bool = False,
+    paths: Sequence[str] = (),
+    pathspec_from_file: str | None = None,
+    pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     """Commit via temp file + interpret-trailers (parity with scripts/git-commit.sh)."""
@@ -260,34 +278,71 @@ def commit_with_trailer(
         _ = handle.write(f"{message}\n")
         tmp_path = handle.name
     try:
-        trailer_result = _run(
-            runner,
-            [
-                "git",
-                "interpret-trailers",
-                "--in-place",
-                "--if-exists",
-                "addIfDifferent",
-                "--if-missing",
-                "add",
-                "--trailer",
-                trailer,
-                tmp_path,
-            ],
-            cwd=cwd,
-        )
-        if trailer_result.returncode != 0:
-            return trailer_result
+        if not no_trailer:
+            trailer_result = _run(
+                runner,
+                [
+                    "git",
+                    "interpret-trailers",
+                    "--in-place",
+                    "--if-exists",
+                    "addIfDifferent",
+                    "--if-missing",
+                    "add",
+                    "--trailer",
+                    trailer,
+                    tmp_path,
+                ],
+                cwd=cwd,
+            )
+            if trailer_result.returncode != 0:
+                return trailer_result
         argv = ["git", "commit", "--file", tmp_path]
-        if only is not None:
-            argv.extend(["--only", only])
+        if only:
+            argv.append("--only")
+        if pathspec_from_file is not None:
+            argv.append(f"--pathspec-from-file={pathspec_from_file}")
+            if pathspec_file_nul:
+                argv.append("--pathspec-file-nul")
+        elif paths:
+            argv.extend(["--", *paths])
         return _run(runner, argv, cwd=cwd)
     finally:
         Path(tmp_path).unlink()
 
 
-def add(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
-    return _run(runner, ["git", "add", path], cwd=cwd)
+def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
+    argv = ["git", "add"]
+    if paths:
+        argv.extend(["--", *paths])
+    return _run(runner, argv, cwd=cwd)
+
+
+def add_pathspec_file(
+    runner: Runner,
+    pathspec_from_file: str,
+    *,
+    pathspec_file_nul: bool = False,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "add", f"--pathspec-from-file={pathspec_from_file}"]
+    if pathspec_file_nul:
+        argv.append("--pathspec-file-nul")
+    return _run(runner, argv, cwd=cwd)
+
+
+def amend_add(
+    runner: Runner,
+    paths: Sequence[str],
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    if not paths:
+        return CommandResult(("git", "amend-add"), 1, "", "at least one file argument is required\n", 0.0)
+    staged = add(runner, *paths, cwd=cwd)
+    if staged.returncode != 0:
+        return staged
+    return _run(runner, ["git", "commit", "--amend", "--no-edit"], cwd=cwd)
 
 
 def diff_name_status(
@@ -363,6 +418,18 @@ def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
         ["git", "diff", "--name-only", "--diff-filter=U"],
         cwd=cwd,
     ))
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def try_unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
+    """Non-raising unmerged-path probe (rebase-push.sh / conflict CLI parity)."""
+    result = _run(
+        runner,
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return []
     return [line for line in result.stdout.splitlines() if line]
 
 
@@ -455,6 +522,16 @@ def try_rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str | 
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def local_branch_exists(runner: Runner, branch: str, *, cwd: str | None = None) -> bool:
+    """True when ``refs/heads/<branch>`` exists (tags/remotes do not match)."""
+    result = _run(
+        runner,
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=cwd,
+    )
+    return result.returncode == 0
 
 
 def try_merge_base(
@@ -642,3 +719,318 @@ def force_push_recovery(
         status="diverged_retry_failed",
         branch=resolved_branch,
     )
+
+
+@dataclass(frozen=True)
+class BranchInfo:
+    head_sha: str
+    current_branch: str
+
+
+@dataclass(frozen=True)
+class ConflictFile:
+    path: str
+    stage_1: bool
+    stage_2: bool
+    stage_3: bool
+
+
+@dataclass(frozen=True)
+class CleanTreeResult:
+    clean: str
+    dirty_out: str = ""
+    probe_error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class CountCommitsResult:
+    count: int
+    status: str
+
+
+@dataclass(frozen=True)
+class MainSyncResult:
+    status: str
+    ahead_count: int | None = None
+    error: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class RemoteBranchState:
+    state: str
+    rc: int
+    error: str = ""
+
+
+def branch_info(runner: Runner, *, cwd: str | None = None) -> BranchInfo | None:
+    head = _run(runner, ["git", "rev-parse", "--short", "HEAD"], cwd=cwd)
+    if head.returncode != 0:
+        return None
+    branch_res = _run(runner, ["git", "branch", "--show-current"], cwd=cwd)
+    branch_name = branch_res.stdout.strip() if branch_res.returncode == 0 else ""
+    return BranchInfo(head_sha=head.stdout.strip(), current_branch=branch_name)
+
+
+def _parse_conflict_file_rows(stdout: str) -> tuple[ConflictFile, ...]:
+    order: list[str] = []
+    stages: dict[str, set[int]] = {}
+    for line in stdout.splitlines():
+        if "\t" not in line:
+            continue
+        meta, path = line.split("\t", 1)
+        parts = meta.split()
+        if not parts:
+            continue
+        try:
+            stage = int(parts[-1])
+        except ValueError:
+            continue
+        if path not in stages:
+            order.append(path)
+            stages[path] = set()
+        stages[path].add(stage)
+    return tuple(
+        ConflictFile(
+            path,
+            _GIT_STAGE_BASE in stages[path],
+            _GIT_STAGE_OURS in stages[path],
+            _GIT_STAGE_THEIRS in stages[path],
+        )
+        for path in order
+    )
+
+
+def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
+    result = _ensure_success(_run(runner, ["git", "ls-files", "-u"], cwd=cwd))
+    return _parse_conflict_file_rows(result.stdout)
+
+
+def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
+    """Non-raising conflict-file probe (git-conflict-files.sh parity)."""
+    result = _run(runner, ["git", "ls-files", "-u"], cwd=cwd)
+    if result.returncode != 0:
+        return ()
+    return _parse_conflict_file_rows(result.stdout)
+
+
+def resolve_branch_push_remote(
+    runner: Runner,
+    branch: str,
+    *,
+    cwd: str | None = None,
+) -> str:
+    """Resolve topic-branch push remote (rebase-push.sh parity)."""
+    for key in (f"branch.{branch}.pushRemote", f"branch.{branch}.remote"):
+        result = _run(runner, ["git", "config", "--get", key], cwd=cwd)
+        if result.returncode == 0:
+            candidate = result.stdout.strip()
+            if candidate and _GIT_REF_LABEL_RE.fullmatch(candidate):
+                return candidate
+    return "origin"
+
+
+def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
+    """True when git reports an active rebase (rebase-push.sh --continue guard)."""
+    git_dir = _run(runner, ["git", "rev-parse", "--git-dir"], cwd=cwd)
+    if git_dir.returncode != 0:
+        return False
+    rel = git_dir.stdout.strip()
+    if not rel:
+        return False
+    base = Path(rel)
+    if not base.is_absolute():
+        base = Path(cwd) / base if cwd else Path.cwd() / base
+    return (base / "rebase-merge").is_dir() or (base / "rebase-apply").is_dir()
+
+
+def rebase_abort(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    result = _run(runner, ["git", "rebase", "--abort"], cwd=cwd)
+    if result.returncode == 0:
+        return result
+    return CommandResult(tuple(result.argv), 0, result.stdout, result.stderr, result.duration)
+
+
+def sync_local_main(
+    runner: Runner,
+    *,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    cwd: str | None = None,
+) -> tuple[str, int]:
+    current = try_current_branch(runner, cwd=cwd) or ""
+    if current == "main":
+        return "refusing to update local 'main' while checked out on main", 1
+    if try_rev_parse(runner, "main", cwd=cwd) is None:
+        return "absent", 0
+    base_target = f"{base_remote}/{base_ref}"
+    local_main = try_rev_parse(runner, "main", cwd=cwd)
+    remote_main = try_rev_parse(runner, base_target, cwd=cwd)
+    if local_main and remote_main and local_main == remote_main:
+        return "already_current", 0
+    updated = branch_force(runner, "main", base_target, cwd=cwd)
+    if updated.returncode != 0:
+        return "failed", 1
+    return "updated", 0
+
+
+def _one_line_summary(text: str) -> str:
+    return text.replace("\n", " ").replace("\r", " ").replace("\t", " ")[:256]
+
+
+def clean_tree(
+    runner: Runner,
+    *,
+    fail_closed: bool = False,
+    cwd: str | None = None,
+) -> CleanTreeResult:
+    result = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
+    if result.returncode != 0:
+        summary = _one_line_summary(result.stdout + result.stderr)
+        if fail_closed:
+            return CleanTreeResult(
+                clean="unknown",
+                probe_error=f"git exited {result.returncode} ({summary})",
+                exit_code=1,
+            )
+        return CleanTreeResult(clean="true")
+    if result.stdout:
+        return CleanTreeResult(clean="false", dirty_out=_one_line_summary(result.stdout))
+    return CleanTreeResult(clean="true")
+
+
+def snapshot_untracked(
+    runner: Runner,
+    output: str,
+    *,
+    nul: bool = False,
+    cwd: str | None = None,
+) -> int:
+    argv = ["git", "ls-files", "--others", "--exclude-standard"]
+    if nul:
+        argv.append("-z")
+    result = _run(runner, argv, cwd=cwd)
+    output_path = Path(output)
+    tmp_path = Path(f"{output}.tmp")
+    try:
+        if result.returncode != 0:
+            output_path.unlink(missing_ok=True)
+            tmp_path.unlink(missing_ok=True)
+            return 0
+        if nul:
+            parts = [p for p in result.stdout.split("\x00") if p]
+            data = "\x00".join(sorted(parts))
+            if data:
+                data += "\x00"
+        else:
+            parts = [p for p in result.stdout.splitlines() if p]
+            data = "\n".join(sorted(parts))
+            if data:
+                data += "\n"
+        _ = tmp_path.write_text(data, encoding="utf-8")
+        _ = tmp_path.replace(output_path)
+    except OSError:
+        output_path.unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
+    return 0
+
+
+def count_commits(runner: Runner, *, cwd: str | None = None) -> CountCommitsResult:
+    base_ref = ""
+    if _run(runner, ["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
+        base_ref = "main"
+    elif _run(runner, ["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
+        base_ref = "origin/main"
+    if not base_ref:
+        return CountCommitsResult(count=0, status="missing_main_ref")
+    result = _run(runner, ["git", "rev-list", f"{base_ref}..HEAD", "--count"], cwd=cwd)
+    if result.returncode != 0:
+        return CountCommitsResult(count=0, status="git_error")
+    text = result.stdout.strip()
+    if not text.isdigit():
+        return CountCommitsResult(count=0, status="git_error")
+    return CountCommitsResult(count=int(text), status="ok")
+
+
+def check_main_sync(runner: Runner, *, cwd: str | None = None) -> MainSyncResult:
+    current = try_current_branch(runner, cwd=cwd) or ""
+    if current != "main":
+        return MainSyncResult(status="not-main")
+    ahead_result = _run(runner, ["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd)
+    if ahead_result.returncode != 0 or not ahead_result.stdout.strip():
+        return MainSyncResult(
+            status="probe-error",
+            error=f"git rev-list failed or produced empty output (exit {ahead_result.returncode})",
+            exit_code=2,
+        )
+    ahead_text = ahead_result.stdout.strip()
+    ahead = int(ahead_text) if ahead_text.isdigit() else 0
+    if ahead == 0:
+        return MainSyncResult(status="ok", ahead_count=0)
+    log = _run(runner, ["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
+    if log.returncode != 0:
+        return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git log failed (exit {log.returncode})", exit_code=2)
+    subjects = [line for line in log.stdout.splitlines() if line]
+    if len(subjects) != ahead:
+        return MainSyncResult(
+            status="probe-error",
+            ahead_count=ahead,
+            error=f"git log subject line count ({len(subjects)}) does not match AHEAD ({ahead})",
+            exit_code=2,
+        )
+    all_flushes = all(subject.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for subject in subjects)
+    diff = _run(runner, ["git", "diff", "--name-only", "origin/main", "HEAD"], cwd=cwd)
+    if diff.returncode != 0:
+        return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git diff --name-only failed (exit {diff.returncode})", exit_code=2)
+    paths = [line for line in diff.stdout.splitlines() if line]
+    logs_only = bool(paths) and all(path.startswith("larch-logs/") for path in paths)
+    if all_flushes and logs_only:
+        clean = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
+        if clean.returncode != 0 or clean.stdout.strip():
+            return MainSyncResult(
+                status="probe-error",
+                ahead_count=ahead,
+                error="refusing reset: working tree is not clean (tracked or untracked changes present)",
+                exit_code=2,
+            )
+        reset_result = _run(runner, ["git", "reset", "--hard", "origin/main"], cwd=cwd)
+        if reset_result.returncode != 0:
+            return MainSyncResult(status="probe-error", ahead_count=ahead, error=f"git reset --hard origin/main failed (exit {reset_result.returncode})", exit_code=2)
+        return MainSyncResult(status="reset", ahead_count=ahead)
+    return MainSyncResult(
+        status="blocked",
+        ahead_count=ahead,
+        error=f"local main is {ahead} commit(s) ahead of origin/main with non-log changes; push or reconcile before re-running",
+        exit_code=1,
+    )
+
+
+def remote_branch_state(
+    runner: Runner,
+    branch: str,
+    *,
+    remote: str = "origin",
+    cwd: str | None = None,
+) -> RemoteBranchState:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _run(
+            runner,
+            ["git", "ls-remote", "--exit-code", "--heads", remote, branch],
+            cwd=cwd,
+        )
+        combined = result.stdout + result.stderr
+        return result, result.returncode, combined
+
+    retried = with_transient_retry(attempt)
+    result = retried.value
+    if result.returncode == 0:
+        return RemoteBranchState(state="present", rc=0)
+    if result.returncode == 2:  # noqa: PLR2004 - git ls-remote absent rc
+        return RemoteBranchState(state="absent", rc=2)
+    err_raw = (
+        _one_line_summary(result.stdout + result.stderr)
+        or f"git ls-remote failed (exit {result.returncode})"
+    )
+    err = redact.redact_outbound(err_raw)
+    return RemoteBranchState(state="error", rc=result.returncode, error=err)

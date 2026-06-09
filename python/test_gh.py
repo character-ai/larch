@@ -903,6 +903,34 @@ def test_pr_edit_body_uses_body_file() -> None:
     assert "--body-file" in runner.calls[0]
 
 
+def test_pr_edit_body_file_retries_and_threads_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    body_file = tmp_path / "body.md"
+    _ = body_file.write_text("hello", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "edit", "4"), 1, "", "fatal: Could not resolve host", 0.01),
+            CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01),
+        ],
+    )
+    result = gh.pr_edit_body_file(runner, "4", str(body_file), repo="o/r")
+    assert result.updated
+    assert len(runner.calls) == 2
+    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--repo", "o/r", "--body-file", str(body_file)]
+
+
+def test_pr_edit_body_file_omits_repo_when_absent(tmp_path: Path) -> None:
+    body_file = tmp_path / "body.md"
+    _ = body_file.write_text("hello", encoding="utf-8")
+    runner = RecordingRunner(responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)])
+    result = gh.pr_edit_body_file(runner, "4", str(body_file), repo=None)
+    assert result.updated
+    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--body-file", str(body_file)]
+
+
 def test_body_file_args_fail_closed_on_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

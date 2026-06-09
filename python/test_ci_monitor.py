@@ -74,6 +74,8 @@ class RecordingRunner:
         for prefix, result in self.prefix_responses:
             if key[: len(prefix)] == prefix:
                 return result
+        if key[:3] == ("git", "commit", "--file"):
+            return _cr(key, 0)
         msg = f"unexpected argv: {argv}"
         raise AssertionError(msg)
 
@@ -135,6 +137,10 @@ def _status(
             "--json",
             "name,state,bucket,link",
         ): _cr(("gh", "pr", "checks"), stdout=checks),
+        ("gh", "pr", "checks", "1", "--repo", "o/r"): _cr(
+            ("gh", "pr", "checks", "text"),
+            stdout="",
+        ),
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(
             ("git", "rev-list", "--count"),
             stdout=f"{behind}\n",
@@ -229,6 +235,38 @@ def test_gather_status_fetch_fail_pending() -> None:
     runner = RecordingRunner(responses)
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
     assert status.status == "pending"
+    assert status.behind_count == 0
+
+
+def test_gather_status_pr_view_failure_still_probes_checks() -> None:
+    responses = _status(status="pass")
+    responses[
+        (
+            "gh",
+            "pr",
+            "view",
+            "1",
+            "--repo",
+            "o/r",
+            "--json",
+            "number,url,state,headRefName,mergedAt,mergeStateStatus",
+        )
+    ] = _cr(("gh", "pr", "view"), rc=1)
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "pass"
+    assert status.conflicted is True
+
+
+def test_gather_status_behind_probe_fail_preserves_checks_status() -> None:
+    responses = _status(status="pass")
+    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
+        ("git", "rev-list", "--count"),
+        rc=1,
+    )
+    runner = RecordingRunner(responses)
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.status == "pass"
     assert status.behind_count == 0
 
 
@@ -327,8 +365,8 @@ def test_poll_ci_emits_poll_breadcrumb_to_stderr(
     assert "sleeping" in captured.err
 
 
-def test_poll_ci_three_consecutive_errors_bail() -> None:
-    responses = _status(status="pass")
+def test_poll_ci_pr_view_fail_open_triggers_rebase_when_behind() -> None:
+    responses = _status(status="pass", behind=1)
     responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(
         ("gh", "pr", "view"),
         rc=1,
@@ -347,8 +385,45 @@ def test_poll_ci_three_consecutive_errors_bail() -> None:
         timeout=1000.0,
         sleep_fn=lambda _s: None,
     )
-    assert decision.action == "bail"
-    assert "3 times consecutively" in (decision.bail_reason or "")
+    assert decision.action == "rebase"
+
+
+def test_poll_ci_retry_preserves_conflicted_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    status_calls = {"n": 0}
+
+    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
+        status_calls["n"] += 1
+        if status_calls["n"] == 1:
+            return ci_monitor.CiStatus(
+                status="",
+                behind_count=2,
+                failed_run_id=None,
+                conflicted=True,
+                pr_view_ok=False,
+            )
+        return ci_monitor.CiStatus(
+            status="pass",
+            behind_count=2,
+            failed_run_id=None,
+            conflicted=True,
+            pr_view_ok=True,
+        )
+
+    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
+    _, decision = ci_monitor.poll_ci(
+        RecordingRunner({}),
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=1000.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert decision.action == "rebase"
 
 
 def test_monitor_local_unfixable_maps_to_needs_user(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -417,8 +492,8 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.goto_rebase is False
 
 
-def test_monitor_consecutive_status_errors_are_transient() -> None:
-    responses = _status(status="pass")
+def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:
+    responses = _status(status="pass", behind=1)
     responses[
         (
             "gh",
@@ -440,10 +515,9 @@ def test_monitor_consecutive_status_errors_are_transient() -> None:
         sleep_fn=lambda _s: None,
     )
 
-    assert result.action == "bail"
-    assert result.ci_status == "error"
-    assert result.result.outcome is Outcome.TRANSIENT
-    assert "3 times consecutively" in (result.result.detail or "")
+    assert result.action == "rebase"
+    assert result.goto_rebase is True
+    assert result.ci_status == "pass"
 
 
 def test_poll_ci_suspend_not_charged() -> None:
@@ -485,7 +559,7 @@ def test_classify_failed_jobs_matrix_and_fixable() -> None:
     assert classified.unfixable[0].name == "gitleaks"
 
 
-def test_collect_failed_logs_redacts_secret() -> None:
+def test_collect_failed_logs_redacts_tail() -> None:
     secret = "ghp_" + "A" * 40
     log_body = f"failed step\n{secret}\n"
     runner = RecordingRunner(
@@ -515,7 +589,7 @@ def test_collect_failed_logs_in_progress() -> None:
     )
     result = ci_monitor.collect_failed_logs(runner, run_id="42", repo="o/r")
     assert result.state == "in_progress"
-    assert result.text == ""
+    assert "is still in progress" in result.text
 
 
 def test_read_failed_jobs_in_progress() -> None:
@@ -703,9 +777,8 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     assert launch_calls == ["codex"]
 
 
-def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> None:
+def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> None:
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    rebase_script = str(SCRIPTS_DIR / "rebase-push.sh")
     responses = {
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
@@ -713,15 +786,8 @@ def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> 
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="1\n"),
         ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
-        (
-            rebase_script,
-            "--no-push",
-            "--keep-on-conflict",
-            "--base-remote",
-            "origin",
-            "--base-ref",
-            "main",
-        ): _cr((rebase_script,), 0),
+        ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"): _cr(("git", "merge-base"), rc=1),
+        ("git", "rebase", "origin/main"): _cr(("git", "rebase"), 0),
         ("make", "py-lint"): _cr(("make", "py-lint"), 0),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
             ("git", "ls-remote"),
@@ -750,7 +816,7 @@ def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> 
     assert pushed is True
     assert did_rebase is True
     assert pending is False
-    assert any(call[0] == rebase_script for call in runner.calls)
+    assert ("git", "rebase", "origin/main") in runner.calls
 
 
 def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:

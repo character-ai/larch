@@ -124,6 +124,58 @@ def test_live_same_basename_not_flagged(tmp_path: Path) -> None:
     assert rc == 0
 
 
+def test_script_dir_basename_reference_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/resolve-repo.sh"
+    _ = _add_file(repo, "scripts/caller.sh", 'REPO=$("$SCRIPT_DIR/resolve-repo.sh")\n')
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
+def test_cross_directory_bare_basename_not_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/resolve-repo.sh"
+    _ = _add_file(repo, "docs/consumer.md", "See helpers/resolve-repo.sh for examples.\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_ship_pr_record_failure_label_not_live_ref(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/ci-wait.sh"
+    _ = _add_file(
+        repo,
+        "scripts/ship-pr.sh",
+        'record_failure checks "ci-wait.sh exited unexpectedly" "$rc"\n',
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_ship_pr_comment_not_deletion_blocker(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/git-current-branch.sh"
+    _ = _add_file(repo, "scripts/ship-pr.sh", "# prose mentions scripts/git-current-branch.sh only\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
 def test_larch_logs_excluded(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/old-helper.sh"

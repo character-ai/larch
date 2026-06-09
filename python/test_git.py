@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -124,6 +125,44 @@ def test_operation_helpers_build_expected_argv() -> None:
     assert git.ls_files(runner, "a.txt", "b.txt") == ("a.txt",)
 
 
+def test_snapshot_untracked_sorts_success_output(tmp_path: Path) -> None:
+    output = tmp_path / "baseline.z"
+    runner = StubRunner(
+        {
+            ("git", "ls-files", "--others", "--exclude-standard", "-z"): CommandResult(
+                ("git", "ls-files", "--others", "--exclude-standard", "-z"),
+                0,
+                "b.txt\x00a.txt\x00",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.snapshot_untracked(runner, str(output), nul=True) == 0
+    assert output.read_bytes() == b"a.txt\x00b.txt\x00"
+
+
+def test_snapshot_untracked_removes_stale_output_on_failure(tmp_path: Path) -> None:
+    output = tmp_path / "baseline.z"
+    _ = output.write_text("stale", encoding="utf-8")
+    tmp = tmp_path / "baseline.z.tmp"
+    _ = tmp.write_text("stale tmp", encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "ls-files", "--others", "--exclude-standard"): CommandResult(
+                ("git", "ls-files", "--others", "--exclude-standard"),
+                1,
+                "",
+                "fatal",
+                0.01,
+            ),
+        },
+    )
+    assert git.snapshot_untracked(runner, str(output)) == 0
+    assert not output.exists()
+    assert not tmp.exists()
+
+
 def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
     runner = StubRunner(
         {
@@ -143,11 +182,11 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
 def test_commit_and_add_build_argv() -> None:
     runner = StubRunner(
         {
-            ("git", "add", "README.md"): CommandResult(
-                ("git", "add", "README.md"), 0, "", "", 0.01
+            ("git", "add", "--", "README.md"): CommandResult(
+                ("git", "add", "--", "README.md"), 0, "", "", 0.01
             ),
-            ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"): CommandResult(
-                ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"),
+            ("git", "commit", "-m", "Update docs for 1.0.0", "--only"): CommandResult(
+                ("git", "commit", "-m", "Update docs for 1.0.0", "--only"),
                 0,
                 "",
                 "",
@@ -157,7 +196,7 @@ def test_commit_and_add_build_argv() -> None:
     )
     assert git.add(runner, "README.md").returncode == 0
     assert (
-        git.commit(runner, "Update docs for 1.0.0", only="README.md").returncode == 0
+        git.commit(runner, "Update docs for 1.0.0", only=True).returncode == 0
     )
 
 

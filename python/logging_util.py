@@ -96,8 +96,8 @@ def quiet_init(*, argv0: str | None = None) -> None:
 
 
 def contract_stream() -> TextIO:
-    """Return the contract stream: original stdout fd 3 after self quiet init."""
-    if _self_initialized_quiet:
+    """Return the contract stream: fd 3 after quiet init, else stdout."""
+    if _self_initialized_quiet or _quiet_active():
         try:
             return os.fdopen(os.dup(3), "w", encoding="utf-8", closefd=True)
         except OSError:
@@ -111,6 +111,16 @@ def emit(text: str) -> None:
     line = text if text.endswith("\n") else text + "\n"
     _ = stream.write(line)
     stream.flush()
+
+
+def sanitize_diagnostic_line(text: str) -> str:
+    """Strip C0 control bytes and DEL from one diagnostic line (lib-quiet.sh parity)."""
+    return "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+
+
+def sanitize_list(text: str) -> str:
+    """Keep only safe characters for comma-separated job KV lists (ci-failed-jobs.sh)."""
+    return "".join(ch for ch in text if ch.isalnum() or ch in "_,=:-")
 
 
 def emit_kv(key: str, value: str) -> None:
