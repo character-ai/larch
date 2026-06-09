@@ -14,6 +14,8 @@
 
 === larch-quiet-check-contains-pins.sh-86780.log ===
 
+=== larch-quiet-check-contains-pins.sh-92265.log ===
+
 === larch-quiet-check-review-changes.sh-98579.log ===
 
 === larch-quiet-cli.py-16234.log ===
@@ -34,6 +36,8 @@
 
 === larch-quiet-cli.py-30331.log ===
 
+=== larch-quiet-cli.py-31632.log ===
+
 === larch-quiet-cli.py-32162.log ===
 
 === larch-quiet-cli.py-34005.log ===
@@ -49,6 +53,8 @@
 === larch-quiet-cli.py-58367.log ===
 
 === larch-quiet-cli.py-61238.log ===
+
+=== larch-quiet-cli.py-61633.log ===
 
 === larch-quiet-cli.py-79020.log ===
 
@@ -598,6 +604,73 @@ degraded-tools-gate.sh: unknown argument: --bogus
 
 === larch-quiet-degraded-tools-gate.sh-65183.log ===
 
+=== larch-quiet-degraded-tools-gate.sh-68801.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-68856.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-68917.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-68978.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-69036.log ===
+degraded-tools-gate.sh: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+
+=== larch-quiet-degraded-tools-gate.sh-69126.log ===
+degraded-tools-gate.sh: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+degraded-tools-gate.sh: ERROR: --cursor-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+
+=== larch-quiet-degraded-tools-gate.sh-69246.log ===
+degraded-tools-gate.sh: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+
+=== larch-quiet-degraded-tools-gate.sh-69325.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-69367.log ===
+degraded-tools-gate.sh: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+degraded-tools-gate.sh: ERROR: --cursor-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)
+
+=== larch-quiet-degraded-tools-gate.sh-69475.log ===
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
+
+=== larch-quiet-degraded-tools-gate.sh-69583.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-69632.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-69671.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-69725.log ===
+degraded-tools-gate.sh: WARNING: --codex-binary-found omitted; using CODEX_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-binary-found omitted; using CURSOR_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
+
+=== larch-quiet-degraded-tools-gate.sh-69903.log ===
+degraded-tools-gate.sh: WARNING: --codex-binary-found omitted; using CODEX_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-binary-found omitted; using CURSOR_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
+
+=== larch-quiet-degraded-tools-gate.sh-70079.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-70117.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-70171.log ===
+degraded-tools-gate.sh: WARNING: --codex-binary-found omitted; using CODEX_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-binary-found omitted; using CURSOR_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
+
+=== larch-quiet-degraded-tools-gate.sh-70317.log ===
+degraded-tools-gate.sh: unknown argument: --bogus
+
+=== larch-quiet-degraded-tools-gate.sh-70369.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-70406.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-70441.log ===
+
+=== larch-quiet-degraded-tools-gate.sh-70478.log ===
+
 === larch-quiet-design-postplan-emit.sh-67085.log ===
 
 === larch-quiet-design-postplan-emit.sh-67196.log ===
@@ -846,6 +919,12 @@ degraded-tools-gate.sh: unknown argument: --bogus
 
 === larch-quiet-read-session-env-key.sh-1108.log ===
 
+=== larch-quiet-read-session-env-key.sh-18749.log ===
+
+=== larch-quiet-read-session-env-key.sh-18772.log ===
+
+=== larch-quiet-read-session-env-key.sh-18795.log ===
+
 === larch-quiet-read-session-env-key.sh-23123.log ===
 
 === larch-quiet-read-session-env-key.sh-23163.log ===
@@ -872,6 +951,12 @@ degraded-tools-gate.sh: unknown argument: --bogus
 
 === larch-quiet-read-session-env-key.sh-44174.log ===
 
+=== larch-quiet-read-session-env-key.sh-45563.log ===
+
+=== larch-quiet-read-session-env-key.sh-45589.log ===
+
+=== larch-quiet-read-session-env-key.sh-45622.log ===
+
 === larch-quiet-read-session-env-key.sh-69321.log ===
 
 === larch-quiet-read-session-env-key.sh-69348.log ===
@@ -886,12 +971,26 @@ degraded-tools-gate.sh: unknown argument: --bogus
 
 === larch-quiet-run-relevant-checks-captured.sh-1134.log ===
 
+=== larch-quiet-run-relevant-checks-captured.sh-38556.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-69393.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-95017.log ===
 
+=== larch-quiet-ship.py-18831.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
+
 === larch-quiet-ship.py-44260.log ===
 ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+
+=== larch-quiet-ship.py-45675.log ===
+ship.py: pr-create: PR
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: poll 2/180 pending after 16s; sleeping 10s
+ci_monitor: poll 3/180 pending after 30s; sleeping 10s
+ci_monitor: poll 4/180 pending after 43s; sleeping 10s
+ci_monitor: poll 5/180 pending after 57s; sleeping 10s
 
 === larch-quiet-step-7a.sh-99412.log ===
 FLUSH_STATUS=ok
