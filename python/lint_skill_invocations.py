@@ -113,8 +113,7 @@ def _parse_allowed_tools_tokens(value: str) -> list[str] | None:
             return None
         return _split_flow_list_inner(value[1:-1])
     stripped = _strip_quotes(value)
-    tokens = [part.strip() for part in stripped.split(",") if part.strip()]
-    return tokens
+    return [part.strip() for part in stripped.split(",") if part.strip()]
 
 
 def allowed_tools_contains_skill(frontmatter_text: str) -> bool:
