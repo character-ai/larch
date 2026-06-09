@@ -58,7 +58,9 @@ step3_loop_persist_envelope() {
         cap-hit) loop_status=cap-reached ;;
         complete) loop_status=complete ;;
         main-agent-vote-required) loop_status=main-agent-vote-required ;;
+        postplan-failed) loop_status=postplan-failed ;;
         panel-failed|tally-error|degraded-empty-collector) loop_status="$status" ;;
+        main-agent-apply-required|per-round-approval-required|postplan-operator-required) loop_status=complete ;;
         *) loop_status="${LOOP_STATUS:-complete}" ;;
     esac
     kvs=(
@@ -164,15 +166,16 @@ step3_loop_record_timing() {
 }
 
 step3_loop_honor_pause() {
-    local pause_sh issue_arg=()
+    local pause_sh
     # shellcheck source=/dev/null
     [[ -f "$DESIGN_TMPDIR/source-env.sh" ]] && source "$DESIGN_TMPDIR/source-env.sh"
     [[ -f "$DESIGN_TMPDIR/.pause-requested" ]] || return 0
     pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
     if [[ -n "${ISSUE_NUMBER:-}" ]]; then
-        issue_arg=(--issue "$ISSUE_NUMBER")
+        exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    else
+        exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
     fi
-    exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" "${issue_arg[@]}"
 }
 
 step3_loop_restore_snapshot() {
@@ -214,18 +217,26 @@ step3_loop_run_apply() {
     fi
 
     findings_file="$(step3_loop_resolve_findings_file "$round_num")"
+    if [[ "$findings_file" != "$DESIGN_TMPDIR/accepted-plan-findings.md" && -s "$findings_file" ]]; then
+        cp "$findings_file" "$DESIGN_TMPDIR/accepted-plan-findings.md"
+    fi
     if [[ ! -s "$findings_file" ]]; then
         step3_loop_consume_approval_env "$round_num"
         step3_loop_write_phase "$round_num" awaiting-continuation
         return 0
     fi
 
-    step3_loop_write_phase "$round_num" awaiting-apply
     snapshot="$DESIGN_TMPDIR/plan-pre-apply-round-${round_num}.txt"
     if [[ ! -f "$snapshot" ]]; then
         cp "$DESIGN_TMPDIR/plan.txt" "$snapshot"
     fi
+    if [[ -f "$snapshot" ]] && ! cmp -s "$snapshot" "$DESIGN_TMPDIR/plan.txt" 2>/dev/null; then
+        step3_loop_write_phase "$round_num" awaiting-post-apply
+        step3_loop_run_dedup "$round_num"
+        return $?
+    fi
 
+    step3_loop_write_phase "$round_num" awaiting-revise
     revise_sh="${RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
     set +e
     revise_out=$(LARCH_QUIET_DISABLE=1 "$revise_sh" \
@@ -247,14 +258,14 @@ step3_loop_run_apply() {
         step3_loop_write_phase "$round_num" awaiting-apply
         return 21
     fi
-
     step3_loop_write_phase "$round_num" awaiting-post-apply
+
     step3_loop_run_dedup "$round_num"
     return $?
 }
 
 step3_loop_run_post_apply() {
-    local round_num="$1" postplan_sh postplan_rc snap_sh next_round pause_sh issue_arg=()
+    local round_num="$1" postplan_sh postplan_rc snap_sh next_round pause_sh
     postplan_sh="${RUN_STEP3_POSTPLAN_EMIT_SH:-$PLUGIN_ROOT/skills/design/scripts/design-postplan-emit.sh}"
     set +e
     "$postplan_sh" --design-tmpdir "$DESIGN_TMPDIR" --with-plan-size
@@ -290,9 +301,10 @@ step3_loop_run_post_apply() {
             [[ -f "$DESIGN_TMPDIR/source-env.sh" ]] && source "$DESIGN_TMPDIR/source-env.sh"
             pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
             if [[ -n "${ISSUE_NUMBER:-}" ]]; then
-                issue_arg=(--issue "$ISSUE_NUMBER")
+                exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+            else
+                exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
             fi
-            exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" "${issue_arg[@]}"
             ;;
         10|12|13|14)
             POSTPLAN_RC="$postplan_rc"
@@ -335,10 +347,9 @@ step3_loop_run_continuation() {
 }
 
 run_design_step3_loop() {
-    local round_num phase round_start_s post_rc body_rc terminal_rounds
+    local round_num phase round_start_s post_rc body_rc cap_rounds_completed
     APPROVE_REQUESTED="$(step3_loop_read_bool_param approve_requested false)"
     round_num=$((10#$STARTING_ROUND))
-    terminal_rounds=0
 
     while true; do
         step3_loop_honor_pause
@@ -360,7 +371,9 @@ run_design_step3_loop() {
             case "${LOOP_STATUS:-}" in
                 cap-reached)
                     step3_loop_write_completed_step3
-                    step3_loop_emit_envelope cap-hit "$round_num" "$terminal_rounds" "$round_num"
+                    cap_rounds_completed=$((10#$round_num - 1))
+                    (( cap_rounds_completed < 0 )) && cap_rounds_completed=0
+                    step3_loop_emit_envelope cap-hit "$round_num" "$cap_rounds_completed" "$round_num"
                     exit 0
                     ;;
                 tally-error|degraded-empty-collector|panel-failed)
@@ -398,6 +411,24 @@ run_design_step3_loop() {
 
         phase="${phase:-$(step3_loop_read_phase "$round_num")}"
         case "$phase" in
+            awaiting-revise)
+                set +e
+                step3_loop_run_apply "$round_num"
+                post_rc=$?
+                set -e
+                case "$post_rc" in
+                    0) phase=awaiting-post-apply ;;
+                    21|22)
+                        step3_loop_emit_envelope main-agent-apply-required "$round_num" "$round_num" "$round_num"
+                        exit 0
+                        ;;
+                    *)
+                        step3_loop_emit_envelope main-agent-apply-required "$round_num" "$round_num" "$round_num"
+                        exit 0
+                        ;;
+                esac
+                continue
+                ;;
             awaiting-apply)
                 if [[ "$APPROVE_REQUESTED" == true && ! -f "$DESIGN_TMPDIR/.gate-b-per-round-approval-round-${round_num}.env" ]]; then
                     step3_loop_emit_envelope per-round-approval-required "$round_num" "$round_num" "$round_num"
@@ -420,7 +451,17 @@ run_design_step3_loop() {
                 esac
                 continue
                 ;;
-            awaiting-post-apply)
+            awaiting-post-apply|awaiting-postplan-operator)
+                if [[ "$phase" == awaiting-postplan-operator ]]; then
+                    if [[ -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}" ]]; then
+                        rm -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}"
+                        step3_loop_write_phase "$round_num" awaiting-continuation
+                        phase=awaiting-continuation
+                        continue
+                    fi
+                    step3_loop_emit_envelope postplan-operator-required "$round_num" "$round_num" "$round_num"
+                    exit 0
+                fi
                 if [[ ! -f "$DESIGN_TMPDIR/.gate-b-postapply-ready-${round_num}" ]]; then
                     set +e
                     step3_loop_run_dedup "$round_num"
@@ -438,6 +479,7 @@ run_design_step3_loop() {
                 case "$post_rc" in
                     0) phase=awaiting-continuation ;;
                     32)
+                        step3_loop_write_phase "$round_num" awaiting-postplan-operator
                         step3_loop_emit_envelope postplan-operator-required "$round_num" "$round_num" "$round_num"
                         exit 0
                         ;;

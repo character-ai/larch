@@ -134,6 +134,7 @@ printf '5\n' >"$D3/review-round-count.txt"
 round_stub="$(write_round_stub "$D3" 'exit 97')"
 out="$(run_loop "$D3" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=cap-hit' 'cap-hit envelope'
+contains "$out" 'ROUNDS_COMPLETED=5' 'cap-hit rounds completed'
 
 
 echo '=== postplan operator rc ==='
@@ -160,6 +161,114 @@ printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGR
 out="$(run_loop "$D4" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-operator-required' 'postplan operator envelope'
 contains "$out" 'POSTPLAN_RC=12' 'postplan rc carried'
+[[ "$(cat "$D4/.step3-round-1.phase")" == awaiting-postplan-operator ]] || fail 'postplan operator should persist awaiting-postplan-operator phase'
+
+
+echo '=== postplan operator rc 10/13/14 envelopes ==='
+for spec in '10:hard' '13:partition' '14:drift'; do
+    rc="${spec%%:*}"
+    label="${spec#*:}"
+    D_RC="$TMP/postplan-rc-$rc"
+    write_common "$D_RC"
+    write_ok_stubs "$D_RC"
+    cat >"$D_RC/postplan-ok.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+dir=""
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in --design-tmpdir) dir="\${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf 'POSTPLAN_EMIT_STATUS=$label\n' >"\$dir/.design-postplan-emit-result.env"
+exit $rc
+STUB
+    chmod +x "$D_RC/postplan-ok.sh"
+    round_stub="$(write_round_stub "$D_RC" "cat >\"$D_RC/accepted-plan-findings.md\" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: issue
+FINDINGS
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
+    out="$(run_loop "$D_RC" "$round_stub")"
+    contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-operator-required' "postplan operator rc $rc envelope"
+    contains "$out" "POSTPLAN_RC=$rc" "postplan rc $rc carried"
+done
+
+
+echo '=== postplan rc 11 routes through pause helper ==='
+D_PAUSE="$TMP/postplan-pause"
+write_common "$D_PAUSE"
+write_ok_stubs "$D_PAUSE"
+cat >"$D_PAUSE/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 11
+STUB
+cat >"$D_PAUSE/pause-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PAUSE_STUB=1\n'
+exit 0
+STUB
+chmod +x "$D_PAUSE/postplan-ok.sh" "$D_PAUSE/pause-stub.sh"
+round_stub="$(write_round_stub "$D_PAUSE" "cat >\"$D_PAUSE/accepted-plan-findings.md\" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: issue
+FINDINGS
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D_PAUSE/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D_PAUSE/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D_PAUSE/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D_PAUSE/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D_PAUSE/continue-stop.sh" \
+  RUN_STEP3_DESIGN_PAUSE_SAVE_SH="$D_PAUSE/pause-stub.sh" \
+  "$LAUNCHER" --design-tmpdir "$D_PAUSE" --mode loop)"
+contains "$out" 'PAUSE_STUB=1' 'postplan rc 11 pause helper'
+
+
+echo '=== postplan hard failure emits postplan-failed ==='
+D_POST_FAIL="$TMP/postplan-hard-fail"
+write_common "$D_POST_FAIL"
+write_ok_stubs "$D_POST_FAIL"
+cat >"$D_POST_FAIL/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 1
+STUB
+chmod +x "$D_POST_FAIL/postplan-ok.sh"
+round_stub="$(write_round_stub "$D_POST_FAIL" "cat >\"$D_POST_FAIL/accepted-plan-findings.md\" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: issue
+FINDINGS
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
+out="$(run_loop "$D_POST_FAIL" "$round_stub")"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'postplan hard failure envelope'
+contains "$out" 'POSTPLAN_RC=1' 'postplan hard failure rc'
+
+
+echo '=== postplan-operator continue marker resumes at continuation ==='
+D_OP_CONT="$TMP/postplan-operator-continue"
+write_common "$D_OP_CONT"
+write_ok_stubs "$D_OP_CONT"
+printf 'awaiting-postplan-operator\n' >"$D_OP_CONT/.step3-round-1.phase"
+: >"$D_OP_CONT/.gate-b-postapply-ready-1"
+: >"$D_OP_CONT/.postplan-operator-continue-1"
+printf '1\n' >"$D_OP_CONT/review-round-count.txt"
+round_stub="$(write_round_stub "$D_OP_CONT" 'exit 99')"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D_OP_CONT/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D_OP_CONT/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D_OP_CONT/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D_OP_CONT/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D_OP_CONT/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$D_OP_CONT" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan-operator continue completes'
+[[ ! -f "$D_OP_CONT/.postplan-operator-continue-1" ]] || fail 'continue marker should be consumed'
+[[ "$(cat "$D_OP_CONT/.step3-round-1.phase")" == awaiting-continuation ]] || fail 'continue marker should advance phase'
 
 
 echo '=== dedup failure restores snapshot and bails to main agent ==='

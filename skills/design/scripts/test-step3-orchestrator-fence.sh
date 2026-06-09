@@ -117,8 +117,8 @@ apply_step3_handoff() {
         fi
         case "${STEP3_REVIEW_LOOP_STATUS}" in
             cap-hit) LOOP_STATUS=cap-reached ;;
-            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
-            main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed) LOOP_STATUS=complete ;;
+            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
+            main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
         esac
     elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
         LOOP_STATUS=panel-failed
@@ -405,10 +405,10 @@ echo "=== postplan-failed envelope preserved ==="
 D_POST_FAIL="$TMP/postplan-failed"
 mkdir -p "$D_POST_FAIL"
 apply_step3_handoff "$D_POST_FAIL" $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\n' 0
-if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed && "${POSTPLAN_RC:-}" == 1 ]]; then
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed && "${POSTPLAN_RC:-}" == 1 && "${LOOP_STATUS:-}" == postplan-failed ]]; then
     pass 'postplan-failed envelope preserved'
 else
-    fail 'postplan-failed envelope missing'
+    fail "postplan-failed envelope missing (STEP3=${STEP3_REVIEW_LOOP_STATUS:-} LOOP=${LOOP_STATUS:-} POSTPLAN_RC=${POSTPLAN_RC:-})"
 fi
 
 echo "=== gate B bypass helper writes dual sentinels from empty state ==="

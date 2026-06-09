@@ -1229,6 +1229,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
 done <<<"${_plan_review_out:-}"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  exit 1
 fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
@@ -1247,6 +1248,7 @@ fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
   printf '%s\n' "**⚠ Step 3: postplan failed; preserving \$DESIGN_TMPDIR for operator repair — do not advance to Step 3b or Gate C.**"
+  exit 1
 fi
 ```
 

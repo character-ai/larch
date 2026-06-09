@@ -172,6 +172,7 @@ _rewrite_env_file() {
             value="${line#*=}"
             case "$key" in
                 SCOPE_ANCHOR_FILE) continue ;;
+                STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM) continue ;;
                 TALLY_PLAN_REVIEW_STATUS)
                     value="$TALLY_PLAN_REVIEW_STATUS"
                     saw_tally=1
