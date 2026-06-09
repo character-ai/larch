@@ -1078,6 +1078,24 @@ jq -e '.tally.ACCEPTED_COUNT == "1" and .summary.panel.total_slot_count == 1' \
 jq -e 'select(.slot == "cursor-plan-arch" and .tool == "cursor" and (.output | endswith("/cursor-plan-arch-output.txt")))' \
     "$D1/plan-review/round-1/panel-manifest.ndjson" >/dev/null || fail "panel manifest should carry slot/tool/output"
 
+echo "=== snapshot failure skips round metadata synthesis ==="
+D_SNAP="$TMP/snapshot-fail-meta"
+mkdir -p "$D_SNAP/plan-review/round-1"
+printf '{"tally":{"ACCEPTED_COUNT":"99"}}\n' >"$D_SNAP/plan-review/round-1/stale-round-meta.json"
+ln -sf stale-round-meta.json "$D_SNAP/plan-review/round-1/round-meta.json"
+printf '{"slot":"stale"}\n' >"$D_SNAP/plan-review/round-1/panel-manifest.ndjson"
+printf 'plan\n\ndiff_lines: 1\n' >"$D_SNAP/plan.txt"
+printf 'feat\n' >"$D_SNAP/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+out_snap=$(run_loop "$D_SNAP")
+printf '%s\n' "$out_snap" | grep -q 'snapshot-failed' || fail "expected snapshot-failed in REASON"
+printf '%s\n' "$out_snap" | grep -q '^WARN=plan-review-snapshot:' || fail "expected snapshot WARN"
+[[ ! -e "$D_SNAP/plan-review/round-1/round-meta.json" ]] || fail "snapshot failure should clear round-meta.json"
+[[ ! -e "$D_SNAP/plan-review/round-1/panel-manifest.ndjson" ]] || fail "snapshot failure should clear panel-manifest.ndjson"
+
 echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades findings-present path ==="
 D1C="$TMP/z1c"
 mkdir -p "$D1C"

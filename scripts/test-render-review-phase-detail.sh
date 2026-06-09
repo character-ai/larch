@@ -205,4 +205,30 @@ grep -Fq -- '- unknown/collector-failure-1: 1' "$DOUT" \
     || fail "design collector placeholder failure attribution wrong: $(grep -F 'collector-failure' "$DOUT" || true)"
 pass 'design skill fixture renders counts, attribution, and collector failures'
 
+ROUND_META="$REPO/scripts/write-design-round-meta.sh"
+TSV_SEC="$WORK/tsv-fallback-security-oos"
+mkdir -p "$TSV_SEC"
+cat >"$TSV_SEC/findings-classification.tsv" <<'TSV'
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool
+OOS_1	Codex-Security	accepted
+OOS_2	Codex-Security	rejected
+TSV
+cat >"$TSV_SEC/findings-oos.md" <<'MD'
+### OOS_1: Security hardening note
+- **Reviewer**: Codex-Security
+- focus-area = security
+- Concern: rotate keys.
+
+### OOS_2: Security rejected note
+- **Reviewer**: Codex-Security
+- focus-area = security
+- Concern: audit logging.
+MD
+printf '{"slot":"security","tool":"codex","output":"/t/sec-output.txt"}\n' >"$TSV_SEC/plan-review-slots.ndjson"
+"$ROUND_META" --round-dir "$TSV_SEC"
+jq -e '.tally.OOS_ACCEPTED_COUNT == "0" and .tally.OOS_REJECTED_COUNT == "0"' \
+    "$TSV_SEC/round-meta.json" >/dev/null \
+    || fail "TSV fallback should exclude security-tagged OOS counts"
+pass 'write-design-round-meta TSV fallback security OOS adjustment'
+
 printf 'PASS: test-render-review-phase-detail.sh\n'

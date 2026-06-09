@@ -504,6 +504,7 @@ _emit_plan_round_timing_row() {
 
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
+    local snapshot_ok=true
     if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
         _persist_plan_round_start "$round_num" "${_round_start:-}"
     else
@@ -512,6 +513,7 @@ _snapshot_terminal_exit_preserving_status() {
     if ! _snapshot_round_dir "$round_num"; then
         emit_kv WARN "plan-review-snapshot: round-${round_num} snapshot failed after terminal status ${LOOP_STATUS:-unknown}"
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
+        snapshot_ok=false
     fi
     _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "$summary_revise"
     case "${LOOP_STATUS:-}:${TALLY_PLAN_REVIEW_STATUS:-}" in
@@ -521,7 +523,11 @@ _snapshot_terminal_exit_preserving_status() {
             _clear_design_round_meta "$round_num"
             ;;
         *)
-            _write_design_round_meta "$round_num"
+            if [[ "$snapshot_ok" == true ]] && [[ "${LOOP_REASON:-}" != *snapshot-failed* ]]; then
+                _write_design_round_meta "$round_num"
+            else
+                _clear_design_round_meta "$round_num"
+            fi
             ;;
     esac
     _terminal_exit "$rc" "$round_num"

@@ -132,7 +132,7 @@ _adjust_security_oos_counts() {
                     if is_security_block "$block_file" 2>/dev/null; then
                         case "$result" in
                             accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
-                            rejected) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
+                            *) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
                         esac
                     fi
                 fi
@@ -147,24 +147,24 @@ _adjust_security_oos_counts() {
                     if (result == "" || result ~ /^-+$/) {
                         result = trim($(NF-2))
                     }
-                    if (item ~ /^OOS_[0-9A-Za-z_]+$/ && (result == "accepted" || result == "rejected")) {
+                    if (item ~ /^OOS_[0-9A-Za-z_]+$/ && result != "") {
                         print item "\t" result
                     }
                 }
             ' "$round_dir/voting-tally.md" 2>/dev/null)
             ;;
         tsv)
-            while IFS=$'\t' read -r id _ result _rest || [[ -n "$id" ]]; do
+            while IFS=$'\t' read -r id result || [[ -n "$id" ]]; do
                 [[ -n "$id" ]] || continue
                 [[ "$id" =~ ^OOS_[0-9A-Za-z_]+$ ]] || continue
-                [[ "$result" == "accepted" || "$result" == "rejected" ]] || continue
+                [[ -n "$result" ]] || continue
                 block_file="$(mktemp "${round_dir}/.oos-sec.XXXXXX")"
                 if _extract_oos_block "$round_dir" "$id" >"$block_file" 2>/dev/null \
                     && [[ -s "$block_file" ]]; then
                     if is_security_block "$block_file" 2>/dev/null; then
                         case "$result" in
                             accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
-                            rejected) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
+                            *) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
                         esac
                     fi
                 fi
