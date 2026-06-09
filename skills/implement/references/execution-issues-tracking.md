@@ -2,6 +2,8 @@
 
 **Consumer**: `/implement` Steps 8+/9a.1 OOS checkpoint, and any step that applies OOS triage policy, dual-write rules, or logs execution issues to `$IMPLEMENT_TMPDIR/execution-issues.md`.
 
+**Contract**: Defines the Follow-up Work Principle (three filing paths: inline, OOS GitHub issue, manual `/issue`), the OOS triage policy (four rules governing when to file vs. fold), the file-conflict rule for OOS dependency emission, the `Pre-existing Code Issues` dual-write gate, and the Terminal disposition invariant that governs OOS checkpoint passage. All apply unconditionally on every `/implement` run.
+
 **When to load**: MANDATORY immediately before applying OOS triage policy, the `Pre-existing Code Issues` dual-write gate, or filing OOS GitHub issues. Do not load outside those call sites.
 
 ## Follow-up Work Principle
