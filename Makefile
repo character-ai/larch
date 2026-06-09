@@ -572,7 +572,7 @@ test-brainstorm-prompts:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-brainstorm-prompts.sh
 
 test-lint-readability-preamble:
-	cd python && pytest test_lint_readability_preamble.py
+	cd python && $(PYTHON) -m pytest test_lint_readability_preamble.py
 
 test-lint-renderer-substitution-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-renderer-substitution-safety.sh
