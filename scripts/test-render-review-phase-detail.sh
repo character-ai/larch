@@ -166,8 +166,7 @@ JSON
     _reg_out="$WORK/reg-fail.txt"
     set +e
     (
-        REPO="$_bad_repo"
-        if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" 2>/dev/null)"; then
+        if ! _tc_out="$(bash "$_bad_repo/scripts/token-cost.sh" 2>/dev/null)"; then
             fail "token-cost.sh failed (rc=$?)"
         fi
     ) >"$_reg_out" 2>&1
