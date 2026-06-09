@@ -415,7 +415,7 @@ step3_loop_run_post_apply() {
                 exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
             fi
             ;;
-        10|12|13|14)
+        10|12|13)
             POSTPLAN_RC="$postplan_rc"
             return 32
             ;;

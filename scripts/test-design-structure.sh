@@ -472,7 +472,7 @@ assert_postplan_thin_fence() {
   grep -Fq 'printf' "$subject" || fail "$label missing postplan display printf"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 14 2 1; do
+  for arm in 0 10 11 12 13 2 1; do
     grep -Fq "  ${arm})" "$subject" || fail "$label missing case arm ${arm}"
   done
   grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
@@ -507,11 +507,9 @@ assert_postplan_reference_thin_fence() {
   grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 14 2 1; do
+  for arm in 0 10 11 12 13 2 1; do
     grep -Fq "\`${arm}\`" "$subject" || fail "$label missing delegated case arm ${arm}"
   done
-  grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
-  grep -Fq 'BASELINE_' "$subject" || fail "$label missing drift baseline parse"
   # shellcheck disable=SC2016 # Markdown literal contains a default case marker.
   grep -Fq 'default-abort `*` arm' "$subject" || fail "$label missing default-abort *) arm"
   # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
@@ -529,8 +527,8 @@ assert_postplan_reference_thin_fence() {
 run_postplan_thin_fence_self_tests() {
   local fixture
   fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-self.XXXXXX")
-  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  14)$' >"$fixture"
-  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc14') >/dev/null 2>&1; then
+  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  13)$' >"$fixture"
+  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc13') >/dev/null 2>&1; then
     rm -f "$fixture"
     fail "postplan thin-fence self-test must fail when a case arm is missing"
   fi

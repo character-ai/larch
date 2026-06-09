@@ -39,7 +39,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 
-Default `2` (positive integer; invalid values fall back to `2`). `check-plan-size.sh` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `design-postplan-emit.sh --with-plan-size` maps drift to exit code `14` after hard-size and partition checks.
+Default `2` (positive integer; invalid values fall back to `2`). `check-plan-size.sh` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `design-postplan-emit.sh --with-plan-size` records a logged advisory in `execution-issues.md` and exits `0` after hard-size and partition checks — drift no longer prompts or halts execution.
 
 Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `design-postplan-emit.sh` itself is not passed `--repo`.
 

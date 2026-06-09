@@ -298,12 +298,6 @@ _postplan_emit_hard_section() {
 }
 
 
-_postplan_emit_drift_section() {
-    emit "## Plan Size — Drift"
-    emit "PLAN_LINES=${PLAN_LINES:-} BASELINE_PLAN_LINES=${BASELINE_PLAN_LINES:-} DRIFT_PLAN_RATIO=${DRIFT_PLAN_RATIO:-1}"
-    emit "DIFF_LINES=${DIFF_LINES:-} BASELINE_DIFF_LINES=${BASELINE_DIFF_LINES:-} DRIFT_DIFF_RATIO=${DRIFT_DIFF_RATIO:-1} DRIFT_MULTIPLE=${DRIFT_MULTIPLE:-2}"
-}
-
 _postplan_snapshot_drift_baseline() {
     [[ "$SNAPSHOT_ORIGINAL" == true ]] || return 0
     [[ -n "${PLAN_LINES:-}" && -n "${DIFF_LINES:-}" ]] || return 0
@@ -413,11 +407,24 @@ _postplan_finish_merged_plan_size() {
         exit "$_defects_exit"
     fi
     if [[ "$DRIFT_TRIGGER_FIRED" == true ]]; then
-        _postplan_emit_drift_section
+        local _drift_log
+        _drift_log=$(mktemp "${TMPDIR:-/tmp}/design-postplan-drift.XXXXXX")
+        printf '%s\n' "**⚠ 2b.5: plan-size — drift advisory: plan grew PLAN_LINES=${PLAN_LINES:-} (baseline ${BASELINE_PLAN_LINES:-}, ratio ${DRIFT_PLAN_RATIO:-1}) / DIFF_LINES=${DIFF_LINES:-} (baseline ${BASELINE_DIFF_LINES:-}, ratio ${DRIFT_DIFF_RATIO:-1}) ≥ ×${DRIFT_MULTIPLE:-2}, under absolute limits; proceeding.**" >"$_drift_log"
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 2b.5" \
+            --tool "check-plan-size.sh (drift)" \
+            --exit-code 0 \
+            --category Warnings \
+            --output-file "$_drift_log" \
+            --redact \
+            >/dev/null 2>&1 || true
+        rm -f "$_drift_log" 2>/dev/null || true
         POSTPLAN_EMIT_STATUS=ok
-        PLAN_SIZE_STATUS=drift-trigger
+        PLAN_SIZE_STATUS=drift-advisory
         _postplan_flush || exit 1
-        exit 14
+        emit "⏩ 2b.5: plan-size — drift advisory (PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}); proceeding"
+        exit 0
     fi
     POSTPLAN_EMIT_STATUS=ok
     PLAN_SIZE_STATUS=under-threshold

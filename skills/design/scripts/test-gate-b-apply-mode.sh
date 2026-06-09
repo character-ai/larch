@@ -122,8 +122,8 @@ set +e
 LARCH_DESIGN_DRIFT_MULTIPLE=2 "$POSTPLAN" --design-tmpdir "$D_DRIFT" --with-plan-size >"$D_DRIFT/out.txt" 2>"$D_DRIFT/err.txt"
 rc=$?
 set -e
-[[ "$rc" -eq 14 ]] || fail "drift size brake expected rc 14, got $rc"
-grep -Fq 'PLAN_SIZE_STATUS=drift' "$D_DRIFT/.design-postplan-emit-result.env" \
+[[ "$rc" -eq 0 ]] || fail "drift size brake expected rc 0, got $rc"
+grep -Fq 'PLAN_SIZE_STATUS=drift-advisory' "$D_DRIFT/.design-postplan-emit-result.env" \
   || fail 'drift size brake result env missing'
 
 pass 'gate-b apply mode harness'

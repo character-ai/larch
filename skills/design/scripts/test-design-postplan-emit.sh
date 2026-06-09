@@ -807,9 +807,10 @@ set +e
 run_subject "$D32" --with-plan-size --snapshot-original
 rc=$?
 set -e
-assert_rc "drift trigger rc" 14 "$rc"
-assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "drift trigger status"
-assert_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger section"
+assert_rc "drift trigger rc" 0 "$rc"
+assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-advisory "drift trigger status"
+assert_not_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger no section"
+assert_contains "$D32/execution-issues.md" 'drift advisory' "drift trigger warning logged"
 
 D33="$TMP/drift-hard-precedence"
 setup_design_tmp "$D33" full HARD
