@@ -343,9 +343,14 @@ cmd_annotate() {
   local stdout_file="$ISSUE_STDOUT_FILE"
 
   if [[ ! -s "$stdout_file" ]]; then
-    emit_kv FILE_DESIGN_OOS_STATUS annotate-skipped-empty-stdout
-    emit_kv WARN "file-design-oos annotate: issue-stdout-file empty or missing (${stdout_file}); oos-issues-created.md not written"
-    return 0
+    local warnf="$d/oos-annotate-empty-stdout.stderr.log"
+    printf 'FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout\n'
+    printf 'WARN=file-design-oos annotate: issue-stdout-file empty or missing (%s); oos-issues-created.md not written\n' \
+      "$stdout_file" >&2
+    : >"$warnf"
+    printf 'file-design-oos annotate: issue-stdout-file empty or missing (%s)\n' "$stdout_file" >>"$warnf"
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos annotate" "file-design-oos.sh empty stdout" "$warnf"
+    exit 1
   fi
   if [[ ! -f "$order" ]]; then
     larch_err "file-design-oos: missing $order (run prepare first)"

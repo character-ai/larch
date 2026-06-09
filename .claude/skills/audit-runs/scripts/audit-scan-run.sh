@@ -436,7 +436,27 @@ scan_ns_retry_sidecars() {
         | map((.ns_retry_reason // "UNKNOWN") | tostring)
     ' || true)
     if [ "$signals_json" = "unavailable" ] || [ -z "$signals_json" ]; then
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
+        local legacy_count=0
+        for sidecar_f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
+            [ -f "$sidecar_f" ] || continue
+            legacy_count=$((legacy_count + 1))
+            _reasons_list="${_reasons_list}UNKNOWN"$'\n'
+        done
+        if [ "$legacy_count" -eq 0 ]; then
+            emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"$(jstr "reviewer_signals signal unavailable")\"}"
+            return
+        fi
+        count=$legacy_count
+        reasons_json=$(printf '%s' "$_reasons_list" | jq -Rs '
+            split("\n")
+            | map(select(length > 0))
+            | reduce .[] as $t ({}; .[$t] += 1)
+            | to_entries
+            | sort_by(.key)
+            | from_entries
+        ' -c 2>/dev/null || printf '{}')
+        [ -z "$reasons_json" ] && reasons_json="{}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count,\"reasons\":$reasons_json,\"detail\":\"$(jstr "legacy sidecar fallback (reviewer_signals unavailable)")\"}"
         return
     fi
     while IFS= read -r reason; do

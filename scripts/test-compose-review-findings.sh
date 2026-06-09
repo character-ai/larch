@@ -545,6 +545,29 @@ jq -e 'select(.id == "FINDING_DYN") | .reviewer_slots == ["codex-primary-plan-dy
 jq -e 'select(.id == "FINDING_CLAUDE") | .reviewer_slots == ["claude-plan-generic-output.txt","claude-plan-generic-output.txt"]' "$out" >/dev/null \
     || fail "Claude-Generic and raw claude-plan-generic should map to generic output basename"
 
+echo "=== severity/focus extracted from full body before prose truncation ==="
+mkdir -p "$TMP/trunc-impl/round-1"
+python3 - "$TMP/trunc-impl/round-1/accepted-findings.md" <<'PY'
+import sys
+pad = "x" * 2100
+path = sys.argv[1]
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(
+        "### FINDING_TRUNC: late markers\n"
+        f"- **Concern**: {pad}\n"
+        "- **Severity**: important\n"
+        "- **Focus area**: security\n"
+    )
+PY
+out="$TMP/trunc.jsonl"
+"$COMPOSE" --implement-tmpdir "$TMP/trunc-impl" --issue 2499 --output "$out" >/dev/null
+[[ "$(record_field_by_id "$out" FINDING_TRUNC body_severity)" == "important" ]] \
+    || fail "body_severity from full body: got $(record_field_by_id "$out" FINDING_TRUNC body_severity)"
+[[ "$(record_field_by_id "$out" FINDING_TRUNC focus_area)" == "security" ]] \
+    || fail "focus_area from full body: got $(record_field_by_id "$out" FINDING_TRUNC focus_area)"
+prose_len=$(record_field_by_id "$out" FINDING_TRUNC prose_body | wc -c | tr -d '[:space:]')
+[[ "$prose_len" -le 2001 ]] || fail "prose_body should be capped near 2000 chars (got $prose_len)"
+
 echo "=== invalid issue fails ==="
 set +e
 bad="$("$COMPOSE" --issue nope --output "$TMP/bad.jsonl" 2>&1)"

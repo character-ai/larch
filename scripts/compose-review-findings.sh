@@ -318,10 +318,10 @@ emit_record() {
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
     body_severity="$(extract_body_severity "$body_redacted")"
     focus_area="$(extract_focus_area "$body_redacted")"
-    body_redacted="${body_redacted:0:2000}"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
     [[ "$phase" == "plan-review" && "$outcome" == "accepted" ]] && strict_cat=1
     category="$(extract_category "$body_redacted" "$strict_cat")"
+    body_redacted="${body_redacted:0:2000}"
     reviewer_slots_json=$(jq -nc --arg r "$reviewer_redacted" '($r | split(",") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0))) | if length == 0 then ["panel"] else . end')
     # JSONL: one compact JSON object per line. jq handles string escaping.
     jq -nc \

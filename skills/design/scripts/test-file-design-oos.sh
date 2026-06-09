@@ -335,6 +335,19 @@ grep -q '^FILE_DESIGN_OOS_STATUS=skip-sentinel$' <<<"$out_x6" || fail "X6 not sk
 grep -A12 '^### OOS_1:' "$TMP/x6/oos-accepted-design.md" | grep -q 'issues/6001' || fail "X6 OOS_1 wrong URL"
 grep -A12 '^### OOS_2:' "$TMP/x6/oos-accepted-design.md" | grep -q 'issues/6002' || fail "X6 OOS_2 wrong URL"
 
+# --- X7b: annotate fails on empty issue stdout ---
+mkdir -p "$TMP/x7b"
+printf '1\n' >"$TMP/x7b/oos-design-filing-order.txt"
+printf '### OOS_1: Widget\n- **Description**: a\n' >"$TMP/x7b/oos-accepted-design.md"
+: >"$TMP/x7b/issue.stdout"
+set +e
+out_x7b=$(bash "$SUBJECT" annotate --design-tmpdir "$TMP/x7b" --issue-stdout-file "$TMP/x7b/issue.stdout" 2>&1)
+rc=$?
+set -e
+assert_rc "X7b empty stdout" 1 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout$' <<<"$out_x7b" \
+  || fail "X7b missing annotate-failed-empty-stdout status"
+
 # --- X8: annotate rejects --clear-cross-session-cache ---
 mkdir -p "$TMP/x8"
 : >"$TMP/x8/issue.stdout"

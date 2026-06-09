@@ -331,4 +331,31 @@ if find "$trim_tmpdir" -maxdepth 1 -name 'larch-log-round-trim.*' | grep -q .; t
     fail "write-round should clean round trim temps after failure"
 fi
 
+echo "=== dynamic-archetypes reviewer outputs compose reviewer_signals ==="
+dyn_source="$TMP/round-dynamic-archetypes"
+mkdir -p "$dyn_source/dynamic-archetypes"
+printf 'NO_ISSUES_FOUND\n' > "$dyn_source/dynamic-archetypes/dyn-scope-anchor-output.txt"
+out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 7 --source-dir "$dyn_source")"
+[[ "$out" == *"LOG_WRITTEN=true"* ]] || fail "dynamic-archetypes write-round should write round-meta: $out"
+python3 - "$log_root/implement/run123/round-7/round-meta.json" <<'PYEOF' || fail "dynamic-archetypes reviewer_signals missing"
+import json, sys
+data = json.load(open(sys.argv[1]))
+signals = data.get("reviewer_signals") or []
+bases = {s.get("output_basename") for s in signals}
+assert "dyn-scope-anchor-output.txt" in bases, bases
+PYEOF
+
+echo "=== implement multi-round concise flush stays within byte budget ==="
+budget_root="$TMP/budget-log-root"
+budget_source="$TMP/budget-source"
+mkdir -p "$budget_source"
+printf 'NO_ISSUES_FOUND\n' > "$budget_source/codex-specialist-correctness-output.txt"
+printf 'PRUNE_ACTIVE=true\nPRUNE_STATUS=active-kept-all\n' > "$budget_source/prune-decision.env"
+printf 'PRUNED_COUNT=0\nSTATUS=skipped\n' > "$budget_source/prune-nit.env"
+for round in 1 2 3; do
+    "$LARCH_LOG" write-round --log-root "$budget_root" --skill implement --run-id budget-run --round "$round" --source-dir "$budget_source" >/dev/null
+done
+budget_bytes=$(find "$budget_root/implement/budget-run" -type f -print0 | xargs -0 wc -c | awk '{s+=$1} END {print s+0}')
+[[ "$budget_bytes" -lt 500000 ]] || fail "implement multi-round concise flush exceeded byte budget ($budget_bytes)"
+
 echo "PASS: test-larch-log-write-round.sh"

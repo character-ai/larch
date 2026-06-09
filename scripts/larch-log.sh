@@ -473,15 +473,21 @@ case "$cmd" in
         # Compose round-meta.json: reviewer_signals when reviewer outputs exist;
         # sidecar-driven sections when sidecar_paths is non-empty.
         _has_reviewer_outputs=false
-        if find "$SOURCE_DIR" -maxdepth 1 -type f \
-            \( -name '*-output.txt' -o -name 'dyn-*-output.txt' \) \
-            ! -name '*-vote-output*' ! -name '*-ns-retry*' ! -name '*-first-pass.txt' \
-            -print -quit 2>/dev/null | grep -q .; then
+        _larch_log_has_reviewer_outputs() {
+            local _scan_dir="$1"
+            find "$_scan_dir" -maxdepth 1 -type f \
+                \( -name '*-output.txt' -o -name 'dyn-*-output.txt' \) \
+                ! -name '*-vote-output*' ! -name '*-ns-retry*' ! -name '*-first-pass.txt' \
+                -print -quit 2>/dev/null | grep -q .
+        }
+        if _larch_log_has_reviewer_outputs "$SOURCE_DIR"; then
+            _has_reviewer_outputs=true
+        elif [ -d "$dynamic_dir" ] && _larch_log_has_reviewer_outputs "$dynamic_dir"; then
             _has_reviewer_outputs=true
         fi
         if [ -s "$sidecar_paths" ] || [ "$_has_reviewer_outputs" = true ]; then
             : > "$round_tmp"
-            python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF' || true
+            if ! python3 - "$SOURCE_DIR" > "$round_tmp" <<'PYEOF'
 import json, os, sys
 
 src = sys.argv[1]
@@ -602,62 +608,91 @@ for mf in ("panel-manifest.ndjson", "code-voter-slots.ndjson"):
                     manifest[base] = data
     except OSError:
         pass
+ALLOWED_NS_RETRY = frozenset({
+    "NO_ISSUES_FOUND_TOO_THIN",
+    "OUTPUT_EMPTY",
+    "JSON_PARSE_FAIL",
+    "UNKNOWN",
+})
+
+def normalize_ns_retry_reason(raw):
+    token = (raw or "").strip()
+    return token if token in ALLOWED_NS_RETRY else "UNKNOWN"
+
+def iter_scan_dirs(root):
+    yield root
+    dyn = os.path.join(root, "dynamic-archetypes")
+    if os.path.isdir(dyn) and not os.path.islink(dyn):
+        yield dyn
+
 signals = []
-try:
-    names = sorted(os.listdir(src))
-except OSError:
-    names = []
-for name in names:
-    if not (name.endswith(".txt") and "output" in name):
+for scan_dir in iter_scan_dirs(src):
+    try:
+        names = sorted(os.listdir(scan_dir))
+    except OSError:
         continue
-    if "vote-output" in name or "ns-retry" in name or name.endswith("-first-pass.txt"):
-        continue
-    path = os.path.join(src, name)
-    if not os.path.isfile(path):
-        continue
-    meta = manifest.get(name, {})
-    first = first_substantive(path)
-    ns_reason = ""
-    stem = os.path.splitext(name)[0]
-    for spath in (
-        os.path.join(src, stem + "-ns-retry.txt.meta"),
-        os.path.join(src, name + ".ns-retry.meta"),
-        os.path.join(src, name + "-ns-retry.meta"),
-        os.path.join(src, stem + "-ns-retry.json"),
-        os.path.join(src, name + ".ns-retry.json"),
-    ):
-        if not os.path.isfile(spath):
+    for name in names:
+        if not (name.endswith(".txt") and "output" in name):
             continue
+        if "vote-output" in name or "ns-retry" in name or name.endswith("-first-pass.txt"):
+            continue
+        path = os.path.join(scan_dir, name)
         try:
-            raw = read_raw(spath).strip()
-            for line in raw.splitlines():
-                if line.startswith("NS_RETRY_REASON="):
-                    ns_reason = line.partition("=")[2].strip()
-                    break
-            if not ns_reason:
-                try:
-                    obj = json.loads(raw)
-                    ns_reason = str(obj.get("reason") or obj.get("ns_retry_reason") or "")
-                except Exception:
-                    ns_reason = raw.splitlines()[0] if raw else ""
-        except Exception:
-            ns_reason = ""
-        if ns_reason:
-            break
-    first_pass = os.path.join(src, name[:-4] + "-first-pass.txt") if name.endswith(".txt") else ""
-    signals.append({
-        "output_basename": name,
-        "slot_label": str(meta.get("slot") or os.path.splitext(name)[0]),
-        "result_kind": result_kind(first),
-        "ns_retry_reason": ns_reason,
-        "first_pass_trailing_content": trailing_content(first_pass),
-    })
+            if os.path.islink(path) or not os.path.isfile(path):
+                continue
+        except OSError:
+            continue
+        meta = manifest.get(name, {})
+        first = first_substantive(path)
+        ns_reason = ""
+        stem = os.path.splitext(name)[0]
+        for spath in (
+            os.path.join(scan_dir, stem + "-ns-retry.txt.meta"),
+            os.path.join(scan_dir, name + ".ns-retry.meta"),
+            os.path.join(scan_dir, name + "-ns-retry.meta"),
+            os.path.join(scan_dir, stem + "-ns-retry.json"),
+            os.path.join(scan_dir, name + ".ns-retry.json"),
+        ):
+            try:
+                if os.path.islink(spath) or not os.path.isfile(spath):
+                    continue
+            except OSError:
+                continue
+            try:
+                raw = read_raw(spath).strip()
+                for line in raw.splitlines():
+                    if line.startswith("NS_RETRY_REASON="):
+                        ns_reason = normalize_ns_retry_reason(line.partition("=")[2].strip())
+                        break
+                if not ns_reason:
+                    try:
+                        obj = json.loads(raw)
+                        ns_reason = normalize_ns_retry_reason(
+                            str(obj.get("reason") or obj.get("ns_retry_reason") or "")
+                        )
+                    except Exception:
+                        ns_reason = ""
+            except Exception:
+                ns_reason = ""
+            if ns_reason:
+                break
+        first_pass = os.path.join(scan_dir, name[:-4] + "-first-pass.txt") if name.endswith(".txt") else ""
+        signals.append({
+            "output_basename": name,
+            "slot_label": str(meta.get("slot") or os.path.splitext(name)[0]),
+            "result_kind": result_kind(first),
+            "ns_retry_reason": ns_reason,
+            "first_pass_trailing_content": trailing_content(first_pass),
+        })
 if signals:
     out["reviewer_signals"] = signals
 
 if out:
     sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')
 PYEOF
+            then
+                larch_log_fail 2 "reviewer_signals composition failed for round $ROUND_NUM"
+            fi
             if [ -s "$round_tmp" ]; then
                 _rm_raw="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-meta-red.XXXXXX")" || larch_log_fail 2 "cannot create round-meta redact temp"
                 larch_log_redact_file "$round_tmp" "$_rm_raw"

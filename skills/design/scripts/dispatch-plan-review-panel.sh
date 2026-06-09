@@ -452,6 +452,10 @@ fi
 [[ "$ALL_SLOTS_DROPPED" == "true" ]] && DEGRADED_ROUND=true
 
 printf '%s\n' "$_dispatch_out"
+if [[ "${_waterfall_rc:-0}" -ne 0 ]]; then
+    emit_kv DISPATCH_OK "${DISPATCH_OK:-false}"
+    emit_kv STATIC_DISPATCH_OK "${STATIC_DISPATCH_OK:-false}"
+fi
 emit_kv DYNAMIC_SLOT_COUNT "$dyn_slots"
 emit_kv DEGRADED_ROUND "$DEGRADED_ROUND"
 emit_kv PANEL_PRUNED_EMPTY "$PANEL_PRUNED_EMPTY"
@@ -464,4 +468,7 @@ emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
 _write_prune_decision_env
 emit_kv PANEL_MANIFEST "$_manifest"
 emit_kv PANEL_PATHS_FILE "${ALL_OUTPUT_FILES_PATH:-${_manifest}.output-files}"
+if [[ "${_waterfall_rc:-0}" -ne 0 ]]; then
+    exit 1
+fi
 exit 0
