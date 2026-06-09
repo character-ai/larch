@@ -111,7 +111,9 @@ printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGR
 out="$(run_loop "$D1" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'complete envelope'
 [[ -f "$D1/.completed/step-3" ]] || fail 'complete should write .completed/step-3'
+[[ -f "$D1/.completed/step-3.5" ]] || fail 'complete should write .completed/step-3.5'
 [[ -f "$D1/.gate-b-postapply-ready-1" ]] || fail 'dedup success should write gate-b marker'
+grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D1/.step3-review-result.env" || fail 'complete should persist loop envelope'
 
 
 echo '=== main-agent-vote-required bail-out ==='
@@ -182,5 +184,64 @@ contains "$out" 'DEDUP_RC=2' 'dedup rc carried'
 if grep -Fq '# revised' "$D5/plan.txt"; then
     fail 'dedup failure should restore pre-apply snapshot'
 fi
+
+echo '=== filtered per-round approval consumes approval env ==='
+D6="$TMP/filtered-approval"
+write_common "$D6"
+write_ok_stubs "$D6"
+cat >"$D6/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
+JSON
+cat >"$D6/accepted-plan-findings.md" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: keep
+FINDINGS
+cat >"$D6/filtered-findings.md" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: keep
+FINDINGS
+printf 'FINDINGS_FILE=%s/filtered-findings.md\n' "$D6" >"$D6/.gate-b-per-round-approval-round-1.env"
+printf 'awaiting-apply\n' >"$D6/.step3-round-1.phase"
+printf '1\n' >"$D6/review-round-count.txt"
+cp "$D6/plan.txt" "$D6/plan-pre-apply-round-1.txt"
+round_stub="$(write_round_stub "$D6" 'exit 99')"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D6/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D6/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D6/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D6/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D6/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$D6" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'filtered approval resume completes'
+[[ ! -f "$D6/.gate-b-per-round-approval-round-1.env" ]] || fail 'approval env should be consumed once'
+grep -Fq '# revised' "$D6/plan.txt" || fail 'filtered approval should still apply findings'
+
+
+echo '=== continuation failure emits postplan-failed ==='
+D7="$TMP/continuation-fail"
+write_common "$D7"
+write_ok_stubs "$D7"
+cat >"$D7/continue-stop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 2
+STUB
+chmod +x "$D7/continue-stop.sh"
+printf 'awaiting-continuation\n' >"$D7/.step3-round-1.phase"
+printf '1\n' >"$D7/review-round-count.txt"
+round_stub="$(write_round_stub "$D7" 'exit 99')"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D7/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D7/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D7/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D7/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D7/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$D7" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continuation failure envelope'
+
 
 printf 'PASS: test-review-design-step3-loop.sh\n'

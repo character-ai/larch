@@ -32,14 +32,14 @@ fail() {
     FAIL=$((FAIL + 1))
 }
 
-# Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --no-preview handoff).
+# Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --mode loop handoff).
 # rc=2 check first; display pass; safe-env load via -f && ! -L; file-first vs later-wins.
 apply_step3_display_pass() {
     local plan_review_out="$1"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         case "$_key" in
-            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|WARN)
+            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM|WARN)
                 : ;;
             *)
                 printf '%s\n' "$_line" ;;
@@ -49,9 +49,9 @@ apply_step3_display_pass() {
 
 apply_step3_handoff() {
     local design_tmpdir="$1" plan_review_out="$2" plan_review_rc="$3"
-    unset -v LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
+    unset -v LOOP_STATUS STEP3_REVIEW_LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
         TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE STEP3_REVIEW_CAP_REACHED \
-        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE
+        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE POSTPLAN_RC DEDUP_RC FINAL_ROUND_NUM
 
     # rc=2 first: abort before display pass, safe-env load, parse, or normalization.
     if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
@@ -75,7 +75,7 @@ apply_step3_handoff() {
             _key="${_line%%=*}"
             _value="${_line#*=}"
             case "$_key" in
-                LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE)
+                LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
                     printf -v "$_key" '%s' "$_value" ;;
                 WARN) printf '%s\n' "WARN=$_value" ;;
             esac
@@ -97,6 +97,9 @@ apply_step3_handoff() {
                     printf -v "$_key" '%s' "$_value"
                 fi
                 ;;
+            STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+                [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+                ;;
             STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE)
                 if [[ "$_step3_safe_env_loaded" == true ]]; then
                     [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
@@ -108,7 +111,16 @@ apply_step3_handoff() {
         esac
     done <<<"${plan_review_out:-}"
 
-    if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
+    if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
+        if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
+            STEP3_REVIEW_LOOP_STATUS=panel-failed
+        fi
+        case "${STEP3_REVIEW_LOOP_STATUS}" in
+            cap-hit) LOOP_STATUS=cap-reached ;;
+            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
+            main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed) LOOP_STATUS=complete ;;
+        esac
+    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
         LOOP_STATUS=panel-failed
     fi
 }
@@ -363,6 +375,40 @@ if [[ "${LOOP_STATUS:-}" == complete ]]; then
     pass 'later stdout KV wins when no safe env'
 else
     fail "later-KV-wins expected complete got ${LOOP_STATUS:-}"
+fi
+
+echo "=== loop envelope STEP3_REVIEW_LOOP_STATUS wins over stale LOOP_STATUS ==="
+D_LOOP="$TMP/loop-envelope"
+mkdir -p "$D_LOOP"
+printf 'LOOP_STATUS=complete\nSTEP3_REVIEW_LOOP_STATUS=main-agent-apply-required\nFINAL_ROUND_NUM=1\n' >"$D_LOOP/.step3-review-result.env"
+apply_step3_handoff "$D_LOOP" 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required
+DEDUP_RC=2
+FINAL_ROUND_NUM=1
+' 0
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == main-agent-apply-required && "${DEDUP_RC:-}" == 2 ]]; then
+    pass 'loop envelope parsed from stdout'
+else
+    fail "loop envelope expected main-agent-apply-required/2 got ${STEP3_REVIEW_LOOP_STATUS:-}/${DEDUP_RC:-}"
+fi
+
+echo "=== invalid STEP3_REVIEW_LOOP_STATUS normalizes to panel-failed ==="
+D_LOOP_BAD="$TMP/loop-invalid"
+mkdir -p "$D_LOOP_BAD"
+apply_step3_handoff "$D_LOOP_BAD" 'STEP3_REVIEW_LOOP_STATUS=not-a-status' 0
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == panel-failed ]]; then
+    pass 'invalid loop status normalized'
+else
+    fail "invalid loop status expected panel-failed got ${STEP3_REVIEW_LOOP_STATUS:-}"
+fi
+
+echo "=== postplan-failed envelope preserved ==="
+D_POST_FAIL="$TMP/postplan-failed"
+mkdir -p "$D_POST_FAIL"
+apply_step3_handoff "$D_POST_FAIL" $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\n' 0
+if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed && "${POSTPLAN_RC:-}" == 1 ]]; then
+    pass 'postplan-failed envelope preserved'
+else
+    fail 'postplan-failed envelope missing'
 fi
 
 echo "=== gate B bypass helper writes dual sentinels from empty state ==="

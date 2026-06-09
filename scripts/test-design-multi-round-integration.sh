@@ -109,7 +109,7 @@ grep -q 'Accepted OOS' "$TMP/design/oos-accepted-design.md" || fail "accepted OO
 D2="$TMP/design-chain"
 mkdir -p "$D2"
 cat >"$D2/run-params.json" <<'EOF'
-{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","partition_requested":false,"brainstorm_requested":false}
+{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
 EOF
 printf '## Plan\n\nDo thing better.\n\ndiff_lines: 3\n' >"$D2/plan.txt"
 printf 'feat\n' >"$D2/feature-description.txt"
@@ -126,37 +126,88 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "${DESIGN_TMPDIR:?}/plan-review/round-${round_num}"
 printf 'artifact for round %s\n' "$round_num" >"${DESIGN_TMPDIR}/plan-review/round-${round_num}/artifact.txt"
+if [[ "$round_num" == 1 ]]; then
+    cat >"${DESIGN_TMPDIR}/accepted-plan-findings.md" <<'FINDINGS'
+### FINDING_1: Important continuation
+- **Severity**: important
+- **Concern**: important issue after Gate B
+FINDINGS
+fi
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
 EOS
 chmod +x "$chain_stub"
+for helper in revise-ok.sh dedup-ok.sh postplan-ok.sh snapshot-ok.sh continue-true.sh; do
+    case "$helper" in
+        revise-ok.sh) cat >"$D2/$helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+plan=""
+while [[ $# -gt 0 ]]; do case "$1" in --plan-file) plan="${2:?}"; shift 2 ;; *) shift ;; esac; done
+printf '\n# revised\n' >>"$plan"
+printf 'REVISE_STATUS=ok\n'
+STUB
+        ;;
+        dedup-ok.sh) cat >"$D2/$helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+        ;;
+        postplan-ok.sh) cat >"$D2/$helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=""
+while [[ $# -gt 0 ]]; do case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac; done
+printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
+exit 0
+STUB
+        ;;
+        snapshot-ok.sh) cat >"$D2/$helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cmd="${1:?}"; shift
+dir=""; value=""; round=""
+while [[ $# -gt 0 ]]; do case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; --value) value="${2:?}"; shift 2 ;; --round) round="${2:?}"; shift 2 ;; *) shift ;; esac; done
+case "$cmd" in
+  write-after) cp "$dir/plan.txt" "$dir/plan-after-round-${round}.txt" ;;
+  write-cursor) printf '%s\n' "$value" >"$dir/plan-review-round-cursor.txt" ;;
+  read-cursor) printf 'ROUND_CURSOR=1\n' ;;
+esac
+STUB
+        ;;
+        continue-true.sh) cat >"$D2/$helper" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+round_file="${DESIGN_TMPDIR:?}/review-round-count.txt"
+round=1
+[[ -s "$round_file" ]] && round="$(tr -d '[:space:]' <"$round_file")"
+if [[ "$round" == 1 ]]; then
+  printf 'PLAN_REVIEW_CONTINUE=true\nPLAN_REVIEW_CONTINUE_REASON=high-accepted\nACCEPTED_COUNT=1\nDEGRADED_PANEL=0\n'
+else
+  printf 'PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n'
+fi
+STUB
+        ;;
+    esac
+    chmod +x "$D2/$helper"
+done
 
 run_step3_out=$(env -u LARCH_QUIET_PID \
     CLAUDE_PLUGIN_ROOT="$ROOT" \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$chain_stub" \
-    "$RUN_STEP3" --design-tmpdir "$D2" --no-preview)
-printf '%s\n' "$run_step3_out" | grep -q '^LOOP_STATUS=complete$' || fail "first Step 3 driver entry should complete"
-printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_ROUND_NUM=1$' || fail "first Step 3 driver entry should consume review round 1"
+    RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D2/revise-ok.sh" \
+    RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
+    RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
+    RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D2/snapshot-ok.sh" \
+    RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
+    "$RUN_STEP3" --design-tmpdir "$D2" --mode loop)
+printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' || fail "loop mode should finish with complete envelope"
+printf '%s\n' "$run_step3_out" | grep -q '^FINAL_ROUND_NUM=2$' || fail "loop mode should complete two review rounds"
 printf 'preserve me\n' >"$D2/plan-review/round-1/preserve.txt"
-cat >"$D2/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Important continuation
-- **Severity**: important
-- **Concern**: important issue after Gate B
-EOF
-cont_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$CONTINUATION" --design-tmpdir "$D2" --approve-requested false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail "continuation helper should request second round"
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail "continuation reason should be high-accepted"
-state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$STEP3_STATE" --design-tmpdir "$D2" --auto-continuation-entry)
-printf '%s\n' "$state_out" | grep -q '^STEP3_STATE=auto-continuation-entry$' || fail "auto-continuation state missing"
-CLAUDE_PLUGIN_ROOT="$ROOT" "$SNAPSHOT" write-after --design-tmpdir "$D2" --round 1 >/dev/null
-CLAUDE_PLUGIN_ROOT="$ROOT" "$SNAPSHOT" write-cursor --design-tmpdir "$D2" --value 2 >/dev/null
-run_step3_out=$(env -u LARCH_QUIET_PID \
-    CLAUDE_PLUGIN_ROOT="$ROOT" \
-    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$chain_stub" \
-    "$RUN_STEP3" --design-tmpdir "$D2" --no-preview)
-printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_ROUND_NUM=2$' || fail "second Step 3 driver entry should consume review round 2"
-printf '%s\n' "$run_step3_out" | grep -q '^ROUND_NUM=2$' || fail "second Step 3 driver entry should pass round cursor 2"
 [[ -f "$D2/plan-review/round-1/preserve.txt" ]] || fail "round-1 artifact should survive automatic round-2 entry"
 [[ -f "$D2/plan-review/round-2/artifact.txt" ]] || fail "round-2 artifact should be written"
-[[ ! -f "$D2/.completed/step-3.5" ]] || fail "auto-continuation should defer Gate C"
+[[ -f "$D2/.completed/step-3" ]] || fail "loop terminal path should write step-3"
+[[ -f "$D2/.completed/step-3.5" ]] || fail "loop terminal path should write step-3.5"
+grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D2/.step3-review-result.env" || fail "loop envelope should persist to result env"
 
 printf '%s\n' 'test-design-multi-round-integration: ok'

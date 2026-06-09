@@ -1212,7 +1212,10 @@ fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
-    LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
+    STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+      [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+      ;;
+    LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
       if [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
         [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       else
@@ -1227,7 +1230,17 @@ done <<<"${_plan_review_out:-}"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
 fi
-if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
+if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
+  if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
+    printf '%s\n' "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
+    STEP3_REVIEW_LOOP_STATUS=panel-failed
+  fi
+  case "${STEP3_REVIEW_LOOP_STATUS}" in
+    cap-hit) LOOP_STATUS=cap-reached ;;
+    complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
+    main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed) LOOP_STATUS=complete ;;
+  esac
+elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
   printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
 fi
@@ -1244,7 +1257,7 @@ Plan-review scope anchoring: Step 3 materializes `$DESIGN_TMPDIR/plan-review-sco
 - `STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; skip Gate B and proceed to Step 3b, then the Step 3b completion boundary, then Step 4.
 - `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` — perform the MainAgent vote/re-tally block below, refresh `.step3-review-result.env`, then resume the same round with `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}"`. If re-tally accepts zero findings, write `.step3-round-N.phase` as `awaiting-continuation` before resuming.
 - `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` — apply the accepted findings with the prompt-side Gate B Apply-all body and full Shared post-apply pipeline, write `.step3-round-N.phase` as `awaiting-continuation`, then resume the same round with `--mode loop --starting-round "$N"`. `DEDUP_RC` identifies dedup-origin bail-outs.
-- `STEP3_REVIEW_LOOP_STATUS=per-round-approval-required` — fire Gate B's `--per-round-approval` prompt, persist the selected apply/filtered-apply decision, then resume the same round with `--mode loop --starting-round "$N"`; Switch to discussion mode exits to Gate A instead.
+- `STEP3_REVIEW_LOOP_STATUS=per-round-approval-required` — fire Gate B's `--per-round-approval` prompt, persist the selected apply/filtered-apply decision to `$DESIGN_TMPDIR/.gate-b-per-round-approval-round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}.env` as `FINDINGS_FILE=<absolute-path>` (full `accepted-plan-findings.md` for Apply all, operator-filtered findings file for Go through each), then resume the same round with `--mode loop --starting-round "$N"`; Switch to discussion mode exits to Gate A instead.
 - `STEP3_REVIEW_LOOP_STATUS=postplan-operator-required` — route `POSTPLAN_RC=10/12/13/14` through the existing design-postplan operator prompts. Non-plan-changing Override/Continue resumes at `awaiting-continuation`; plan-changing Fix-and-retry/autofix re-enters `awaiting-post-apply`.
 - `STEP3_REVIEW_LOOP_STATUS=postplan-failed` — hard-fail and preserve `$DESIGN_TMPDIR` for repair; do not transition to Step 3b.
 - `STEP3_REVIEW_LOOP_STATUS=panel-failed`, `tally-error`, or `degraded-empty-collector` — write/keep `.completed/step-3`, bypass Gate B, and proceed to Step 3b via the fail-closed helper.
@@ -1273,14 +1286,24 @@ If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`
 
 `.completed/step-3` is written by the Step 3 loop before any terminal Step 3b transition. Legacy `--mode single` Gate-B-bypass paths still use `design-step3-state.sh --gate-b-bypass` to write `step-3` and `step-3.5` before entering Step 3b.
 
-> **Continue to Step 3.5 IMMEDIATELY when Step 3 actually produced fresh review artifacts.** The plan-review result is not terminal — proceed to the post-review chooser. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, or `panel-failed`) bypass Step 3.5 and continue to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (see the post-loop branch matrix). Zero-findings paths still traverse Gate B's short-circuit, then the heuristic continuation check, before Step 3b.
+> **Step 3.5 (Gate B) runs only for loop bail-outs that need prompt-side apply/postplan handling** (`STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required`, `per-round-approval-required`, or `postplan-operator-required`) or for legacy `--mode single` harness callers. Terminal loop envelopes (`complete`, `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, `postplan-failed`) and `main-agent-vote-required` skip Step 3.5 and route per the post-loop branch matrix. The script-internal loop already applied findings, ran postplan, snapshots, and continuation on the happy path — do not re-enter Gate B or the retired orchestrator continuation loop.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-3"
+case "${STEP3_REVIEW_LOOP_STATUS:-}" in
+  main-agent-apply-required|per-round-approval-required|postplan-operator-required) ;;
+  '')
+    case "${LOOP_STATUS:-}" in
+      complete|zero-findings-degraded-panel|main-agent-vote-required) ;;
+      *) printf '%s\n' "⏩ 3.5: Gate B — skipped (STEP3_REVIEW_LOOP_STATUS=${STEP3_REVIEW_LOOP_STATUS:-unset}, LOOP_STATUS=${LOOP_STATUS:-unset})" ;;
+    esac
+    ;;
+  *)
+    printf '%s\n' "⏩ 3.5: Gate B — skipped (loop envelope ${STEP3_REVIEW_LOOP_STATUS})"
+    ;;
+esac
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
 _approve_requested=false
@@ -1302,19 +1325,14 @@ Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's appl
 
 **Optional trailer guard (Gate B post-apply)**: Before prompt-side `plan.txt` replacement or dedup, run `gate-b-dedup-plan.sh --snapshot-trailers`; after rewrite run `gate-b-dedup-plan.sh --dedup` (requires the snapshot file — never run `--dedup` alone). Preserve snapshotted optional trailer keys **and values** or explicitly recompute; empty snapshot forbids newly introduced optional trailers. See `approval-gates.md` §Shared post-apply pipeline.
 
-**Gate B resume idempotency**: If `$DESIGN_TMPDIR/.gate-b-postapply-ready-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-current}}` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Resume at `approval-gates.md` §Shared post-apply pipeline step 7 (the merged `design-postplan-emit.sh --with-plan-size` fence) using the current `plan.txt`, then run the **Heuristic multi-round continuation check** below after the fence settles. Do not jump directly to Step 3b from this post-apply resume branch; the continuation helper must get the same chance to schedule an automatic follow-up round as it does on the original Gate B apply path.
+**Gate B resume idempotency**: If `$DESIGN_TMPDIR/.gate-b-postapply-ready-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-current}}` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Resume at `approval-gates.md` §Shared post-apply pipeline step 7 (the merged `design-postplan-emit.sh --with-plan-size` fence) using the current `plan.txt`, then resume the script-internal loop with `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}"` at phase `awaiting-continuation` (do not re-run the retired orchestrator continuation check).
 
-Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, run the Gate B HARD round snapshot in `approval-gates.md` (`snapshot-plan-round.sh write-after` for `${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}`, then `write-cursor` to the next value) and then run the **Heuristic multi-round continuation check** below before writing `.completed/step-3.5`.
+Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path and any retained Step 2b.5 path has returned, write `$DESIGN_TMPDIR/.step3-round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}.phase` as `awaiting-continuation` when the loop should resume continuation only, then resume with `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}"`.
 `.completed/step-3.5` is written by the Step 3b entry fence before pause-check — not at a Step 3.5 success boundary.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
-**Heuristic multi-round continuation check**: After Gate B settles (on any non-Switch-to-discussion-mode non-exiting path), before proceeding to Step 3b, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` and parse only its `PLAN_REVIEW_CONTINUE*`, count, degraded, and cap KVs. The helper recomputes counts from disk artifacts (`accepted-plan-findings.md`, `.step3-review-result.env`, `review-round-count.txt`, `plan.txt`, and `run-params.json`) rather than trusting stale in-memory Step 3 KVs. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.md`.
-
-- **Continue** — when `PLAN_REVIEW_CONTINUE=true`: print `ℹ /design: round <REVIEW_ROUND_COUNT> continuation reason=<PLAN_REVIEW_CONTINUE_REASON> (accepted=<ACCEPTED_COUNT>, non-nit=<NON_NIT_ACCEPTED_COUNT>, high=<HIGH_ACCEPTED_COUNT>, degraded=<DEGRADED_PANEL>); running another review round automatically (Gate C deferred)`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed` (so the plan preview regenerates if Gate C is reached later), run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --auto-continuation-entry`, parse `STEP3_STATE=auto-continuation-entry`, and loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, mark `LARCH_TIMING_SKILL=design "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true`, then re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --no-preview`. Process the resulting `LOOP_STATUS` per the Step 3 branch matrix, then Gate B (auto-apply), then re-evaluate this same heuristic check. Do NOT write `.completed/step-3.5` on the continue path. Do NOT re-run sketches, dialectic, or Gate A — this is an operator-transparent equivalent of Gate C "Re-run review panel".
-- **Stop** — when `PLAN_REVIEW_CONTINUE=false`: proceed to Step 3b. The `.completed/step-3.5` fence at Step 3b entry writes the sentinel. Stop reasons include `small-clean`, `explicit-approve`, and `cap-reached`.
-
-The automatic loop is bounded by the flattened review cap of 5 in `review-round-count.txt`. Rounds 1-2 and 5 launch the full plan-review panel; rounds 3-4 may be mechanically pruned by `reviewer-prune.sh` based only on per-run accepted-finding history (`LARCH_REVIEWER_PRUNE=off` restores full-panel behavior). The continuation helper checks that cap **before** another `run-step3-review.sh` invocation, so a cap-edge round proceeds to Step 3b/Gate C with the current review artifacts intact instead of entering the driver's cap-reached cleanup path. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round, and the operator can still choose Gate C's manual **Re-run review panel** option when below cap. The continue predicates mirror `/implement` small-clean convergence: continue on degraded panel only when the round also has accepted findings, any High/Important effective accepted finding (including Gate B concern-text fallback), more than five non-nit accepted findings, or a first-round structural/large-change non-nit accepted set; stop on a non-degraded small-clean round and on degraded zero-finding rounds.
+**Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` and parse only its `PLAN_REVIEW_CONTINUE*` KVs. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, run `design-step3-state.sh --auto-continuation-entry`, and re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop` (never `--no-preview`). Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
 
 <!-- step:3b — Architecture Diagram -->
 
