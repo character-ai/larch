@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 from io import StringIO
 from pathlib import Path
 
@@ -78,6 +80,31 @@ def test_emit_kv_writes_key_equals_value(capsys: pytest.CaptureFixture[str]) -> 
     logging_util.emit_kv("STATUS", "ok")
     captured = capsys.readouterr()
     assert captured.out == "STATUS=ok\n"
+
+
+def test_emit_kv_uses_inherited_quiet_fd3(monkeypatch: pytest.MonkeyPatch) -> None:
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    backup_fd: int | None = None
+    with contextlib.suppress(OSError):
+        backup_fd = os.dup(3)
+    try:
+        _ = os.dup2(write_fd, 3)
+        os.close(write_fd)
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "12345")
+        monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+        logging_util.emit_kv("STATUS", "ok")
+        assert os.read(read_fd, 1024).decode("utf-8") == "STATUS=ok\n"
+    finally:
+        if backup_fd is not None:
+            _ = os.dup2(backup_fd, 3)
+            os.close(backup_fd)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(3)
+        os.close(read_fd)
+        logging_util.reset_quiet_state()
 
 
 def test_emit_kv_rejects_newline_in_value() -> None:

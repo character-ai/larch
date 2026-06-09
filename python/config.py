@@ -139,6 +139,7 @@ CI_MONITOR_LOG_TAIL_LINES: Final = 100
 CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",
+    "lint-local",
     "lint-mermaid",
     "shellcheck",
     "test-harnesses",
@@ -148,6 +149,7 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "agent-sync",
     "python-lint",
     "python-tests",
+    "bash32-check",
 })
 
 # Phase 5 — PR / merge / logging (live/default Python driver)

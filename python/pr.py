@@ -11,7 +11,7 @@ import pr_body
 import push
 import tracking_issue
 from errors import ShipError
-from proc import Runner
+from proc import CommandResult, Runner
 from retry import with_transient_retry
 from run_context import RunContext
 
@@ -166,7 +166,11 @@ def create_branch(
         return CreateBranchResult("invalid", branch, base, exit_code=2)
     if git.local_branch_exists(runner, branch, cwd=cwd):
         return CreateBranchResult("exists", branch, base, exit_code=1)
-    fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+    def attempt_fetch() -> tuple[CommandResult, int, str]:
+        result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    fetch = with_transient_retry(attempt_fetch).value
     if fetch.returncode != 0:
         return CreateBranchResult("fetch_failed", branch, base, exit_code=2)
     result = runner.run(["git", "checkout", "-b", branch, base], cwd=cwd)
@@ -285,10 +289,19 @@ def create_pr_parity(
         draft=draft,
         cwd=cwd,
     )
+    pr_title = created.title or title
+    if not was_created and not created.title:
+        pr_title = _pr_title_from_github(
+            runner,
+            number=created.number,
+            repo=repo,
+            fallback=title,
+            cwd=cwd,
+        )
     return PrResult(
         number=created.number,
         url=created.url,
         status="created" if was_created else "existing",
-        title=title,
+        title=pr_title,
         exit_code=0,
     )

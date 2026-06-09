@@ -96,8 +96,8 @@ def quiet_init(*, argv0: str | None = None) -> None:
 
 
 def contract_stream() -> TextIO:
-    """Return the contract stream: original stdout fd 3 after self quiet init."""
-    if _self_initialized_quiet:
+    """Return the contract stream: fd 3 after quiet init, else stdout."""
+    if _self_initialized_quiet or _quiet_active():
         try:
             return os.fdopen(os.dup(3), "w", encoding="utf-8", closefd=True)
         except OSError:

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import ci_monitor
+import git
 import logging_util
 import proc
 
@@ -36,6 +37,22 @@ def _status_error_kv() -> None:
     _emit_kv("CONFLICTED", "false")
 
 
+def _usage_error(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def _non_negative_int_error(name: str, value: float) -> str | None:
+    if value < 0:
+        return f"ERROR: --{name.replace('_', '-')} must be a non-negative integer, got: {value}"
+    return None
+
+
+def _base_ref_error(base_remote: str, base_ref: str) -> str | None:
+    if git.validate_base_remote_ref(base_remote, base_ref) is None:
+        return None
+    return "ERROR: --base-remote/--base-ref contain unsupported characters"
+
+
 def status_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci status")
     parser.add_argument("--pr", required=True, type=int)
@@ -45,6 +62,14 @@ def status_main(argv: list[str]) -> int:
     parser.add_argument("--empty-checks-grace", default=0, type=int)
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
+        _status_error_kv()
+        return 0
+    err = _non_negative_int_error("empty_checks_grace", args.empty_checks_grace) or _base_ref_error(
+        args.base_remote,
+        args.base_ref,
+    )
+    if err is not None:
+        _usage_error(err)
         _status_error_kv()
         return 0
     status = ci_monitor.gather_status(
@@ -153,11 +178,21 @@ def wait_main(argv: list[str]) -> int:
     parser.add_argument("--iteration", default=0, type=int)
     parser.add_argument("--rebase-count", default=0, type=int)
     parser.add_argument("--fix-attempts", default=0, type=int)
-    parser.add_argument("--timeout", default=1800, type=float)
+    parser.add_argument("--timeout", default=1800, type=int)
     parser.add_argument("--output-file", default="")
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
         return args
+
+    for name in ("rebase_count", "fix_attempts", "iteration", "timeout", "empty_checks_grace"):
+        err = _non_negative_int_error(name, getattr(args, name))
+        if err is not None:
+            _usage_error(err)
+            return 1
+    err = _base_ref_error(args.base_remote, args.base_ref)
+    if err is not None:
+        _usage_error(err)
+        return 1
 
     output_file = args.output_file
     out_path: Path | None = Path(output_file) if output_file else None
@@ -246,13 +281,14 @@ def wait_main(argv: list[str]) -> int:
     if output_file:
         return 0
 
-    lines = _wait_output_lines(
+    for line in _wait_output_lines(
         status,
         decision,
         iteration=args.iteration,
         elapsed=elapsed,
-    )
-    sys.stdout.write("\n".join(lines) + "\n")
+    ):
+        key, _, value = line.partition("=")
+        _emit_kv(key, value)
     return 0
 
 
@@ -272,7 +308,7 @@ def failed_jobs_main(argv: list[str]) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--output-tsv", default="")
-    args = _parse(parser, argv, 1)
+    args = _parse(parser, argv, 2)
     if isinstance(args, int):
         return args
     jobs, state = ci_monitor.read_failed_jobs(proc, run_id=args.run_id, repo=args.repo)

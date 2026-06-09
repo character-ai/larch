@@ -116,6 +116,40 @@ def test_status_usage_emits_error_kv_and_exits_zero(capsys):
     assert "BEHIND_COUNT=0" in out
 
 
+def test_status_rejects_invalid_base_ref(capsys):
+    assert ci_cli.status_main(["--pr", "1", "--repo", "o/r", "--base-ref", "bad ref"]) == 0
+    captured = capsys.readouterr()
+    assert "unsupported characters" in captured.err
+    assert "CI_STATUS=error" in captured.out
+
+
+def test_wait_rejects_negative_counter_before_output_file_cleanup(tmp_path, capsys):
+    out_file = tmp_path / "wait.out"
+    out_file.write_text("stale\n", encoding="utf-8")
+    assert (
+        ci_cli.wait_main(
+            ["--pr", "1", "--repo", "o/r", "--iteration", "-1", "--output-file", str(out_file)],
+        )
+        == 1
+    )
+    assert "non-negative integer" in capsys.readouterr().err
+    assert out_file.read_text(encoding="utf-8") == "stale\n"
+
+
+def test_failed_jobs_usage_exits_two():
+    assert ci_cli.failed_jobs_main([]) == 2
+
+
+def test_failed_jobs_classifies_legacy_fixable_jobs() -> None:
+    classified = ci_monitor.classify_failed_jobs(
+        (
+            ci_monitor.FailedJob(name="lint-local", conclusion="failure"),
+            ci_monitor.FailedJob(name="bash32-check", conclusion="failure"),
+        ),
+    )
+    assert [job.name for job in classified.fixable] == ["lint-local", "bash32-check"]
+
+
 def test_wait_bail_exits_zero_and_emits_contract(monkeypatch, capsys):
     status = ci_monitor.CiStatus(
         status="fail",

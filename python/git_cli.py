@@ -344,8 +344,9 @@ def phantom_probe_main(argv: list[str]) -> int:
     _emit_kv("PHANTOM_STATUS", result.dirty.status)
     if result.dirty.reason:
         _emit_kv("PHANTOM_REASON", result.dirty.reason)
-    _emit_kv("PHANTOM_COUNT", result.dirty.count)
-    _emit_kv("PHANTOM_PATHS_FILE", result.dirty.paths_file)
+    if result.dirty.status == "phantom":
+        _emit_kv("PHANTOM_COUNT", result.dirty.count)
+        _emit_kv("PHANTOM_PATHS_FILE", result.dirty.paths_file)
     if result.append_warn_error:
         _emit_kv("PHANTOM_APPEND_WARN_ERROR", result.append_warn_error)
     return 0

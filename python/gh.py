@@ -33,6 +33,7 @@ class PullRequest:
     head_ref: str
     merged_at: str | None = None
     merge_state_status: str | None = None
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -239,6 +240,7 @@ def _pull_request_from_json(data: Mapping[str, object], *, context: str) -> Pull
         head_ref=str(data["headRefName"]),
         merged_at=merged_at,
         merge_state_status=merge_state_status,
+        title=str(data.get("title") or ""),
     )
 
 
@@ -279,7 +281,7 @@ def pr_for_branch_read(
             "--state",
             "open",
             "--json",
-            "number,url,state,headRefName",
+            "number,url,state,headRefName,title",
             "--limit",
             "1",
         ],
@@ -314,6 +316,7 @@ def pr_for_branch(
         url=str(row["url"]),
         state=str(row["state"]),
         head_ref=str(row["headRefName"]),
+        title=str(row.get("title") or ""),
     )
 
 

@@ -54,6 +54,8 @@ def _baseline_dirty_probe(
         [script, "--mode", "baseline", "--baseline", baseline_file],
         cwd=cwd,
     )
+    if result.returncode != 0:
+        return "unknown", "check-mid-run-dirty-tree-failed", ""
     output = result.stdout
     if not output.strip():
         return "unknown", "check-mid-run-dirty-tree-failed", ""

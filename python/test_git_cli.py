@@ -80,3 +80,23 @@ def test_check_phantom_dirty_parse_error_emits_unknown(monkeypatch, capsys):
 def test_emit_kv_rejects_multiline_values() -> None:
     with pytest.raises(ValueError, match="newline"):
         git_cli._emit_kv("ERROR", "line1\nline2")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_snapshot_untracked_usage_does_not_create_output(tmp_path) -> None:
+    output = tmp_path / "should-not-exist.z"
+    assert git_cli.snapshot_untracked_main(["--unknown", str(output)]) == 0
+    assert not output.exists()
+
+
+def test_phantom_probe_clean_omits_optional_keys(monkeypatch, capsys) -> None:
+    def _clean_probe(*_args: object, **_kwargs: object) -> git_cli.phantom.PhantomProbeResult:
+        return git_cli.phantom.PhantomProbeResult(
+            dirty=git_cli.phantom.PhantomDirtyResult(status="clean"),
+        )
+
+    monkeypatch.setattr(git_cli.phantom, "probe_with_warn", _clean_probe)
+    assert git_cli.phantom_probe_main(["--step", "s1"]) == 0
+    out = capsys.readouterr().out
+    assert "PHANTOM_STATUS=clean" in out
+    assert "PHANTOM_COUNT=" not in out
+    assert "PHANTOM_PATHS_FILE=" not in out

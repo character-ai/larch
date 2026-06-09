@@ -443,11 +443,15 @@ def _rebase_push_force_with_lease(
     for push_attempt in range(1, push_max + 1):
         if not git.try_current_branch(runner, cwd=cwd):
             return False, f"Not on a branch (detached HEAD) before push attempt {push_attempt}"
-        push_result = runner.run(["git", "push", lease_arg], cwd=cwd)
+        def attempt_push() -> tuple[CommandResult, int, str]:
+            result = runner.run(["git", "push", lease_arg], cwd=cwd)
+            return result, result.returncode, result.stdout + result.stderr
+
+        push_result = retry.with_transient_retry(attempt_push).value
         if push_result.returncode == 0:
             return True, ""
         last_output = (push_result.stdout + push_result.stderr).replace("\n", " ").strip()
-        _ = git.fetch(runner, push_remote, branch, cwd=cwd)
+        _ = _transient_retry_git_result(lambda: git.fetch(runner, push_remote, branch, cwd=cwd))
         local_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
         remote_head = git.try_rev_parse(runner, f"{push_remote}/{branch}", cwd=cwd)
         if local_head and remote_head and local_head == remote_head:
@@ -455,6 +459,14 @@ def _rebase_push_force_with_lease(
         if push_attempt < push_max:
             _rebase_push_jitter_sleep(push_attempt, sleep_fn, rng)
     return False, last_output
+
+
+def _transient_retry_git_result(command: Callable[[], CommandResult]) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = command()
+        return result, result.returncode, result.stdout + result.stderr
+
+    return retry.with_transient_retry(attempt).value
 
 
 def rebase_push(
@@ -487,9 +499,11 @@ def rebase_push(
     if skip_if_pushed:
         branch = git.try_current_branch(runner, cwd=cwd)
         if branch:
-            remote = runner.run(
-                ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
-                cwd=cwd,
+            remote = _transient_retry_git_result(
+                lambda: runner.run(
+                    ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
+                    cwd=cwd,
+                ),
             )
             if remote.returncode == 0 and remote.stdout.strip():
                 return RebasePushResult(exit_code=0, skipped_already_pushed=True)
@@ -502,7 +516,7 @@ def rebase_push(
     else:
         if not git.try_current_branch(runner, cwd=cwd):
             return RebasePushResult(exit_code=3, rebase_error="Not on a branch (detached HEAD)")
-        fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        fetch_result = _transient_retry_git_result(lambda: git.fetch(runner, base_remote, base_ref, cwd=cwd))
         if no_push and fetch_result.returncode != 0:
             return RebasePushResult(exit_code=3, rebase_error=f"git fetch {base_remote} {base_ref} failed (network/auth issue)")
         if no_push and git.is_ancestor(runner, base_target, "HEAD", cwd=cwd):
@@ -527,12 +541,14 @@ def rebase_push(
     if not branch:
         return RebasePushResult(exit_code=2, push_error="Not on a branch (detached HEAD) before push")
     push_remote = git.resolve_branch_push_remote(runner, branch, cwd=cwd)
-    _ = git.fetch(runner, push_remote, branch, cwd=cwd)
+    _ = _transient_retry_git_result(lambda: git.fetch(runner, push_remote, branch, cwd=cwd))
     expected_remote_oid = git.try_rev_parse(runner, f"{push_remote}/{branch}", cwd=cwd)
     if expected_remote_oid is None:
-        remote_probe = runner.run(
-            ["git", "ls-remote", "--heads", push_remote, f"refs/heads/{branch}"],
-            cwd=cwd,
+        remote_probe = _transient_retry_git_result(
+            lambda: runner.run(
+                ["git", "ls-remote", "--heads", push_remote, f"refs/heads/{branch}"],
+                cwd=cwd,
+            ),
         )
         if remote_probe.returncode == 0 and remote_probe.stdout.strip():
             expected_remote_oid = remote_probe.stdout.strip().split()[0]

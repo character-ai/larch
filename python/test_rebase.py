@@ -507,6 +507,94 @@ def test_rebase_push_force_push_same_ref_recovery(tmp_path: Path) -> None:
     assert result.exit_code == 0
 
 
+def test_rebase_push_retries_transient_fetch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    fetch_calls = 0
+
+    def fetch_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
+        nonlocal fetch_calls
+        fetch_calls += 1
+        if fetch_calls == 1:
+            return _fail(argv, "fatal: Could not resolve host")
+        return _ok(argv)
+
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+            (("git", "fetch", "origin", "main", "--quiet"), fetch_once_then_ok),
+            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _ok(
+                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
+            )),
+        ],
+        permissive=False,
+    )
+    result = rebase.rebase_push(runner, no_push=True, cwd=str(tmp_path))
+    assert result.exit_code == 0
+    assert fetch_calls == 2
+
+
+def test_rebase_push_retries_skip_if_pushed_ls_remote(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    probe_calls = 0
+
+    def ls_remote_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
+        nonlocal probe_calls
+        probe_calls += 1
+        if probe_calls == 1:
+            return _fail(argv, "fatal: Could not resolve host")
+        return _ok(argv, "abc\trefs/heads/feat\n")
+
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+            (("git", "ls-remote", "--heads", "origin", "refs/heads/feat"), ls_remote_once_then_ok),
+        ],
+        permissive=False,
+    )
+    result = rebase.rebase_push(runner, skip_if_pushed=True, no_push=True, cwd=str(tmp_path))
+    assert result.exit_code == 0
+    assert result.skipped_already_pushed
+    assert probe_calls == 2
+
+
+def test_rebase_push_retries_transient_force_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    push_calls = 0
+
+    def push_once_then_ok(argv: tuple[str, ...]) -> CommandResult:
+        nonlocal push_calls
+        push_calls += 1
+        if push_calls == 1:
+            return _fail(argv, "fatal: Could not resolve host")
+        return _ok(argv)
+
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
+            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
+                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
+            )),
+            (("git", "rebase", "origin/main"), _ok(("git", "rebase", "origin/main"))),
+            (("git", "config", "--get", "branch.feat.pushRemote"), _ok(("git", "config"), "")),
+            (("git", "config", "--get", "branch.feat.remote"), _ok(("git", "config"), "")),
+            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
+            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
+            (("git", "push", "--force-with-lease=refs/heads/feat:abc"), push_once_then_ok),
+        ],
+        permissive=False,
+    )
+    result = rebase.rebase_push(runner, cwd=str(tmp_path))
+    assert result.exit_code == 0
+    assert push_calls == 2
+
+
 def test_rebase_push_invalid_flag_combo_exit_3() -> None:
     runner = ScriptRunner([], permissive=True)
     result = rebase.rebase_push(runner, skip_if_pushed=True, no_push=False)
