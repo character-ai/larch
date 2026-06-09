@@ -456,6 +456,64 @@ def test_larch_version_files_is_canonical_for_bump_paths(
     assert not rebase._conflicts_are_non_bump_only(("pkg/version.txt",))  # pyright: ignore[reportPrivateUsage]
 
 
+def test_rebase_push_conflict_returns_exit_1(tmp_path: Path) -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
+            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
+                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
+            )),
+            (("git", "rebase", "origin/main"), _fail(("git", "rebase", "origin/main"))),
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "README.md\n",
+            )),
+        ],
+        permissive=False,
+    )
+    result = rebase.rebase_push(runner, cwd=str(tmp_path))
+    assert result.exit_code == 1
+    assert result.conflict_files == "README.md"
+
+
+def test_rebase_push_force_push_same_ref_recovery(tmp_path: Path) -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+            (("git", "fetch", "origin", "main", "--quiet"), _ok(("git", "fetch", "origin", "main", "--quiet"))),
+            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _fail(
+                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
+            )),
+            (("git", "rebase", "origin/main"), _ok(("git", "rebase", "origin/main"))),
+            (("git", "config", "--get", "branch.feat.pushRemote"), _ok(("git", "config"), "")),
+            (("git", "config", "--get", "branch.feat.remote"), _ok(("git", "config"), "")),
+            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
+            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
+            (("git", "ls-remote", "--heads", "origin", "refs/heads/feat"), _ok(
+                ("git", "ls-remote", "--heads", "origin", "refs/heads/feat"),
+                "",
+            )),
+            (("git", "push", "--force-with-lease=refs/heads/feat:abc"), _fail(
+                ("git", "push", "--force-with-lease=refs/heads/feat:abc"),
+            )),
+            (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
+            (("git", "rev-parse", "HEAD"), _ok(("git", "rev-parse", "HEAD"), "abc\n")),
+            (("git", "rev-parse", "origin/feat"), _ok(("git", "rev-parse", "origin/feat"), "abc\n")),
+        ],
+        permissive=False,
+    )
+    result = rebase.rebase_push(runner, cwd=str(tmp_path))
+    assert result.exit_code == 0
+
+
+def test_rebase_push_invalid_flag_combo_exit_3() -> None:
+    runner = ScriptRunner([], permissive=True)
+    result = rebase.rebase_push(runner, skip_if_pushed=True, no_push=False)
+    assert result.exit_code == 3
+    assert "only valid with --no-push" in result.rebase_error
+
+
 def test_larch_bump_files_legacy_alias_when_version_files_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

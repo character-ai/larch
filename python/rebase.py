@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -414,6 +415,48 @@ def rebase_and_push(
     )
 
 
+def _rebase_push_jitter_sleep(attempt: int, sleep_fn: Callable[[float], None], rng: random.Random) -> None:
+    base = 1 * (2 ** (attempt - 1))
+    jitter = rng.randint(0, base // 2)
+    sleep_for = base + jitter - base // 4
+    sleep_fn(max(1, sleep_for))
+
+
+def _rebase_push_force_with_lease(
+    runner: Runner,
+    *,
+    push_remote: str,
+    branch: str,
+    expected_remote_oid: str,
+    cwd: str | None,
+    sleep_fn: Callable[[float], None] | None = None,
+    rng: random.Random | None = None,
+) -> tuple[bool, str]:
+    """Three-attempt force-with-lease loop (rebase-push.sh parity)."""
+    if sleep_fn is None:
+        sleep_fn = time.sleep
+    if rng is None:
+        rng = random.Random()
+    lease_arg = f"--force-with-lease=refs/heads/{branch}:{expected_remote_oid}"
+    push_max = 3
+    last_output = ""
+    for push_attempt in range(1, push_max + 1):
+        if not git.try_current_branch(runner, cwd=cwd):
+            return False, f"Not on a branch (detached HEAD) before push attempt {push_attempt}"
+        push_result = runner.run(["git", "push", lease_arg], cwd=cwd)
+        if push_result.returncode == 0:
+            return True, ""
+        last_output = (push_result.stdout + push_result.stderr).replace("\n", " ").strip()
+        _ = git.fetch(runner, push_remote, branch, cwd=cwd)
+        local_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+        remote_head = git.try_rev_parse(runner, f"{push_remote}/{branch}", cwd=cwd)
+        if local_head and remote_head and local_head == remote_head:
+            return True, ""
+        if push_attempt < push_max:
+            _rebase_push_jitter_sleep(push_attempt, sleep_fn, rng)
+    return False, last_output
+
+
 def rebase_push(
     runner: Runner,
     *,
@@ -493,12 +536,13 @@ def rebase_push(
         )
         if remote_probe.returncode == 0 and remote_probe.stdout.strip():
             expected_remote_oid = remote_probe.stdout.strip().split()[0]
-    push_result = git.force_push_recovery(
+    pushed, push_error = _rebase_push_force_with_lease(
         runner,
-        remote=push_remote,
-        expected_remote_oid=expected_remote_oid,
+        push_remote=push_remote,
+        branch=branch,
+        expected_remote_oid=expected_remote_oid or "",
         cwd=cwd,
     )
-    if push_result.pushed:
+    if pushed:
         return RebasePushResult(exit_code=0)
-    return RebasePushResult(exit_code=2, push_error=push_result.status)
+    return RebasePushResult(exit_code=2, push_error=push_error)

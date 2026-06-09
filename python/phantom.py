@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-import git
 from proc import Runner
 
 
@@ -33,20 +33,13 @@ def _newline_fold(text: str) -> str:
     return " ".join(text.split())
 
 
-def _nul_paths(text: str) -> list[str]:
-    if not text:
-        return []
-    return sorted({part for part in text.split("\0") if part})
-
-
-def _read_nul_paths(path: Path) -> frozenset[str]:
-    try:
-        data = path.read_bytes()
-    except OSError:
-        return frozenset()
-    if not data:
-        return frozenset()
-    return frozenset(part.decode() for part in data.split(b"\0") if part)
+def _parse_kv_output(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            fields[key] = value
+    return fields
 
 
 def _baseline_dirty_probe(
@@ -54,42 +47,29 @@ def _baseline_dirty_probe(
     baseline_file: str,
     *,
     cwd: str | None,
-) -> tuple[str, str, list[str]]:
-    """Port check-mid-run-dirty-tree.sh --mode baseline (subset for phantom mapping)."""
-    status_result = git.status_porcelain(runner, cwd=cwd)
-    if status_result.returncode != 0:
-        return "unknown", "git-status-failed", []
-
-    unstaged = runner.run(["git", "diff", "--name-only", "-z"], cwd=cwd)
-    if unstaged.returncode != 0:
-        return "unknown", "git-diff-failed", []
-    staged = runner.run(["git", "diff", "--name-only", "--cached", "-z"], cwd=cwd)
-    if staged.returncode != 0:
-        return "unknown", "git-diff-cached-failed", []
-
-    tracked = _nul_paths(unstaged.stdout) + [p for p in _nul_paths(staged.stdout) if p not in _nul_paths(unstaged.stdout)]
-    tracked = sorted(set(tracked))
-
-    untracked_result = runner.run(
-        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+) -> tuple[str, str, str]:
+    """Delegate to check-mid-run-dirty-tree.sh --mode baseline (bash parity)."""
+    script = str(_REPO_ROOT / "scripts" / "check-mid-run-dirty-tree.sh")
+    result = runner.run(
+        [script, "--mode", "baseline", "--baseline", baseline_file],
         cwd=cwd,
     )
-    if untracked_result.returncode != 0:
-        return "unknown", "git-ls-files-failed", []
-    current_untracked = _nul_paths(untracked_result.stdout)
+    output = result.stdout
+    if not output.strip():
+        return "unknown", "check-mid-run-dirty-tree-failed", ""
 
-    baseline_path = Path(baseline_file)
-    if baseline_path.is_file():
-        baseline_set = _read_nul_paths(baseline_path)
-        new_untracked = [path for path in current_untracked if path not in baseline_set]
-    else:
-        new_untracked = []
-        if current_untracked:
-            return "unknown", "baseline-missing-untracked-ambiguous", []
+    fields = _parse_kv_output(output)
+    status = fields.get("STATUS", "")
+    reason = fields.get("REASON", "")
+    new_untracked = fields.get("NEW_UNTRACKED_PATHS_FILE", "")
 
-    if tracked or new_untracked:
-        return "dirty", "working-tree-dirty", new_untracked
-    return "clean", "", []
+    if status == "clean":
+        return "clean", "", ""
+    if status == "unknown":
+        return "unknown", reason or "unknown", ""
+    if status == "dirty":
+        return "dirty", reason or "working-tree-dirty", new_untracked
+    return "unknown", "unparseable-check-output", ""
 
 
 def check_phantom_dirty(
@@ -97,35 +77,42 @@ def check_phantom_dirty(
     *,
     step: str,
     baseline_file: str | None = None,
+    phantom_paths_dir: str | None = None,
     cwd: str | None = None,
 ) -> PhantomDirtyResult:
     """Baseline phantom probe (check-phantom-dirty.sh parity without shell delegation)."""
     implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
-    if not implement_tmpdir:
-        return PhantomDirtyResult(status="unknown", reason="IMPLEMENT_TMPDIR-unset")
+    paths_dir = phantom_paths_dir or implement_tmpdir
+    if not paths_dir:
+        return PhantomDirtyResult(status="unknown", reason="phantom-paths-dir-required")
+    baseline = baseline_file or (f"{implement_tmpdir}/untracked-baseline.z" if implement_tmpdir else "")
+    if not baseline:
+        return PhantomDirtyResult(status="unknown", reason="baseline-required")
     if not _STEP_TOKEN_RE.fullmatch(step):
         return PhantomDirtyResult(status="unknown", reason="bad-step")
-    baseline = baseline_file or f"{implement_tmpdir}/untracked-baseline.z"
-    status, reason, new_untracked = _baseline_dirty_probe(runner, baseline, cwd=cwd)
+    status, reason, new_untracked_file = _baseline_dirty_probe(runner, baseline, cwd=cwd)
     if status == "clean":
         return PhantomDirtyResult(status="clean")
     if status == "unknown":
         return PhantomDirtyResult(status="unknown", reason=reason)
-    if new_untracked:
-        phantom_dir = Path(implement_tmpdir)
+    if new_untracked_file and Path(new_untracked_file).is_file() and Path(new_untracked_file).stat().st_size > 0:
+        phantom_dir = Path(paths_dir)
         try:
             phantom_dir.mkdir(parents=True, exist_ok=True)
         except OSError:
             return PhantomDirtyResult(status="unknown", reason="phantom-paths-dir-create-failed")
         paths_file = phantom_dir / f"phantom-paths-{step}.z"
-        payload = "\0".join(new_untracked).encode() + b"\0"
         try:
-            _ = paths_file.write_bytes(payload)
+            _ = shutil.copy2(new_untracked_file, paths_file)
         except OSError:
             return PhantomDirtyResult(status="unknown", reason="phantom-paths-write-failed")
+        try:
+            count = paths_file.read_bytes().count(b"\0")
+        except OSError:
+            return PhantomDirtyResult(status="unknown", reason="phantom-count-failed")
         return PhantomDirtyResult(
             status="phantom",
-            count=len(new_untracked),
+            count=count,
             paths_file=str(paths_file),
         )
     return PhantomDirtyResult(status="tracked-only")

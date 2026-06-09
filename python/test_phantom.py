@@ -19,9 +19,11 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
         _baseline_file: str,
         *,
         cwd: str | None,
-    ) -> tuple[str, str, list[str]]:
+    ) -> tuple[str, str, str]:
         del cwd
-        return ("dirty", "working-tree-dirty", ["a.txt", "b.txt"])
+        delta = impl / "delta.z"
+        _ = delta.write_bytes(b"a.txt\0b.txt\0")
+        return ("dirty", "working-tree-dirty", str(delta))
 
     monkeypatch.setattr(
         phantom,
@@ -29,7 +31,12 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
         dirty_probe,
     )
     runner = RecordingRunner()
-    result = phantom.check_phantom_dirty(runner, step="s1")
+    result = phantom.check_phantom_dirty(
+        runner,
+        step="s1",
+        baseline_file=str(impl / "baseline.z"),
+        phantom_paths_dir=str(impl),
+    )
     assert result.status == "phantom"
     assert result.count == 2
     assert result.paths_file == str(impl / "phantom-paths-s1.z")
@@ -46,9 +53,11 @@ def test_probe_with_warn_folds_append_failure(monkeypatch, tmp_path) -> None:
         _baseline_file: str,
         *,
         cwd: str | None,
-    ) -> tuple[str, str, list[str]]:
+    ) -> tuple[str, str, str]:
         del cwd
-        return ("dirty", "working-tree-dirty", ["only.txt"])
+        delta = impl / "delta.z"
+        _ = delta.write_bytes(b"only.txt\0")
+        return ("dirty", "working-tree-dirty", str(delta))
 
     monkeypatch.setattr(
         phantom,

@@ -266,16 +266,14 @@ def pr_for_branch_read(
     runner: Runner,
     branch: str,
     *,
-    repo: str,
+    repo: str | None,
     cwd: str | None = None,
 ) -> CommandResult:
-    return _retry_read(
-        runner,
+    argv = ["pr", "list"]
+    if repo:
+        argv.extend(["--repo", repo])
+    argv.extend(
         [
-            "pr",
-            "list",
-            "--repo",
-            repo,
             "--head",
             branch,
             "--state",
@@ -285,15 +283,15 @@ def pr_for_branch_read(
             "--limit",
             "1",
         ],
-        cwd=cwd,
     )
+    return _retry_read(runner, argv, cwd=cwd)
 
 
 def pr_for_branch(
     runner: Runner,
     branch: str,
     *,
-    repo: str,
+    repo: str | None,
     cwd: str | None = None,
 ) -> PullRequest | None:
     result = pr_for_branch_read(runner, branch, repo=repo, cwd=cwd)
@@ -328,7 +326,9 @@ _PR_URL_MIN_PARTS = 4
 _REPO_SLUG_PARTS = 2
 
 
-def _repo_matches_pr_url(repo: str, url: str) -> bool:
+def _repo_matches_pr_url(repo: str | None, url: str) -> bool:
+    if repo is None:
+        return True
     parsed = urlparse(url)
     parts = [part for part in parsed.path.split("/") if part]
     if len(parts) < _PR_URL_MIN_PARTS or parts[2].lower() != "pull":
@@ -355,13 +355,15 @@ def _validate_recovered_pr(
     runner: Runner,
     candidate: PullRequest,
     *,
-    repo: str,
+    repo: str | None,
     branch: str,
     cwd: str | None,
     allow_unverified: bool = False,
 ) -> PullRequest | None:
     if not _repo_matches_pr_url(repo, candidate.url):
         return None
+    if repo is None:
+        return candidate
     try:
         viewed = pr_view(runner, candidate.number, repo=repo, cwd=cwd)
     except TransientNetworkError:
@@ -385,7 +387,7 @@ def _recover_pr_from_urls(
     urls: Sequence[str],
     *,
     branch: str,
-    repo: str,
+    repo: str | None,
     cwd: str | None,
     allow_unverified: bool = False,
 ) -> PullRequest | None:
@@ -412,7 +414,7 @@ def _recover_pr_from_create_output(
     stderr: str,
     *,
     branch: str,
-    repo: str,
+    repo: str | None,
     cwd: str | None,
 ) -> PullRequest | None:
     for urls in (
@@ -438,7 +440,7 @@ def _recover_pr_from_conflict_text(
     text: str,
     *,
     branch: str,
-    repo: str,
+    repo: str | None,
     cwd: str | None,
 ) -> PullRequest | None:
     matches = _PR_CONFLICT_URL_RE.findall(text)
@@ -457,7 +459,7 @@ def _recover_pr_from_conflict_text(
 def pr_create(
     runner: Runner,
     *,
-    repo: str,
+    repo: str | None,
     branch: str,
     title: str,
     body: str,
@@ -473,8 +475,6 @@ def pr_create(
         argv = [
             "pr",
             "create",
-            "--repo",
-            repo,
             "--head",
             branch,
             "--title",
@@ -482,6 +482,8 @@ def pr_create(
             body_flag,
             body_path,
         ]
+        if repo:
+            argv[2:2] = ["--repo", repo]
         if assignee is not None:
             argv.extend(["--assignee", assignee])
         if base is not None:

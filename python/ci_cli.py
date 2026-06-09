@@ -7,9 +7,11 @@ import argparse
 import contextlib
 import os
 import re
+import signal
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import ci_monitor
 import logging_util
@@ -179,6 +181,40 @@ def wait_main(argv: list[str]) -> int:
     )
     elapsed = 0
     trap_exit = 0
+    published = False
+    old_signal_handlers: dict[int, signal.Handlers] = {}
+
+    def _publish_trap_output() -> None:
+        nonlocal published
+        if published or out_path is None:
+            return
+        published = True
+        lines = _wait_output_lines(
+            status,
+            decision,
+            iteration=args.iteration,
+            elapsed=elapsed,
+        )
+        text = "\n".join(lines) + "\n"
+        if _publish_wait_output(text, output_file):
+            done_path = out_path.with_name(out_path.name + ".done")
+            with contextlib.suppress(OSError):
+                _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
+
+    if output_file:
+
+        def _signal_handler(signum: int, _frame: object) -> None:
+            nonlocal trap_exit
+            trap_exit = 128 + signum
+            _publish_trap_output()
+            raise SystemExit(trap_exit)
+
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with contextlib.suppress(ValueError, OSError):
+                old_signal_handlers[sig] = cast(
+                    "signal.Handlers",
+                    signal.signal(sig, _signal_handler),
+                )
 
     try:
         started = time.monotonic()
@@ -200,19 +236,14 @@ def wait_main(argv: list[str]) -> int:
         trap_exit = 1
         if not output_file:
             raise
+    finally:
+        if output_file:
+            for sig, handler in old_signal_handlers.items():
+                with contextlib.suppress(ValueError, OSError):
+                    signal.signal(sig, handler)
+            _publish_trap_output()
 
-    if output_file and out_path is not None:
-        lines = _wait_output_lines(
-            status,
-            decision,
-            iteration=args.iteration,
-            elapsed=elapsed,
-        )
-        text = "\n".join(lines) + "\n"
-        if _publish_wait_output(text, output_file):
-            done_path = out_path.with_name(out_path.name + ".done")
-            with contextlib.suppress(OSError):
-                _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
+    if output_file:
         return 0
 
     lines = _wait_output_lines(

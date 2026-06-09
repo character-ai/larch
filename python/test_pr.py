@@ -291,6 +291,112 @@ def test_ensure_pr_threads_base_to_create() -> None:
     assert "main" in create_call
 
 
+def test_create_pr_parity_existing_open_uses_github_title() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _HEAD_FEAT,
+            _PORCELAIN_CLEAN,
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":3,"url":"https://github.com/o/r/pull/3","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
+            _PORCELAIN_CLEAN,
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "3"),
+                0,
+                "Existing title\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = pr_module.create_pr_parity(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="fallback",
+        body="body",
+    )
+    assert result.exit_code == 0
+    assert result.status == "existing"
+    assert result.title == "Existing title"
+
+
+def test_create_pr_parity_dirty_tree_exit_1() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _HEAD_FEAT,
+            CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                " M dirty.txt\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = pr_module.create_pr_parity(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="body",
+    )
+    assert result.exit_code == 1
+    assert result.status == "push_failed"
+
+
+def test_create_pr_parity_detached_head_exit_2() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 1, "", "", 0.01),
+        ],
+    )
+    result = pr_module.create_pr_parity(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="body",
+    )
+    assert result.exit_code == 2
+
+
+def test_create_pr_parity_omits_repo_when_unresolved() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _HEAD_FEAT,
+            _PORCELAIN_CLEAN,
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, "https://github.com/o/r/pull/9\n", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":9,"url":"https://github.com/o/r/pull/9","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    result = pr_module.create_pr_parity(
+        runner,
+        repo=None,
+        branch="feat",
+        title="t",
+        body="body",
+    )
+    create_calls = [call for call in runner.calls if call[:3] == ["gh", "pr", "create"]]
+    assert create_calls
+    assert "--repo" not in create_calls[0]
+    assert result.exit_code == 0
+
+
 def test_create_branch_ignores_tag_with_same_name() -> None:
     branch = "dev-user/feature"
     runner = RecordingRunner(

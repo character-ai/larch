@@ -365,8 +365,8 @@ def test_poll_ci_emits_poll_breadcrumb_to_stderr(
     assert "sleeping" in captured.err
 
 
-def test_poll_ci_pr_view_fail_open_polls_until_budget() -> None:
-    responses = _status(status="pass")
+def test_poll_ci_pr_view_fail_open_triggers_rebase_when_behind() -> None:
+    responses = _status(status="pass", behind=1)
     responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(
         ("gh", "pr", "view"),
         rc=1,
@@ -385,8 +385,45 @@ def test_poll_ci_pr_view_fail_open_polls_until_budget() -> None:
         timeout=1000.0,
         sleep_fn=lambda _s: None,
     )
-    assert decision.action == "bail"
-    assert "Poll budget" in (decision.bail_reason or "")
+    assert decision.action == "rebase"
+
+
+def test_poll_ci_retry_preserves_conflicted_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    status_calls = {"n": 0}
+
+    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
+        status_calls["n"] += 1
+        if status_calls["n"] == 1:
+            return ci_monitor.CiStatus(
+                status="",
+                behind_count=2,
+                failed_run_id=None,
+                conflicted=True,
+                pr_view_ok=False,
+            )
+        return ci_monitor.CiStatus(
+            status="pass",
+            behind_count=2,
+            failed_run_id=None,
+            conflicted=True,
+            pr_view_ok=True,
+        )
+
+    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
+    _, decision = ci_monitor.poll_ci(
+        RecordingRunner({}),
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=1000.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert decision.action == "rebase"
 
 
 def test_monitor_local_unfixable_maps_to_needs_user(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -455,8 +492,8 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.goto_rebase is False
 
 
-def test_monitor_pr_view_probe_fail_open_stalls_after_poll_budget() -> None:
-    responses = _status(status="pass")
+def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:
+    responses = _status(status="pass", behind=1)
     responses[
         (
             "gh",
@@ -478,10 +515,9 @@ def test_monitor_pr_view_probe_fail_open_stalls_after_poll_budget() -> None:
         sleep_fn=lambda _s: None,
     )
 
-    assert result.action == "bail"
-    assert result.ci_status == "pending"
-    assert result.result.outcome is Outcome.STALLED
-    assert "Poll budget" in (result.result.detail or "")
+    assert result.action == "rebase"
+    assert result.goto_rebase is True
+    assert result.ci_status == "pass"
 
 
 def test_poll_ci_suspend_not_charged() -> None:

@@ -76,7 +76,7 @@ def create_main(argv: list[str]) -> int:
     args = _parse(parser, argv)
     if args is None:
         return 1
-    repo = args.repo or gh.resolve_repo(proc) or ""
+    repo = args.repo or gh.resolve_repo(proc)
     if repo:
         repo_err = _validate_repo_arg(repo, script="create-pr.sh")
         if repo_err is not None:

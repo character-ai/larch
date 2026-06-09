@@ -506,18 +506,11 @@ def poll_ci(
                 status="pending",
                 behind_count=status.behind_count,
                 failed_run_id=status.failed_run_id,
+                conflicted=status.conflicted,
+                pr_view_ok=status.pr_view_ok,
             )
         else:
             ci_failures = 0
-
-        if status.status == "pass" and not status.pr_view_ok:
-            status = CiStatus(
-                status="pending",
-                behind_count=status.behind_count,
-                failed_run_id=status.failed_run_id,
-                conflicted=status.conflicted,
-                pr_view_ok=False,
-            )
 
         last_status = status
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -258,22 +259,72 @@ def check_remote_branch_main(argv: list[str]) -> int:
     return 0
 
 
+def _emit_phantom_dirty_result(result: phantom.PhantomDirtyResult) -> None:
+    _emit_kv("STATUS", result.status)
+    if result.reason:
+        _emit_kv("REASON", result.reason)
+    if result.status == "phantom":
+        _emit_kv("PHANTOM_COUNT", result.count)
+        _emit_kv("PHANTOM_PATHS_FILE", result.paths_file)
+
+
 def check_phantom_dirty_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py git check-phantom-dirty")
-    parser.add_argument("--baseline", "--baseline-file", dest="baseline_file", required=True)
-    parser.add_argument("--step", required=True)
-    args = _parse(parser, argv)
-    if args is None:
-        return 1
+    baseline = ""
+    step = ""
+    phantom_paths_dir = ""
+    parse_error = ""
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--baseline":
+            if index + 1 >= len(argv):
+                parse_error = "baseline-missing-value"
+                break
+            baseline = argv[index + 1]
+            index += 2
+            continue
+        if arg == "--step":
+            if index + 1 >= len(argv):
+                parse_error = "step-missing-value"
+                break
+            step = argv[index + 1]
+            index += 2
+            continue
+        if arg == "--phantom-paths-dir":
+            if index + 1 >= len(argv):
+                parse_error = "phantom-paths-dir-missing-value"
+                break
+            phantom_paths_dir = argv[index + 1]
+            index += 2
+            continue
+        parse_error = "unknown-flag"
+        break
+
+    if not parse_error:
+        if not baseline:
+            parse_error = "baseline-required"
+        elif not step:
+            parse_error = "step-required"
+        elif not phantom_paths_dir:
+            parse_error = "phantom-paths-dir-required"
+
+    if parse_error:
+        _emit_kv("STATUS", "unknown")
+        _emit_kv("REASON", parse_error)
+        return 0
+
+    if not re.fullmatch(r"^[A-Za-z0-9_.-]+$", step):
+        _emit_kv("STATUS", "unknown")
+        _emit_kv("REASON", "bad-step")
+        return 0
+
     result = phantom.check_phantom_dirty(
         proc,
-        step=args.step,
-        baseline_file=args.baseline_file,
+        step=step,
+        baseline_file=baseline,
+        phantom_paths_dir=phantom_paths_dir,
     )
-    _emit_kv("STATUS", result.status)
-    _emit_kv("REASON", result.reason)
-    _emit_kv("PHANTOM_COUNT", result.count)
-    _emit_kv("PHANTOM_PATHS_FILE", result.paths_file)
+    _emit_phantom_dirty_result(result)
     return 0
 
 

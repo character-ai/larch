@@ -186,25 +186,23 @@ def _pr_title_from_github(
     runner: Runner,
     *,
     number: int,
-    repo: str,
+    repo: str | None,
     fallback: str,
     cwd: str | None,
 ) -> str:
-    result = runner.run(
-        [
-            "gh",
-            "pr",
-            "view",
-            str(number),
-            "--repo",
-            repo,
-            "--json",
-            "title",
-            "-q",
-            ".title",
-        ],
-        cwd=cwd,
-    )
+    argv = [
+        "gh",
+        "pr",
+        "view",
+        str(number),
+        "--json",
+        "title",
+        "-q",
+        ".title",
+    ]
+    if repo:
+        argv[4:4] = ["--repo", repo]
+    result = runner.run(argv, cwd=cwd)
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
     return fallback
@@ -239,7 +237,7 @@ def _push_open_pr_branch(
 def create_pr_parity(
     runner: Runner,
     *,
-    repo: str,
+    repo: str | None,
     branch: str,
     title: str,
     body: str,

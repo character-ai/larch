@@ -149,6 +149,20 @@ def test_wait_bail_exits_zero_and_emits_contract(monkeypatch, capsys):
     assert "ELAPSED=" in lines[-1]
 
 
+def test_wait_output_file_publishes_on_poll_exception(monkeypatch, tmp_path):
+    def _boom(*_args: object, **_kwargs: object) -> tuple[object, object]:
+        raise RuntimeError("poll failed")
+
+    monkeypatch.setattr(ci_cli.ci_monitor, "poll_ci", _boom)
+    out_file = tmp_path / "wait.out"
+    assert ci_cli.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
+    text = out_file.read_text(encoding="utf-8")
+    assert "ACTION=bail" in text
+    assert "ci-wait.sh exited unexpectedly" in text
+    done = tmp_path / "wait.out.done"
+    assert done.read_text(encoding="utf-8").strip() == "1"
+
+
 def test_wait_output_file_writes_done_sentinel(monkeypatch, tmp_path):
     status = ci_monitor.CiStatus(
         status="pass",
