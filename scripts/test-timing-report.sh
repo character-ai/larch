@@ -61,6 +61,19 @@ jq -e '
   (.vendor_task_averages[] | select(.vendor == "codex" and .task_kind == "codex-implement" and .samples == 2 and .min_seconds == 120 and .max_seconds == 180))
 ' "$JSON_OUT" >/dev/null
 
+CLAUDE_LEDGER="$TMP_BASE/claude-timing.tsv"
+cat > "$CLAUDE_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 0	-	-	-	-	-	-	-	-
+v1	vendor	5	implement	-	claude	claude-code-voter	1	4	3	claude-code-voter.txt	0	complete
+v1	vendor	8	implement	-	claude	claude-phase3-security	4	10	6	claude-phase3-security.txt	0	complete
+EOF
+CLAUDE_JSON="$TMP_BASE/claude-report.json"
+"$REPO_ROOT/scripts/timing-report.sh" --ledger "$CLAUDE_LEDGER" --full --format json --output "$CLAUDE_JSON"
+jq -e '
+  (.vendor_task_averages[] | select(.vendor == "claude" and .task_kind == "claude-code-voter" and .samples == 1)) and
+  (.vendor_task_averages[] | select(.vendor == "claude" and .task_kind == "claude-phase3-security" and .samples == 1))
+' "$CLAUDE_JSON" >/dev/null
+
 
 ROUND_LEDGER="$TMP_BASE/rounds.tsv"
 cat > "$ROUND_LEDGER" <<'EOF'

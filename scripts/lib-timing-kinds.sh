@@ -12,6 +12,7 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-ci-fix
     cursor-ci-fix
     claude-ci-fix
+    claude-review
     codex-sketch-arch
     codex-sketch-edge
     codex-sketch-innovation
@@ -37,10 +38,20 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-plan-voter
     cursor-plan-voter
     claude-plan-voter
+    claude-code-voter
+    claude-plan-generic
+    claude-decomp-generic
+    claude-voter-1-parse-retry
     codex-plan-autofix
     cursor-plan-autofix
     codex-review-voter
     cursor-review-voter
+    claude-phase3-security
+    claude-phase3-correctness
+    claude-phase3-edge-cases
+    claude-phase3-testing
+    claude-phase3-aggregator
+    scout-dynamic-archetypes
     cursor-specialist-structure
     cursor-specialist-correctness
     cursor-specialist-testing

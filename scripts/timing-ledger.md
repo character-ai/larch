@@ -31,7 +31,7 @@ Path resolution:
 
 Appends use `flock -w 5` when available. If `flock` is missing entirely, the script warns once per process and falls back to a plain append (single-writer assumption). If `flock` is present but lock acquisition times out, the script warns once per process and skips the append (fail closed — an unlocked append would produce interleaved garbage). The ledger is `chmod 600` after each successful append. All failures warn to stderr and exit 0 so observability never interrupts the workflow. When ledger path resolution fails (no per-run root configured), `dump` writes the warning to stderr and produces no stdout output; callers that assume the first line is always a valid path must handle the empty case.
 
-Task-kind validation sources `scripts/lib-timing-kinds.sh`. Unknown but syntactically valid kebab-case kinds are written with a warning to avoid data loss. Malformed kinds are rejected.
+Task-kind validation sources `scripts/lib-timing-kinds.sh`. Unknown but syntactically valid kebab-case kinds are written with a warning to avoid data loss. Malformed kinds are rejected. `--vendor claude` follows the same warning-only allow-list behavior as `codex` and `cursor`, so generated Claude kinds such as `claude-phase3-dyn-*` are recorded when they fit the existing grammar. `record-vendor-task` also normalizes Claude launcher status aliases: `OK` → `complete`, and `ERROR`/`TIMEOUT` → `signal`.
 
 Known v1 limitation: direct `scripts/run-external-agent.sh` call sites do not emit vendor timing rows; only the six launch wrappers call `record-vendor-task`.
 
