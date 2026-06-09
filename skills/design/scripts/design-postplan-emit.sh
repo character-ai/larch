@@ -419,7 +419,6 @@ _postplan_finish_merged_plan_size() {
                 --exit-code 0 \
                 --category Warnings \
                 --output-file "$_drift_log" \
-                --redact \
                 >/dev/null 2>&1 || true
             rm -f "$_drift_log" 2>/dev/null || true
         fi
