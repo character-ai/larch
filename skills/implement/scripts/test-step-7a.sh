@@ -101,7 +101,27 @@ finish() {
 
 setup_plugin() {
     local root=$1
-    mkdir -p "$root/scripts" "$root/skills/implement/scripts"
+    mkdir -p "$root/scripts" "$root/skills/implement/scripts" "$root/python/stubs/session"
+    cp "$REPO_ROOT"/python/*.py "$root/python/"
+    mv "$root/python/cli.py" "$root/python/real-cli.py"
+    cat > "$root/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+    chmod +x "$root/python/cli.py"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cp "$REPO_ROOT/scripts/lib-redact.sh" "$root/scripts/lib-redact.sh"
@@ -235,7 +255,7 @@ printf 'larch-log.sh %s %s\n' "$cmd" "$*" >> "$STEP7A_CALLS_LOG"
 printf 'LOG_STATUS=ok\n'
 STUB
 
-    cat > "$root/python/cli.py session read-key" <<'STUB'
+    cat > "$root/python/stubs/session/read-key" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 file=""; key=""; default=""
@@ -249,6 +269,7 @@ while [ $# -gt 0 ]; do
 done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
+    chmod +x "$root/python/stubs/session/read-key"
 
     cat > "$root/scripts/append-tool-failure.sh" <<'STUB'
 #!/usr/bin/env bash

@@ -78,7 +78,40 @@ assert_design_route_pause_integration() {
   local tmp plugin body route_out
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-route-pause.XXXXXX")
   plugin="$tmp/plugin"
-  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts"
+  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts" "$plugin/python/stubs/session"
+  cp "$REPO_ROOT"/python/*.py "$plugin/python/"
+  mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+  cat >"$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+  cat >"$plugin/python/stubs/session/write-design-env" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
+exit 0
+EOF_FIXTURE
+  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/write-design-env"
   cp "$REPO_ROOT/scripts/lib-title-eligibility.sh" "$plugin/scripts/lib-title-eligibility.sh"
   cp "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" "$plugin/skills/design/scripts/step-name-registry.tsv"
   cat >"$plugin/scripts/lib-design-reentry-guard.sh" <<'EOF_FIXTURE'
@@ -123,20 +156,6 @@ case "${STUB_PAUSE_LOAD_MODE:-ok}" in
 esac
 EOF_FIXTURE
   chmod +x "$plugin/scripts/design-pause-load.sh"
-  cat >"$plugin/python/cli.py session write-design-env" <<'EOF_FIXTURE'
-#!/usr/bin/env bash
-out=""
-while [[ $# -gt 0 ]]; do
-  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
-  case "$1" in
-    --output) out="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
-exit 0
-EOF_FIXTURE
-  chmod +x "$plugin/python/cli.py session write-design-env"
   body="$tmp/issue-body.txt"
   printf '%s\n' 'fixture body' \
     '<!-- larch:design-pause:start -->' \

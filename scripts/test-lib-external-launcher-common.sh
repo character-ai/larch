@@ -656,11 +656,43 @@ run_health_gate_case() {
     local case_dir="$TMPDIR_ROOT/health-$label"
     local rc_file="$case_dir/rc"
     local call_file="$case_dir/checker-call"
-    mkdir -p "$case_dir/scripts" "$case_dir/bin"
+    mkdir -p "$case_dir/scripts" "$case_dir/bin" "$case_dir/python/stubs/session"
     cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$case_dir/scripts/lib-external-launcher-common.sh"
-    cp "$REPO_ROOT/python/cli.py" "$case_dir/python/cli.py session read-key"
+    cp "$REPO_ROOT"/python/*.py "$case_dir/python/"
+    mv "$case_dir/python/cli.py" "$case_dir/python/real-cli.py"
+    cat >"$case_dir/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+    cat >"$case_dir/python/stubs/session/read-key" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+file=""; key=""; default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) file=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
+EOF
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$case_dir/scripts/lib-quiet.sh"
-    chmod +x "$case_dir/python/cli.py session read-key"
+    chmod +x "$case_dir/python/cli.py" "$case_dir/python/stubs/session/read-key"
     cat > "$case_dir/scripts/check-reviewers.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

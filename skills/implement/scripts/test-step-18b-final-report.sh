@@ -47,11 +47,43 @@ assert_wrapper_did_not_create_step17_sentinel() {
 
 setup_stub_plugin() {
   local plugin=$1
-  mkdir -p "$plugin/scripts"
+  mkdir -p "$plugin/scripts" "$plugin/python/stubs/session"
   cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
   cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
-  cp "$REPO_ROOT/python/cli.py" "$plugin/python/cli.py session read-key"
-  chmod +x "$plugin/scripts/append-tool-failure.sh" "$plugin/python/cli.py session read-key"
+  cp "$REPO_ROOT"/python/*.py "$plugin/python/"
+  mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+  cat >"$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+  cat >"$plugin/python/stubs/session/read-key" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+file=""; key=""; default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) file=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
+STUB
+  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$plugin/scripts/append-tool-failure.sh"
   cat >"$plugin/scripts/token-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -215,16 +247,48 @@ assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never wri
 int_plugin="$TMP_ROOT/int-plugin"
 int_impl="$TMP_ROOT/int-implement-scripts"
 int_tmpdir="$TMP_ROOT/case-integration-real-wfr"
-mkdir -p "$int_plugin/scripts" "$int_impl" "$int_tmpdir/larch-logs/implement/run-int"
+mkdir -p "$int_plugin/scripts" "$int_plugin/python/stubs/session" "$int_impl" "$int_tmpdir/larch-logs/implement/run-int"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$int_plugin/scripts/lib-quiet.sh"
-cp "$REPO_ROOT/python/cli.py" "$int_plugin/python/cli.py session read-key"
+cp "$REPO_ROOT"/python/*.py "$int_plugin/python/"
+mv "$int_plugin/python/cli.py" "$int_plugin/python/real-cli.py"
+cat >"$int_plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+cat >"$int_plugin/python/stubs/session/read-key" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+file=""; key=""; default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) file=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
+STUB
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$int_plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/scripts/token-cost.sh" "$int_plugin/scripts/token-cost.sh"
 cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$int_plugin/scripts/lib-cost-line-format.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$int_plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
-chmod +x "$int_plugin/python/cli.py session read-key" "$int_plugin/scripts/append-tool-failure.sh" \
+chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" "$int_plugin/scripts/append-tool-failure.sh" \
   "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/scripts/token-cost.sh" \
   "$int_plugin/scripts/redact-secrets.sh"
 cat >"$int_plugin/scripts/token-report.sh" <<'STUB'

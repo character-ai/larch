@@ -11,7 +11,6 @@ import shlex
 import shutil
 import sys
 import tempfile
-import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -176,6 +175,14 @@ def _validate_writer_keys(data: dict[str, str], allowed: frozenset[str]) -> None
             raise ValueError(f"disallowed writer key: {key}")
 
 
+def _read_kv_file_text(path: Path) -> str:
+    text = path.read_bytes().decode("utf-8", errors="replace")
+    if "\r" in text:
+        msg = f"session env file contains carriage return: {path}"
+        raise ValueError(msg)
+    return text
+
+
 def cleanup_cache_sessions_root() -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg:
@@ -267,7 +274,11 @@ def read_finalize_state(path: str | Path) -> dict[str, str]:
     if not target.is_file():
         return {}
     data: dict[str, str] = {}
-    for line in target.read_text(encoding="utf-8").splitlines():
+    try:
+        lines = _read_kv_file_text(target).splitlines()
+    except ValueError as exc:
+        raise ShipError(str(exc)) from exc
+    for line in lines:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -300,7 +311,7 @@ def _read_kv_raw(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
     if not path.is_file():
         return data
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in _read_kv_file_text(path).splitlines():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -343,7 +354,7 @@ def _parse_key_value_file(path: str) -> dict[str, str]:
     if not path or not Path(path).is_file():
         return {}
     data: dict[str, str] = {}
-    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in _read_kv_file_text(Path(path)).splitlines():
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
@@ -507,7 +518,7 @@ def validate_design_tmpdir(candidate: str) -> tuple[bool, str]:
     if "\n" in candidate or "\r" in candidate:
         return False, "design-tmpdir: path must not contain newline or carriage return"
     if not candidate.startswith("/"):
-        return False, "ERROR=Invalid --design-tmpdir: must be an absolute path"
+        return False, "Invalid --design-tmpdir: must be an absolute path"
     segments = [segment for segment in candidate.split("/") if segment]
     if any(segment in {".", ".."} for segment in segments):
         return False, "design-tmpdir: path must not contain '.' or '..' segments"
@@ -545,7 +556,7 @@ def _recover_prior_bool(key: str, prior_file: Path) -> str:
         return ""
     pattern = re.compile(rf"^export {re.escape(key)}=(true|false)$")
     found = ""
-    for line in prior_file.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in _read_kv_file_text(prior_file).splitlines():
         m = pattern.match(line)
         if m:
             found = m.group(1)
@@ -713,7 +724,10 @@ def read_key_main(argv: list[str]) -> int:
     found = False
     prefix = f"{args.key}="
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = _read_kv_file_text(path).splitlines()
+    except ValueError as exc:
+        _err(str(exc))
+        return 1
     except OSError:
         if args.default is not None:
             _emit(args.default)
@@ -733,9 +747,14 @@ def read_key_main(argv: list[str]) -> int:
 
 def _uuid_or_basename(parent: Path) -> str:
     try:
-        return str(uuid.uuid4()).upper()
-    except Exception:
-        return parent.name
+        result = proc.run(["uuidgen"])
+        if result.returncode == 0:
+            value = result.stdout.strip()
+            if value:
+                return value
+    except (FileNotFoundError, OSError):
+        pass
+    return parent.name
 
 
 def write_id_main(argv: list[str]) -> int:
@@ -998,6 +1017,8 @@ def cleanup_tmpdir_main(argv: list[str]) -> int:
         with audit_log.open("a", encoding="utf-8") as handle:
             handle.write(f"{ts} pid={os.getpid()} ppid={os.getppid()} parent={parent} dir={target}\n")
     target_path = Path(target)
+    if not target_path.exists():
+        return 0
     try:
         shutil.rmtree(target_path)
     except OSError as exc:
@@ -1089,8 +1110,10 @@ def _make_session_tmpdir(prefix: str) -> Path:
 def _write_session_identity(tmpdir: Path, session_id: str) -> None:
     (tmpdir / "session-id").write_text(session_id + "\n", encoding="utf-8")
     sentinel = tmpdir / ".larch-keepalive"
-    with suppress(OSError):
+    try:
         sentinel.write_text(f"# larch session identity (hook routing)\nCLONE_PATH={Path.cwd()}\nSESSION_ID={session_id}\n", encoding="utf-8")
+    except OSError:
+        _err(f"session-setup.sh: warning: failed to write session identity: {sentinel}")
 
 
 def setup_main(argv: list[str]) -> int:

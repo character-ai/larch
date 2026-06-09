@@ -584,8 +584,41 @@ STEP18B_IMPL="$TMP_ROOT/step18b-implement-scripts"
 mkdir -p "$STEP18B_IMPL"
 cp "$SCRIPT_DIR/step-18b-final-report.sh" "$STEP18B_IMPL/step-18b-final-report.sh"
 cp "$HELPER" "$STEP18B_IMPL/write-final-report.sh"
-cp "$REPO_ROOT/python/cli.py" "$plugin/python/cli.py session read-key"
-chmod +x "$plugin/python/cli.py session read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
+mkdir -p "$plugin/python/stubs/session"
+cp "$REPO_ROOT"/python/*.py "$plugin/python/"
+mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+cat >"$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+cat >"$plugin/python/stubs/session/read-key" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+file=""; key=""; default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) file=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
+STUB
+chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
 cat > "$plugin/scripts/token-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail

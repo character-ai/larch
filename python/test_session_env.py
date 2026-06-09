@@ -82,6 +82,45 @@ def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
     assert "CLAUDE_PLUGIN_ROOT=/tmp/plugin-root" in plugin.read_text(encoding="utf-8")
 
 
+def test_write_env_writer_guard_rejects_cr_lf_symlink_and_disallowed_keys(tmp_path: Path) -> None:
+    out = tmp_path / "session-env.sh"
+    for bad_value, flag in (("token\nid", "--token-session-id"), ("token\rid", "--token-session-id"), ("run\nid", "--run-id")):
+        result = run_cli("write-env", "--output", str(out), "--repo-unavailable", "false", flag, bad_value)
+        assert result.returncode == 1, (bad_value, result.stderr)
+        assert "newline or carriage return" in result.stderr or "Invalid" in result.stderr
+    with pytest.raises(ValueError, match="disallowed writer key"):
+        session_env._validate_writer_keys({"EVIL_KEY": "x"}, session_env.WRITE_ENV_KEYS)  # pyright: ignore[reportPrivateUsage]
+    link = tmp_path / "session-env-link"
+    link.symlink_to(out)
+    symlink = run_cli("write-env", "--output", str(link), "--repo-unavailable", "false")
+    assert symlink.returncode == 1
+
+
+def test_read_key_rejects_carriage_return_injection(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("SAFE=value\rLARCH_TOKEN_SESSION_ID=attacker\n", encoding="utf-8")
+    result = run_cli("read-key", "--file", str(session), "--key", "SAFE")
+    assert result.returncode == 1
+    assert "carriage return" in result.stderr
+
+
+def test_write_design_env_relative_tmpdir_stderr_parity(tmp_path: Path) -> None:
+    out = tmp_path / "source-env.sh"
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        "relative/path",
+        "--session-id",
+        "sid-1",
+        env={"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
+    )
+    assert result.returncode == 1
+    assert result.stderr.count("ERROR=") == 1
+    assert "ERROR=Invalid --design-tmpdir: must be an absolute path" in result.stderr
+
+
 def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
@@ -525,6 +564,46 @@ def test_entry_gate_accepts_explicit_empty_current_branch() -> None:
     assert "ENTRY_GATE=continue" in design.stdout
 
 
+def test_entry_gate_failure_matrix() -> None:
+    base = ("--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
+
+    def expect_success(expected_gate: str, expected_skip: str, *args: str) -> None:
+        result = run_cli("entry-gate", *args)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == f"ENTRY_GATE={expected_gate}\nSKIP_BRANCH_CHECK={expected_skip}"
+        assert result.stderr == ""
+
+    def expect_failure(substring: str, *args: str) -> None:
+        result = run_cli("entry-gate", *args)
+        assert result.returncode == 4, (result.stdout, result.stderr)
+        assert result.stdout == ""
+        assert "GATE_ERROR=" in result.stderr or "error:" in result.stderr.lower()
+        assert substring in result.stderr
+
+    expect_success("strict", "false", *base)
+    expect_success("continue", "true", "--mode", "implement", "--current-branch", "sergey/foo", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "sergey")
+    expect_success("strict", "false", "--mode", "implement", "--current-branch", "random-branch", "--is-main", "false", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_success("strict", "false", "--mode", "implement", "--current-branch", "", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_success("continue", "true", "--mode", "design", "--current-branch", "sergey/foo", "--is-main", "false", "--is-user-branch", "true", "--user-prefix", "sergey", "--branch-info-supplied", "false")
+    expect_success("continue", "true", "--mode", "design", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "true")
+    expect_success("strict", "false", "--mode", "design", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "false")
+    expect_success("strict", "false", "--mode", "design", "--current-branch", "random-branch", "--is-main", "false", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "false")
+    expect_success("continue", "true", "--mode", "design", "--current-branch", "", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey", "--branch-info-supplied", "true")
+
+    expect_failure("invalid mode", "--mode", "foo", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_failure("missing required flag --mode", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_failure("expected one argument", "--mode")
+    expect_failure("invalid value for --is-main", "--mode", "implement", "--current-branch", "main", "--is-main", "yes", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_failure("invalid value for --is-user-branch", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "", "--user-prefix", "sergey")
+    expect_failure("expected one argument", "--mode", "implement", "--current-branch", "main", "--is-main")
+    expect_failure("missing required flag --current-branch", "--mode", "implement", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "sergey")
+    expect_failure("--user-prefix must be non-empty", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false", "--user-prefix", "")
+    expect_failure("missing required flag --user-prefix", "--mode", "implement", "--current-branch", "main", "--is-main", "true", "--is-user-branch", "false")
+    expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "true")
+    expect_failure("--branch-info-supplied not allowed for mode=implement", *base, "--branch-info-supplied", "false")
+    expect_failure("unknown argument", *base, "--bogus")
+
+
 def test_write_run_params_rejects_empty_boolean_flags(tmp_path: Path) -> None:
     out = tmp_path / "run-params.json"
     invalid = run_cli(
@@ -553,6 +632,13 @@ def test_cleanup_tmpdir_fails_when_removal_blocked(tmp_path: Path) -> None:
             assert "cleanup-tmpdir failed" in result.stderr
         finally:
             target.chmod(0o755)
+
+
+def test_cleanup_tmpdir_succeeds_when_target_already_absent(tmp_path: Path) -> None:
+    target = tmp_path / "already-gone"
+    result = run_cli("cleanup-tmpdir", "--dir", str(target), env={"TMPDIR": str(tmp_path)})
+    assert result.returncode == 0
+    assert result.stderr == ""
 
 
 def _git(args: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
