@@ -131,13 +131,36 @@ build_sandbox() {
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$SANDBOX/scripts/lib-execution-issues.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
-    cat > "$SANDBOX/python/cli.py session local-cleanup" <<'STUB'
+    mkdir -p "$SANDBOX/python/stubs/session"
+    cp "$SCRIPT_DIR/../python/"*.py "$SANDBOX/python/"
+    mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
+    cat >"$SANDBOX/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+    chmod +x "$SANDBOX/python/cli.py"
+
+    cat > "$SANDBOX/python/stubs/session/local-cleanup" <<'STUB'
 #!/usr/bin/env bash
 echo "CLEANUP_SUCCESS=${STUB_CLEANUP_SUCCESS:-true}"
 echo "CURRENT_BRANCH=${STUB_CURRENT_BRANCH:-main}"
 echo "BRANCH_DELETED=${STUB_BRANCH_DELETED:-true}"
 exit "${STUB_LOCAL_RC:-0}"
 STUB
+    chmod +x "$SANDBOX/python/stubs/session/local-cleanup"
     cat > "$SANDBOX/scripts/verify-main.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "VERIFIED=${STUB_VERIFIED:-true}"
@@ -173,7 +196,7 @@ echo "RENAMED=true"
 echo "NEW_TITLE=stub"
 exit 0
 STUB
-    cat > "$SANDBOX/python/cli.py session cleanup-tmpdir" <<STUB
+    cat > "$SANDBOX/python/stubs/session/cleanup-tmpdir" <<STUB
 #!/usr/bin/env bash
 dir=""
 while [ \$# -gt 0 ]; do
@@ -189,7 +212,8 @@ fi
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
 exit "\${STUB_CLEANUP_TMPDIR_RC:-0}"
 STUB
-    cat > "$SANDBOX/python/cli.py session read-key" <<'STUB'
+    chmod +x "$SANDBOX/python/stubs/session/cleanup-tmpdir"
+    cat > "$SANDBOX/python/stubs/session/read-key" <<'STUB'
 #!/usr/bin/env bash
 default=""
 while [ $# -gt 0 ]; do
@@ -200,6 +224,7 @@ while [ $# -gt 0 ]; do
 done
 printf '%s\n' "$default"
 STUB
+    chmod +x "$SANDBOX/python/stubs/session/read-key"
     cat > "$SANDBOX/scripts/token-ledger.sh" <<STUB
 #!/usr/bin/env bash
 echo "token-ledger \$*" >> "$SANDBOX/ledger-calls.txt"

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import finalize
+import proc
 import session_env
 
 if TYPE_CHECKING:
@@ -172,6 +173,137 @@ def test_restore_finalize_state_raw_rhs_and_20_keys(tmp_path: Path) -> None:
     assert "STALL_TRACKING=true" in lines
     assert "STALL_STEP=18a" in lines
     assert (tmp_path / "final-bail-reason.txt").read_text(encoding="utf-8") == "needs=user"
+
+
+def test_write_design_env_refresh_preserves_prior_bools(tmp_path: Path) -> None:
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    design = tmp_path / "design"
+    design.mkdir()
+    first = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "false",
+        "--claude-pid",
+        "42",
+        env=env,
+    )
+    assert first.returncode == 0, first.stderr
+    second = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "42",
+        env=env,
+    )
+    assert second.returncode == 0, second.stderr
+    text = out.read_text(encoding="utf-8")
+    assert "CODEX_PRESENT=true\n" in text
+    assert "CURSOR_PRESENT=false\n" in text
+
+
+def test_write_env_rejects_invalid_run_id(tmp_path: Path) -> None:
+    out = tmp_path / "session-env.sh"
+    bad = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo-unavailable",
+        "false",
+        "--run-id",
+        "bad id",
+        env={"CLAUDE_PLUGIN_ROOT": "/tmp/larch-plugin"},
+    )
+    assert bad.returncode == 1
+
+
+def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
+    class MissingGhRunner:
+        def run(self, argv: list[str], **kwargs: object) -> proc.CommandResult:
+            if argv and argv[0] == "gh":
+                raise FileNotFoundError("gh")
+            if argv and "github-remote-repo.sh" in argv[0]:
+                return proc.CommandResult(tuple(argv), 0, "owner/repo\n", "", 0.0)
+            return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
+
+    assert session_env._repo_from_gh_or_git(MissingGhRunner()) == "owner/repo"
+
+
+def test_setup_uses_caller_env_repo_without_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    caller = tmp_path / "caller.env"
+    caller.write_text("REPO=caller/repo\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
+    out = tmp_path / "session-env.sh"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    result = run_cli(
+        "setup",
+        "--prefix",
+        "pytest-",
+        "--skip-preflight",
+        "--skip-branch-check",
+        "--write-session-env",
+        str(out),
+        "--caller-env",
+        str(caller),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "REPO=caller/repo" in out.read_text(encoding="utf-8")
+
+
+def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "session-env.sh"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+    def fake_run(argv: list[str], **kwargs: object) -> proc.CommandResult:
+        if argv and argv[0] == "gh":
+            raise FileNotFoundError("gh")
+        if argv and "github-remote-repo.sh" in argv[0]:
+            return proc.CommandResult(tuple(argv), 0, "git-owner/repo\n", "", 0.0)
+        return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(session_env.proc, "run", fake_run)
+    rc = session_env.setup_main(
+        [
+            "--prefix",
+            "pytest-",
+            "--skip-preflight",
+            "--skip-branch-check",
+            "--write-session-env",
+            str(out),
+        ],
+    )
+    assert rc == 0
+    assert "REPO=git-owner/repo" in out.read_text(encoding="utf-8")
+
+
+def test_read_classification_missing_and_invalid_paths(tmp_path: Path) -> None:
+    missing = run_cli("read-classification", str(tmp_path / "missing.json"))
+    assert missing.stdout == "HARD\n"
+    assert "run-params not readable" in missing.stderr
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"workflow_path":"SIMPLE"}\n', encoding="utf-8")
+    invalid = run_cli("read-classification", str(bad))
+    assert invalid.stdout == "HARD\n"
+    assert "design_classification missing or invalid" in invalid.stderr
+
+
+def test_local_cleanup_rejects_main_branch() -> None:
+    result = run_cli("local-cleanup", "--branch", "main")
+    assert result.returncode == 1
+    assert "must not be 'main'" in result.stderr
 
 
 def test_cleanup_tmpdir_allowlist_and_cache_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

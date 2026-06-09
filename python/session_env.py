@@ -1041,7 +1041,10 @@ def entry_gate_main(argv: list[str]) -> int:
 
 
 def _repo_from_gh_or_git(runner: Runner) -> str:
-    gh = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+    try:
+        gh = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+    except (FileNotFoundError, OSError):
+        gh = proc.CommandResult(("gh",), 127, "", "", 0.0)
     if gh.returncode == 0 and gh.stdout.strip():
         return gh.stdout.strip()
     helper = runner.run([str(_scripts_dir() / "github-remote-repo.sh"), "origin"])

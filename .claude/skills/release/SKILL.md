@@ -226,7 +226,7 @@ GitHub auto-deletes the remote head branch on merge (`delete_branch_on_merge=tru
 
 ```bash
 set +e
-cleanup_out=$(python/cli.py session local-cleanup --branch "release/v${NEW_VERSION}")
+cleanup_out=$(python3 python/cli.py session local-cleanup --branch "release/v${NEW_VERSION}")
 cleanup_rc=$?
 set -e
 ```
