@@ -119,6 +119,62 @@ step3_loop_is_hard() {
     [[ "$tier" == HARD ]]
 }
 
+step3_loop_canonical_dir() {
+    (cd "$1" 2>/dev/null && pwd -P) || return 1
+}
+
+step3_loop_path_under_tmpdir() {
+    local path="$1" parent dir base real_parent real_path tmp_real
+    [[ "$path" == /* ]] || return 1
+    parent=$(dirname "$path")
+    base=$(basename "$path")
+    [[ -d "$parent" ]] || return 1
+    real_parent=$(step3_loop_canonical_dir "$parent") || return 1
+    tmp_real=$(step3_loop_canonical_dir "$DESIGN_TMPDIR") || return 1
+    real_path="$real_parent/$base"
+    case "$real_path" in
+        "$tmp_real"/*) ;;
+        *) return 1 ;;
+    esac
+    return 0
+}
+
+step3_loop_validate_tmpdir_file() {
+    local path="$1"
+    [[ -n "$path" ]] || return 1
+    step3_loop_path_under_tmpdir "$path" || return 1
+    [[ -f "$path" && ! -L "$path" && -r "$path" ]] || return 1
+    return 0
+}
+
+step3_loop_source_env_get() {
+    local key="$1" file="$2"
+    awk -v k="$key" '
+      BEGIN { q=sprintf("%c", 39) }
+      $1 == "export" {
+        v=$0
+        sub(/^[[:space:]]*export[[:space:]]+/, "", v)
+        if (index(v, k "=") != 1) next
+        sub("^[^=]*=", "", v)
+        if ((substr(v, 1, 1) == q && substr(v, length(v), 1) == q) ||
+            (substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")) {
+          v=substr(v, 2, length(v)-2)
+        }
+        print v
+        exit
+      }
+    ' "$file"
+}
+
+step3_loop_refresh_issue_from_source_env() {
+    local source_env="$DESIGN_TMPDIR/source-env.sh" _issue=""
+    [[ -f "$source_env" && ! -L "$source_env" && -r "$source_env" ]] || return 0
+    if [[ -z "${ISSUE_NUMBER:-}" ]]; then
+        _issue="$(step3_loop_source_env_get ISSUE_NUMBER "$source_env" 2>/dev/null || true)"
+        [[ -n "$_issue" && "$_issue" =~ ^[1-9][0-9]*$ ]] && ISSUE_NUMBER="$_issue"
+    fi
+}
+
 step3_loop_resolve_findings_file() {
     local round_num="$1" approval_env findings_file=""
     findings_file="$DESIGN_TMPDIR/accepted-plan-findings.md"
@@ -129,6 +185,10 @@ step3_loop_resolve_findings_file() {
                 FINDINGS_FILE=*) findings_file="${_line#FINDINGS_FILE=}" ;;
             esac
         done <"$approval_env"
+    fi
+    if [[ "$findings_file" != "$DESIGN_TMPDIR/accepted-plan-findings.md" ]] \
+        && ! step3_loop_validate_tmpdir_file "$findings_file"; then
+        findings_file="$DESIGN_TMPDIR/accepted-plan-findings.md"
     fi
     printf '%s\n' "$findings_file"
 }
@@ -167,8 +227,7 @@ step3_loop_record_timing() {
 
 step3_loop_honor_pause() {
     local pause_sh
-    # shellcheck source=/dev/null
-    [[ -f "$DESIGN_TMPDIR/source-env.sh" ]] && source "$DESIGN_TMPDIR/source-env.sh"
+    step3_loop_refresh_issue_from_source_env
     [[ -f "$DESIGN_TMPDIR/.pause-requested" ]] || return 0
     pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
     if [[ -n "${ISSUE_NUMBER:-}" ]]; then
@@ -217,10 +276,12 @@ step3_loop_run_apply() {
     fi
 
     findings_file="$(step3_loop_resolve_findings_file "$round_num")"
-    if [[ "$findings_file" != "$DESIGN_TMPDIR/accepted-plan-findings.md" && -s "$findings_file" ]]; then
+    if [[ "$findings_file" != "$DESIGN_TMPDIR/accepted-plan-findings.md" ]] \
+        && step3_loop_validate_tmpdir_file "$findings_file" && [[ -s "$findings_file" ]]; then
         cp "$findings_file" "$DESIGN_TMPDIR/accepted-plan-findings.md"
     fi
-    if [[ ! -s "$findings_file" ]]; then
+    if [[ ! -s "$findings_file" ]] || ! step3_loop_validate_tmpdir_file "$findings_file"; then
+        : >"$DESIGN_TMPDIR/accepted-plan-findings.md"
         step3_loop_consume_approval_env "$round_num"
         step3_loop_write_phase "$round_num" awaiting-continuation
         return 0
@@ -297,8 +358,7 @@ step3_loop_run_post_apply() {
             return 0
             ;;
         11)
-            # shellcheck source=/dev/null
-            [[ -f "$DESIGN_TMPDIR/source-env.sh" ]] && source "$DESIGN_TMPDIR/source-env.sh"
+            step3_loop_refresh_issue_from_source_env
             pause_sh="${RUN_STEP3_DESIGN_PAUSE_SAVE_SH:-$PLUGIN_ROOT/scripts/design-pause-save.sh}"
             if [[ -n "${ISSUE_NUMBER:-}" ]]; then
                 exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"

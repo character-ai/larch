@@ -353,4 +353,59 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continuation failure envelope'
 
 
+echo '=== per-round approval bail-out in awaiting-apply ==='
+D8="$TMP/per-round-approval-bail"
+write_common "$D8"
+write_ok_stubs "$D8"
+cat >"$D8/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
+JSON
+cat >"$D8/accepted-plan-findings.md" <<'FINDINGS'
+### FINDING_1: Important
+- **Severity**: important
+- **Concern**: issue
+FINDINGS
+printf 'awaiting-apply\n' >"$D8/.step3-round-1.phase"
+printf '1\n' >"$D8/review-round-count.txt"
+round_stub="$(write_round_stub "$D8" 'exit 99')"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D8/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D8/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D8/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D8/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D8/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$D8" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=per-round-approval-required' 'per-round approval bail-out envelope'
+
+
+echo '=== empty filtered per-round approval clears stale accepted findings ==='
+D9="$TMP/empty-filtered-approval"
+write_common "$D9"
+write_ok_stubs "$D9"
+cat >"$D9/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
+JSON
+cat >"$D9/accepted-plan-findings.md" <<'FINDINGS'
+### FINDING_1: Stale accepted
+- **Severity**: important
+- **Concern**: should be cleared
+FINDINGS
+: >"$D9/filtered-findings.md"
+printf 'FINDINGS_FILE=%s/filtered-findings.md\n' "$D9" >"$D9/.gate-b-per-round-approval-round-1.env"
+printf 'awaiting-apply\n' >"$D9/.step3-round-1.phase"
+printf '1\n' >"$D9/review-round-count.txt"
+round_stub="$(write_round_stub "$D9" 'exit 99')"
+out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D9/revise-ok.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$D9/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$D9/postplan-ok.sh" \
+  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D9/snapshot-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$D9/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$D9" --mode loop --starting-round 1)"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'empty filtered approval completes'
+[[ ! -s "$D9/accepted-plan-findings.md" ]] || fail 'empty filtered approval should clear stale accepted-plan-findings.md'
+
+
 printf 'PASS: test-review-design-step3-loop.sh\n'
