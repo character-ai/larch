@@ -1073,7 +1073,9 @@ EOF
 done
 
 # --- Review Phase Detail injection (issue #3774) ---
-rpd_dir="$TMP_ROOT/impl-rpd"; mkdir -p "$rpd_dir/round-1"
+# round-meta.json must be under run_dir (larch-logs/implement/$RUN_ID/round-N/), not
+# directly under IMPLEMENT_TMPDIR/round-N/. See issue #3794 for the path-mismatch bug.
+rpd_dir="$TMP_ROOT/impl-rpd"; mkdir -p "$rpd_dir/larch-logs/implement/run-rpd/round-1" "$rpd_dir/round-1"
 printf 'ISSUE_NUMBER=11\nRUN_ID=run-rpd\nADOPTED=true\n' > "$rpd_dir/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$rpd_dir/session-env.sh"
 {
@@ -1086,10 +1088,11 @@ printf 'REPO=owner/repo\n' > "$rpd_dir/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$rpd_dir/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\n' > "$rpd_dir/finalize-state.sh"
-mkdir -p "$rpd_dir/larch-logs/implement/run-rpd"
-cat > "$rpd_dir/round-1/round-meta.json" <<'JSON'
+# round-meta.json lives under run_dir (the committed run-log dir), not the live working dir.
+cat > "$rpd_dir/larch-logs/implement/run-rpd/round-1/round-meta.json" <<'JSON'
 {"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"1","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"1","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":4}}}
 JSON
+# panel-manifest.ndjson stays in the live working dir (not committed to run-log).
 cat > "$rpd_dir/round-1/panel-manifest.ndjson" <<'JSON'
 {"slot":"correctness","tool":"cursor","output":"/t/round-1/cursor-specialist-correctness-output.txt"}
 JSON
@@ -1103,6 +1106,33 @@ rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
 assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
 assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
 assert_contains 'cursor/correctness — 2' "$rpd_body" 'review phase detail top reviewer'
+# Regression (issue #3794): round-meta.json only under live working dir -> section absent.
+# This reproduces the path-mismatch bug: renderer must NOT find the table when
+# round-meta.json exists only under IMPLEMENT_TMPDIR/round-N/ (old wrong root).
+rpd_dir_regression="$TMP_ROOT/impl-rpd-regression"
+mkdir -p "$rpd_dir_regression/larch-logs/implement/run-rpd-r" "$rpd_dir_regression/round-1"
+printf 'ISSUE_NUMBER=50\nRUN_ID=run-rpd-r\nADOPTED=true\n' > "$rpd_dir_regression/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$rpd_dir_regression/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/50\n'
+    printf 'PR_NUMBER=50\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$rpd_dir_regression/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\n' > "$rpd_dir_regression/finalize-state.sh"
+# round-meta.json only in live working dir — NOT in run_dir; renderer must skip it.
+cat > "$rpd_dir_regression/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}
+JSON
+cat > "$rpd_dir_regression/larch-logs/implement/run-rpd-r/review-findings-full.jsonl" <<'JSON'
+{"id":"FINDING_1","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1"}
+JSON
+CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd-regression.md" \
+      "$HELPER" --implement-tmpdir "$rpd_dir_regression" >/dev/null
+assert_not_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content-rpd-regression.md")" 'regression #3794: round-meta only in live dir -> section absent (renderer uses run_dir not IMPLEMENT_TMPDIR)'
 # Happy path (run-5) has no review rounds -> section must be absent (e.g. --self-review).
 assert_not_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content.md")" 'no review rounds -> section omitted'
 
