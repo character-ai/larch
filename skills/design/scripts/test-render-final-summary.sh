@@ -730,4 +730,48 @@ set -e
 test "$rc" -eq 2 || fail 'invalid outcome must exit 2'
 pass 'invalid outcome rejected'
 
+RPD_D="$TMP/design-rpd"
+mkdir -p "$RPD_D/plan-review/round-1"
+cat >"$RPD_D/run-params.json" <<'JSON'
+{"classification":"SIMPLE","workflow_path":"SIMPLE"}
+JSON
+cat >"$RPD_D/voting-tally.md" <<'EOF'
+# Tally
+EOF
+cat >"$RPD_D/accepted-plan-findings.md" <<'EOF'
+### FINDING_D1: First accepted
+- **Reviewer**: Claude-Generic
+- **Focus area**: correctness
+- **Concern**: first concern
+
+### FINDING_D2: Second accepted
+- **Reviewer**: Claude-Generic
+- **Focus area**: correctness
+- **Concern**: second concern
+EOF
+: >"$RPD_D/oos-accepted-design.md"
+: >"$RPD_D/execution-issues.md"
+printf 'reviewer output\n' >"$RPD_D/claude-plan-generic-output.txt"
+printf '{"slot":"claude-plan-generic","tool":"claude_sub","output":"%s"}\n' \
+    "$RPD_D/claude-plan-generic-output.txt" >"$RPD_D/plan-review/round-1/plan-review-slots.ndjson"
+cp "$RPD_D/plan-review/round-1/plan-review-slots.ndjson" "$RPD_D/plan-review/round-1/panel-manifest.ndjson"
+cat >"$RPD_D/plan-review/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"1","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"1","OOS_ACCEPTED_COUNT":"1","OOS_REJECTED_COUNT":"1"},"summary":{"panel":{"total_slot_count":1}},"collector":"TOOL=unknown\nSTATUS=FAILED\nREVIEWER_FILE=collector-failure-1.txt\n"}
+JSON
+printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700000065\t65\t2\t1\t1\t-\n' \
+    >"$RPD_D/timing-ledger.tsv"
+std_rpd="$TMP/std-review-phase-detail.log"
+DESIGN_TMPDIR="$RPD_D" ISSUE_NUMBER="" SESSION_ID="RUN-RPD" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_rpd" 2>/dev/null
+grep -Fq -- '## Review Phase Detail' "$RPD_D/final-summary.md" \
+    || fail 'post-publish path missing Review Phase Detail section'
+grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 1m 05s | — | 1 |' "$RPD_D/final-summary.md" \
+    || fail "Review Phase Detail row wrong: $(grep -F '| 1 |' "$RPD_D/final-summary.md" || true)"
+grep -Fq -- '1. claude_sub/claude-plan-generic — 2' "$RPD_D/final-summary.md" \
+    || fail "Review Phase Detail top reviewer wrong: $(grep -F 'claude' "$RPD_D/final-summary.md" || true)"
+grep -Fq -- '**Reviewer slot failures**: 1' "$RPD_D/final-summary.md" \
+    || fail 'Review Phase Detail missing collector failure count'
+grep -Fq -- '## Review Phase Detail' "$std_rpd" || fail 'stdout missing Review Phase Detail section'
+pass 'post-publish appends Review Phase Detail from plan-review rounds'
+
 printf 'PASS: test-render-final-summary.sh\n'

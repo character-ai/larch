@@ -491,6 +491,60 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/rsplit-impl" --issue 2483 --output
 jq -e 'select(.id == "FINDING_88") | (.reviewer_slots | length) == 2 and .reviewer_slots[0] == "cursor-a-output.txt" and .reviewer_slots[1] == "codex-b-output.txt"' "$out" >/dev/null \
     || fail "reviewer_slots split mismatch for FINDING_88"
 
+echo "=== design path: accepted-all precedence, Gate B skip, slot basename mapping ==="
+mkdir -p "$TMP/design-map/plan-review/round-1" "$TMP/design-map/plan-review/round-2"
+cat >"$TMP/design-map/accepted-plan-findings.md" <<'EOF'
+### FINDING_OLD: Per-round file should lose to -all
+- **Reviewer**: Cursor-Arch
+- **Concern**: This file is not the cumulative source.
+EOF
+cat >"$TMP/design-map/accepted-plan-findings-all.md" <<'EOF'
+### FINDING_ALL: Cumulative accepted
+- **Reviewer**: Cursor-Arch
+- **Concern**: accepted all wins.
+
+### FINDING_SKIP: Skipped during Gate B
+- **Reviewer**: Cursor-Arch
+- **Concern**: skip me.
+
+### FINDING_DYN: Dynamic reviewer label
+- **Reviewers**: Codex-dyn-foo, Custom-Arch
+- **Concern**: dynamic label maps from round snapshots and prune map.
+
+### FINDING_CLAUDE: Generic Claude reviewer
+- **Reviewer(s)**: Claude-Generic, claude-plan-generic
+- **Concern**: generic Claude labels map to output basenames.
+EOF
+cat >"$TMP/design-map/rejected-findings.md" <<'EOF'
+### FINDING_SKIP: Skipped during Gate B
+- **Reviewer**: Cursor-Arch
+- **Concern**: skip me.
+- **Reason**: rejected by user during one-by-one review
+EOF
+cat >"$TMP/design-map/plan-review/round-1/plan-review-slots.ndjson" <<EOF
+{"slot":"cursor-plan-arch","tool":"cursor","output":"$TMP/design-map/cursor-plan-arch-output.txt"}
+EOF
+cat >"$TMP/design-map/plan-review/round-2/plan-review-slots.ndjson" <<EOF
+{"slot":"dyn-codex-plan-foo","tool":"codex","output":"$TMP/design-map/codex-primary-plan-dyn-foo-output.txt"}
+EOF
+cat >"$TMP/design-map/plan-review-slots.ndjson" <<EOF
+{"slot":"claude-plan-generic","tool":"claude_sub","output":"$TMP/design-map/claude-plan-generic-output.txt"}
+EOF
+cat >"$TMP/design-map/plan-review-prune-label-map.tsv" <<'EOF'
+cursor-plan-arch	Custom-Arch
+EOF
+out="$TMP/design-map.jsonl"
+stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/design-map" --issue 3776 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=3"* ]] || fail "design mapping total: $stdout"
+[[ -z "$(record_field_by_id "$out" FINDING_OLD phase)" ]] || fail "accepted-plan-findings.md should be ignored when -all exists"
+[[ -z "$(record_field_by_id "$out" FINDING_SKIP phase)" ]] || fail "Gate B skipped finding should be excluded"
+[[ "$(record_reviewer_slot0 "$out" FINDING_ALL)" == "cursor-plan-arch-output.txt" ]] \
+    || fail "Cursor-Arch should map to output basename"
+jq -e 'select(.id == "FINDING_DYN") | .reviewer_slots == ["codex-primary-plan-dyn-foo-output.txt","cursor-plan-arch-output.txt"]' "$out" >/dev/null \
+    || fail "dynamic/prune labels should map to basenames"
+jq -e 'select(.id == "FINDING_CLAUDE") | .reviewer_slots == ["claude-plan-generic-output.txt","claude-plan-generic-output.txt"]' "$out" >/dev/null \
+    || fail "Claude-Generic and raw claude-plan-generic should map to generic output basename"
+
 echo "=== invalid issue fails ==="
 set +e
 bad="$("$COMPOSE" --issue nope --output "$TMP/bad.jsonl" 2>&1)"

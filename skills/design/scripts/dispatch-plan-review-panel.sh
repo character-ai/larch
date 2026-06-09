@@ -89,6 +89,38 @@ emit_untrusted_dynamic_body() {
     printf '\n</dynamic_archetype_focus>\n'
 }
 
+_append_manifest_row() {
+    local slot="$1" tool="$2" output="$3" prompt_file="$4" manifest="$5"
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc \
+            --arg slot "$slot" \
+            --arg tool "$tool" \
+            --arg output "$output" \
+            --arg prompt_file "$prompt_file" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$manifest"
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$manifest" "$slot" "$tool" "$output" "$prompt_file" <<'PY'
+import json
+import sys
+
+path, slot, tool, output, prompt_file = sys.argv[1:6]
+row = {
+    "slot": slot,
+    "tool": tool,
+    "output": output,
+    "prompt_file": prompt_file,
+}
+with open(path, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(row, separators=(",", ":")) + "\n")
+PY
+        return 0
+    fi
+    larch_err "dispatch-plan-review-panel.sh: jq and python3 unavailable; cannot append manifest row"
+    return 1
+}
+
 write_dynamic_prompt() {
     local slug="$1" plan_path="$2" body_file="$3" out="$4"
     local vendor_note=""
@@ -182,6 +214,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     if [[ "$_generic_has_output" != true ]]; then
         : >"$_panel_paths"
     fi
+    _append_manifest_row "claude-plan-generic" "claude_sub" "$_generic_output" "$_generic_prompt" "$_manifest"
     emit_kv DISPATCH_OK "$_generic_dispatch_ok"
     emit_kv FALLBACK_COUNT 0
     emit_kv COMBINED_FALLBACK_COUNT 0
@@ -205,20 +238,16 @@ done
 
 for _archetype in arch edge innovation pragmatic requirements; do
     if [[ "$CURSOR_PRESENT" == "true" ]]; then
-        jq -nc \
-            --arg slot "cursor-plan-${_archetype}" \
-            --arg tool cursor \
-            --arg output "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
-            --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        _append_manifest_row "cursor-plan-${_archetype}" cursor \
+            "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
+            "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
+            "$_manifest"
     fi
     if [[ "$CODEX_PRESENT" == "true" ]]; then
-        jq -nc \
-            --arg slot "codex-plan-${_archetype}" \
-            --arg tool codex \
-            --arg output "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
-            --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        _append_manifest_row "codex-plan-${_archetype}" codex \
+            "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
+            "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
+            "$_manifest"
     fi
 done
 
@@ -237,20 +266,16 @@ if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout
         fi
         rm -f "$_body_tmp"
         if [[ "$CURSOR_PRESENT" == "true" ]]; then
-            jq -nc \
-                --arg slot "dyn-cursor-plan-${_slug}" \
-                --arg tool cursor \
-                --arg output "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
-                --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
-                '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+            _append_manifest_row "dyn-cursor-plan-${_slug}" cursor \
+                "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
+                "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
+                "$_manifest"
         fi
         if [[ "$CODEX_PRESENT" == "true" ]]; then
-            jq -nc \
-                --arg slot "dyn-codex-plan-${_slug}" \
-                --arg tool codex \
-                --arg output "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
-                --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
-                '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+            _append_manifest_row "dyn-codex-plan-${_slug}" codex \
+                "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
+                "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
+                "$_manifest"
         fi
     done < <(jq -c '.archetypes[]?' "$_scout_manifest")
 fi

@@ -166,8 +166,7 @@ JSON
     _reg_out="$WORK/reg-fail.txt"
     set +e
     (
-        REPO="$_bad_repo"
-        if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" 2>/dev/null)"; then
+        if ! _tc_out="$(bash "$_bad_repo/scripts/token-cost.sh" 2>/dev/null)"; then
             fail "token-cost.sh failed (rc=$?)"
         fi
     ) >"$_reg_out" 2>&1
@@ -178,5 +177,57 @@ JSON
 else
     printf 'SKIP: jq fromdateiso8601 unavailable; per-round vendor cost test skipped\n'
 fi
+
+DR="$WORK/design-run"
+mkdir -p "$DR/round-1"
+cat >"$DR/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"2","REJECTED_COUNT":"1","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"1","OOS_ACCEPTED_COUNT":"1","OOS_REJECTED_COUNT":"1"},"summary":{"panel":{"total_slot_count":1}},"collector":"TOOL=unknown\nSTATUS=FAILED\nREVIEWER_FILE=collector-failure-1.txt\n"}
+JSON
+cat >"$DR/round-1/panel-manifest.ndjson" <<'JSON'
+{"slot":"claude-plan-generic","tool":"claude_sub","output":"/t/design/claude-plan-generic-output.txt"}
+JSON
+cat >"$DR/review-findings-full.jsonl" <<'JSON'
+{"id":"FINDING_D1","outcome":"accepted","reviewer_slots":["claude-plan-generic-output.txt"],"round_num":""}
+{"id":"FINDING_D2","outcome":"accepted","reviewer_slots":["claude-plan-generic-output.txt"],"round_num":""}
+JSON
+printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700000065\t65\t2\t1\t1\t-\n' >"$DR/timing-ledger.tsv"
+DOUT="$WORK/design-section.md"
+"$HELPER" --rounds-root "$DR" --findings-file "$DR/review-findings-full.jsonl" \
+    --timing-ledger "$DR/timing-ledger.tsv" --skill design --output "$DOUT"
+grep -Fq -- '## Review Phase Detail' "$DOUT" || fail 'design fixture missing Review Phase Detail heading'
+grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 1m 05s | — | 1 |' "$DOUT" \
+    || fail "design fixture row wrong: $(grep -F '| 1 |' "$DOUT" || true)"
+grep -Fq -- '1. claude_sub/claude-plan-generic — 2' "$DOUT" \
+    || fail "design top reviewer attribution wrong: $(grep -F 'claude' "$DOUT" || true)"
+grep -Fq -- '**Reviewer slot failures**: 1' "$DOUT" || fail 'design collector placeholder failure count missing'
+grep -Fq -- '- unknown/collector-failure-1: 1' "$DOUT" \
+    || fail "design collector placeholder failure attribution wrong: $(grep -F 'collector-failure' "$DOUT" || true)"
+pass 'design skill fixture renders counts, attribution, and collector failures'
+
+ROUND_META="$REPO/scripts/write-design-round-meta.sh"
+TSV_SEC="$WORK/tsv-fallback-security-oos"
+mkdir -p "$TSV_SEC"
+cat >"$TSV_SEC/findings-classification.tsv" <<'TSV'
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool
+OOS_1	Codex-Security	accepted
+OOS_2	Codex-Security	rejected
+TSV
+cat >"$TSV_SEC/findings-oos.md" <<'MD'
+### OOS_1: Security hardening note
+- **Reviewer**: Codex-Security
+- focus-area = security
+- Concern: rotate keys.
+
+### OOS_2: Security rejected note
+- **Reviewer**: Codex-Security
+- focus-area = security
+- Concern: audit logging.
+MD
+printf '{"slot":"security","tool":"codex","output":"/t/sec-output.txt"}\n' >"$TSV_SEC/plan-review-slots.ndjson"
+"$ROUND_META" --round-dir "$TSV_SEC"
+jq -e '.tally.OOS_ACCEPTED_COUNT == "0" and .tally.OOS_REJECTED_COUNT == "0"' \
+    "$TSV_SEC/round-meta.json" >/dev/null \
+    || fail "TSV fallback should exclude security-tagged OOS counts"
+pass 'write-design-round-meta TSV fallback security OOS adjustment'
 
 printf 'PASS: test-render-review-phase-detail.sh\n'

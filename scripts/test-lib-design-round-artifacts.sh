@@ -41,6 +41,8 @@ assert_included oos-accepted-design.md
 assert_included oos-accepted-design.before.md
 assert_included ballot.txt
 assert_included voting-tally.md
+assert_included round-meta.json
+assert_included panel-manifest.ndjson
 assert_included plan-review-slots.ndjson
 assert_included plan-voter-slots.ndjson
 assert_included scout-plan-manifest.json

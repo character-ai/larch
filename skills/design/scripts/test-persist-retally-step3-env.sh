@@ -158,4 +158,113 @@ grep -q '^DEDUP_RC=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must d
 grep -q '^FINAL_ROUND_NUM=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must drop stale FINAL_ROUND_NUM'
 grep -Fqx 'LOOP_STATUS=complete' "$TMP/.step3-review-result.env" || fail 'ok re-tally must refresh LOOP_STATUS'
 
+RT="$TMP/retally-round-refresh"
+mkdir -p "$RT/plan-review/round-3"
+cat >"$RT/.step3-plan-review-result.env" <<'EOF'
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+ROUNDS_COMPLETED=3
+ACCEPTED_COUNT=0
+EOF
+cp "$RT/.step3-plan-review-result.env" "$RT/.step3-review-result.env"
+printf '9\n' >"$RT/review-round-count.txt"
+cat >"$RT/voting-tally.md" <<'EOF'
+## Findings
+| Item | YES | NO | JERR | Result |
+|---|---:|---:|---:|---|
+| FINDING_1 | 3 | 0 | 0 | accepted |
+| OOS_1 | 0 | 3 | 0 | rejected |
+EOF
+cat >"$RT/findings-classification.tsv" <<'EOF'
+finding_id	finding_reviewers	voting_result
+FINDING_99	Stale	accepted
+EOF
+cat >"$RT/plan-review/round-3/findings-classification.tsv" <<'EOF'
+finding_id	finding_reviewers	voting_result
+FINDING_3	RoundLocal	rejected
+EOF
+cat >"$RT/plan-review/round-3/plan-review-slots.ndjson" <<EOF
+{"slot":"cursor-plan-arch","tool":"cursor","output":"$RT/cursor-plan-arch-output.txt"}
+EOF
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\n' >"$RT/retally-ok.txt"
+printf 'anchor\n' >"$RT/anchor.txt"
+printf 'timing\trow\n' >"$RT/timing-ledger.tsv"
+
+"$SUBJECT" \
+    --design-tmpdir "$RT" \
+    --retally-stdout-file "$RT/retally-ok.txt" \
+    --retally-input-anchor "$RT/anchor.txt" \
+    --tally-plan-review-status ok \
+    --loop-status complete
+
+cmp -s "$RT/voting-tally.md" "$RT/plan-review/round-3/voting-tally.md" \
+    || fail 'ok re-tally should refresh resolved round voting-tally.md'
+jq -e '.tally.ACCEPTED_COUNT == "1" and .tally.OOS_REJECTED_COUNT == "1" and .summary.panel.total_slot_count == 1' \
+    "$RT/plan-review/round-3/round-meta.json" >/dev/null || fail 'ok re-tally should write non-zero round-meta for resolved round'
+grep -Fq 'RoundLocal' "$RT/plan-review/round-3/findings-classification.tsv" \
+    || fail 'ok re-tally must preserve existing round-local findings-classification.tsv'
+grep -Fq 'Stale' "$RT/plan-review/round-3/findings-classification.tsv" \
+    && fail 'ok re-tally must not copy stale session-root findings-classification.tsv'
+[[ "$(cat "$RT/timing-ledger.tsv")" == $'timing\trow' ]] \
+    || fail 'persist-retally-step3-env must not append timing rows'
+[[ ! -e "$RT/plan-review/round-9/round-meta.json" ]] \
+    || fail 'retally refresh must ignore misleading review-round-count.txt'
+
+RTP="$TMP/retally-round-num-preferred"
+mkdir -p "$RTP/plan-review/round-2" "$RTP/plan-review/round-4"
+cat >"$RTP/.step3-plan-review-result.env" <<'EOF'
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+ROUND_NUM=4
+ROUNDS_COMPLETED=2
+EOF
+cp "$RTP/.step3-plan-review-result.env" "$RTP/.step3-review-result.env"
+cat >"$RTP/voting-tally.md" <<'EOF'
+## Findings
+| Item | YES | NO | JERR | Result |
+|---|---:|---:|---:|---|
+| FINDING_4 | 3 | 0 | 0 | accepted |
+EOF
+printf '{"slot":"codex-plan-arch","tool":"codex","output":"%s/codex-primary-plan-arch-output.txt"}\n' "$RTP" >"$RTP/plan-review/round-4/plan-review-slots.ndjson"
+printf 'anchor\n' >"$RTP/anchor.txt"
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\n' >"$RTP/retally-ok.txt"
+"$SUBJECT" \
+    --design-tmpdir "$RTP" \
+    --retally-stdout-file "$RTP/retally-ok.txt" \
+    --retally-input-anchor "$RTP/anchor.txt" \
+    --tally-plan-review-status ok \
+    --loop-status complete
+[[ -s "$RTP/plan-review/round-4/round-meta.json" ]] || fail 'ROUND_NUM should select round 4 for metadata refresh'
+[[ ! -e "$RTP/plan-review/round-2/round-meta.json" ]] || fail 'ROUND_NUM should take precedence over ROUNDS_COMPLETED'
+
+RTE="$TMP/retally-tally-error-clears-meta"
+mkdir -p "$RTE/plan-review/round-5"
+cat >"$RTE/.step3-plan-review-result.env" <<'EOF'
+LOOP_STATUS=main-agent-vote-required
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+ROUND_NUM=5
+ACCEPTED_COUNT=7
+EOF
+cp "$RTE/.step3-plan-review-result.env" "$RTE/.step3-review-result.env"
+printf '{"tally":{"ACCEPTED_COUNT":"7"}}\n' >"$RTE/plan-review/round-5/round-meta.json"
+printf '{"slot":"stale","tool":"cursor","output":"stale-output.txt"}\n' >"$RTE/plan-review/round-5/panel-manifest.ndjson"
+printf 'old tally\n' >"$RTE/plan-review/round-5/voting-tally.md"
+printf 'new tally must not copy\n' >"$RTE/voting-tally.md"
+cat >"$RTE/accepted-plan-findings.md" <<'EOF'
+### FINDING_5: partial
+EOF
+printf 'anchor\n' >"$RTE/anchor.txt"
+printf 'TALLY_PLAN_REVIEW_STATUS=tally-error\n' >"$RTE/retally-error.txt"
+"$SUBJECT" \
+    --design-tmpdir "$RTE" \
+    --retally-stdout-file "$RTE/retally-error.txt" \
+    --retally-input-anchor "$RTE/anchor.txt" \
+    --tally-plan-review-status tally-error \
+    --loop-status complete
+[[ ! -e "$RTE/plan-review/round-5/round-meta.json" ]] || fail 'tally-error should remove stale round-meta.json'
+[[ ! -e "$RTE/plan-review/round-5/panel-manifest.ndjson" ]] || fail 'tally-error should remove stale panel-manifest.ndjson'
+grep -Fqx 'old tally' "$RTE/plan-review/round-5/voting-tally.md" \
+    || fail 'tally-error must not refresh voting-tally.md'
+[[ ! -s "$RTE/accepted-plan-findings.md" ]] || fail 'tally-error should clear partial accepted-plan-findings.md in refresh coverage'
+
 pass 'persist-retally-step3-env harness'

@@ -1,7 +1,7 @@
 # render-review-phase-detail.sh
 
 Renders the **Review Phase Detail** markdown section appended to the
-`/implement` final report (issue #3774). It summarizes the multi-round code
+`/implement` final report and the `/design` final summary (issue #3774). It summarizes the multi-round code
 review: one table row per review round, a Total row, the top-N reviewers by
 suggestions accepted, and a count of failed reviewer slots — each broken down
 by `vendor/archetype`.
@@ -21,7 +21,7 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 | `--findings-file F` | no | `review-findings-full.jsonl` for top-reviewer attribution. |
 | `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column **and** the per-round cost window. |
 | `--token-ledger F` | no | `larch-tokens-<hash>.jsonl`; vendor token records (timestamp-windowed to each round) supply the per-round vendor Cost column. |
-| `--skill implement\|design` | no | Default `implement`. Reserved for a future `/design` per-round path (see below). |
+| `--skill implement\|design` | no | Default `implement`; `design` renders the same table from design plan-review round artifacts. |
 | `--top-n N` | no | Top-reviewers cap (default `7`). |
 | `--output F` | no | Write the section to `F`; otherwise print to stdout. |
 
@@ -74,12 +74,7 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 
 ## `/design` scope
 
-`/design`'s plan-review currently produces no `round-<N>/round-meta.json` and no
-`review-findings-full.jsonl` (different data model), so this helper is wired into
-`/implement` only. Extending it to `/design` requires upstream instrumentation of
-the design plan-review loop (per-round metadata + a `compose-review-findings.sh`
-call on the design path); the `--skill design` flag is accepted so the wiring is
-forward-compatible.
+`/design` plan-review now feeds this renderer through `skills/design/scripts/render-final-summary.sh --skill design`. `scripts/write-design-round-meta.sh` emits per-round `round-meta.json` and `panel-manifest.ndjson` under `plan-review/round-N/` from snapshotted `voting-tally.md`, fallback `findings-classification.tsv`, and `plan-review-slots.ndjson`; it never reads mutable session-root tally files for counts. The design tally contract uses the same six keys as implement (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`) and `summary.panel.total_slot_count`. When collection fails before reviewer records exist, the writer inserts placeholder collector blocks with `TOOL=unknown`, `STATUS=FAILED`, and `REVIEWER_FILE=collector-failure-N.txt`, allowing the failed-slot count to render instead of a false zero. `render-final-summary.sh` composes design `review-findings-full.jsonl` before invoking this renderer.
 
 ## Harness
 
@@ -88,7 +83,9 @@ forward-compatible.
 
 ## Edit-in-sync
 
-- `skills/implement/scripts/write-final-report.sh` (caller) and
+- `skills/implement/scripts/write-final-report.sh` and
   `skills/implement/scripts/write-final-report.md`.
+- `skills/design/scripts/render-final-summary.sh` and
+  `skills/design/scripts/render-final-summary.md`.
 - `scripts/test-render-review-phase-detail.sh` (+ `.md`) and the Makefile target /
   shard registration.
