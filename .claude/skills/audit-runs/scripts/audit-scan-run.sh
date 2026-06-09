@@ -621,7 +621,7 @@ scan_coder_tool() {
 
 # ---- Scan: trailing-content-no-issues-found ----
 scan_trailing_content_no_issues_found() {
-    local count=0 signals_json trailing
+    local count=0 signals_json
     signals_json=$(_audit_reviewer_signals_jq '
         map(.reviewer_signals // [])
         | add // []

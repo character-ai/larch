@@ -859,7 +859,7 @@ echo "=== SIMPLE binds ROUND_NUM to STEP3_REVIEW_ROUND_NUM ==="
 D_ROUND_SIMPLE="$TMP/simple-round-bind"
 write_common_inputs "$D_ROUND_SIMPLE" SIMPLE
 printf '1\n' >"$D_ROUND_SIMPLE/review-round-count.txt"
-stub="$(write_loop_stub "$D_ROUND_SIMPLE" 'printf "%s\n" "$*" >>"$DESIGN_TMPDIR/loop-argv.log"; printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n"; exit 0')"
+stub="$(write_loop_stub "$D_ROUND_SIMPLE" "printf '%s\n' \"\$*\" >>\"\$DESIGN_TMPDIR/loop-argv.log\"; printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D_ROUND_SIMPLE" >/dev/null
 grep -Fq -- '--round-num 2' "$D_ROUND_SIMPLE/loop-argv.log" || fail 'SIMPLE should pass review counter as --round-num'
@@ -880,7 +880,7 @@ case "${1:-}" in
 esac
 EOF
 chmod +x "$snap_stub"
-stub="$(write_loop_stub "$D_ROUND_HARD" 'printf "%s\n" "$*" >>"$DESIGN_TMPDIR/loop-argv.log"; printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n"; exit 0')"
+stub="$(write_loop_stub "$D_ROUND_HARD" "printf '%s\n' \"\$*\" >>\"\$DESIGN_TMPDIR/loop-argv.log\"; printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D_ROUND_HARD" >/dev/null
 grep -Fq -- '--round-num 3' "$D_ROUND_HARD/loop-argv.log" || fail 'HARD should advance cursor to round 3'

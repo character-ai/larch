@@ -377,7 +377,7 @@ case "$cmd" in
 
     write-round)
         LOG_ROOT=""; SKILL=""; RUN_ID=""; ROUND_NUM=""; SOURCE_DIR=""
-        round_dir=""; prev_round_dir=""; written=false; found=false; round_tmp=""; src=""; name=""; dest=""
+        round_dir=""; prev_round_dir=""; written=false; round_tmp=""; src=""; name=""; dest=""
         dynamic_dir=""; seen_round_artifacts=""; sidecar_paths=""; archetype_paths=""
         while [ $# -gt 0 ]; do
             case "$1" in
@@ -402,7 +402,6 @@ case "$cmd" in
         prev_round_dir="$(larch_log_run_dir "$SKILL" "$RUN_ID")/round-$((ROUND_NUM - 1))"
         mkdir -p "$round_dir" || larch_log_fail 2 "cannot create round log directory: $round_dir"
         written=false
-        found=false
         round_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round.XXXXXX")" || larch_log_fail 2 "cannot create round artifact temp"
         seen_round_artifacts="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-seen.XXXXXX")" || larch_log_fail 2 "cannot create round basename temp"
         sidecar_paths="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-sidecars.XXXXXX")" || larch_log_fail 2 "cannot create sidecar paths temp"
@@ -416,7 +415,6 @@ case "$cmd" in
             if is_round_sidecar_file "$name"; then
                 [ -f "$src" ] || continue
                 [ ! -L "$src" ] || continue
-                found=true
                 printf '%s\t%s\n' "$name" "$src" >> "$sidecar_paths"
                 continue
             fi
@@ -426,7 +424,6 @@ case "$cmd" in
                 reviewer-dyn-*.md)
                     [ -f "$src" ] || continue
                     [ ! -L "$src" ] || continue
-                    found=true
                     printf '%s\n' "$src" >> "$archetype_paths"
                     continue
                     ;;
@@ -448,7 +445,6 @@ case "$cmd" in
                 scout-round*-manifest.json)
                     _prev_m="$prev_round_dir/$name"
                     if [ -f "$_prev_m" ] && cmp -s "$src" "$_prev_m"; then
-                        found=true
                         continue
                     fi
                     ;;
@@ -459,7 +455,6 @@ case "$cmd" in
                 larch_log_fail 2 "duplicate round artifact basename '$name' from $src and $prev_src"
             fi
             printf '%s\t%s\n' "$name" "$src" >> "$seen_round_artifacts"
-            found=true
             : > "$round_tmp"
             stage_round_artifact "$src" "$round_tmp"
             dest="$round_dir/$name"
