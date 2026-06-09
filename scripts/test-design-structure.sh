@@ -13,6 +13,7 @@ APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 PLAN_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
+PLAN_LOOP_MD="$REPO_ROOT/skills/design/scripts/plan-review-loop.md"
 PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
@@ -1877,8 +1878,8 @@ contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-revie
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
 # shellcheck disable=SC2016 # $ tokens are literal grep pins
-absent "$RUN_STEP3_SH" '--prune-round-num "$STEP3_REVIEW_ROUND_NUM"' 'run-step3-review.sh must not thread --prune-round-num; plan-review-loop reads review-round-count.txt directly'
-contains "$PLAN_LOOP_SH" 'review-round-count.txt' 'plan-review-loop.sh missing review-round-count.txt file-based prune-round fallback'
+contains "$RUN_STEP3_SH" '--prune-round-num "$STEP3_REVIEW_ROUND_NUM"' 'run-step3-review.sh must thread explicit --prune-round-num to plan-review-loop'
+contains "$PLAN_LOOP_MD" 'defaults to `--round-num` without reading `$DESIGN_TMPDIR/review-round-count.txt`' 'plan-review-loop.md missing stateless prune-round fallback contract'
 contains "$SKILL_MD" 'restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode)' 'SKILL.md missing --per-round-approval explicit Gate B settle path'
 contains "$SKILL_MD" 'auto-applies** every accepted in-scope finding with no' 'SKILL.md missing Gate B auto-apply default routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins

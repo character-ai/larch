@@ -88,7 +88,7 @@ EOF
     printf '%s\n' "$stub"
 }
 
-launcher_env=(env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
+launcher_env=(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
 
 echo "=== missing --design-tmpdir ==="
 set +e
@@ -136,6 +136,40 @@ stub="$(write_loop_stub "$D_DEFAULT" "printf 'LOOP_STATUS=complete\nACCEPTED_COU
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D_DEFAULT")"
 assert_contains "$out" 'LOOP_STATUS=complete' 'omitted mode defaults to no-preview review path'
+
+
+
+echo "=== --mode loop validates starting-round phase evidence ==="
+D_LOOP_VAL="$TMP/loop-validation"
+write_common_inputs "$D_LOOP_VAL" SIMPLE
+printf '2\n' >"$D_LOOP_VAL/review-round-count.txt"
+set +e
+out=$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$D_LOOP_VAL" --mode loop --starting-round 1 2>&1)
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass '--mode loop starting-round without phase exits 2'
+else
+    fail "--mode loop starting-round without phase rc=$rc"
+fi
+assert_contains "$out" 'requires phase evidence' '--mode loop missing phase error'
+
+printf 'awaiting-continuation\n' >"$D_LOOP_VAL/.step3-round-2.phase"
+cont_stub="$(write_loop_stub "$D_LOOP_VAL" "printf 'PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\n'")"
+out=$("${launcher_env[@]}" RUN_STEP3_CONTINUATION_SH="$cont_stub" "$LAUNCHER" --design-tmpdir "$D_LOOP_VAL" --mode loop --starting-round 2)
+assert_contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' '--mode loop resumes with phase evidence'
+
+echo "=== --mode loop rejects --round-num misuse ==="
+set +e
+out=$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --mode loop --round-num 1 2>&1)
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass '--mode loop --round-num exits 2'
+else
+    fail "--mode loop --round-num rc=$rc"
+fi
+assert_contains "$out" '--mode loop does not take --round-num' '--mode loop --round-num error'
 
 echo "=== --preview-only renders plan and creates sentinel ==="
 D_PV="$TMP/preview"
@@ -664,7 +698,7 @@ cat >"$seam_stub" <<'STUBEOF'
 set -euo pipefail
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--timeout)
+        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--prune-round-num|--timeout)
             shift 2
             ;;
         *)

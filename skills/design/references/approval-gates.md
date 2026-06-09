@@ -58,7 +58,7 @@ When the user picks **Ready for review**:
 
 ## Gate B — Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. The Step 3 review pass has not revised `plan.txt`; Gate B is the single apply point for accepted findings, auto-applying by default and prompting only when `--approve` set `approve_requested=true`. Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `panel-failed`) bypass Step 3.5 before Step 3b (see SKILL.md post-loop branch matrix).
+**When**: after Step 3 review completes or when the script-internal Step 3 loop bails out. On the happy path, `review-design-step3-loop.sh` applies accepted findings in-loop via `revise-plan-with-waterfall.sh --patch-format file-replacement`; prompt-side Gate B is the fallback body for `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and the explicit operator body for `per-round-approval-required`. Gate-B-bypass short-circuits (`cap-hit`, `tally-error`, `degraded-empty-collector`, `panel-failed`) bypass Step 3.5 before Step 3b (see SKILL.md post-loop branch matrix).
 
 ### Severity classification rubric
 
@@ -90,7 +90,7 @@ Determine Gate B handling only after the zero-findings short-circuit above prove
 - **`approve_requested=false` (default) — auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim (which runs `### Shared post-apply pipeline`). No operator prompt fires before the plan is revised. This restores the pre-#3512 auto-apply behavior (issue #2930). The plan-size brakes and validator auto-fix escalation in `### Shared post-apply pipeline` still prompt when triggered (see **Apply-pipeline prompts under auto-apply** below).
 - **`approve_requested=true` (`--per-round-approval`) — explicit.** Use the full Apply all / Go through each / Switch to discussion mode prompt below; Gate B prompts explicitly before any finding changes `plan.txt`. `Go through each` and `Switch to discussion mode` are reachable only on this path (discussion otherwise remains reachable via Gate C `Discuss further`).
 
-**Resume idempotency guard**: before applying findings, derive the Gate B apply-ready marker path as `$DESIGN_TMPDIR/.gate-b-postapply-ready-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-current}}`. If that marker exists while `.completed/step-3.5` is absent, a prior run already rewrote and deduped `plan.txt` for this Gate B entry but paused before the Step 3b entry fence could write `step-3.5`. Do **not** apply findings again. Re-enter the shared post-apply pipeline at the merged post-plan fence step using the current `plan.txt`, then return to `SKILL.md`'s heuristic multi-round continuation check after that fence settles. The resume branch must not continue directly to Step 3b, because automatic follow-up review rounds are decided only by that continuation helper. New Step 3 entries and discussion/review re-entries clear `.gate-b-postapply-ready-*` before reviewers run.
+**Resume idempotency guard**: loop mode records `$DESIGN_TMPDIR/.step3-round-N.phase` and writes `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` only after dedup succeeds. `awaiting-apply` resumes at apply, `awaiting-post-apply` resumes at mechanical dedup/postplan without re-applying findings, and `awaiting-continuation` runs only `plan-review-continuation.sh`. Prompt-side Gate B uses the same marker to avoid double-applying during `main-agent-apply-required` recovery.
 
 The zero-findings short-circuit above is unchanged in both modes (nothing to apply, no prompt either way).
 
@@ -145,6 +145,8 @@ Question text: `"FINDING_<N> [<Severity>] — <reviewer>: <one-line concern summ
 After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only, writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### Shared post-apply pipeline
+
+In-loop apply takes a loop-owned `plan-pre-apply-round-N.txt` snapshot before `revise-plan-with-waterfall.sh`, then runs `gate-b-dedup-plan.sh --snapshot-trailers` and `gate-b-dedup-plan.sh --dedup` under `set +e`. A dedup failure restores the loop snapshot and returns `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` with `DEDUP_RC`; `.gate-b-postapply-ready-N` is written only after dedup succeeds. Operator-brake resumes (`POSTPLAN_RC=10/12/13/14`) persist the decision and either resume at `awaiting-continuation` for non-plan-changing Override/Continue or re-enter `awaiting-post-apply` after a plan-changing fix.
 
 After the chosen findings have been applied to `plan.txt` (either the full accepted set or the one-by-one applied subset), run the same post-apply sequence for both Gate B branches:
 
