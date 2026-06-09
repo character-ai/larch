@@ -720,6 +720,7 @@ scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
 scout_fail_reason=$(kv_get "$dispatch_out" SCOUT_FAIL_REASON)
 static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_pruned_empty=$(kv_get "$dispatch_out" PANEL_PRUNED_EMPTY)
+prune_status=$(kv_get "$dispatch_out" PRUNE_STATUS)
 pruned_combos=$(kv_get "$dispatch_out" PRUNED_COMBOS)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
@@ -742,7 +743,7 @@ emit_kv DYNAMIC_SLOTS "$dynamic_slots"
 [[ -n "$pruned_combos" ]] && emit_kv PRUNED_COMBOS "$pruned_combos"
 emit_kv PANEL_PRUNED_EMPTY "$panel_pruned_empty"
 
-if [[ "$panel_pruned_empty" == "true" ]]; then
+if [[ "$panel_pruned_empty" == "true" && "${prune_status:-}" == "pruned-empty" ]]; then
     snapshot_review_oos_state prune-skipped
     : > "$REVIEW_TMPDIR/findings.md"
     : > "$REVIEW_TMPDIR/accepted-findings.md"

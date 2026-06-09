@@ -156,23 +156,41 @@ _audit_oos_inline_triage_hits() {
 }
 
 # Collect reviewer_signals[] from round-meta.json across all rounds (concise log carrier).
+# Each round-meta.json is evaluated independently so one malformed file cannot
+# discard valid signals from other rounds.
 _audit_reviewer_signals_jq() {
     local jq_filter="$1"
-    local meta_f signals_any=false result=""
+    local meta_f part signals_any=false has_output=false
+    local combined="[]" numeric_sum=0 numeric_mode=false
     for meta_f in "$RUN_DIR"/round-*/round-meta.json; do
         [ -f "$meta_f" ] || continue
-        if jq -e '.reviewer_signals | type == "array" and length > 0' "$meta_f" >/dev/null 2>&1; then
-            signals_any=true
-            break
+        if ! jq -e '.reviewer_signals | type == "array" and length > 0' "$meta_f" >/dev/null 2>&1; then
+            continue
+        fi
+        signals_any=true
+        part=$(jq -c "$jq_filter" "$meta_f" 2>/dev/null || true)
+        [ -n "$part" ] || continue
+        [ "$part" = "null" ] && continue
+        case "$part" in
+            ''|'[]'|'0') continue ;;
+        esac
+        has_output=true
+        if [[ "$part" =~ ^[0-9]+$ ]]; then
+            numeric_mode=true
+            numeric_sum=$((numeric_sum + part))
+        elif [[ "$part" == \[* ]]; then
+            combined=$(jq -n -c --argjson a "$combined" --argjson b "$part" '$a + $b' 2>/dev/null || printf '%s' "$combined")
         fi
     done
-    if [ "$signals_any" != true ]; then
+    if [ "$signals_any" != true ] || [ "$has_output" != true ]; then
         printf 'unavailable'
         return 1
     fi
-    result=$(jq -sc "$jq_filter" "$RUN_DIR"/round-*/round-meta.json 2>/dev/null || true)
-    [ -n "$result" ] || return 1
-    printf '%s' "$result"
+    if [ "$numeric_mode" = true ]; then
+        printf '%s' "$numeric_sum"
+    else
+        printf '%s' "$combined"
+    fi
 }
 
 # Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
@@ -430,8 +448,7 @@ scan_ns_retry_sidecars() {
     local _reasons_list=""
     local reason signals_json sidecar_f output_base signaled_bases=""
     signals_json=$(_audit_reviewer_signals_jq '
-        map(.reviewer_signals // [])
-        | add // []
+        (.reviewer_signals // [])
         | map(select((.ns_retry_reason // "") != ""))
         | map((.ns_retry_reason // "UNKNOWN") | tostring)
     ' || true)
@@ -468,11 +485,12 @@ scan_ns_retry_sidecars() {
     # Sidecar files with missing/unreadable meta can leave ns_retry_reason empty in
     # reviewer_signals; preserve legacy file-presence semantics for those orphans.
     signaled_bases=$(_audit_reviewer_signals_jq '
-        map(.reviewer_signals // [])
-        | add // []
+        (.reviewer_signals // [])
         | map(select((.ns_retry_reason // "") != "") | .output_basename)
-        | unique
     ' || true)
+    if [ -n "$signaled_bases" ] && [ "$signaled_bases" != "unavailable" ]; then
+        signaled_bases=$(printf '%s' "$signaled_bases" | jq -c 'unique' 2>/dev/null || true)
+    fi
     for sidecar_f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
         [ -f "$sidecar_f" ] || continue
         output_base=$(basename "$sidecar_f")
@@ -661,8 +679,7 @@ scan_coder_tool() {
 scan_trailing_content_no_issues_found() {
     local count=0 signals_json
     signals_json=$(_audit_reviewer_signals_jq '
-        map(.reviewer_signals // [])
-        | add // []
+        (.reviewer_signals // [])
         | map(select(.first_pass_trailing_content == true))
         | length
     ' || true)

@@ -1441,6 +1441,35 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 35a3: malformed round-meta must not hide valid ns-retry signals from other rounds
+echo "Test 35a3: audit-scan-run ns-retry ignores malformed round-meta"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35A3_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35a3-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'ns-retry-sidecars	reviewer-signals	x	x	medium'
+    } > "$R35A3_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35A3_TMP/required-empty.tsv"
+    mkdir -p "$R35A3_TMP/run/round-1" "$R35A3_TMP/run/round-2"
+    printf '{not json\n' > "$R35A3_TMP/run/round-1/round-meta.json"
+    cat > "$R35A3_TMP/run/round-2/round-meta.json" <<'JSON'
+{"reviewer_signals":[{"output_basename":"cursor-specialist-testing-output.txt","slot_label":"testing","result_kind":"findings","ns_retry_reason":"OUTPUT_EMPTY"}]}
+JSON
+    r35a3_lines=$(bash "$SCAN_SCRIPT" --skill implement \
+        --run-dir "$R35A3_TMP/run" --pr 990036 \
+        --scans-tsv "$R35A3_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35A3_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35a3_res=$(printf '%s\n' "$r35a3_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .result // empty' | head -1)
+    r35a3_cnt=$(printf '%s\n' "$r35a3_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .count // empty' | head -1)
+    assert_equal "$r35a3_res" "fail" "[35a3] valid round-2 signal survives malformed round-1 meta"
+    assert_equal "$r35a3_cnt" "1" "[35a3b] ns-retry count from surviving round"
+    rm -rf "$R35A3_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 35b: audit-scan-run.sh — invalid JSONL → oos jq error + category-stats partial (mangled placeholder)
 echo "Test 35b: audit-scan-run invalid review-findings JSONL (oos error + category-stats partial)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"

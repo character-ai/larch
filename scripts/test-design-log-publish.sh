@@ -1999,4 +1999,34 @@ run_bytes=$(find "$clone5r/larch-logs/design/RUN5R1" -type f -print0 | xargs -0 
 [[ "$run_bytes" -lt 500000 ]] || fail "five-round concise publish exceeded byte budget ($run_bytes)"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
+echo "=== stale excluded artifacts removed on concise republish ==="
+TMPSTALEEX=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-excluded.XXXXXX")
+clone_staleex=$(setup_clone_with_origin_head "$TMPSTALEEX")
+stub_staleex="$TMPSTALEEX/stub"
+make_gh_stub "$stub_staleex"
+export PATH="$stub_staleex:$PATH"
+export TEST_CLONE_ROOT="$clone_staleex"
+export TEST_MERGE_BRANCH="larch-log-design-RUNSTALEEX1"
+mkdir -p "$TMPSTALEEX/design/plan-review/round-1"
+printf 'plan body\n' >"$TMPSTALEEX/design/plan.txt"
+printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMPSTALEEX/design/plan-review/round-1/findings-classification.tsv"
+printf 'ROUND=1\nPRUNE_ACTIVE=false\nPRUNE_STATUS=skipped\n' >"$TMPSTALEEX/design/plan-review/round-1/prune-decision.env"
+printf 'PRUNED_COUNT=0\nSTATUS=skipped\n' >"$TMPSTALEEX/design/plan-review/round-1/prune-nit.env"
+printf 'LOOP_STATUS=complete\n' >"$TMPSTALEEX/design/plan-review/round-1/round-summary.env"
+printf 'round\ttool\tslot\tlabel\taccepted_count\n' >"$TMPSTALEEX/design/reviewer-prune-ledger.tsv"
+out_staleex1=$(
+    (cd "$clone_staleex" && bash "$PUBLISH" --design-tmpdir "$TMPSTALEEX/design" --run-id "RUNSTALEEX1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_staleex1" == *"PUBLISH_OK=true"* ]] || fail "stale-excluded first publish failed: $out_staleex1"
+printf 'stale raw transcript\n' >"$clone_staleex/larch-logs/design/RUNSTALEEX1/codex-primary-plan-arch-output.txt"
+printf 'stale round transcript\n' >"$clone_staleex/larch-logs/design/RUNSTALEEX1/plan-review/round-1/findings.md"
+out_staleex2=$(
+    (cd "$clone_staleex" && bash "$PUBLISH" --design-tmpdir "$TMPSTALEEX/design" --run-id "RUNSTALEEX1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_staleex2" == *"PUBLISH_OK=true"* ]] || fail "stale-excluded republish failed: $out_staleex2"
+git -C "$clone_staleex" pull -q origin main
+[[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/codex-primary-plan-arch-output.txt" ]] || fail "stale top-level excluded transcript should be removed"
+[[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/plan-review/round-1/findings.md" ]] || fail "stale round excluded findings.md should be removed"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
 echo "All design-log-publish harness assertions passed."

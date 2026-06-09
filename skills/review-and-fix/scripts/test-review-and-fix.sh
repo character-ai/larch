@@ -1386,7 +1386,41 @@ jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 a
     "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
     || fail "zero code-review-tally batch"
 [[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.jsonl" ]] || fail "zero review-findings-full batch"
+[[ -f "$implement_tmp/larch-logs/implement/zero-run/reviewer-prune-ledger.tsv" ]] || fail "zero reviewer-prune-ledger batch"
 [[ "$out" != *"LOG_WRITTEN="* ]] || fail "zero flush leaked larch-log writer stdout"
+
+cat > "$TMP/larch-log-ledger-fail-stub.sh" <<'EOF_LEDGER_FAIL'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "write" ]]; then
+  batch=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --batch) batch="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [[ "$batch" == "reviewer-prune-ledger" ]]; then
+    printf 'reviewer-prune-ledger batch failed\n' >&2
+    exit 9
+  fi
+fi
+printf 'LOG_WRITTEN=true\nLOG_PATH=\nBYTES=0\nSHA256=\nCOMMIT_SHA=\nUNCHANGED=false\n'
+EOF_LEDGER_FAIL
+chmod +x "$TMP/larch-log-ledger-fail-stub.sh"
+work_ledger_fail="$TMP/ledger-batch-fail"
+make_work_repo "$work_ledger_fail"
+implement_tmp="$work_ledger_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+printf 'round\ttool\tslot\tlabel\taccepted_count\n' > "$implement_tmp/reviewer-prune-ledger.tsv"
+set +e
+out=$(TEST_CORE_STATUS=zero REVIEW_AND_FIX_LARCH_LOG_SH="$TMP/larch-log-ledger-fail-stub.sh" run_review_and_fix "$work_ledger_fail" \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id ledger-fail-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "ledger batch fail expected exit 0 got $rc"; }
+grep -Fq 'larch-log.sh write reviewer-prune-ledger' "$implement_tmp/execution-issues.md" || fail "ledger batch failure should append execution issue"
 
 work_sorted="$TMP/sorted-summaries"
 make_work_repo "$work_sorted"

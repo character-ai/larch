@@ -457,6 +457,18 @@ design_publish_stage_file() {
     return 0
 }
 
+design_publish_remove_stale_excluded() {
+    local root="$1" f base
+    [[ -n "$root" && -d "$root" ]] || return 0
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        base=$(basename "$f")
+        if design_artifact_excluded "$base"; then
+            rm -f "$f"
+        fi
+    done < <(find "$root" -type f 2>/dev/null || true)
+}
+
 design_publish_breadcrumbs() {
     local source_dir="$1" dest_dir="$2"
     larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
@@ -792,6 +804,8 @@ if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcru
     emit_publish_result false
     exit 0
 fi
+
+design_publish_remove_stale_excluded "$RUN_DEST"
 
 # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
 # the staged run tree before commit. Fail-closed on scrub failure. On a real

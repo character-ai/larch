@@ -21,4 +21,17 @@ assert_eq "$(derive_prune_status true 0 false 0 true true)" "pruned-empty" "prun
 assert_eq "$(derive_prune_status true 1 false 0 false true)" "failed" "filter rc fail-open"
 assert_eq "$(derive_prune_status true 0 true 0 false true)" "failed" "advisory fail-open"
 
+ledger_tmp=$(mktemp "${TMPDIR:-/tmp}/test-prune-ledger.XXXXXX")
+trap 'rm -f "$ledger_tmp"' EXIT
+ensure_reviewer_prune_ledger "$ledger_tmp"
+[[ -s "$ledger_tmp" ]] || fail "ensure creates ledger"
+assert_eq "$(head -n 1 "$ledger_tmp")" "$REVIEWER_PRUNE_LEDGER_HEADER" "ensure header"
+: > "$ledger_tmp"
+ensure_reviewer_prune_ledger "$ledger_tmp"
+[[ -s "$ledger_tmp" ]] || fail "ensure repairs empty ledger"
+printf 'bad\theader\n2\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0\n' > "$ledger_tmp"
+ensure_reviewer_prune_ledger "$ledger_tmp"
+assert_eq "$(head -n 1 "$ledger_tmp")" "$REVIEWER_PRUNE_LEDGER_HEADER" "ensure repairs invalid header"
+grep -Fq $'2\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$ledger_tmp" || fail "ensure preserves data rows"
+
 printf '%s\n' 'test-lib-prune-decision: ok'

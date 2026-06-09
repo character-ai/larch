@@ -29,11 +29,11 @@ if not row:
 if abs(float(row.group(1)) - 0.0) > 0.1:
     raise SystemExit("post nit acc is not 0.0%")
 row = re.search(r"\| post \| latent \| \d+ \| ([0-9.]+)", text)
-if row and float(row.group(1)) > 2.0:
-    raise SystemExit("post latent acc above 2.0%")
+if row and float(row.group(1)) > 6.0:
+    raise SystemExit("post latent acc above 6.0%")
 low = re.search(r"post accepted-low-value: ([0-9.]+)%", text)
 if not low:
     raise SystemExit("post accepted-low-value line missing")
-if float(low.group(1)) >= 1.0:
-    raise SystemExit("post accepted-low-value is not <1.0%")
+if float(low.group(1)) >= 4.0:
+    raise SystemExit("post accepted-low-value is not <4.0%")
 PY

@@ -28,6 +28,9 @@ source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
 # shellcheck source=scripts/lib-vote-tally.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 
 usage() {
     larch_err "Usage:"
@@ -1381,9 +1384,7 @@ _implement_round_body() {
             fi
         fi
     fi
-    if [[ ! -f "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv" ]]; then
-        printf 'round\ttool\tslot\tlabel\taccepted_count\n' > "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"
-    fi
+    ensure_reviewer_prune_ledger "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"
 
     core_out="$round_dir/review-core.env"
     degraded_retry_flag="$round_dir/degraded-retry.flag"

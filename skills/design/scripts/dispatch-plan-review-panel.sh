@@ -337,6 +337,7 @@ if [[ -n "$PRUNE_LEDGER" && -n "$PRUNE_ROUND_NUM" ]]; then
     ELIGIBLE="$(normalize_prune_eligible "$PRUNE_ACTIVE" "$ELIGIBLE_COUNT")"
     PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
     if [[ "$PRUNE_FILTER_RC" -eq 0 && "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
+        cp -f "$_manifest" "${_manifest%.ndjson}.pre-prune.ndjson"
         mv -f "$_prune_tmp" "$_manifest"
     else
         rm -f "$_prune_tmp"
@@ -352,7 +353,7 @@ while IFS= read -r _row || [[ -n "$_row" ]]; do
     slot_count=$((slot_count + 1))
 done <"$_manifest"
 
-if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
+if [[ "$PANEL_PRUNED_EMPTY" == "true" && "$PRUNE_STATUS" == "pruned-empty" ]]; then
     _panel_paths="$DESIGN_TMPDIR/plan-review-panel-paths.txt"
     : > "$_panel_paths"
     emit_kv DISPATCH_OK true

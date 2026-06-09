@@ -120,9 +120,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 mkdir -p "$DESIGN_TMPDIR"
-if [[ ! -f "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv" ]]; then
-    printf 'round\ttool\tslot\tlabel\taccepted_count\n' > "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv"
-fi
+ensure_reviewer_prune_ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv"
 export DESIGN_TMPDIR
 
 if [[ -z "$FEATURE_FILE" ]]; then
@@ -512,10 +510,12 @@ _emit_plan_round_timing_row() {
 
 _write_prune_decision_env() {
     local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-decision.env"
+    [[ -s "$dest" ]] && return 0
     local prune_round="${PRUNE_ROUND_NUM:-$round_num}"
     local prune_active="${PRUNE_ACTIVE:-false}" prune_status="${PRUNE_STATUS:-skipped}" panel_full="${PANEL_FULL:-0}"
     local eligible="${ELIGIBLE:-${ELIGIBLE_COUNT:-0}}" pruned_count="${PRUNED_COUNT:-0}" pruned_combos="${PRUNED_COMBOS:-}" panel_empty="${PANEL_PRUNED_EMPTY:-false}"
-    write_prune_decision_env "$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-decision.env" "$prune_round" "$prune_active" "$prune_status" "$panel_full" "$eligible" "$pruned_count" "$pruned_combos" "$panel_empty" || true
+    write_prune_decision_env "$dest" "$prune_round" "$prune_active" "$prune_status" "$panel_full" "$eligible" "$pruned_count" "$pruned_combos" "$panel_empty" || true
 }
 
 _write_prune_nit_env() {
@@ -965,7 +965,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
     esac
 done <<< "$_panel_raw"
 
-if [[ "${PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
+if [[ "${PANEL_PRUNED_EMPTY:-false}" == "true" && "${PRUNE_STATUS:-}" == "pruned-empty" ]]; then
     write_empty_review_artifacts "Round skipped: all reviewer combos pruned." "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     _restore_prior_round_oos "${_prior_cum_oos:-}"

@@ -51,6 +51,31 @@ prune_window_evaluated() {
     esac
 }
 
+REVIEWER_PRUNE_LEDGER_HEADER=$'round\ttool\tslot\tlabel\taccepted_count'
+
+# Repair missing, empty, or header-invalid reviewer prune ledgers before reuse.
+ensure_reviewer_prune_ledger() {
+    local ledger="$1" header="$REVIEWER_PRUNE_LEDGER_HEADER" tmp preserved=""
+    [[ -n "$ledger" ]] || return 0
+    mkdir -p "$(dirname "$ledger")" || return 1
+    if [[ ! -s "$ledger" ]]; then
+        printf '%s\n' "$header" > "$ledger"
+        return 0
+    fi
+    if [[ "$(head -n 1 "$ledger")" == "$header" ]]; then
+        return 0
+    fi
+    if [[ $(wc -l < "$ledger" | tr -d '[:space:]') -gt 1 ]]; then
+        preserved=$(tail -n +2 "$ledger" | grep -E '^[0-9]+' || true)
+    fi
+    tmp="${ledger}.repair.$$"
+    {
+        printf '%s\n' "$header"
+        [[ -n "$preserved" ]] && printf '%s\n' "$preserved"
+    } > "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$ledger"
+}
+
 write_prune_decision_env() {
     local dest="$1" round="$2" prune_active="$3" prune_status="$4" panel_full="$5" eligible="$6" pruned_count="$7" pruned_combos="$8" panel_pruned_empty="$9"
     local tmp dir

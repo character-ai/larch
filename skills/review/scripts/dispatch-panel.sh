@@ -505,6 +505,7 @@ if [[ -n "$PRUNE_LEDGER" ]]; then
     ELIGIBLE="$(normalize_prune_eligible "$PRUNE_ACTIVE" "$ELIGIBLE_COUNT")"
     PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
     if [[ "$PRUNE_FILTER_RC" -eq 0 && "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
+        cp -f "$manifest" "${manifest%.ndjson}.pre-prune.ndjson"
         mv -f "$prune_tmp" "$manifest"
         recount_manifest_slots
     else
@@ -515,7 +516,7 @@ else
 fi
 _write_prune_decision_env
 
-if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
+if [[ "$PANEL_PRUNED_EMPTY" == "true" && "$PRUNE_STATUS" == "pruned-empty" ]]; then
     emit_kv EXTERNAL_OUTPUT_FILES ""
     emit_kv CLAUDE_OUTPUT_FILES ""
     emit_kv PANEL_MODE waterfall

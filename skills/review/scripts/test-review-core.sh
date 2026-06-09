@@ -103,6 +103,7 @@ printf 'PANEL_SHAPE=%s\n' "$panel"
 if [[ "${TEST_PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
   printf 'PANEL_PRUNED_EMPTY=true\n'
+  printf 'PRUNE_STATUS=pruned-empty\n'
   printf 'PRUNED_COMBOS=cursor:security,codex:security\n'
   printf 'EXTERNAL_OUTPUT_FILES=\nCLAUDE_OUTPUT_FILES=\n'
   printf 'STATIC_SLOT_COUNT=0\nSLOT_COUNT=0\nDYNAMIC_SLOTS=0\n'
@@ -580,6 +581,32 @@ run_core() {
     "$SCRIPT" "${args[@]}"
 }
 
+run_core_flush() {
+    local outdir="$1"
+    local impl_tmp="$TMP/implement-flush-$$"
+    mkdir -p "$impl_tmp/larch-logs"
+    local log_ok="$TMP/larch-log-ok-$$.sh"
+    cat > "$log_ok" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+    chmod +x "$log_ok"
+    local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}" --run-id test-flush-run)
+    [[ -n "${TEST_PRUNE_LEDGER:-}" ]] && args+=(--prune-ledger "$TEST_PRUNE_LEDGER")
+    IMPLEMENT_TMPDIR="$impl_tmp" \
+    LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
+    REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
+    REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
+    REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
+    REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/check-dirty.sh" \
+    REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
+    REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/dispatch-voters.sh" \
+    REVIEW_CORE_LARCH_LOG_SH="$log_ok" \
+    "$SCRIPT" "${args[@]}"
+}
+
 run_core_with_log_stub() {
     local outdir="$1" session_env="$2"
     # flush_round_log requires IMPLEMENT_TMPDIR/larch-logs; without it write-round
@@ -630,6 +657,12 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
 }
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 4 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 4' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=0 run_core_flush "$TMP/zero-flush")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+[[ -f "$TMP/zero-flush/prune-decision.env" ]] || { echo "FAIL: zero-findings flush missing prune-decision.env" >&2; exit 1; }
+[[ -f "$TMP/zero-flush/prune-nit.env" ]] || { echo "FAIL: zero-findings flush missing prune-nit.env" >&2; exit 1; }
+grep -Fq 'PRUNE_STATUS=' "$TMP/zero-flush/prune-decision.env" || { echo "FAIL: zero-findings prune-decision.env missing PRUNE_STATUS" >&2; exit 1; }
 
 prune_ledger="$TMP/reviewer-prune-ledger.tsv"
 dispatch_argv_log="$TMP/dispatch-argv.log"
@@ -791,6 +824,12 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero-missing-count/f
 }
 
 set +e
+out=$(TEST_FINDINGS=0 TEST_EXTERNAL_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=external-files-only run_core_flush "$TMP/panel-failed-flush" 2>&1)
+rc_pf=$?
+[[ "$rc_pf" -eq 2 ]] || { echo "FAIL: panel-failed flush harness expected exit 2" >&2; exit 1; }
+[[ -f "$TMP/panel-failed-flush/prune-decision.env" ]] || { echo "FAIL: panel-failed flush missing prune-decision.env" >&2; exit 1; }
+[[ -f "$TMP/panel-failed-flush/prune-nit.env" ]] || { echo "FAIL: panel-failed flush missing prune-nit.env" >&2; exit 1; }
+
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 run_core "$TMP/panel-failed")
 rc=$?
 set -e
@@ -842,6 +881,11 @@ out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_PRUNE_LEDG
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 grep -Fq $'1\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$main_agent_prune_ledger" \
     || { echo "FAIL: main-agent-vote-required should write launched-slot prune ledger rows" >&2; cat "$main_agent_prune_ledger" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core_flush "$TMP/main-agent-flush")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+[[ -f "$TMP/main-agent-flush/prune-decision.env" ]] || { echo "FAIL: main-agent-vote-required flush missing prune-decision.env" >&2; exit 1; }
+[[ -f "$TMP/main-agent-flush/prune-nit.env" ]] || { echo "FAIL: main-agent-vote-required flush missing prune-nit.env" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
