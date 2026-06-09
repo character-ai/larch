@@ -423,6 +423,82 @@ exit 0
 STUB
     chmod +x "$SANDBOX/python/stubs/session/persist-run-flags"
 
+    cat >"$SANDBOX/python/stubs/session/read-key" <<'STUB'
+#!/usr/bin/env bash
+file=""; key=""; default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file)    file=$2;    shift 2 ;;
+    --key)     key=$2;     shift 2 ;;
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -n "$file" ] && [ -f "$file" ] && [ -n "$key" ]; then
+  val=$(awk -F= -v k="$key" '$1==k{print substr($0,index($0,"=")+1); exit}' "$file")
+  [ -n "$val" ] && printf '%s\n' "$val" && exit 0
+fi
+printf '%s\n' "$default"
+STUB
+    chmod +x "$SANDBOX/python/stubs/session/read-key"
+
+    cat >"$SANDBOX/python/stubs/session/write-env" <<'STUB'
+#!/usr/bin/env bash
+output=""; plugin_root_only=false; plugin_root_value=""
+repo=""; repo_unavailable="false"; forked_target="false"
+codex_present=""; cursor_present=""; codex_binary_found=""; cursor_binary_found=""
+auto_mode=""; timing_ledger=""; token_session_id=""; claude_source_file=""
+prev_implement_tmpdir=""; dynamic_archetypes=""; run_id=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output)               output=$2;               shift 2 ;;
+    --plugin-root-only)     plugin_root_only=true;   shift ;;
+    --value)                plugin_root_value=$2;    shift 2 ;;
+    --repo)                 repo=$2;                 shift 2 ;;
+    --repo-unavailable)     repo_unavailable=$2;     shift 2 ;;
+    --codex-present)        codex_present=$2;        shift 2 ;;
+    --cursor-present)       cursor_present=$2;       shift 2 ;;
+    --codex-binary-found)   codex_binary_found=$2;   shift 2 ;;
+    --cursor-binary-found)  cursor_binary_found=$2;  shift 2 ;;
+    --auto-mode)            auto_mode=$2;            shift 2 ;;
+    --timing-ledger)        timing_ledger=$2;        shift 2 ;;
+    --token-session-id)     token_session_id=$2;     shift 2 ;;
+    --claude-source-file)   claude_source_file=$2;   shift 2 ;;
+    --prev-implement-tmpdir) prev_implement_tmpdir=$2; shift 2 ;;
+    --forked-target)        forked_target=$2;        shift 2 ;;
+    --dynamic-archetypes)   dynamic_archetypes=$2;   shift 2 ;;
+    --run-id)               run_id=$2;               shift 2 ;;
+    *)                      shift ;;
+  esac
+done
+[ -z "$output" ] && exit 0
+mkdir -p "$(dirname "$output")"
+if [ "$plugin_root_only" = "true" ]; then
+  printf 'CLAUDE_PLUGIN_ROOT=%s\n' "$plugin_root_value" >"$output"
+  exit 0
+fi
+printf 'REPO=%s\n'            "$repo"            >"$output"
+printf 'REPO_UNAVAILABLE=%s\n' "$repo_unavailable" >>"$output"
+printf 'FORKED_TARGET=%s\n'   "$forked_target"   >>"$output"
+[ -n "$codex_present" ]      && { printf 'CODEX_PRESENT=%s\n'       "$codex_present"      >>"$output"; printf 'CODEX_AVAILABLE=%s\n'  "$codex_present"  >>"$output"; }
+[ -n "$codex_binary_found" ] && printf 'CODEX_BINARY_FOUND=%s\n'    "$codex_binary_found" >>"$output"
+[ -n "$cursor_present" ]     && { printf 'CURSOR_PRESENT=%s\n'      "$cursor_present"     >>"$output"; printf 'CURSOR_AVAILABLE=%s\n' "$cursor_present" >>"$output"; }
+[ -n "$cursor_binary_found" ] && printf 'CURSOR_BINARY_FOUND=%s\n'  "$cursor_binary_found" >>"$output"
+[ -n "$auto_mode" ]          && printf 'LARCH_AUTO_MODE=%s\n'        "$auto_mode"          >>"$output"
+[ -n "$timing_ledger" ]      && printf 'LARCH_TIMING_LEDGER=%s\n'    "$timing_ledger"      >>"$output"
+[ -n "$token_session_id" ]   && printf 'LARCH_TOKEN_SESSION_ID=%s\n' "$token_session_id"   >>"$output"
+[ -n "$claude_source_file" ] && printf 'LARCH_CLAUDE_SOURCE_FILE=%s\n' "$claude_source_file" >>"$output"
+[ -n "$prev_implement_tmpdir" ] && printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$prev_implement_tmpdir" >>"$output"
+[ -n "$dynamic_archetypes" ] && printf 'LARCH_DYNAMIC_ARCHETYPES_MAX=%s\n' "$dynamic_archetypes" >>"$output"
+[ -n "$run_id" ]             && printf 'LARCH_RUN_ID=%s\n'           "$run_id"             >>"$output"
+plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
+if [ -n "$plugin_root" ]; then
+  printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$plugin_root" >>"$output"
+  printf 'CLAUDE_PLUGIN_ROOT=%s\n' "$plugin_root" >"$(dirname "$output")/plugin-root.env"
+fi
+STUB
+    chmod +x "$SANDBOX/python/stubs/session/write-env"
+
     cat >"$SANDBOX/scripts/check-mid-run-dirty-tree.sh" <<'STUB'
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
