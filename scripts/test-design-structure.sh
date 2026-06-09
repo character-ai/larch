@@ -1770,8 +1770,8 @@ grep -Fq 'design-route.sh' "$SKILL_MD" \
   || fail "(21) SKILL.md missing design-route.sh invocation"
 grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
   || fail "(21) design-route.sh missing design-pause-load.sh invocation"
-grep -Fq 'write-design-current-env.sh' "$SKILL_MD" \
-  || fail "(21) SKILL.md missing resume env refresh via write-design-current-env.sh"
+grep -Fq 'session write-design-env' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing resume env refresh via session write-design-env"
 grep -Fq 'write-design-current-env.sh' "$DESIGN_INIT_SH" \
   || fail "(21) design-init-runparams.sh must refresh env before rename (single refresh)"
 echo "PASS: (21) /design pause/resume structure anchors OK"

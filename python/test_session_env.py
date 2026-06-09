@@ -215,6 +215,170 @@ def test_restore_finalize_state_raw_rhs_and_20_keys(tmp_path: Path) -> None:
     assert (tmp_path / "final-bail-reason.txt").read_text(encoding="utf-8") == "needs=user"
 
 
+def test_write_design_env_legacy_symlink_warning(tmp_path: Path) -> None:
+    home = tmp_path / "shim-home"
+    home.mkdir()
+    design = tmp_path / "shim" / "design"
+    design.mkdir(parents=True)
+    out = tmp_path / "shim" / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "SHIM-1",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    legacy = home / ".cache" / "larch" / "sessions" / "current-design-env.sh"
+    assert legacy.is_symlink()
+    assert legacy.readlink() == out
+    assert "claude-pid omitted" in result.stderr
+
+
+def test_write_design_env_partial_codex_override_clears_binary(tmp_path: Path) -> None:
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    design = tmp_path / "design"
+    design.mkdir()
+    seed = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "PARTIAL-SEED",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--codex-available",
+        "false",
+        "--cursor-available",
+        "true",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "false",
+        "--claude-pid",
+        "8888881",
+        env=env,
+    )
+    assert seed.returncode == 0, seed.stderr
+    override = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "PARTIAL-OVERRIDE",
+        "--codex-present",
+        "false",
+        "--claude-pid",
+        "8888881",
+        env=env,
+    )
+    assert override.returncode == 0, override.stderr
+    source = subprocess.run(
+        ["bash", "-c", f"set -u; source {out}; printf '%s|%s|%s|%s|%s|%s' \"$SESSION_ID\" \"${{CODEX_PRESENT:-}}\" \"${{CODEX_AVAILABLE:-}}\" \"${{CURSOR_PRESENT:-}}\" \"${{CURSOR_AVAILABLE:-}}\" \"${{CURSOR_BINARY_FOUND:-}}\""],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert source.returncode == 0, source.stderr
+    assert source.stdout == "PARTIAL-OVERRIDE|false|false|true|true|false"
+    text = out.read_text(encoding="utf-8")
+    assert "CODEX_BINARY_FOUND" not in text
+
+
+def test_write_design_env_strict_boolean_recovery(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    out.write_text(
+        "#!/usr/bin/env bash\n"
+        "export CODEX_PRESENT=true\n"
+        "export CURSOR_PRESENT=$(touch /tmp/larch-wdce-should-not-exist)\n"
+        "export CODEX_AVAILABLE=maybe\n"
+        "export CURSOR_AVAILABLE=false\n",
+        encoding="utf-8",
+    )
+    marker = Path("/tmp/larch-wdce-should-not-exist")
+    marker.unlink(missing_ok=True)
+    env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "STRICT-RECOVERY",
+        "--claude-pid",
+        "42",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    source = subprocess.run(
+        ["bash", "-c", f"set -u; source {out}; printf '%s|%s' \"$CODEX_PRESENT\" \"${{CURSOR_AVAILABLE:-}}\""],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert source.returncode == 0, source.stderr
+    assert source.stdout == "true|false"
+    text = out.read_text(encoding="utf-8")
+    assert "CURSOR_PRESENT" not in text
+    assert "CODEX_AVAILABLE" not in text
+
+
+def test_write_env_xdg_session_root_and_design_symlink_under_home_cache(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    xdg = tmp_path / "xdg-cache"
+    xdg.mkdir()
+    session_root = xdg / "larch" / "sessions" / "claude-design-test"
+    session_root.mkdir(parents=True)
+    design = session_root / "design"
+    design.mkdir()
+    session_env = session_root / "session-env.sh"
+    source_env = session_root / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(xdg), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    write_env = run_cli(
+        "write-env",
+        "--output",
+        str(session_env),
+        "--repo-unavailable",
+        "false",
+        env=env,
+    )
+    assert write_env.returncode == 0, write_env.stderr
+    write_design = run_cli(
+        "write-design-env",
+        "--output",
+        str(source_env),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "xdg-root",
+        "--claude-pid",
+        "55555",
+        env=env,
+    )
+    assert write_design.returncode == 0, write_design.stderr
+    home_link = home / ".cache" / "larch" / "sessions" / "current-design-env-55555.sh"
+    xdg_link = xdg / "larch" / "sessions" / "current-design-env-55555.sh"
+    assert home_link.is_symlink()
+    assert home_link.readlink() == source_env
+    assert not xdg_link.exists()
+
+
 def test_write_design_env_refresh_preserves_prior_bools(tmp_path: Path) -> None:
     out = tmp_path / "source-env.sh"
     env = {"HOME": str(tmp_path / "home"), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
