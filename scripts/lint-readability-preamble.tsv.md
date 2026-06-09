@@ -1,6 +1,6 @@
 # lint-readability-preamble.tsv
 
-Tab-separated manifest consumed by `scripts/lint-readability-preamble.sh` and `scripts/test-lint-readability-preamble.sh`.
+Tab-separated manifest consumed by `python3 python/cli.py lint readability-preamble` and `python/test_lint_readability_preamble.py`.
 
 ## Schema
 
@@ -18,10 +18,10 @@ Comment lines (`#` in column 1) and blank lines are skipped.
 
 ## Shared reader contract
 
-Both `lint-readability-preamble.sh` and `test-lint-readability-preamble.sh` MUST parse this file with the same awk filter and field extraction:
+Both `python3 python/cli.py lint readability-preamble` and `python/test_lint_readability_preamble.py` MUST parse this file with equivalent row filtering and field extraction:
 
 - Skip rows where `NF < 1`, column 1 matches `^#`, or the line is empty.
-- Emit `path`, `variant`, `expected_count`, `prompt_kind`, `step_markers` via awk `FS="\t"` (never `IFS=$'\t' read`, which collapses empty middle fields).
+- Emit `path`, `variant`, `expected_count`, `prompt_kind`, `step_markers` by splitting on literal tab characters without collapsing empty middle fields.
 - Reject `expected_count` when empty or non-digit (`''|*[!0-9]*` → exit 2 with a diagnostic naming the TSV path and row).
 
 ## Semantics
@@ -31,4 +31,4 @@ Both `lint-readability-preamble.sh` and `test-lint-readability-preamble.sh` MUST
 
 ## Edit in sync
 
-When adding or renaming `/design` amendment sites, update this TSV, both consumers, `scripts/lint-readability-preamble.md`, and `skills/design/SKILL.md` step marker comments together. After a step ID rename, update `step_markers` on the SKILL.md row or placement lint fails closed with `step "<id>": ... marker not found`.
+When adding or renaming `/design` amendment sites, update this TSV, the Python lint/test consumers and `skills/design/SKILL.md` step marker comments together. After a step ID rename, update `step_markers` on the SKILL.md row or placement lint fails closed with `step "<id>": ... marker not found`.

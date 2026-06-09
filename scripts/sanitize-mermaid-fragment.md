@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Validate Mermaid fragments before they are written to public tracking-issue summaries, larch-log batches, or PR bodies. The sanitizer is intentionally narrow: it rejects the two Mermaid-breaking classes seen in issue #1404 and leaves all broader Mermaid syntax validation to `scripts/lint-mermaid-fences.sh` and Mermaid CLI.
+Validate Mermaid fragments before they are written to public tracking-issue summaries, larch-log batches, or PR bodies. The sanitizer is intentionally narrow: it rejects the two Mermaid-breaking classes seen in issue #1404 and leaves all broader Mermaid syntax validation to `python3 python/cli.py lint mermaid-fences` and Mermaid CLI.
 
 See `skills/shared/mermaid-safe-content.md` for contributor-facing authoring guidance.
 
@@ -15,7 +15,7 @@ sanitize-mermaid-fragment.sh
 sanitize-mermaid-fragment.sh --input <path> --warnings-log <path> --warnings-step <step>
 ```
 
-Default mode treats the input as raw fence interior. `--from-md`, or an input whose first non-blank line is exactly ```` ```mermaid ````, treats the file as Markdown and extracts each top-level Mermaid fence as an independent validation unit. Nested documentation fences are ignored using the same fenced-block state-machine model documented in `lint-mermaid-fences.sh`.
+Default mode treats the input as raw fence interior. `--from-md`, or an input whose first non-blank line is exactly ```` ```mermaid ````, treats the file as Markdown and extracts each top-level Mermaid fence as an independent validation unit. Nested documentation fences are ignored using the same fenced-block state-machine model covered by `python/test_lint_mermaid_fences.py`.
 
 ## Policy
 
@@ -70,6 +70,6 @@ Raw source excerpts are never written to stdout or the warnings log.
 
 ## Test Harness
 
-`scripts/test-mermaid-fragments.sh` covers the pinned reject/accept cases, mixed-fence Markdown mode, output token shape, warnings-log append behavior, and `lint-mermaid-fences.sh` nested-fence handling.
+`scripts/test-mermaid-fragments.sh` covers the pinned reject/accept cases, mixed-fence Markdown mode, output token shape, and warnings-log append behavior. Mermaid fence extraction coverage lives in `python/test_lint_mermaid_fences.py`.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

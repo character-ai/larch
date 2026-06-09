@@ -22,7 +22,7 @@
 ## Edit-in-sync rules
 
 - Changing `-x` semantics, file-selection assumptions, or the parallelism scheme requires updating this file, the hook stanza in `.pre-commit-config.yaml`, the shellcheck CI job in `.github/workflows/ci.yaml`, and `docs/linting.md`.
-- PyYAML pin: `.github/workflows/requirements-lint.txt` and `.pre-commit-config.yaml` `lint-skill-invocations` `additional_dependencies` both pin `pyyaml==6.0.2`. Bumps must touch both. See `scripts/lint-skill-invocations.md` for the canonical rule.
+- `lint-skill-invocations` is stdlib-only under `python/`; do not reintroduce a PyYAML pre-commit dependency when editing shellcheck hook dependencies.
 - shellcheck-py pin: bumping `shellcheck-py==0.10.0.1` requires updating `.pre-commit-config.yaml` (`additional_dependencies` on the local shellcheck hook). The wrapper itself is version-agnostic; bumps should be validated by running the wrapper against `main` before merging.
 
 ## Local test wiring

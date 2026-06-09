@@ -77,7 +77,7 @@ repos:
     hooks:
       - id: lint-mermaid-fences
         name: lint mermaid fences
-        entry: scripts/lint-mermaid-fences.sh
+        entry: python3 python/cli.py lint mermaid-fences
         language: system
         types: [markdown]
         pass_filenames: true
@@ -86,9 +86,8 @@ repos:
     hooks:
       - id: lint-skill-invocations
         name: Lint skill-invocation docs
-        entry: python scripts/lint-skill-invocations.py
-        language: python
-        additional_dependencies: ['pyyaml==6.0.2']
+        entry: python3 python/cli.py lint skill-invocations
+        language: system
         pass_filenames: false
         always_run: true
         files: ^(skills|\.claude/skills)/[^/]+/SKILL\.md$
@@ -117,7 +116,7 @@ repos:
     hooks:
       - id: lint-gh-body-inline
         name: Lint inline gh --body / --notes (.sh/.py)
-        entry: bash scripts/lint-gh-body-inline.sh
+        entry: python3 python/cli.py lint gh-body-inline
         language: system
         pass_filenames: false
         always_run: true
@@ -152,7 +151,7 @@ repos:
     hooks:
       - id: lint-readability-preamble
         name: lint readability preamble references
-        entry: bash scripts/lint-readability-preamble.sh
+        entry: python3 python/cli.py lint readability-preamble
         language: system
         pass_filenames: false
         always_run: true
@@ -166,7 +165,7 @@ repos:
 
       - id: lint-skill-md-flag-signature
         name: lint SKILL.md script flag signatures
-        entry: bash scripts/lint-skill-md-flag-signature.sh
+        entry: python3 python/cli.py lint skill-md-flag-signature
         language: system
         pass_filenames: false
         always_run: true
@@ -180,7 +179,7 @@ repos:
 
       - id: lint-codex-exec-auth
         name: lint unwired codex exec call sites
-        entry: bash scripts/lint-codex-exec-auth.sh
+        entry: python3 python/cli.py lint codex-exec-auth
         language: system
         pass_filenames: false
         always_run: true
