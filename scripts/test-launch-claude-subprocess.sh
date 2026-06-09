@@ -440,7 +440,9 @@ grep -Fq 'plain non-json reviewer output' "$TMP/out-plain.txt" || fail "claude_s
 
 # record-vendor-task warnings must reach stderr (guard against >/dev/null 2>&1 revert).
 # Use a valid-grammar but unknown task kind to trigger the allow-list warning while
-# keeping STATUS=OK so the launcher exit is still clean.
+# keeping STATUS=OK so the launcher exit is still clean.  LARCH_QUIET_DISABLE=1
+# bypasses quiet-mode FD redirection so the timing-ledger warning lands on the
+# real stderr captured by the harness rather than the quiet log.
 cat > "$BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -451,7 +453,7 @@ JSON
 STUB
 chmod +x "$BIN/claude"
 ledger_warn_out="$TMP/out-ledger-warn.txt"
-PATH="$BIN:$PATH" "$SCRIPT" \
+LARCH_QUIET_DISABLE=1 PATH="$BIN:$PATH" "$SCRIPT" \
     --prompt-file "$prompt" \
     --output-file "$ledger_warn_out" \
     --timeout 5 \
