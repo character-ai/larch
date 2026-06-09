@@ -56,13 +56,28 @@ def _ship_pr_live_ref(line_text: str, retired_path: str) -> bool:
     return any(pattern.search(line_text) is not None for pattern in patterns)
 
 
-def _line_references_retired(rel: str, line_text: str, retired_path: str) -> bool:
+def _line_references_retired(
+    rel: str,
+    rel_dir: Path,
+    line_text: str,
+    retired_path: str,
+    retired_dir: Path,
+    retired_refs: tuple[str, ...],
+) -> bool:
+    """Return True if ``line_text`` references ``retired_path``.
+
+    The parent directories (``rel_dir``/``retired_dir``) and ``$SCRIPT_DIR``
+    reference forms (``retired_refs``) are precomputed by the caller so this
+    runs in the hot (line x retired_path) loop without per-pair ``Path``
+    construction; the behavior is identical to comparing
+    ``Path(rel).parent == Path(retired_path).parent`` inline.
+    """
     if rel == "scripts/ship-pr.sh":
         return _ship_pr_live_ref(line_text, retired_path)
     if retired_path in line_text:
         return True
-    if Path(rel).parent == Path(retired_path).parent:
-        return any(ref in line_text for ref in _script_dir_refs(retired_path))
+    if rel_dir == retired_dir:
+        return any(ref in line_text for ref in retired_refs)
     return False
 
 
@@ -175,6 +190,20 @@ def main(argv: list[str] | None = None) -> int:
 
     tracked_rel: list[str] = [p for p in result.stdout.split("\x00") if p]
     retired_set = set(retired)
+    # Precompute per-retired-path data once so the hot (line x retired_path)
+    # loop does no Path construction or repeated _script_dir_refs work. The
+    # earlier non-empty guard guarantees retired_set is non-empty here.
+    retired_list = sorted(retired_set)
+    retired_dirs = {r: Path(r).parent for r in retired_list}
+    retired_refs = {r: _script_dir_refs(r) for r in retired_list}
+    # Cheap prefilter: a line can reference a retired path only if it contains
+    # that path's full text or its basename ($SCRIPT_DIR refs and ship-pr
+    # `source` forms always carry the basename). One regex search per line
+    # skips the ~85x inner loop for the overwhelming majority of lines.
+    gate_tokens = sorted(
+        set(retired_list) | {Path(r).name for r in retired_list}
+    )
+    gate_re = re.compile("|".join(re.escape(t) for t in gate_tokens))
     writer = logging_util.BreadcrumbWriter()
     ref_count = 0
 
@@ -193,9 +222,19 @@ def main(argv: list[str] | None = None) -> int:
             lines = abs_path.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             continue
+        rel_dir = Path(rel).parent
         for lineno, line_text in enumerate(lines, 1):
-            for retired_path in retired_set:
-                if _line_references_retired(rel, line_text, retired_path):
+            if not gate_re.search(line_text):
+                continue
+            for retired_path in retired_list:
+                if _line_references_retired(
+                    rel,
+                    rel_dir,
+                    line_text,
+                    retired_path,
+                    retired_dirs[retired_path],
+                    retired_refs[retired_path],
+                ):
                     writer.emit(f"{rel}:{lineno}: references retired path {retired_path!r}")
                     ref_count += 1
 
