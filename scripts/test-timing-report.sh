@@ -74,6 +74,30 @@ jq -e '
   (.vendor_task_averages[] | select(.vendor == "claude" and .task_kind == "claude-phase3-security" and .samples == 1))
 ' "$CLAUDE_JSON" >/dev/null
 
+# terse and summary modes surface claude vendor rows.
+CLAUDE_TERSE_LEDGER="$TMP_BASE/claude-terse.tsv"
+cat > "$CLAUDE_TERSE_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1	-	-	-	-	-	-	-	-
+v1	vendor	5	implement	-	claude	claude-phase3-security	1	10	9	sec.txt	0	complete
+v1	vendor	6	implement	-	codex	codex-implement	1	8	7	codex.txt	0	complete
+v1	mark	20	implement	Step 2	-	-	-	-	-	-	-	-
+EOF
+CLAUDE_TERSE=$(LARCH_TEST_TIMING_NOW=40 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$CLAUDE_TERSE_LEDGER" --since-last-mark --terse)
+expected_claude_terse="Step 2: elapsed=00:00:20 vendor-tasks=0 (codex=0, cursor=0, claude=0)"
+if [[ "$CLAUDE_TERSE" != "$expected_claude_terse" ]]; then
+  echo "FAIL: terse claude (no post-mark tasks): expected '$expected_claude_terse' got '$CLAUDE_TERSE'" >&2
+  exit 1
+fi
+echo "PASS: terse claude (no post-mark tasks)"
+
+CLAUDE_SUMMARY=$(LARCH_TEST_TIMING_NOW=40 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$CLAUDE_TERSE_LEDGER" --summary)
+expected_claude_summary="Total: elapsed=00:00:40 vendor-tasks=2 (codex=1, cursor=0, claude=1)"
+if [[ "$CLAUDE_SUMMARY" != "$expected_claude_summary" ]]; then
+  echo "FAIL: summary claude: expected '$expected_claude_summary' got '$CLAUDE_SUMMARY'" >&2
+  exit 1
+fi
+echo "PASS: summary claude"
+
 
 ROUND_LEDGER="$TMP_BASE/rounds.tsv"
 cat > "$ROUND_LEDGER" <<'EOF'
@@ -221,7 +245,7 @@ TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger
 # >= the latest mark timestamp, instead of the row's wall-clock log timestamp.
 # Fixture has end_s values 220, 300, 160 with last_terse_ts=250, so exactly the
 # end_s=300 codex-implement row qualifies (vendor-tasks=1, codex=1).
-EXPECTED_TERSE='Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=1 (codex=1, cursor=0)'
+EXPECTED_TERSE='Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=1 (codex=1, cursor=0, claude=0)'
 if [[ "$TERSE" != "$EXPECTED_TERSE" ]]; then
   echo "expected terse output:" >&2
   echo "  $EXPECTED_TERSE" >&2
@@ -281,7 +305,7 @@ fi
 # Fixture: LEDGER (2 codex + 1 cursor tasks, all end_s >= mark_ts[1]=0), now=310.
 # elapsed = 310 - 0 = 310 s = 00:05:10; codex=2, cursor=1 → vendor-tasks=3.
 SUMMARY_OUT=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --summary)
-expected_summary="Total: elapsed=00:05:10 vendor-tasks=3 (codex=2, cursor=1)"
+expected_summary="Total: elapsed=00:05:10 vendor-tasks=3 (codex=2, cursor=1, claude=0)"
 if [[ "$SUMMARY_OUT" == "$expected_summary" ]]; then
     echo "PASS: summary normal"
 else
@@ -297,7 +321,7 @@ v1	mark	0	implement	Step 1 — design plan	-	-	-	-	-	-	-	-
 v1	mark	100	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
 EOF
 SUMMARY_NO_VENDOR_OUT=$(LARCH_TEST_TIMING_NOW=150 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --summary)
-expected_summary_no_vendor="Total: elapsed=00:02:30 vendor-tasks=0 (codex=0, cursor=0)"
+expected_summary_no_vendor="Total: elapsed=00:02:30 vendor-tasks=0 (codex=0, cursor=0, claude=0)"
 if [[ "$SUMMARY_NO_VENDOR_OUT" == "$expected_summary_no_vendor" ]]; then
     echo "PASS: summary zero-vendor"
 else

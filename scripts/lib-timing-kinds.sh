@@ -50,6 +50,8 @@ TIMING_TASK_KINDS_ALLOWED=(
     claude-phase3-correctness
     claude-phase3-edge-cases
     claude-phase3-testing
+    claude-phase3-structure
+    claude-phase3-plan-fidelity
     claude-phase3-aggregator
     scout-dynamic-archetypes
     cursor-specialist-structure
@@ -78,4 +80,5 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-judge
     codex-exec
     vendor-misc
+    implement-code-flow
 )

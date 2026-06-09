@@ -312,7 +312,7 @@ END_S=$(date +%s)
     --end-s "$END_S" \
     --output "$OUTPUT_CANON" \
     --exit-code "$exit_code" \
-    --status "$status" >/dev/null 2>&1 || true
+    --status "$status" || true
 
 emit_kv STATUS "$status"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"

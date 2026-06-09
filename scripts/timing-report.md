@@ -4,8 +4,8 @@
 
 Subcommands:
 
-- `--since-last-mark --terse` prints one line for the latest mark whose skill matches `${LARCH_TIMING_SKILL:-implement}`:
-- `--summary` prints one grand-total line spanning all marks from the first to the present:
+- `--since-last-mark --terse` prints one line for the latest mark whose skill matches `${LARCH_TIMING_SKILL:-implement}`: `<step>: elapsed=<hms> vendor-tasks=<N> (codex=<N>, cursor=<N>, claude=<N>)`. Counts vendor rows whose `end_s` falls at or after the mark timestamp.
+- `--summary` prints one grand-total line spanning all marks from the first to the present: `Total: elapsed=<hms> vendor-tasks=<N> (codex=<N>, cursor=<N>, claude=<N>)`.
   Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders the full markdown report.
 - `--full --format json [--output FILE]` renders a JSON object with `workflow_path`, `per_step`, `total_seconds`, `total_hms`, and `vendor_task_averages`. Timing reports preserve the legacy `workflow_path` output key; implement reports emit `"unknown"`, while design reports may resolve SIMPLE/HARD from design run-params fallback.

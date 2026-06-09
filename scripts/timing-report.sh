@@ -204,7 +204,7 @@ render_report() {
             print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
-          codex = cursor = total = 0
+          codex = cursor = claude = total = 0
           for (i = 1; i <= vendor_count; i++) {
             # Compare vendor_end (col $9) with the latest mark timestamp;
             # using the row write-time ($3) inflated counts when a task
@@ -212,9 +212,10 @@ render_report() {
             if (vendor_end[i] >= last_terse_ts) {
               if (vendor_name[i] == "codex") { codex++; total++ }
               else if (vendor_name[i] == "cursor") { cursor++; total++ }
+              else if (vendor_name[i] == "claude") { claude++; total++ }
             }
           }
-          printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor
+          printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, claude=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor, claude
           exit 0
         }
         if (mode == "summary") {
@@ -222,14 +223,15 @@ render_report() {
             print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
-          total = codex = cursor = 0
+          total = codex = cursor = claude = 0
           for (i = 1; i <= vendor_count; i++) {
             if (vendor_end[i] >= mark_ts[1]) {
               if (vendor_name[i] == "codex") { codex++; total++ }
               else if (vendor_name[i] == "cursor") { cursor++; total++ }
+              else if (vendor_name[i] == "claude") { claude++; total++ }
             }
           }
-          printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", hms(now - mark_ts[1]), total, codex, cursor
+          printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, claude=%d)\n", hms(now - mark_ts[1]), total, codex, cursor, claude
           exit 0
         }
         if (mark_count == 0) {
