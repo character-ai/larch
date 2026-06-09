@@ -93,12 +93,8 @@ for env_id in "${LARCH_CLAUDE_SESSION_ID:-}" "${LARCH_TOKEN_SESSION_ID:-}"; do
 done
 
 if [[ -z "$latest" ]]; then
-    latest=$(
-        for f in "${transcripts[@]}"; do
-            mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || printf '0')
-            printf '%s\t%s\n' "$mtime" "$f"
-        done | sort -nr | awk -F '\t' 'NR==1 { print $2 }'
-    ) || true
+    # shellcheck disable=SC2012
+    latest=$(ls -t "$project_dir"/*.jsonl 2>/dev/null | head -1) || true
 fi
 
 [[ -n "$latest" && -f "$latest" ]] || unavailable "no Claude transcript jsonl files found"
