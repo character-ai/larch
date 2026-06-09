@@ -68,11 +68,23 @@ RUN_VIEW = ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")
 RERUN = ("gh", "run", "rerun", "999", "--repo", "o/r", "--failed")
 
 
+def _empty_sequential() -> dict[tuple[str, ...], list[CommandResult]]:
+    return {}
+
+
+def _empty_responses() -> dict[tuple[str, ...], CommandResult]:
+    return {}
+
+
+def _empty_calls() -> list[tuple[tuple[str, ...], str | None]]:
+    return []
+
+
 @dataclass
 class RecordingRunner:
-    sequential: dict[tuple[str, ...], list[CommandResult]] = field(default_factory=dict)
-    responses: dict[tuple[str, ...], CommandResult] = field(default_factory=dict)
-    calls: list[tuple[tuple[str, ...], str | None]] = field(default_factory=list)
+    sequential: dict[tuple[str, ...], list[CommandResult]] = field(default_factory=_empty_sequential)
+    responses: dict[tuple[str, ...], CommandResult] = field(default_factory=_empty_responses)
+    calls: list[tuple[tuple[str, ...], str | None]] = field(default_factory=_empty_calls)
 
     def run(
         self,
@@ -148,8 +160,14 @@ def test_guard_observes_already_merged_skips_merge() -> None:
 
 
 def test_does_not_call_full_ci_monitor_or_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ci_monitor.poll_ci", lambda *_a, **_kw: pytest.fail("poll_ci called"))
-    monkeypatch.setattr("ci_monitor.gather_status", lambda *_a, **_kw: pytest.fail("gather_status called"))
+    def fail_poll_ci(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("poll_ci called")
+
+    def fail_gather_status(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("gather_status called")
+
+    monkeypatch.setattr("ci_monitor.poll_ci", fail_poll_ci)
+    monkeypatch.setattr("ci_monitor.gather_status", fail_gather_status)
     runner = _runner(checks=[_checks("pass"), _checks("pass")])
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo")
     assert result.ok is True
@@ -289,7 +307,12 @@ def test_pending_checks_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_main_valid_explicit_repo_does_not_resolve(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = _runner(checks=[_checks("pass"), _checks("pass")])
     monkeypatch.setattr(design_log_ship, "proc", runner)
-    monkeypatch.setattr("gh.resolve_repo", lambda *_a, **_kw: pytest.fail("resolve_repo called"))
+
+    def fail_resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        _ = cwd
+        pytest.fail("resolve_repo called")
+
+    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.main(["--pr-number", "1", "--repo", "o/r", "--cwd", "/tmp/wt", "--merge-cwd", "/repo"])
     assert rc == 0
     assert "PUBLISH_OK=true" in capsys.readouterr().out
@@ -298,7 +321,12 @@ def test_main_valid_explicit_repo_does_not_resolve(monkeypatch: pytest.MonkeyPat
 def test_main_rejects_invalid_explicit_repo(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = _runner(checks=[])
     monkeypatch.setattr(design_log_ship, "proc", runner)
-    monkeypatch.setattr("gh.resolve_repo", lambda *_a, **_kw: pytest.fail("resolve_repo called"))
+
+    def fail_resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        _ = cwd
+        pytest.fail("resolve_repo called")
+
+    monkeypatch.setattr("gh.resolve_repo", fail_resolve_repo)
     rc = design_log_ship.main(["--pr-number", "1", "--repo", "../bad"])
     assert rc == 2
     assert not runner.calls

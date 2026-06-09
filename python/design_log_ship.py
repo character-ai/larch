@@ -270,12 +270,12 @@ def run_design_log_ci_merge(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Wait/merge a design-log PR through required checks")
-    parser.add_argument("--pr-number", type=int, required=True)
-    parser.add_argument("--repo", default=None)
-    parser.add_argument("--base-remote", default="origin")
-    parser.add_argument("--base-ref", default="main")
-    parser.add_argument("--cwd", default=None)
-    parser.add_argument("--merge-cwd", default=None)
+    _ = parser.add_argument("--pr-number", type=int, required=True)
+    _ = parser.add_argument("--repo", default=None)
+    _ = parser.add_argument("--base-remote", default="origin")
+    _ = parser.add_argument("--base-ref", default="main")
+    _ = parser.add_argument("--cwd", default=None)
+    _ = parser.add_argument("--merge-cwd", default=None)
     return parser
 
 
