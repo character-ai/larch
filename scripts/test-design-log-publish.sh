@@ -162,6 +162,10 @@ if [[ "$1" == "pr" ]]; then
                     printf '[]\n'
                     exit "${GH_STUB_CHECKS_JSON_RC:-0}"
                 fi
+                if [[ -n "${GH_STUB_CHECKS_JSON_PENDING_FIRST:-}" && "$checks_probe" -le "$GH_STUB_CHECKS_JSON_PENDING_FIRST" ]]; then
+                    printf '[{"name":"ci","bucket":"pending"}]\n'
+                    exit "${GH_STUB_CHECKS_JSON_RC:-0}"
+                fi
                 if [[ -n "${GH_STUB_CHECKS_JSON_OUT:-}" ]]; then
                     printf '%s\n' "$GH_STUB_CHECKS_JSON_OUT"
                 else
@@ -1355,7 +1359,7 @@ export PATH="$stub_regrc:$PATH"
 export TEST_CLONE_ROOT="$clone_regrc"
 export TEST_MERGE_BRANCH="larch-log-design-RUNREGRC1"
 export GH_STUB_CHECKS_JSON_RC=8
-export GH_STUB_CHECKS_JSON_OUT='[{"name":"ci","bucket":"pending"}]'
+export GH_STUB_CHECKS_JSON_PENDING_FIRST=1
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPREGRC/design"
 printf 'pending\n' >"$TMPREGRC/design/pending.txt"
@@ -1364,7 +1368,7 @@ out_regrc=$(cd "$clone_regrc" && bash "$PUBLISH" --design-tmpdir "$TMPREGRC/desi
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "nonzero registration rc should merge"
 ! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc must not invoke legacy checks watch"
 [[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "3" ]] || fail "nonzero registration rc should register on first JSON probe then Python should poll twice, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
-unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_OUT
+unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_PENDING_FIRST
 rm -rf "$TMPREGRC"
 
 echo "=== registration pr view failure refuses merge ==="
