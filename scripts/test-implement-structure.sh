@@ -765,8 +765,8 @@ grep -Fq 'git restore --staged -- "$path"' "$SHIP_PR_SH" \
 grep -Fq 'while IFS= read -r path' "$SHIP_PR_SH" \
   || fail "ship-pr recovery rollback must iterate paths with IFS= read -r (safe for spaces/globs)"
 
-grep -Fq '**Terminal disposition invariant:**' "$SKILL_MD" \
-  || fail "SKILL.md must retain OOS Terminal disposition invariant paragraph"
+grep -Fq '**Terminal disposition invariant:**' "$REFS_DIR/execution-issues-tracking.md" \
+  || fail "execution-issues-tracking.md must contain OOS Terminal disposition invariant paragraph"
 
 grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
