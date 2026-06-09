@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Typed gh CLI operations with per-operation retry policy.
 
 Read helpers retry transient failures via ``with_transient_retry`` and return
@@ -19,10 +20,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+import argparse
+import sys
 import redact
 from errors import ShipError, TransientNetworkError
 from proc import CommandResult, Runner
 from retry import RetryResult, is_transient_net_signature, with_transient_retry
+import proc
 
 
 @dataclass(frozen=True)
@@ -1259,3 +1263,53 @@ def extract_closes_issue_from_current_pr(
     if result.returncode != 0:
         return ""
     return extract_closes_issue(result.stdout)
+
+
+# CLI entrypoints migrated from gh_cli.py.
+def resolve_repo_main(argv: list[str]) -> int:
+    if argv:
+        print(f"resolve-repo.sh: unknown argument: {argv[0]}", file=sys.stderr)
+        return 1
+    repo = resolve_repo(proc)
+    if not repo:
+        print("ERROR=could not resolve repo (gh repo view + git remote both failed)", file=sys.stderr)
+        return 1
+    print(repo)
+    return 0
+
+
+def remote_repo_main(argv: list[str]) -> int:
+    if len(argv) != 1:
+        print("Usage: github-remote-repo.sh <remote-name-or-url>", file=sys.stderr)
+        return 2
+    repo = remote_repo(proc, argv[0])
+    if not repo:
+        print("github-remote-repo.sh: cannot parse remote", file=sys.stderr)
+        return 2
+    print(repo)
+    return 0
+
+
+def run_logs_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py gh run-logs")
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--repo", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    text, rc = run_logs_failed(proc, args.run_id, repo=args.repo)
+    sys.stdout.write(text)
+    return rc
+
+
+def workflow_path_main(argv: list[str]) -> int:
+    if len(argv) != 1:
+        print("**⚠ read-workflow-path: artifact path not provided; defaulting to unknown**", file=sys.stderr)
+        print("unknown")
+        return 0
+    value = read_workflow_path(argv[0])
+    if value == "unknown":
+        print("**⚠ read-workflow-path: workflow_path/design_classification missing or invalid; defaulting to unknown**", file=sys.stderr)
+    print(value)
+    return 0

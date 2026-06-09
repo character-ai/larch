@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""Thin CLI entrypoints for CI helper primitives."""
+"""Thin CLI entrypoints for CI helper primitives (ci)."""
 
 from __future__ import annotations
 

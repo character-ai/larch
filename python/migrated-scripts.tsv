@@ -84,3 +84,14 @@ scripts/test-write-run-params.sh	#3668
 scripts/test-write-run-params.md	#3668
 skills/design/scripts/test-write-design-current-env.sh	#3668
 skills/design/scripts/test-write-design-current-env.md	#3668
+python/git_cli.py	#3783
+python/push_cli.py	#3783
+python/pr_cli.py	#3783
+python/merge_cli.py	#3783
+python/gh_cli.py	#3783
+python/ci_cli.py	#3783
+python/test_git_cli.py	#3783
+python/test_push_cli.py	#3783
+python/test_pr_cli.py	#3783
+python/test_gh_cli.py	#3783
+python/test_ci_cli.py	#3783

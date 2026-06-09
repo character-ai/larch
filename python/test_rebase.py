@@ -1096,3 +1096,45 @@ def test_deterministic_prepass_version_go_and_go_sum() -> None:
         )
         assert not remaining
         assert ("git", "checkout", "--ours", "--", name) in runner.calls
+
+def test_sync_local_main_missing_remote_non_main_noops() -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                "feature\n",
+            )),
+            (("git", "rev-parse", "main"), _ok(("git", "rev-parse", "main"), "local\n")),
+            (("git", "rev-parse", "origin/main"), _fail(("git", "rev-parse", "origin/main"))),
+        ],
+    )
+    rebase._sync_local_main(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        base_remote="origin",
+        base_ref="main",
+        cwd=None,
+    )
+    assert not any(call[:3] == ("git", "branch", "-f") for call in runner.calls)
+
+
+def test_sync_local_main_missing_remote_on_main_stalls() -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                "main\n",
+            )),
+            (("git", "rev-parse", "main"), _ok(("git", "rev-parse", "main"), "local\n")),
+            (("git", "branch", "-f", "main", "origin/main"), _fail(
+                ("git", "branch", "-f", "main", "origin/main"),
+                "fatal: cannot force update the branch 'main' checked out",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="refusing to update local 'main'"):
+        rebase._sync_local_main(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            base_remote="origin",
+            base_ref="main",
+            cwd=None,
+        )

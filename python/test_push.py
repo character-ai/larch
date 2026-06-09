@@ -7,12 +7,15 @@ from dataclasses import dataclass
 import pytest
 
 import config
+import git
 import push
 from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner
+import phantom
+import rebase
 
 
 @dataclass
@@ -129,3 +132,85 @@ def test_push_backs_off_when_stderr_unchanged() -> None:
     assert result.status == "failed"
     assert result.attempts == config.PUSH_MAX_ATTEMPTS
     assert len(sleeps) == config.PUSH_MAX_ATTEMPTS - 1
+
+
+# CLI contract tests migrated from test_push_cli.py.
+def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
+    return CommandResult(("cmd",), rc, stdout, stderr, 0.01)
+
+
+def test_force_status_map_dirty_worktree(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[_res(stdout="feature\n"), _res(stdout=" M file\n")])
+    monkeypatch.setattr(push, "proc", runner)
+    assert push.force_main([]) == 1
+    out = capsys.readouterr().out
+    assert "PUSHED=false" in out
+    assert "STATUS=dirty_worktree" in out
+
+
+def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    @dataclass
+    class _RebaseResult:
+        exit_code: int = 0
+        skipped_already_fresh: bool = True
+        skipped_already_pushed: bool = False
+        conflict_files: str = ""
+        rebase_error: str = ""
+
+    @dataclass
+    class _ProbeResult:
+        dirty: object
+        append_warn_error: str = ""
+
+    @dataclass
+    class _Dirty:
+        status: str = "clean"
+        reason: str = ""
+        count: int = 0
+        paths_file: str = ""
+
+    def _stub_rebase_push(*_args: object, **_kwargs: object) -> _RebaseResult:
+        return _RebaseResult()
+
+    monkeypatch.setattr(rebase, "rebase_push", _stub_rebase_push)
+    def _stub_probe_with_warn(*_args: object, **_kwargs: object) -> _ProbeResult:
+        return _ProbeResult(dirty=_Dirty())
+
+    monkeypatch.setattr(
+        phantom,
+        "probe_with_warn",
+        _stub_probe_with_warn,
+    )
+    assert push.checkpoint_probe_main(["1.r", "plan"]) == 0
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=skipped" in out
+    assert "SKIPPED_ALREADY_FRESH=true" in out
+    assert "PHANTOM_STATUS=clean" in out
+
+
+def test_branch_push_dedupes_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = RecordingRunner(responses=[_res(stdout="feature\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n"), _res(stdout="feature\n"), _res(1, stderr="nope\n")])
+    monkeypatch.setattr(push, "proc", runner)
+    assert push.branch_main([]) == 1
+    captured = capsys.readouterr()
+    assert "BRANCH=feature" in captured.out
+    assert "(repeated 3 times)" in captured.err
+
+
+def test_branch_main_unknown_argument_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+    assert push.branch_main(["--bogus"]) == 1
+    err = capsys.readouterr().err
+    assert "git-push.sh: unknown argument: --bogus" in err
+
+
+def test_force_main_detached_head_stderr_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_recovery(*_args: object, **_kwargs: object) -> git.ForcePushResult:
+        return git.ForcePushResult(pushed=False, status="detached_head", branch="")
+
+    monkeypatch.setattr(git, "force_push_recovery", fake_recovery)
+    assert push.force_main([]) == 2
+    err = capsys.readouterr().err
+    assert err.strip() == "git-force-push.sh: not on a named branch"

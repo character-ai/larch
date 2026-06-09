@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 import git as git_module
 import gh
@@ -10,7 +11,7 @@ import pytest
 import config
 import pr as pr_module
 from errors import ShipError
-from proc import CommandResult
+from proc import CommandResult, Runner
 from run_context import RunContext
 
 
@@ -490,3 +491,59 @@ def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) 
     result = pr_module.create_branch(runner, branch=branch)
     assert result.status == "created"
     assert [call[:2] for call in runner.calls].count(["git", "fetch"]) == 2
+
+
+# CLI contract tests migrated from test_pr_cli.py.
+def test_closes_issue_from_body_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    body = tmp_path / "body.md"
+    _ = body.write_text("Hello\n\nCloses #3670\n", encoding="utf-8")
+    assert pr_module.closes_issue_main(["--body-file", str(body)]) == 0
+    assert capsys.readouterr().out.strip() == "3670"
+
+
+def test_body_update_missing_file(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(pr_module, "proc", RecordingRunner())
+    assert pr_module.body_update_main(["--pr", "1", "--body-file", "/no/such/file"]) == 2
+    out = capsys.readouterr().out
+    assert "UPDATED=false" in out
+    assert "body file not found" in out
+
+
+def test_create_main_invalid_repo_stderr_prefix(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+    assert pr_module.create_main(
+        ["--title", "t", "--body-file", str(body), "--repo", "not-valid", "--branch", "feat"],
+    ) == 2
+    err = capsys.readouterr().err
+    assert err.startswith(
+        "create-pr.sh: --repo must be OWNER/REPO using GitHub owner/repo characters",
+    )
+
+
+def test_create_main_detached_head_stderr_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+
+    def detached_head(_runner: Runner, *, cwd: str | None = None) -> None:
+        _ = cwd
+
+    monkeypatch.setattr(git_module, "try_current_branch", detached_head)
+    assert pr_module.create_main(["--title", "t", "--body-file", str(body)]) == 2
+    err = capsys.readouterr().err
+    assert err.strip() == "create-pr.sh: not on a branch (detached HEAD)"
+
+
+def test_create_main_missing_body_file_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+    assert pr_module.create_main(
+        ["--title", "t", "--body-file", "/no/such/body-file", "--branch", "feat"],
+    ) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("create-pr.sh: cannot read body file:")

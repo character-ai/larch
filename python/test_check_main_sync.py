@@ -8,7 +8,6 @@ from test_support import RecordingRunner
 
 import config
 import git
-import git_cli
 
 
 def _ok(stdout: str = "", stderr: str = "") -> CommandResult:
@@ -81,8 +80,8 @@ def test_check_main_sync_cli_blocked_exit_one(monkeypatch, capsys) -> None:
             _ok("x.txt\n"),
         ],
     )
-    monkeypatch.setattr(git_cli, "proc", runner)
-    assert git_cli.check_main_sync_main([]) == 1
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.check_main_sync_main([]) == 1
     out = capsys.readouterr().out
     assert "SYNC_STATUS=blocked" in out
     assert "AHEAD_COUNT=1" in out
@@ -101,8 +100,8 @@ def test_check_main_sync_cli_flush_reset(monkeypatch, capsys) -> None:
             _ok(""),
         ],
     )
-    monkeypatch.setattr(git_cli, "proc", runner)
-    assert git_cli.check_main_sync_main([]) == 0
+    monkeypatch.setattr(git, "proc", runner)
+    assert git.check_main_sync_main([]) == 0
     out = capsys.readouterr().out
     assert "SYNC_STATUS=reset" in out
     assert "AHEAD_COUNT=1" in out
