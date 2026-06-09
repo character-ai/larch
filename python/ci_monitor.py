@@ -51,6 +51,7 @@ class CiStatus:
     behind_count: int
     failed_run_id: str | None
     conflicted: bool = False
+    pr_view_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -390,10 +391,12 @@ def gather_status(
 ) -> CiStatus:
     """Port of ci-status.sh."""
     conflicted = True
+    pr_view_ok = True
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
         pr_info = None
+        pr_view_ok = False
     if pr_info is not None:
         if pr_info.state.upper() == "MERGED":
             return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
@@ -424,6 +427,7 @@ def gather_status(
             behind_count=0,
             failed_run_id=failed_run_id,
             conflicted=conflicted,
+            pr_view_ok=pr_view_ok,
         )
     behind = behind_raw
     if behind > 0 and _squash_merge_race(
@@ -439,6 +443,7 @@ def gather_status(
         behind_count=behind,
         failed_run_id=failed_run_id,
         conflicted=conflicted,
+        pr_view_ok=pr_view_ok,
     )
 
 
@@ -486,7 +491,6 @@ def poll_ci(
             sleep_fn=sleep_fn,
             cwd=cwd,
         )
-        last_status = status
 
         if not status.status or status.status == "error":
             ci_failures += 1
@@ -505,6 +509,17 @@ def poll_ci(
             )
         else:
             ci_failures = 0
+
+        if status.status == "pass" and not status.pr_view_ok:
+            status = CiStatus(
+                status="pending",
+                behind_count=status.behind_count,
+                failed_run_id=status.failed_run_id,
+                conflicted=status.conflicted,
+                pr_view_ok=False,
+            )
+
+        last_status = status
 
         if status.status == "NO_CHECKS":
             return (
