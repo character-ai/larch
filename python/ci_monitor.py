@@ -39,6 +39,7 @@ _JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
 _LAUNCHER_EXIT_RE = re.compile(r"^LAUNCHER_EXIT=(\d+)", re.MULTILINE)
+_PR_CHECKS_STATUS_FIELD_MIN_PARTS = 2
 
 SleepFn = Callable[[float], None]
 ClockFn = Callable[[], float]
@@ -324,7 +325,7 @@ def _classify_checks_json(checks_json: str, *, required: bool = False) -> tuple[
 
 def _pr_checks_text_status_field(line: str) -> str:
     parts = line.split("\t")
-    if len(parts) >= 2:
+    if len(parts) >= _PR_CHECKS_STATUS_FIELD_MIN_PARTS:
         return parts[1].strip()
     return line.strip()
 
