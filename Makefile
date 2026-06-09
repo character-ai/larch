@@ -550,6 +550,15 @@ test-brainstorm-prompts:
 test-lint-readability-preamble:
 	cd python && $(PYTHON) -m pytest test_lint_readability_preamble.py
 
+test-lint-skill-md-flag-signature:
+	cd python && $(PYTHON) -m pytest test_lint_skill_md_flag_signature.py
+
+test-lint-codex-exec-auth:
+	cd python && $(PYTHON) -m pytest test_lint_codex_exec_auth.py
+
+test-lint-skill-invocations:
+	cd python && $(PYTHON) -m pytest test_lint_skill_invocations.py
+
 test-lint-renderer-substitution-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-renderer-substitution-safety.sh
 
