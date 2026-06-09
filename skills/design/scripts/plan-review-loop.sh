@@ -535,15 +535,16 @@ _write_prune_nit_env() {
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
     local snapshot_ok=true
-    if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
-        _persist_plan_round_start "$round_num" "${_round_start:-}"
-    else
+    if [[ "${LOOP_STATUS:-}" != "main-agent-vote-required" ]]; then
         _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
     fi
     if ! _snapshot_round_dir "$round_num"; then
         emit_kv WARN "plan-review-snapshot: round-${round_num} snapshot failed after terminal status ${LOOP_STATUS:-unknown}"
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
         snapshot_ok=false
+    fi
+    if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
+        _persist_plan_round_start "$round_num" "${_round_start:-}"
     fi
     _write_prune_decision_env "$round_num"
     _write_prune_nit_env "$round_num"
