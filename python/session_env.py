@@ -837,9 +837,14 @@ def write_run_params_main(argv: list[str]) -> int:
         if args.workflow_path and args.workflow_path not in {"SIMPLE", "HARD"}:
             raise ValueError(f"invalid --workflow-path: {args.workflow_path}")
         for flag in ("partition_requested", "brainstorm_requested", "approve_requested", "skip_approve_requested"):
+            cli_flag = f"--{flag.replace('_', '-')}"
+            if cli_flag not in argv:
+                continue
             value = getattr(args, flag)
-            if value and value not in _BOOL:
-                raise ValueError(f"invalid --{flag.replace('_', '-')}: {value}")
+            if not value:
+                raise ValueError(f"invalid {cli_flag}: requires a value")
+            if value not in _BOOL:
+                raise ValueError(f"invalid {cli_flag}: {value}")
         out = Path(args.output)
         if not out.is_absolute():
             raise ValueError(f"--output must be absolute: {out}")
@@ -992,7 +997,15 @@ def cleanup_tmpdir_main(argv: list[str]) -> int:
     with suppress(OSError):
         with audit_log.open("a", encoding="utf-8") as handle:
             handle.write(f"{ts} pid={os.getpid()} ppid={os.getppid()} parent={parent} dir={target}\n")
-    shutil.rmtree(target, ignore_errors=True)
+    target_path = Path(target)
+    try:
+        shutil.rmtree(target_path)
+    except OSError as exc:
+        _err(f"ERROR: cleanup-tmpdir failed: {exc}")
+        return 1
+    if target_path.exists():
+        _err(f"ERROR: cleanup-tmpdir failed: directory still exists: {target}")
+        return 1
     return 0
 
 
@@ -1013,8 +1026,15 @@ def entry_gate_main(argv: list[str]) -> int:
         return 4
     if extra:
         return fail(f"unknown argument: {extra[0]}")
-    for flag, value in (("--mode", args.mode), ("--current-branch", args.current_branch), ("--user-prefix", args.user_prefix), ("--is-main", args.is_main), ("--is-user-branch", args.is_user_branch)):
-        if value == "":
+    supplied = {
+        "--mode": "--mode" in argv,
+        "--current-branch": "--current-branch" in argv,
+        "--user-prefix": "--user-prefix" in argv,
+        "--is-main": "--is-main" in argv,
+        "--is-user-branch": "--is-user-branch" in argv,
+    }
+    for flag, was_supplied in supplied.items():
+        if not was_supplied:
             return fail(f"missing required flag {flag}")
     if args.mode not in {"implement", "design"}:
         return fail(f"invalid mode: {args.mode}")
