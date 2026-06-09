@@ -19,7 +19,7 @@ import config
 import gh
 import git
 import logging_util
-import redact
+import rebase
 import retry
 import run_logs
 from agents import TierAttempt
@@ -227,6 +227,30 @@ def _behind_count(
         return None
 
 
+def behind_count(
+    runner: Runner,
+    *,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    fetch: bool = True,
+    cwd: str | None = None,
+) -> int:
+    """Public ci-behind-count parity: validate labels, fail open to 0."""
+    if git.validate_base_remote_ref(base_remote, base_ref) is not None:
+        return 0
+    if fetch:
+        fetched = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        if fetched.returncode != 0:
+            return 0
+    value = _behind_count(
+        runner,
+        base_remote=base_remote,
+        base_ref=base_ref,
+        cwd=cwd,
+    )
+    return value if value is not None else 0
+
+
 def _squash_merge_race(
     runner: Runner,
     *,
@@ -285,7 +309,7 @@ def gather_status(
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
-        return CiStatus(status="error", behind_count=0, failed_run_id=None, conflicted=False)
+        return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=True)
     if pr_info.state.upper() == "MERGED":
         return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
 
@@ -330,7 +354,20 @@ def gather_status(
         else:
             status = "NO_CHECKS"
     else:
-        status = "pending"
+        text_checks = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
+        if text_checks.returncode == 0 and text_checks.stdout.strip():
+            if re.search(r"\bfail", text_checks.stdout, flags=re.IGNORECASE):
+                status = "fail"
+            elif re.search(
+                r"\b(pending|in_progress|queued)",
+                text_checks.stdout,
+                flags=re.IGNORECASE,
+            ):
+                status = "pending"
+            else:
+                status = "pass"
+        else:
+            status = "pending"
 
     behind_raw = _behind_count(
         runner,
@@ -535,17 +572,17 @@ def collect_failed_logs(
         cwd=cwd,
     )
     combined = result.stdout + result.stderr
-    if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
-        return LogCollectResult(text="", state="in_progress")
-    if result.returncode != 0:
-        return LogCollectResult(text="", state="error")
     lines = combined.splitlines()
     tail = lines[-config.CI_MONITOR_LOG_TAIL_LINES :]
-    body = redact.redact("\n".join(tail))
+    body = "\n".join(tail)
     if body and not body.endswith("\n"):
         body += "\n"
     text = f"{pointer}\n{body}" if body.strip() else pointer + "\n"
-    return LogCollectResult(text=redact.redact(text), state="ready")
+    if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
+        return LogCollectResult(text=text, state="in_progress")
+    if result.returncode != 0:
+        return LogCollectResult(text=text, state="error")
+    return LogCollectResult(text=text, state="ready")
 
 
 def rerun_failed(
@@ -889,9 +926,10 @@ def stage_and_push(
         for path in delta_paths:
             _ = runner.run(["git", "add", "--", path], cwd=cwd)
         commit_msg = f"Apply CI fixes ({commit_label})"
-        commit_script = str(_SCRIPTS_DIR / "git-commit.sh")
-        commit = runner.run(
-            [commit_script, "--no-trailer", "-m", commit_msg],
+        commit = git.commit_with_trailer(
+            runner,
+            commit_msg,
+            no_trailer=True,
             cwd=cwd,
         )
         if commit.returncode != 0:
@@ -923,20 +961,15 @@ def stage_and_push(
             if not known_failed_jobs:
                 _warn_stderr("ship-pr: behind main but failed-jobs unknown; skipping defer-rebase")
             else:
-                rebase_script = str(_SCRIPTS_DIR / "rebase-push.sh")
-                rebased = runner.run(
-                    [
-                        rebase_script,
-                        "--no-push",
-                        "--keep-on-conflict",
-                        "--base-remote",
-                        base_remote,
-                        "--base-ref",
-                        base_ref,
-                    ],
+                rebased = rebase.rebase_push(
+                    runner,
+                    no_push=True,
+                    keep_on_conflict=True,
+                    base_remote=base_remote,
+                    base_ref=base_ref,
                     cwd=cwd,
                 )
-                did_rebase = rebased.returncode == 0
+                did_rebase = rebased.exit_code == 0
                 if not did_rebase:
                     _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False

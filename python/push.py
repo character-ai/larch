@@ -19,6 +19,9 @@ class PushResult:
     remote: str
     attempts: int
     status: str
+    branch: str = ""
+    stderr: str = ""
+    exit_code: int = 0
 
 
 def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
@@ -71,3 +74,67 @@ def push_branch(
             jitter = random.uniform(0.0, 0.5)
             sleeper(float(backoff) + jitter)
     return PushResult(remote=remote, attempts=config.PUSH_MAX_ATTEMPTS, status="failed")
+
+
+def push_current_branch(
+    runner: Runner,
+    *,
+    cwd: str | None = None,
+    sleeper: Callable[[float], None] | None = None,
+) -> PushResult:
+    """No-arg ``git-push.sh`` parity: named-branch guard, retries, deduped stderr."""
+    if sleeper is None:
+        sleeper = time.sleep
+    branch = git.try_current_branch(runner, cwd=cwd)
+    if not branch:
+        return PushResult(remote="origin", attempts=0, status="detached_head", exit_code=1)
+    stderr_blocks: list[str] = []
+    last_exit = 0
+    for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
+        if not git.try_current_branch(runner, cwd=cwd):
+            return PushResult(
+                remote="origin",
+                attempts=attempt,
+                status="detached_head",
+                branch=branch,
+                stderr=f"git-push.sh: not on a named branch before attempt {attempt}\n",
+                exit_code=1,
+            )
+        result = runner.run(["git", "push"], cwd=cwd)
+        if result.returncode == 0:
+            return PushResult(
+                remote="origin",
+                attempts=attempt,
+                status="pushed",
+                branch=branch,
+                exit_code=0,
+            )
+        last_exit = result.returncode
+        stderr_blocks.append(result.stderr)
+        if attempt < config.PUSH_MAX_ATTEMPTS:
+            sleeper(float(max(1, 2 ** (attempt - 1))))
+    rendered: list[str] = []
+    previous: str | None = None
+    repeat = 0
+    for block in stderr_blocks:
+        if previous is not None and block == previous:
+            repeat += 1
+            continue
+        if previous is not None:
+            rendered.append(previous)
+            if repeat:
+                rendered.append(f"(repeated {repeat + 1} times)\n")
+        previous = block
+        repeat = 0
+    if previous is not None:
+        rendered.append(previous)
+        if repeat:
+            rendered.append(f"(repeated {repeat + 1} times)\n")
+    return PushResult(
+        remote="origin",
+        attempts=config.PUSH_MAX_ATTEMPTS,
+        status="failed",
+        branch=branch,
+        stderr="".join(rendered),
+        exit_code=last_exit or 1,
+    )

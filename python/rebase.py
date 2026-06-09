@@ -32,6 +32,16 @@ class RebaseResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class RebasePushResult:
+    exit_code: int
+    skipped_already_pushed: bool = False
+    skipped_already_fresh: bool = False
+    conflict_files: str = ""
+    rebase_error: str = ""
+    push_error: str = ""
+
+
 def _conflict_launch_output_dir(tmpdir: str | None) -> Path:
     if tmpdir:
         return Path(tmpdir) / ".conflict-launch"
@@ -402,3 +412,76 @@ def rebase_and_push(
         attempts=rebase_attempt + 1,
         detail="",
     )
+
+
+def rebase_push(
+    runner: Runner,
+    *,
+    continue_mode: bool = False,
+    no_push: bool = False,
+    skip_if_pushed: bool = False,
+    keep_on_conflict: bool = False,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    cwd: str | None = None,
+) -> RebasePushResult:
+    """CLI parity primitive for ``rebase-push.sh``."""
+    base_err = git.validate_base_remote_ref(base_remote, base_ref)
+    if base_err is not None:
+        return RebasePushResult(exit_code=3, rebase_error=base_err)
+    if skip_if_pushed and not no_push:
+        return RebasePushResult(exit_code=3, rebase_error="--skip-if-pushed is only valid with --no-push")
+    if skip_if_pushed and continue_mode:
+        return RebasePushResult(exit_code=3, rebase_error="--skip-if-pushed cannot be used with --continue")
+    if keep_on_conflict and not no_push:
+        return RebasePushResult(exit_code=3, rebase_error="--keep-on-conflict is only valid with --no-push")
+    if continue_mode and no_push and not keep_on_conflict:
+        return RebasePushResult(
+            exit_code=3,
+            rebase_error="--continue --no-push requires --keep-on-conflict to safely handle nested conflicts",
+        )
+
+    if skip_if_pushed:
+        branch = git.try_current_branch(runner, cwd=cwd)
+        if branch:
+            remote = runner.run(
+                ["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"],
+                cwd=cwd,
+            )
+            if remote.returncode == 0 and remote.stdout.strip():
+                return RebasePushResult(exit_code=0, skipped_already_pushed=True)
+
+    base_target = f"{base_remote}/{base_ref}"
+    if continue_mode:
+        git_dir = runner.run(["git", "rev-parse", "--git-dir"], cwd=cwd)
+        if git_dir.returncode != 0 or not git_dir.stdout.strip():
+            return RebasePushResult(exit_code=3, rebase_error="--continue called but no rebase is in progress")
+        rebase_result = runner.run(["git", "rebase", "--continue"], cwd=cwd, env={**os.environ, "GIT_EDITOR": "true"})
+    else:
+        if not git.try_current_branch(runner, cwd=cwd):
+            return RebasePushResult(exit_code=3, rebase_error="Not on a branch (detached HEAD)")
+        fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        if no_push and fetch_result.returncode != 0:
+            return RebasePushResult(exit_code=3, rebase_error=f"git fetch {base_remote} {base_ref} failed (network/auth issue)")
+        if no_push and git.is_ancestor(runner, base_target, "HEAD", cwd=cwd):
+            return RebasePushResult(exit_code=0, skipped_already_fresh=True)
+        rebase_result = git.rebase(runner, base_target, cwd=cwd)
+
+    if rebase_result.returncode != 0:
+        conflicts = ",".join(git.unmerged_paths(runner, cwd=cwd))
+        if conflicts:
+            if no_push and not keep_on_conflict:
+                _abort_rebase(runner, cwd=cwd)
+            return RebasePushResult(exit_code=1, conflict_files=conflicts)
+        err = (rebase_result.stdout + rebase_result.stderr).replace("\n", " ").strip()
+        if not continue_mode:
+            _abort_rebase(runner, cwd=cwd)
+        return RebasePushResult(exit_code=3, rebase_error=err)
+
+    if no_push:
+        return RebasePushResult(exit_code=0)
+
+    push_result = git.force_push_recovery(runner, remote="origin", cwd=cwd)
+    if push_result.pushed:
+        return RebasePushResult(exit_code=0)
+    return RebasePushResult(exit_code=2, push_error=push_result.status)

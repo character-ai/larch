@@ -20,6 +20,16 @@ class PrResult:
     number: int
     url: str
     status: str
+    title: str = ""
+    exit_code: int = 0
+
+
+@dataclass(frozen=True)
+class CreateBranchResult:
+    status: str
+    branch: str
+    base: str
+    exit_code: int
 
 
 def _issue_number(issue: str) -> int:
@@ -98,3 +108,76 @@ def _push_existing_pr(
     if not recovery.pushed:
         msg = f"force-push recovery failed: {recovery.status}"
         raise ShipError(msg)
+
+
+def create_branch(
+    runner: Runner,
+    *,
+    branch: str,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    check: bool = False,
+    cwd: str | None = None,
+) -> CreateBranchResult:
+    if not branch or not branch.startswith("sergey-zhupanov/"):
+        return CreateBranchResult("invalid", branch, f"{base_remote}/{base_ref}", 2)
+    err = git.validate_base_remote_ref(base_remote, base_ref)
+    if err is not None:
+        return CreateBranchResult("invalid", branch, f"{base_remote}/{base_ref}", 2)
+    if check:
+        exists = git.try_rev_parse(runner, branch, cwd=cwd)
+        return CreateBranchResult(
+            "exists" if exists else "absent",
+            branch,
+            f"{base_remote}/{base_ref}",
+            0 if exists else 1,
+        )
+    fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+    if fetch.returncode != 0:
+        return CreateBranchResult("fetch_failed", branch, f"{base_remote}/{base_ref}", 1)
+    result = runner.run(["git", "checkout", "-B", branch, f"{base_remote}/{base_ref}"], cwd=cwd)
+    if result.returncode != 0:
+        return CreateBranchResult("create_failed", branch, f"{base_remote}/{base_ref}", 1)
+    return CreateBranchResult("created", branch, f"{base_remote}/{base_ref}", 0)
+
+
+def create_pr_parity(
+    runner: Runner,
+    *,
+    repo: str,
+    branch: str,
+    title: str,
+    body: str,
+    base: str | None = None,
+    draft: bool = False,
+    cwd: str | None = None,
+) -> PrResult:
+    existing = gh.pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+    if existing is not None and existing.state.upper() == "OPEN":
+        return PrResult(
+            number=existing.number,
+            url=existing.url,
+            status="existing",
+            title=title,
+            exit_code=0,
+        )
+    pushed = push.push_current_branch(runner, cwd=cwd, sleeper=lambda _seconds: None)
+    if pushed.exit_code != 0:
+        return PrResult(0, "", "push_failed", title, 2)
+    created, was_created = gh.pr_create(
+        runner,
+        repo=repo,
+        branch=branch,
+        title=title,
+        body=body,
+        base=base,
+        draft=draft,
+        cwd=cwd,
+    )
+    return PrResult(
+        number=created.number,
+        url=created.url,
+        status="created" if was_created else "existing",
+        title=title,
+        exit_code=0,
+    )

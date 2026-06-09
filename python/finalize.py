@@ -168,19 +168,6 @@ def _rebase_no_push(
     return "failed"
 
 
-def _remote_branch_state(runner: Runner, branch: str, *, cwd: str | None) -> str:
-    def attempt() -> tuple[CommandResult, int, str]:
-        result = runner.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=cwd)
-        return result, result.returncode, result.stdout + result.stderr
-
-    result = retry.with_transient_retry(attempt).value
-    if result.returncode == 0:
-        return "present"
-    if result.returncode == LS_REMOTE_NOT_FOUND_RC:
-        return "absent"
-    return "error"
-
-
 @dataclass(frozen=True)
 class LocalCleanupResult:
     cleanup_success: bool
@@ -289,7 +276,7 @@ def postbump(
                 force_push_status="skipped-repo-unavailable",
                 log_write_status="skipped",
             )
-        remote_state = _remote_branch_state(runner, branch, cwd=cwd)
+        remote_state = git.remote_branch_state(runner, branch, cwd=cwd).state
         if remote_state == "absent":
             return FinalizeResult(
                 Outcome.OK,

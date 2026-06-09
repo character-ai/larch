@@ -61,6 +61,13 @@ class PrCheck:
     bucket: str
 
 
+@dataclass(frozen=True)
+class BodyUpdateResult:
+    updated: bool
+    error: str
+    exit_code: int
+
+
 def _gh(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> CommandResult:
     return runner.run(["gh", *argv], cwd=cwd)
 
@@ -1108,3 +1115,142 @@ def issue_edit(
             argv.extend([body_flag, body_path])
             return _gh(runner, argv, cwd=cwd)
     return _gh(runner, argv, cwd=cwd)
+
+
+_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
+def validate_repo_slug(value: str) -> bool:
+    if not value or "\n" in value or "\r" in value:
+        return False
+    if value.startswith(("--", "/")) or "../" in value or "\\" in value:
+        return False
+    return _REPO_RE.fullmatch(value) is not None
+
+
+def remote_repo(
+    runner: Runner,
+    remote_or_url: str,
+    *,
+    cwd: str | None = None,
+) -> str | None:
+    if "://" in remote_or_url or "@" in remote_or_url:
+        url = remote_or_url
+    else:
+        result = runner.run(["git", "remote", "get-url", remote_or_url], cwd=cwd)
+        if result.returncode != 0:
+            return None
+        url = result.stdout.strip()
+    url = url.rstrip("/")
+    url = url.removesuffix(".git")
+    url = url.rstrip("/")
+    match = re.match(r"^git@github[.]com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$", url)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    match = re.match(
+        r"^(?:https?|ssh|git)://(?:[^@]+@)?github[.]com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$",
+        url,
+    )
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    return None
+
+
+def resolve_repo(runner: Runner, *, cwd: str | None = None) -> str | None:
+    result = runner.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+        cwd=cwd,
+    )
+    candidate = result.stdout.strip() if result.returncode == 0 else ""
+    if not candidate:
+        candidate = remote_repo(runner, "origin", cwd=cwd) or ""
+    return candidate if validate_repo_slug(candidate) else None
+
+
+def pr_edit_body_file(
+    runner: Runner,
+    pr_number: str,
+    body_file: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> BodyUpdateResult:
+    if not Path(body_file).is_file():
+        return BodyUpdateResult(updated=False, error=f"body file not found: {body_file}", exit_code=2)
+
+    argv = ["gh", "pr", "edit", pr_number]
+    if repo:
+        argv.extend(["--repo", repo])
+    argv.extend(["--body-file", body_file])
+
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = runner.run(argv, cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    retried: RetryResult[CommandResult] = with_transient_retry(attempt)
+    result = retried.value
+    if result.returncode == 0:
+        return BodyUpdateResult(updated=True, error="", exit_code=0)
+    output = redact.redact(result.stdout + result.stderr).replace("\n", " ").strip()
+    return BodyUpdateResult(
+        updated=False,
+        error=f"gh pr edit failed (exit {result.returncode}): {output}",
+        exit_code=2,
+    )
+
+
+def run_logs_failed(
+    runner: Runner,
+    run_id: str,
+    *,
+    repo: str,
+    tail_lines: int = 100,
+    cwd: str | None = None,
+) -> tuple[str, int]:
+    pointer = (
+        f"--- CI log (run {run_id}, repo {repo}) — last {tail_lines} lines shown. "
+        f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
+    )
+    result = runner.run(["gh", "run", "view", run_id, "--repo", repo, "--log-failed"], cwd=cwd)
+    combined = result.stdout + result.stderr
+    tail = "\n".join(combined.splitlines()[-tail_lines:])
+    text = f"{pointer}\n{tail}\n" if tail else f"{pointer}\n"
+    if result.returncode != 0 and "is still in progress; logs will be available" in combined:
+        return text, 3
+    if result.returncode != 0:
+        return text, 1
+    return text, 0
+
+
+def read_workflow_path(path: str) -> str:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "unknown"
+    workflow = data.get("workflow_path")
+    if workflow in ("SIMPLE", "HARD"):
+        return str(workflow)
+    classification = data.get("design_classification")
+    if classification in ("SIMPLE", "HARD"):
+        return str(classification)
+    return "unknown"
+
+
+def extract_closes_issue(body: str) -> str:
+    match = re.search(r"Closes #([0-9]+)", body)
+    return match.group(1) if match else ""
+
+
+def extract_closes_issue_from_current_pr(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str:
+    result = runner.run(
+        ["gh", "pr", "view", "--repo", repo, "--json", "body", "--jq", ".body"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return ""
+    return extract_closes_issue(result.stdout)

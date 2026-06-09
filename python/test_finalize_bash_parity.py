@@ -121,13 +121,13 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch,
 
     monkeypatch.setattr(finalize, "_rebase_no_push", fake_rebase)
 
-    def fake_remote_state(*_args: Any, **_kwargs: Any) -> str:
-        return "present"
+    def fake_remote_state(*_args: Any, **_kwargs: Any) -> object:
+        return type("R", (), {"state": "present"})()
 
     def fake_force_push(*_args: Any, **_kwargs: Any) -> object:
         return type("P", (), {"pushed": True, "status": "pushed"})()
 
-    monkeypatch.setattr(finalize, "_remote_branch_state", fake_remote_state)
+    monkeypatch.setattr(finalize.git, "remote_branch_state", fake_remote_state)
     monkeypatch.setattr(finalize.git, "force_push_recovery", fake_force_push)
 
     def fake_branch(*_args: Any, **_kwargs: Any) -> str:

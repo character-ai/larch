@@ -1299,14 +1299,10 @@ def run_lint_fix(
                     head_changed=False,
                     coder_tool=coder_tool,
                 )
-            commit_script = scripts / "git-commit.sh"
-            commit_result = runner.run(
-                [
-                    str(commit_script),
-                    "--no-trailer",
-                    "-m",
-                    f"Apply relevant-checks fixes ({site_label})",
-                ],
+            commit_result = git.commit_with_trailer(
+                runner,
+                f"Apply relevant-checks fixes ({site_label})",
+                no_trailer=True,
                 cwd=cwd,
             )
             if commit_result.returncode != 0:

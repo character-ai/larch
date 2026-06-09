@@ -13,6 +13,7 @@ Contract KV on stdout (fd 3 / contract_stream after quiet_init):
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +24,38 @@ import proc
 _MANIFEST_DEFAULT = "python/migrated-scripts.tsv"
 _EXCLUSION_SEGMENTS = frozenset({"larch-logs"})
 _EXCLUSION_FILES = frozenset({"CHANGELOG.md"})
+
+
+def _script_dir_refs(retired_path: str) -> tuple[str, ...]:
+    basename = Path(retired_path).name
+    return (
+        f"$SCRIPT_DIR/{basename}",
+        f"${{SCRIPT_DIR}}/{basename}",
+    )
+
+
+def _ship_pr_live_ref(line_text: str, retired_path: str) -> bool:
+    """Return true only for live ship-pr invocation/source forms."""
+    stripped = line_text.strip()
+    if not stripped or stripped.startswith("#"):
+        return False
+    basename = re.escape(Path(retired_path).name)
+    script_dir = rf"(?:\$\{{SCRIPT_DIR\}}|\$SCRIPT_DIR)/{basename}"
+    bare = rf"(?<!/)\b{basename}\b"
+    pattern = re.compile(
+        rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?(?:{script_dir}|{bare})[\"']?(?=$|[\s;|&)>])"
+    )
+    return pattern.search(line_text) is not None
+
+
+def _line_references_retired(rel: str, line_text: str, retired_path: str) -> bool:
+    if rel == "scripts/ship-pr.sh":
+        return _ship_pr_live_ref(line_text, retired_path)
+    if retired_path in line_text:
+        return True
+    if Path(rel).parent == Path(retired_path).parent:
+        return any(ref in line_text for ref in _script_dir_refs(retired_path))
+    return False
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
@@ -154,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         for lineno, line_text in enumerate(lines, 1):
             for retired_path in retired_set:
-                if retired_path in line_text:
+                if _line_references_retired(rel, line_text, retired_path):
                     writer.emit(f"{rel}:{lineno}: references retired path {retired_path!r}")
                     ref_count += 1
 
