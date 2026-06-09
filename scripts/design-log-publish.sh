@@ -574,6 +574,8 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             _base=$(basename "$rel")
             if design_round_revise_artifact_included "$_base"; then
                 :
+            elif design_round_revise_artifact_excluded "$_base"; then
+                continue
             else
                 larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
                 emit_publish_result false
