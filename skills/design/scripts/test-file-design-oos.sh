@@ -357,7 +357,7 @@ rc=$?
 set -e
 assert_rc "X8 annotate rejects clear-cache" 2 "$rc"
 
-# --- A1: annotate with empty issue-stdout-file -> graceful skip ---
+# --- A1: annotate with empty issue-stdout-file -> fails (exit 1) ---
 mkdir -p "$TMP/a1"
 cat >"$TMP/a1/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
@@ -370,13 +370,11 @@ set +e
 out_a1=$(bash "$SUBJECT" annotate --design-tmpdir "$TMP/a1" --issue-stdout-file "$TMP/a1/issue-empty.stdout" 2>/dev/null)
 rc=$?
 set -e
-assert_rc "A1 annotate empty stdout exit 0" 0 "$rc"
-grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a1" || fail "A1 missing annotate-skipped-empty-stdout status"
-grep -q '^WARN=' <<<"$out_a1" || fail "A1 missing WARN= line"
-grep -q 'issue-empty.stdout' <<<"$out_a1" || fail "A1 WARN missing file path"
+assert_rc "A1 annotate empty stdout exit 0" 1 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout$' <<<"$out_a1" || fail "A1 missing annotate-failed-empty-stdout status"
 test ! -f "$TMP/a1/oos-issues-created.md" || fail "A1 oos-issues-created.md must not be written"
 
-# --- A2: annotate with missing issue-stdout-file -> graceful skip ---
+# --- A2: annotate with missing issue-stdout-file -> fails (exit 1) ---
 mkdir -p "$TMP/a2"
 cat >"$TMP/a2/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Widget
@@ -388,10 +386,8 @@ set +e
 out_a2=$(bash "$SUBJECT" annotate --design-tmpdir "$TMP/a2" --issue-stdout-file "$TMP/a2/nonexistent.stdout" 2>/dev/null)
 rc=$?
 set -e
-assert_rc "A2 annotate missing stdout exit 0" 0 "$rc"
-grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a2" || fail "A2 missing annotate-skipped-empty-stdout status"
-grep -q '^WARN=' <<<"$out_a2" || fail "A2 missing WARN= line"
-grep -q 'nonexistent.stdout' <<<"$out_a2" || fail "A2 WARN missing file path"
+assert_rc "A2 annotate missing stdout exit 0" 1 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout$' <<<"$out_a2" || fail "A2 missing annotate-failed-empty-stdout status"
 test ! -f "$TMP/a2/oos-issues-created.md" || fail "A2 oos-issues-created.md must not be written"
 
 # --- S1: prepare with oos-issue-sentinel present (ISSUES_CREATED>0) but oos-issues-created.md absent ---
