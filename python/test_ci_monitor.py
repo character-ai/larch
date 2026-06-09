@@ -137,6 +137,10 @@ def _status(
             "--json",
             "name,state,bucket,link",
         ): _cr(("gh", "pr", "checks"), stdout=checks),
+        ("gh", "pr", "checks", "1", "--repo", "o/r"): _cr(
+            ("gh", "pr", "checks", "text"),
+            stdout="",
+        ),
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(
             ("git", "rev-list", "--count"),
             stdout=f"{behind}\n",
@@ -487,7 +491,7 @@ def test_classify_failed_jobs_matrix_and_fixable() -> None:
     assert classified.unfixable[0].name == "gitleaks"
 
 
-def test_collect_failed_logs_preserves_unredacted_tail() -> None:
+def test_collect_failed_logs_redacts_tail() -> None:
     secret = "ghp_" + "A" * 40
     log_body = f"failed step\n{secret}\n"
     runner = RecordingRunner(
@@ -500,7 +504,8 @@ def test_collect_failed_logs_preserves_unredacted_tail() -> None:
     )
     result = ci_monitor.collect_failed_logs(runner, run_id="42", repo="o/r")
     assert result.state == "ready"
-    assert secret in result.text
+    assert secret not in result.text
+    assert config.REDACTED_TOKEN in result.text
     assert "last 100 lines" in result.text
 
 

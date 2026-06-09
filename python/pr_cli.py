@@ -25,23 +25,31 @@ def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespa
 
 def create_branch_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py pr create-branch")
-    parser.add_argument("--branch", required=True)
+    parser.add_argument("--branch", default="")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
     args = _parse(parser, argv)
     if args is None:
         return 2
+    if args.check:
+        result = pr.check_branch_state(proc)
+        _emit_kv("CURRENT_BRANCH", result.current_branch)
+        _emit_kv("IS_MAIN", str(result.is_main).lower())
+        _emit_kv("IS_USER_BRANCH", str(result.is_user_branch).lower())
+        _emit_kv("USER_PREFIX", result.user_prefix)
+        return result.exit_code
+    if not args.branch:
+        print("create-branch.sh: --branch is required", file=sys.stderr)
+        return 2
     result = pr.create_branch(
         proc,
         branch=args.branch,
         base_remote=args.base_remote,
         base_ref=args.base_ref,
-        check=args.check,
     )
-    _emit_kv("BRANCH", result.branch)
-    _emit_kv("BASE", result.base)
-    _emit_kv("STATUS", result.status)
+    _emit_kv("BRANCH_NAME", result.branch_name)
+    _emit_kv("ACTION", result.action)
     return result.exit_code
 
 

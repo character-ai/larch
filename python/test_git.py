@@ -143,11 +143,11 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
 def test_commit_and_add_build_argv() -> None:
     runner = StubRunner(
         {
-            ("git", "add", "README.md"): CommandResult(
-                ("git", "add", "README.md"), 0, "", "", 0.01
+            ("git", "add", "--", "README.md"): CommandResult(
+                ("git", "add", "--", "README.md"), 0, "", "", 0.01
             ),
-            ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"): CommandResult(
-                ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"),
+            ("git", "commit", "-m", "Update docs for 1.0.0", "--only"): CommandResult(
+                ("git", "commit", "-m", "Update docs for 1.0.0", "--only"),
                 0,
                 "",
                 "",
@@ -157,7 +157,7 @@ def test_commit_and_add_build_argv() -> None:
     )
     assert git.add(runner, "README.md").returncode == 0
     assert (
-        git.commit(runner, "Update docs for 1.0.0", only="README.md").returncode == 0
+        git.commit(runner, "Update docs for 1.0.0", only=True).returncode == 0
     )
 
 

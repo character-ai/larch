@@ -20,6 +20,7 @@ import gh
 import git
 import logging_util
 import rebase
+import redact
 import retry
 import run_logs
 from agents import TierAttempt
@@ -276,6 +277,16 @@ def _parse_check_rows(parsed: object) -> list[dict[str, object]]:
     return out
 
 
+def _checks_json_is_array(checks_json: str) -> bool:
+    if not checks_json or checks_json.strip() in ("", "null"):
+        return False
+    try:
+        parsed = json.loads(checks_json)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, list)
+
+
 def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
     try:
         parsed = json.loads(checks_json or "[]")
@@ -292,6 +303,78 @@ def _classify_checks_json(checks_json: str) -> tuple[str, str | None]:
     if pending:
         return "pending", None
     return "pass", None
+
+
+def _classify_checks_text(text: str) -> tuple[str, str | None]:
+    if not text.strip():
+        return "empty", None
+    if re.search(r"\bfail", text, flags=re.IGNORECASE):
+        failed_line = next(
+            (line for line in text.splitlines() if re.search(r"\bfail", line, flags=re.IGNORECASE)),
+            "",
+        )
+        link_match = re.search(r"https://\S+", failed_line)
+        run_id = _extract_run_id(link_match.group(0)) if link_match else None
+        return "fail", run_id
+    if re.search(
+        r"\b(pending|in_progress|queued)",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        return "pending", None
+    return "pass", None
+
+
+def _read_pr_checks_text(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    cwd: str | None,
+) -> str:
+    result = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
+    if result.returncode == 0:
+        return result.stdout
+    return ""
+
+
+def _resolve_checks_status(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    empty_checks_grace: int,
+    sleep_fn: SleepFn,
+    cwd: str | None,
+) -> tuple[str, str | None]:
+    """Classify PR checks with JSON-first and text fallback (ci-status.sh parity)."""
+    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
+    checks_json = checks.stdout if checks.returncode == 0 else ""
+
+    if _checks_json_is_array(checks_json):
+        bucket_status, run_id = _classify_checks_json(checks_json)
+        if bucket_status == "empty" and empty_checks_grace > 0:
+            sleep_fn(float(empty_checks_grace))
+            checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
+            checks_json = checks.stdout if checks.returncode == 0 else ""
+            if _checks_json_is_array(checks_json):
+                bucket_status, run_id = _classify_checks_json(checks_json)
+        if bucket_status == "empty":
+            text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+            if text.strip():
+                return _classify_checks_text(text)
+            return ("NO_CHECKS", None) if empty_checks_grace > 0 else ("pending", None)
+        return bucket_status, run_id
+
+    text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+    if not text.strip() and empty_checks_grace > 0:
+        sleep_fn(float(empty_checks_grace))
+        text = _read_pr_checks_text(runner, pr=pr, repo=repo, cwd=cwd)
+    if text.strip():
+        return _classify_checks_text(text)
+    if empty_checks_grace > 0:
+        return "NO_CHECKS", None
+    return "pending", None
 
 
 def gather_status(
@@ -319,55 +402,14 @@ def gather_status(
     if fetch.returncode != 0:
         return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
 
-    checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-    checks_json = checks.stdout if checks.returncode == 0 else ""
-    status = "pending"
-    failed_run_id: str | None = None
-
-    if checks_json and checks_json.strip() not in ("", "null"):
-        bucket_status, run_id = _classify_checks_json(checks_json)
-        if bucket_status == "empty":
-            if empty_checks_grace > 0:
-                sleep_fn(float(empty_checks_grace))
-                checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-                checks_json = checks.stdout if checks.returncode == 0 else ""
-                bucket_status, run_id = _classify_checks_json(checks_json)
-            if bucket_status == "empty":
-                status = "NO_CHECKS" if empty_checks_grace > 0 else "pending"
-            else:
-                status = bucket_status
-                failed_run_id = run_id
-        else:
-            status = bucket_status
-            failed_run_id = run_id
-    elif empty_checks_grace > 0:
-        sleep_fn(float(empty_checks_grace))
-        checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
-        checks_json = checks.stdout if checks.returncode == 0 else ""
-        if checks_json and checks_json.strip() not in ("", "null"):
-            bucket_status, run_id = _classify_checks_json(checks_json)
-            if bucket_status == "empty":
-                status = "NO_CHECKS"
-            else:
-                status = bucket_status
-                failed_run_id = run_id
-        else:
-            status = "NO_CHECKS"
-    else:
-        text_checks = gh.pr_checks_text_read(runner, pr, repo=repo, cwd=cwd)
-        if text_checks.returncode == 0 and text_checks.stdout.strip():
-            if re.search(r"\bfail", text_checks.stdout, flags=re.IGNORECASE):
-                status = "fail"
-            elif re.search(
-                r"\b(pending|in_progress|queued)",
-                text_checks.stdout,
-                flags=re.IGNORECASE,
-            ):
-                status = "pending"
-            else:
-                status = "pass"
-        else:
-            status = "pending"
+    status, failed_run_id = _resolve_checks_status(
+        runner,
+        pr=pr,
+        repo=repo,
+        empty_checks_grace=empty_checks_grace,
+        sleep_fn=sleep_fn,
+        cwd=cwd,
+    )
 
     behind_raw = _behind_count(
         runner,
@@ -493,6 +535,9 @@ def poll_ci(
 
 
 def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:
+    raw_name = logging_util.sanitize_diagnostic_line(raw_name)
+    if not raw_name:
+        return "", "", True
     match = _MATRIX_SHARD_RE.match(raw_name)
     if match:
         return match.group(1), match.group(2), False
@@ -578,6 +623,7 @@ def collect_failed_logs(
     if body and not body.endswith("\n"):
         body += "\n"
     text = f"{pointer}\n{body}" if body.strip() else pointer + "\n"
+    text = redact.redact(text)
     if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
         return LogCollectResult(text=text, state="in_progress")
     if result.returncode != 0:
@@ -836,7 +882,10 @@ def _write_failure_log(text: str, *, tmpdir: str | None = None) -> str | None:
     root.mkdir(parents=True, exist_ok=True)
     fd, path = tempfile.mkstemp(suffix=".redacted.log", dir=str(root))
     os.close(fd)
-    _ = Path(path).write_text(text, encoding="utf-8")
+    redacted = redact.redact(text)
+    log_path = Path(path)
+    _ = log_path.write_text(redacted, encoding="utf-8")
+    log_path.chmod(0o600)
     return path
 
 
@@ -1218,7 +1267,7 @@ def _fix_exhausted_detail(
     header = f"ci-fix-exhausted: {jobs}" if jobs else "ci-fix-exhausted"
     tail = logs.text if logs is not None and logs.state == "ready" else ""
     if tail.strip():
-        return f"{header}\n{tail.rstrip()}\n"
+        return f"{header}\n{redact.redact(tail).rstrip()}\n"
     return header
 
 

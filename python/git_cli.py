@@ -55,7 +55,7 @@ def commit_main(argv: list[str]) -> int:
     result = git.commit_with_trailer(
         proc,
         args.message,
-        only="" if args.only else None,
+        only=args.only,
         no_trailer=args.no_trailer,
         paths=tuple(args.files),
         pathspec_from_file=args.pathspec_from_file,
@@ -259,11 +259,16 @@ def check_remote_branch_main(argv: list[str]) -> int:
 
 def check_phantom_dirty_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git check-phantom-dirty")
-    parser.add_argument("--baseline-file", default=None)
+    parser.add_argument("--baseline", "--baseline-file", dest="baseline_file", required=True)
+    parser.add_argument("--step", required=True)
     args = _parse(parser, argv)
     if args is None:
         return 1
-    result = phantom.check_phantom_dirty(proc, baseline_file=args.baseline_file)
+    result = phantom.check_phantom_dirty(
+        proc,
+        step=args.step,
+        baseline_file=args.baseline_file,
+    )
     _emit_kv("STATUS", result.status)
     _emit_kv("REASON", result.reason)
     _emit_kv("PHANTOM_COUNT", result.count)
@@ -273,16 +278,15 @@ def check_phantom_dirty_main(argv: list[str]) -> int:
 
 def phantom_probe_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py git phantom-probe")
-    parser.add_argument("step_prefix")
-    parser.add_argument("short_name")
+    parser.add_argument("--step", required=True)
     parser.add_argument("--baseline-file", default=None)
     args = _parse(parser, argv)
     if args is None:
         return 2
+    print(f"→ phantom-probe: {args.step}", file=sys.stderr)
     result = phantom.probe_with_warn(
         proc,
-        step_prefix=args.step_prefix,
-        short_name=args.short_name,
+        step=args.step,
         baseline_file=args.baseline_file,
     )
     _emit_kv("PHANTOM_STATUS", result.dirty.status)

@@ -113,6 +113,16 @@ def emit(text: str) -> None:
     stream.flush()
 
 
+def sanitize_diagnostic_line(text: str) -> str:
+    """Strip C0 control bytes and DEL from one diagnostic line (lib-quiet.sh parity)."""
+    return "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+
+
+def sanitize_list(text: str) -> str:
+    """Keep only safe characters for comma-separated job KV lists (ci-failed-jobs.sh)."""
+    return "".join(ch for ch in text if ch.isalnum() or ch in "_,=:-")
+
+
 def emit_kv(key: str, value: str) -> None:
     """Write KEY=value to the contract stream. Raises ValueError on embedded newlines."""
     if "\n" in value or "\r" in value:

@@ -1,7 +1,9 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false
 """CLI contract tests for push_cli."""
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from proc import CommandResult
 from test_support import RecordingRunner
@@ -20,6 +22,40 @@ def test_force_status_map_dirty_worktree(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "PUSHED=false" in out
     assert "STATUS=dirty_worktree" in out
+
+
+def test_checkpoint_probe_emits_rebase_outcome_on_skip(monkeypatch, capsys):
+    @dataclass
+    class _RebaseResult:
+        exit_code: int = 0
+        skipped_already_fresh: bool = True
+        skipped_already_pushed: bool = False
+        conflict_files: str = ""
+        rebase_error: str = ""
+
+    @dataclass
+    class _ProbeResult:
+        dirty: object
+        append_warn_error: str = ""
+
+    @dataclass
+    class _Dirty:
+        status: str = "clean"
+        reason: str = ""
+        count: int = 0
+        paths_file: str = ""
+
+    monkeypatch.setattr(push_cli.rebase, "rebase_push", lambda *_a, **_k: _RebaseResult())
+    monkeypatch.setattr(
+        push_cli.phantom,
+        "probe_with_warn",
+        lambda *_a, **_k: _ProbeResult(dirty=_Dirty()),
+    )
+    assert push_cli.checkpoint_probe_main(["1.r", "plan"]) == 0
+    out = capsys.readouterr().out
+    assert "REBASE_OUTCOME=skipped" in out
+    assert "SKIPPED_ALREADY_FRESH=true" in out
+    assert "PHANTOM_STATUS=clean" in out
 
 
 def test_branch_push_dedupes_stderr(monkeypatch, capsys):

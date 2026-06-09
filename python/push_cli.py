@@ -12,6 +12,8 @@ import proc
 import push
 import rebase
 
+_REBASE_FAILED_EXIT = 3
+
 
 def _emit_kv(key: str, value: object) -> None:
     print(f"{key}={value}")
@@ -22,6 +24,47 @@ def _parse(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespa
         return parser.parse_args(argv)
     except SystemExit:
         return None
+
+
+def _rebase_sanitize(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
+    if result.conflict_files:
+        return result.conflict_files
+    files = [item.path for item in git.conflict_files(proc)]
+    return ",".join(files)
+
+
+def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
+    if result.skipped_already_pushed:
+        _emit_kv("SKIPPED_ALREADY_PUSHED", "true")
+    if result.skipped_already_fresh:
+        _emit_kv("SKIPPED_ALREADY_FRESH", "true")
+    if result.conflict_files:
+        _emit_kv("CONFLICT_FILES", result.conflict_files)
+    if result.rebase_error:
+        _emit_kv("REBASE_ERROR", result.rebase_error)
+
+    if result.exit_code == 0:
+        if result.skipped_already_pushed or result.skipped_already_fresh:
+            _emit_kv("REBASE_OUTCOME", "skipped")
+        else:
+            _emit_kv("REBASE_OUTCOME", "ok")
+        return 0
+    if result.exit_code == 1:
+        _emit_kv("REBASE_OUTCOME", "conflict")
+        _emit_kv("CONFLICT_FILES", _conflict_files_csv(result))
+        return 1
+    if result.exit_code == _REBASE_FAILED_EXIT:
+        _emit_kv("REBASE_OUTCOME", "failed")
+        err = result.rebase_error or "rebase-failed"
+        _emit_kv("REBASE_ERROR", _rebase_sanitize(err))
+        return 3
+    _emit_kv("REBASE_OUTCOME", "failed")
+    _emit_kv("REBASE_ERROR", f"unexpected-rc-{result.exit_code}")
+    return result.exit_code
 
 
 def branch_main(argv: list[str]) -> int:
@@ -102,6 +145,7 @@ def checkpoint_probe_main(argv: list[str]) -> int:
     args = _parse(parser, argv)
     if args is None:
         return 2
+    print(f"→ rebase-probe: {args.step_prefix} {args.short_name}", file=sys.stderr)
     result = rebase.rebase_push(
         proc,
         no_push=True,
@@ -110,17 +154,10 @@ def checkpoint_probe_main(argv: list[str]) -> int:
         base_remote=args.base_remote,
         base_ref=args.base_ref,
     )
-    if result.skipped_already_pushed:
-        _emit_kv("SKIPPED_ALREADY_PUSHED", "true")
-    if result.skipped_already_fresh:
-        _emit_kv("SKIPPED_ALREADY_FRESH", "true")
-    if result.conflict_files:
-        _emit_kv("CONFLICT_FILES", result.conflict_files)
-    if result.rebase_error:
-        _emit_kv("REBASE_ERROR", result.rebase_error)
-    if result.exit_code != 0:
-        return result.exit_code
-    probe = phantom.probe_with_warn(proc, step_prefix=args.step_prefix, short_name=args.short_name)
+    rc = _emit_rebase_checkpoint_keys(result)
+    if rc != 0:
+        return rc
+    probe = phantom.probe_with_warn(proc, step=f"{args.step_prefix}-post-rebase")
     _emit_kv("PHANTOM_STATUS", probe.dirty.status)
     if probe.dirty.reason:
         _emit_kv("PHANTOM_REASON", probe.dirty.reason)

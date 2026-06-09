@@ -236,15 +236,15 @@ def commit(
     runner: Runner,
     message: str,
     *,
-    only: str | None = None,
+    only: bool = False,
     paths: Sequence[str] = (),
     pathspec_from_file: str | None = None,
     pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     argv = ["git", "commit", "-m", message]
-    if only is not None:
-        argv.extend(["--only", only])
+    if only:
+        argv.append("--only")
     if pathspec_from_file is not None:
         argv.append(f"--pathspec-from-file={pathspec_from_file}")
         if pathspec_file_nul:
@@ -258,7 +258,7 @@ def commit_with_trailer(
     runner: Runner,
     message: str,
     *,
-    only: str | None = None,
+    only: bool = False,
     no_trailer: bool = False,
     paths: Sequence[str] = (),
     pathspec_from_file: str | None = None,
@@ -296,8 +296,8 @@ def commit_with_trailer(
             if trailer_result.returncode != 0:
                 return trailer_result
         argv = ["git", "commit", "--file", tmp_path]
-        if only is not None:
-            argv.extend(["--only", only])
+        if only:
+            argv.append("--only")
         if pathspec_from_file is not None:
             argv.append(f"--pathspec-from-file={pathspec_from_file}")
             if pathspec_file_nul:
@@ -311,9 +311,7 @@ def commit_with_trailer(
 
 def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
     argv = ["git", "add"]
-    if len(paths) == 1:
-        argv.append(paths[0])
-    elif paths:
+    if paths:
         argv.extend(["--", *paths])
     return _run(runner, argv, cwd=cwd)
 

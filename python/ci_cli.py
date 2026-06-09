@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import ci_monitor
+import logging_util
 import proc
 
 
@@ -23,6 +25,13 @@ def _parse(parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) ->
         return usage_exit
 
 
+def _status_error_kv() -> None:
+    _emit_kv("CI_STATUS", "error")
+    _emit_kv("BEHIND_COUNT", 0)
+    _emit_kv("FAILED_RUN_ID", "")
+    _emit_kv("CONFLICTED", "false")
+
+
 def status_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci status")
     parser.add_argument("--pr", required=True, type=int)
@@ -32,11 +41,8 @@ def status_main(argv: list[str]) -> int:
     parser.add_argument("--empty-checks-grace", default=0, type=int)
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
-        _emit_kv("CI_STATUS", "error")
-        _emit_kv("BEHIND_COUNT", 0)
-        _emit_kv("FAILED_RUN_ID", "")
-        _emit_kv("CONFLICTED", "false")
-        return args
+        _status_error_kv()
+        return 0
     status = ci_monitor.gather_status(
         proc,
         pr=args.pr,
@@ -54,8 +60,8 @@ def status_main(argv: list[str]) -> int:
 
 def decide_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci decide")
-    parser.add_argument("--ci-status", required=True)
-    parser.add_argument("--behind-count", required=True, type=int)
+    parser.add_argument("--ci-status", "--status", dest="ci_status", required=True)
+    parser.add_argument("--behind-count", "--behind", dest="behind_count", required=True, type=int)
     parser.add_argument("--failed-run-id", default="")
     parser.add_argument("--conflicted", default="false")
     parser.add_argument("--iteration", default=0, type=int)
@@ -80,6 +86,36 @@ def decide_main(argv: list[str]) -> int:
     return 0
 
 
+def _wait_output_lines(
+    status: ci_monitor.CiStatus,
+    decision: ci_monitor.Decision,
+    *,
+    iteration: int,
+    elapsed: int,
+) -> list[str]:
+    return [
+        f"ACTION={decision.action}",
+        f"CI_STATUS={status.status}",
+        f"BEHIND_COUNT={status.behind_count}",
+        f"CONFLICTED={str(status.conflicted).lower()}",
+        f"FAILED_RUN_ID={status.failed_run_id or ''}",
+        f"BAIL_REASON={decision.bail_reason or ''}",
+        f"ITERATION={iteration}",
+        f"ELAPSED={elapsed}",
+    ]
+
+
+def _publish_wait_output(text: str, output_file: str) -> bool:
+    out = Path(output_file)
+    tmp = out.with_suffix(out.suffix + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(out)
+    except OSError:
+        return False
+    return True
+
+
 def wait_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci wait")
     parser.add_argument("--pr", required=True, type=int)
@@ -95,6 +131,19 @@ def wait_main(argv: list[str]) -> int:
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
         return args
+
+    output_file = args.output_file
+    out_path: Path | None = None
+    if output_file:
+        out_path = Path(output_file)
+        for stale in (
+            out_path,
+            out_path.with_name(out_path.name + ".done"),
+            out_path.with_suffix(out_path.suffix + ".tmp"),
+        ):
+            stale.unlink(missing_ok=True)
+
+    started = time.monotonic()
     status, decision = ci_monitor.poll_ci(
         proc,
         pr=args.pr,
@@ -107,23 +156,26 @@ def wait_main(argv: list[str]) -> int:
         fix_attempts=args.fix_attempts,
         timeout=args.timeout,
     )
-    lines = [
-        f"CI_STATUS={status.status}",
-        f"BEHIND_COUNT={status.behind_count}",
-        f"FAILED_RUN_ID={status.failed_run_id or ''}",
-        f"CONFLICTED={str(status.conflicted).lower()}",
-        f"ACTION={decision.action}",
-        f"BAIL_REASON={decision.bail_reason or ''}",
-    ]
+    elapsed = int(time.monotonic() - started)
+    lines = _wait_output_lines(
+        status,
+        decision,
+        iteration=args.iteration,
+        elapsed=elapsed,
+    )
     text = "\n".join(lines) + "\n"
-    if args.output_file:
-        out = Path(args.output_file)
-        tmp = out.with_suffix(out.suffix + ".tmp")
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(out)
-        out.with_name(out.name + ".done").write_text("", encoding="utf-8")
+    if output_file:
+        if not _publish_wait_output(text, output_file):
+            return 1
+        done_path = out_path.with_name(out_path.name + ".done") if out_path else None
+        if done_path is not None:
+            try:
+                done_path.write_text("0\n", encoding="utf-8")
+            except OSError:
+                return 1
+        return 0
     sys.stdout.write(text)
-    return 0 if decision.action != "bail" else 1
+    return 0
 
 
 def failed_jobs_main(argv: list[str]) -> int:
@@ -137,8 +189,14 @@ def failed_jobs_main(argv: list[str]) -> int:
     classified = ci_monitor.classify_failed_jobs(jobs)
     _emit_kv("FAILED_JOBS_STATUS", state)
     _emit_kv("FAILED_JOB_COUNT", classified.count)
-    _emit_kv("FIXABLE_JOBS", ",".join(f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.fixable))
-    _emit_kv("UNFIXABLE_JOBS", ",".join(f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.unfixable))
+    fixable = ",".join(
+        f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.fixable
+    )
+    unfixable = ",".join(
+        f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.unfixable
+    )
+    _emit_kv("FIXABLE_JOBS", logging_util.sanitize_list(fixable))
+    _emit_kv("UNFIXABLE_JOBS", logging_util.sanitize_list(unfixable))
     print(json.dumps({"jobs": [j.__dict__ for j in classified.jobs]}))
     return 0
 
@@ -151,7 +209,13 @@ def behind_count_main(argv: list[str]) -> int:
     args = _parse(parser, argv, 2)
     if isinstance(args, int):
         return args
-    print(ci_monitor.behind_count(proc, base_remote=args.base_remote, base_ref=args.base_ref, fetch=not args.no_fetch))
+    count = ci_monitor.behind_count(
+        proc,
+        base_remote=args.base_remote,
+        base_ref=args.base_ref,
+        fetch=not args.no_fetch,
+    )
+    _emit_kv("BEHIND_COUNT", count)
     return 0
 
 

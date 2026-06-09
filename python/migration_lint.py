@@ -41,9 +41,8 @@ def _ship_pr_live_ref(line_text: str, retired_path: str) -> bool:
         return False
     basename = re.escape(Path(retired_path).name)
     script_dir = rf"(?:\$\{{SCRIPT_DIR\}}|\$SCRIPT_DIR)/{basename}"
-    bare = rf"(?<!/)\b{basename}\b"
     pattern = re.compile(
-        rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?(?:{script_dir}|{bare})[\"']?(?=$|[\s;|&)>])"
+        rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?{script_dir}[\"']?(?=$|[\s;|&)>])"
     )
     return pattern.search(line_text) is not None
 
