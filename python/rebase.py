@@ -453,8 +453,7 @@ def rebase_push(
 
     base_target = f"{base_remote}/{base_ref}"
     if continue_mode:
-        git_dir = runner.run(["git", "rev-parse", "--git-dir"], cwd=cwd)
-        if git_dir.returncode != 0 or not git_dir.stdout.strip():
+        if not git.rebase_in_progress(runner, cwd=cwd):
             return RebasePushResult(exit_code=3, rebase_error="--continue called but no rebase is in progress")
         rebase_result = runner.run(["git", "rebase", "--continue"], cwd=cwd, env={**os.environ, "GIT_EDITOR": "true"})
     else:
@@ -468,7 +467,7 @@ def rebase_push(
         rebase_result = git.rebase(runner, base_target, cwd=cwd)
 
     if rebase_result.returncode != 0:
-        conflicts = ",".join(git.unmerged_paths(runner, cwd=cwd))
+        conflicts = ",".join(git.try_unmerged_paths(runner, cwd=cwd))
         if conflicts:
             if no_push and not keep_on_conflict:
                 _abort_rebase(runner, cwd=cwd)
@@ -481,7 +480,11 @@ def rebase_push(
     if no_push:
         return RebasePushResult(exit_code=0)
 
-    push_result = git.force_push_recovery(runner, remote="origin", cwd=cwd)
+    branch = git.try_current_branch(runner, cwd=cwd)
+    if not branch:
+        return RebasePushResult(exit_code=2, push_error="Not on a branch (detached HEAD) before push")
+    push_remote = git.resolve_branch_push_remote(runner, branch, cwd=cwd)
+    push_result = git.force_push_recovery(runner, remote=push_remote, cwd=cwd)
     if push_result.pushed:
         return RebasePushResult(exit_code=0)
     return RebasePushResult(exit_code=2, push_error=push_result.status)

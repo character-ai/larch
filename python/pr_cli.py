@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import gh
+import git
 import pr
 import proc
 
@@ -53,10 +54,20 @@ def create_branch_main(argv: list[str]) -> int:
     return result.exit_code
 
 
+def _validate_repo_arg(repo: str, *, script: str) -> int | None:
+    if not gh.validate_repo_slug(repo):
+        print(
+            f"{script}: --repo must be OWNER/REPO using GitHub owner/repo characters",
+            file=sys.stderr,
+        )
+        return 2
+    return None
+
+
 def create_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py pr create")
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--branch", required=True)
+    parser.add_argument("--repo", default=None)
+    parser.add_argument("--branch", default=None)
     parser.add_argument("--title", required=True)
     parser.add_argument("--body-file", required=True)
     parser.add_argument("--base", default=None)
@@ -64,6 +75,15 @@ def create_main(argv: list[str]) -> int:
     args = _parse(parser, argv)
     if args is None:
         return 1
+    repo = args.repo or gh.resolve_repo(proc) or ""
+    if repo:
+        repo_err = _validate_repo_arg(repo, script="create-pr.sh")
+        if repo_err is not None:
+            return repo_err
+    branch = args.branch or git.try_current_branch(proc) or ""
+    if not branch:
+        print("create-pr.sh: not on a branch (detached HEAD)", file=sys.stderr)
+        return 2
     try:
         with Path(args.body_file).open(encoding="utf-8") as handle:
             body = handle.read()
@@ -73,8 +93,8 @@ def create_main(argv: list[str]) -> int:
     try:
         result = pr.create_pr_parity(
             proc,
-            repo=args.repo,
-            branch=args.branch,
+            repo=repo,
+            branch=branch,
             title=args.title,
             body=body,
             base=args.base,
@@ -102,6 +122,10 @@ def body_update_main(argv: list[str]) -> int:
     args = _parse(parser, argv)
     if args is None:
         return 2
+    if args.repo:
+        repo_err = _validate_repo_arg(args.repo, script="gh-pr-body-update.sh")
+        if repo_err is not None:
+            return repo_err
     result = gh.pr_edit_body_file(proc, args.pr, args.body_file, repo=args.repo)
     _emit_kv("UPDATED", str(result.updated).lower())
     _emit_kv("ERROR", result.error)

@@ -40,11 +40,20 @@ def _ship_pr_live_ref(line_text: str, retired_path: str) -> bool:
     if not stripped or stripped.startswith("#"):
         return False
     basename = re.escape(Path(retired_path).name)
-    script_dir = rf"(?:\$\{{SCRIPT_DIR\}}|\$SCRIPT_DIR)/{basename}"
-    pattern = re.compile(
-        rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?{script_dir}[\"']?(?=$|[\s;|&)>])"
+    full_path = re.escape(retired_path)
+    script_dir_path = rf"(?:\$\{{SCRIPT_DIR\}}|\$SCRIPT_DIR)(?:/[^\"'\s;|&)]+)*/{basename}"
+    patterns = (
+        re.compile(
+            rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?{script_dir_path}[\"']?(?=$|[\s;|&)>])"
+        ),
+        re.compile(
+            rf"(^|[\s;|&(])(?:(?:source|\.)\s+)?[\"']?{full_path}[\"']?(?=$|[\s;|&)>])"
+        ),
+        re.compile(
+            rf"(^|[\s;|&(])(?:source|\.)\s+[\"']?{basename}[\"']?(?=$|[\s;|&)>])"
+        ),
     )
-    return pattern.search(line_text) is not None
+    return any(pattern.search(line_text) is not None for pattern in patterns)
 
 
 def _line_references_retired(rel: str, line_text: str, retired_path: str) -> bool:

@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import json
+import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -133,9 +134,8 @@ def wait_main(argv: list[str]) -> int:
         return args
 
     output_file = args.output_file
-    out_path: Path | None = None
-    if output_file:
-        out_path = Path(output_file)
+    out_path: Path | None = Path(output_file) if output_file else None
+    if out_path is not None:
         for stale in (
             out_path,
             out_path.with_name(out_path.name + ".done"),
@@ -143,61 +143,119 @@ def wait_main(argv: list[str]) -> int:
         ):
             stale.unlink(missing_ok=True)
 
-    started = time.monotonic()
-    status, decision = ci_monitor.poll_ci(
-        proc,
-        pr=args.pr,
-        repo=args.repo,
-        base_remote=args.base_remote,
-        base_ref=args.base_ref,
-        empty_checks_grace=args.empty_checks_grace,
-        iteration=args.iteration,
-        rebase_count=args.rebase_count,
-        fix_attempts=args.fix_attempts,
-        timeout=args.timeout,
+    status = ci_monitor.CiStatus(
+        status="pending",
+        behind_count=0,
+        failed_run_id=None,
+        conflicted=False,
     )
-    elapsed = int(time.monotonic() - started)
+    decision = ci_monitor.Decision(
+        action="bail",
+        bail_reason="ci-wait.sh exited unexpectedly",
+    )
+    elapsed = 0
+    trap_exit = 0
+
+    try:
+        started = time.monotonic()
+        status, decision = ci_monitor.poll_ci(
+            proc,
+            pr=args.pr,
+            repo=args.repo,
+            base_remote=args.base_remote,
+            base_ref=args.base_ref,
+            empty_checks_grace=args.empty_checks_grace,
+            iteration=args.iteration,
+            rebase_count=args.rebase_count,
+            fix_attempts=args.fix_attempts,
+            timeout=args.timeout,
+        )
+        elapsed = int(time.monotonic() - started)
+        trap_exit = 0
+    except Exception:
+        trap_exit = 1
+        if not output_file:
+            raise
+    finally:
+        if output_file and out_path is not None:
+            lines = _wait_output_lines(
+                status,
+                decision,
+                iteration=args.iteration,
+                elapsed=elapsed,
+            )
+            text = "\n".join(lines) + "\n"
+            if _publish_wait_output(text, output_file):
+                done_path = out_path.with_name(out_path.name + ".done")
+                try:
+                    _ = done_path.write_text(f"{trap_exit}\n", encoding="utf-8")
+                except OSError:
+                    pass
+            return 0
+
     lines = _wait_output_lines(
         status,
         decision,
         iteration=args.iteration,
         elapsed=elapsed,
     )
-    text = "\n".join(lines) + "\n"
-    if output_file:
-        if not _publish_wait_output(text, output_file):
-            return 1
-        done_path = out_path.with_name(out_path.name + ".done") if out_path else None
-        if done_path is not None:
-            try:
-                done_path.write_text("0\n", encoding="utf-8")
-            except OSError:
-                return 1
-        return 0
-    sys.stdout.write(text)
+    sys.stdout.write("\n".join(lines) + "\n")
     return 0
+
+
+_JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
+
+
+def _failed_job_reason_token(job_name: str, *, malformed: bool) -> str:
+    if malformed:
+        return "malformed-job-name"
+    if job_name in ("gitleaks", "trufflehog"):
+        return "history-scan"
+    return "unknown-job-name"
 
 
 def failed_jobs_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ci failed-jobs")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--repo", required=True)
+    parser.add_argument("--output-tsv", default="")
     args = _parse(parser, argv, 1)
     if isinstance(args, int):
         return args
     jobs, state = ci_monitor.read_failed_jobs(proc, run_id=args.run_id, repo=args.repo)
+    if state == "in_progress":
+        return 3
+    if state == "error":
+        return 1
     classified = ci_monitor.classify_failed_jobs(jobs)
-    _emit_kv("FAILED_JOBS_STATUS", state)
-    _emit_kv("FAILED_JOB_COUNT", classified.count)
-    fixable = ",".join(
-        f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.fixable
-    )
-    unfixable = ",".join(
-        f"{j.name}:{j.shard}" if j.shard else j.name for j in classified.unfixable
-    )
-    _emit_kv("FIXABLE_JOBS", logging_util.sanitize_list(fixable))
-    _emit_kv("UNFIXABLE_JOBS", logging_util.sanitize_list(unfixable))
-    print(json.dumps({"jobs": [j.__dict__ for j in classified.jobs]}))
+    tsv_lines: list[str] = []
+    fixable_tokens: list[str] = []
+    unfixable_tokens: list[str] = []
+    fixable_set = set(classified.fixable)
+    for row in classified.jobs:
+        malformed = _JOB_NAME_RE.match(row.name) is None
+        line = f"{row.name}\t{row.shard}\t{row.klass}"
+        tsv_lines.append(line)
+        token = f"{row.name}:{row.shard}" if row.shard else row.name
+        if row in fixable_set:
+            fixable_tokens.append(token)
+        else:
+            reason = _failed_job_reason_token(row.name, malformed=malformed)
+            unfixable_tokens.append(f"{token}={reason}")
+    if args.output_tsv:
+        out = Path(args.output_tsv)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(out.suffix + f".tmp.{os.getpid()}")
+        _ = tmp.write_text("\n".join(tsv_lines) + ("\n" if tsv_lines else ""), encoding="utf-8")
+        tmp.replace(out)
+    else:
+        for line in tsv_lines:
+            print(line)
+    fixable = logging_util.sanitize_list(",".join(fixable_tokens))
+    unfixable = logging_util.sanitize_list(",".join(unfixable_tokens))
+    _emit_kv("FAILED_JOBS_COUNT", classified.count)
+    _emit_kv("FAILED_JOBS_FIXABLE", fixable)
+    _emit_kv("FAILED_JOBS_UNFIXABLE", unfixable)
     return 0
 
 
@@ -228,6 +286,6 @@ def rerun_failed_main(argv: list[str]) -> int:
         return args
     result = ci_monitor.rerun_failed(proc, run_id=args.run_id, repo=args.repo)
     _emit_kv("RERUN_SUBMITTED", str(result.submitted).lower())
-    _emit_kv("RERUN_ALREADY_RUNNING", str(result.already_running).lower())
+    _emit_kv("ALREADY_RUNNING", str(result.already_running).lower())
     _emit_kv("ERROR", result.error or "")
     return 0

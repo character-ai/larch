@@ -232,7 +232,6 @@ def _push_open_pr_branch(
         runner,
         branch=branch,
         cwd=cwd,
-        sleeper=lambda _seconds: None,
     )
     return recovery.pushed
 
@@ -248,6 +247,11 @@ def create_pr_parity(
     draft: bool = False,
     cwd: str | None = None,
 ) -> PrResult:
+    current = git.try_current_branch(runner, cwd=cwd)
+    if not current:
+        return PrResult(0, "", "push_failed", title, exit_code=2)
+    if branch != current:
+        return PrResult(0, "", "push_failed", title, exit_code=2)
     try:
         push.assert_clean_worktree(runner, cwd=cwd)
     except ShipError:
@@ -270,8 +274,8 @@ def create_pr_parity(
             title=pr_title,
             exit_code=0,
         )
-    pushed = push.push_current_branch(runner, cwd=cwd, sleeper=lambda _seconds: None)
-    if pushed.exit_code != 0:
+    push_result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
+    if push_result.returncode != 0:
         return PrResult(0, "", "push_failed", title, exit_code=1)
     created, was_created = gh.pr_create(
         runner,

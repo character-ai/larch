@@ -261,7 +261,7 @@ def _squash_merge_race(
     cwd: str | None,
 ) -> bool:
     base = f"{base_remote}/{base_ref}"
-    subjects = git.log_subjects(runner, f"HEAD..{base}", cwd=cwd)
+    subjects = git.try_log_subjects(runner, f"HEAD..{base}", cwd=cwd)
     needle = f"(#{pr})"
     return any(needle in subject for subject in subjects.subjects)
 
@@ -463,11 +463,12 @@ def poll_ci(
     ci_failures = 0
     poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
     started_at = clock()
+    last_status = CiStatus(status="pending", behind_count=0, failed_run_id=None)
 
     while True:
         if checks >= max_polls:
             return (
-                CiStatus(status="pending", behind_count=0, failed_run_id=None),
+                last_status,
                 Decision(
                     action="bail",
                     bail_reason=f"Poll budget ({max_polls} polls / {int(timeout)}s) exhausted",
@@ -484,6 +485,7 @@ def poll_ci(
             sleep_fn=sleep_fn,
             cwd=cwd,
         )
+        last_status = status
 
         if not status.status or status.status == "error":
             ci_failures += 1
@@ -555,7 +557,10 @@ def classify_failed_jobs(jobs: tuple[FailedJob, ...]) -> ClassifiedJobs:
     fixable: list[JobClass] = []
     unfixable: list[JobClass] = []
     for job in jobs:
-        name, shard, malformed = _parse_job_name_shard(job.name)
+        sanitized = logging_util.sanitize_diagnostic_line(job.name)
+        if not sanitized:
+            continue
+        name, shard, malformed = _parse_job_name_shard(sanitized)
         if malformed or not _JOB_NAME_RE.match(name):
             row = JobClass(name=name, shard=shard, klass="no-local-equivalent")
         elif name in config.CI_FIXABLE_JOBS:

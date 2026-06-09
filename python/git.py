@@ -11,8 +11,10 @@ from pathlib import Path
 from dataclasses import dataclass
 
 import config
+import redact
 from errors import ShipError
 from proc import CommandResult, Runner
+from retry import with_transient_retry
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 _GIT_STAGE_BASE = 1
@@ -419,6 +421,18 @@ def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
+def try_unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
+    """Non-raising unmerged-path probe (rebase-push.sh / conflict CLI parity)."""
+    result = _run(
+        runner,
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+
+
 def checkout_ours(
     runner: Runner,
     *paths: str,
@@ -749,11 +763,10 @@ def branch_info(runner: Runner, *, cwd: str | None = None) -> BranchInfo | None:
     return BranchInfo(head_sha=head.stdout.strip(), current_branch=branch_name)
 
 
-def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
-    result = _ensure_success(_run(runner, ["git", "ls-files", "-u"], cwd=cwd))
+def _parse_conflict_file_rows(stdout: str) -> tuple[ConflictFile, ...]:
     order: list[str] = []
     stages: dict[str, set[int]] = {}
-    for line in result.stdout.splitlines():
+    for line in stdout.splitlines():
         if "\t" not in line:
             continue
         meta, path = line.split("\t", 1)
@@ -777,6 +790,49 @@ def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictF
         )
         for path in order
     )
+
+
+def conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
+    result = _ensure_success(_run(runner, ["git", "ls-files", "-u"], cwd=cwd))
+    return _parse_conflict_file_rows(result.stdout)
+
+
+def try_conflict_files(runner: Runner, *, cwd: str | None = None) -> tuple[ConflictFile, ...]:
+    """Non-raising conflict-file probe (git-conflict-files.sh parity)."""
+    result = _run(runner, ["git", "ls-files", "-u"], cwd=cwd)
+    if result.returncode != 0:
+        return ()
+    return _parse_conflict_file_rows(result.stdout)
+
+
+def resolve_branch_push_remote(
+    runner: Runner,
+    branch: str,
+    *,
+    cwd: str | None = None,
+) -> str:
+    """Resolve topic-branch push remote (rebase-push.sh parity)."""
+    for key in (f"branch.{branch}.pushRemote", f"branch.{branch}.remote"):
+        result = _run(runner, ["git", "config", "--get", key], cwd=cwd)
+        if result.returncode == 0:
+            candidate = result.stdout.strip()
+            if candidate and _GIT_REF_LABEL_RE.fullmatch(candidate):
+                return candidate
+    return "origin"
+
+
+def rebase_in_progress(runner: Runner, *, cwd: str | None = None) -> bool:
+    """True when git reports an active rebase (rebase-push.sh --continue guard)."""
+    git_dir = _run(runner, ["git", "rev-parse", "--git-dir"], cwd=cwd)
+    if git_dir.returncode != 0:
+        return False
+    rel = git_dir.stdout.strip()
+    if not rel:
+        return False
+    base = Path(rel)
+    if not base.is_absolute():
+        base = Path(cwd or os.getcwd()) / base
+    return (base / "rebase-merge").is_dir() or (base / "rebase-apply").is_dir()
 
 
 def rebase_abort(runner: Runner, *, cwd: str | None = None) -> CommandResult:
@@ -947,14 +1003,24 @@ def remote_branch_state(
     remote: str = "origin",
     cwd: str | None = None,
 ) -> RemoteBranchState:
-    result = _run(
-        runner,
-        ["git", "ls-remote", "--exit-code", "--heads", remote, branch],
-        cwd=cwd,
-    )
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _run(
+            runner,
+            ["git", "ls-remote", "--exit-code", "--heads", remote, branch],
+            cwd=cwd,
+        )
+        combined = result.stdout + result.stderr
+        return result, result.returncode, combined
+
+    retried = with_transient_retry(attempt)
+    result = retried.value
     if result.returncode == 0:
         return RemoteBranchState(state="present", rc=0)
     if result.returncode == 2:  # noqa: PLR2004 - git ls-remote absent rc
         return RemoteBranchState(state="absent", rc=2)
-    err = _one_line_summary(result.stdout + result.stderr) or f"git ls-remote failed (exit {result.returncode})"
+    err_raw = (
+        _one_line_summary(result.stdout + result.stderr)
+        or f"git ls-remote failed (exit {result.returncode})"
+    )
+    err = redact.redact_outbound(err_raw)
     return RemoteBranchState(state="error", rc=result.returncode, error=err)

@@ -33,7 +33,7 @@ def _rebase_sanitize(text: str) -> str:
 def _conflict_files_csv(result: rebase.RebasePushResult) -> str:
     if result.conflict_files:
         return result.conflict_files
-    files = [item.path for item in git.conflict_files(proc)]
+    files = [item.path for item in git.try_conflict_files(proc)]
     return ",".join(files)
 
 
@@ -88,7 +88,6 @@ def force_main(argv: list[str]) -> int:
     result = git.force_push_recovery(
         proc,
         expected_remote_oid=args.expected_remote_oid,
-        sleeper=lambda _seconds: None,
     )
     if result.branch:
         _emit_kv("BRANCH", result.branch)
