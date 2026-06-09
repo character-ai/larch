@@ -235,6 +235,21 @@ cmd_prepare() {
     exit 0
   fi
 
+  local issue_sentinel="$d/oos-issue-sentinel"
+  if [[ -f "$issue_sentinel" ]]; then
+    _sent_created=$(awk -F= '$1=="ISSUES_CREATED"{print $2; exit}' \
+      "$issue_sentinel" 2>/dev/null || printf '0')
+    case "$_sent_created" in
+      ''|*[!0-9]*|0) ;;
+      *)
+        emit_kv FILE_DESIGN_OOS_STATUS skip-already-filed-sentinel
+        printf 'WARN=file-design-oos prepare: oos-issue-sentinel present (ISSUES_CREATED=%s) but oos-issues-created.md absent; skipping re-file\n' \
+          "$_sent_created"
+        exit 0
+        ;;
+    esac
+  fi
+
   if [[ -n "$cache_p" && -f "$cache_p" && -s "$cache_p" ]]; then
     warn_copy="$d/oos-cross-session-cache-copy.stderr.log"
     : >"$warn_copy"

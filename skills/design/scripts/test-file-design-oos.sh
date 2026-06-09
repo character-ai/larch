@@ -344,6 +344,57 @@ rc=$?
 set -e
 assert_rc "X8 annotate rejects clear-cache" 2 "$rc"
 
+# --- A1: annotate with empty issue-stdout-file -> graceful skip ---
+mkdir -p "$TMP/a1"
+cat >"$TMP/a1/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf '1\n' >"$TMP/a1/oos-design-filing-order.txt"
+: >"$TMP/a1/issue-empty.stdout"
+set +e
+out_a1=$(bash "$SUBJECT" annotate --design-tmpdir "$TMP/a1" --issue-stdout-file "$TMP/a1/issue-empty.stdout" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "A1 annotate empty stdout exit 0" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a1" || fail "A1 missing annotate-skipped-empty-stdout status"
+grep -q '^WARN=' <<<"$out_a1" || fail "A1 missing WARN= line"
+test ! -f "$TMP/a1/oos-issues-created.md" || fail "A1 oos-issues-created.md must not be written"
+
+# --- A2: annotate with missing issue-stdout-file -> graceful skip ---
+mkdir -p "$TMP/a2"
+cat >"$TMP/a2/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf '1\n' >"$TMP/a2/oos-design-filing-order.txt"
+set +e
+out_a2=$(bash "$SUBJECT" annotate --design-tmpdir "$TMP/a2" --issue-stdout-file "$TMP/a2/nonexistent.stdout" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "A2 annotate missing stdout exit 0" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a2" || fail "A2 missing annotate-skipped-empty-stdout status"
+grep -q '^WARN=' <<<"$out_a2" || fail "A2 missing WARN= line"
+test ! -f "$TMP/a2/oos-issues-created.md" || fail "A2 oos-issues-created.md must not be written"
+
+# --- S1: prepare with oos-issue-sentinel present (ISSUES_CREATED>0) but oos-issues-created.md absent ---
+mkdir -p "$TMP/s1"
+cat >"$TMP/s1/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf 'ISSUES_CREATED=2\nISSUES_FAILED=0\n' >"$TMP/s1/oos-issue-sentinel"
+set +e
+out_s1=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/s1" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "S1 prepare sentinel skip exit 0" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel$' <<<"$out_s1" || fail "S1 missing skip-already-filed-sentinel status"
+grep -q '^WARN=' <<<"$out_s1" || fail "S1 missing WARN= line"
+
 if [[ "$FAIL" -ne 0 ]]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
   exit 1
