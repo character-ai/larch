@@ -378,18 +378,18 @@ def create_main(argv: list[str]) -> int:
         return 1
     repo = args.repo or gh.resolve_repo(proc)
     if repo:
-        repo_err = _validate_repo_arg(repo, script="create-sh")
+        repo_err = _validate_repo_arg(repo, script="create-pr.sh")
         if repo_err is not None:
             return repo_err
     branch = args.branch or git.try_current_branch(proc) or ""
     if not branch:
-        print("create-sh: not on a branch (detached HEAD)", file=sys.stderr)
+        print("create-pr.sh: not on a branch (detached HEAD)", file=sys.stderr)
         return 2
     try:
         with Path(args.body_file).open(encoding="utf-8") as handle:
             body = handle.read()
     except OSError as exc:
-        print(f"create-sh: cannot read body file: {exc}", file=sys.stderr)
+        print(f"create-pr.sh: cannot read body file: {exc}", file=sys.stderr)
         return 2
     try:
         result = create_pr_parity(

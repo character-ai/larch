@@ -205,7 +205,7 @@ def _emit_rebase_checkpoint_keys(result: rebase.RebasePushResult) -> int:
 
 def branch_main(argv: list[str]) -> int:
     if argv:
-        print(f"git-sh: unknown argument: {argv[0]}", file=sys.stderr)
+        print(f"git-push.sh: unknown argument: {argv[0]}", file=sys.stderr)
         return 1
     result = push_current_branch(proc)
     if result.branch:
@@ -228,7 +228,7 @@ def force_main(argv: list[str]) -> int:
     if result.branch:
         _emit_kv("BRANCH", result.branch)
     elif result.status == "detached_head":
-        print("git-force-sh: not on a named branch", file=sys.stderr)
+        print("git-force-push.sh: not on a named branch", file=sys.stderr)
     _emit_kv("PUSHED", str(result.pushed).lower())
     _emit_kv("STATUS", result.status)
     if result.pushed:

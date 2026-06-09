@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import pytest
 
 import config
+import git
 import push
 from errors import ShipError
 from proc import CommandResult
@@ -194,3 +195,22 @@ def test_branch_push_dedupes_stderr(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     captured = capsys.readouterr()
     assert "BRANCH=feature" in captured.out
     assert "(repeated 3 times)" in captured.err
+
+
+def test_branch_main_unknown_argument_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+    assert push.branch_main(["--bogus"]) == 1
+    err = capsys.readouterr().err
+    assert "git-push.sh: unknown argument: --bogus" in err
+
+
+def test_force_main_detached_head_stderr_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_recovery(*_args: object, **_kwargs: object) -> git.ForcePushResult:
+        return git.ForcePushResult(pushed=False, status="detached_head", branch="")
+
+    monkeypatch.setattr(git, "force_push_recovery", fake_recovery)
+    assert push.force_main([]) == 2
+    err = capsys.readouterr().err
+    assert err.strip() == "git-force-push.sh: not on a named branch"
