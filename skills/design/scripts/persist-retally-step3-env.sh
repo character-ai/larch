@@ -172,6 +172,7 @@ _rewrite_env_file() {
             value="${line#*=}"
             case "$key" in
                 SCOPE_ANCHOR_FILE) continue ;;
+                STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM) continue ;;
                 TALLY_PLAN_REVIEW_STATUS)
                     value="$TALLY_PLAN_REVIEW_STATUS"
                     saw_tally=1
@@ -195,9 +196,30 @@ _rewrite_env_file() {
     phase_driver_write_result_env "$path" "${kvs[@]}"
 }
 
+_rollback_mav_round_state() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]] || return 0
+    local count_file="$DESIGN_TMPDIR/review-round-count.txt" round_raw="" prior=0 round_num=""
+    if [[ -s "$count_file" ]]; then
+        round_raw="$(tr -d '[:space:]' <"$count_file" 2>/dev/null || true)"
+        case "$round_raw" in
+            ''|*[!0-9]*) return 0 ;;
+            *)
+                round_num="$round_raw"
+                prior=$((10#$round_raw - 1))
+                (( prior < 0 )) && prior=0
+                ;;
+        esac
+    fi
+    [[ -n "$round_num" ]] || return 0
+    printf '%s\n' "$prior" >"$count_file"
+    rm -f "$DESIGN_TMPDIR/.step3-round-${round_num}.phase"
+    rm -f "$DESIGN_TMPDIR/plan-pre-apply-round-${round_num}.txt"
+}
+
 _merge_retally_oos_accepted
 _merge_retally_accepted_all
 _clear_failed_retally_accepted
+_rollback_mav_round_state
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-plan-review-result.env"
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-review-result.env"
 exit 0

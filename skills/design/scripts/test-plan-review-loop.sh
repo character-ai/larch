@@ -37,6 +37,9 @@ sorted_file_list() {
 }
 
 bash -n "$PLR" || fail "bash -n plan-review-loop.sh failed"
+if grep -Fq '_rrc_file' "$PLR"; then
+    fail "plan-review-loop.sh must not read review-round-count.txt"
+fi
 
 set +e
 "$PLR" --plan-file "$ROOT/README.md" --codex-present true --cursor-present true 2>/dev/null

@@ -69,7 +69,7 @@ EOF
 
 run_driver() {
     local design_tmpdir="$1" stub="$2"
-    env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$ROOT" \
+    env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
         RUN_STEP3_TEST_DH="$design_tmpdir" \
         RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" \
         "$LAUNCHER" \

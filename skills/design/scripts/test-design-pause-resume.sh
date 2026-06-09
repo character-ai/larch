@@ -1187,6 +1187,100 @@ out_backward_direct=$(bash "$SAVE" --design-tmpdir "$DESIGN_BACKWARD_DIRECT" --i
 [[ "$out_backward_direct" == *"PAUSE_OK=true"* && "$out_backward_direct" == *"STEP=3"* ]] || fail "backward-loop direct-review restore should resume at Step 3: $out_backward_direct"
 [[ "$out_backward_direct" != *"STEP=4b"* ]] || fail "backward-loop direct-review must not resume at Gate C: $out_backward_direct"
 
+echo "=== awaiting-post-apply mid-loop pause preserves phase evidence ==="
+DESIGN_POST_APPLY="$TMP/design-awaiting-post-apply"
+make_design_tmpdir "$DESIGN_POST_APPLY"
+complete_design_steps "$DESIGN_POST_APPLY" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5
+printf 'awaiting-post-apply\n' >"$DESIGN_POST_APPLY/.step3-round-1.phase"
+: >"$DESIGN_POST_APPLY/.gate-b-postapply-ready-1"
+cp "$DESIGN_POST_APPLY/plan.txt" "$DESIGN_POST_APPLY/plan-pre-apply-round-1.txt"
+printf '# revised\n' >>"$DESIGN_POST_APPLY/plan.txt"
+: >"$DESIGN_POST_APPLY/.pause-requested"
+printf 'issue body awaiting post-apply\n' >"$BODY_FILE"
+out_post_apply=$(bash "$SAVE" --design-tmpdir "$DESIGN_POST_APPLY" --issue 9 --repo owner/repo)
+[[ "$out_post_apply" == *"PAUSE_OK=true"* && "$out_post_apply" == *"STEP=3"* ]] || fail "awaiting-post-apply pause should resume at Step 3: $out_post_apply"
+[[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase" ]] || fail "awaiting-post-apply snapshot missing phase file"
+[[ "$(cat "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase")" == awaiting-post-apply ]] \
+  || fail "awaiting-post-apply snapshot phase mismatch"
+[[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.gate-b-postapply-ready-1" ]] \
+  || fail "awaiting-post-apply snapshot missing gate-b marker"
+RESTORE_POST_APPLY="$TMP/restore-awaiting-post-apply"
+out_post_apply_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_POST_APPLY" --issue 9 --repo owner/repo)
+[[ "$out_post_apply_load" == *"LOAD_OK=true"* && "$out_post_apply_load" == *"STEP=3"* ]] || fail "awaiting-post-apply load mismatch: $out_post_apply_load"
+[[ "$(cat "$RESTORE_POST_APPLY/.step3-round-1.phase")" == awaiting-post-apply ]] \
+  || fail "awaiting-post-apply restore lost phase evidence"
+[[ -f "$RESTORE_POST_APPLY/.gate-b-postapply-ready-1" ]] || fail "awaiting-post-apply restore lost gate-b marker"
+grep -Fq '# revised' "$RESTORE_POST_APPLY/plan.txt" || fail "awaiting-post-apply restore should not double-apply plan"
+rm -f "$RESTORE_POST_APPLY/.pause-requested"
+printf '1\n' >"$RESTORE_POST_APPLY/review-round-count.txt"
+printf 'feature\n' >"$RESTORE_POST_APPLY/feature-description.txt"
+LAUNCHER="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+cat >"$RESTORE_POST_APPLY/revise-forbidden.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+cat >"$RESTORE_POST_APPLY/dedup-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat >"$RESTORE_POST_APPLY/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
+exit 0
+STUB
+cat >"$RESTORE_POST_APPLY/continue-stop.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\n'
+STUB
+cat >"$RESTORE_POST_APPLY/round-forbidden.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+chmod +x "$RESTORE_POST_APPLY/revise-forbidden.sh" "$RESTORE_POST_APPLY/dedup-ok.sh" \
+  "$RESTORE_POST_APPLY/postplan-ok.sh" "$RESTORE_POST_APPLY/continue-stop.sh" \
+  "$RESTORE_POST_APPLY/round-forbidden.sh"
+plan_before_loop="$(cat "$RESTORE_POST_APPLY/plan.txt")"
+set +e
+loop_resume_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$RESTORE_POST_APPLY/round-forbidden.sh" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$RESTORE_POST_APPLY/revise-forbidden.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$RESTORE_POST_APPLY/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$RESTORE_POST_APPLY/postplan-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$RESTORE_POST_APPLY/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$RESTORE_POST_APPLY" --mode loop --starting-round 1)
+loop_resume_rc=$?
+set -e
+[[ "$loop_resume_rc" -eq 0 ]] || fail "awaiting-post-apply loop resume launcher rc=$loop_resume_rc: $loop_resume_out"
+[[ "$loop_resume_out" == *"STEP3_REVIEW_LOOP_STATUS=complete"* ]] \
+  || fail "awaiting-post-apply loop resume should complete without re-apply: $loop_resume_out"
+[[ "$(cat "$RESTORE_POST_APPLY/plan.txt")" == "$plan_before_loop" ]] \
+  || fail "awaiting-post-apply loop resume mutated plan.txt"
+
+echo "=== postplan rc 11 mid-loop pause preserves awaiting-post-apply phase ==="
+DESIGN_POSTPLAN_PAUSE="$TMP/design-postplan-rc11"
+make_design_tmpdir "$DESIGN_POSTPLAN_PAUSE"
+complete_design_steps "$DESIGN_POSTPLAN_PAUSE" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5
+printf 'awaiting-post-apply\n' >"$DESIGN_POSTPLAN_PAUSE/.step3-round-1.phase"
+: >"$DESIGN_POSTPLAN_PAUSE/.gate-b-postapply-ready-1"
+printf 'POSTPLAN_RC=11\n' >"$DESIGN_POSTPLAN_PAUSE/.design-postplan-emit-result.env"
+: >"$DESIGN_POSTPLAN_PAUSE/.pause-requested"
+printf 'issue body postplan pause\n' >"$BODY_FILE"
+out_postplan_pause=$(bash "$SAVE" --design-tmpdir "$DESIGN_POSTPLAN_PAUSE" --issue 9 --repo owner/repo)
+[[ "$out_postplan_pause" == *"PAUSE_OK=true"* && "$out_postplan_pause" == *"STEP=3"* ]] \
+  || fail "postplan rc 11 pause should resume at Step 3: $out_postplan_pause"
+[[ "$(cat "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase")" == awaiting-post-apply ]] \
+  || fail "postplan rc 11 snapshot should keep awaiting-post-apply phase"
+RESTORE_POSTPLAN_PAUSE="$TMP/restore-postplan-rc11"
+out_postplan_pause_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_POSTPLAN_PAUSE" --issue 9 --repo owner/repo)
+[[ "$out_postplan_pause_load" == *"LOAD_OK=true"* && "$out_postplan_pause_load" == *"STEP=3"* ]] \
+  || fail "postplan rc 11 load mismatch: $out_postplan_pause_load"
+[[ "$(cat "$RESTORE_POSTPLAN_PAUSE/.step3-round-1.phase")" == awaiting-post-apply ]] \
+  || fail "postplan rc 11 restore lost awaiting-post-apply phase"
+
 echo "=== already-planned Q&A-only writes contiguous prefix through step-1d.5 ==="
 DESIGN_QA_ONLY="$TMP/design-qa-only"
 make_design_tmpdir "$DESIGN_QA_ONLY"

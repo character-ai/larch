@@ -133,4 +133,29 @@ EOF
 grep -Fq '### FINDING_3:' "$TMP/accepted-plan-findings-all.md" \
     && fail 'tally-error re-tally must not merge current accepted findings'
 
+cat >"$TMP/.step3-review-result.env" <<'EOF'
+LOOP_STATUS=main-agent-vote-required
+STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required
+POSTPLAN_RC=12
+DEDUP_RC=2
+FINAL_ROUND_NUM=2
+PLAN_REVIEW_CONTINUE_REASON=stale
+TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required
+EOF
+cp "$TMP/.step3-review-result.env" "$TMP/.step3-plan-review-result.env"
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nSCOPE_ANCHOR_FILE=%s/plan-review-scope-anchor.txt\n' "$DESIGN_CANON" >"$TMP/retally-ok.txt"
+
+"$SUBJECT" \
+    --design-tmpdir "$TMP" \
+    --retally-stdout-file "$TMP/retally-ok.txt" \
+    --retally-input-anchor "$TMP/stale-scope-anchor.txt" \
+    --tally-plan-review-status ok \
+    --loop-status complete
+
+grep -q '^STEP3_REVIEW_LOOP_STATUS=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must drop stale STEP3_REVIEW_LOOP_STATUS'
+grep -q '^POSTPLAN_RC=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must drop stale POSTPLAN_RC'
+grep -q '^DEDUP_RC=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must drop stale DEDUP_RC'
+grep -q '^FINAL_ROUND_NUM=' "$TMP/.step3-review-result.env" && fail 'ok re-tally must drop stale FINAL_ROUND_NUM'
+grep -Fqx 'LOOP_STATUS=complete' "$TMP/.step3-review-result.env" || fail 'ok re-tally must refresh LOOP_STATUS'
+
 pass 'persist-retally-step3-env harness'
