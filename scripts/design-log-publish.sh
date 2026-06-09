@@ -932,7 +932,7 @@ create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") ||
     exit 0
 }
 if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
-    gh pr create "${gh_repo_args[@]}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
+    gh pr create "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
         --title "chore(larch-logs): design run ${RUN_ID}" \
         --body-file "$PR_BODY_TMP"; then
     create_rc=0
@@ -960,7 +960,7 @@ if [[ -z "$PR_NUM" ]]; then
         exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
-        gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
+        gh pr list "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
         list_rc=0
     else
         list_rc=${_WTR_RC:-1}
@@ -989,7 +989,7 @@ if [[ -z "$PR_NUM" ]]; then
         exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
-        gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url'; then
+        gh pr view "${gh_repo_args[@]+"${gh_repo_args[@]}"}" "$PR_NUM" --json url --jq '.url'; then
         PR_URL=$_WTR_OUT
     else
         PR_URL=""
@@ -1039,7 +1039,7 @@ else
     while [[ "$reg_probe" -le "$REG_MAX_PROBES" && "$SECONDS" -le "$REG_DEADLINE" ]]; do
         : >"$reg_checks_err_file"
         set +e
-        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --json bucket 2>"$reg_checks_err_file")
+        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --required --json bucket 2>"$reg_checks_err_file")
         reg_checks_rc=$?
         set -e
         last_checks_out="$reg_checks_out"
@@ -1056,7 +1056,7 @@ else
         if [[ "$checks_json_nonempty" == true ]]; then
             : >"$reg_view_fail_file"
             if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
-                gh pr view "$PR_NUM" "${gh_repo_args[@]}" --json headRefOid; then
+                gh pr view "$PR_NUM" "${gh_repo_args[@]+"${gh_repo_args[@]}"}" --json headRefOid; then
                 view_rc=0
             else
                 view_rc=$_WTR_RC
