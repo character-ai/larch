@@ -1211,6 +1211,54 @@ out_post_apply_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_POST_APPLY" --issue
   || fail "awaiting-post-apply restore lost phase evidence"
 [[ -f "$RESTORE_POST_APPLY/.gate-b-postapply-ready-1" ]] || fail "awaiting-post-apply restore lost gate-b marker"
 grep -Fq '# revised' "$RESTORE_POST_APPLY/plan.txt" || fail "awaiting-post-apply restore should not double-apply plan"
+rm -f "$RESTORE_POST_APPLY/.pause-requested"
+printf '1\n' >"$RESTORE_POST_APPLY/review-round-count.txt"
+printf 'feature\n' >"$RESTORE_POST_APPLY/feature-description.txt"
+LAUNCHER="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+cat >"$RESTORE_POST_APPLY/revise-forbidden.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+cat >"$RESTORE_POST_APPLY/dedup-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat >"$RESTORE_POST_APPLY/postplan-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
+exit 0
+STUB
+cat >"$RESTORE_POST_APPLY/continue-stop.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'PLAN_REVIEW_CONTINUE=false\nPLAN_REVIEW_CONTINUE_REASON=small-clean\n'
+STUB
+cat >"$RESTORE_POST_APPLY/round-forbidden.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+chmod +x "$RESTORE_POST_APPLY/revise-forbidden.sh" "$RESTORE_POST_APPLY/dedup-ok.sh" \
+  "$RESTORE_POST_APPLY/postplan-ok.sh" "$RESTORE_POST_APPLY/continue-stop.sh" \
+  "$RESTORE_POST_APPLY/round-forbidden.sh"
+plan_before_loop="$(cat "$RESTORE_POST_APPLY/plan.txt")"
+set +e
+loop_resume_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+  RUN_STEP3_PLAN_REVIEW_LOOP_SH="$RESTORE_POST_APPLY/round-forbidden.sh" \
+  RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$RESTORE_POST_APPLY/revise-forbidden.sh" \
+  RUN_STEP3_DEDUP_PLAN_SH="$RESTORE_POST_APPLY/dedup-ok.sh" \
+  RUN_STEP3_POSTPLAN_EMIT_SH="$RESTORE_POST_APPLY/postplan-ok.sh" \
+  RUN_STEP3_CONTINUATION_SH="$RESTORE_POST_APPLY/continue-stop.sh" \
+  "$LAUNCHER" --design-tmpdir "$RESTORE_POST_APPLY" --mode loop --starting-round 1)
+loop_resume_rc=$?
+set -e
+[[ "$loop_resume_rc" -eq 0 ]] || fail "awaiting-post-apply loop resume launcher rc=$loop_resume_rc: $loop_resume_out"
+[[ "$loop_resume_out" == *"STEP3_REVIEW_LOOP_STATUS=complete"* ]] \
+  || fail "awaiting-post-apply loop resume should complete without re-apply: $loop_resume_out"
+[[ "$(cat "$RESTORE_POST_APPLY/plan.txt")" == "$plan_before_loop" ]] \
+  || fail "awaiting-post-apply loop resume mutated plan.txt"
 
 echo "=== postplan rc 11 mid-loop pause preserves awaiting-post-apply phase ==="
 DESIGN_POSTPLAN_PAUSE="$TMP/design-postplan-rc11"

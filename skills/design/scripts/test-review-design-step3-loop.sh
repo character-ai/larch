@@ -135,6 +135,8 @@ round_stub="$(write_round_stub "$D3" 'exit 97')"
 out="$(run_loop "$D3" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=cap-hit' 'cap-hit envelope'
 contains "$out" 'ROUNDS_COMPLETED=5' 'cap-hit rounds completed'
+contains "$out" 'REVIEW_ROUND_COUNT=5' 'cap-hit review round count'
+grep -q '^STEP3_REVIEW_ROUND_NUM=$' <<<"$out" || fail 'cap-hit should clear STEP3_REVIEW_ROUND_NUM'
 
 
 echo '=== postplan operator rc ==='
@@ -253,6 +255,7 @@ echo '=== postplan-operator continue marker resumes at continuation ==='
 D_OP_CONT="$TMP/postplan-operator-continue"
 write_common "$D_OP_CONT"
 write_ok_stubs "$D_OP_CONT"
+printf '{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}\n' >"$D_OP_CONT/run-params.json"
 printf 'awaiting-postplan-operator\n' >"$D_OP_CONT/.step3-round-1.phase"
 : >"$D_OP_CONT/.gate-b-postapply-ready-1"
 : >"$D_OP_CONT/.postplan-operator-continue-1"
@@ -269,6 +272,8 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan-operator continue completes'
 [[ ! -f "$D_OP_CONT/.postplan-operator-continue-1" ]] || fail 'continue marker should be consumed'
 [[ "$(cat "$D_OP_CONT/.step3-round-1.phase")" == awaiting-continuation ]] || fail 'continue marker should advance phase'
+[[ -f "$D_OP_CONT/plan-after-round-1.txt" ]] || fail 'postplan-operator continue should write HARD snapshot'
+[[ "$(cat "$D_OP_CONT/plan-review-round-cursor.txt" 2>/dev/null)" == 2 ]] || fail 'postplan-operator continue should advance HARD cursor'
 
 
 echo '=== dedup failure restores snapshot and bails to main agent ==='

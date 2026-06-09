@@ -51,9 +51,23 @@ step3_loop_emit_envelope() {
     step3_loop_persist_envelope "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}"
 }
 
+step3_loop_read_review_round_count() {
+    local count_file="$DESIGN_TMPDIR/review-round-count.txt" raw=""
+    if [[ -s "$count_file" ]]; then
+        raw="$(tr -d '[:space:]' <"$count_file" 2>/dev/null || true)"
+        case "$raw" in
+            ''|*[!0-9]*) printf '0\n' ;;
+            *) printf '%s\n' "$raw" ;;
+        esac
+    else
+        printf '0\n'
+    fi
+}
+
 step3_loop_persist_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
     local result_env="$DESIGN_TMPDIR/.step3-review-result.env" loop_status="" kvs=() merge_key _line _key _value _present
+    local persist_round_num="" persist_review_count=""
     case "$status" in
         cap-hit) loop_status=cap-reached ;;
         complete) loop_status=complete ;;
@@ -63,6 +77,20 @@ step3_loop_persist_envelope() {
         main-agent-apply-required|per-round-approval-required|postplan-operator-required) loop_status=complete ;;
         *) loop_status="${LOOP_STATUS:-complete}" ;;
     esac
+    case "$status" in
+        cap-hit)
+            persist_round_num=""
+            persist_review_count="${rounds_completed:-0}"
+            ;;
+        tally-error|degraded-empty-collector|panel-failed|postplan-failed)
+            persist_round_num=""
+            persist_review_count="$(step3_loop_read_review_round_count)"
+            ;;
+        *)
+            persist_round_num="${round_num:-}"
+            persist_review_count="${round_num:-0}"
+            ;;
+    esac
     kvs=(
         "STEP3_REVIEW_LOOP_STATUS=$status"
         "LOOP_STATUS=$loop_status"
@@ -71,8 +99,8 @@ step3_loop_persist_envelope() {
         "ACCEPTED_COUNT=${ACCEPTED_COUNT:-0}"
         "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-0}"
         "DEGRADED_PANEL=${DEGRADED_PANEL:-0}"
-        "STEP3_REVIEW_ROUND_NUM=${round_num:-}"
-        "REVIEW_ROUND_COUNT=${round_num:-0}"
+        "STEP3_REVIEW_ROUND_NUM=${persist_round_num}"
+        "REVIEW_ROUND_COUNT=${persist_review_count}"
         "ROUND_NUM=${ROUND_NUM:-$round_num}"
         "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}"
         "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}"
@@ -171,7 +199,9 @@ step3_loop_refresh_issue_from_source_env() {
     [[ -f "$source_env" && ! -L "$source_env" && -r "$source_env" ]] || return 0
     if [[ -z "${ISSUE_NUMBER:-}" ]]; then
         _issue="$(step3_loop_source_env_get ISSUE_NUMBER "$source_env" 2>/dev/null || true)"
-        [[ -n "$_issue" && "$_issue" =~ ^[1-9][0-9]*$ ]] && ISSUE_NUMBER="$_issue"
+        if [[ -n "$_issue" && "$_issue" =~ ^[1-9][0-9]*$ ]]; then
+            ISSUE_NUMBER="$_issue"
+        fi
     fi
 }
 
@@ -265,8 +295,35 @@ step3_loop_run_dedup() {
     return 0
 }
 
+step3_loop_run_hard_snapshots() {
+    local round_num="$1" snap_sh next_round snapshot_rc cursor_rc
+    if ! step3_loop_is_hard; then
+        return 0
+    fi
+    snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
+    if [[ ! -x "$snap_sh" ]]; then
+        POSTPLAN_RC=1
+        return 1
+    fi
+    set +e
+    "$snap_sh" write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$round_num"
+    snapshot_rc=$?
+    next_round=$((10#$round_num + 1))
+    if [[ "$snapshot_rc" -eq 0 ]]; then
+        "$snap_sh" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$next_round"
+        cursor_rc=$?
+    else
+        cursor_rc=1
+    fi
+    if [[ "$snapshot_rc" -ne 0 || "$cursor_rc" -ne 0 ]]; then
+        POSTPLAN_RC=1
+        return 1
+    fi
+    return 0
+}
+
 step3_loop_run_apply() {
-    local round_num="$1" snapshot revise_sh revise_out revise_rc revise_status="" findings_file
+    local round_num="$1" snapshot revise_sh revise_out revise_rc revise_status="" findings_file current_phase=""
     ACCEPTED_COUNT="$(step3_loop_count_accepted_findings)"
     case "$ACCEPTED_COUNT" in ''|*[!0-9]*) ACCEPTED_COUNT=0 ;; esac
     if (( 10#$ACCEPTED_COUNT == 0 )); then
@@ -291,10 +348,16 @@ step3_loop_run_apply() {
     if [[ ! -f "$snapshot" ]]; then
         cp "$DESIGN_TMPDIR/plan.txt" "$snapshot"
     fi
+    current_phase="$(step3_loop_read_phase "$round_num")"
     if [[ -f "$snapshot" ]] && ! cmp -s "$snapshot" "$DESIGN_TMPDIR/plan.txt" 2>/dev/null; then
-        step3_loop_write_phase "$round_num" awaiting-post-apply
-        step3_loop_run_dedup "$round_num"
-        return $?
+        if [[ "$current_phase" == awaiting-post-apply ]] \
+            || [[ -f "$DESIGN_TMPDIR/.gate-b-postapply-ready-${round_num}" ]]; then
+            step3_loop_run_dedup "$round_num"
+            return $?
+        fi
+        if [[ "$current_phase" == awaiting-revise ]]; then
+            cp "$snapshot" "$DESIGN_TMPDIR/plan.txt"
+        fi
     fi
 
     step3_loop_write_phase "$round_num" awaiting-revise
@@ -333,26 +396,12 @@ step3_loop_run_post_apply() {
     postplan_rc=$?
     case "$postplan_rc" in
         0)
-            if step3_loop_is_hard; then
-                snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
-                if [[ ! -x "$snap_sh" ]]; then
-                    POSTPLAN_RC=1
-                    return 31
-                fi
-                set +e
-                "$snap_sh" write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$round_num"
-                snapshot_rc=$?
-                next_round=$((10#$round_num + 1))
-                if [[ "$snapshot_rc" -eq 0 ]]; then
-                    "$snap_sh" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$next_round"
-                    cursor_rc=$?
-                else
-                    cursor_rc=1
-                fi
-                if [[ "$snapshot_rc" -ne 0 || "$cursor_rc" -ne 0 ]]; then
-                    POSTPLAN_RC=1
-                    return 31
-                fi
+            set +e
+            step3_loop_run_hard_snapshots "$round_num"
+            post_rc=$?
+            set -e
+            if [[ "$post_rc" -ne 0 ]]; then
+                return 31
             fi
             step3_loop_write_phase "$round_num" awaiting-continuation
             return 0
@@ -515,6 +564,14 @@ run_design_step3_loop() {
                 if [[ "$phase" == awaiting-postplan-operator ]]; then
                     if [[ -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}" ]]; then
                         rm -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}"
+                        set +e
+                        step3_loop_run_hard_snapshots "$round_num"
+                        post_rc=$?
+                        set -e
+                        if [[ "$post_rc" -ne 0 ]]; then
+                            step3_loop_emit_envelope postplan-failed "$round_num" "$round_num" "$round_num"
+                            exit 0
+                        fi
                         step3_loop_write_phase "$round_num" awaiting-continuation
                         phase=awaiting-continuation
                         continue

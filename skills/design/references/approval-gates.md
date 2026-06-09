@@ -148,7 +148,7 @@ After iteration completes (all findings answered without an early abort), the or
 
 ### Shared post-apply pipeline
 
-In-loop apply takes a loop-owned `plan-pre-apply-round-N.txt` snapshot before `revise-plan-with-waterfall.sh`, then runs `gate-b-dedup-plan.sh --snapshot-trailers` and `gate-b-dedup-plan.sh --dedup` under `set +e`. A dedup failure restores the loop snapshot and returns `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` with `DEDUP_RC`; `.gate-b-postapply-ready-N` is written only after dedup succeeds. Operator-brake resumes (`POSTPLAN_RC=10/12/13/14`) persist the decision and either resume at `awaiting-continuation` for non-plan-changing Override/Continue or re-enter `awaiting-post-apply` after a plan-changing fix.
+In-loop apply takes a loop-owned `plan-pre-apply-round-N.txt` snapshot before `revise-plan-with-waterfall.sh`, then runs `gate-b-dedup-plan.sh --snapshot-trailers` and `gate-b-dedup-plan.sh --dedup` under `set +e`. A dedup failure restores the loop snapshot and returns `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` with `DEDUP_RC`; `.gate-b-postapply-ready-N` is written only after dedup succeeds. Operator-brake resumes (`POSTPLAN_RC=10/12/13/14`) persist phase `awaiting-postplan-operator`. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N` before resuming the script-internal loop; the loop consumes the marker, runs HARD snapshots when applicable, and promotes to `awaiting-continuation`. Plan-changing Fix-and-retry/autofix overwrites phase to `awaiting-post-apply` instead.
 
 After the chosen findings have been applied to `plan.txt` (either the full accepted set or the one-by-one applied subset), run the same post-apply sequence for both Gate B branches:
 
