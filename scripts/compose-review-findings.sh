@@ -166,12 +166,131 @@ extract_reviewer_from_body() {
 }
 
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"
-trap 'rm -f "$TMP_OUT"' EXIT
+DESIGN_REVIEWER_MAP="$(mktemp "${TMPDIR:-/tmp}/review-findings-design-map.XXXXXX")" || fail "cannot create temp map"
+trap 'rm -f "$TMP_OUT" "$DESIGN_REVIEWER_MAP"' EXIT
 FINDINGS_TOTAL=0
+
+build_design_reviewer_map() {
+    : >"$DESIGN_REVIEWER_MAP"
+    [ -n "$DESIGN_DIR" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$DESIGN_DIR" "$DESIGN_REVIEWER_MAP" <<'PY' || : >"$DESIGN_REVIEWER_MAP"
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+design_dir = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+
+def human_label(slot: str) -> str:
+    pairs = [
+        ("dyn-cursor-plan-", "Cursor-dyn-", True),
+        ("dyn-codex-plan-", "Codex-dyn-", True),
+        ("cursor-plan-", "Cursor-", False),
+        ("codex-plan-", "Codex-", False),
+        ("claude-plan-", "Claude-", False),
+    ]
+    for prefix, name, dynamic in pairs:
+        if slot.startswith(prefix):
+            rest = slot[len(prefix):]
+            if dynamic:
+                return name + rest
+            return name + re.sub(r"[_ ]+", " ", rest).title().replace(" ", "")
+    return slot
+
+def add(mapping, key, value):
+    key = (key or "").strip()
+    value = (value or "").strip()
+    if key and value and key not in mapping:
+        mapping[key] = value
+
+def manifest_paths():
+    rounds_root = design_dir / "plan-review"
+    round_paths = []
+    if rounds_root.is_dir():
+        for child in rounds_root.iterdir():
+            m = re.match(r"round-([0-9]+)$", child.name)
+            if m and child.is_dir():
+                round_paths.append((int(m.group(1)), child / "plan-review-slots.ndjson"))
+    for _, path in sorted(round_paths):
+        yield path
+    yield design_dir / "plan-review-slots.ndjson"
+
+mapping = {}
+for path in manifest_paths():
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(row, dict):
+            continue
+        output = str(row.get("output") or "")
+        basename = os.path.basename(output)
+        slot = str(row.get("slot") or "")
+        if not basename:
+            continue
+        add(mapping, slot, basename)
+        add(mapping, human_label(slot), basename)
+
+label_maps = [design_dir / "plan-review-prune-label-map.tsv"]
+rounds_root = design_dir / "plan-review"
+if rounds_root.is_dir():
+    for child in sorted(rounds_root.iterdir(), key=lambda p: p.name):
+        if child.is_dir():
+            label_maps.append(child / "plan-review-prune-label-map.tsv")
+for path in label_maps:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        slot, label = parts[0].strip(), parts[1].strip()
+        if slot in mapping:
+            add(mapping, label, mapping[slot])
+
+with out_path.open("w", encoding="utf-8") as fh:
+    for key in sorted(mapping):
+        fh.write(f"{key}\t{mapping[key]}\n")
+PY
+}
+
+normalize_design_reviewer_slots() {
+    local reviewer="$1"
+    [ -s "$DESIGN_REVIEWER_MAP" ] || { printf '%s' "$reviewer"; return 0; }
+    python3 - "$DESIGN_REVIEWER_MAP" "$reviewer" <<'PY' 2>/dev/null || printf '%s' "$reviewer"
+import sys
+mapping = {}
+with open(sys.argv[1], encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        key, sep, value = line.rstrip("\n").partition("\t")
+        if sep and key and value:
+            mapping[key] = value
+parts = [p.strip() for p in sys.argv[2].split(",")]
+out = [mapping.get(p, p) for p in parts if p]
+print(",".join(out) if out else sys.argv[2], end="")
+PY
+}
+
+build_design_reviewer_map
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5" round_num="$6"
     local reviewer_redacted body_redacted category strict_cat=0 reviewer_slots_json
+    if [[ "$phase" == "plan-review" ]]; then
+        reviewer="$(normalize_design_reviewer_slots "$reviewer")"
+    fi
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
@@ -319,7 +438,54 @@ parse_artifact() {
     flush_pending
 }
 
-[ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/accepted-plan-findings.md" plan-review-accepted ""
+filter_design_gate_b_skipped() {
+    local accepted_file="$1" rejected_file="$2" out_file="$3"
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$accepted_file" "$rejected_file" "$out_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+accepted_path, rejected_path, out_path = map(Path, sys.argv[1:4])
+reason = "rejected by user during one-by-one review"
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+def blocks(text: str, prefix: str):
+    pattern = rf"(?ms)^### {prefix}_[0-9A-Za-z_]+:.*?(?=^### |\Z)"
+    return [m.group(0).strip() for m in re.finditer(pattern, text)]
+
+def normalize(block: str) -> str:
+    lines = [line.rstrip() for line in block.strip().splitlines() if reason not in line]
+    return "\n".join(lines).strip()
+
+skipped = {normalize(block) for block in blocks(read(rejected_path), "FINDING") if reason in block}
+accepted = [block for block in blocks(read(accepted_path), "FINDING") if normalize(block) not in skipped]
+body = "\n\n".join(accepted)
+if body:
+    body += "\n\n"
+out_path.write_text(body, encoding="utf-8")
+PY
+}
+
+if [ -n "$DESIGN_DIR" ]; then
+    _design_accepted="$DESIGN_DIR/accepted-plan-findings-all.md"
+    _design_filtered=""
+    [ -s "$_design_accepted" ] || _design_accepted="$DESIGN_DIR/accepted-plan-findings.md"
+    if [ -s "$_design_accepted" ] && [ -s "$DESIGN_DIR/rejected-findings.md" ] \
+        && grep -Fq 'rejected by user during one-by-one review' "$DESIGN_DIR/rejected-findings.md" 2>/dev/null; then
+        _design_filtered="$(mktemp "${TMPDIR:-/tmp}/review-findings-design-accepted.XXXXXX")" || fail "cannot create design accepted filter temp"
+        if filter_design_gate_b_skipped "$_design_accepted" "$DESIGN_DIR/rejected-findings.md" "$_design_filtered" 2>/dev/null; then
+            _design_accepted="$_design_filtered"
+        fi
+    fi
+    parse_artifact "$_design_accepted" plan-review-accepted ""
+    [ -z "$_design_filtered" ] || rm -f "$_design_filtered"
+fi
 [ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/rejected-findings.md" plan-review-rejected ""
 if [ -n "$IMPLEMENT_TMPDIR" ]; then
     shopt -s nullglob

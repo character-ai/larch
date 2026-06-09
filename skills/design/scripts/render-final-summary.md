@@ -4,7 +4,7 @@
 
 **Purpose**: `/design` terminal summary dispatcher. Gathers token/timing JSON,
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
-then invokes `scripts/render-run-summary.sh --skill design` and (post-publish
+then composes `review-findings-full.jsonl`, renders the best-effort Review Phase Detail appendix when `plan-review/` exists, invokes `scripts/render-run-summary.sh --skill design`, and (post-publish
 phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
 via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
 this helper).
@@ -54,6 +54,10 @@ includes the spawned-process Claude lane (`Claude (subprocess)` / `claude_sub`,
 issue #3637): the helper reads `.claude_sub.totals.total` and
 `BUCKETS_claude_sub` from `token-report-final.json` and forwards `--claude-sub-*`
 flags to the renderer.
+
+## Review Phase Detail appendix
+
+Before invoking `render-run-summary.sh`, `invoke_render()` removes stale `review-phase-detail.md` and, when `$DESIGN_TMPDIR/plan-review` exists, removes stale `review-findings-full.jsonl`, calls `scripts/compose-review-findings.sh --design-artifacts-dir`, and then calls `scripts/render-review-phase-detail.sh --skill design` with `--rounds-root`, `--findings-file`, `--timing-ledger`, optional `--token-ledger`, and `--output`. Compose/render failures truncate the relevant intermediate and continue. The append check for `review-phase-detail.md` is outside the plan-review directory guard, so a valid non-empty intermediate can still be honored independently of the guard. The compose path owns cumulative `accepted-plan-findings-all.md` precedence, Gate B skipped-finding filtering, and reviewer-slot basename normalization. The new calls are best-effort and do not toggle global `errexit`.
 
 ## Degraded render — fallback
 
@@ -111,4 +115,4 @@ When `$DESIGN_TMPDIR/oos-issues-created.md` is absent or empty but `$DESIGN_TMPD
 ## Recent contract coverage
 
 - `publish-skipped` is an accepted outcome with an explicit Outcome bullet, a skipped-publish note, no failed-publish recovery prose, and `Run logs` left as `N/A`.
-- Plan review line now counts cumulative `### FINDING_N:` / `### OOS_N:` headers directly with `- **Focus area**: <value>` buckets; `test-render-final-summary.sh` covers non-zero accepted sets, missing optional OOS artifacts, cumulative accepted sets, Gate B skipped cumulative findings, and cumulative accepted sets after `voting-tally.md` removal.
+- Plan review line now counts cumulative `### FINDING_N:` / `### OOS_N:` headers directly with `- **Focus area**: <value>` buckets; `test-render-final-summary.sh` covers non-zero accepted sets, missing optional OOS artifacts, cumulative accepted sets, Gate B skipped cumulative findings, and cumulative accepted sets after `voting-tally.md` removal. Review Phase Detail wiring is covered through the compose and renderer harnesses plus plan-review-loop metadata tests.

@@ -64,6 +64,36 @@ done <"$RETALLY_STDOUT_FILE"
 design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)" || exit 2
 export TALLY_PLAN_REVIEW_STATUS LOOP_STATUS
 _scope_handoff="$(larch_scope_anchor_retally_handoff_value "$design_canon" "${_PARSED_SCOPE_ANCHOR_FILE:-}" "${RETALLY_INPUT:-}")"
+_RESOLVED_ROUND_NUM=""
+_RESOLVED_ROUND_DIR=""
+
+_resolve_retally_round() {
+    local env_file="$DESIGN_TMPDIR/.step3-plan-review-result.env"
+    local line key value round_num="" rounds_completed=""
+    if [[ -f "$env_file" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            key="${line%%=*}"
+            value="${line#*=}"
+            case "$key" in
+                ROUND_NUM) round_num="$value" ;;
+                ROUNDS_COMPLETED) rounds_completed="$value" ;;
+            esac
+        done <"$env_file"
+    fi
+    case "$round_num" in ''|*[!0-9]*) round_num="" ;; esac
+    case "$rounds_completed" in ''|*[!0-9]*) rounds_completed="" ;; esac
+    [[ -n "$round_num" ]] || round_num="$rounds_completed"
+    [[ -n "$round_num" ]] || return 0
+    round_num=$((10#$round_num))
+    [[ "$round_num" -gt 0 ]] || return 0
+    local round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    if [[ -d "$round_dir" ]]; then
+        _RESOLVED_ROUND_NUM="$round_num"
+        _RESOLVED_ROUND_DIR="$round_dir"
+    elif [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
+        emit_kv WARN "persist-retally-step3-env: round-${round_num} snapshot missing; skipped round-meta removal"
+    fi
+}
 
 _merge_retally_accepted_all() {
     [[ "$TALLY_PLAN_REVIEW_STATUS" == "ok" ]] || return 0
@@ -159,6 +189,29 @@ _clear_failed_retally_accepted() {
     : >"$DESIGN_TMPDIR/accepted-plan-findings.md"
 }
 
+_clear_design_round_meta_on_tally_error() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]] || return 0
+    local round_num="${_RESOLVED_ROUND_NUM:-}"
+    [[ -n "$round_num" ]] || return 0
+    local round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    [[ -d "$round_dir" ]] || return 0
+    rm -f "$round_dir/round-meta.json" "$round_dir/panel-manifest.ndjson" 2>/dev/null || true
+}
+
+_refresh_design_round_meta_after_ok_retally() {
+    [[ "$TALLY_PLAN_REVIEW_STATUS" == "ok" ]] || return 0
+    local round_dir="${_RESOLVED_ROUND_DIR:-}"
+    if [[ -z "$round_dir" || ! -d "$round_dir" ]]; then
+        emit_kv WARN "persist-retally-step3-env: retally round snapshot missing; skipped round-meta refresh"
+        return 0
+    fi
+    if [[ -f "$DESIGN_TMPDIR/voting-tally.md" ]]; then
+        cp -f "$DESIGN_TMPDIR/voting-tally.md" "$round_dir/voting-tally.md" 2>/dev/null || true
+    fi
+    "$PLUGIN_ROOT/scripts/write-design-round-meta.sh" --round-dir "$round_dir" 2>/dev/null || \
+        emit_kv WARN "persist-retally-step3-env: round-meta refresh failed (non-fatal)"
+}
+
 _rewrite_env_file() {
     local path="$1"
     local -a kvs=()
@@ -198,28 +251,22 @@ _rewrite_env_file() {
 
 _rollback_mav_round_state() {
     [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]] || return 0
-    local count_file="$DESIGN_TMPDIR/review-round-count.txt" round_raw="" prior=0 round_num=""
-    if [[ -s "$count_file" ]]; then
-        round_raw="$(tr -d '[:space:]' <"$count_file" 2>/dev/null || true)"
-        case "$round_raw" in
-            ''|*[!0-9]*) return 0 ;;
-            *)
-                round_num="$round_raw"
-                prior=$((10#$round_raw - 1))
-                (( prior < 0 )) && prior=0
-                ;;
-        esac
-    fi
+    local count_file="$DESIGN_TMPDIR/review-round-count.txt" prior=0 round_num="${_RESOLVED_ROUND_NUM:-}"
     [[ -n "$round_num" ]] || return 0
+    prior=$((round_num - 1))
+    (( prior < 0 )) && prior=0
     printf '%s\n' "$prior" >"$count_file"
     rm -f "$DESIGN_TMPDIR/.step3-round-${round_num}.phase"
     rm -f "$DESIGN_TMPDIR/plan-pre-apply-round-${round_num}.txt"
 }
 
+_resolve_retally_round
 _merge_retally_oos_accepted
 _merge_retally_accepted_all
 _clear_failed_retally_accepted
 _rollback_mav_round_state
+_clear_design_round_meta_on_tally_error
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-plan-review-result.env"
 _rewrite_env_file "$DESIGN_TMPDIR/.step3-review-result.env"
+_refresh_design_round_meta_after_ok_retally
 exit 0

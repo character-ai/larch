@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # render-review-phase-detail.sh — per-review-round detail section for the
-# /implement final report (issue #3774).
+# /implement final report and /design final summary (issue #3774).
 #
 # Reads the live/committed review-phase artifacts of an /implement run and
 # renders a markdown "Review Phase Detail" section:

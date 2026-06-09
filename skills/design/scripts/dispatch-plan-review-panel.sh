@@ -182,6 +182,12 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     if [[ "$_generic_has_output" != true ]]; then
         : >"$_panel_paths"
     fi
+    jq -nc \
+        --arg slot "claude-plan-generic" \
+        --arg tool "claude_sub" \
+        --arg output "$_generic_output" \
+        --arg prompt_file "$_generic_prompt" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
     emit_kv DISPATCH_OK "$_generic_dispatch_ok"
     emit_kv FALLBACK_COUNT 0
     emit_kv COMBINED_FALLBACK_COUNT 0

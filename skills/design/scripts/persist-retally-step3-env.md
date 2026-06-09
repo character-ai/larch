@@ -10,13 +10,14 @@ final-summary and filing accounting include MainAgent-adjudicated findings and
 prior-round accepted OOS. The in-scope merge is exact-block idempotent; the OOS
 merge uses normalized `Description` keys. Both merges are skipped on
 `tally-error`; tally-error also clears partial current
-`accepted-plan-findings.md` and zeros accepted-count KVs in refreshed env files.
+`accepted-plan-findings.md`, removes any existing `round-meta.json` / `panel-manifest.ndjson` for the resolved round, and zeros accepted-count KVs in refreshed env files.
 
 - **Argv**: `--design-tmpdir DIR --retally-stdout-file FILE
   --retally-input-anchor PATH-OR-EMPTY --tally-plan-review-status ok|tally-error
   --loop-status complete|...`.
 - **Primary caller**: `skills/design/SKILL.md` Step 3 MainAgent re-tally
   branch (`main-agent-vote-required`).
+- **Retally round refresh**: before env rewrite, the helper resolves the affected round from `.step3-plan-review-result.env`, preferring numeric `ROUND_NUM` and falling back to numeric `ROUNDS_COMPLETED`; it does not read `review-round-count.txt` to choose the metadata target. On `ok`, after cumulative accepted/OOS merges and env rewrites, it copies the fresh session-root `voting-tally.md` into `plan-review/round-N/` and runs `scripts/write-design-round-meta.sh --round-dir`. It deliberately does not copy session-root `findings-classification.tsv`; the retally path owns the round-local TSV. On `tally-error`, it skips snapshot refresh and removes stale round metadata when the round directory exists. The helper never appends timing rows.
 - **Invariants**: persists `SCOPE_ANCHOR_FILE` only on permitted terminals —
   parsed re-tally stdout KV preferred, `--retally-input-anchor` fallback on
   `ok` when stdout omits the KV; omits the key on `tally-error`; never

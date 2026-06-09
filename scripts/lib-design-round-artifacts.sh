@@ -26,6 +26,9 @@ design_round_artifact_included() {
         oos.md|oos-accepted-design.md|oos-accepted-design.before.md|ballot.txt|voting-tally.md)
             return 0
             ;;
+        round-meta.json|panel-manifest.ndjson)
+            return 0
+            ;;
         plan-review-slots.ndjson|plan-review-slots.pre-prune.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|reviewer-prune-ledger.tsv|round-summary.env|round-start-s|plan.txt|plan-review-scope-anchor.txt)
             return 0
             ;;

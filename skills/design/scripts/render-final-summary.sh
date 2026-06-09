@@ -434,6 +434,42 @@ invoke_render() {
             note_args=(--note-lines-file "$note_file")
         fi
     fi
+    local _rpd_out="$DESIGN_TMPDIR/review-phase-detail.md"
+    rm -f "$_rpd_out" 2>/dev/null || true
+    if [ -d "$DESIGN_TMPDIR/plan-review" ]; then
+        local _rfj="$DESIGN_TMPDIR/review-findings-full.jsonl"
+        rm -f "$_rfj" 2>/dev/null || true
+        if ! "$PLUGIN_ROOT/scripts/compose-review-findings.sh" \
+            --design-artifacts-dir "$DESIGN_TMPDIR" \
+            --issue "${ISSUE:-0}" \
+            --output "$_rfj" >/dev/null 2>/dev/null; then
+            : >"$_rfj"
+        fi
+
+        local _rpd_token_ledger="" _rpd_tl
+        for _rpd_tl in "$DESIGN_TMPDIR"/larch-tokens-*.jsonl; do
+            [ -f "$_rpd_tl" ] && _rpd_token_ledger="$_rpd_tl" && break
+        done
+
+        local _rpd_args=(
+            --rounds-root "$DESIGN_TMPDIR/plan-review"
+            --findings-file "$_rfj"
+            --timing-ledger "$DESIGN_TMPDIR/timing-ledger.tsv"
+            --skill design
+            --output "$_rpd_out"
+        )
+        [ -n "$_rpd_token_ledger" ] && _rpd_args+=(--token-ledger "$_rpd_token_ledger")
+
+        if ! "$PLUGIN_ROOT/scripts/render-review-phase-detail.sh" "${_rpd_args[@]}" 2>/dev/null; then
+            : >"$_rpd_out"
+        fi
+    fi
+    if [ -s "$_rpd_out" ]; then
+        [ -f "$note_file" ] || : >"$note_file"
+        printf '\n' >>"$note_file"
+        cat "$_rpd_out" >>"$note_file"
+        note_args=(--note-lines-file "$note_file")
+    fi
     local _rr_args=(
         --skill design
         --outcome "$OUTCOME"

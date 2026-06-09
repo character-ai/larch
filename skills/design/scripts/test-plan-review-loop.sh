@@ -1071,6 +1071,12 @@ printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expecte
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
 [[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
+[[ -s "$D1/plan-review/round-1/round-meta.json" ]] || fail "round-meta.json missing for normal terminal round"
+[[ -s "$D1/plan-review/round-1/panel-manifest.ndjson" ]] || fail "panel-manifest.ndjson missing for normal terminal round"
+jq -e '.tally.ACCEPTED_COUNT == "1" and .summary.panel.total_slot_count == 1' \
+    "$D1/plan-review/round-1/round-meta.json" >/dev/null || fail "round-meta.json should carry accepted count and panel count"
+jq -e 'select(.slot == "cursor-plan-arch" and .tool == "cursor" and (.output | endswith("/cursor-plan-arch-output.txt")))' \
+    "$D1/plan-review/round-1/panel-manifest.ndjson" >/dev/null || fail "panel manifest should carry slot/tool/output"
 
 echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades findings-present path ==="
 D1C="$TMP/z1c"
@@ -1713,11 +1719,16 @@ if [[ -f "$DMA/timing-ledger.tsv" ]] && awk -F '\t' '$2 == "round" && $4 == "des
     fail "main-agent-vote-required should defer design round timing row"
 fi
 [[ -s "$DMA/plan-review/round-1/round-start-s" ]] || fail "main-agent-vote-required should preserve round-start-s"
+[[ ! -e "$DMA/plan-review/round-1/round-meta.json" ]] || fail "main-agent-vote-required should defer round-meta synthesis"
+[[ ! -e "$DMA/plan-review/round-1/panel-manifest.ndjson" ]] || fail "main-agent-vote-required should defer panel manifest synthesis"
 
 
 echo "=== single-pass: tally-error exits before terminal fallback ==="
 DTM="$TMP/single-tally-error"
 mkdir -p "$DTM"
+mkdir -p "$DTM/plan-review/round-1"
+printf '{"tally":{"ACCEPTED_COUNT":"99"}}\n' >"$DTM/plan-review/round-1/round-meta.json"
+printf '{"slot":"stale","tool":"stale","output":"stale"}\n' >"$DTM/plan-review/round-1/panel-manifest.ndjson"
 printf 'plan\n\ndiff_lines: 1\n' >"$DTM/plan.txt"
 printf 'feat\n' >"$DTM/feature-description.txt"
 printf '### OOS_1: prior tally OOS\n- **Concern**: keep me\n' >"$DTM/oos-accepted-design.md"
@@ -1740,6 +1751,8 @@ printf '%s\n' "$out_tm" | grep -q '^ACCEPTED_COUNT=0$' || fail "tally-error shou
 grep -q '^LOOP_STATUS=tally-error$' "$DTM/.step3-plan-review-result.env" || fail "result env missing tally-error loop status"
 if printf '%s\n' "$out_tm" | grep -q '^SCOPE_ANCHOR_FILE='; then fail "tally-error stdout should omit scope anchor"; fi
 if grep -q '^SCOPE_ANCHOR_FILE=' "$DTM/.step3-plan-review-result.env"; then fail "tally-error result env should omit scope anchor"; fi
+[[ ! -e "$DTM/plan-review/round-1/round-meta.json" ]] || fail "tally-error should remove stale round-meta"
+[[ ! -e "$DTM/plan-review/round-1/panel-manifest.ndjson" ]] || fail "tally-error should remove stale panel manifest"
 assert_env_has_keys "$DTM/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS NIT_ACCEPTED_COUNT NON_NIT_ACCEPTED_COUNT AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
 
 

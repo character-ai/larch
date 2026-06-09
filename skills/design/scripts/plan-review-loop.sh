@@ -514,7 +514,31 @@ _snapshot_terminal_exit_preserving_status() {
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
     fi
     _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "$summary_revise"
+    case "${LOOP_STATUS:-}:${TALLY_PLAN_REVIEW_STATUS:-}" in
+        main-agent-vote-required:*)
+            ;;
+        *:tally-error)
+            _clear_design_round_meta "$round_num"
+            ;;
+        *)
+            _write_design_round_meta "$round_num"
+            ;;
+    esac
     _terminal_exit "$rc" "$round_num"
+}
+
+_clear_design_round_meta() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    rm -f "$dest/round-meta.json" "$dest/panel-manifest.ndjson" 2>/dev/null || true
+}
+
+_write_design_round_meta() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    "$PLUGIN_ROOT/scripts/write-design-round-meta.sh" \
+        --round-dir "$dest" 2>/dev/null || \
+        emit_kv WARN "plan-review-snapshot: round-${round_num} round-meta synthesis failed (non-fatal)"
 }
 
 _write_round_summary() {
@@ -662,6 +686,7 @@ pairs = [
     ("dyn-codex-plan-", "Codex-dyn-"),
     ("cursor-plan-", "Cursor-"),
     ("codex-plan-", "Codex-"),
+    ("claude-plan-", "Claude-"),
 ]
 for pfx, name in pairs:
     if s.startswith(pfx):

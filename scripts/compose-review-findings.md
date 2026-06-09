@@ -2,7 +2,7 @@
 
 `scripts/compose-review-findings.sh` converts plan-review and code-review
 finding artifacts into a single `review-findings-full.jsonl` file (one JSON
-object per line). Code-review artifacts are read from
+object per line). For `/design`, accepted plan-review artifacts prefer `accepted-plan-findings-all.md` over `accepted-plan-findings.md`; accepted blocks explicitly rejected during Gate B one-by-one review are filtered out before JSONL emission. Code-review artifacts are read from
 `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md` and
 `$IMPLEMENT_TMPDIR/round-*/oos.md`,
 `$IMPLEMENT_TMPDIR/round-*/rejected-findings-full.md` when present, otherwise
@@ -35,7 +35,7 @@ prose_body       string  â€” the full finding body (redacted; not HTML-escaped â
 ```
 
 Missing inputs are treated as "no findings"; the script still writes an empty
-file and emits `FINDINGS_TOTAL=0`.
+file and emits `FINDINGS_TOTAL=0`. Design reviewer labels are normalized for renderer attribution by unioning numeric `plan-review/round-*/plan-review-slots.ndjson` manifests in round order, with root `plan-review-slots.ndjson` as a fallback. The map includes raw slot names, human labels using the plan-review label rules (including `Claude-Generic` for `claude-plan-generic`), and labels from prune label maps; mapped labels are replaced with the output basename in `reviewer_slots`, while unmapped labels are preserved.
 
 The helper redacts tmpdir paths and token-shaped secrets before writing each
 record's `reviewer_slots` entries and `prose_body`. JSON escaping is handled by `jq -nc`,
@@ -60,6 +60,8 @@ by the review tally.
 `MODE=jsonl` is emitted on stdout after a successful compose; `MODE=markdown`
 is no longer produced by this script. On non-zero exit, `FAILURE_LOG=<path>`
 may appear on stdout.
+
+**Design compatibility:** The design path keeps rejected parsing unchanged, but accepted-plan compose uses cumulative `-all` precedence and the same Gate B skip filter as `skills/design/scripts/render-final-summary.sh`. Multi-round slot-map unioning lets earlier-round reviewer labels map to their output basenames even after root prune state has changed.
 
 **Compatibility (2026-05):** Accepted plan-review rows still use `schema_version` literal `"2"`. Strict canonical `##` scanning means `category` may be `""` even when `schema_version` is `2`; consumers must bucket from `prose_body` / `id` when `category` is empty (see `category` row above).
 

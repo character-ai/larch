@@ -371,7 +371,9 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D10/plan.txt" \
     --feature-file "$D10/feature-description.txt" \
     --timeout 60 >"$D10/out.env"
-[[ ! -s "$D10/plan-review-slots.ndjson" ]] || fail "both-absent must emit zero manifest rows"
+[[ "$(grep -c . "$D10/plan-review-slots.ndjson" || true)" == "1" ]] || fail "both-absent must emit one generic manifest row"
+jq -e '.slot == "claude-plan-generic" and .tool == "claude_sub" and (.output | endswith("/claude-plan-generic-output.txt"))' \
+    "$D10/plan-review-slots.ndjson" >/dev/null || fail "both-absent generic manifest row mismatch"
 _paths_file=$(grep '^PANEL_PATHS_FILE=' "$D10/out.env" | head -1 | cut -d= -f2-)
 [[ -n "$_paths_file" && -f "$_paths_file" ]] || fail "both-absent missing panel paths file"
 [[ "$(grep -c . "$_paths_file")" == "1" ]] || fail "both-absent expected exactly one reviewer path"
