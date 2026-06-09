@@ -8,7 +8,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
-if [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
+if [[ ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-prune-decision.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
     PLUGIN_ROOT="$REPO_ROOT"
 fi
 # Optional harness overrides (see test-plan-review-loop.sh).
