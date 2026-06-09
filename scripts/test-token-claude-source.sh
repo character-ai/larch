@@ -173,6 +173,22 @@ out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SOURCE_FILE="$SNAP_PIN" 
 contains "snapshot pinning beats newer concurrent" "TRANSCRIPT_PATH=$T1" "$out"
 contains "snapshot pinning carries pinned uuid" "SESSION_UUID=zzzz-old-9999" "$out"
 
+# Test 10: ls -t resolver picks mtime-newest regardless of lexicographic name
+# order. Uses explicit touch -t timestamps (no sleep) so aaaa (lex-first)
+# is mtime-newest and zzzz (lex-last) is mtime-oldest; only a true mtime
+# resolver picks aaaa here.
+TTFUTURE1="$PROJECT_DIR/aaaa-touchtest-new.jsonl"   # lex-first, mtime-newest
+TTFUTURE2="$PROJECT_DIR/mmmm-touchtest-mid.jsonl"   # lex-mid,   mtime-middle
+TTFUTURE3="$PROJECT_DIR/zzzz-touchtest-old.jsonl"   # lex-last,  mtime-oldest
+: > "$TTFUTURE1"; : > "$TTFUTURE2"; : > "$TTFUTURE3"
+# Far-future timestamps ensure these files are mtime-newest in PROJECT_DIR.
+touch -t 203001030000 "$TTFUTURE1"
+touch -t 203001020000 "$TTFUTURE2"
+touch -t 203001010000 "$TTFUTURE3"
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID -u LARCH_CLAUDE_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
+contains "touch-t mtime-newest wins over lex-last" "TRANSCRIPT_PATH=$TTFUTURE1" "$out"
+contains "touch-t uuid matches mtime-newest file" "SESSION_UUID=aaaa-touchtest-new" "$out"
+
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
     echo "PASS: test-token-claude-source.sh — $PASS/$total assertions"
