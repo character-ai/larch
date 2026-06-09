@@ -42,4 +42,12 @@ if [[ -z "$PR" ]] || [[ -z "$REPO" ]]; then
     usage; exit 1
 fi
 
+if [[ ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] \
+    || [[ "$REPO" == --* ]] \
+    || [[ "$REPO" == /* ]] \
+    || [[ "$REPO" == *../* ]]; then
+    echo "gh-pr-checks.sh: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+    exit 2
+fi
+
 gh pr checks "$PR" --repo "$REPO"
