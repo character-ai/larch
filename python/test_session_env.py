@@ -232,7 +232,7 @@ def test_write_env_rejects_invalid_run_id(tmp_path: Path) -> None:
 
 def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
     class MissingGhRunner:
-        def run(self, argv: list[str], **kwargs: object) -> proc.CommandResult:
+        def run(self, argv: list[str], **_kwargs: object) -> proc.CommandResult:
             if argv and argv[0] == "gh":
                 raise FileNotFoundError("gh")
             if argv and "github-remote-repo.sh" in argv[0]:
