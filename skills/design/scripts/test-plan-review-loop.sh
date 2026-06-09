@@ -28,6 +28,12 @@ assert_env_has_keys() {
     done
 }
 
+assert_no_prune_ledger_rows() {
+    local path="$1" message="$2"
+    [[ -f "$path" ]] || return 0
+    awk 'NR > 1 && $0 != "" { found=1 } END { exit found ? 1 : 0 }' "$path" || fail "$message"
+}
+
 sorted_file_list() {
     local root="$1"
     (
@@ -1661,7 +1667,7 @@ write_collect_no_findings
 write_voters_three
 out_zd=$(run_loop "$DZD" 1)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero findings should stay degraded"
-[[ ! -s "$DZD/reviewer-prune-ledger.tsv" ]] || fail "degraded zero findings should not write prune ledger rows"
+assert_no_prune_ledger_rows "$DZD/reviewer-prune-ledger.tsv" "degraded zero findings should not write prune ledger rows"
 
 
 echo "=== single-pass: zero findings + no collector OK → degraded-empty-collector ==="
@@ -1675,7 +1681,7 @@ write_collect_no_findings
 write_voters_three
 out_z0=$(run_loop "$DZ0" 1)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "no collector OK should surface degraded-empty-collector"
-[[ ! -s "$DZ0/reviewer-prune-ledger.tsv" ]] || fail "degraded-empty-collector should not write prune ledger rows"
+assert_no_prune_ledger_rows "$DZ0/reviewer-prune-ledger.tsv" "degraded-empty-collector should not write prune ledger rows"
 
 
 echo "=== single-pass: stale session-root review artifacts cleared before round ==="
