@@ -46,10 +46,25 @@ fail_status() {
 
 session_get() {
     local key="$1" default_value="${2:-}"
-    python3 "$SCRIPT_DIR/../python/cli.py" session read-key \
-        --file "$IMPLEMENT_TMPDIR/session-env.sh" \
-        --key "$key" \
-        --default "$default_value"
+    local cli="$SCRIPT_DIR/../python/cli.py"
+    if [ -f "$cli" ]; then
+        python3 "$cli" session read-key \
+            --file "$IMPLEMENT_TMPDIR/session-env.sh" \
+            --key "$key" \
+            --default "$default_value" 2>/dev/null || true
+        return
+    fi
+    # bash fallback: whole-KEY= prefix match, emit value after first =
+    local line value=""
+    while IFS= read -r line; do
+        case "$line" in
+            "${key}="*)
+                value="${line#*=}"
+                printf '%s\n' "$value"
+                return ;;
+        esac
+    done < "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true
+    printf '%s\n' "$default_value"
 }
 
 _lint_fix_path_safety_ok() {
