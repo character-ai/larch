@@ -143,7 +143,7 @@ step3_loop_write_completed_step3() {
 
 step3_loop_is_hard() {
     local tier=""
-    tier="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo SIMPLE)"
+    tier="$(python3 "$PLUGIN_ROOT/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo SIMPLE)"
     [[ "$tier" == HARD ]]
 }
 

@@ -7,14 +7,14 @@
 #      (no `export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE` lines remain).
 #   B) Every fenced ```bash block (including indented ones) AFTER Step 0 that invokes
 #      `timing-ledger.sh` or `timing-report.sh` is preceded — inside the SAME
-#      bash fence — by an `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)`
+#      bash fence — by an `LARCH_TIMING_LEDGER=$(... session read-key ...)`
 #      rehydration line and an `LARCH_TIMING_SKILL=implement` pin. This catches
 #      standalone timing calls that lack per-run ledger isolation or get routed
 #      through polluted ambient design timing state.
 #
 # Step 0's preflight block is exempt from (B) because it canonically writes
 # `export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"` rather than
-# rehydrating via read-session-env-key.sh.
+# rehydrating via session read-key.
 #   C) Every fenced ```bash block that uses `${CLAUDE_PLUGIN_ROOT}` contains
 #      the plugin-root.env source guard (canonical) or, on pre-bootstrap sites
 #      only, the session-env.sh awk fallback, so nested Bash calls can recover
@@ -48,7 +48,7 @@ stale_count=$(grep -Fxc 'export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE'
 # Invariant B: in every fenced bash block (after Step 0, including indented
 # fences inside list items) that calls timing-ledger.sh or timing-report.sh,
 # the same fence MUST contain an
-# `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)` line.
+# `LARCH_TIMING_LEDGER=$(... session read-key ...)` line.
 awk '
   BEGIN { in_fence=0; has_timing=0; has_rehydration=0; has_timing_skill_implement=0; fence_start=0; offending=0 }
   /^[[:space:]]*```bash[[:space:]]*$/ {
@@ -67,12 +67,12 @@ awk '
   }
   in_fence {
     # Step 0 carve-out: a fence containing the canonical static export is the
-    # only place LARCH_TIMING_LEDGER is set without read-session-env-key.sh.
+    # only place LARCH_TIMING_LEDGER is set without session read-key.
     if (index($0, "export LARCH_TIMING_LEDGER=\"$IMPLEMENT_TMPDIR/timing-ledger.tsv\"") > 0) {
       is_step0=1
       has_rehydration=1
     }
-    if (index($0, "LARCH_TIMING_LEDGER=$(") > 0 && index($0, "read-session-env-key.sh") > 0) {
+    if (index($0, "LARCH_TIMING_LEDGER=$(") > 0 && index($0, "session read-key") > 0) {
       has_rehydration=1
     }
     if (index($0, "LARCH_TIMING_SKILL=implement") > 0) {
@@ -124,14 +124,14 @@ awk '
   END { exit offending }
 ' "$SKILL_MD" || fail "one or more CLAUDE_PLUGIN_ROOT fences are missing plugin-root rehydration (see stderr above)"
 
-# Additional consistency check: every read-session-env-key.sh fetch of
+# Additional consistency check: every session read-key fetch of
 # LARCH_TIMING_LEDGER MUST be matched by a fetch of LARCH_TOKEN_SESSION_ID in
 # the same template (catches the inverse: a stray timing-only rehydration with
 # no token-session-id sibling).
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
-timing_read_count=$(grep -Fxc 'LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")' "$SKILL_MD" || true)
+timing_read_count=$(grep -Fxc 'LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")' "$SKILL_MD" || true)
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
-token_read_count=$(grep -Fxc 'LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")' "$SKILL_MD" || true)
+token_read_count=$(grep -Fxc 'LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")' "$SKILL_MD" || true)
 [[ "$timing_read_count" == "$token_read_count" ]] \
   || fail "LARCH_TIMING_LEDGER read count ($timing_read_count) does not match LARCH_TOKEN_SESSION_ID read count ($token_read_count)"
 

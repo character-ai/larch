@@ -49,8 +49,8 @@ if command -v jq >/dev/null 2>&1; then
     case "$_out" in SIMPLE|HARD) printf '%s\n' "$_out"; exit 0 ;; esac
 fi
 
-if [[ -x "$(dirname "$0")/read-design-classification.sh" ]]; then
-    _out=$("$(dirname "$0")/read-design-classification.sh" "$f" 2>/dev/null || true)
+if command -v python3 >/dev/null 2>&1; then
+    _out=$(python3 "$(cd "$(dirname "$0")/.." && pwd)/python/cli.py" session read-classification "$f" 2>/dev/null || true)
     case "$_out" in SIMPLE|HARD) printf '%s\n' "$_out"; exit 0 ;; esac
 fi
 

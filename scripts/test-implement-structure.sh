@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
-RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
+RESTORE_FINALIZE_SH="$REPO_ROOT/python/session_env.py"
 LIB_FINALIZE_KEYS_SH="$REPO_ROOT/scripts/lib-finalize-state-keys.sh"
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
 LINT_FIX_LOOP_SH="$REPO_ROOT/scripts/lint-fix-loop.sh"
@@ -358,7 +358,7 @@ awk '
     in_bash = 0
     next
   }
-  in_step && in_bash && restore_line == 0 && /\/scripts\/restore-finalize-state\.sh/ {
+  in_step && in_bash && restore_line == 0 && /session restore-finalize-state/ {
     restore_line = NR
   }
   in_step && in_bash && teardown_line == 0 && /\/scripts\/implement-finalize\.sh.*teardown/ {
@@ -372,9 +372,9 @@ awk '
 ' "$SKILL_MD" || step18_order_status=$?
 case "$step18_order_status" in
   0) ;;
-  10) fail "restore-finalize-state.sh not found in Step 18 region" ;;
+  10) fail "session restore-finalize-state not found in Step 18 region" ;;
   11) fail "implement-finalize.sh teardown not found in Step 18 region" ;;
-  12) fail "restore-finalize-state.sh must appear before implement-finalize.sh teardown in Step 18" ;;
+  12) fail "session restore-finalize-state must appear before implement-finalize.sh teardown in Step 18" ;;
   *) fail "unexpected Step 18 finalize-state order check failure: $step18_order_status" ;;
 esac
 
@@ -412,16 +412,14 @@ python_fence=$(awk '
 ' "$SKILL_MD")
 printf '%s\n' "$python_fence" | grep -Fq -- '--no-logs-commit "$no_logs_commit"' \
   || fail "SKILL.md Python invoke fence must include --no-logs-commit inside python branch"
-grep -Fq 'existing_stall_tracking=$(read_finalize STALL_TRACKING "")' "$RESTORE_FINALIZE_SH" \
-  || fail "restore-finalize-state.sh must read existing finalize STALL_TRACKING"
-grep -Fq 'STALL_TRACKING) value=true ;;' "$RESTORE_FINALIZE_SH" \
-  || fail "restore-finalize-state.sh must preserve existing finalize STALL_TRACKING=true"
-grep -Fq 'STALL_TRACKING=false' "$REPO_ROOT/scripts/test-restore-finalize-state.sh" \
+grep -Fq 'existing_stall_tracking = existing.get("STALL_TRACKING", "")' "$RESTORE_FINALIZE_SH" \
+  || fail "session restore-finalize-state must read existing finalize STALL_TRACKING"
+grep -Fq 'if existing_stall_tracking == "true":' "$RESTORE_FINALIZE_SH" \
+  || fail "session restore-finalize-state must preserve existing finalize STALL_TRACKING=true"
+grep -Fq 'STALL_TRACKING=false' "$REPO_ROOT/python/test_session_env.py" \
   || fail "restore-finalize-state harness must seed ship-pr STALL_TRACKING=false"
 
-[[ -f "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh missing"
-[[ -x "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh must be executable"
-[[ -f "$REPO_ROOT/scripts/restore-finalize-state.md" ]] || fail "scripts/restore-finalize-state.sh must have sibling restore-finalize-state.md"
+[[ -f "$RESTORE_FINALIZE_SH" ]] || fail "python/cli.py session restore-finalize-state missing"
 
 [[ -f "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh missing"
 [[ -x "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh must be executable"
@@ -576,8 +574,8 @@ grep -Fq 'LAUNCHER_FAILURE_CLASS' "$REPO_ROOT/scripts/ship-pr.sh" \
 
 [[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
 [[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"
-grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$RESTORE_FINALIZE_SH" \
-  || fail "restore-finalize-state.sh must source lib-finalize-state-keys.sh"
+grep -Fq 'RESTORE_FINALIZE_KEYS' "$RESTORE_FINALIZE_SH" \
+  || fail "session restore-finalize-state must define RESTORE_FINALIZE_KEYS"
 grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
@@ -599,8 +597,8 @@ grep -Fq '/implement` has no workflow tier/path dimension' "$REPO_ROOT/.claude-p
   || fail "skills/implement/SKILL.md must not reference persist-post-plan-keys (retired #2487)"
 ! grep -Fq 'post-design-boundary.sh' "$SKILL_MD" \
   || fail "skills/implement/SKILL.md must not reference post-design-boundary.sh (retired #2487)"
-grep -Fq 'persist-implement-run-flags.sh' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
-  || fail "implement-bootstrap.sh must invoke persist-implement-run-flags.sh"
+grep -Fq 'session persist-run-flags' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must invoke session persist-run-flags"
 
 step17_status=0
 awk '

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import shlex
 import shutil
 from contextlib import suppress
 from dataclasses import dataclass
@@ -17,6 +15,7 @@ import git
 import logging_util
 import retry
 import run_logs
+import session_env
 import tracking_issue
 from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from outcomes import Outcome
@@ -618,47 +617,8 @@ def cache_sessions_root() -> Path:
     return root / "larch" / "sessions"
 
 
-_FINALIZE_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
-
-
-
-def read_finalize_state(path: str | Path) -> dict[str, str]:
-    target = Path(path)
-    if not target.is_file():
-        return {}
-    data: dict[str, str] = {}
-    for line in target.read_text(encoding="utf-8").splitlines():
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if not _FINALIZE_KEY_RE.match(key):
-            continue
-        try:
-            parsed = shlex.split(value, posix=True)
-        except ValueError:
-            parsed = [value]
-        data[key] = parsed[0] if len(parsed) == 1 else value
-    for key, value in data.items():
-        if "\n" in value or "\r" in value:
-            msg = f"finalize-state value for {key} contains a newline"
-            raise ShipError(msg)
-    return data
-
-
-def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
-    for key, value in data.items():
-        if not _FINALIZE_KEY_RE.match(key):
-            msg = f"invalid finalize-state key: {key}"
-            raise ShipError(msg)
-        if "\n" in str(value) or "\r" in str(value):
-            msg = f"finalize-state value for {key} contains a newline"
-            raise ShipError(msg)
-    target = Path(path)
-    _write_finalize_text_safely(
-        target,
-        "".join(f"{key}={data[key]}\n" for key in sorted(data)),
-    )
-
+read_finalize_state = session_env.read_finalize_state
+write_finalize_state_merged = session_env.write_finalize_state_merged
 
 def _write_finalize_text_safely(target: Path, text: str) -> None:
     if target.is_symlink():

@@ -10,7 +10,7 @@ Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is 
 
 ## Procedure
 
-1. **Resolve `STALL_TRACKING`.** Check the in-memory orchestrator value first, then `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, then `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `scripts/read-session-env-key.sh`. Truthy means the same allowlisted values as `stall-recovery-report.sh` (`1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, `On`); every other value is false. If every layer is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. If any layer is true, continue to attempt initialization.
+1. **Resolve `STALL_TRACKING`.** Check the in-memory orchestrator value first, then `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, then `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python/cli.py session read-key`. Truthy means the same allowlisted values as `stall-recovery-report.sh` (`1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, `On`); every other value is false. If every layer is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. If any layer is true, continue to attempt initialization.
 
 2. **Initialize attempts.** Run `stall-recovery-report.sh init-attempts --implement-tmpdir "$IMPLEMENT_TMPDIR" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"` before classification, issue filing, or dispatch. Continue to classification.
 

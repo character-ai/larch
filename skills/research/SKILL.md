@@ -122,7 +122,7 @@ Print: `> **🔶 /research 0: setup**`
 Run the shared session setup script:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-research --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-research --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers
 ```
 
 If the script exits non-zero, print the error and abort.
@@ -136,7 +136,7 @@ Set mental flags `codex_available` and `cursor_available` based on the output, a
 - Else: `codex_available=true`. Pre-launch status = `ok`.
 - Same logic for Cursor.
 
-**Degraded-tools gate (#3207).** After setting `codex_available` / `cursor_available` above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse in this Step 0 block (do not omit flags and rely on shell exports) and `--skill research`. Use the canonical interactive predicate from that shared procedure. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Continue**, write `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` and proceed with the Codex-first / Claude-fallback lane topology; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$RESEARCH_TMPDIR"` and stop. On a **non-interactive / CI / eval** run, do not prompt — log the explanation and proceed degraded, consistent with the Step 1.1.c passthrough convention. Guard with a `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` sentinel. The gate does not flip `codex_available` / `cursor_available`; `/research` lanes keep their Codex-first / Claude-fallback topology.
+**Degraded-tools gate (#3207).** After setting `codex_available` / `cursor_available` above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse in this Step 0 block (do not omit flags and rely on shell exports) and `--skill research`. Use the canonical interactive predicate from that shared procedure. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Continue**, write `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` and proceed with the Codex-first / Claude-fallback lane topology; on **Abort**, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"` and stop. On a **non-interactive / CI / eval** run, do not prompt — log the explanation and proceed degraded, consistent with the Step 1.1.c passthrough convention. Guard with a `$RESEARCH_TMPDIR/.degraded-tools-gate-prompted` sentinel. The gate does not flip `codex_available` / `cursor_available`; `/research` lanes keep their Codex-first / Claude-fallback topology.
 
 ### 0b — Initialize lane-status record
 
@@ -394,7 +394,7 @@ The script is a no-op-safe call: when no sidecars exist, it prints a `_(no measu
 Remove the session temp directory and all files within it (unconditional):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$RESEARCH_TMPDIR"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
 ```
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0a binary checks, Step 1 research-phase failures/timeouts, or Step 2 validation failures) so they are visible at the end of the workflow. For example:

@@ -99,8 +99,8 @@ kv_get() {
 
 session_get() {
     local key="$1" default_value="${2:-}"
-    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -x "$PLUGIN_ROOT/scripts/read-session-env-key.sh" ]]; then
-        "$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value"
+    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -f "$PLUGIN_ROOT/python/cli.py" ]]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value" || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi

@@ -42,15 +42,15 @@ def test_unknown_flag_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
 
 
 def test_multiline_continuation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write_script(tmp_path / "scripts/write-run-params.sh", "classification", "output")
+    write_script(tmp_path / "scripts/git-commit.sh", "message", "only")
     write_skill(
         tmp_path,
         "skills/design/SKILL.md",
-        "```bash\n${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \\\n  --classification x \\\n  --reason y \\\n  --output z\n```\n",
+        "```bash\n${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh \\\n  --message x \\\n  --unknown y \\\n  --only z\n```\n",
     )
     rc, err = run(tmp_path, capsys)
     assert rc == 1
-    assert "--reason" in err
+    assert "--unknown" in err
 
 
 def test_pragma_and_missing_target_warn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

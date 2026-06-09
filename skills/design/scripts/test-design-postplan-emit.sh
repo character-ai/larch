@@ -72,10 +72,29 @@ trap 'rm -rf "$TMP"' EXIT
 FAKE_PLUGIN="$TMP/plugin"
 FAKE_DESIGN="$FAKE_PLUGIN/skills/design/scripts"
 FAKE_SCRIPTS="$FAKE_PLUGIN/scripts"
-mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS"
+mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS" "$FAKE_PLUGIN/python/stubs/session"
+cp "$REPO_ROOT/python/"*.py "$FAKE_PLUGIN/python/"
+mv "$FAKE_PLUGIN/python/cli.py" "$FAKE_PLUGIN/python/real-cli.py"
+cat >"$FAKE_PLUGIN/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+chmod +x "$FAKE_PLUGIN/python/cli.py"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdir.sh"
-ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
@@ -287,12 +306,11 @@ assert_contains "$D2d_invalid_warn/stdout.txt" 'WARN=**⚠ read-design-classific
 
 D2d_silent_nonzero="$TMP/classification-silent-nonzero"
 setup_design_tmp "$D2d_silent_nonzero" full SIMPLE
-rm -f "$FAKE_SCRIPTS/read-design-classification.sh"
-cat >"$FAKE_SCRIPTS/read-design-classification.sh" <<'STUB'
+cat >"$FAKE_PLUGIN/python/stubs/session/read-classification" <<'STUB'
 #!/usr/bin/env bash
 exit 9
 STUB
-chmod +x "$FAKE_SCRIPTS/read-design-classification.sh"
+chmod +x "$FAKE_PLUGIN/python/stubs/session/read-classification"
 set +e
 run_subject "$D2d_silent_nonzero" --snapshot-original
 rc=$?
@@ -300,8 +318,7 @@ set -e
 assert_rc "classification silent nonzero rc" 0 "$rc"
 assert_contains "$D2d_silent_nonzero/stdout.txt" 'WARN=**⚠ read-design-classification: exited 9; defaulting design_classification to HARD.**' "classification silent nonzero emits synthetic WARN"
 assert_file_kv "$D2d_silent_nonzero/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "classification silent nonzero defaults HARD"
-rm -f "$FAKE_SCRIPTS/read-design-classification.sh"
-ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
+rm -f "$FAKE_PLUGIN/python/stubs/session/read-classification"
 
 D2e="$TMP/classification-simple-legacy-hard"
 setup_design_tmp "$D2e" full HARD

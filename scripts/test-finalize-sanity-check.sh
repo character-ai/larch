@@ -10,17 +10,36 @@ PASS=0
 FAIL=0
 SANDBOX=$(mktemp -d /tmp/larch-finalize-sanity-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
-mkdir -p "$SANDBOX/scripts"
+mkdir -p "$SANDBOX/scripts" "$SANDBOX/python/stubs/session"
 cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/lib-quiet.sh"
-chmod +x "$SANDBOX/scripts/implement-finalize.sh" "$SANDBOX/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/python/"*.py "$SANDBOX/python/"
+mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
+cat >"$SANDBOX/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
 
-cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-finalize.sh" "$SANDBOX/scripts/lib-quiet.sh"
+
+cat > "$SANDBOX/python/stubs/session/cleanup-tmpdir" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >> "$SANDBOX/cleanup-argv.txt"
 exit 0
 STUB
-chmod +x "$SANDBOX/scripts/cleanup-tmpdir.sh"
+chmod +x "$SANDBOX/python/stubs/session/cleanup-tmpdir"
 
 assert_contains() {
     local needle=$1 haystack=$2 label=$3

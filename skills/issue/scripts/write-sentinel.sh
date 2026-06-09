@@ -17,7 +17,7 @@
 #
 # Atomicity:
 #   Writes the full content to a same-directory mktemp, then `mv` to the
-#   target path. Same pattern as scripts/write-session-env.sh. The mv is
+#   target path. Same pattern as python/cli.py session write-env. The mv is
 #   atomic on a single filesystem, so the target is either the complete
 #   final content or absent — never partial. NOTE: this is rename-atomicity,
 #   not durability. The script does NOT call fsync(2); a host crash before

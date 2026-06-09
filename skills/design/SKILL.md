@@ -76,9 +76,9 @@ The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a w
 
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.
 
-Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.md`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-write-design-current-env.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-write-design-current-env.md`.
+Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/python/session_env.py (session write-design-env)`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/test_session_env.py` and `${CLAUDE_PLUGIN_ROOT}/python/test_session_env.py`.
 
-**Completion sentinels for pause/resume.** Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash fences. **Folded contract**: every absorbed prior-step write must occur **after** `source-env` and **before** `design-pause-save.sh` pause-check in the host fence. Boundary-local writes that remain at step success boundaries (for example `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass dual writes, and in-fence `step-5c`) still follow the step-body-success rule. **Sole deliberate exception**: `step-6` is written **after** pause-check and **before** `cleanup-tmpdir.sh` in the Step 6 cleanup fence.
+**Completion sentinels for pause/resume.** Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash fences. **Folded contract**: every absorbed prior-step write must occur **after** `source-env` and **before** `design-pause-save.sh` pause-check in the host fence. Boundary-local writes that remain at step success boundaries (for example `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass dual writes, and in-fence `step-5c`) still follow the step-body-success rule. **Sole deliberate exception**: `step-6` is written **after** pause-check and **before** `session cleanup-tmpdir` in the Step 6 cleanup fence.
 
 **Tradeoff**: folding removes near-empty Bash turns but coarsens timing-ledger granularity and widens pause latency — a pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary. Folded sentinels are written first at that boundary so resume skips discussion already completed before the boundary; a pause requested mid-discussion can still replay in-flight LLM work that had not reached its host fence.
 
@@ -141,9 +141,9 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 Print: `> **🔶 /design 0: setup**`
 
-### 0-pre — Public argv validation (before session-setup)
+### 0-pre — Public argv validation (before session setup)
 
-**When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `session-setup.sh`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
+**When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
 
 Run `parse-design-argv.sh` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string.
 
@@ -267,7 +267,7 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session-setup.sh` stdout is parsed and `write-design-current-env.sh` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
+`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
@@ -278,10 +278,10 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
 fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
 
-# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers
+# Contract pin for CI (scripts/test-design-structure.sh): python/cli.py session setup --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers
 _ss_args=(--prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers)
 _ss_rc=0
-_ss_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh" "${_ss_args[@]}" 2>&1) || _ss_rc=$?
+_ss_out=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup "${_ss_args[@]}" 2>&1) || _ss_rc=$?
 printf '%s\n' "$_ss_out"
 if [ "$_ss_rc" -ne 0 ]; then
   exit "$_ss_rc"
@@ -304,7 +304,7 @@ done <<< "$_ss_out"
 
 DESIGN_TMPDIR="${SESSION_TMPDIR:-}"
 if [ -z "$DESIGN_TMPDIR" ] || [ -z "$SESSION_ID" ]; then
-  printf '%s\n' "**⚠ /design: session-setup output missing SESSION_TMPDIR or SESSION_ID**" >&2
+  printf '%s\n' "**⚠ /design: session setup output missing SESSION_TMPDIR or SESSION_ID**" >&2
   exit 1
 fi
 
@@ -312,7 +312,7 @@ DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "design Step 0 — session setup" || true
 
 _wdce_args=(
-  "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-design-env
   --output "$DESIGN_TMPDIR/source-env.sh"
   --design-tmpdir "$DESIGN_TMPDIR"
   --session-id "$SESSION_ID"
@@ -327,15 +327,15 @@ _wdce_args=(
 "${_wdce_args[@]}"
 ```
 
-If `session-setup.sh` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
+If `session setup` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
 
-**⚠ /design: session-setup.sh failed. Investigate `PREFLIGHT_ERROR` and re-run.**
+**⚠ /design: session setup failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
 This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. The writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: source the durable design env written by `write-design-current-env.sh`, then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags defaulted to `false` and `--skill design`.
+**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: source the durable design env written by `session write-design-env` (`$DESIGN_TMPDIR/source-env.sh`), then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags defaulted to `false` and `--skill design`.
 
 ```bash
 export DESIGN_TMPDIR="${DESIGN_TMPDIR:?DESIGN_TMPDIR required}"
@@ -349,7 +349,7 @@ export CLAUDE_PLUGIN_ROOT
   --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"
 ```
 
-Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
@@ -498,7 +498,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md`. Before the terminal already-planned hygiene / **Final summary block** / exit **0**, write the contiguous completion prefix through `.completed/step-1d.5` (not only the non-contiguous `step-1d.5` marker):
+4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md`. Before the terminal already-planned hygiene / **Final summary block** / exit **0**, write the contiguous completion prefix through `.completed/step-1d.5` (not only the non-contiguous `step-1d.5` marker):
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -511,7 +511,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
 
    Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
 5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
-6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge.
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -571,7 +571,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
 
 ### Final summary block
 
-**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
+**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session setup` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `session cleanup-tmpdir`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
 **Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
 
@@ -700,7 +700,7 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 _brainstorm_requested=false
 if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
@@ -781,7 +781,7 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 ### 2a.2 — Launch Sketches in Parallel
 
-If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b. If `read-design-classification.sh` returns `SIMPLE` but that full package is incomplete, route to Step 2a.5 repair instead of launching regular sketches.
+If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b. If `read-design-classification.sh` returns `SIMPLE` but that full package is incomplete, route to Step 2a.5 repair instead of launching regular sketches.
 
 **Regular mode**: when `sketch_budget=4`, up to 4 sketch slots run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
@@ -805,7 +805,7 @@ If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `c
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = HARD ]; then
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2a"
@@ -884,7 +884,7 @@ On HARD sketch paths, `.completed/step-2a` is written by the Step 2a.5 prelude f
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = HARD ]; then
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2a"
@@ -904,7 +904,7 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a.5: run-params.json is not readable; cannot resolve design_classification for SIMPLE repair fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
@@ -978,7 +978,7 @@ Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = HARD ]; then
   mkdir -p "$DESIGN_TMPDIR/.completed"
   [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
@@ -990,7 +990,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
-Read the tier with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
+Read the tier with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
 
 - SIMPLE: "This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
 - HARD: "This is a HARD-tier design. Bias the plan toward **thoroughness**. Surface all relevant edge cases, failure modes, and cross-cutting concerns; do not omit considerations to save effort. Address invariants, contract boundaries, and downstream consumers explicitly."
@@ -1661,7 +1661,7 @@ When `_publish_rc=4`, execute **### Plan command validator failure (shared)** us
 
 ### 5d — Final warning replay + footer
 
-**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
+**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
 - `**⚠ Cursor sketch timed out / produced empty output**`
@@ -1700,15 +1700,15 @@ mkdir -p "$DESIGN_TMPDIR/.completed"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
+Remove the session temp directory and all files within it. Run `session cleanup-tmpdir` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
 
-**Sole deliberate after-pause sentinel placement**: on the happy path, `step-6` is written in the cleanup fence **after** pause-check and **before** `cleanup-tmpdir.sh`.
+**Sole deliberate after-pause sentinel placement**: on the happy path, `step-6` is written in the cleanup fence **after** pause-check and **before** `session cleanup-tmpdir`.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-6"
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$DESIGN_TMPDIR"
 ```
 
 ### Plan command validator failure (shared)
@@ -1796,9 +1796,9 @@ When auto-repair does not resolve the defects, use **AskUserQuestion** with exac
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
-- `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh` — Step 0-pre public argv parser. Sibling: `parse-design-argv.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` — Step 5c publish-tail driver. Sibling: `design-publish.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.md`). `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.sh` is the plan-review timing helper (sibling `record-plan-review-round-timing.md`; harness `test-record-plan-review-round-timing.sh` / `test-record-plan-review-round-timing.md`).
-- `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.

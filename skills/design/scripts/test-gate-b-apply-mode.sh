@@ -4,7 +4,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-WRITE_RUN_PARAMS="$ROOT/scripts/write-run-params.sh"
+WRITE_RUN_PARAMS=(python3 "$ROOT/python/cli.py" session write-run-params)
 POSTPLAN="$ROOT/skills/design/scripts/design-postplan-emit.sh"
 GATE_B_DEDUP="$ROOT/skills/design/scripts/gate-b-dedup-plan.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
@@ -42,7 +42,7 @@ mk_design() {
   local d="$1" body_lines="${2:-20}" diff_lines="${3:-10}"
   mkdir -p "$d/.completed"
   : >"$d/.completed/step-2b"
-  "$WRITE_RUN_PARAMS" --classification HARD --partition-requested false --brainstorm-requested false \
+  "${WRITE_RUN_PARAMS[@]}" --classification HARD --partition-requested false --brainstorm-requested false \
     --approve-requested false --output "$d/run-params.json" >/dev/null
   {
     printf '%s\n' '# Plan'
@@ -62,7 +62,7 @@ mk_design "$D_AUTO"
 
 D_APPROVE="$TMP/approve"
 mk_design "$D_APPROVE"
-"$WRITE_RUN_PARAMS" --classification HARD --partition-requested false --brainstorm-requested false \
+"${WRITE_RUN_PARAMS[@]}" --classification HARD --partition-requested false --brainstorm-requested false \
   --approve-requested true --output "$D_APPROVE/run-params.json" >/dev/null
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 

@@ -5,7 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/token-ledger.sh"
-READ_SESSION_ENV_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
+READ_SESSION_ENV_KEY=(python3 "$REPO_ROOT/python/cli.py" session read-key)
 PASS=0
 FAIL=0
 
@@ -88,8 +88,8 @@ SESSION_ENV_A="$TMP/session-env-A.sh"
 SESSION_ENV_B="$TMP/session-env-B.sh"
 printf 'LARCH_TOKEN_SESSION_ID=fresh-id-A\n' > "$SESSION_ENV_A"
 printf 'LARCH_TOKEN_SESSION_ID=fresh-id-B\n' > "$SESSION_ENV_B"
-rehydrated_a=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_A" --key LARCH_TOKEN_SESSION_ID --default "")
-rehydrated_b=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_B" --key LARCH_TOKEN_SESSION_ID --default "")
+rehydrated_a=$("${READ_SESSION_ENV_KEY[@]}" --file "$SESSION_ENV_A" --key LARCH_TOKEN_SESSION_ID --default "")
+rehydrated_b=$("${READ_SESSION_ENV_KEY[@]}" --file "$SESSION_ENV_B" --key LARCH_TOKEN_SESSION_ID --default "")
 rehydrated_path_a=$(env -u IMPLEMENT_TMPDIR SESSION_ENV_PATH="$SESSION_ENV_A" LARCH_TOKEN_SESSION_ID="$rehydrated_a" "$SCRIPT" dump | sed -n '1p')
 rehydrated_path_b=$(env -u IMPLEMENT_TMPDIR SESSION_ENV_PATH="$SESSION_ENV_B" LARCH_TOKEN_SESSION_ID="$rehydrated_b" "$SCRIPT" dump | sed -n '1p')
 assert_contains "rehydrated fixture A" "$(sha256 "fresh-id-A")" "$rehydrated_path_a"

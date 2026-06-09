@@ -328,7 +328,7 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
                 emit_route_result
             fi
             _wdce_resume_args=(
-                "$PLUGIN_ROOT/scripts/write-design-current-env.sh"
+                python3 "$PLUGIN_ROOT/python/cli.py" session write-design-env
                 --output "$DESIGN_TMPDIR/source-env.sh"
                 --design-tmpdir "$DESIGN_TMPDIR"
                 --session-id "$SESSION_ID"

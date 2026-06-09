@@ -5,6 +5,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 CR="$REPO_ROOT/scripts/check-reviewers.sh"
+PYTHON_BIN=$(command -v python3)
 SCRATCH=$(mktemp -d /tmp/larch-test-check-reviewers-XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 FAIL=0
@@ -514,7 +515,7 @@ rm -f "$SESS_W"
 mkdir -p "$SCRATCH/sess-env-test"
 cd "$REPO_ROOT" && TMPDIR="$SCRATCH/sess-env-test" PATH="$STUB_BIN:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
     LARCH_PROBE_TTL_SECONDS=0 LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    "$REPO_ROOT/scripts/session-setup.sh" \
+    "$PYTHON_BIN" "$REPO_ROOT/python/cli.py" session setup \
     --prefix larch-tchkrev-ss \
     --skip-preflight --skip-repo-check \
     --check-reviewers --write-session-env "$SESS_W" >/dev/null

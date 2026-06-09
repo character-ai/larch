@@ -587,7 +587,7 @@ if [[ -f "$PARENT_ISSUE_FILE" ]]; then
 fi
 _forked_target="false"
 if [[ -f "$SESSION_ENV_FILE" ]]; then
-    _forked_target=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
+    _forked_target=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
 fi
 _issue_anchored=false
 if [[ -n "$_issue_from_parent" ]]; then

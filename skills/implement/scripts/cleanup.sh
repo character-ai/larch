@@ -30,7 +30,7 @@ done
 
 [ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
 
-if "$PLUGIN_ROOT/scripts/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR"; then
+if python3 "$PLUGIN_ROOT/python/cli.py" session cleanup-tmpdir --dir "$IMPLEMENT_TMPDIR"; then
     emit_kv CLEANED true
     exit 0
 else

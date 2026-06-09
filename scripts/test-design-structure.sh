@@ -78,7 +78,40 @@ assert_design_route_pause_integration() {
   local tmp plugin body route_out
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-route-pause.XXXXXX")
   plugin="$tmp/plugin"
-  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts"
+  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts" "$plugin/python/stubs/session"
+  cp "$REPO_ROOT"/python/*.py "$plugin/python/"
+  mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+  cat >"$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "session":
+        stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+  cat >"$plugin/python/stubs/session/write-design-env" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
+exit 0
+EOF_FIXTURE
+  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/write-design-env"
   cp "$REPO_ROOT/scripts/lib-title-eligibility.sh" "$plugin/scripts/lib-title-eligibility.sh"
   cp "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" "$plugin/skills/design/scripts/step-name-registry.tsv"
   cat >"$plugin/scripts/lib-design-reentry-guard.sh" <<'EOF_FIXTURE'
@@ -123,20 +156,6 @@ case "${STUB_PAUSE_LOAD_MODE:-ok}" in
 esac
 EOF_FIXTURE
   chmod +x "$plugin/scripts/design-pause-load.sh"
-  cat >"$plugin/scripts/write-design-current-env.sh" <<'EOF_FIXTURE'
-#!/usr/bin/env bash
-out=""
-while [[ $# -gt 0 ]]; do
-  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
-  case "$1" in
-    --output) out="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
-exit 0
-EOF_FIXTURE
-  chmod +x "$plugin/scripts/write-design-current-env.sh"
   body="$tmp/issue-body.txt"
   printf '%s\n' 'fixture body' \
     '<!-- larch:design-pause:start -->' \
@@ -263,8 +282,8 @@ assert_step2a_entry_simple_guard() {
   local tmp guard_line closing_fi_line first_artifact_line last_artifact_line first_completion_line completion_line artifact_line pause_line last_simple_completion_line
   tmp=$(mktemp "${TMPDIR:-/tmp}/step2a-entry.XXXXXX")
   extract_first_bash_fence_after "$SKILL_MD" '<!-- step:2a —' >"$tmp"
-  grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh' "$tmp" \
-    || fail 'Step 2a entry fence missing qualified read-design-classification.sh'
+  grep -Fq 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification' "$tmp" \
+    || fail 'Step 2a entry fence missing qualified session read-classification'
   grep -Fq 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" \
     || fail 'Step 2a entry fence missing SIMPLE guard before sentinel writes'
   grep -Fq 'set -e' "$tmp" \
@@ -661,7 +680,7 @@ done
 contains "$RUN_STEP3_SH" '.step3-plan-review-result.env' 'run-step3-review.sh must read step3 plan-review result env'
 contains "$RUN_STEP3_SH" 'result env is a symlink; ignoring it and using stdout fallback only' 'run-step3-review.sh missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
-contains "$RUN_STEP3_SH" 'read-design-classification.sh' 'run-step3-review.sh missing classification reader'
+contains "$RUN_STEP3_SH" 'session read-classification' 'run-step3-review.sh missing classification reader'
 contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing persisted Step 3 cap state file'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
@@ -710,7 +729,7 @@ absent "$SKILL_MD" 'plan-review-quick.md' 'SKILL must not reference deleted quic
 absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Step 5d velocity comment sentinel'
 contains "$DESIGN_INIT_SH" 'contract drift' 'design-init-runparams.sh missing Step 0b contract-drift abort prose'
 contains "$DESIGN_INIT_SH" 'aborting before silent tier downgrade' 'design-init-runparams.sh missing silent tier downgrade abort pin'
-contains "$DESIGN_INIT_SH" 'bash scripts/test-write-run-params.sh' 'design-init-runparams.sh missing contract-drift repro command'
+contains "$DESIGN_INIT_SH" 'python -m pytest python/test_session_env.py' 'design-init-runparams.sh missing contract-drift repro command'
 grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh missing no-fallback run-params warning'
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
@@ -1554,11 +1573,11 @@ assert_folded_sentinel_writes() {
 
   extract_bash_fence_containing "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-5d"' '<!-- step:6' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 6 prelude fence missing step-5d write'
-  ! grep -Fq 'cleanup-tmpdir.sh' "$tmp" \
-    || fail '(21) Step 6 prelude must not run cleanup-tmpdir.sh'
+  ! grep -Fq 'session cleanup-tmpdir' "$tmp" \
+    || fail '(21) Step 6 prelude must not run cleanup-tmpdir'
   assert_fence_write_before_pause "$tmp" 'step-5d' 'Step 6 prelude'
 
-  extract_bash_fence_containing "$SKILL_MD" 'cleanup-tmpdir.sh' '<!-- step:6' >"$tmp"
+  extract_bash_fence_containing "$SKILL_MD" 'session cleanup-tmpdir' '<!-- step:6' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 6 cleanup fence missing'
   assert_fence_write_before_pause "$tmp" 'step-6' 'Step 6 cleanup fence' true
 
@@ -1751,8 +1770,8 @@ grep -Fq 'design-route.sh' "$SKILL_MD" \
   || fail "(21) SKILL.md missing design-route.sh invocation"
 grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
   || fail "(21) design-route.sh missing design-pause-load.sh invocation"
-grep -Fq 'write-design-current-env.sh' "$SKILL_MD" \
-  || fail "(21) SKILL.md missing resume env refresh via write-design-current-env.sh"
+grep -Fq 'session write-design-env' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing resume env refresh via session write-design-env"
 grep -Fq 'write-design-current-env.sh' "$DESIGN_INIT_SH" \
   || fail "(21) design-init-runparams.sh must refresh env before rename (single refresh)"
 echo "PASS: (21) /design pause/resume structure anchors OK"

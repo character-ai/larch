@@ -226,7 +226,7 @@ GitHub auto-deletes the remote head branch on merge (`delete_branch_on_merge=tru
 
 ```bash
 set +e
-cleanup_out=$(scripts/local-cleanup.sh --branch "release/v${NEW_VERSION}")
+cleanup_out=$(python3 python/cli.py session local-cleanup --branch "release/v${NEW_VERSION}")
 cleanup_rc=$?
 set -e
 ```
@@ -285,7 +285,7 @@ Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless not
 Repo-root helpers referenced from steps above:
 
 - `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
-- `scripts/local-cleanup.sh` (contract: `scripts/local-cleanup.md`) — post-merge local teardown
+- `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 

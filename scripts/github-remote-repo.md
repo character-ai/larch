@@ -7,6 +7,6 @@ The helper prints parse failures to stderr after redacting URL userinfo so crede
 ## Callers
 
 - `scripts/implement-fork-env.sh` uses the helper for `/implement --forked` origin / upstream parsing.
-- `scripts/session-setup.sh` uses the helper in Section 4's fallback after `gh repo view` fails. It suppresses helper stderr and treats exit-code 2 as `REPO_UNAVAILABLE=true` instead of a hard abort.
+- `python/cli.py session setup` uses the helper in Section 4's fallback after `gh repo view` fails. It suppresses helper stderr and treats exit-code 2 as `REPO_UNAVAILABLE=true` instead of a hard abort.
 
 Harness: `scripts/test-github-remote-repo.sh`.

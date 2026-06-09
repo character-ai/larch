@@ -11,14 +11,14 @@ source "$REPO_ROOT/skills/design/scripts/test-step3-orchestrator-fence.sh"
 SAVE="$REPO_ROOT/scripts/design-pause-save.sh"
 LOAD="$REPO_ROOT/scripts/design-pause-load.sh"
 NBW="$REPO_ROOT/scripts/named-block-write.sh"
-WDCE="$REPO_ROOT/scripts/write-design-current-env.sh"
+WDCE=(python3 "$REPO_ROOT/python/cli.py" session write-design-env)
 
 fail() {
   echo "FAIL: $1" >&2
   exit 1
 }
 
-[[ -x "$SAVE" && -x "$LOAD" && -x "$NBW" && -x "$WDCE" ]] || fail "pause scripts are not executable"
+[[ -x "$SAVE" && -x "$LOAD" && -x "$NBW" && -f "$REPO_ROOT/python/cli.py" ]] || fail "pause scripts are not executable"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-pause.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -260,7 +260,7 @@ out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
 [[ ! -e "$RESTORE/.pause-requested" ]] || fail "restored .pause-requested should be cleared after load"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should be deleted after successful restore"
-HOME="$TMP/home" bash "$WDCE" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
+HOME="$TMP/home" "${WDCE[@]}" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
 
 echo "=== real git export-ignore snapshot restores ==="
@@ -364,7 +364,7 @@ out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_SIMPLE" --is
 out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-simple-2a" --issue 9 --repo owner/repo)
 [[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
 DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   _simple_artifacts_ok=true
   if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
@@ -410,7 +410,7 @@ out_simple_marker_only=$(bash "$SAVE" --design-tmpdir "$DESIGN_SIMPLE_MARKER_ONL
 out_simple_marker_only_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-simple-marker-only" --issue 9 --repo owner/repo)
 [[ "$out_simple_marker_only_load" == *"LOAD_OK=true"* && "$out_simple_marker_only_load" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only load mismatch: $out_simple_marker_only_load"
 DESIGN_TMPDIR="$DESIGN_SIMPLE_MARKER_ONLY" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   _simple_artifacts_ok=true
   if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
@@ -450,7 +450,7 @@ printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_CONFLICT/contested-decis
 : >"$DESIGN_SIMPLE_CONFLICT/dialectic-resolutions.md"
 set +e
 out_simple_conflict=$(DESIGN_TMPDIR="$DESIGN_SIMPLE_CONFLICT" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   _simple_artifacts_ok=true
   if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
@@ -481,7 +481,7 @@ printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_HARD_SENTINEL/approach-s
 printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_HARD_SENTINEL/contested-decisions.md"
 : >"$DESIGN_HARD_SENTINEL/dialectic-resolutions.md"
 DESIGN_TMPDIR="$DESIGN_HARD_SENTINEL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 fi

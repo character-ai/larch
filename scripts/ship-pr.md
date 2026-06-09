@@ -60,7 +60,7 @@ Checkpoint phases:
 - `postmerge`
 - `done`
 
-The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`. The finalize-state key order is shared with `scripts/restore-finalize-state.sh` through `scripts/lib-finalize-state-keys.sh`.
+The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`. The finalize-state key order is shared with `python/cli.py session restore-finalize-state` through `scripts/lib-finalize-state-keys.sh`.
 
 ## Errexit invariant
 
@@ -204,4 +204,4 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Edit In Sync
 
-When changing phase names, exit-code meaning, helper stdout parsing, state keys, or rebase behavior, update `skills/implement/SKILL.md`, `scripts/test-restore-finalize-state.sh`, `scripts/test-implement-structure.sh`, `skills/implement/references/conflict-resolution.md`, and this file together. Script edits also follow `.claude/rules/script-md-siblings.md`: keep sibling `.md` files in sync with behavior changes.
+When changing phase names, exit-code meaning, helper stdout parsing, state keys, or rebase behavior, update `skills/implement/SKILL.md`, `python/test_session_env.py`, `scripts/test-implement-structure.sh`, `skills/implement/references/conflict-resolution.md`, and this file together. Script edits also follow `.claude/rules/script-md-siblings.md`: keep sibling `.md` files in sync with behavior changes.

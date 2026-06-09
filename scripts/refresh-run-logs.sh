@@ -45,7 +45,7 @@ esac
 # Load session env so token/timing report renderers can find their ledgers.
 session_env="$IMPL_TMPDIR/session-env.sh"
 if [ -f "$session_env" ]; then
-    _rsk() { "$SCRIPT_DIR/read-session-env-key.sh" --file "$session_env" --key "$1" --default "" 2>/dev/null || true; }
+    _rsk() { python3 "$SCRIPT_DIR/../python/cli.py" session read-key --file "$session_env" --key "$1" --default "" 2>/dev/null || true; }
     LARCH_TOKEN_SESSION_ID="$(_rsk LARCH_TOKEN_SESSION_ID)"; export LARCH_TOKEN_SESSION_ID
     LARCH_CLAUDE_SOURCE_FILE="$(_rsk LARCH_CLAUDE_SOURCE_FILE)"; export LARCH_CLAUDE_SOURCE_FILE
     LARCH_TIMING_LEDGER="$(_rsk LARCH_TIMING_LEDGER)"; export LARCH_TIMING_LEDGER

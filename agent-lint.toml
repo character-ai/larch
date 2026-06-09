@@ -299,8 +299,6 @@ exclude = [
   "scripts/verify-run-log-completeness.md",
   "scripts/test-verify-run-log-completeness.sh",
   "scripts/test-verify-run-log-completeness.md",
-  "scripts/test-local-cleanup.sh",
-  "scripts/test-local-cleanup.md",
   "scripts/test-larch-logs-manifest.sh",
   "scripts/test-larch-logs-manifest.md",
   "scripts/test-larch-logs-batches.sh",
@@ -487,6 +485,9 @@ exclude = [
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
+  # python/session_env.py invokes scripts/preflight.sh through proc.Runner for session setup.
+  "scripts/preflight.sh",
+  "scripts/preflight.md",
   # scripts/test-preflight-args.sh is the regression harness for
   # scripts/preflight.sh flag semantics and stalled-run sentinel clearing.
   # Referenced only from Makefile (test-preflight-args target) and
@@ -494,6 +495,11 @@ exclude = [
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
   "scripts/test-preflight-args.sh",
   "scripts/test-preflight-args.md",
+  # python/session_env.py invokes these preflight dependencies through scripts/preflight.sh.
+  "scripts/check-clean-tree.sh",
+  "scripts/check-clean-tree.md",
+  "scripts/check-main-sync.sh",
+  "scripts/check-main-sync.md",
   # scripts/test-check-clean-tree.sh is the regression harness for
   # scripts/check-clean-tree.sh. Referenced only from Makefile
   # (test-check-clean-tree target) and scripts/test-check-clean-tree.md
@@ -545,34 +551,20 @@ exclude = [
   # Makefile-only pattern as scripts/test-check-clean-tree.sh above.
   "scripts/test-check-stale-plugin.sh",
   "scripts/test-check-stale-plugin.md",
-  # scripts/test-cleanup-tmpdir.sh is the regression harness for
-  # scripts/cleanup-tmpdir.sh's invoke-time audit log. Referenced only from
-  # Makefile (test-cleanup-tmpdir target) and scripts/test-cleanup-tmpdir.md
+  # python/cli.py session cleanup-tmpdir's invoke-time audit log. Referenced only from
   # (sibling contract), matching the same Makefile-only pattern as
   # scripts/test-preflight-args.sh above.
-  "scripts/test-cleanup-tmpdir.sh",
-  "scripts/test-cleanup-tmpdir.md",
   # skills/cleanup/scripts/test-cleanup.sh is the offline harness for age-based
   # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
   # (test-cleanup target), matching the Makefile-only harness pattern above.
   "skills/cleanup/scripts/test-cleanup.sh",
   "skills/cleanup/scripts/test-cleanup.md",
-  # scripts/test-session-entry-gate.sh is the offline regression harness for
-  # scripts/session-entry-gate.sh. Referenced only from Makefile
-  # (test-session-entry-gate target) and scripts/test-session-entry-gate.md
+  # python/cli.py session entry-gate. Referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as
   # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are
   # excluded.
-  "scripts/test-session-entry-gate.sh",
-  "scripts/test-session-entry-gate.md",
-  # scripts/test-session-setup-presence-defaults.sh is the regression harness
   # for the presence-detection (CODEX_PRESENT/CURSOR_PRESENT) defaults in
-  # scripts/session-setup.sh. Referenced only from Makefile
-  # (test-session-setup-presence-defaults target) and
-  # scripts/test-session-setup-presence-defaults.md (sibling contract),
-  # matching the same Makefile-only pattern as test-session-entry-gate.sh above.
-  "scripts/test-session-setup-presence-defaults.sh",
-  "scripts/test-session-setup-presence-defaults.md",
+  # python/cli.py session setup. Referenced only from Makefile
   # scripts/test-mermaid-fragments.sh is the regression harness for
   # sanitize-mermaid-fragment.sh. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
@@ -650,7 +642,7 @@ exclude = [
   "scripts/lib-net.sh",
   # scripts/lib-finalize-state-keys.sh is a sourced-only shell library
   # (no shebang, not invokable directly). scripts/ship-pr.sh and
-  # scripts/restore-finalize-state.sh source it for shared finalizer keys.
+  # python/cli.py session restore-finalize-state source it for shared finalizer keys.
   "scripts/lib-finalize-state-keys.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
@@ -882,11 +874,7 @@ exclude = [
   # (sibling contract).
   "scripts/test-render-run-summary.sh",
   "scripts/test-render-run-summary.md",
-  # scripts/test-persist-implement-run-flags.sh is the offline harness for
-  # scripts/persist-implement-run-flags.sh. Referenced from Makefile
-  # (test-persist-implement-run-flags target) and its sibling contract.
-  "scripts/test-persist-implement-run-flags.sh",
-  "scripts/test-persist-implement-run-flags.md",
+  # python/cli.py session persist-run-flags. Referenced from Makefile
   "scripts/test-token-cost.sh",
   "scripts/test-token-cost.md",
   "scripts/test-render-cost-line.sh",
@@ -997,10 +985,8 @@ exclude = [
   "skills/upgrade-larch/scripts/release-step7-root.md",
   "skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh",
   "skills/design/scripts/test-design-pause-resume.sh",
-  # skills/design/scripts/test-write-design-current-env.sh — offline harness
-  # for scripts/write-design-current-env.sh (Makefile test-write-design-
+  # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
-  "skills/design/scripts/test-write-design-current-env.sh",
   "skills/design/scripts/test-emit-plan.sh",
   "skills/design/scripts/test-parse-plan-commands.sh",
   "skills/design/scripts/test-validate-plan-commands.sh",
@@ -1203,11 +1189,8 @@ exclude = [
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
   "scripts/test-implement-finalize.sh",
-  # scripts/test-restore-finalize-state.sh is the regression harness for
-  # scripts/restore-finalize-state.sh, wired into Makefile
-  # test-restore-finalize-state target only. Same Makefile-only shape as
+  # python/cli.py session restore-finalize-state, wired into Makefile
   # the other test-* harnesses above.
-  "scripts/test-restore-finalize-state.sh",
   # scripts/test-render-lane-status.sh is the regression harness for
   # scripts/render-lane-status.sh (the /research lane-attribution formatter
   # added by #421). Wired only via Makefile test-render-lane-status target;
@@ -1409,8 +1392,7 @@ exclude = [
   "scripts/test-flush-vendor-failure-diagnostics.md",
   "scripts/lib-net.md",
   "scripts/lib-finalize-state-keys.md",
-  "scripts/restore-finalize-state.md",
-  "scripts/test-restore-finalize-state.md",
+  "python/session_env.py (session restore-finalize-state)",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses
   # added alongside skills/alias/scripts/resolve-target.sh. Same harness-
@@ -1424,7 +1406,6 @@ exclude = [
   "skills/design/scripts/test-design-driver.md",
   "skills/design/scripts/test-design-publish.md",
   "skills/design/scripts/test-design-pause-resume.md",
-  "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
   "skills/design/scripts/test-parse-plan-commands.md",
   "skills/design/scripts/test-validate-plan-commands.md",
@@ -1473,15 +1454,12 @@ exclude = [
   # so it would otherwise be flagged. The four test-* harnesses follow the
   # same Makefile-only pattern as the other test-* entries above:
   # referenced only from Makefile (test-redact-tmpdir-paths,
-  # test-keepalive-sentinel, test-cache-root-validation,
   # test-cache-key-discipline, test-cache-key-runtime-audit,
   # test-finalize-sanity-check targets) and their sibling .md contracts.
   "scripts/redact-tmpdir-paths.sh",
   "scripts/redact-tmpdir-paths.md",
   "scripts/test-redact-tmpdir-paths.sh",
   "scripts/test-redact-tmpdir-paths.md",
-  "scripts/test-keepalive-sentinel.sh",
-  "scripts/test-keepalive-sentinel.md",
   # skills/implement/scripts/test-resolve-implement-tmpdir.sh — Makefile-only harness
   # (test-resolve-implement-tmpdir target); sibling contract in test-resolve-implement-tmpdir.md.
   "skills/implement/scripts/test-resolve-implement-tmpdir.sh",
@@ -1509,39 +1487,19 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-github-remote-repo.sh",
   "scripts/test-github-remote-repo.md",
-  # scripts/test-session-setup-repo-fallback.sh is the offline regression
   # harness for session-setup.sh's gh-first / origin-fallback repository
-  # discovery. Referenced only from Makefile (test-session-setup-repo-fallback
   # target), docs/linting.md, and the sibling contract
-  # scripts/test-session-setup-repo-fallback.md, matching the same
   # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-session-setup-repo-fallback.sh",
-  "scripts/test-session-setup-repo-fallback.md",
-  # scripts/test-session-env-roundtrip.sh is the offline regression harness
   # for the session-env script pair (issue #1513): read-session-env-key.sh's
   # awk extraction of values containing `=`, plus write-session-env.sh's
   # --timing-ledger regex/length guard. Referenced only from Makefile
-  # (test-session-env-roundtrip target, wired via test-harnesses-1),
   # docs/linting.md, the read-session-env-key.md sibling contract, and the
-  # sibling contract scripts/test-session-env-roundtrip.md, matching the
   # same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-session-env-roundtrip.sh",
-  "scripts/test-session-env-roundtrip.md",
-  # scripts/test-write-run-params.sh is the offline regression harness for
-  # scripts/write-run-params.sh (the /design run-params.json writer).
-  # Referenced only from Makefile (test-write-run-params target), docs/linting.md,
-  # and the sibling contract scripts/test-write-run-params.md, matching the same
+  # python/cli.py session write-run-params (the /design run-params.json writer).
   # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-write-run-params.sh",
-  "scripts/test-write-run-params.md",
-  # scripts/test-read-design-classification.sh is the offline regression harness
-  # for scripts/read-design-classification.sh (the /design tier reader).
-  # Referenced only from Makefile (test-read-design-classification target),
-  # docs/linting.md, scripts/read-design-classification.md, and the sibling
-  # contract scripts/test-read-design-classification.md, matching the same
+  # for python/cli.py session read-classification (the /design tier reader).
+  # docs/linting.md, python/session_env.py (session read-classification), and the sibling
   # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-read-design-classification.sh",
-  "scripts/test-read-design-classification.md",
   # scripts/test-implement-fork-env.sh is the offline regression harness for
   # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

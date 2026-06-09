@@ -510,21 +510,20 @@ else
 fi
 
 GATE_WRAPPER_DIR="$TMPDIR/gate-wrapper"
-mkdir -p "$GATE_WRAPPER_DIR/scripts"
+mkdir -p "$GATE_WRAPPER_DIR/scripts" "$GATE_WRAPPER_DIR/python"
 cp "$WRAPPER" "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh"
 for _gate_dep in \
     lib-validate-meta-path.sh \
     lib-failed-agent-stderr-tail.sh \
     lib-external-launcher-common.sh \
     lib-quiet.sh \
-    read-session-env-key.sh \
     redact-tmpdir-paths.sh \
     redact-secrets.sh
 do
     cp "$REPO_ROOT/scripts/$_gate_dep" "$GATE_WRAPPER_DIR/scripts/$_gate_dep"
 done
+cp "$REPO_ROOT/python/cli.py" "$GATE_WRAPPER_DIR/python/cli.py"
 chmod +x "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh" \
-    "$GATE_WRAPPER_DIR/scripts/read-session-env-key.sh" \
     "$GATE_WRAPPER_DIR/scripts/redact-tmpdir-paths.sh" \
     "$GATE_WRAPPER_DIR/scripts/redact-secrets.sh"
 cat > "$GATE_WRAPPER_DIR/scripts/check-reviewers.sh" <<'GATE_CHECK_EOF'
