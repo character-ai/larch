@@ -1,3 +1,26 @@
+=== larch-quiet-check-contains-pins.sh-25090.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:194: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:195: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:221: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:256: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:276: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:298: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:322: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:358: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:384: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:410: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:438: could not resolve $out
+
 === larch-quiet-check-contains-pins.sh-35626.log ===
 
 === larch-quiet-check-contains-pins.sh-51178.log ===
@@ -51,6 +74,8 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:438: coul
 === larch-quiet-cli.py-53536.log ===
 
 === larch-quiet-cli.py-66753.log ===
+
+=== larch-quiet-cli.py-67681.log ===
 
 === larch-quiet-cli.py-77924.log ===
 
@@ -108,6 +133,16 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:438: coul
 
 === larch-quiet-read-session-env-key.sh-56758.log ===
 
+=== larch-quiet-read-session-env-key.sh-60947.log ===
+
+=== larch-quiet-read-session-env-key.sh-60982.log ===
+
+=== larch-quiet-read-session-env-key.sh-61012.log ===
+
+=== larch-quiet-read-session-env-key.sh-61043.log ===
+
+=== larch-quiet-read-session-env-key.sh-61079.log ===
+
 === larch-quiet-read-session-env-key.sh-66421.log ===
 
 === larch-quiet-read-session-env-key.sh-66451.log ===
@@ -118,7 +153,16 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:438: coul
 
 === larch-quiet-run-relevant-checks-captured.sh-46219.log ===
 
+=== larch-quiet-run-relevant-checks-captured.sh-48233.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-78457.log ===
+
+=== larch-quiet-ship.py-78360.log ===
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: poll 4/180 pending after 46s; sleeping 10s
+ci_monitor: poll 5/180 pending after 59s; sleeping 10s
 
 === larch-quiet-step-7a.sh-66482.log ===
 FLUSH_STATUS=ok
