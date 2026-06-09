@@ -584,8 +584,8 @@ STEP18B_IMPL="$TMP_ROOT/step18b-implement-scripts"
 mkdir -p "$STEP18B_IMPL"
 cp "$SCRIPT_DIR/step-18b-final-report.sh" "$STEP18B_IMPL/step-18b-final-report.sh"
 cp "$HELPER" "$STEP18B_IMPL/write-final-report.sh"
-cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$plugin/scripts/read-session-env-key.sh"
-chmod +x "$plugin/scripts/read-session-env-key.sh" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
+cp "$REPO_ROOT/python/cli.py" "$plugin/python/cli.py session read-key"
+chmod +x "$plugin/python/cli.py session read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
 cat > "$plugin/scripts/token-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail

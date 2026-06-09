@@ -15,12 +15,12 @@ cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/lib-quiet.sh"
 chmod +x "$SANDBOX/scripts/implement-finalize.sh" "$SANDBOX/scripts/lib-quiet.sh"
 
-cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
+cat > "$SANDBOX/python/cli.py session cleanup-tmpdir" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >> "$SANDBOX/cleanup-argv.txt"
 exit 0
 STUB
-chmod +x "$SANDBOX/scripts/cleanup-tmpdir.sh"
+chmod +x "$SANDBOX/python/cli.py session cleanup-tmpdir"
 
 assert_contains() {
     local needle=$1 haystack=$2 label=$3

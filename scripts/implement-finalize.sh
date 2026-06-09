@@ -12,6 +12,7 @@ set -uo pipefail
 # explicit at the boundary.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY_CLI="$SCRIPT_DIR/../python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
@@ -387,8 +388,8 @@ postbump_tail() {
 
 postbump_mark() {
     local label=$1 token_session source_file
-    token_session=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
-    source_file=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
+    token_session=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
+    source_file=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
     export LARCH_TOKEN_SESSION_ID=$token_session
     export LARCH_CLAUDE_SOURCE_FILE=$source_file
     "$SCRIPT_DIR/token-ledger.sh" mark "$label" 2>/dev/null || true
@@ -672,7 +673,7 @@ run_postmerge() {
         [ "$branch" != "main" ] || die_usage "state-file key BRANCH_NAME must not be main"
 
         set +e
-        out=$("$SCRIPT_DIR/local-cleanup.sh" --branch "$branch")
+        out=$(python3 "$PY_CLI" session local-cleanup --branch "$branch")
         rc=$?
         set +e
         cleanup_success=$(kv_value CLEANUP_SUCCESS "$out")
@@ -1042,7 +1043,7 @@ run_teardown() {
         larch_err "$(printf 'ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at %s' "$IMPLEMENT_TMPDIR")"
     elif verify_cleanup_target; then
         set +e
-        out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
+        out=$(python3 "$PY_CLI" session cleanup-tmpdir --dir "$IMPLEMENT_TMPDIR")
         cleanup_rc=$?
         set +e
         if [ "$cleanup_rc" -ne 0 ]; then

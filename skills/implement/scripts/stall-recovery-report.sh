@@ -55,7 +55,7 @@ hash_text() {
 
 kv_get() {
     local file=$1 key=$2 default=${3-}
-    "$SCRIPTS_DIR/read-session-env-key.sh" --file "$file" --key "$key" --default "$default"
+    python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default"
 }
 
 truthy() {

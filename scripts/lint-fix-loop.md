@@ -34,7 +34,7 @@ Output is `KEY=value` through `scripts/lib-quiet.sh`:
 Behavior:
 
 1. Read `CODEX_PRESENT` and `CURSOR_PRESENT` from
-   `$IMPLEMENT_TMPDIR/session-env.sh` using `scripts/read-session-env-key.sh`.
+   `$IMPLEMENT_TMPDIR/session-env.sh` using `python/cli.py session read-key`.
 2. If the redacted checks log is empty, emit `LINT_FIX_STATUS=no-changes` and
    exit 0.
 3. If neither external coder is present, emit

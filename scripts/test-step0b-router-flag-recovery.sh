@@ -4,7 +4,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
-WRITER="$REPO_ROOT/scripts/write-run-params.sh"
+PYTHON_BIN=$(command -v python3)
+WRITER=("$PYTHON_BIN" "$REPO_ROOT/python/cli.py" session write-run-params)
 DESIGN_INIT="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
 HOST_JQ=$(command -v jq) || { echo "FAIL: host jq required" >&2; exit 1; }
 HOST_JQ_DIR=$(dirname "$HOST_JQ")
@@ -38,14 +39,14 @@ recovery_merge_if_needed() {
     if [[ -f "$out" ]]; then
       merge_run_params "$out" "$partition_requested" "$brainstorm_requested" "$approve_requested" "$skip_approve_requested"
     else
-      printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
+      printf '%s\n' "**⚠ 0b: run-params.json missing after session write-run-params; refusing to recreate it with fallback defaults. Re-run \`python -m pytest python/test_session_env.py\` and fix the Step 0b contract drift first.**"
     fi
   fi
 }
 
 write_then_recover() {
   local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_approve="${6:-false}" r_skip_approve="${7:-false}"
-  if ! "$WRITER" --classification "$classification" \
+  if ! "${WRITER[@]}" --classification "$classification" \
       --partition-requested false --brainstorm-requested false \
       --output "$out" >/dev/null 2>&1; then
     return 1
@@ -56,28 +57,28 @@ write_then_recover() {
 
 # Case 1: successful write; partition argv merges true.
 OUT1="$TMPROOT/case1.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
 recovery_merge_if_needed "$OUT1" true false
 jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT1" >/dev/null \
   || fail "case1: partition argv merge produced $(cat "$OUT1")"
 
 # Case 3: stored partition=true; argv partition=false, brainstorm=true => OR-merge preserves partition.
 OUT3="$TMPROOT/case3.json"
-"$WRITER" --classification SIMPLE --partition-requested true --brainstorm-requested false --output "$OUT3" >/dev/null
+"${WRITER[@]}" --classification SIMPLE --partition-requested true --brainstorm-requested false --output "$OUT3" >/dev/null
 recovery_merge_if_needed "$OUT3" false true
 jq -e '.partition_requested == true and .brainstorm_requested == true and (has("manual_gate_b") | not)' "$OUT3" >/dev/null \
   || fail "case3: partition OR-merge regressed; got $(cat "$OUT3")"
 
 # Case 3a: stored approve=true; argv approve=false with another true flag preserves approve.
 OUT3A="$TMPROOT/case3a.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --approve-requested true --output "$OUT3A" >/dev/null
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --approve-requested true --output "$OUT3A" >/dev/null
 recovery_merge_if_needed "$OUT3A" true false false
 jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == true and (has("manual_gate_b") | not)' "$OUT3A" >/dev/null \
   || fail "case3a: approve OR-merge regressed; got $(cat "$OUT3A")"
 
 # Case 4: stored brainstorm=true; guard enters via partition argv true; brainstorm OR-merge preserves.
 OUT4="$TMPROOT/case4.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
 recovery_merge_if_needed "$OUT4" true false
 jq -e '.brainstorm_requested == true and .partition_requested == true and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT4" >/dev/null \
   || fail "case4: brainstorm OR-merge regressed; got $(cat "$OUT4")"
@@ -85,7 +86,7 @@ jq -e '.brainstorm_requested == true and .partition_requested == true and .appro
 # Case 5: all-false argv => outer guard short-circuits; file unchanged (false-branch no-op).
 # Proves the guard's false-branch is exercised so a loosened guard would fail this assertion.
 OUT5="$TMPROOT/case5.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT5" >/dev/null
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT5" >/dev/null
 before_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 recovery_merge_if_needed "$OUT5" false false
 after_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
@@ -97,7 +98,7 @@ jq -e '.partition_requested == false and .brainstorm_requested == false and .app
 OUT6="$TMPROOT/case6.json"
 warning_case6=$(recovery_merge_if_needed "$OUT6" true false)
 [[ ! -e "$OUT6" ]] || fail "case6: missing-file degraded path recreated $OUT6"
-[[ "$warning_case6" == "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**" ]] \
+[[ "$warning_case6" == "**⚠ 0b: run-params.json missing after session write-run-params; refusing to recreate it with fallback defaults. Re-run \`python -m pytest python/test_session_env.py\` and fix the Step 0b contract drift first.**" ]] \
   || fail "case6: missing-file degraded warning drifted; got: $warning_case6"
 
 # Case 7: a failing writer aborts BEFORE recovery (#3161). Spy absence proves recovery never
@@ -124,15 +125,18 @@ jq -e '.partition_requested == true' "$OUT7B" >/dev/null \
 # --- Production driver integration (stubbed plugin scripts) ---
 FAKE_PLUGIN="$TMPROOT/fake-plugin"
 STUB_SCRIPTS="$FAKE_PLUGIN/scripts"
-mkdir -p "$STUB_SCRIPTS"
-for _lib in lib-quiet.sh lib-larch-log.sh write-run-params.sh append-tool-failure.sh append-execution-issue.sh; do
+mkdir -p "$STUB_SCRIPTS" "$FAKE_PLUGIN/python"
+for _lib in lib-quiet.sh lib-larch-log.sh append-tool-failure.sh append-execution-issue.sh; do
   ln -sf "$REPO_ROOT/scripts/$_lib" "$STUB_SCRIPTS/$_lib"
 done
-cat >"$STUB_SCRIPTS/write-design-current-env.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
+cat >"$FAKE_PLUGIN/python/cli.py" <<STUB
+#!/usr/bin/env python3
+import os, subprocess, sys
+if sys.argv[1:3] == ["session", "write-design-env"]:
+    raise SystemExit(0)
+raise SystemExit(subprocess.call(["$PYTHON_BIN", "$REPO_ROOT/python/cli.py", *sys.argv[1:]]))
 STUB
-chmod +x "$STUB_SCRIPTS/write-design-current-env.sh"
+chmod +x "$FAKE_PLUGIN/python/cli.py"
 cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' 'RENAMED=true'
@@ -195,7 +199,7 @@ jq -e '.skip_approve_requested == true and .approve_requested == false' "$D8B/ru
 
 # Case 8c (#3735): stored skip_approve=true; argv=false with another true flag preserves skip_approve.
 OUT8C="$TMPROOT/case8c.json"
-"$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
   --skip-approve-requested true --output "$OUT8C" >/dev/null
 recovery_merge_if_needed "$OUT8C" true false false false
 jq -e '.partition_requested == true and .skip_approve_requested == true' "$OUT8C" >/dev/null \
@@ -249,9 +253,9 @@ grep -Fq 'jq(router-flags-merge)' "$D10/execution-issues.md" \
   || fail "case10: execution-issues.md missing jq(router-flags-merge) append"
 
 # Case 11: jq unavailable emits WARN on production driver stdout (write-run-params stubbed; merge needs jq).
-# Unlink the symlink before writing so we don't clobber the real scripts/write-run-params.sh.
-rm -f "$STUB_SCRIPTS/write-run-params.sh"
-cat >"$STUB_SCRIPTS/write-run-params.sh" <<'STUB'
+# Unlink the symlink before writing so we don't clobber the real python/cli.py session write-run-params.
+rm -f "$STUB_SCRIPTS/session write-run-params"
+cat >"$STUB_SCRIPTS/session write-run-params" <<'STUB'
 #!/usr/bin/env bash
 out=""
 while [[ $# -gt 0 ]]; do
@@ -264,13 +268,13 @@ printf '%s\n' '{"schema_version":3,"design_classification":"SIMPLE","partition_r
 printf 'RUN_PARAMS_WRITTEN=%s\n' "$out"
 exit 0
 STUB
-chmod +x "$STUB_SCRIPTS/write-run-params.sh"
+chmod +x "$STUB_SCRIPTS/session write-run-params"
 D11="$TMPROOT/driver11"
 # Build a PATH directory that has all tools needed by the script except jq, so
 # command -v jq returns non-zero on every platform (e.g. /usr/bin/jq on Ubuntu CI).
 _no_jq_path="$TMPROOT/no-jq-path"
 mkdir -p "$_no_jq_path"
-for _cmd in bash sh dirname basename mktemp mv rm mkdir cat printf chmod; do
+for _cmd in bash sh dirname basename mktemp mv rm mkdir cat printf chmod python3; do
   _real=$(command -v "$_cmd" 2>/dev/null || true)
   [ -n "$_real" ] && ln -sf "$_real" "$_no_jq_path/$_cmd"
 done

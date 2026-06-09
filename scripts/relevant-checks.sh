@@ -104,7 +104,7 @@ run_direct_relevant_targets() {
     PY_TEST_SKIP_WARNED=0
     while IFS= read -r f; do
         case "$f" in
-            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
+            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|python/session_env.py|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
                 append_target_once test-step0b-router-flag-recovery
                 ;;
             skills/design/scripts/design-route.sh|skills/design/scripts/design-route.md)

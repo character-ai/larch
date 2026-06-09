@@ -1,7 +1,7 @@
 # scripts/degraded-tools-gate.sh — contract
 
 Issue #3207 degraded-external-tools gate **detector**. Given the four Step-0
-presence keys produced by `scripts/session-setup.sh --check-reviewers`
+presence keys produced by `python/cli.py session setup --check-reviewers`
 (`CODEX_BINARY_FOUND` / `CODEX_PRESENT` / `CURSOR_BINARY_FOUND` /
 `CURSOR_PRESENT`), it decides whether the session is running degraded (Codex
 and/or Cursor unavailable) and composes a presentable explanation of what is

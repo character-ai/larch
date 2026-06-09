@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-CLEANUP="$REPO_ROOT/scripts/cleanup-tmpdir.sh"
+CLEANUP=(python3 "$REPO_ROOT/python/cli.py" session cleanup-tmpdir)
 FINALIZE="$REPO_ROOT/scripts/implement-finalize.sh"
 TOKEN_TALLY="$REPO_ROOT/scripts/token-tally.sh"
 
@@ -55,7 +55,7 @@ mkdir -p "$CACHE_ROOT"
 CLEANUP_TARGET="$CACHE_ROOT/claude-implement-cache-cleanup"
 mkdir -p "$CLEANUP_TARGET"
 rc=0
-XDG_CACHE_HOME="$TMPROOT/cache" "$CLEANUP" --dir "$CLEANUP_TARGET" >/dev/null 2>&1 || rc=$?
+XDG_CACHE_HOME="$TMPROOT/cache" "${CLEANUP[@]}" --dir "$CLEANUP_TARGET" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 0 "cleanup-tmpdir accepts cache sessions root"
 
 FINALIZE_TARGET="$CACHE_ROOT/claude-implement-cache-finalize"
@@ -72,7 +72,7 @@ assert_rc "$rc" 0 "token-tally accepts cache sessions root"
 
 TMP_CLEANUP=$(mktemp -d /tmp/larch-cache-root-cleanup.XXXXXX)
 rc=0
-"$CLEANUP" --dir "$TMP_CLEANUP" >/dev/null 2>&1 || rc=$?
+"${CLEANUP[@]}" --dir "$TMP_CLEANUP" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 0 "cleanup-tmpdir still accepts /tmp"
 
 TMP_TOKEN=$(mktemp -d /tmp/larch-cache-root-token.XXXXXX)
@@ -92,7 +92,7 @@ fi
 UNRELATED="$REPO_ROOT/not-a-session-root"
 
 rc=0
-"$CLEANUP" --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
+"${CLEANUP[@]}" --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 1 "cleanup-tmpdir rejects unrelated path"
 
 rc=0

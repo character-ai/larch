@@ -235,7 +235,7 @@ printf 'larch-log.sh %s %s\n' "$cmd" "$*" >> "$STEP7A_CALLS_LOG"
 printf 'LOG_STATUS=ok\n'
 STUB
 
-    cat > "$root/scripts/read-session-env-key.sh" <<'STUB'
+    cat > "$root/python/cli.py session read-key" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 file=""; key=""; default=""

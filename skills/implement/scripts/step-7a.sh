@@ -30,9 +30,9 @@ fail_usage() {
 
 read_session_key() {
     local key=$1 default_value=$2 script
-    script="$PLUGIN_ROOT/scripts/read-session-env-key.sh"
+    script="$PLUGIN_ROOT/python/cli.py"
     if [ -n "${SESSION_ENV_FILE:-}" ] && [ -f "$SESSION_ENV_FILE" ] && [ -f "$script" ]; then
-        bash "$script" --file "$SESSION_ENV_FILE" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+        python3 "$script" session read-key --file "$SESSION_ENV_FILE" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi

@@ -17,7 +17,7 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-cat > "$plugin/scripts/cleanup-tmpdir.sh" <<'STUB'
+cat > "$plugin/python/cli.py session cleanup-tmpdir" <<'STUB'
 #!/usr/bin/env bash
 dir=""
 while [ $# -gt 0 ]; do case "$1" in --dir) dir=$2; shift 2 ;; *) shift ;; esac; done
@@ -27,7 +27,7 @@ if [ "${CLEANUP_FAIL:-false}" = "true" ]; then
 fi
 rm -rf "$dir"
 STUB
-chmod +x "$plugin/scripts/cleanup-tmpdir.sh"
+chmod +x "$plugin/python/cli.py session cleanup-tmpdir"
 
 target="$TMP_ROOT/session"; mkdir -p "$target"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" CLEANUP_DIR_LOG="$TMP_ROOT/dir.log" "$HELPER" --implement-tmpdir "$target")

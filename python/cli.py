@@ -59,6 +59,18 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("ci", "failed-jobs"): ("ci_cli", "failed_jobs_main"),
     ("ci", "behind-count"): ("ci_cli", "behind_count_main"),
     ("ci", "rerun-failed"): ("ci_cli", "rerun_failed_main"),
+    ("session", "setup"): ("session_env", "setup_main"),
+    ("session", "write-env"): ("session_env", "write_env_main"),
+    ("session", "read-key"): ("session_env", "read_key_main"),
+    ("session", "write-design-env"): ("session_env", "write_design_env_main"),
+    ("session", "write-run-params"): ("session_env", "write_run_params_main"),
+    ("session", "read-classification"): ("session_env", "read_classification_main"),
+    ("session", "write-id"): ("session_env", "write_id_main"),
+    ("session", "persist-run-flags"): ("session_env", "persist_run_flags_main"),
+    ("session", "restore-finalize-state"): ("session_env", "restore_finalize_state_main"),
+    ("session", "cleanup-tmpdir"): ("session_env", "cleanup_tmpdir_main"),
+    ("session", "local-cleanup"): ("session_env", "local_cleanup_main"),
+    ("session", "entry-gate"): ("session_env", "entry_gate_main"),
 }
 
 

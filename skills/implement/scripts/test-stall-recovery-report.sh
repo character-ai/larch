@@ -548,7 +548,7 @@ cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$copyroot/skills/implemen
 cp "$SCRIPT_DIR/stall-recovery-report.md" "$copyroot/skills/implement/scripts/"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$copyroot/scripts/"
 cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$copyroot/scripts/"
-cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$copyroot/scripts/"
+cp "$REPO_ROOT/python/cli.py" "$copyroot/scripts/"
 cat >"$copyroot/scripts/redact-secrets.sh" <<'SH'
 #!/usr/bin/env bash
 cat >"$STALL_REDACTOR_MARKER"
@@ -643,12 +643,12 @@ STALL_STEP=8
 EOF
 tmp="$dir/ship-pr-state.sh.tmp.$$"
 awk 'BEGIN{done=0} /^STALL_TRACKING=/{print "STALL_TRACKING=false"; done=1; next} /^STALL_STEP=/{print "STALL_STEP="; next} {print} END{if(!done) print "STALL_TRACKING=false"}' "$dir/ship-pr-state.sh" >"$tmp"
-assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "")" "19: temp read-back sees false before mv"
-assert_eq true "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: disk remains true before mv"
+assert_eq false "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$tmp" --key STALL_TRACKING --default "")" "19: temp read-back sees false before mv"
+assert_eq true "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: disk remains true before mv"
 run_capture "$SANDBOX/case19a.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case19a.out")" "19: in-memory true remains authoritative before mv"
 mv -f "$tmp" "$dir/ship-pr-state.sh"
-assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back sees false after mv"
+assert_eq false "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back sees false after mv"
 dir=$(make_tmp case19c)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
 STALL_TRACKING=true
@@ -662,7 +662,7 @@ if ! mv -f "$tmp" "$dir/ship-pr-state.sh" 2>/dev/null; then
 else
     fail "19: mv failure simulation should not succeed"
 fi
-assert_eq true "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: mv failure leaves disk stalled"
+assert_eq true "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: mv failure leaves disk stalled"
 dir=$(make_tmp case19d)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
 STALL_TRACKING=true
@@ -671,9 +671,9 @@ EOF
 tmp="$dir/ship-pr-state.sh.tmp.$$"
 awk 'BEGIN{done=0} /^STALL_TRACKING=/{print "STALL_TRACKING=false"; done=1; next} /^STALL_STEP=/{print "STALL_STEP="; next} {print} END{if(!done) print "STALL_TRACKING=false"}' "$dir/ship-pr-state.sh" >"$tmp"
 mv -f "$tmp" "$dir/ship-pr-state.sh"
-assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back must see false after mv in success path"
+assert_eq false "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back must see false after mv in success path"
 mv -f "$dir/ship-pr-state.sh" "$dir/ship-pr-state.sh.gone"
-assert_eq "" "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: missing destination read-back falls back to empty default"
+assert_eq "" "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: missing destination read-back falls back to empty default"
 
 dir=$(make_tmp case19b)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
@@ -686,7 +686,7 @@ run_capture "$SANDBOX/case19b.out" "$SCRIPT" classify --implement-tmpdir "$dir" 
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case19b.out")" "19: in-memory true overrides disk false"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case19b.out")" "19: emitted stall tracking preserves in-memory true"
 STALL_TRACKING=true
-case "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" in
+case "$(python3 "$REPO_ROOT/python/cli.py" session read-key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" in
     false) STALL_TRACKING=false ;;
 esac
 assert_eq false "$STALL_TRACKING" "19: in-memory clear happens only after false-on-disk is durable"
@@ -1293,10 +1293,10 @@ cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$read_stub_root/skills/im
 cp "$SCRIPT_DIR/stall-recovery-report.md" "$read_stub_root/skills/implement/scripts/"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$read_stub_root/scripts/"
 cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$read_stub_root/scripts/"
-cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$read_stub_root/scripts/read-session-env-key.real.sh"
+cp "$REPO_ROOT/python/cli.py" "$read_stub_root/scripts/read-session-env-key.real.sh"
 chmod +x "$read_stub_root/skills/implement/scripts/stall-recovery-report.sh" \
   "$read_stub_root/scripts/read-session-env-key.real.sh"
-cat >"$read_stub_root/scripts/read-session-env-key.sh" <<'STUB'
+cat >"$read_stub_root/python/cli.py session read-key" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 stub_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -1335,7 +1335,7 @@ case "${STALL_READ_STUB:-}" in
 esac
 exec "$real" "${args[@]}"
 STUB
-chmod +x "$read_stub_root/scripts/read-session-env-key.sh"
+chmod +x "$read_stub_root/python/cli.py session read-key"
 read_stub_script="$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
 
 dir=$(make_tmp case22-clear-temp-read-wrong)

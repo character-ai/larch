@@ -46,7 +46,7 @@ fail_status() {
 
 session_get() {
     local key="$1" default_value="${2:-}"
-    "$SCRIPT_DIR/read-session-env-key.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" session read-key \
         --file "$IMPLEMENT_TMPDIR/session-env.sh" \
         --key "$key" \
         --default "$default_value"

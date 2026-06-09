@@ -331,10 +331,10 @@ cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
-cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/python/cli.py" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_STUB/skills/design/scripts/"
-chmod +x "$PLUGIN_STUB/scripts/read-design-classification.sh" \
+chmod +x "$PLUGIN_STUB/python/cli.py session read-classification" \
     "$PLUGIN_STUB/scripts/redact-secrets.sh" \
     "$PLUGIN_STUB/skills/design/scripts/render-plan-review-prompt.sh"
 mkdir -p "$PLUGIN_STUB/skills/design/references"
@@ -391,11 +391,11 @@ cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
-cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/python/cli.py" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_BAD/skills/design/scripts/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
-chmod +x "$PLUGIN_BAD/scripts/read-design-classification.sh" \
+chmod +x "$PLUGIN_BAD/python/cli.py session read-classification" \
     "$PLUGIN_BAD/scripts/redact-secrets.sh" \
     "$PLUGIN_BAD/skills/design/scripts/render-plan-review-prompt.sh"
 cat >"$PLUGIN_BAD/scripts/launch-claude-review.sh" <<'BAD_CLAUDE_STUB'
@@ -485,10 +485,10 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_JSONL/skills/design/scripts/"
-cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_JSONL/scripts/"
+cp "$REPO_ROOT/python/cli.py" "$PLUGIN_JSONL/scripts/"
 mkdir -p "$PLUGIN_JSONL/skills/design/references"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
-chmod +x "$PLUGIN_JSONL/scripts/read-design-classification.sh" \
+chmod +x "$PLUGIN_JSONL/python/cli.py session read-classification" \
     "$PLUGIN_JSONL/scripts/redact-secrets.sh" \
     "$PLUGIN_JSONL/skills/design/scripts/render-plan-review-prompt.sh"
 cat >"$PLUGIN_JSONL/scripts/launch-claude-review.sh" <<'JSONL_STUB'

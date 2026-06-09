@@ -52,9 +52,9 @@ main() {
 
     local session_env="$tmpdir/session-env.sh"
     if [ -f "$session_env" ]; then
-        LARCH_TOKEN_SESSION_ID=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$session_env" --key LARCH_TOKEN_SESSION_ID --default "")
-        LARCH_CLAUDE_SOURCE_FILE=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$session_env" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-        LARCH_TIMING_LEDGER=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$session_env" --key LARCH_TIMING_LEDGER --default "")
+        LARCH_TOKEN_SESSION_ID=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$session_env" --key LARCH_TOKEN_SESSION_ID --default "")
+        LARCH_CLAUDE_SOURCE_FILE=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$session_env" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+        LARCH_TIMING_LEDGER=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$session_env" --key LARCH_TIMING_LEDGER --default "")
         export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
     fi
 

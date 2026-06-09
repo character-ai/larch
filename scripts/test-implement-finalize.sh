@@ -131,7 +131,7 @@ build_sandbox() {
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$SANDBOX/scripts/lib-execution-issues.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
-    cat > "$SANDBOX/scripts/local-cleanup.sh" <<'STUB'
+    cat > "$SANDBOX/python/cli.py session local-cleanup" <<'STUB'
 #!/usr/bin/env bash
 echo "CLEANUP_SUCCESS=${STUB_CLEANUP_SUCCESS:-true}"
 echo "CURRENT_BRANCH=${STUB_CURRENT_BRANCH:-main}"
@@ -173,7 +173,7 @@ echo "RENAMED=true"
 echo "NEW_TITLE=stub"
 exit 0
 STUB
-    cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
+    cat > "$SANDBOX/python/cli.py session cleanup-tmpdir" <<STUB
 #!/usr/bin/env bash
 dir=""
 while [ \$# -gt 0 ]; do
@@ -189,7 +189,7 @@ fi
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
 exit "\${STUB_CLEANUP_TMPDIR_RC:-0}"
 STUB
-    cat > "$SANDBOX/scripts/read-session-env-key.sh" <<'STUB'
+    cat > "$SANDBOX/python/cli.py session read-key" <<'STUB'
 #!/usr/bin/env bash
 default=""
 while [ $# -gt 0 ]; do

@@ -13,8 +13,8 @@ export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 # process); review-and-fix would then die in larch_err before review-core.
 unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
     LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS 2>/dev/null || true
-SESSION_SETUP="$REPO_ROOT/scripts/session-setup.sh"
-READ_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
+SESSION_SETUP=(python3 "$REPO_ROOT/python/cli.py" session setup)
+READ_KEY=(python3 "$REPO_ROOT/python/cli.py" session read-key)
 REVIEW_AND_FIX="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
@@ -34,7 +34,7 @@ LARCH_CLAUDE_SOURCE_FILE=$TMP/claude-source.env
 EOF_ENV
 printf 'SOURCE_FILE=/tmp/mock-transcript.jsonl\n' > "$TMP/claude-source.env"
 
-OUT=$("$SESSION_SETUP" \
+OUT=$("${SESSION_SETUP[@]}" \
     --prefix claude-review-token-test \
     --skip-preflight \
     --skip-repo-check \
@@ -50,9 +50,9 @@ case "$OUT" in
     *) ;;
 esac
 
-token_session_id=$("$READ_KEY" --file "$REVIEW_ENV" --key LARCH_TOKEN_SESSION_ID --default "")
-claude_source_file=$("$READ_KEY" --file "$REVIEW_ENV" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-timing_ledger=$("$READ_KEY" --file "$REVIEW_ENV" --key LARCH_TIMING_LEDGER --default "")
+token_session_id=$("${READ_KEY[@]}" --file "$REVIEW_ENV" --key LARCH_TOKEN_SESSION_ID --default "")
+claude_source_file=$("${READ_KEY[@]}" --file "$REVIEW_ENV" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+timing_ledger=$("${READ_KEY[@]}" --file "$REVIEW_ENV" --key LARCH_TIMING_LEDGER --default "")
 [[ "$token_session_id" == "parent-implement-session" ]] || fail "review session-env lost LARCH_TOKEN_SESSION_ID"
 [[ "$claude_source_file" == "$TMP/claude-source.env" ]] || fail "review session-env lost LARCH_CLAUDE_SOURCE_FILE"
 [[ "$timing_ledger" == "$TIMING_LEDGER" ]] || fail "review session-env lost LARCH_TIMING_LEDGER"
@@ -67,7 +67,7 @@ LARCH_TIMING_LEDGER=/etc/passwd
 LARCH_TOKEN_SESSION_ID=parent-implement-session
 LARCH_CLAUDE_SOURCE_FILE=$TMP/claude-source.env
 EOF_ENV
-if ! "$SESSION_SETUP" \
+if ! "${SESSION_SETUP[@]}" \
     --prefix claude-review-token-test \
     --skip-preflight \
     --skip-repo-check \
@@ -76,7 +76,7 @@ if ! "$SESSION_SETUP" \
     >/dev/null 2>"$UNSAFE_ERR"; then
     fail "session-setup exited non-zero for unsafe LARCH_TIMING_LEDGER"
 fi
-unsafe_timing_ledger=$("$READ_KEY" --file "$UNSAFE_REVIEW_ENV" --key LARCH_TIMING_LEDGER --default "")
+unsafe_timing_ledger=$("${READ_KEY[@]}" --file "$UNSAFE_REVIEW_ENV" --key LARCH_TIMING_LEDGER --default "")
 [[ -z "$unsafe_timing_ledger" ]] || fail "unsafe LARCH_TIMING_LEDGER was written to review session-env"
 grep -Fq "session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)" "$UNSAFE_ERR" \
     || fail "unsafe LARCH_TIMING_LEDGER warning missing"

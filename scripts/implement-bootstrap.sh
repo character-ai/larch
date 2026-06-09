@@ -23,6 +23,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
     CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
 export CLAUDE_PLUGIN_ROOT
+PY_CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
 
 UP_TO_PHASE=""
 CALLER_ENV_OPT=""
@@ -145,7 +146,7 @@ _persist_larch_run_id() {
     valid_run_id "${RUN_ID:-}" || return 0
     [ -f "${IMPLEMENT_TMPDIR:-}/session-env.sh" ] || return 0
     local _dynamic _persist_args
-    _dynamic=$("$SCRIPT_DIR/read-session-env-key.sh" \
+    _dynamic=$(python3 "$PY_CLI" session read-key \
         --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
     _persist_args=(
         --output "$IMPLEMENT_TMPDIR/session-env.sh"
@@ -163,7 +164,7 @@ _persist_larch_run_id() {
     )
     [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && _persist_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
     [ -n "$_dynamic" ] && _persist_args+=(--dynamic-archetypes "$_dynamic")
-    "$SCRIPT_DIR/write-session-env.sh" "${_persist_args[@]}"
+    python3 "$PY_CLI" session write-env "${_persist_args[@]}"
 }
 
 valid_issue_number() {
@@ -215,7 +216,7 @@ emit_plan_materialize_breadcrumbs() {
 persist_run_flags() {
     local persist_rc
 
-    "$SCRIPT_DIR/persist-implement-run-flags.sh" \
+    python3 "$PY_CLI" session persist-run-flags \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --no-issues false \
         --emergency-requested "$EMERGENCY_REQUESTED" \
@@ -235,7 +236,7 @@ restore_emergency_requested_from_run_flags_if_unset() {
     local prior_emergency=""
     [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
     [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
-    prior_emergency=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key EMERGENCY_REQUESTED --default "")
+    prior_emergency=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key EMERGENCY_REQUESTED --default "")
     case "$prior_emergency" in
         true) EMERGENCY_REQUESTED=true ;;
         false)
@@ -248,7 +249,7 @@ restore_self_review_requested_from_run_flags_if_unset() {
     local prior_self_review=""
     [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
     [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
-    prior_self_review=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key SELF_REVIEW_REQUESTED --default "")
+    prior_self_review=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key SELF_REVIEW_REQUESTED --default "")
     case "$prior_self_review" in
         true) SELF_REVIEW_REQUESTED=true ;;
         false)
@@ -577,7 +578,7 @@ phase_infra() {
     ingest_kv_block "$branch_out"
 
     gate_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-gate.XXXXXX")
-    gate_out=$("$SCRIPT_DIR/session-entry-gate.sh" \
+    gate_out=$(python3 "$PY_CLI" session entry-gate \
         --mode implement \
         --current-branch "$CURRENT_BRANCH" \
         --is-main "$IS_MAIN" \
@@ -616,15 +617,15 @@ phase_infra() {
         restore_emergency_requested_from_run_flags_if_unset
         restore_self_review_requested_from_run_flags_if_unset
 
-        REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
-        REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
-        CODEX_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
-        CURSOR_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
-        CODEX_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
-        CURSOR_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
-        LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-        LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-        LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+        REPO=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
+        REPO_UNAVAILABLE=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
+        CODEX_PRESENT=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
+        CURSOR_PRESENT=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
+        CODEX_BINARY_FOUND=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
+        CURSOR_BINARY_FOUND=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
+        LARCH_TOKEN_SESSION_ID=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+        LARCH_CLAUDE_SOURCE_FILE=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+        LARCH_TIMING_LEDGER=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
         export LARCH_TIMING_LEDGER
 
         if [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]; then
@@ -634,15 +635,13 @@ phase_infra() {
         fi
 
         if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
-            _root=$("$SCRIPT_DIR/read-session-env-key.sh" \
+            _root=$(python3 "$PY_CLI" session read-key \
                 --file "$IMPLEMENT_TMPDIR/session-env.sh" \
                 --key LARCH_CLAUDE_PLUGIN_ROOT --default "")
             if [ -n "$_root" ]; then
-                # shellcheck source=scripts/write-session-env.sh
-                . "$SCRIPT_DIR/write-session-env.sh"
-                emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                python3 "$PY_CLI" session write-env --plugin-root-only --output "$IMPLEMENT_TMPDIR/plugin-root.env" --value "$_root" || true
                 if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
-                    emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                    python3 "$PY_CLI" session write-env --plugin-root-only --output "$IMPLEMENT_TMPDIR/plugin-root.env" --value "$_root" || true
                 fi
                 if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
                     larch_err "resume-tail: plugin-root.env missing after sync (LARCH_CLAUDE_PLUGIN_ROOT set)"
@@ -652,7 +651,7 @@ phase_infra() {
     else
 
         local setup_cmd
-        setup_cmd=("$SCRIPT_DIR/session-setup.sh" --prefix claude-implement --check-reviewers)
+        setup_cmd=(python3 "$PY_CLI" session setup --prefix claude-implement --check-reviewers)
         if [ "$SKIP_BRANCH_CHECK" = "true" ]; then
             setup_cmd+=(--skip-branch-check)
         fi
@@ -696,7 +695,7 @@ phase_infra() {
         IMPLEMENT_TMPDIR="$SESSION_TMPDIR"
         export IMPLEMENT_TMPDIR
 
-        "$SCRIPT_DIR/write-session-id.sh" --output "$IMPLEMENT_TMPDIR/session-id"
+        python3 "$PY_CLI" session write-id --output "$IMPLEMENT_TMPDIR/session-id"
         LARCH_TOKEN_SESSION_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
         export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 
@@ -721,7 +720,7 @@ phase_infra() {
 
         dynamic_archetypes_value=""
         if [ -z "${dynamic_archetypes_value:-}" ] && [ -n "${CALLER_ENV_OPT:-}" ] && [ -r "$CALLER_ENV_OPT" ]; then
-            caller_dynamic_archetypes=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$CALLER_ENV_OPT" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
+            caller_dynamic_archetypes=$(python3 "$PY_CLI" session read-key --file "$CALLER_ENV_OPT" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
             case "$caller_dynamic_archetypes" in
                 "") ;;
                 [0-8]) dynamic_archetypes_value=$caller_dynamic_archetypes ;;
@@ -747,7 +746,7 @@ phase_infra() {
         [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
         [ -n "${dynamic_archetypes_value:-}" ] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
         _wse_rc=0
-        "$SCRIPT_DIR/write-session-env.sh" "${session_env_args[@]}" || _wse_rc=$?
+        python3 "$PY_CLI" session write-env "${session_env_args[@]}" || _wse_rc=$?
         if [ "$_wse_rc" -ne 0 ]; then
             emit_kv STEP_FAILED write-session-env
             exit 2
@@ -755,9 +754,9 @@ phase_infra() {
         "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
         LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
 
-        LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-        LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-        LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+        LARCH_TOKEN_SESSION_ID=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+        LARCH_CLAUDE_SOURCE_FILE=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+        LARCH_TIMING_LEDGER=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
     fi
 
     restore_emergency_requested_from_run_flags_if_unset
@@ -768,16 +767,16 @@ phase_infra() {
     fi
 
     local _cb _cp
-    _cb=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false")
-    _cp=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
+    _cb=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false")
+    _cp=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
     if [ "$_cb" != "true" ]; then
         larch_err '**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**'
     elif [ "$_cp" != "true" ]; then
         larch_err '**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**'
     fi
     local _cub _cup
-    _cub=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false")
-    _cup=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
+    _cub=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false")
+    _cup=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
     if [ "$_cub" != "true" ]; then
         larch_err '**⚠ Cursor not available (binary not found). Proceeding without Cursor reviewer.**'
     elif [ "$_cup" != "true" ]; then
@@ -1238,8 +1237,8 @@ phase_coder_select() {
     fi
 
     local codex_binary_found cursor_binary_found
-    codex_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
-    cursor_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
+    codex_binary_found=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
+    cursor_binary_found=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
 
     if [ -n "$CODER_OPT" ]; then
         _phase_coder_explicit "$CODER_OPT" "$codex_binary_found" "$cursor_binary_found"

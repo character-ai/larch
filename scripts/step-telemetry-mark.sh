@@ -35,11 +35,11 @@ done
 [ -n "$LABEL" ] || exit 0
 
 _session_env="${IMPLEMENT_TMPDIR:-}/session-env.sh"
-_read="$SCRIPT_DIR/read-session-env-key.sh"
+_read=(python3 "$SCRIPT_DIR/../python/cli.py" session read-key)
 
-LARCH_TOKEN_SESSION_ID=$("$_read" --file "$_session_env" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
-LARCH_CLAUDE_SOURCE_FILE=$("$_read" --file "$_session_env" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
-LARCH_TIMING_LEDGER=$("$_read" --file "$_session_env" --key LARCH_TIMING_LEDGER --default "" 2>/dev/null || true)
+LARCH_TOKEN_SESSION_ID=$("${_read[@]}" --file "$_session_env" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
+LARCH_CLAUDE_SOURCE_FILE=$("${_read[@]}" --file "$_session_env" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
+LARCH_TIMING_LEDGER=$("${_read[@]}" --file "$_session_env" --key LARCH_TIMING_LEDGER --default "" 2>/dev/null || true)
 
 export IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 

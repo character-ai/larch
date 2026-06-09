@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
-RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
+RESTORE_FINALIZE_SH="$REPO_ROOT/python/session_env.py"
 LIB_FINALIZE_KEYS_SH="$REPO_ROOT/scripts/lib-finalize-state-keys.sh"
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
 LINT_FIX_LOOP_SH="$REPO_ROOT/scripts/lint-fix-loop.sh"
@@ -416,12 +416,10 @@ grep -Fq 'existing_stall_tracking=$(read_finalize STALL_TRACKING "")' "$RESTORE_
   || fail "restore-finalize-state.sh must read existing finalize STALL_TRACKING"
 grep -Fq 'STALL_TRACKING) value=true ;;' "$RESTORE_FINALIZE_SH" \
   || fail "restore-finalize-state.sh must preserve existing finalize STALL_TRACKING=true"
-grep -Fq 'STALL_TRACKING=false' "$REPO_ROOT/scripts/test-restore-finalize-state.sh" \
+grep -Fq 'STALL_TRACKING=false' "$REPO_ROOT/python/test_session_env.py" \
   || fail "restore-finalize-state harness must seed ship-pr STALL_TRACKING=false"
 
-[[ -f "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh missing"
-[[ -x "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh must be executable"
-[[ -f "$REPO_ROOT/scripts/restore-finalize-state.md" ]] || fail "scripts/restore-finalize-state.sh must have sibling restore-finalize-state.md"
+[[ -f "$RESTORE_FINALIZE_SH" ]] || fail "python/cli.py session restore-finalize-state missing"
 
 [[ -f "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh missing"
 [[ -x "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh must be executable"

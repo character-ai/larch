@@ -96,12 +96,12 @@ RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 WARN_LINES=()
 PARTITION_REQUESTED="$(phase_driver_json_boolean_or_sed "$RUN_PARAMS_PATH" partition_requested false)"
-READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
-if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
+READ_CLASSIFICATION_SH="$PLUGIN_ROOT/python/cli.py"
+if [[ -f "$READ_CLASSIFICATION_SH" ]]; then
     _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
     _classification_warn_count_before=${#WARN_LINES[@]}
     set +e
-    WORKFLOW_PATH=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>"$_classification_stderr")
+    WORKFLOW_PATH=$(python3 "$READ_CLASSIFICATION_SH" session read-classification "$RUN_PARAMS_PATH" 2>"$_classification_stderr")
     _classification_rc=$?
     set -e
     if [[ -s "$_classification_stderr" ]]; then

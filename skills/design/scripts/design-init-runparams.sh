@@ -169,7 +169,7 @@ design_classification_source=caller-forwarded
 
 # 2. Env refresh before rename
 _wdce_args=(
-    "$PLUGIN_ROOT/scripts/write-design-current-env.sh"
+    python3 "$PLUGIN_ROOT/python/cli.py" session write-design-env
     --output "$DESIGN_TMPDIR/source-env.sh"
     --design-tmpdir "$DESIGN_TMPDIR"
     --session-id "$SESSION_ID"
@@ -214,7 +214,7 @@ else
 fi
 
 # 4. write-run-params.sh
-if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
+if ! python3 "$PLUGIN_ROOT/python/cli.py" session write-run-params \
     --classification "$CLASSIFICATION" \
     --reason "$design_classification_reason" \
     --source "$design_classification_source" \
@@ -226,7 +226,7 @@ if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
     --skip-approve-requested "$SKIP_APPROVE_REQUESTED" \
     --output "$RUN_PARAMS_PATH"; then
     INIT_STATUS=contract-drift
-    larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**"
+    larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`python -m pytest python/test_session_env.py\` to repro, then update either SKILL.md or the script to re-align.**"
     emit_kv INIT_STATUS contract-drift
     phase_driver_write_result_env "$RESULT_ENV" \
         "INIT_STATUS=contract-drift" \
@@ -254,7 +254,7 @@ if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APP
             rm -f "$_rp_merge" "$_rp_err"
         fi
     else
-        add_warn "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
+        add_warn "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`python -m pytest python/test_session_env.py\` and fix the Step 0b contract drift first.**"
     fi
 elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$APPROVE_REQUESTED" == true || "$SKIP_APPROVE_REQUESTED" == true ]]; then
     add_warn '**⚠ 0b: partition, brainstorm, approve, and/or skip-approve requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'

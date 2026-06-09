@@ -228,7 +228,7 @@ if [[ -s "$ROUND_COUNT_FILE" ]]; then
     esac
 fi
 
-_tier="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"
+_tier="$(python3 "$PLUGIN_ROOT/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json")"
 _round_cap=5
 
 if ((_round_count >= _round_cap)); then

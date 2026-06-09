@@ -51,7 +51,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 11. **NEVER write, recreate, or modify `$IMPLEMENT_TMPDIR/finalize-state.sh` from prompt-side orchestrator code.** **Why**: on the default path, `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` on terminal driver outcomes (postmerge success, driver-local stalls, hard failures) before returning JSON; when `LARCH_SHIP_PR_IMPL=bash`, the legacy `ship-pr.sh` / `write_finalize_state()` contract remains the writer. Clobbering the file with an orchestrator-reconstructed subset causes a cascade of `state-file missing required key` errors during teardown, leaving the session tmpdir un-cleaned and stale tmpdirs accumulating under `~/.cache/larch/sessions/`. **How to apply**: do NOT write `$IMPLEMENT_TMPDIR/finalize-state.sh` by any means from prompt-side orchestrator code — `cat > … <<EOF`, `printf > …`, `echo > …`, the Write tool, `sed -i`, `tee`, or any other mechanism. The blessed pre-teardown reconstructor is `restore-finalize-state.sh`, run conditionally per the Step 18 gate below — not on every run and never as prompt-side improvisation. If `implement-finalize.sh teardown` fails with `state-file missing required key` AND `ship-pr-state.sh` is absent (so restore cannot help), surface the error and stop — do NOT compose the file from prompt-side shell variables. See Step 18 teardown block.
 
-12. **NEVER write, append to, or recreate `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** **Why**: `session-env.sh` is the persistence layer that child scripts (`run-step1-plan-log.sh`, `run-step5-review.sh`, `review-and-fix.sh`, every `read-session-env-key.sh` caller) source on each invocation; orchestrator-side `>>` appends, `cat > … <<EOF` rewrites, or `printf` snippets that "fix up" a missing key bypass the writer's anchored filter and post-condition assertion. The exact symptom that motivated this rule (issue #2326) was an `/implement` run whose Step 1 post-plan materialization was incomplete while the orchestrator papered over missing keys via prompt-side `session-env.sh` edits, producing a file whose ordering and idempotency guarantees were unverified. **How to apply**: the sanctioned writers are `scripts/write-session-env.sh` (Step 0 initial write), `scripts/session-setup.sh` (which delegates to `write-session-env.sh`), `scripts/persist-implement-run-flags.sh` (Step 1 run-flag persistence), and `_persist_larch_run_id()` in `scripts/implement-bootstrap.sh` (post-tracking re-write that adds `LARCH_RUN_ID` via a second `write-session-env.sh` call). The plan file is always at the conventional path `$IMPLEMENT_TMPDIR/plan.txt` — child scripts do not read `PLAN_FILE` from `session-env.sh`. If `run-step1-plan-log.sh` or `run-step5-review.sh` fails because that path is missing, repair Step 1 plan materialization — do NOT compose `session-env.sh` lines from prompt-side shell to silence the error. The orchestrator's only sanctioned interaction with `session-env.sh` is READING via `read-session-env-key.sh` and INVOKING the writers above.
+12. **NEVER write, append to, or recreate `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** **Why**: `session-env.sh` is the persistence layer that child scripts (`run-step1-plan-log.sh`, `run-step5-review.sh`, `review-and-fix.sh`, every `read-session-env-key.sh` caller) source on each invocation; orchestrator-side `>>` appends, `cat > … <<EOF` rewrites, or `printf` snippets that "fix up" a missing key bypass the writer's anchored filter and post-condition assertion. The exact symptom that motivated this rule (issue #2326) was an `/implement` run whose Step 1 post-plan materialization was incomplete while the orchestrator papered over missing keys via prompt-side `session-env.sh` edits, producing a file whose ordering and idempotency guarantees were unverified. **How to apply**: the sanctioned writers are `python/cli.py session write-env` (Step 0 initial write), `python/cli.py session setup` (which delegates to `write-session-env.sh`), `python/cli.py session persist-run-flags` (Step 1 run-flag persistence), and `_persist_larch_run_id()` in `scripts/implement-bootstrap.sh` (post-tracking re-write that adds `LARCH_RUN_ID` via a second `write-session-env.sh` call). The plan file is always at the conventional path `$IMPLEMENT_TMPDIR/plan.txt` — child scripts do not read `PLAN_FILE` from `session-env.sh`. If `run-step1-plan-log.sh` or `run-step5-review.sh` fails because that path is missing, repair Step 1 plan materialization — do NOT compose `session-env.sh` lines from prompt-side shell to silence the error. The orchestrator's only sanctioned interaction with `session-env.sh` is READING via `read-session-env-key.sh` and INVOKING the writers above.
 
 13. **(removed — see issue #3111 Stage 4; Family-B background+monitor pairs are deleted.)** Invoke long-running denylisted scripts (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, etc.) as foreground Bash tool calls; the harness auto-backgrounds an overrunning call and notifies on completion. Configure a sufficiently large Bash timeout when supported. If a timeout or unexpected turn end occurs on the bash opt-in path, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the fenced bash contract **only when `LARCH_SHIP_PR_IMPL=bash`** and without `--resume-phase`; on the default path, re-invoke `python/cli.py ship pr` per the selector (no `--resume-phase`).
 
@@ -104,7 +104,7 @@ export CLAUDE_PLUGIN_ROOT
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAUDE_PLUGIN_ROOT` is not in the inherited environment after Step 0. Every Bash block after Step 0 that calls a plugin script via `"${CLAUDE_PLUGIN_ROOT}/..."` MUST first rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (written by `scripts/write-session-env.sh` at Step 0) using the canonical one-line source guard below — do not invent variants:
+The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAUDE_PLUGIN_ROOT` is not in the inherited environment after Step 0. Every Bash block after Step 0 that calls a plugin script via `"${CLAUDE_PLUGIN_ROOT}/..."` MUST first rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (written by `python/cli.py session write-env` at Step 0) using the canonical one-line source guard below — do not invent variants:
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
@@ -112,7 +112,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAU
 
 **Pre-bootstrap sites** (Step 0 foreground, dirty-tree recovery, legacy structured-invocation pin) run before or without a fresh `write-session-env.sh` on legacy resume tmpdirs. Prepend the source guard above, then add the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk extract from `$IMPLEMENT_TMPDIR/session-env.sh` (same pattern as the old 4-line fence, without the `if`/`fi` wrapper) when `plugin-root.env` is still absent, then `export CLAUDE_PLUGIN_ROOT`.
 
-Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **42** executable rehydration sites in this file (38 source-only + 4 source+awk fallback). The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
+Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **42** executable rehydration sites in this file (38 source-only + 4 source+awk fallback). The `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
 
 ### Verbosity Control
 
@@ -338,13 +338,13 @@ export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
 
-CODEX_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+CODEX_PRESENT=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key \
   --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
-CURSOR_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+CURSOR_PRESENT=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key \
   --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
-CODEX_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+CODEX_BINARY_FOUND=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key \
   --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
-CURSOR_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+CURSOR_BINARY_FOUND=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key \
   --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
 
 "$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement \
@@ -368,9 +368,9 @@ export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 export forked_target emergency_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO
@@ -391,7 +391,7 @@ fi
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
 
-The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks must rehydrate `IMPLEMENT_TMPDIR` first, then `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (canonical source guard), then `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, and `LARCH_RUN_ID` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` on `$IMPLEMENT_TMPDIR/session-env.sh`. `LARCH_RUN_ID` is written by `_persist_larch_run_id()` in `implement-bootstrap.sh` immediately after `phase_tracking()` resolves `RUN_ID`; it is not written by `write-session-env.sh` (which runs before tracking adoption).
+The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks must rehydrate `IMPLEMENT_TMPDIR` first, then `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (canonical source guard), then `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, and `LARCH_RUN_ID` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` on `$IMPLEMENT_TMPDIR/session-env.sh`. `LARCH_RUN_ID` is written by `_persist_larch_run_id()` in `implement-bootstrap.sh` immediately after `phase_tracking()` resolves `RUN_ID`; it is not written by `write-session-env.sh` (which runs before tracking adoption).
 
 ### Cross-Skill Presence Propagation
 
@@ -531,12 +531,12 @@ Print: `> **🔶 /implement 2: implementation**`
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-CODEX_PRESENT=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
-CURSOR_PRESENT=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
+CODEX_PRESENT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
+CURSOR_PRESENT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
 case "${coder:-}" in
   claude)
     "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
@@ -697,9 +697,9 @@ Print: `> **🔶 /implement 3: checks (1)**`
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
@@ -721,9 +721,9 @@ Print: `> **🔶 /implement 4: commit (impl)**`
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
@@ -931,9 +931,9 @@ Print: `> **🔶 /implement 6: checks (2)**`
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
@@ -974,9 +974,9 @@ Print: `> **🔶 /implement 7: commit (review)**`
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
@@ -1315,27 +1315,27 @@ Print: `> **🔶 /implement 18: cleanup**`
 
 ### Step 18a — Stall recovery gate
 
-Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh`. Use the same session-env rehydration pattern as the teardown blocks below; do not create a `current-implement-env-$PPID.sh` file.
+Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. Use the same session-env rehydration pattern as the teardown blocks below; do not create a `current-implement-env-$PPID.sh` file.
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 _stall_disk=false
 _stall_finalize=false
 _stall_session=false
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
-  _stall_disk=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
+  _stall_disk=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
 fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
-  _stall_finalize=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_TRACKING --default "false")
+  _stall_finalize=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_TRACKING --default "false")
 fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  _stall_session=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key STALL_TRACKING --default "false")
+  _stall_session=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key STALL_TRACKING --default "false")
 fi
 printf 'STALL_TRACKING_MEMORY=%s\n' "${STALL_TRACKING:-false}"
 printf 'STALL_TRACKING_DISK=%s\n' "$_stall_disk"
@@ -1388,9 +1388,9 @@ Cap the per-run token/timing ledgers **before** teardown removes them. The `larc
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
 DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
@@ -1419,10 +1419,10 @@ if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
   elif [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
     _restore_finalize=true
   else
-    _ship_stall=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
-    _ship_bail=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key BAIL_NEEDS_USER_INPUT --default "false")
-    _ship_step=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_STEP --default "")
-    _final_step=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_STEP --default "")
+    _ship_stall=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
+    _ship_bail=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key BAIL_NEEDS_USER_INPUT --default "false")
+    _ship_step=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_STEP --default "")
+    _final_step=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_STEP --default "")
     _ship_stall_truthy=false
     _ship_bail_truthy=false
     case "$_ship_stall" in 1|true|TRUE|True|yes|YES|Yes|on|ON|On) _ship_stall_truthy=true ;; esac
@@ -1433,7 +1433,7 @@ if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
   fi
 fi
 if [ "$_restore_finalize" = true ]; then
-  if ! "${CLAUDE_PLUGIN_ROOT}/scripts/restore-finalize-state.sh" \
+  if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session restore-finalize-state \
       --implement-tmpdir "$IMPLEMENT_TMPDIR"; then
     printf '%s\n' "**⚠ Step 18: restore-finalize-state.sh failed; proceeding to teardown.**" >&2
   fi

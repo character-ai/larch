@@ -129,9 +129,9 @@ awk '
 # the same template (catches the inverse: a stray timing-only rehydration with
 # no token-session-id sibling).
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
-timing_read_count=$(grep -Fxc 'LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")' "$SKILL_MD" || true)
+timing_read_count=$(grep -Fxc 'LARCH_TIMING_LEDGER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")' "$SKILL_MD" || true)
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
-token_read_count=$(grep -Fxc 'LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")' "$SKILL_MD" || true)
+token_read_count=$(grep -Fxc 'LARCH_TOKEN_SESSION_ID=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")' "$SKILL_MD" || true)
 [[ "$timing_read_count" == "$token_read_count" ]] \
   || fail "LARCH_TIMING_LEDGER read count ($timing_read_count) does not match LARCH_TOKEN_SESSION_ID read count ($token_read_count)"
 

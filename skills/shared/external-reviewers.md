@@ -3,7 +3,7 @@
 The binary check, presence check, and presence status write are now handled by `session-setup.sh` with the `--check-reviewers` flag. Skills call a single script in Step 0:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix <name> [--skip-preflight] [--skip-branch-check] \
   [--skip-codex-probe] [--skip-cursor-probe]
 ```
 

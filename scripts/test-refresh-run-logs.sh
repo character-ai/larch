@@ -177,7 +177,7 @@ STUB
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"
 STUB
-    cp "$SCRIPT_DIR/read-session-env-key.sh" "$stub_dir/read-session-env-key.sh"
+    cp "$SCRIPT_DIR/../python/cli.py" "$stub_dir/read-session-env-key.sh"
     chmod +x "$stub_dir"/*.sh
 
     cat > "$impl_tmpdir/execution-issues.md" <<'ISSUES'

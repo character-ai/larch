@@ -5,14 +5,14 @@
 ## Subcommands
 
 - `postbump --state-file PATH --implement-tmpdir PATH` covers Step 8b rebase + force-push gate. It invokes `scripts/rebase-push.sh`, `scripts/check-remote-branch.sh`, and `scripts/git-force-push.sh`, and emits postbump-specific tail records ending with exactly one `STATUS=...` line.
-- `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `scripts/local-cleanup.sh` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
-- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, manifest finalization, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` compact breadcrumb. It invokes `scripts/larch-log.sh manifest --log-root "$IMPLEMENT_TMPDIR/larch-logs"` best-effort to set `stalled_at_step` on stall paths (and `status=partial` plus `recovery_reason` only on manifest-loss recovery), `scripts/get-issue-info.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `scripts/cleanup-tmpdir.sh`. It does not create a dedicated larch-log flush commit; log commits are produced by explicit lifecycle flush points before teardown.
+- `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `python/cli.py session local-cleanup` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
+- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, manifest finalization, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` compact breadcrumb. It invokes `scripts/larch-log.sh manifest --log-root "$IMPLEMENT_TMPDIR/larch-logs"` best-effort to set `stalled_at_step` on stall paths (and `status=partial` plus `recovery_reason` only on manifest-loss recovery), `scripts/get-issue-info.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `python/cli.py session cleanup-tmpdir`. It does not create a dedicated larch-log flush commit; log commits are produced by explicit lifecycle flush points before teardown.
 
 Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` for `postbump`, plus `LOCAL_CLEANUP_STATUS=`, `VERIFY_MAIN_STATUS=`, `RENAME_STATUS=`, and `FINALIZE_WARNINGS=` for the post-PR subcommands. Exit code `2` is reserved for argument or state-file validation failures.
 
 ## State File
 
-The state file is plain `KEY=value` text written by `scripts/ship-pr.sh` before postmerge and restored by `scripts/restore-finalize-state.sh` immediately before teardown. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
+The state file is plain `KEY=value` text written by `scripts/ship-pr.sh` before postmerge and restored by `python/cli.py session restore-finalize-state` immediately before teardown. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
 
 Required keys:
 
@@ -121,11 +121,11 @@ FINALIZE_WARNINGS=<N>
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump checkpoint/error paths, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-restore-finalize-state.sh` covers the pre-teardown state restoration helper. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump checkpoint/error paths, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `python/test_session_env.py` covers the pre-teardown state restoration helper. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
 
 ## Edit In Sync
 
-When changing this script or its state-file inputs, update this contract, `skills/implement/SKILL.md` Steps 8, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
+When changing this script or its state-file inputs, update this contract, `skills/implement/SKILL.md` Steps 8, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `python/session_env.py (session restore-finalize-state)`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
 
 ## Vendor failure-diagnostics flush (#3713 F13)
 

@@ -50,8 +50,8 @@ setup_stub_plugin() {
   mkdir -p "$plugin/scripts"
   cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
   cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
-  cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$plugin/scripts/read-session-env-key.sh"
-  chmod +x "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/read-session-env-key.sh"
+  cp "$REPO_ROOT/python/cli.py" "$plugin/python/cli.py session read-key"
+  chmod +x "$plugin/scripts/append-tool-failure.sh" "$plugin/python/cli.py session read-key"
   cat >"$plugin/scripts/token-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -217,14 +217,14 @@ int_impl="$TMP_ROOT/int-implement-scripts"
 int_tmpdir="$TMP_ROOT/case-integration-real-wfr"
 mkdir -p "$int_plugin/scripts" "$int_impl" "$int_tmpdir/larch-logs/implement/run-int"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$int_plugin/scripts/lib-quiet.sh"
-cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$int_plugin/scripts/read-session-env-key.sh"
+cp "$REPO_ROOT/python/cli.py" "$int_plugin/python/cli.py session read-key"
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$int_plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/scripts/token-cost.sh" "$int_plugin/scripts/token-cost.sh"
 cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$int_plugin/scripts/lib-cost-line-format.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$int_plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
-chmod +x "$int_plugin/scripts/read-session-env-key.sh" "$int_plugin/scripts/append-tool-failure.sh" \
+chmod +x "$int_plugin/python/cli.py session read-key" "$int_plugin/scripts/append-tool-failure.sh" \
   "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/scripts/token-cost.sh" \
   "$int_plugin/scripts/redact-secrets.sh"
 cat >"$int_plugin/scripts/token-report.sh" <<'STUB'

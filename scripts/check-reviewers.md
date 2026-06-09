@@ -43,8 +43,8 @@ Downstream docs use `*_BINARY_FOUND=false` vs `*_PRESENT=false` to distinguish "
 | File | Relationship |
 |------|----------------|
 | `scripts/check-reviewers.sh` | Source of truth |
-| `scripts/session-setup.sh` | Parses `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` for `--write-session-env` forwarding |
-| `scripts/write-session-env.sh` | Optional `--codex-binary-found` / `--cursor-binary-found` persistence |
-| `scripts/session-setup.md` | Contract prose for stdout + session-env keys |
+| `python/cli.py session setup` | Parses `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` for `--write-session-env` forwarding |
+| `python/cli.py session write-env` | Optional `--codex-binary-found` / `--cursor-binary-found` persistence |
+| `python/session_env.py (session setup)` | Contract prose for stdout + session-env keys |
 | `skills/shared/external-reviewers.md` | Operator-facing semantics for `*_PRESENT` / `*_BINARY_FOUND` |
 | `docs/configuration-and-permissions.md` | Env catalog entries for probe tuning |

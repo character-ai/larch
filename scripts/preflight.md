@@ -86,5 +86,5 @@ When changing `scripts/preflight.sh`:
 - Update `scripts/check-clean-tree.md` if the clean-tree helper contract changes.
 - Update `scripts/check-main-sync.md` if the main-sync helper contract changes.
 - Update `skills/fix-issue/scripts/find-lock-issue.md` if dirty-tree messaging equivalence changes.
-- Verify `scripts/session-setup.sh` still captures and re-emits `PREFLIGHT_*` output correctly.
+- Verify `python/cli.py session setup` still captures and re-emits `PREFLIGHT_*` output correctly.
 - Verify `/implement` and `/design` setup prose still matches the default versus `--skip-branch-check` behavior.

@@ -40,7 +40,7 @@ than owning separate probes.
 The gate is on by default because the resolver falls back to `30` when no
 source resolves a value. Resolution order is the process environment,
 `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`; session files are
-read through `scripts/read-session-env-key.sh` and are never sourced. An
+read through `python/cli.py session read-key` and are never sourced. An
 explicit numeric `0` at any source opts out; an explicit positive value
 overrides the default. Non-Codex/Cursor tool labels also no-op even when the
 variable is set.

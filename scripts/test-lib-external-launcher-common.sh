@@ -658,9 +658,9 @@ run_health_gate_case() {
     local call_file="$case_dir/checker-call"
     mkdir -p "$case_dir/scripts" "$case_dir/bin"
     cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$case_dir/scripts/lib-external-launcher-common.sh"
-    cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$case_dir/scripts/read-session-env-key.sh"
+    cp "$REPO_ROOT/python/cli.py" "$case_dir/python/cli.py session read-key"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$case_dir/scripts/lib-quiet.sh"
-    chmod +x "$case_dir/scripts/read-session-env-key.sh"
+    chmod +x "$case_dir/python/cli.py session read-key"
     cat > "$case_dir/scripts/check-reviewers.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
