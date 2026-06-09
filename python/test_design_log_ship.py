@@ -301,7 +301,7 @@ def test_main_rejects_invalid_explicit_repo(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("gh.resolve_repo", lambda *_a, **_kw: pytest.fail("resolve_repo called"))
     rc = design_log_ship.main(["--pr-number", "1", "--repo", "../bad"])
     assert rc == 2
-    assert runner.calls == []
+    assert not runner.calls
 
 
 def test_main_resolves_repo_when_omitted(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
