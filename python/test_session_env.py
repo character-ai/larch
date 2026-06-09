@@ -597,6 +597,11 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
     (stub_bin / "cursor").chmod(0o755)
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    reviewer_env = {
+        "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
+        "LARCH_LIB_CURSOR_AUTH_TEST_MODE": "1",
+        "LIB_CURSOR_AUTH_TEST_UNAME": "Linux",
+    }
 
     env1 = tmp_path / "env1.txt"
     env1.write_text("", encoding="utf-8")
@@ -612,7 +617,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         "--check-reviewers",
         "--write-session-env",
         str(out1),
-        env={"PATH": f"{stub_bin}:{os.environ.get('PATH', '')}"},
+        env=reviewer_env,
     )
     assert result1.returncode == 0, result1.stderr
     for key in ("CODEX_PRESENT=true", "CURSOR_PRESENT=true", "CODEX_AVAILABLE=true", "CURSOR_AVAILABLE=true"):
@@ -637,7 +642,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         "--check-reviewers",
         "--write-session-env",
         str(out2),
-        env={"PATH": f"{stub_bin}:{os.environ.get('PATH', '')}"},
+        env=reviewer_env,
     )
     assert result2.returncode == 0, result2.stderr
     assert "CODEX_PRESENT=false" in result2.stdout
@@ -663,7 +668,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         "--check-reviewers",
         "--write-session-env",
         str(out3),
-        env={"PATH": f"{stub_bin}:{os.environ.get('PATH', '')}"},
+        env=reviewer_env,
     )
     assert result3.returncode == 0, result3.stderr
     assert "LARCH_DYNAMIC_ARCHETYPES_MAX=3\n" in out3.read_text(encoding="utf-8")
@@ -685,7 +690,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         "--check-reviewers",
         "--write-session-env",
         str(out4),
-        env={"PATH": f"{stub_bin}:{os.environ.get('PATH', '')}"},
+        env=reviewer_env,
     )
     assert result4.returncode == 0, result4.stderr
     assert "LARCH_DYNAMIC_ARCHETYPES_MAX=" not in out4.read_text(encoding="utf-8")
