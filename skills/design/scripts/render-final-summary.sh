@@ -345,13 +345,14 @@ if [ -f "$DESIGN_TMPDIR/oos-issues-created.md" ] && [ -s "$DESIGN_TMPDIR/oos-iss
 elif [ -f "$DESIGN_TMPDIR/oos-issue-sentinel" ]; then
     _sent_created=$(awk -F= '$1=="ISSUES_CREATED"{print $2; exit}' \
         "$DESIGN_TMPDIR/oos-issue-sentinel" 2>/dev/null || echo 0)
-    case "$_sent_created" in
-        ''|*[!0-9]*) ;;
-        0) ;;
-        *) OOS_COUNT="$_sent_created"
-           OOS_URLS="(URLs unavailable — annotate step was skipped)"
-           ;;
-    esac
+    _sent_failed=$(awk -F= '$1=="ISSUES_FAILED"{print $2; exit}' \
+        "$DESIGN_TMPDIR/oos-issue-sentinel" 2>/dev/null || echo 0)
+    case "$_sent_created" in ''|*[!0-9]*) _sent_created=0 ;; esac
+    case "$_sent_failed" in ''|*[!0-9]*) _sent_failed=0 ;; esac
+    if [ "$_sent_created" -gt 0 ] && [ "$_sent_failed" -eq 0 ]; then
+        OOS_COUNT="$_sent_created"
+        OOS_URLS="(URLs unavailable — annotate step was skipped)"
+    fi
 fi
 
 RUN_LOGS_PATH="N/A"

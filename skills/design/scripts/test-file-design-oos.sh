@@ -360,6 +360,7 @@ set -e
 assert_rc "A1 annotate empty stdout exit 0" 0 "$rc"
 grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a1" || fail "A1 missing annotate-skipped-empty-stdout status"
 grep -q '^WARN=' <<<"$out_a1" || fail "A1 missing WARN= line"
+grep -q 'issue-empty.stdout' <<<"$out_a1" || fail "A1 WARN missing file path"
 test ! -f "$TMP/a1/oos-issues-created.md" || fail "A1 oos-issues-created.md must not be written"
 
 # --- A2: annotate with missing issue-stdout-file -> graceful skip ---
@@ -377,6 +378,7 @@ set -e
 assert_rc "A2 annotate missing stdout exit 0" 0 "$rc"
 grep -q '^FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout$' <<<"$out_a2" || fail "A2 missing annotate-skipped-empty-stdout status"
 grep -q '^WARN=' <<<"$out_a2" || fail "A2 missing WARN= line"
+grep -q 'nonexistent.stdout' <<<"$out_a2" || fail "A2 WARN missing file path"
 test ! -f "$TMP/a2/oos-issues-created.md" || fail "A2 oos-issues-created.md must not be written"
 
 # --- S1: prepare with oos-issue-sentinel present (ISSUES_CREATED>0) but oos-issues-created.md absent ---
@@ -394,6 +396,80 @@ set -e
 assert_rc "S1 prepare sentinel skip exit 0" 0 "$rc"
 grep -q '^FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel$' <<<"$out_s1" || fail "S1 missing skip-already-filed-sentinel status"
 grep -q '^WARN=' <<<"$out_s1" || fail "S1 missing WARN= line"
+
+# --- S2: prepare with ISSUES_DEDUPLICATED>0 and ISSUES_FAILED=0 (all-dedup sentinel) -> skip-already-filed-sentinel ---
+mkdir -p "$TMP/s2"
+cat >"$TMP/s2/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf 'ISSUES_CREATED=0\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=2\n' >"$TMP/s2/oos-issue-sentinel"
+set +e
+out_s2=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/s2" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "S2 all-dedup sentinel skip exit 0" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel$' <<<"$out_s2" || fail "S2 not skip-already-filed-sentinel (all-dedup should skip)"
+grep -q '^WARN=' <<<"$out_s2" || fail "S2 missing WARN= line"
+
+# --- S3: prepare with ISSUES_CREATED=0 and no ISSUES_DEDUPLICATED -> falls through to ready ---
+mkdir -p "$TMP/s3"
+cat >"$TMP/s3/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf 'ISSUES_CREATED=0\nISSUES_FAILED=0\n' >"$TMP/s3/oos-issue-sentinel"
+set +e
+out_s3=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/s3" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "S3 sentinel zero created falls through" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_s3" || fail "S3 not ready (zero created+deduped should fall through)"
+test -f "$TMP/s3/oos-combined.md" || fail "S3 combined missing"
+
+# --- S4: prepare with malformed ISSUES_CREATED in sentinel -> falls through to ready ---
+mkdir -p "$TMP/s4"
+cat >"$TMP/s4/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf 'ISSUES_CREATED=notanumber\nISSUES_FAILED=0\n' >"$TMP/s4/oos-issue-sentinel"
+set +e
+out_s4=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/s4" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "S4 malformed sentinel falls through" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_s4" || fail "S4 not ready (malformed sentinel should fall through)"
+
+# --- S5: partial failure (ISSUES_CREATED=1, ISSUES_FAILED=1) -> falls through to ready ---
+mkdir -p "$TMP/s5"
+cat >"$TMP/s5/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something
+- **Phase**: design
+EOF
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=1\n' >"$TMP/s5/oos-issue-sentinel"
+set +e
+out_s5=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/s5" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "S5 partial failure sentinel falls through" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_s5" || fail "S5 not ready (partial failure should fall through)"
+
+# --- X2b: in-session sentinel wins when both oos-issues-created.md and oos-issue-sentinel are present ---
+mkdir -p "$TMP/x2b"
+printf 'https://github.com/example/larch/issues/9\n' >"$TMP/x2b/oos-issues-created.md"
+printf 'ISSUES_CREATED=2\nISSUES_FAILED=0\n' >"$TMP/x2b/oos-issue-sentinel"
+printf 'x\n' >"$TMP/x2b/oos-accepted-design.md"
+set +e
+out_x2b=$(bash "$SUBJECT" prepare --design-tmpdir "$TMP/x2b" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X2b in-session+issue-sentinel precedence" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-sentinel$' <<<"$out_x2b" || fail "X2b not skip-sentinel (oos-issues-created.md should win over oos-issue-sentinel)"
 
 if [[ "$FAIL" -ne 0 ]]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
