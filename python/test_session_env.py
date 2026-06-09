@@ -540,7 +540,7 @@ def test_write_run_params_rejects_empty_boolean_flags(tmp_path: Path) -> None:
     assert "requires a value" in invalid.stderr
 
 
-def test_cleanup_tmpdir_fails_when_removal_blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cleanup_tmpdir_fails_when_removal_blocked(tmp_path: Path) -> None:
     target = tmp_path / "cleanup-me"
     target.mkdir()
     (target / "keep").write_text("x", encoding="utf-8")
