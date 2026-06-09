@@ -131,8 +131,8 @@ def allowed_tools_contains_skill(frontmatter_text: str) -> bool:
                 continue
             value = match.group(1)
             if value.strip():
-                tokens = _parse_allowed_tools_tokens(value)
-                return False if tokens is None else "Skill" in tokens
+                inline_tokens = _parse_allowed_tools_tokens(value)
+                return False if inline_tokens is None else "Skill" in inline_tokens
             tokens: list[str] = []
             for child in lines[idx + 1 :]:
                 if not child.startswith((" ", "\t")):
