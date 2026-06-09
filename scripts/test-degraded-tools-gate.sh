@@ -10,18 +10,20 @@ FAIL=0
 
 assert_contains() {
     local haystack=$1 needle=$2 label=$3
-    if printf '%s\n' "$haystack" | grep -Fq -- "$needle"; then
+    if grep -Fq -- "$needle" <<< "$haystack"; then
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
         printf 'FAIL: %s — expected to contain: %s\n' "$label" "$needle" >&2
-        printf '----- output -----\n%s\n------------------\n' "$haystack" >&2
+        printf '%s\n' "--- output ---" >&2
+        printf '%s\n' "$haystack" >&2
+        printf '%s\n' "---" >&2
     fi
 }
 
 assert_not_contains() {
     local haystack=$1 needle=$2 label=$3
-    if printf '%s\n' "$haystack" | grep -Fq -- "$needle"; then
+    if grep -Fq -- "$needle" <<< "$haystack"; then
         FAIL=$((FAIL + 1))
         printf 'FAIL: %s — expected NOT to contain: %s\n' "$label" "$needle" >&2
     else
