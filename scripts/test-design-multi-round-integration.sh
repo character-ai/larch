@@ -6,9 +6,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
 RUN_STEP3="$ROOT/skills/design/scripts/run-step3-review.sh"
-CONTINUATION="$ROOT/skills/design/scripts/plan-review-continuation.sh"
-STEP3_STATE="$ROOT/skills/design/scripts/design-step3-state.sh"
-SNAPSHOT="$ROOT/skills/design/scripts/snapshot-plan-round.sh"
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-multi-round-int.XXXXXX")"
