@@ -104,6 +104,10 @@ Counting is not gated on `voting-tally.md`; cap-reached cleanup can remove the
 round-local tally while leaving cumulative accepted artifacts intact, and the
 final summary must still report those accepted findings.
 
+## OOS filed sentinel fallback
+
+When `$DESIGN_TMPDIR/oos-issues-created.md` is absent or empty but `$DESIGN_TMPDIR/oos-issue-sentinel` exists with `ISSUES_CREATED >= 1`, the helper reads `ISSUES_CREATED` from the sentinel and reports `OOS filed: N — (URLs unavailable — annotate step was skipped)` rather than silently showing `0`. This covers cases where `/issue` ran (creating the sentinel) but `file-design-oos.sh annotate` was never called (so `oos-issues-created.md` was never written).
+
 ## Recent contract coverage
 
 - `publish-skipped` is an accepted outcome with an explicit Outcome bullet, a skipped-publish note, no failed-publish recovery prose, and `Run logs` left as `N/A`.

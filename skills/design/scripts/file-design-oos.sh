@@ -324,9 +324,11 @@ cmd_annotate() {
   local order="$d/oos-design-filing-order.txt"
   local stdout_file="$ISSUE_STDOUT_FILE"
 
-  if [[ ! -f "$stdout_file" ]]; then
-    larch_err "file-design-oos: --issue-stdout-file missing or not a file"
-    exit 2
+  if [[ ! -s "$stdout_file" ]]; then
+    printf 'FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout\n'
+    printf 'WARN=file-design-oos annotate: issue-stdout-file empty or missing (%s); oos-issues-created.md not written\n' \
+      "$stdout_file"
+    return 0
   fi
   if [[ ! -f "$order" ]]; then
     larch_err "file-design-oos: missing $order (run prepare first)"

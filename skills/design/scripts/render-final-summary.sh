@@ -342,6 +342,16 @@ if [ -f "$DESIGN_TMPDIR/oos-issues-created.md" ] && [ -s "$DESIGN_TMPDIR/oos-iss
     OOS_COUNT=$(grep -chE 'https://github.com[^[:space:])>]+' "$DESIGN_TMPDIR/oos-issues-created.md" 2>/dev/null | head -1 || echo 0)
     case "$OOS_COUNT" in ''|*[!0-9]*) OOS_COUNT=0 ;; esac
     OOS_URLS=$(grep -hoE 'https://github.com[^"[:space:])>]+' "$DESIGN_TMPDIR/oos-issues-created.md" 2>/dev/null | sort -u | paste -sd, - || true)
+elif [ -f "$DESIGN_TMPDIR/oos-issue-sentinel" ]; then
+    _sent_created=$(awk -F= '$1=="ISSUES_CREATED"{print $2; exit}' \
+        "$DESIGN_TMPDIR/oos-issue-sentinel" 2>/dev/null || echo 0)
+    case "$_sent_created" in
+        ''|*[!0-9]*) ;;
+        0) ;;
+        *) OOS_COUNT="$_sent_created"
+           OOS_URLS="(URLs unavailable — annotate step was skipped)"
+           ;;
+    esac
 fi
 
 RUN_LOGS_PATH="N/A"
