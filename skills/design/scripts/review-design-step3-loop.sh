@@ -53,7 +53,7 @@ step3_loop_emit_envelope() {
 
 step3_loop_persist_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
-    local result_env="$DESIGN_TMPDIR/.step3-review-result.env" loop_status="" kvs=()
+    local result_env="$DESIGN_TMPDIR/.step3-review-result.env" loop_status="" kvs=() merge_key _line _key _value _present
     case "$status" in
         cap-hit) loop_status=cap-reached ;;
         complete) loop_status=complete ;;
@@ -67,20 +67,47 @@ step3_loop_persist_envelope() {
         "FINAL_ROUND_NUM=${final_round:-$round_num}"
         "ROUNDS_COMPLETED=${rounds_completed:-0}"
         "ACCEPTED_COUNT=${ACCEPTED_COUNT:-0}"
+        "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-0}"
         "DEGRADED_PANEL=${DEGRADED_PANEL:-0}"
         "STEP3_REVIEW_ROUND_NUM=${round_num:-}"
         "REVIEW_ROUND_COUNT=${round_num:-0}"
+        "ROUND_NUM=${ROUND_NUM:-$round_num}"
+        "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}"
+        "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}"
+        "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}"
+        "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}"
     )
     [[ -z "${POSTPLAN_RC:-}" ]] || kvs+=("POSTPLAN_RC=${POSTPLAN_RC:-}")
     [[ -z "${DEDUP_RC:-}" ]] || kvs+=("DEDUP_RC=${DEDUP_RC:-}")
+    [[ -z "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] || kvs+=("PLAN_REVIEW_CONTINUE_REASON=${PLAN_REVIEW_CONTINUE_REASON:-}")
     [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || kvs+=("SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}")
+    if [[ -f "$result_env" && ! -L "$result_env" ]]; then
+        for merge_key in TALLY_PLAN_REVIEW_STATUS IMPORTANT_ACCEPTED_COUNT AGGREGATOR_STATUS VOTING_TALLY_FILE PANEL_PRUNED_EMPTY ROUND_NUM PLAN_REVIEW_CONTINUE_REASON; do
+            _present=false
+            for _line in "${kvs[@]}"; do
+                _key="${_line%%=*}"
+                if [[ "$_key" == "$merge_key" && -n "${_line#*=}" ]]; then
+                    _present=true
+                    break
+                fi
+            done
+            [[ "$_present" == true ]] && continue
+            while IFS= read -r _line || [[ -n "$_line" ]]; do
+                _key="${_line%%=*}"
+                _value="${_line#*=}"
+                if [[ "$_key" == "$merge_key" && -n "$_value" ]]; then
+                    kvs+=("${_key}=${_value}")
+                    break
+                fi
+            done <"$result_env"
+        done
+    fi
     phase_driver_write_result_env "$result_env" "${kvs[@]}" || true
 }
 
 step3_loop_write_completed_step3() {
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : >"$DESIGN_TMPDIR/.completed/step-3"
-    : >"$DESIGN_TMPDIR/.completed/step-3.5"
 }
 
 step3_loop_is_hard() {
@@ -99,9 +126,13 @@ step3_loop_resolve_findings_file() {
                 FINDINGS_FILE=*) findings_file="${_line#FINDINGS_FILE=}" ;;
             esac
         done <"$approval_env"
-        rm -f "$approval_env"
     fi
     printf '%s\n' "$findings_file"
+}
+
+step3_loop_consume_approval_env() {
+    local round_num="$1"
+    rm -f "$DESIGN_TMPDIR/.gate-b-per-round-approval-round-${round_num}.env"
 }
 
 step3_loop_count_accepted_findings() {
@@ -167,6 +198,7 @@ step3_loop_run_dedup() {
         return 22
     fi
     : >"$DESIGN_TMPDIR/.gate-b-postapply-ready-${round_num}"
+    step3_loop_consume_approval_env "$round_num"
     return 0
 }
 
@@ -175,12 +207,14 @@ step3_loop_run_apply() {
     ACCEPTED_COUNT="$(step3_loop_count_accepted_findings)"
     case "$ACCEPTED_COUNT" in ''|*[!0-9]*) ACCEPTED_COUNT=0 ;; esac
     if (( 10#$ACCEPTED_COUNT == 0 )); then
+        step3_loop_consume_approval_env "$round_num"
         step3_loop_write_phase "$round_num" awaiting-continuation
         return 0
     fi
 
     findings_file="$(step3_loop_resolve_findings_file "$round_num")"
     if [[ ! -s "$findings_file" ]]; then
+        step3_loop_consume_approval_env "$round_num"
         step3_loop_write_phase "$round_num" awaiting-continuation
         return 0
     fi
@@ -364,6 +398,10 @@ run_design_step3_loop() {
         phase="${phase:-$(step3_loop_read_phase "$round_num")}"
         case "$phase" in
             awaiting-apply)
+                if [[ "$APPROVE_REQUESTED" == true && ! -f "$DESIGN_TMPDIR/.gate-b-per-round-approval-round-${round_num}.env" ]]; then
+                    step3_loop_emit_envelope per-round-approval-required "$round_num" "$round_num" "$round_num"
+                    exit 0
+                fi
                 set +e
                 step3_loop_run_apply "$round_num"
                 post_rc=$?

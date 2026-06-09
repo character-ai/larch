@@ -111,7 +111,7 @@ printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGR
 out="$(run_loop "$D1" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'complete envelope'
 [[ -f "$D1/.completed/step-3" ]] || fail 'complete should write .completed/step-3'
-[[ -f "$D1/.completed/step-3.5" ]] || fail 'complete should write .completed/step-3.5'
+[[ ! -f "$D1/.completed/step-3.5" ]] || fail 'complete should defer .completed/step-3.5 to Step 3b'
 [[ -f "$D1/.gate-b-postapply-ready-1" ]] || fail 'dedup success should write gate-b marker'
 grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D1/.step3-review-result.env" || fail 'complete should persist loop envelope'
 

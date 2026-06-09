@@ -464,7 +464,19 @@ validate_step3_loop_starting_round() {
         esac
     fi
     if [[ "$STARTING_ROUND_PROVIDED" != true ]]; then
-        STARTING_ROUND=$((last_count + 1))
+        local candidate=0 n candidate_phase
+        for (( n=last_count; n>=1; n-- )); do
+            candidate_phase="$DESIGN_TMPDIR/.step3-round-${n}.phase"
+            if [[ -f "$candidate_phase" ]]; then
+                candidate=$n
+                break
+            fi
+        done
+        if (( candidate > 0 )); then
+            STARTING_ROUND=$candidate
+        else
+            STARTING_ROUND=$((last_count + 1))
+        fi
     fi
     start_dec=$((10#$STARTING_ROUND))
     if (( start_dec > last_count + 1 )); then
