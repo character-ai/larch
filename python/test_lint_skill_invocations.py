@@ -29,6 +29,8 @@ def skill_doc(allowed_tools: str, body: str) -> str:
         ("pattern-b", "Bash, Read, Skill", "Invoke `/foo` via the Skill tool."),
         ("no-skill", "Bash, Read", "No invocation phrase."),
         ("flow-list", "[Bash, Read, Skill]", "Invoke `/thing` via the Skill tool."),
+        ("quoted-flow-list", '["Bash", "Skill"]', "Invoke `/thing` via the Skill tool."),
+        ("single-quoted-flow-list", "['Bash', 'Skill']", "Invoke `/thing` via the Skill tool."),
         ("substring", "Bash, SkillCheck", "No invocation phrase."),
         ("quoted", '"Bash, Skill"', "Invoke the Skill tool:\n- skill: foo"),
     ],
@@ -44,6 +46,21 @@ def test_block_sequence_allowed_tools(tmp_path: Path, capsys: pytest.CaptureFixt
         tmp_path,
         "skills/block/SKILL.md",
         "---\nname: block\ndescription: block\nallowed-tools:\n  - Bash\n  - Skill\n---\n\nInvoke `/x` via the Skill tool.\n",
+    )
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
+def test_malformed_allowed_tools_gate_false(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_skill(
+        tmp_path,
+        "skills/malformed-bracket/SKILL.md",
+        skill_doc("[Bash, Skill", "Missing phrase but malformed frontmatter."),
+    )
+    write_skill(
+        tmp_path,
+        "skills/malformed-quote/SKILL.md",
+        skill_doc('"Bash, Skill', "Missing phrase but unclosed quote."),
     )
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err

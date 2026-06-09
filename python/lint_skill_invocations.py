@@ -64,12 +64,57 @@ def _strip_inline_comment(value: str) -> str:
     return value.strip()
 
 
-def _split_tokens(value: str) -> list[str]:
+def _quotes_balanced(value: str) -> bool:
+    in_single = False
+    in_double = False
+    for char in value:
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+    return not in_single and not in_double
+
+
+def _split_flow_list_inner(inner: str) -> list[str] | None:
+    items: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    for char in inner:
+        if char == "'" and not in_double:
+            in_single = not in_single
+            current.append(char)
+        elif char == '"' and not in_single:
+            in_double = not in_double
+            current.append(char)
+        elif char == "," and not in_single and not in_double:
+            item = _strip_quotes("".join(current).strip())
+            if item:
+                items.append(item)
+            current = []
+        else:
+            current.append(char)
+    if in_single or in_double:
+        return None
+    item = _strip_quotes("".join(current).strip())
+    if item:
+        items.append(item)
+    return items
+
+
+def _parse_allowed_tools_tokens(value: str) -> list[str] | None:
     value = _strip_inline_comment(value.strip())
-    if value.startswith("[") and value.endswith("]"):
-        value = value[1:-1]
-    value = _strip_quotes(value)
-    return [_strip_quotes(part).strip() for part in value.split(",") if _strip_quotes(part).strip()]
+    if not value:
+        return []
+    if not _quotes_balanced(value):
+        return None
+    if value.startswith("["):
+        if not value.endswith("]"):
+            return None
+        return _split_flow_list_inner(value[1:-1])
+    stripped = _strip_quotes(value)
+    tokens = [part.strip() for part in stripped.split(",") if part.strip()]
+    return tokens if tokens else []
 
 
 def allowed_tools_contains_skill(frontmatter_text: str) -> bool:
@@ -87,7 +132,8 @@ def allowed_tools_contains_skill(frontmatter_text: str) -> bool:
                 continue
             value = match.group(1)
             if value.strip():
-                return "Skill" in _split_tokens(value)
+                tokens = _parse_allowed_tools_tokens(value)
+                return False if tokens is None else "Skill" in tokens
             tokens: list[str] = []
             for child in lines[idx + 1 :]:
                 if not child.startswith((" ", "\t")):
@@ -98,7 +144,10 @@ def allowed_tools_contains_skill(frontmatter_text: str) -> bool:
                 item = re.match(r"^-\s*(.+)$", stripped)
                 if not item:
                     return False
-                tokens.extend(_split_tokens(item.group(1)))
+                parsed = _parse_allowed_tools_tokens(item.group(1))
+                if parsed is None:
+                    return False
+                tokens.extend(parsed)
             return "Skill" in tokens
     except Exception:
         return False
