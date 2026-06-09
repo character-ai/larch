@@ -23,6 +23,7 @@ codex-impl-manifest-raw
 plan-review-tally
 code-review-tally
 review-findings-full
+reviewer-prune-ledger
 review-context
 review-findings
 review-panel-manifest
@@ -96,6 +97,9 @@ done
 [ "$(larch_log_batch_mode review-findings-full)" = "replace" ]
 [ "$(larch_log_batch_extension review-findings-full)" = ".jsonl" ]
 [ "$(larch_log_batch_sanitizer review-findings-full)" = "none" ]
+[ "$(larch_log_batch_mode reviewer-prune-ledger)" = "replace" ]
+[ "$(larch_log_batch_extension reviewer-prune-ledger)" = ".tsv" ]
+[ "$(larch_log_batch_sanitizer reviewer-prune-ledger)" = "none" ]
 [ "$(larch_log_batch_extension review-findings-classification-round-1)" = ".tsv" ]
 [ "$(larch_log_batch_mode review-findings-classification-round-1)" = "replace" ]
 [ "$(larch_log_batch_sanitizer review-findings-classification-round-1)" = "none" ]

@@ -615,9 +615,9 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan.txt" ]] || fail "plan.txt missing on main"
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
-[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md missing"
-[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/voting-tally.md" ]] || fail "plan-review voting-tally.md missing"
-[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s must survive plan-review snapshot pruning"
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md should be concise-excluded"
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/voting-tally.md" ]] || fail "plan-review voting-tally.md should be concise-excluded"
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s should be concise-excluded"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
@@ -712,14 +712,9 @@ done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
 # aggregator-output-phase2 differs from findings.md → must be staged
 [[ -f "$clone/larch-logs/design/RUNPUB1/aggregator-output-phase2.txt" ]] || fail "aggregator-output-phase2 (different from findings.md) should be staged"
-# composed-plan.diff must exist and contain a valid unified diff header
-[[ -f "$clone/larch-logs/design/RUNPUB1/composed-plan.diff" ]] || fail "composed-plan.diff missing"
-command grep -q '^---' "$clone/larch-logs/design/RUNPUB1/composed-plan.diff" || fail "composed-plan.diff lacks unified diff header"
-# large vote output must be capped (only FINDING_ lines retained)
-[[ -f "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" ]] || fail "vote output missing after cap"
-command grep -q '\[rationale capped' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "vote cap sentinel missing"
-command grep -q '^FINDING_1: YES' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "FINDING_ lines missing after cap"
-! grep -q 'long prose preamble' "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" || fail "prose preamble not removed by cap"  # lint-bare-grep-probe: ok test-script child-process safe
+# composed-plan.diff and vote-output prose are debug-gated by default.
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/composed-plan.diff" ]] || fail "composed-plan.diff should be debug-gated"
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/claude-vote-output.txt" ]] || fail "vote output should be debug-gated"
 
 echo "=== final no-delta succeeds idempotently when main already has run id ==="
 TMPNOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-noop.XXXXXX")
@@ -1914,7 +1909,7 @@ out_ballot=$(
 [[ "$out_ballot" == *"PUBLISH_OK=true"* ]] || fail "ballot.txt in round should not prevent publish: $out_ballot"
 git -C "$clone_ballot" pull -q origin main
 [[ ! -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/ballot.txt" ]] || fail "ballot.txt should not be staged from round directory"
-[[ -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/findings.md" ]] || fail "findings.md should still be staged"
+[[ ! -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/findings.md" ]] || fail "findings.md should be concise-excluded"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "=== plan.txt round-1-only + plan.diff for rounds >= 2 (#3705) ==="
@@ -1936,10 +1931,9 @@ out_mr=$(
 )
 [[ "$out_mr" == *"PUBLISH_OK=true"* ]] || fail "multi-round publish should succeed: $out_mr"
 git -C "$clone_mr" pull -q origin main
-[[ -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-1/plan.txt" ]] || fail "round-1 plan.txt should be staged"
-[[ ! -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.txt" ]] || fail "round-2 plan.txt should NOT be staged"
-[[ -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.diff" ]] || fail "round-2 plan.diff should be staged"
-command grep -q 'updated section' "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.diff" || fail "round-2 plan.diff should contain the new content"
+[[ ! -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-1/plan.txt" ]] || fail "round-1 plan.txt should be concise-excluded"
+[[ ! -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.txt" ]] || fail "round-2 plan.txt should be concise-excluded"
+[[ ! -f "$clone_mr/larch-logs/design/RUNMR1/plan-review/round-2/plan.diff" ]] || fail "round-2 plan.diff should be debug-gated"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "=== top-level dedup skips files byte-identical to final round (#3705) ==="
@@ -1965,7 +1959,7 @@ out_dd=$(
 git -C "$clone_dd" pull -q origin main
 [[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/findings.md" ]] || fail "deduped top-level findings.md should not be staged"
 [[ -f "$clone_dd/larch-logs/design/RUNDEDUP1/voting-tally.md" ]] || fail "non-duplicate voting-tally.md should be staged"
-[[ -f "$clone_dd/larch-logs/design/RUNDEDUP1/plan-review/round-1/findings.md" ]] || fail "round-1/findings.md should be staged"
+[[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/plan-review/round-1/findings.md" ]] || fail "round-1/findings.md should be concise-excluded"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "All design-log-publish harness assertions passed."

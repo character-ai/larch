@@ -72,9 +72,8 @@ round_artifact_included() {
         cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
             return 1
             ;;
-        # Phase and retry specialist outputs: previously fell through to the
-        # broad *-output* allow; denied here. *-ns-retry*.txt files are kept
-        # via the broad *-output-*.txt allow below (ns-retry-sidecars audit scan).
+        # Phase, retry, and NS-retry specialist outputs are raw transcripts or
+        # sidecars; default committed logs use round-meta reviewer_signals instead.
         cursor-specialist-*-output-phase*.txt|cursor-specialist-*-output-phase*.txt.*|cursor-specialist-*-output-retry.txt|cursor-specialist-*-output-retry.txt.*|codex-specialist-*-output-phase*.txt|codex-specialist-*-output-phase*.txt.*|codex-specialist-*-output-retry.txt|codex-specialist-*-output-retry.txt.*)
             return 1
             ;;
@@ -118,16 +117,11 @@ round_artifact_included() {
         findings.md|accepted-findings.md|rejected-findings-full.md|oos.md)
             return 1
             ;;
-        # Pin the known Dynamic Codex forensics families and sidecars here:
-        # dyn-*-codex-output.txt and dyn-*-codex-output-phase*.txt plus
-        # .meta/.json/.cap-hit. Retry outputs are denied above; other/future
-        # output shapes may still fall through to the broad *-output* allow.
-        # These retained families rely on the documented pattern-based
-        # redaction posture for committed run logs; see SECURITY.md.
         dyn-*-codex-output.txt|dyn-*-codex-output-phase*.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output-phase*.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output-phase*.txt.json|dyn-*-codex-output.txt.cap-hit|dyn-*-codex-output-phase*.txt.cap-hit)
-            return 0
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]]
+            return $?
             ;;
-        findings-classification.tsv|scout-archetype-yield.tsv|rejected-findings.md|oos-accepted-review.md|review-round-summary.md|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-dirty-tree-summary.env|panel-manifest.ndjson|code-voter-slots.ndjson|coder-prompt.md|coder-tool.txt|coder-cursor.log)
+        prune-decision.env|prune-nit.env|findings-classification.tsv|scout-archetype-yield.tsv|rejected-findings.md|oos-accepted-review.md|review-round-summary.md|voting-tally.md|aggregator-validate.stderr|aggregator-dispatch.stderr|review-dirty-tree-summary.env|panel-manifest.ndjson|code-voter-slots.ndjson|coder-prompt.md|coder-tool.txt|coder-cursor.log)
             return 0
             ;;
         cursor-ci-stall-*.json)
@@ -139,7 +133,11 @@ round_artifact_included() {
         reviewer-dyn-*.md)
             return 1
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-vote-output-first-pass.txt|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json)
+        *-vote-output*.txt|*-vote-output*.txt.*|*-ns-retry*.txt|*-ns-retry*.txt.*|*-output-first-pass.txt|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]]
+            return $?
+            ;;
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|scout-round*-status.env|scout-round*-manifest.json)
             return 0
             ;;
         *)
@@ -510,7 +508,6 @@ def read_json(path):
 for key, fname, kind in [
     ('tally',       'review-tally.env',          'kv'),
     ('collector',   'collector-results.env',      'raw'),
-    ('collect_log', 'collect-agent-results.log',  'raw'),
     ('summary',     'review-summary.json',        'json'),
     ('coder',       'coder.env',                  'kv'),
 ]:
@@ -531,6 +528,116 @@ for tool, fname in [('cursor', 'coder-cursor.wrapper.log'), ('codex', 'coder-cod
         wl[tool] = read_raw(path)
 if wl:
     out['wrapper_logs'] = wl
+
+
+def first_substantive(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped:
+                    return stripped
+    except OSError:
+        pass
+    return ""
+
+def result_kind(line):
+    low = (line or "").lower()
+    if not line:
+        return "UNKNOWN"
+    if line.startswith('{'):
+        try:
+            data = json.loads(line)
+            if data.get("no_issues_found") is True:
+                return "NO_ISSUES_FOUND"
+            if data.get("findings"):
+                return "HAS_FINDINGS"
+        except Exception:
+            return "PARSE_FAILURE"
+    if "no_issues_found" in low or low.startswith("no issues found"):
+        return "NO_ISSUES_FOUND"
+    if "not substantive" in low:
+        return "NOT_SUBSTANTIVE"
+    if "timeout" in low:
+        return "TIMEOUT"
+    if "finding" in low or "schema_version" in low:
+        return "HAS_FINDINGS"
+    return "UNKNOWN"
+
+def trailing_content(path):
+    first = True
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                if first:
+                    first = False
+                    if result_kind(stripped) != "NO_ISSUES_FOUND":
+                        return False
+                    continue
+                return True
+    except OSError:
+        return False
+    return False
+
+manifest = {}
+for mf in ("panel-manifest.ndjson", "code-voter-slots.ndjson"):
+    path = os.path.join(src, mf)
+    if not os.path.isfile(path):
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for row in f:
+                try:
+                    data = json.loads(row)
+                except Exception:
+                    continue
+                base = os.path.basename(str(data.get("output") or ""))
+                if base:
+                    manifest[base] = data
+    except OSError:
+        pass
+signals = []
+try:
+    names = sorted(os.listdir(src))
+except OSError:
+    names = []
+for name in names:
+    if not (name.endswith(".txt") and "output" in name):
+        continue
+    if "vote-output" in name or "ns-retry" in name or name.endswith("-first-pass.txt"):
+        continue
+    path = os.path.join(src, name)
+    if not os.path.isfile(path):
+        continue
+    meta = manifest.get(name, {})
+    first = first_substantive(path)
+    ns_reason = ""
+    for suffix in (".ns-retry.meta", "-ns-retry.meta", ".ns-retry.json", "-ns-retry.json"):
+        spath = os.path.join(src, name + suffix)
+        if os.path.isfile(spath):
+            try:
+                raw = read_raw(spath).strip()
+                try:
+                    obj = json.loads(raw)
+                    ns_reason = str(obj.get("reason") or obj.get("ns_retry_reason") or "")
+                except Exception:
+                    ns_reason = raw.splitlines()[0] if raw else ""
+            except Exception:
+                ns_reason = ""
+            break
+    first_pass = os.path.join(src, name[:-4] + "-first-pass.txt") if name.endswith(".txt") else ""
+    signals.append({
+        "output_basename": name,
+        "slot_label": str(meta.get("slot") or os.path.splitext(name)[0]),
+        "result_kind": result_kind(first),
+        "ns_retry_reason": ns_reason,
+        "first_pass_trailing_content": trailing_content(first_pass),
+    })
+if signals:
+    out["reviewer_signals"] = signals
 
 if out:
     sys.stdout.write(json.dumps(out, ensure_ascii=False) + '\n')

@@ -148,6 +148,29 @@ extract_category() {
     ' <<<"$body"
 }
 
+
+extract_body_severity() {
+    LC_ALL=C awk '
+        /^[[:space:]-]*\*\*Severity\*\*:[[:space:]]*/ {
+            sub(/^[[:space:]-]*\*\*Severity\*\*:[[:space:]]*/, "")
+            gsub(/[[:space:]]+$/, "")
+            print
+            exit
+        }
+    ' <<<"$1"
+}
+
+extract_focus_area() {
+    LC_ALL=C awk '
+        /^[[:space:]-]*\*\*Focus area\*\*:[[:space:]]*/ {
+            sub(/^[[:space:]-]*\*\*Focus area\*\*:[[:space:]]*/, "")
+            gsub(/[[:space:]]+$/, "")
+            print
+            exit
+        }
+    ' <<<"$1"
+}
+
 extract_reviewer_from_body() {
     LC_ALL=C awk -F: '
         /^[[:space:]-]*\*\*Reviewer\(s\)\*\*:/ ||
@@ -287,12 +310,15 @@ build_design_reviewer_map
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5" round_num="$6"
-    local reviewer_redacted body_redacted category strict_cat=0 reviewer_slots_json
+    local reviewer_redacted body_redacted body_severity focus_area category strict_cat=0 reviewer_slots_json
     if [[ "$phase" == "plan-review" ]]; then
         reviewer="$(normalize_design_reviewer_slots "$reviewer")"
     fi
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
+    body_severity="$(extract_body_severity "$body_redacted")"
+    focus_area="$(extract_focus_area "$body_redacted")"
+    body_redacted="${body_redacted:0:2000}"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
     [[ "$phase" == "plan-review" && "$outcome" == "accepted" ]] && strict_cat=1
     category="$(extract_category "$body_redacted" "$strict_cat")"
@@ -306,9 +332,11 @@ emit_record() {
         --arg round_num "$round_num" \
         --arg category "$category" \
         --arg prose_body "$body_redacted" \
+        --arg body_severity "$body_severity" \
+        --arg focus_area "$focus_area" \
         --arg schema_version "2" \
         --argjson reviewer_slots "$reviewer_slots_json" \
-        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, schema_version: $schema_version, reviewer_slots: $reviewer_slots, round_num: $round_num, category: $category, prose_body: $prose_body}' \
+        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, schema_version: $schema_version, reviewer_slots: $reviewer_slots, round_num: $round_num, category: $category, body_severity: $body_severity, focus_area: $focus_area, prose_body: $prose_body}' \
         >> "$TMP_OUT" || fail "failed to write JSONL record for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }

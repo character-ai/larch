@@ -10,12 +10,14 @@ LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
-    larch_err "Usage: dispatch-plan-review-panel.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false --plan-file PATH [--feature-file PATH] [--timeout SEC] [--competition-notice-file PATH] [--prune-round-num N --prune-ledger FILE]"
+    larch_err "Usage: dispatch-plan-review-panel.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false --plan-file PATH [--feature-file PATH] [--timeout SEC] [--competition-notice-file PATH] [--round-num N] [--prune-round-num N --prune-ledger FILE]"
 }
 
 DESIGN_TMPDIR=""
@@ -25,6 +27,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 TIMEOUT="1800"
 COMPETITION_NOTICE_FILE=""
+ROUND_NUM="1"
 PRUNE_ROUND_NUM=""
 PRUNE_LEDGER=""
 REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
@@ -38,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?}"; shift 2 ;;
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?}"; shift 2 ;;
+        --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
         --prune-round-num) PRUNE_ROUND_NUM="${2:?}"; shift 2 ;;
         --prune-ledger) PRUNE_LEDGER="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -56,6 +60,8 @@ fail() {
 [[ -n "$PLAN_FILE" ]] || fail "--plan-file is required"
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found: $PLAN_FILE"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
+case "$ROUND_NUM" in ''|*[!0-9]*|0) fail "--round-num must be a positive integer" ;; esac
+ROUND_NUM=$((10#$ROUND_NUM))
 if [[ -n "$PRUNE_ROUND_NUM" ]]; then
     case "$PRUNE_ROUND_NUM" in ''|*[!0-9]*|0) fail "--prune-round-num must be a positive integer" ;; esac
     PRUNE_ROUND_NUM=$((10#$PRUNE_ROUND_NUM))
@@ -281,32 +287,64 @@ if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout
 fi
 
 
+PANEL_FULL=0
+while IFS= read -r _full_row || [[ -n "$_full_row" ]]; do
+    [[ -n "$_full_row" ]] && PANEL_FULL=$((PANEL_FULL + 1))
+done <"$_manifest"
 PRUNE_ACTIVE=false
+PRUNE_STATUS=skipped
+ELIGIBLE_COUNT=0
+ELIGIBLE=0
 PRUNED_COUNT=0
 PRUNED_COMBOS=""
 PANEL_PRUNED_EMPTY=false
+PRUNE_FILTER_RC=0
+PRUNE_FAIL_OPEN=false
+_prune_counter="${PRUNE_ROUND_NUM:-$ROUND_NUM}"
+prune_evaluated="$(prune_window_evaluated "$_prune_counter")"
+_write_prune_decision_env() {
+    write_prune_decision_env "$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/prune-decision.env" "$_prune_counter" "$PRUNE_ACTIVE" "$PRUNE_STATUS" "$PANEL_FULL" "$ELIGIBLE" "$PRUNED_COUNT" "$PRUNED_COMBOS" "$PANEL_PRUNED_EMPTY"
+}
 if [[ -n "$PRUNE_LEDGER" && -n "$PRUNE_ROUND_NUM" ]]; then
     _prune_tmp=$(mktemp "$DESIGN_TMPDIR/plan-review-slots.pruned.XXXXXX")
-    _prune_out=$(LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter --ledger "$PRUNE_LEDGER" --round "$PRUNE_ROUND_NUM" --manifest "$_manifest" --out "$_prune_tmp")
+    _prune_err="$DESIGN_TMPDIR/reviewer-prune-filter.stderr"
+    set +e
+    _prune_out=$(LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter --ledger "$PRUNE_LEDGER" --round "$PRUNE_ROUND_NUM" --manifest "$_manifest" --out "$_prune_tmp" 2>"$_prune_err")
+    PRUNE_FILTER_RC=$?
+    set -e
     while IFS= read -r _prune_line || [[ -n "$_prune_line" ]]; do
         _prune_key="${_prune_line%%=*}"
         _prune_value="${_prune_line#*=}"
         case "$_prune_key" in
             PRUNE_ACTIVE) PRUNE_ACTIVE="$_prune_value" ;;
+            ELIGIBLE_COUNT) ELIGIBLE_COUNT="$_prune_value" ;;
             PRUNED_COUNT) PRUNED_COUNT="$_prune_value" ;;
             PRUNED_COMBOS) PRUNED_COMBOS="$_prune_value" ;;
             PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$_prune_value" ;;
+            PRUNE_FAIL_OPEN) PRUNE_FAIL_OPEN="$_prune_value" ;;
             WARN) emit_kv WARN "$_prune_value" ;;
         esac
     done <<<"$_prune_out"
+    if [[ -s "$_prune_err" ]]; then
+        while IFS= read -r _pw || [[ -n "$_pw" ]]; do
+            [[ -n "$_pw" ]] && emit_kv WARN "$_pw"
+        done <"$_prune_err"
+    fi
     case "$PRUNED_COUNT" in ''|*[!0-9]*) PRUNED_COUNT=0 ;; esac
-    if [[ "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
-        cp -f "$_manifest" "$DESIGN_TMPDIR/plan-review-slots.pre-prune.ndjson"
+    if [[ "$prune_evaluated" != "true" ]]; then
+        PRUNE_ACTIVE=false
+    fi
+    ELIGIBLE="$(normalize_prune_eligible "$PRUNE_ACTIVE" "$ELIGIBLE_COUNT")"
+    PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
+    if [[ "$PRUNE_FILTER_RC" -eq 0 && "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
         mv -f "$_prune_tmp" "$_manifest"
     else
         rm -f "$_prune_tmp"
     fi
+else
+    PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
 fi
+_write_prune_decision_env
 
 slot_count=0
 while IFS= read -r _row || [[ -n "$_row" ]]; do
@@ -324,8 +362,14 @@ if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
     emit_kv DYNAMIC_SLOT_COUNT 0
     emit_kv DEGRADED_ROUND false
     emit_kv PANEL_PRUNED_EMPTY true
+    emit_kv PRUNE_ACTIVE "$PRUNE_ACTIVE"
+    emit_kv PRUNE_STATUS "$PRUNE_STATUS"
+    emit_kv PANEL_FULL "$PANEL_FULL"
+    emit_kv ELIGIBLE "$ELIGIBLE"
+    emit_kv PRUNED_COUNT "$PRUNED_COUNT"
     emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
     emit_kv PANEL_MANIFEST "$_manifest"
+    _write_prune_decision_env
     emit_kv PANEL_PATHS_FILE "$_panel_paths"
     exit 0
 fi
@@ -397,7 +441,13 @@ printf '%s\n' "$_dispatch_out"
 emit_kv DYNAMIC_SLOT_COUNT "$dyn_slots"
 emit_kv DEGRADED_ROUND "$DEGRADED_ROUND"
 emit_kv PANEL_PRUNED_EMPTY "$PANEL_PRUNED_EMPTY"
+emit_kv PRUNE_ACTIVE "$PRUNE_ACTIVE"
+emit_kv PRUNE_STATUS "$PRUNE_STATUS"
+emit_kv PANEL_FULL "$PANEL_FULL"
+emit_kv ELIGIBLE "$ELIGIBLE"
+emit_kv PRUNED_COUNT "$PRUNED_COUNT"
 emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
+_write_prune_decision_env
 emit_kv PANEL_MANIFEST "$_manifest"
 emit_kv PANEL_PATHS_FILE "${ALL_OUTPUT_FILES_PATH:-${_manifest}.output-files}"
 exit 0

@@ -12,7 +12,7 @@ This is the standing tool behind the kind of analysis filed as a `[Analysis Repo
 
 ## Usage
 
-`/fluff-analysis [--include-in-progress] [--cutoff ISO8601] [--min-group N] [--log-root DIR] [--out FILE]`
+`/fluff-analysis [--include-in-progress] [--cutoff ISO8601] [--since-version X.Y.Z] [--min-group N] [--log-root DIR] [--out FILE]`
 
 ## Run the Analysis
 
@@ -28,6 +28,7 @@ Flags:
 
 - `--include-in-progress` — also read in-progress `/design` session temp dirs under the session cache (a racy snapshot of un-flushed runs). Off by default; committed logs only.
 - `--cutoff ISO8601` — enable a pre/post comparison section split at this timestamp (e.g. the date a reviewer-instruction change landed). Omitted by default.
+- `--since-version X.Y.Z` — enable a pre/post comparison split by `manifest.json.larch_version`; preferred for release-gated behavior changes.
 - `--min-group N` — minimum findings for a semantic group to appear in the tables. Default: `20`.
 - `--sessions-dir DIR` — session cache dir for `--include-in-progress`. Default: `~/.cache/larch/sessions`.
 - `--inprogress-since ISO8601` — lower bound on in-progress session mtime (skips stale temp dirs).
@@ -42,6 +43,7 @@ Logic lives in `scripts/`; SKILL.md is a thin coordinator. Per-script contracts 
 
 - `scripts/fluff-analysis.py` (contract: `scripts/fluff-analysis.md`) — the analyzer: extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering.
 - `scripts/test-fluff-analysis.sh` (contract: `scripts/test-fluff-analysis.md`) — offline regression harness over a synthetic `larch-logs` fixture.
+- `scripts/test-fluff-analysis-corpus.sh` — optional committed-corpus smoke for post-version low-value acceptance.
 
 ## NEVER
 

@@ -11,7 +11,7 @@ export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-plan-review.sh"
 PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
 VOTE_LIB="$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
-HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
+HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity'
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -92,7 +92,7 @@ assert_cell() {
 
 assert_all_rows_21_fields() {
     local path="$1" bad
-    bad=$(awk -F '\t' 'NR > 1 && NF != 21 { print NR ":" NF }' "$path")
+    bad=$(awk -F '\t' 'NR > 1 && NF != 22 { print NR ":" NF }' "$path")
     [[ -z "$bad" ]] || fail "expected 21 fields in every data row for $path, got $bad"
 }
 

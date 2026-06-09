@@ -153,16 +153,16 @@ if [ "$_vfd_slug" = ".txt replace none" ]; then
 else
     fail "vendor-failure-diagnostics slug wrong/absent: '$_vfd_slug'"
 fi
-assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
-assert_round_artifact_included "dyn-api-contract-codex-output.txt" "0" "round artifact includes dynamic codex raw output"
-assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt" "0" "round artifact includes dynamic codex phased output"
+assert_round_artifact_included "reviewer-output.txt" "1" "round artifact excludes reviewer output txt"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt" "1" "round artifact excludes dynamic codex raw output"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt" "1" "round artifact excludes dynamic codex phased output"
 assert_round_artifact_included "dyn-api-contract-codex-output-retry.txt" "1" "round artifact excludes unsupported dynamic codex retry output"
-assert_round_artifact_included "dyn-api-contract-codex-output.txt.meta" "0" "round artifact includes dynamic codex meta sidecar"
-assert_round_artifact_included "dyn-api-contract-codex-output.txt.json" "0" "round artifact includes dynamic codex json sidecar"
-assert_round_artifact_included "dyn-api-contract-codex-output.txt.cap-hit" "0" "round artifact includes dynamic codex cap-hit sidecar"
-assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.meta" "0" "round artifact includes dynamic codex phased meta sidecar"
-assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.json" "0" "round artifact includes dynamic codex phased json sidecar"
-assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.cap-hit" "0" "round artifact includes dynamic codex phased cap-hit sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.meta" "1" "round artifact excludes dynamic codex meta sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.json" "1" "round artifact excludes dynamic codex json sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output.txt.cap-hit" "1" "round artifact excludes dynamic codex cap-hit sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.meta" "1" "round artifact excludes dynamic codex phased meta sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.json" "1" "round artifact excludes dynamic codex phased json sidecar"
+assert_round_artifact_included "dyn-api-contract-codex-output-phase2.txt.cap-hit" "1" "round artifact excludes dynamic codex phased cap-hit sidecar"
 assert_round_artifact_included "codex-specialist-security-output.txt" "1" "round artifact excludes static codex raw output"
 assert_round_artifact_included "codex-specialist-security-output-phase2.txt" "1" "round artifact excludes phased static codex raw output"
 assert_round_artifact_included "codex-specialist-security-output-retry.txt" "1" "round artifact excludes static codex retry output"
@@ -1070,15 +1070,10 @@ else
 fi
 
 # Test 6: parse-retry first-pass voter sidecar is included when present
-if [ -f "$_wr_round/cursor-vote-output-first-pass.txt" ]; then
-    pass "write-round commits cursor-vote-output-first-pass.txt"
+if [ ! -f "$_wr_round/cursor-vote-output-first-pass.txt" ]; then
+    pass "write-round excludes cursor-vote-output-first-pass.txt by default"
 else
-    fail "write-round must commit cursor-vote-output-first-pass.txt (missing)"
-fi
-if grep -q 'pre-retry narrative' "$_wr_round/cursor-vote-output-first-pass.txt" 2>/dev/null; then
-    pass "write-round cursor-vote-output-first-pass.txt content matches source"
-else
-    fail "write-round cursor-vote-output-first-pass.txt content mismatch"
+    fail "write-round must exclude cursor-vote-output-first-pass.txt by default"
 fi
 
 # Byte-for-byte content verification on scout files

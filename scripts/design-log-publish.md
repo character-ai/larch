@@ -315,3 +315,6 @@ Offline harness: `scripts/test-design-log-publish.sh` (Makefile target
 those arms end in `.failure-diag`, so the composed `*.failure-diag` carrier falls
 through to the default-include path and is staged + redacted like any other
 committed artifact. See `docs/vendor-agent-diagnostics-audit.md`.
+## Concise prune/log audit update
+
+Default design publishing keeps root `plan.txt` but stages only the exhaustive concise per-round plan-review set: `round-summary.env`, `findings-classification.tsv`, `prune-decision.env`, and `prune-nit.env`. `plan.diff`, `composed-plan.diff`, votes, manifests, and raw reviewer prose require `LARCH_FLUSH_DEBUG=1`.

@@ -1066,12 +1066,30 @@ flush_review_batches() {
         [[ -n "$tally_out" ]] && larch_err "$tally_out"
     fi
 
-    "$LARCH_LOG_SH" write \
+    local findings_err="$impl_tmpdir/review-findings-full.flush.err"
+    if ! "$LARCH_LOG_SH" write \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
         --batch review-findings-full \
-        --input-file "$findings_file" >/dev/null 2>&1 || true
+        --input-file "$findings_file" >"$findings_err" 2>&1; then
+        append_log_write_failure "5" "larch-log.sh write review-findings-full" "$findings_err" "Warnings" "$?" "review-findings-full batch"
+    else
+        rm -f "$findings_err"
+    fi
+    if [[ -f "$impl_tmpdir/reviewer-prune-ledger.tsv" ]]; then
+        local ledger_err="$impl_tmpdir/reviewer-prune-ledger.flush.err"
+        if ! "$LARCH_LOG_SH" write \
+            --log-root "$impl_tmpdir/larch-logs" \
+            --skill implement \
+            --run-id "$run_id" \
+            --batch reviewer-prune-ledger \
+            --input-file "$impl_tmpdir/reviewer-prune-ledger.tsv" >"$ledger_err" 2>&1; then
+            append_log_write_failure "5" "larch-log.sh write reviewer-prune-ledger" "$ledger_err" "Warnings" "$?" "reviewer-prune-ledger batch"
+        else
+            rm -f "$ledger_err"
+        fi
+    fi
 }
 
 flush_round_log_after_coder() {
@@ -1363,6 +1381,10 @@ _implement_round_body() {
             fi
         fi
     fi
+    if [[ ! -f "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv" ]]; then
+        printf 'round\ttool\tslot\tlabel\taccepted_count\n' > "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"
+    fi
+
     core_out="$round_dir/review-core.env"
     degraded_retry_flag="$round_dir/degraded-retry.flag"
     degraded_retry_done="$round_dir/degraded-retry.done"

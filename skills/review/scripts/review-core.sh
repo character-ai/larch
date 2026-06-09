@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 
 usage() {
@@ -274,11 +276,34 @@ append_review_execution_issue() {
         --entry "$entry" 2>/dev/null || true
 }
 
+ensure_prune_decision_env() {
+    local dest="$REVIEW_TMPDIR/prune-decision.env"
+    [[ -f "$dest" ]] && return 0
+    write_prune_decision_env "$dest" "$ROUND_NUM" false skipped 0 0 0 "" false || true
+}
+
+ensure_prune_nit_env() {
+    local dest="$REVIEW_TMPDIR/prune-nit.env" tmp
+    [[ -f "$dest" ]] && return 0
+    tmp="${dest}.tmp.$$"
+    if {
+        printf 'PRUNED_COUNT=0\n'
+        printf 'INSCOPE_REMAINING=0\n'
+        printf 'STATUS=skipped\n'
+    } > "$tmp"; then
+        mv -f "$tmp" "$dest" || rm -f "$tmp"
+    else
+        rm -f "$tmp"
+    fi
+}
+
 flush_round_log() {
     local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR:-}" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
+    ensure_prune_decision_env
+    ensure_prune_nit_env
     flush_err="$REVIEW_TMPDIR/review-core-write-round.log"
     set +e
     "$LARCH_LOG_SH" write-round \
@@ -958,6 +983,9 @@ set -e
 if [[ "$_prune_rc" -ne 0 ]]; then
     append_review_execution_issue "- **review-core / prune-nit-findings**: subprocess exited with rc=$_prune_rc (unexpected; failing open)."
 fi
+if ! cp -f "$prune_out" "$REVIEW_TMPDIR/prune-nit.env"; then
+    append_review_execution_issue "- **review-core / prune-nit-findings**: failed to persist prune-nit.env."
+fi
 _prune_count=$(kv_get "$prune_out" PRUNED_COUNT)
 _prune_count="${_prune_count:-0}"
 if [[ "${_prune_count}" != "0" ]]; then
@@ -1076,6 +1104,7 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
         copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
         copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
     fi
+    record_reviewer_prune_round "$findings_classification_tsv_file"
     flush_round_log
     emit_kv REVIEW_CORE_STATUS main-agent-vote-required
     emit_kv ROUND_NUM "$ROUND_NUM"

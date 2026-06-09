@@ -20,3 +20,6 @@ Filtering is fail-open. `LARCH_REVIEWER_PRUNE=off` disables pruning exactly; oth
 `filter` emits `PRUNE_ACTIVE`, `ELIGIBLE_COUNT`, `PRUNED_COUNT`, `PRUNED_COMBOS`, `PANEL_PRUNED_EMPTY`, and a `WARN` line when ledger parsing fails open. When it prunes, it also writes an operator-visible breadcrumb to stderr.
 
 Harness: `scripts/test-reviewer-prune.sh`, wired through `make test-reviewer-prune`.
+## Concise prune/log audit update
+
+Filter stdout stays limited to prune KVs plus operator-visible `WARN` lines. Callers derive `PRUNE_STATUS` through `scripts/lib-prune-decision.sh`; advisory warnings do not imply failure, while nonzero filter rc or `PRUNE_FAIL_OPEN=true` do. Ledger rows remain launched-slot history only.

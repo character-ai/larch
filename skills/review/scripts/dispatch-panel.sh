@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 
 usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--prune-ledger FILE] [context flags]"; }
@@ -455,33 +457,63 @@ recount_manifest_slots() {
     DYNAMIC_SLOTS=$(jq -r 'select(has("prompt_file")) | .slot' "$manifest" | wc -l | awk '{print $1}')
 }
 
+PANEL_FULL_STATIC=$((static_slot_count + DYNAMIC_SLOTS))
 PRUNE_ACTIVE=false
+PRUNE_STATUS=skipped
+ELIGIBLE_COUNT=0
+ELIGIBLE=0
 PRUNED_COUNT=0
 PRUNED_COMBOS=""
 PANEL_PRUNED_EMPTY=false
+PRUNE_FILTER_RC=0
+PRUNE_FAIL_OPEN=false
+prune_evaluated="$(prune_window_evaluated "$ROUND_NUM")"
+
+_write_prune_decision_env() {
+    write_prune_decision_env "$REVIEW_TMPDIR/prune-decision.env" "$ROUND_NUM" "$PRUNE_ACTIVE" "$PRUNE_STATUS" "$PANEL_FULL_STATIC" "$ELIGIBLE" "$PRUNED_COUNT" "$PRUNED_COMBOS" "$PANEL_PRUNED_EMPTY"
+}
+
 if [[ -n "$PRUNE_LEDGER" ]]; then
     prune_tmp=$(mktemp "$REVIEW_TMPDIR/panel-manifest.pruned.XXXXXX")
-    prune_out=$(LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter --ledger "$PRUNE_LEDGER" --round "$ROUND_NUM" --manifest "$manifest" --out "$prune_tmp")
+    prune_err="$REVIEW_TMPDIR/reviewer-prune-filter.stderr"
+    set +e
+    prune_out=$(LARCH_QUIET_DISABLE=1 "$REVIEWER_PRUNE_SH" filter --ledger "$PRUNE_LEDGER" --round "$ROUND_NUM" --manifest "$manifest" --out "$prune_tmp" 2>"$prune_err")
+    PRUNE_FILTER_RC=$?
+    set -e
     while IFS= read -r prune_line || [[ -n "$prune_line" ]]; do
         prune_key="${prune_line%%=*}"
         prune_value="${prune_line#*=}"
         case "$prune_key" in
             PRUNE_ACTIVE) PRUNE_ACTIVE="$prune_value" ;;
+            ELIGIBLE_COUNT) ELIGIBLE_COUNT="$prune_value" ;;
             PRUNED_COUNT) PRUNED_COUNT="$prune_value" ;;
             PRUNED_COMBOS) PRUNED_COMBOS="$prune_value" ;;
             PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$prune_value" ;;
+            PRUNE_FAIL_OPEN) PRUNE_FAIL_OPEN="$prune_value" ;;
             WARN) emit_kv WARN "$prune_value" ;;
         esac
     done <<< "$prune_out"
+    if [[ -s "$prune_err" ]]; then
+        while IFS= read -r prune_warn || [[ -n "$prune_warn" ]]; do
+            [[ -n "$prune_warn" ]] && emit_kv WARN "$prune_warn"
+        done < "$prune_err"
+    fi
     case "$PRUNED_COUNT" in ''|*[!0-9]*) PRUNED_COUNT=0 ;; esac
-    if [[ "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
-        cp -f "$manifest" "$REVIEW_TMPDIR/panel-manifest.pre-prune.ndjson"
+    if [[ "$prune_evaluated" != "true" ]]; then
+        PRUNE_ACTIVE=false
+    fi
+    ELIGIBLE="$(normalize_prune_eligible "$PRUNE_ACTIVE" "$ELIGIBLE_COUNT")"
+    PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
+    if [[ "$PRUNE_FILTER_RC" -eq 0 && "$PRUNE_ACTIVE" == "true" && "$PRUNED_COUNT" -gt 0 ]]; then
         mv -f "$prune_tmp" "$manifest"
         recount_manifest_slots
     else
         rm -f "$prune_tmp"
     fi
+else
+    PRUNE_STATUS="$(derive_prune_status "$PRUNE_ACTIVE" "$PRUNE_FILTER_RC" "$PRUNE_FAIL_OPEN" "$PRUNED_COUNT" "$PANEL_PRUNED_EMPTY" "$prune_evaluated")"
 fi
+_write_prune_decision_env
 
 if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
     emit_kv EXTERNAL_OUTPUT_FILES ""
@@ -498,8 +530,14 @@ if [[ "$PANEL_PRUNED_EMPTY" == "true" ]]; then
     emit_kv DISPATCH_OK true
     emit_kv STATIC_DISPATCH_OK true
     emit_kv DYNAMIC_DISPATCH_OK true
+    emit_kv PRUNE_ACTIVE "$PRUNE_ACTIVE"
+    emit_kv PRUNE_STATUS "$PRUNE_STATUS"
+    emit_kv PANEL_FULL "$PANEL_FULL_STATIC"
+    emit_kv ELIGIBLE "$ELIGIBLE"
+    emit_kv PRUNED_COUNT "$PRUNED_COUNT"
     emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
     emit_kv PANEL_PRUNED_EMPTY true
+    _write_prune_decision_env
     exit 0
 fi
 
@@ -563,8 +601,14 @@ emit_kv STATIC_SLOT_COUNT "$static_slot_count"
 emit_kv SLOT_COUNT "$((static_slot_count + DYNAMIC_SLOTS))"
 [[ -n "$SCOUT_MANIFEST" ]] && emit_kv SCOUT_MANIFEST "$SCOUT_MANIFEST"
 emit_kv PANEL_MANIFEST "$manifest"
+emit_kv PRUNE_ACTIVE "$PRUNE_ACTIVE"
+emit_kv PRUNE_STATUS "$PRUNE_STATUS"
+emit_kv PANEL_FULL "$PANEL_FULL_STATIC"
+emit_kv ELIGIBLE "$ELIGIBLE"
+emit_kv PRUNED_COUNT "$PRUNED_COUNT"
 emit_kv PRUNED_COMBOS "$PRUNED_COMBOS"
 emit_kv PANEL_PRUNED_EMPTY "$PANEL_PRUNED_EMPTY"
+_write_prune_decision_env
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"

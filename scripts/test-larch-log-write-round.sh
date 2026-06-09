@@ -33,6 +33,7 @@ assert_grep() {
 
 assert_not_grep() {
     local pattern="$1" path="$2" label="$3"
+    [[ -e "$path" ]] || return 0
     if grep -Eq "$pattern" "$path"; then
         fail "$label"
     fi
@@ -182,26 +183,26 @@ round_dir="$log_root/implement/run123/round-1"
 assert_not_file "$round_dir/findings.md" "findings excluded (projection of review-findings-full.jsonl)"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.meta" "static codex meta sidecar excluded"
 assert_not_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phased static cursor meta sidecar excluded"
-assert_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body included"
-assert_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output.txt.cap-hit" "dynamic codex cap-hit sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt" "dynamic codex phase raw body included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.meta" "dynamic codex phase meta sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase json sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.cap-hit" "dynamic codex phase cap-hit sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt" "dynamic codex named phase raw body included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" "dynamic codex named phase meta sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase json sidecar included"
-assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.cap-hit" "dynamic codex named phase cap-hit sidecar included"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.cap-hit" "dynamic codex cap-hit sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phase2.txt" "dynamic codex phase raw body excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.meta" "dynamic codex phase meta sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase json sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.cap-hit" "dynamic codex phase cap-hit sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt" "dynamic codex named phase raw body excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" "dynamic codex named phase meta sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase json sidecar excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.cap-hit" "dynamic codex named phase cap-hit sidecar excluded"
 assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt" "unsupported dynamic codex retry raw body excluded"
 assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.meta" "unsupported dynamic codex retry meta excluded"
 assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.json" "unsupported dynamic codex retry json excluded"
 assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.cap-hit" "unsupported dynamic codex retry cap-hit excluded"
-assert_file "$round_dir/dyn-api-contract-output.txt" "dynamic cursor raw body included"
-assert_file "$round_dir/dyn-api-contract-output.txt.meta" "dynamic cursor meta sidecar included"
-assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
-assert_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
+assert_not_file "$round_dir/dyn-api-contract-output.txt" "dynamic cursor raw body excluded"
+assert_not_file "$round_dir/dyn-api-contract-output.txt.meta" "dynamic cursor meta sidecar excluded"
+assert_not_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
+assert_not_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
 assert_file "$round_dir/review-round-summary.md" "summary"
 assert_file "$round_dir/findings-classification.tsv" "findings classification TSV"
 assert_file "$round_dir/round-meta.json" "round-meta.json composed from sidecar files"
@@ -228,18 +229,10 @@ assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.events.jsonl" "exc
 assert_not_file "$round_dir/codex-specialist-security-output.txt.sidecar" "excluded sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.dirty-tree" "excluded dirty tree sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.untracked-baseline" "excluded untracked baseline sidecar"
-assert_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-retry first-pass sidecar included"
+assert_not_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-retry first-pass sidecar excluded"
 
 assert_not_grep '^CMD_JSON=' "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase CMD_JSON stripped"
 assert_not_grep '^CMD_JSON=' "$round_dir/codex-specialist-security-output-phase2.txt.meta" "static codex phase CMD_JSON stripped"
-assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex CMD_JSON stripped"
-assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output-phase2.txt.meta" "dynamic codex phase CMD_JSON stripped"
-assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" "dynamic codex named phase CMD_JSON stripped"
-assert_json_result_stripped "$round_dir/cursor-vote-output.txt.json" "cursor .result field should be stripped"
-assert_json_result_stripped "$round_dir/codex-vote-output.txt.json" "codex .result field should be stripped"
-assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex .result field should be stripped"
-assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase .result field should be stripped"
-assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase .result field should be stripped"
 assert_round_order
 
 # Verify round-meta.json has expected sections from sidecar files
@@ -254,7 +247,7 @@ assert 'coder' in data, "missing coder section"
 assert data['coder'].get('CODER_TOOL') == 'cursor', f"coder.CODER_TOOL expected 'cursor', got {data['coder'].get('CODER_TOOL')!r}"
 assert 'summary' in data, "missing summary section"
 assert 'collector' in data, "missing collector section"
-assert 'collect_log' in data, "missing collect_log section"
+assert 'collect_log' not in data, "collect_log should be omitted"
 assert 'wrapper_logs' in data, "missing wrapper_logs section"
 assert 'cursor' in data['wrapper_logs'], "missing wrapper_logs.cursor"
 PYEOF
@@ -271,7 +264,6 @@ EOF
 chmod +x "$python_only_bin/jq"
 PATH="$python_only_bin:$PATH" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 2 --source-dir "$source_dir" >/dev/null
 assert_not_file "$log_root/implement/run123/round-2/findings.md" "round-2 findings excluded (projection)"
-assert_json_result_stripped "$log_root/implement/run123/round-2/cursor-vote-output.txt.json" "python fallback strips cursor .result"
 
 excluded_only_source="$TMP/round-empty"
 mkdir -p "$excluded_only_source"
@@ -293,10 +285,8 @@ cat > "$invalid_source/cursor-vote-output.txt.json" <<'EOF'
 EOF
 trim_tmpdir="$TMP/write-round-tmp"
 mkdir -p "$trim_tmpdir"
-if TMPDIR="$trim_tmpdir" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 4 --source-dir "$invalid_source" >/dev/null 2>&1; then
-    fail "write-round should fail closed on invalid json sidecar"
-fi
-assert_not_file "$log_root/implement/run123/round-4/cursor-vote-output.txt.json" "invalid json sidecar should not be copied"
+TMPDIR="$trim_tmpdir" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 4 --source-dir "$invalid_source" >/dev/null
+assert_not_file "$log_root/implement/run123/round-4/cursor-vote-output.txt.json" "default-excluded invalid json sidecar should not be copied"
 if find "$trim_tmpdir" -maxdepth 1 -name 'larch-log-round-trim.*' | grep -q .; then
     fail "write-round should clean round trim temps after failure"
 fi

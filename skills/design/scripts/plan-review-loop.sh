@@ -28,6 +28,8 @@ if [[ ! -x "$PLAN_BLOCK_STRIP_BODY_SH" ]]; then
 fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
@@ -502,6 +504,31 @@ _emit_plan_round_timing_row() {
     fi
 }
 
+_write_prune_decision_env() {
+    local round_num="$1"
+    local prune_round="${PRUNE_ROUND_NUM:-$round_num}"
+    local prune_active="${PRUNE_ACTIVE:-false}" prune_status="${PRUNE_STATUS:-skipped}" panel_full="${PANEL_FULL:-0}"
+    local eligible="${ELIGIBLE:-${ELIGIBLE_COUNT:-0}}" pruned_count="${PRUNED_COUNT:-0}" pruned_combos="${PRUNED_COMBOS:-}" panel_empty="${PANEL_PRUNED_EMPTY:-false}"
+    write_prune_decision_env "$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-decision.env" "$prune_round" "$prune_active" "$prune_status" "$panel_full" "$eligible" "$pruned_count" "$pruned_combos" "$panel_empty" || true
+}
+
+_write_prune_nit_env() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-nit.env" tmp
+    [[ -f "$dest" ]] && return 0
+    mkdir -p "$(dirname "$dest")" || return 0
+    tmp="${dest}.tmp.$$"
+    if {
+        printf 'PRUNED_COUNT=0\n'
+        printf 'INSCOPE_REMAINING=0\n'
+        printf 'STATUS=skipped\n'
+    } > "$tmp"; then
+        mv -f "$tmp" "$dest" || rm -f "$tmp"
+    else
+        rm -f "$tmp"
+    fi
+}
+
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
     local snapshot_ok=true
@@ -515,6 +542,8 @@ _snapshot_terminal_exit_preserving_status() {
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
         snapshot_ok=false
     fi
+    _write_prune_decision_env "$round_num"
+    _write_prune_nit_env "$round_num"
     _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "$summary_revise"
     case "${LOOP_STATUS:-}:${TALLY_PLAN_REVIEW_STATUS:-}" in
         main-agent-vote-required:*)
@@ -856,6 +885,7 @@ _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --plan-file "$PLAN_FILE" \
     --feature-file "$SCOPE_ANCHOR_FILE" \
     --timeout "$PANEL_TIMEOUT" \
+    --round-num "$round_num" \
     --prune-round-num "$PRUNE_ROUND_NUM" \
     --prune-ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv")
 
@@ -869,9 +899,15 @@ DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
 ALL_SLOTS_DROPPED="false"
 DROPPED_SLOTS_FILE=""
-PANEL_PRUNED_EMPTY=false
-PANEL_MANIFEST="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+PRUNE_ACTIVE="false"
+PRUNE_STATUS="skipped"
+PANEL_FULL="0"
+ELIGIBLE="0"
+ELIGIBLE_COUNT="0"
+PRUNED_COUNT="0"
 PRUNED_COMBOS=""
+PANEL_PRUNED_EMPTY="false"
+PANEL_MANIFEST="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -887,6 +923,12 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         DROPPED_SLOTS_FILE) DROPPED_SLOTS_FILE="$_value" ;;
         PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$_value" ;;
+        PRUNE_ACTIVE) PRUNE_ACTIVE="$_value" ;;
+        PRUNE_STATUS) PRUNE_STATUS="$_value" ;;
+        PANEL_FULL) PANEL_FULL="$_value" ;;
+        ELIGIBLE) ELIGIBLE="$_value" ;;
+        ELIGIBLE_COUNT) ELIGIBLE_COUNT="$_value" ;;
+        PRUNED_COUNT) PRUNED_COUNT="$_value" ;;
         PANEL_MANIFEST) PANEL_MANIFEST="$_value" ;;
         PRUNED_COMBOS) PRUNED_COMBOS="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
@@ -1494,6 +1536,8 @@ set -e
 if [[ "$_plan_prune_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-prune-nit: subprocess exited with rc=$_plan_prune_rc (failing open)"
 fi
+mkdir -p "$DESIGN_TMPDIR/plan-review/round-${round_num}"
+cp -f "$_plan_prune_out" "$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-nit.env" 2>/dev/null || emit_kv WARN "plan-review-prune-nit: failed to persist prune-nit.env"
 _plan_prune_count=""
 while IFS= read -r _pln || [[ -n "$_pln" ]]; do
     [[ -z "$_pln" ]] && continue

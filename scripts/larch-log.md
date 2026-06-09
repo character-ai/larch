@@ -213,3 +213,6 @@ per-output write-round path (F14). The durable implement path for vendor-agent
 failures is the `vendor-failure-diagnostics` batch, staged by
 `scripts/flush-vendor-failure-diagnostics.sh`. See
 `docs/vendor-agent-diagnostics-audit.md`.
+## Concise prune/log audit update
+
+Implement `write-round` default logs are concise by construction: raw reviewer output, vote-output prose, NS-retry transcripts, and pre-prune manifests are debug-gated, while `prune-decision.env` and `prune-nit.env` are included. `round-meta.json` carries `reviewer_signals[]` with `output_basename`, `slot_label`, `result_kind`, `ns_retry_reason`, and `first_pass_trailing_content`, produced from source-dir reviewer outputs before default transcript exclusion.

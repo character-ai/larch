@@ -325,6 +325,13 @@ design_artifact_excluded() {
         aggregate-validate.py|findings.md.tmp|composed-plan.redacted.md|ballot.txt)
             return 0
             ;;
+        plan.diff|composed-plan.diff)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
+            ;;
+        findings.md|findings-oos.md|findings-in-scope.md|accepted-plan-findings.md|rejected-findings.md|oos.md|oos-accepted-design.md|oos-accepted-design.before.md|voting-tally.md|plan-review-slots.ndjson|plan-review-slots.pre-prune.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-start-s|plan-review-scope-anchor.txt)
+            return 0
+            ;;
         *-plan-voter-prompt.txt|aggregator-prompt.md|aggregate-untagged-input.md)
             return 0
             ;;
@@ -334,13 +341,14 @@ design_artifact_excluded() {
         scout-plan-manifest.json.raw|scout-plan-manifest.json.raw.prompt)
             return 0
             ;;
-        *-vote-output.txt.meta|*-vote-output.txt.json)
-            return 0
+        *-vote-output.txt|*-vote-output-first-pass.txt|*-vote-output.txt.meta|*-vote-output.txt.json)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
             ;;
     esac
     # Phase 3b exclusions (#3715 logs-size-reduction).
     case "$name" in
-        findings-in-scope.md|timing-ledger.tsv|timing-ledger.tsv.lock|\
+        timing-ledger.tsv|timing-ledger.tsv.lock|\
         scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
         composed-plan.md)
             return 0
@@ -516,7 +524,7 @@ ENUM_TOP_TMP=""
 # `patch plan.txt composed-plan.diff -o composed-plan.md`.
 _composed_src="$DESIGN_TMPDIR/composed-plan.md"
 _plan_ref="$DESIGN_TMPDIR/plan.txt"
-if [[ -f "$_composed_src" && -f "$_plan_ref" ]]; then
+if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" && -f "$_composed_src" && -f "$_plan_ref" ]]; then
     _cdiff_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-composeddiff.XXXXXX")
     diff -u "$_plan_ref" "$_composed_src" >"$_cdiff_tmp" || true  # diff exits 1 on differences
     if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_cdiff_tmp" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/composed-plan.diff"; then
@@ -592,6 +600,8 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             fi
             if design_round_artifact_included "$_base"; then
                 :
+            elif [[ "$_base" == "plan.txt" ]]; then
+                continue
             elif design_artifact_excluded "$_base"; then
                 # Known top-level exclusion also applies at round level; skip silently.
                 continue
@@ -625,7 +635,8 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
     rm -f "$_pr_files"
     ENUM_PR_TMP=""
 
-    # Generate plan.diff (unified diff vs previous round) for rounds >= 2 (#3705).
+    # Generate plan.diff only for debug flushes; concise logs omit per-round plan diffs.
+    if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]]; then
     for _diff_rn in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
         _prev_plan_src="$pr_root/round-$(( _diff_rn - 1 ))/plan.txt"
         _curr_plan_src="$pr_root/round-$_diff_rn/plan.txt"
@@ -642,6 +653,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
         fi
         rm -f "$_diff_out_f"
     done
+    fi
 fi
 
 if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; then

@@ -109,3 +109,6 @@ slots, legacy deprecation, malicious parser-cell sanitization, and 21-field row 
 Update this contract, `test-tally-plan-review.sh`, `skills/design/SKILL.md`, and `skills/design/references/plan-review.md` together when ballot or artifact formats change.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+## Concise prune/log audit update
+
+The concise design `findings-classification.tsv` schema has a trailing `body_severity` column. It is populated from ballot finding blocks and is the analyzer carrier for concise rounds that do not commit `findings.md`.

@@ -142,3 +142,6 @@ Sourced loop callers can read `IRF_LAST_ACCEPTED_COUNT` and `IRF_LAST_REJECTED_C
 ## Conditional reviewer pruning
 
 Nested `/implement` review rounds pass `--prune-ledger "$IMPLEMENT_TMPDIR/reviewer-prune-ledger.tsv"` to every `review-core.sh` invocation. `REVIEW_CORE_STATUS=prune-skipped` maps to `REVIEW_AND_FIX_STATUS=prune-skipped`, which is non-terminal for the outer Step 5 loop. When a degraded in-round retry ends in a status that does not record a settled ledger row, `review-and-fix.sh` clears that round's ledger rows with a zero-row `reviewer-prune.sh record` call before propagating the terminal status; clear failures emit `WARN` and preserve the review status.
+## Concise prune/log audit update
+
+The implement review driver initializes `reviewer-prune-ledger.tsv` at run root and flushes it as its own larch-log batch after `review-findings-full`. The ledger contains only launched-slot `record` rows; skipped and pruned states live in per-round `prune-decision.env`.

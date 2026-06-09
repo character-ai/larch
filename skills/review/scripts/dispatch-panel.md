@@ -35,3 +35,6 @@ Harness: `skills/review/scripts/test-dispatch-panel.sh`, wired through `make tes
 ## Conditional reviewer pruning
 
 `--prune-ledger FILE` enables the shared `scripts/reviewer-prune.sh filter` hook after static and dynamic rows are finalized and before the waterfall launches. When rows are removed, the unfiltered manifest is copied to `panel-manifest.pre-prune.ndjson` and the canonical `panel-manifest.ndjson` is atomically replaced with the filtered rows; `PANEL_MANIFEST` still points at the canonical basename. A filtered-empty panel emits `PANEL_PRUNED_EMPTY=true`, empty output-file KVs, `DISPATCH_OK=true`, zero slot counts, and returns before the waterfall so the caller can advance the round without treating it as degraded.
+## Concise prune/log audit update
+
+Reviewer pruning now writes a concise `prune-decision.env` for every dispatch exit. The file uses `scripts/lib-prune-decision.sh` status precedence, treats rounds outside the pruning window as `skipped`, and keeps filter warnings separate from fail-open signals.
