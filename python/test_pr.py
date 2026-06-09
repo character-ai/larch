@@ -11,7 +11,7 @@ import pytest
 import config
 import pr as pr_module
 from errors import ShipError
-from proc import CommandResult
+from proc import CommandResult, Runner
 from run_context import RunContext
 
 
@@ -531,7 +531,12 @@ def test_create_main_detached_head_stderr_prefix(
 ) -> None:
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
-    monkeypatch.setattr(git_module, "try_current_branch", lambda *_a, **_k: None)
+
+    def detached_head(_runner: Runner, *, cwd: str | None = None) -> None:
+        _ = cwd
+        return None
+
+    monkeypatch.setattr(git_module, "try_current_branch", detached_head)
     assert pr_module.create_main(["--title", "t", "--body-file", str(body)]) == 2
     err = capsys.readouterr().err
     assert err.strip() == "create-pr.sh: not on a branch (detached HEAD)"
