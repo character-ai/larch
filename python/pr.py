@@ -353,6 +353,8 @@ def create_branch_main(argv: list[str]) -> int:
     if result.exit_code == 0:
         _emit_kv("BRANCH_NAME", result.branch_name)
         _emit_kv("ACTION", result.action)
+    else:
+        print(f"create-branch.sh: {result.status}: {result.branch}", file=sys.stderr)
     return result.exit_code
 
 
@@ -464,6 +466,10 @@ def closes_issue_main(argv: list[str]) -> int:
         except OSError:
             print()
         return 0
+    if args.repo:
+        repo_err = _validate_repo_arg(args.repo, script="gh-pr-closes-issue.sh")
+        if repo_err is not None:
+            return repo_err
     repo = args.repo or gh.resolve_repo(proc) or ""
     if not repo:
         print()

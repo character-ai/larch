@@ -547,3 +547,34 @@ def test_create_main_missing_body_file_stderr_prefix(capsys: pytest.CaptureFixtu
     ) == 2
     err = capsys.readouterr().err
     assert err.startswith("create-pr.sh: cannot read body file:")
+
+
+def test_checks_main_invalid_repo_exit_2(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(pr_module, "proc", RecordingRunner())
+    assert pr_module.checks_main(["--pr", "5", "--repo", "not-valid"]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("gh-pr-checks.sh: --repo must be OWNER/REPO")
+
+
+@pytest.mark.parametrize(
+    ("status", "exit_code"),
+    [("exists", 1), ("invalid", 2), ("fetch_failed", 2)],
+)
+def test_create_branch_main_no_kvs_on_non_success(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    exit_code: int,
+) -> None:
+    def fake_create_branch(*_a: object, **_k: object) -> pr_module.CreateBranchResult:
+        return pr_module.CreateBranchResult(status, "dev/foo", exit_code=exit_code)
+
+    monkeypatch.setattr(pr_module, "create_branch", fake_create_branch)
+    rc = pr_module.create_branch_main(["--branch", "dev/foo"])
+    assert rc == exit_code
+    out = capsys.readouterr().out
+    assert "BRANCH_NAME" not in out
+    assert "ACTION" not in out
