@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from proc import CommandResult
+from proc import CommandResult, Runner
 from test_support import RecordingRunner
 
 import phantom
@@ -13,10 +13,20 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
     impl = tmp_path / "impl"
     impl.mkdir()
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    def dirty_probe(
+        _runner: Runner,
+        _baseline_file: str,
+        *,
+        cwd: str | None,
+    ) -> tuple[str, str, list[str]]:
+        del cwd
+        return ("dirty", "working-tree-dirty", ["a.txt", "b.txt"])
+
     monkeypatch.setattr(
         phantom,
         "_baseline_dirty_probe",
-        lambda *_a, **_k: ("dirty", "working-tree-dirty", ["a.txt", "b.txt"]),
+        dirty_probe,
     )
     runner = RecordingRunner()
     result = phantom.check_phantom_dirty(runner, step="s1")
@@ -30,10 +40,20 @@ def test_probe_with_warn_folds_append_failure(monkeypatch, tmp_path) -> None:
     impl = tmp_path / "impl"
     impl.mkdir()
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    def dirty_probe(
+        _runner: Runner,
+        _baseline_file: str,
+        *,
+        cwd: str | None,
+    ) -> tuple[str, str, list[str]]:
+        del cwd
+        return ("dirty", "working-tree-dirty", ["only.txt"])
+
     monkeypatch.setattr(
         phantom,
         "_baseline_dirty_probe",
-        lambda *_a, **_k: ("dirty", "working-tree-dirty", ["only.txt"]),
+        dirty_probe,
     )
     runner = RecordingRunner(
         responses=[

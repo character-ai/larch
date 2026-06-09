@@ -29,16 +29,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _STEP_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
-def _parse_kv(text: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        parsed[key] = value
-    return parsed
-
-
 def _newline_fold(text: str) -> str:
     return " ".join(text.split())
 
@@ -130,7 +120,7 @@ def check_phantom_dirty(
         paths_file = phantom_dir / f"phantom-paths-{step}.z"
         payload = "\0".join(new_untracked).encode() + b"\0"
         try:
-            paths_file.write_bytes(payload)
+            _ = paths_file.write_bytes(payload)
         except OSError:
             return PhantomDirtyResult(status="unknown", reason="phantom-paths-write-failed")
         return PhantomDirtyResult(
