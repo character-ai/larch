@@ -24,8 +24,8 @@
    - Do not run combine, cap, worksheet, or helper pre-passes on sentinel recovery (steps 3.4–3.5).
 3.3. **Cross-phase dedup**. Build the working batch from `### OOS_N:` blocks in fixed phase order: main-agent, design, review (same accepted-file order as `oos-disposition-checkpoint.sh` and `ship-pr.sh` `run_oos_disposition_gate_if_required_before_oos_pending_false`). Deduplicate equivalent titles across phases before grouping.
 3.4. **Combine pass**. Write `$IMPLEMENT_TMPDIR/oos-combined.md` and `$IMPLEMENT_TMPDIR/oos-grouping-worksheet.md` for the post-3.3 working batch.
-   - **Sanitize before compose**: apply the SKILL.md dual-write redaction rules to combined issue bodies and session-derived worksheet prose destined for public `/issue` bodies or committed larch-log records: secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`. Paraphrase when in doubt.
-   - Cascade `Rule A → Rule B → criteria 1-4 → criterion 5 → criterion 6` with the `~30` LOC threshold convention from SKILL.md.
+   - **Sanitize before compose**: apply the dual-write redaction rules from `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` to combined issue bodies and session-derived worksheet prose destined for public `/issue` bodies or committed larch-log records: secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`. Paraphrase when in doubt.
+   - Cascade `Rule A → Rule B → criteria 1-4 → criterion 5 → criterion 6` with the `~30` LOC threshold convention from `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.
    - **Rule A — same logical concern**: HARD COMBINE; overrides the independence carve-out. Group by LLM-judged thematic concern; every group with 2+ entries becomes one combined entry. Preserve actionable content; indent or fence structural source lines such as `###`, `- **Description**:`, `- **Reviewer**:`, `- **Vote tally**:`, and `- **Phase**:` so `parse-input.sh` does not mis-parse.
    - **Rule B**: combine leaked SIMPLE entries at the same `< ~30` LOC boundary used by the triage policy.
    - **Criteria 1–4**: same file/module, similar pattern, overlapping scope, and sequential dependency. Respect the independence carve-out except where Rules A/B or criteria 5/6 override it.
@@ -44,15 +44,15 @@
    - Forward `--input-file "$IMPLEMENT_TMPDIR/oos-combined.md"`, `--title-prefix "[OOS]"`, and, when `$ISSUE_NUMBER` is set, not deferred, and not repo-unavailable, `--blocked-by-issue "$ISSUE_NUMBER"`.
    - Forward `--intra-batch-deps-file "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"` only when step 3.5 produced an exit-0 non-empty TSV.
    - Never pass `--no-dep-llm`.
-   - **Sanitize** every item Description and session-derived field per SKILL.md before the batch call; `/issue` forwards Description verbatim.
+   - **Sanitize** every item Description and session-derived field per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` before the batch call; `/issue` forwards Description verbatim.
    - Parse `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, `ISSUE_<i>_NUMBER=`, `ISSUE_<i>_URL=`, `ISSUE_<i>_DUPLICATE_OF_NUMBER=`, and `ISSUE_<i>_DUPLICATE_OF_URL=`.
    - **Treat both created URLs and duplicate-of URLs as valid disposition URLs.**
    - If `/issue` exits non-zero or `ISSUES_FAILED>0`, do not write `$IMPLEMENT_TMPDIR/oos-issues-created.md`; breadcrumb partial failure and let the checkpoint block until missing dispositions are resolved. Do not treat any URL from the failed batch as disposition-satisfied.
 5. **Write the sentinel**. Write `$IMPLEMENT_TMPDIR/oos-issues-created.md` only after a successful `/issue` batch with no failed items, using the created-or-deduplicated sentinel format below.
 6. **Append the `oos-issues` larch-log batch**.
-   - Accepted entries include created and deduplicated disposition URLs; sanitize NDJSON `body` per SKILL.md before `jq -nc` compose.
+   - Accepted entries include created and deduplicated disposition URLs; sanitize NDJSON `body` per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` before `jq -nc` compose.
    - On non-zero `/issue` or `ISSUES_FAILED>0`, do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch or any other gate-read surface. Log the partial failure only under `Tool Failures` or operator breadcrumbs outside gate-satisfaction paths until the batch succeeds with no failed items.
-   - Rejected/non-accepted entries remain under the Rejected sub-block per SKILL.md OOS carve-outs and the Terminal disposition invariant (`## Rejected` with structured `### OOS_` markers in the NDJSON body). Use `scripts/larch-log-batches.md` only for the compact NDJSON record schema (`jq -nc` with `-c`).
+   - Rejected/non-accepted entries remain under the Rejected sub-block per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` OOS carve-outs and the Terminal disposition invariant (`## Rejected` with structured `### OOS_` markers in the NDJSON body). Use `scripts/larch-log-batches.md` only for the compact NDJSON record schema (`jq -nc` with `-c`).
    - Sentinel-recovery and all-already-filed branches still write the required evidence rows; step 6 is not skipped on all-already-filed.
 7. **Return control to the Step 8+ checkpoint**.
    - `oos-disposition-checkpoint.sh` gates clearing `OOS_PENDING` (non-security accepted OOS requires a resolved `oos-issues.ndjson`; non-empty `security-oos-observations.md` refuses all-clear until SECURITY.md disposition).
@@ -66,7 +66,7 @@
 
 ## oos-issues-created.md sentinel format
 
-The sentinel is a Markdown table consumed as loose disposition evidence by `oos-disposition-gate.md` Counting rules and by the SKILL.md Terminal disposition invariant for URL tables in `oos-issues-created.md`.
+The sentinel is a Markdown table consumed as loose disposition evidence by `oos-disposition-gate.md` Counting rules and by the Terminal disposition invariant in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` for URL tables in `oos-issues-created.md`.
 
 | OOS title | Issue | URL |
 |---|---|---|
