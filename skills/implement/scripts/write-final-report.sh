@@ -410,7 +410,7 @@ for _rpd_tl in "$IMPLEMENT_TMPDIR"/larch-tokens-*.jsonl; do
     [ -f "$_rpd_tl" ] && rpd_token_ledger_args=(--token-ledger "$_rpd_tl") && break
 done
 "$PLUGIN_ROOT/scripts/render-review-phase-detail.sh" \
-    --rounds-root "$IMPLEMENT_TMPDIR" \
+    --rounds-root "$run_dir" \
     --findings-file "$run_dir/review-findings-full.jsonl" \
     --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv" \
     "${rpd_token_ledger_args[@]+"${rpd_token_ledger_args[@]}"}" \
