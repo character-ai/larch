@@ -321,6 +321,10 @@ exclude = [
   # scripts/reviewer-prune.sh conditional-spawning ledger/filter behavior.
   "scripts/test-reviewer-prune.sh",
   "scripts/test-reviewer-prune.md",
+  # scripts/test-lib-prune-decision.sh is the Makefile-only regression harness
+  # for scripts/lib-prune-decision.sh prune-status derivation.
+  "scripts/test-lib-prune-decision.sh",
+  "scripts/lib-prune-decision.md",
   # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
   # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
   # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
