@@ -252,17 +252,22 @@ def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: i
     assert report.endswith("detail")
 
 
-def test_step5_between_rounds_returns_empty(tmp_path: Path) -> None:
+def test_step5_between_rounds_keeps_latest_round_liveness(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     impl = tmp_path / "impl"
     round_dir = impl / "round-1"
     round_dir.mkdir(parents=True)
     (round_dir / "review-and-fix.env").write_text("STATUS=complete\n", encoding="utf-8")
     (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "detail")
 
-    assert progress_report._render_step5(impl, "run-1") == ""
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "round 1 in progress" in report
+    assert report.endswith("detail")
 
 
-def test_review_rounds_root_prefers_live_tmpdir(tmp_path: Path) -> None:
+def test_review_rounds_root_prefers_flushed_log_during_live_round(tmp_path: Path) -> None:
     impl = tmp_path / "impl"
     run_id = "run-1"
     flushed = impl / "larch-logs" / "implement" / run_id / "round-1"
@@ -273,7 +278,7 @@ def test_review_rounds_root_prefers_live_tmpdir(tmp_path: Path) -> None:
     (live / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
     (live / "round-start-s").write_text("100\n", encoding="utf-8")
 
-    assert progress_report._review_rounds_root(impl, run_id) == impl
+    assert progress_report._review_rounds_root(impl, run_id) == flushed.parent
     report = progress_report._render_step5(impl, run_id)
     assert "round 2 in progress" in report
 

@@ -264,7 +264,7 @@ def _current_round_dir(rounds_root: Path) -> Path | None:
     if not dirs:
         return None
     unsettled = [path for path in dirs if not (path / "review-and-fix.env").exists()]
-    return unsettled[-1] if unsettled else None
+    return unsettled[-1] if unsettled else dirs[-1]
 
 
 def _count_lines(path: Path) -> int:
@@ -322,13 +322,6 @@ def _resolve_run_id(implement_tmpdir: Path) -> str:
 
 
 def _review_rounds_root(implement_tmpdir: Path, run_id: str) -> Path:
-    unsettled = [
-        path
-        for path in _round_dirs(implement_tmpdir)
-        if not (path / "review-and-fix.env").exists()
-    ]
-    if unsettled:
-        return implement_tmpdir
     run_log_root = implement_tmpdir / "larch-logs" / "implement" / run_id if run_id else None
     if run_log_root is not None and run_log_root.is_dir() and _round_dirs(run_log_root):
         return run_log_root
@@ -357,8 +350,7 @@ def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
 
 
 def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
-    rounds_root = _review_rounds_root(implement_tmpdir, run_id)
-    round_dir = _current_round_dir(rounds_root)
+    round_dir = _current_round_dir(implement_tmpdir)
     if round_dir is None:
         return ""
     round_num = _round_number(round_dir) or 0
