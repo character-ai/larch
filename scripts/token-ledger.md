@@ -38,7 +38,7 @@ Resolution order for the ledger file location:
 
 `--ledger PATH` overrides session-id resolution for tests. The override resolves under `${TMPDIR:-/tmp}` after canonicalizing its parent. Paths with `..` are rejected.
 
-`record-vendor raw=` is enum-like and bounded. Use short provenance labels such as `codex_implement`, `codex_review`, `cursor_implement`, `cursor_review`, or — for the `claude_sub` lane — `claude_review`, `claude_vote`, `claude_ci`, `claude_scout`; never paste unstructured stderr, stdout, sidecar logs, prompts, or user content into `raw=`.
+`record-vendor raw=` is enum-like and bounded. Use short provenance labels such as `codex_implement`, `codex_review`, `cursor_implement`, `cursor_review`, or — for the `claude_sub` lane — `claude_review`, `claude_vote`, `claude_ci`, `claude_scout`, `claude_draft`; never paste unstructured stderr, stdout, sidecar logs, prompts, or user content into `raw=`.
 
 ## Failure Mode
 

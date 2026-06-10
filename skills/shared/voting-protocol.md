@@ -111,7 +111,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` for Voter 2 (Codex) and Voter 3 (Cursor), then launch Voter 1 and any Claude replacement voters indicated by `VOTER_2_STATUS=fallback` / `VOTER_3_STATUS=fallback`. The dispatcher launches available external voters in parallel, waits for sentinels, and emits the external output paths. When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3.
+**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh`. The dispatcher launches the Claude Voter 1 lane plus available Codex/Cursor lanes in parallel, waits for sentinels, and emits the voter output paths/statuses for the tally.
 
 **For code review**: `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always), Codex (when available), and Cursor (when available) in parallel. An **unavailable** external is skipped (shrink-not-backfill) — no Claude or alternate-external replacement fills the slot — so the panel is Claude plus the available externals. A genuine *failure* of an available external still reduces the effective panel and is reported as degraded. The orchestrator does not invoke voters directly — `review-core.sh` calls the dispatch script.
 
@@ -146,7 +146,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
-**Cursor voter replacement** (**plan review only**; if `cursor_available` is false): Launch a Claude voter in its place via the Agent tool so plan review's total voter count always remains 3. **Code review does not back-fill** — when `cursor_available` is false, `dispatch-code-voters.sh` skips the Cursor slot (`VOTER_3_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
+**Cursor voter availability**: `/design` plan review delegates Cursor-slot launch/skip status to `dispatch-plan-voters.sh`; code review delegates it to `dispatch-code-voters.sh`, where an unavailable Cursor slot is skipped (`VOTER_3_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
 
 **Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -164,9 +164,9 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
-**Codex voter replacement** (**plan review only**; if `codex_available` is false): Launch a Claude voter in its place via the Agent tool so plan review's total voter count always remains 3. **Code review does not back-fill** — when `codex_available` is false, `dispatch-code-voters.sh` skips the Codex slot (`VOTER_2_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
+**Codex voter availability**: `/design` plan review delegates Codex-slot launch/skip status to `dispatch-plan-voters.sh`; code review delegates it to `dispatch-code-voters.sh`, where an unavailable Codex slot is skipped (`VOTER_2_STATUS=skipped`) and the panel shrinks by one (shrink-not-backfill).
 
-**Claude voter**: Launch via Agent tool with the voter prompt.
+**Claude voter dispatch**: `/design` plan review uses `dispatch-plan-voters.sh` to launch the Claude lane; code review uses `dispatch-code-voters.sh`, which launches the Claude lane inside the dispatcher. Do not launch Claude voters directly from the orchestrator on either path.
 
 Wait for external voter sentinels using `wait-for-reviewers.sh` (use the same tmpdir as the review phase — do not create a new temp directory for voting). Only include sentinel paths for voters that were actually launched:
 

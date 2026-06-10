@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Emit Step 3 plan-candidate preview or Gate C final-plan preview (shared
-# large-plan summary logic). See skills/design/SKILL.md Step 3 / Step 4b.
+# Emit Step 2b implementation-plan preview, Step 3 plan-candidate preview, or
+# Gate C final-plan preview (shared large-plan summary logic). See skills/design/SKILL.md.
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 usage() {
     printf '%s\n' \
-        'usage: emit-design-plan-preview.sh --design-tmpdir DIR --variant step3|gatec' \
+        'usage: emit-design-plan-preview.sh --design-tmpdir DIR --variant step3|gatec|step2b' \
         >&2
 }
 
@@ -87,8 +87,7 @@ emit_plan_body() {
 '
             _outline=$(grep -E '^#{2,3} ' "$plan_file" | head -n 40 || true)
             if [[ -n "$_outline" ]]; then
-                printf '%s
-' "$_outline"
+                printf '%s\n' "$_outline"
             else
                 head -n 30 "$plan_file"
             fi
@@ -110,8 +109,26 @@ ${large_note_fmt}
 _large_note_step3='**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — say "show full plan" to see the body in chat before voting begins.**'
 # shellcheck disable=SC2016
 _large_note_gatec='**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "See full plan" on the prompt below if you want it printed in chat before deciding.**'
+# shellcheck disable=SC2016
+_large_note_step2b='**The plan is very large (%s lines, %s bytes). A generated summary or section outline is shown above. The full plan is at $DESIGN_TMPDIR/plan.txt.**'
 
 case "$variant" in
+    step2b)
+        if [[ -z "${design_tmpdir:-}" || ! -d "$design_tmpdir" ]]; then
+            printf '%s\n' '**⚠ 2b:** DESIGN_TMPDIR missing or invalid; cannot present implementation plan'
+            exit 0
+        fi
+        if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+            printf '%s\n' '**⚠ 2b:** DESIGN_TMPDIR not under allowlist; cannot present implementation plan'
+            exit 0
+        fi
+        if [[ ! -s "$design_tmpdir/plan.txt" ]]; then
+            printf '%s\n' '**⚠ 2b:** plan.txt missing or empty; cannot present implementation plan'
+            exit 0
+        fi
+        printf '\n## Implementation Plan\n\n'
+        emit_plan_body "$design_tmpdir/plan.txt" "$_large_note_step2b"
+        ;;
     step3)
         if [[ -z "${design_tmpdir:-}" || ! -d "$design_tmpdir" ]]; then
             printf '%s\n' '**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**'
@@ -145,7 +162,7 @@ case "$variant" in
         emit_plan_body "$design_tmpdir/plan.txt" "$_large_note_gatec"
         ;;
     *)
-        printf '%s\n' "emit-design-plan-preview.sh: invalid --variant (use step3 or gatec): $variant" >&2
+        printf '%s\n' "emit-design-plan-preview.sh: invalid --variant (use step3, gatec, or step2b): $variant" >&2
         exit 2
         ;;
 esac

@@ -108,6 +108,44 @@ printf '%s\n' "$out3" | grep -Fq 'Hello' || fail "small plan should include full
 printf '%s\n' "$out3" | grep -Fq 'very large' && fail "small plan should not print large-plan note"
 printf '%s\n' "$out3" | grep -Fq 'Fresh summary ignored for small plan' && fail "small plan should ignore generated summary"
 
+# Step 2b small plan — implementation-plan header and full body.
+d_step2b_small="$TMPROOT/d_step2b_small"
+mkdir -p "$d_step2b_small"
+printf '# Step2bSmall\n\nSmall body\n\ndiff_lines: 1\n' >"$d_step2b_small/plan.txt"
+out_step2b_small=$("$SUBJECT" --design-tmpdir "$d_step2b_small" --variant step2b)
+printf '%s\n' "$out_step2b_small" | grep -Fq '## Implementation Plan' || fail "step2b small missing implementation-plan header"
+printf '%s\n' "$out_step2b_small" | grep -Fq 'Small body' || fail "step2b small should include full body"
+
+# Step 2b large plan with fresh generated summary uses plan-summary.md.
+d_step2b_summary="$TMPROOT/d_step2b_summary"
+mkdir -p "$d_step2b_summary"
+{
+    printf '# Step2bSummary\n\n'
+    printf '## Step2b heading hidden by summary\n\n'
+    for _ in $(seq 1 125); do printf 'step2b-summary-body\n'; done
+} >"$d_step2b_summary/plan.txt"
+printf 'Generated step2b summary\n' >"$d_step2b_summary/plan-summary.md"
+touch "$d_step2b_summary/plan.txt"
+sleep 1
+touch "$d_step2b_summary/plan-summary.md"
+out_step2b_summary=$("$SUBJECT" --design-tmpdir "$d_step2b_summary" --variant step2b)
+printf '%s\n' "$out_step2b_summary" | grep -Fq 'Generated step2b summary' || fail "step2b fresh generated summary should be used"
+printf '%s\n' "$out_step2b_summary" | grep -Fq 'Step2b heading hidden by summary' && fail "step2b fresh summary should replace synthetic outline"
+printf '%s\n' "$out_step2b_summary" | grep -Fq 'See full plan' && fail "step2b large note should not reference See full plan interaction"
+
+# Step 2b large plan without a fresh summary falls back to section outline.
+d_step2b_outline="$TMPROOT/d_step2b_outline"
+mkdir -p "$d_step2b_outline"
+{
+    printf '# Step2bOutline\n\n'
+    printf '## Step2b Visible Section\n\n'
+    for _ in $(seq 1 125); do printf 'step2b-outline-body\n'; done
+} >"$d_step2b_outline/plan.txt"
+out_step2b_outline=$("$SUBJECT" --design-tmpdir "$d_step2b_outline" --variant step2b)
+printf '%s\n' "$out_step2b_outline" | grep -Fq '## Implementation Plan' || fail "step2b outline missing implementation-plan header"
+printf '%s\n' "$out_step2b_outline" | grep -Fq '**Section outline:**' || fail "step2b outline mode missing section outline"
+printf '%s\n' "$out_step2b_outline" | grep -Fq '## Step2b Visible Section' || fail "step2b outline missing heading"
+
 # step3 is a pure renderer: no sentinel written, always renders
 [[ ! -e "$d3/.step3-entry-plan-printed" ]] || fail "step3 pure renderer must not write .step3-entry-plan-printed sentinel"
 out3b=$("$SUBJECT" --design-tmpdir "$d3" --variant step3)
