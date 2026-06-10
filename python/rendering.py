@@ -287,26 +287,6 @@ def _validate_design_prompt_file(path: Path, label: str, design_tmpdir: Path) ->
     return canon
 
 
-def _repo_relative_or_tmp_ok(path: Path, repo_root: Path) -> bool:
-    try:
-        canon = _canonical_path(path)
-    except OSError:
-        return False
-    roots = [repo_root.resolve()]
-    for env_name in ("TMPDIR", "XDG_CACHE_HOME"):
-        value = os.environ.get(env_name)
-        if value:
-            roots.append(Path(value).expanduser().resolve())
-    roots.extend([
-        Path("/tmp").resolve(),  # noqa: S108
-        Path("/private/tmp").resolve(),
-    ])
-    home = os.environ.get("HOME")
-    if home:
-        roots.append((Path(home) / ".cache" / "larch" / "sessions").resolve())
-    return any(canon == root or root in canon.parents for root in roots)
-
-
 # ---------------------------------------------------------------------------
 # render specialist
 
