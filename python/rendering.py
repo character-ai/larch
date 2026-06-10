@@ -779,7 +779,14 @@ def render_plan_review_main(argv: list[str]) -> int:
         design_tmpdir = Path(args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", ""))
         _validate_design_tmpdir(design_tmpdir)
         plan_file = _validate_design_prompt_file(Path(args.plan_file), "--plan-file", design_tmpdir)
-        feature_file = _validate_design_prompt_file(Path(args.feature_file), "--feature-file", design_tmpdir) if args.feature_file else None
+        feature_file = None
+        if args.feature_file:
+            feature_path = Path(args.feature_file)
+            if not _scope_anchor_common_shape_ok(feature_path):
+                raise UsageError(
+                    "--feature-file must be a readable regular non-empty file (not a symlink) at most 64 KiB",
+                )
+            feature_file = _validate_design_prompt_file(feature_path, "--feature-file", design_tmpdir)
         classification_path = design_tmpdir / "run-params.json"
         classification = "HARD"
         if classification_path.is_file():
@@ -1004,24 +1011,50 @@ def _extract_sections(body: str) -> tuple[str, str]:
     return "\n".join(arch).rstrip("\n"), "\n".join(code).rstrip("\n")
 
 
+def _larch_sessions_cache_roots() -> list[Path]:
+    roots: list[Path] = []
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        try:
+            roots.append((Path(xdg).expanduser().resolve() / "larch" / "sessions"))
+        except OSError:
+            pass
+    home = os.environ.get("HOME")
+    if home:
+        try:
+            roots.append((Path(home).expanduser().resolve() / ".cache" / "larch" / "sessions"))
+        except OSError:
+            pass
+    return roots
+
+
 def _under_tmp_or_cache_root(path: Path) -> bool:
     try:
         canon = _canonical_path(path)
     except OSError:
         return False
-    roots: list[Path] = []
-    for env_name in ("TMPDIR", "XDG_CACHE_HOME"):
-        value = os.environ.get(env_name)
-        if value:
-            roots.append(Path(value).expanduser().resolve())
-    roots.extend([
-        Path("/tmp").resolve(),  # noqa: S108
-        Path("/private/tmp").resolve(),
-    ])
-    home = os.environ.get("HOME")
-    if home:
-        roots.append((Path(home) / ".cache" / "larch" / "sessions").resolve())
-    return any(canon == root or root in canon.parents for root in roots)
+    raw = str(path)
+    if raw.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/")):  # noqa: S108
+        return True
+    tmpdir = os.environ.get("TMPDIR")
+    if tmpdir:
+        try:
+            root = Path(tmpdir).expanduser().resolve()
+            if canon == root or root in canon.parents:
+                return True
+        except OSError:
+            pass
+    for root in (Path("/tmp").resolve(), Path("/private/tmp").resolve()):  # noqa: S108
+        if canon == root or root in canon.parents:
+            return True
+    for sessions_root in _larch_sessions_cache_roots():
+        try:
+            resolved = sessions_root.resolve()
+        except OSError:
+            continue
+        if canon == resolved or resolved in canon.parents:
+            return True
+    return False
 
 
 def _assert_tmp_scoped(label: str, path_value: str, *, allow_external: bool) -> None:

@@ -343,7 +343,7 @@ printf 'gh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
 if [ "$1" = "api" ]; then
     endpoint=$2
     if [[ "$endpoint" == "/repos/owner/repo/issues/42/comments" ]]; then
-        printf '101\t<!-- larch:diagrams v1 -->\n'
+        printf '[{"id":101,"body":"<!-- larch:diagrams v1 -->\n"}]\n'
         exit 0
     fi
     if [[ "$endpoint" == "/repos/owner/repo/issues/comments/101" ]]; then

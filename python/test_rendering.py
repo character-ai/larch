@@ -331,6 +331,37 @@ def test_mermaid_rejects_unclosed_frontmatter(tmp_path: Path, capsys: pytest.Cap
     assert "REASON_TOKEN=unclosed-frontmatter" in out
 
 
+def test_render_plan_review_rejects_empty_feature_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    feature = design_tmpdir / "feature.txt"
+    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = feature.write_text("", encoding="utf-8")
+    rc = rendering.render_plan_review_main(
+        [
+            "--archetype",
+            "arch",
+            "--vendor",
+            "codex",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--feature-file",
+            str(feature),
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "64 KiB" in captured.err
+
+
 def test_render_plan_review_inlines_strunk_and_white_readability(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
