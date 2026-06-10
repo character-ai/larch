@@ -15,6 +15,8 @@ Write in three styles at once:
 - **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
 - **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
 - **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
 
 ## Precision Contract
 
