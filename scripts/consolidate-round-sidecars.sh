@@ -113,7 +113,6 @@ def read_json(path):
 for key, fname, kind in [
     ('tally',       'review-tally.env',          'kv'),
     ('collector',   'collector-results.env',      'raw'),
-    ('collect_log', 'collect-agent-results.log',  'raw'),
     ('summary',     'review-summary.json',        'json'),
     ('coder',       'coder.env',                  'kv'),
 ]:

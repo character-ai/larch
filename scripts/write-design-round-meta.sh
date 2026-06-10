@@ -209,6 +209,7 @@ fi
 
 _panel_tmp="$ROUND_DIR/panel-manifest.ndjson.tmp"
 _meta_tmp="$ROUND_DIR/round-meta.json.tmp"
+trap 'rm -f "$_panel_tmp" "$_meta_tmp"' EXIT
 _panel_count=0
 # Prefer per-round copy; fall back to session-root copy (concise snapshots no longer
 # stage plan-review-slots.ndjson into round dirs).

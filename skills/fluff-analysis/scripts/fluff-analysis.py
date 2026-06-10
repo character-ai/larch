@@ -731,6 +731,22 @@ def _section_prepost(i_all, d_inscope, since_version=None):
                           pct(counts.get("latent", 0), len(per_rows)),
                           pct(counts.get("nit", 0), len(per_rows)),
                           pct(counts.get("(none)", 0), len(per_rows))))
+    if d_inscope:
+        out.append("**design in-scope voter severity tiers**")
+        out.append("")
+        out.append("| period | voter severity | n | acc% |")
+        out.append("|---|---|--:|--:|")
+        for per in ["pre", "post"]:
+            per_rows = [r for r in d_inscope if r.get("period") == per]
+            if not per_rows:
+                continue
+            for sev in ["blocker", "critical", "important", "latent", "nit", "(none)"]:
+                sub = [r for r in per_rows if (modal(r.get("v_severities", [])) or "(none)") == sev]
+                if not sub:
+                    continue
+                _, total, rate = acc_rate(sub)
+                out.append("| %s | %s | %d | %.1f |" % (per, sev, total, rate))
+        out.append("")
     out.append("_Small post samples are directional only._")
     return out
 

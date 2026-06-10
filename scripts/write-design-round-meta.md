@@ -45,8 +45,24 @@ zero when collection failed before per-reviewer records existed.
 ## Exit behavior and coverage
 
 Usage errors exit `2`; missing or malformed best-effort inputs exit `0` after
-writing the best metadata possible. JSON emission uses `jq` when available and
-falls back to Python stdlib JSON. Harness coverage is indirect through
-`skills/design/scripts/test-plan-review-loop.sh`,
+writing the best metadata possible (no exit `1` for absent `plan-review-slots.ndjson`
+— the helper writes `total_slot_count: 0` and proceeds). JSON emission uses `jq`
+when available and falls back to Python stdlib JSON. Harness coverage is indirect
+through `skills/design/scripts/test-plan-review-loop.sh`,
 `skills/design/scripts/test-persist-retally-step3-env.sh`, and
 `scripts/test-render-review-phase-detail.sh`.
+
+## Security OOS holdback semantics
+
+The helper subtracts security-tagged OOS items from `OOS_ACCEPTED_COUNT` and
+`OOS_REJECTED_COUNT` after tallying. This holdback is applied to both the
+`voting-tally.md` and `findings-classification.tsv` paths via
+`_adjust_security_oos_counts`. The results are floored at zero (negative counts
+are clamped). Failure modes: `is_security_block` is sourced from
+`lib-vote-tally.sh`; if that function fails, the OOS item is silently excluded
+from the subtraction (fail-open). Missing or unreadable OOS finding blocks
+(`_extract_oos_block` exit 1) are silently skipped — the count is not decremented
+for a block that cannot be classified. The `.tmp` sentinel files used during
+output generation are cleaned up via a trap on EXIT to avoid leaving stale
+`panel-manifest.ndjson.tmp` or `round-meta.json.tmp` files that would trip
+`design-log-publish.sh`'s allowlist guard.
