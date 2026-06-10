@@ -399,6 +399,11 @@ exclude = [
   "scripts/launch-claude-drafter.md",
   "scripts/test-launch-claude-drafter.sh",
   "scripts/test-launch-claude-drafter.md",
+  # scripts/launch-codex-drafter.sh is invoked from /design SKILL.md through
+  # a plugin-root variable path (same pattern as launch-claude-drafter.sh).
+  # Agent-lint's dead-script graph does not resolve that variable indirection.
+  "scripts/launch-codex-drafter.sh",
+  "scripts/launch-codex-drafter.md",
   # larch-log-batches.sh is sourced by lib-larch-log.sh; agent-lint does not
   # follow Bash source edges.
   "scripts/larch-log-batches.sh",

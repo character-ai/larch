@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+# launch-codex-drafter.sh — Launch a read-only Codex plan drafter subprocess.
+# Wraps launch-codex-exec.sh with read-only sandbox and parses
+# LARCH_PLAN_BEGIN/END + LARCH_SUMMARY_BEGIN/END sentinel output into
+# plan.txt and plan-summary.md under $DESIGN_TMPDIR, emitting the same
+# status KV contract as launch-claude-drafter.sh.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
+usage() {
+    larch_err "Usage: launch-codex-drafter.sh --prompt-file FILE --output-file FILE --timeout SECONDS --design-tmpdir DIR --repo-root DIR [--timing-task-kind KIND] [--baseline-porcelain FILE]"
+}
+
+PROMPT_FILE=""
+OUTPUT_FILE=""
+TIMEOUT=""
+DESIGN_TMPDIR_ARG=""
+REPO_ROOT_ARG=""
+TIMING_TASK_KIND="codex-plan-draft"
+BASELINE_PORCELAIN=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --prompt-file)      PROMPT_FILE="${2:?--prompt-file requires a value}"; shift 2 ;;
+        --output-file)      OUTPUT_FILE="${2:?--output-file requires a value}"; shift 2 ;;
+        --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
+        --design-tmpdir)    DESIGN_TMPDIR_ARG="${2:?--design-tmpdir requires a value}"; shift 2 ;;
+        --repo-root)        REPO_ROOT_ARG="${2:?--repo-root requires a value}"; shift 2 ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
+        --baseline-porcelain) BASELINE_PORCELAIN="${2:?--baseline-porcelain requires a value}"; shift 2 ;;
+        --help) usage; exit 0 ;;
+        *) larch_err "launch-codex-drafter.sh: unknown option: $1"; usage; exit 2 ;;
+    esac
+done
+
+[[ -n "$PROMPT_FILE" ]]      || { larch_err "launch-codex-drafter.sh: --prompt-file is required"; exit 2; }
+[[ -n "$OUTPUT_FILE" ]]      || { larch_err "launch-codex-drafter.sh: --output-file is required"; exit 2; }
+[[ -n "$TIMEOUT" ]]          || { larch_err "launch-codex-drafter.sh: --timeout is required"; exit 2; }
+[[ -n "$DESIGN_TMPDIR_ARG" ]] || { larch_err "launch-codex-drafter.sh: --design-tmpdir is required"; exit 2; }
+[[ -n "$REPO_ROOT_ARG" ]]    || { larch_err "launch-codex-drafter.sh: --repo-root is required"; exit 2; }
+case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "launch-codex-drafter.sh: --timeout must be a positive integer"; exit 2 ;; esac
+(( 10#$TIMEOUT <= 1800 )) || { larch_err "launch-codex-drafter.sh: --timeout must be <= 1800"; exit 2; }
+case "$TIMING_TASK_KIND" in ""|--*) larch_err "launch-codex-drafter.sh: --timing-task-kind must be a non-empty, non-flag-like value"; exit 2 ;; esac
+
+[[ -f "$PROMPT_FILE" ]]         || { larch_err "launch-codex-drafter.sh: --prompt-file not found: $PROMPT_FILE"; exit 2; }
+[[ ! -L "$PROMPT_FILE" ]]       || { larch_err "launch-codex-drafter.sh: --prompt-file must not be a symlink"; exit 2; }
+[[ -d "$DESIGN_TMPDIR_ARG" ]]   || { larch_err "launch-codex-drafter.sh: --design-tmpdir not found: $DESIGN_TMPDIR_ARG"; exit 2; }
+[[ ! -L "$DESIGN_TMPDIR_ARG" ]] || { larch_err "launch-codex-drafter.sh: --design-tmpdir must not be a symlink"; exit 2; }
+DESIGN_CANON="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+[[ -d "$REPO_ROOT_ARG" ]]       || { larch_err "launch-codex-drafter.sh: --repo-root not found: $REPO_ROOT_ARG"; exit 2; }
+[[ ! -L "$REPO_ROOT_ARG" ]]     || { larch_err "launch-codex-drafter.sh: --repo-root must not be a symlink"; exit 2; }
+REPO_ROOT="$(cd "$REPO_ROOT_ARG" && pwd -P)"
+
+OUTPUT_DIR="$(cd "$(dirname "$OUTPUT_FILE")" && pwd -P)" || { larch_err "launch-codex-drafter.sh: invalid --output-file parent dir"; exit 2; }
+[[ "$OUTPUT_DIR" == "$DESIGN_CANON" || "$OUTPUT_DIR" == "$DESIGN_CANON/"* ]] \
+    || { larch_err "launch-codex-drafter.sh: --output-file outside design tmpdir"; exit 2; }
+OUTPUT_CANON="$OUTPUT_DIR/$(basename "$OUTPUT_FILE")"
+
+BASELINE_CANON=""
+if [[ -n "$BASELINE_PORCELAIN" ]]; then
+    [[ -f "$BASELINE_PORCELAIN" ]] || { larch_err "launch-codex-drafter.sh: --baseline-porcelain not found"; exit 2; }
+    BASELINE_CANON="$(cd "$(dirname "$BASELINE_PORCELAIN")" && pwd -P)/$(basename "$BASELINE_PORCELAIN")"
+    [[ "$BASELINE_CANON" == "$DESIGN_CANON/"* ]] \
+        || { larch_err "launch-codex-drafter.sh: --baseline-porcelain outside design tmpdir"; exit 2; }
+fi
+
+PROMPT_DIR="$(cd "$(dirname "$PROMPT_FILE")" && pwd -P)"
+PROMPT_CANON="$PROMPT_DIR/$(basename "$PROMPT_FILE")"
+[[ "$PROMPT_CANON" == "$DESIGN_CANON/"* || "$PROMPT_CANON" == "$REPO_ROOT/"* ]] \
+    || { larch_err "launch-codex-drafter.sh: --prompt-file outside allowed roots"; exit 2; }
+
+write_status_file() {
+    local status_value="$1" plan_written="$2" plan_lines="$3" diff_lines="$4" \
+          summary_written="$5" launched="$6" reason="${7:-}"
+    local tmp="${OUTPUT_CANON}.tmp.$$"
+    {
+        printf 'STATUS=%s\n' "$status_value"
+        printf 'PLAN_WRITTEN=%s\n' "$plan_written"
+        printf 'PLAN_LINES=%s\n' "$plan_lines"
+        printf 'DIFF_LINES=%s\n' "$diff_lines"
+        printf 'SUMMARY_WRITTEN=%s\n' "$summary_written"
+        printf 'DRAFTER_LAUNCHED=%s\n' "$launched"
+        [[ -z "$reason" ]] || printf 'REASON=%s\n' "$reason"
+    } > "$tmp"
+    mv -f "$tmp" "$OUTPUT_CANON"
+}
+
+# shellcheck disable=SC2329,SC2317  # invoked by the EXIT trap
+write_dirty_tree_sidecar() {
+    [[ -n "${OUTPUT_CANON:-}" ]] || return 0
+    local tmp="${OUTPUT_CANON}.dirty-tree.tmp.$$"
+    local current_file="" diff_file="" dirty_status dirty_mode dirty_reason
+    dirty_status="unknown"
+    dirty_mode="prelaunch"
+    dirty_reason="launcher-exited-before-drafter-launch"
+    if [[ "${DRAFTER_LAUNCHED:-false}" == "true" ]]; then
+        if [[ -n "${BASELINE_CANON:-}" && -f "${BASELINE_CANON:-}" && -r "${BASELINE_CANON:-}" ]]; then
+            current_file=$(mktemp "${TMPDIR:-/tmp}/codex-drafter-status.XXXXXX") || current_file=""
+            diff_file=$(mktemp "${TMPDIR:-/tmp}/codex-drafter-diff.XXXXXX") || diff_file=""
+            if [[ -n "$current_file" && -n "$diff_file" ]] \
+               && git -C "$REPO_ROOT" status --porcelain > "$current_file" 2>/dev/null; then
+                if diff -u "$BASELINE_CANON" "$current_file" > "$diff_file" 2>/dev/null; then
+                    dirty_status="clean"
+                    dirty_mode="baseline-delta"
+                    dirty_reason="codex-drafter-no-new-mutations"
+                else
+                    dirty_status="dirty"
+                    dirty_mode="baseline-delta"
+                    dirty_reason="codex-drafter-new-mutations"
+                fi
+            else
+                dirty_status="unknown"
+                dirty_mode="baseline-delta"
+                dirty_reason="git-status-failed"
+            fi
+        else
+            current_file=$(mktemp "${TMPDIR:-/tmp}/codex-drafter-status.XXXXXX") || current_file=""
+            if [[ -n "$current_file" ]] \
+               && git -C "$REPO_ROOT" status --porcelain > "$current_file" 2>/dev/null; then
+                if [[ ! -s "$current_file" ]]; then
+                    dirty_status="clean"
+                    dirty_mode="absolute"
+                    dirty_reason="codex-drafter-clean-working-tree"
+                else
+                    dirty_status="unknown"
+                    dirty_mode="no-baseline"
+                    dirty_reason="codex-drafter-no-usable-baseline"
+                fi
+            else
+                dirty_status="unknown"
+                dirty_mode="no-baseline"
+                dirty_reason="git-status-failed"
+            fi
+        fi
+    fi
+    {
+        printf 'STATUS=%s\n' "$dirty_status"
+        printf 'MODE=%s\n' "$dirty_mode"
+        printf 'REASON=%s\n' "$dirty_reason"
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "${OUTPUT_CANON}.dirty-tree" 2>/dev/null || true
+    [[ -z "$current_file" ]] || rm -f "$current_file"
+    [[ -z "$diff_file" ]] || rm -f "$diff_file"
+}
+
+rm -f "${OUTPUT_CANON}.stderr-tail" "${OUTPUT_CANON}.failure-diag"
+write_status_file "ERROR" "false" 0 0 "false" "false" "prelaunch"
+
+DRAFTER_LAUNCHED=false
+trap 'write_dirty_tree_sidecar' EXIT
+
+_codex_raw="${DESIGN_CANON}/step2b-codex-raw.$$.txt"
+_launcher_stdout="${DESIGN_CANON}/step2b-codex-launcher-stdout.$$.txt"
+_plan_tmp="${DESIGN_CANON}/plan.txt.tmp.$$"
+_summary_tmp="${DESIGN_CANON}/plan-summary.md.tmp.$$"
+rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp"
+
+DRAFTER_LAUNCHED=true
+_exec_wrapper_rc=0
+set +e
+"$SCRIPT_DIR/launch-codex-exec.sh" \
+    --output "$_codex_raw" \
+    --timeout "$TIMEOUT" \
+    --workdir "$REPO_ROOT" \
+    --add-dir "$REPO_ROOT" \
+    --sandbox read-only \
+    --usage-label codex_plan_draft \
+    --timing-task-kind "$TIMING_TASK_KIND" \
+    --prompt-file "$PROMPT_CANON" \
+    >"$_launcher_stdout" 2>"${OUTPUT_CANON}.stderr"
+_exec_wrapper_rc=$?
+set -e
+
+LAUNCHER_EXIT=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$_launcher_stdout" 2>/dev/null || true)
+[[ -n "$LAUNCHER_EXIT" ]] || LAUNCHER_EXIT=1
+rm -f "$_launcher_stdout"
+
+if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
+    printf 'CODEX_EXEC_FAILED\n' > "${OUTPUT_CANON}.failure-diag"
+    write_status_file "ERROR" "false" 0 0 "false" "true" "CODEX_EXEC_FAILED"
+    if [[ -s "${OUTPUT_CANON}.stderr" ]]; then
+        head -10 "${OUTPUT_CANON}.stderr" > "${OUTPUT_CANON}.stderr-tail" 2>/dev/null || true
+    fi
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp"
+    printf '%s\n' "${LAUNCHER_EXIT:-1}" > "${OUTPUT_CANON}.done"
+    emit_kv STATUS "ERROR"
+    emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    exit "${LAUNCHER_EXIT:-1}"
+fi
+
+if [[ ! -s "$_codex_raw" ]]; then
+    printf 'CODEX_EMPTY_OUTPUT\n' > "${OUTPUT_CANON}.failure-diag"
+    write_status_file "ERROR" "false" 0 0 "false" "true" "CODEX_EMPTY_OUTPUT"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp"
+    printf '%s\n' "1" > "${OUTPUT_CANON}.done"
+    emit_kv STATUS "ERROR"
+    emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    exit 1
+fi
+
+if ! python3 - "$_codex_raw" "$_plan_tmp" "$_summary_tmp" \
+        > "${OUTPUT_CANON}.parse" 2> "${OUTPUT_CANON}.failure-diag" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+plan_tmp = Path(sys.argv[2])
+summary_tmp = Path(sys.argv[3])
+text = src.read_text(encoding='utf-8')
+lines = text.splitlines()
+
+def positions(marker):
+    return [i for i, line in enumerate(lines) if line == marker]
+
+pb = positions('LARCH_PLAN_BEGIN')
+pe = positions('LARCH_PLAN_END')
+sb = positions('LARCH_SUMMARY_BEGIN')
+se = positions('LARCH_SUMMARY_END')
+if len(pb) != 1 or len(pe) != 1:
+    raise SystemExit('invalid plan sentinels: require exactly one LARCH_PLAN_BEGIN and LARCH_PLAN_END')
+if pb[0] >= pe[0]:
+    raise SystemExit('invalid plan sentinels: reversed or empty plan envelope')
+if (len(sb) == 0) != (len(se) == 0) or len(sb) > 1 or len(se) > 1:
+    raise SystemExit('invalid summary sentinels: require zero or one balanced pair')
+if sb and sb[0] >= se[0]:
+    raise SystemExit('invalid summary sentinels: reversed or empty summary envelope')
+if sb and (pb[0] < sb[0] < pe[0] or pb[0] < se[0] < pe[0]):
+    raise SystemExit('invalid sentinels: nested summary inside plan envelope')
+if sb and sb[0] < pb[0] < pe[0] < se[0]:
+    raise SystemExit('invalid sentinels: nested plan inside summary envelope')
+plan_lines = lines[pb[0] + 1:pe[0]]
+if not plan_lines or not ''.join(plan_lines).strip():
+    raise SystemExit('empty extracted plan body')
+while plan_lines and plan_lines[-1] == '':
+    plan_lines.pop()
+if not plan_lines or not re.match(r'^diff_lines: [0-9][0-9]*$', plan_lines[-1]):
+    raise SystemExit('missing final diff_lines trailer')
+plan_body = '\n'.join(plan_lines) + '\n'
+plan_tmp.write_text(plan_body, encoding='utf-8')
+summary_written = False
+if sb:
+    summary_lines = lines[sb[0] + 1:se[0]]
+    if ''.join(summary_lines).strip():
+        summary_tmp.write_text('\n'.join(summary_lines).rstrip('\n') + '\n', encoding='utf-8')
+        summary_written = True
+    else:
+        raise SystemExit('empty extracted summary body')
+print(f'PLAN_LINES={len(plan_lines)}')
+print(f'DIFF_LINES={plan_lines[-1].split(": ", 1)[1]}')
+print(f'SUMMARY_WRITTEN={str(summary_written).lower()}')
+PY
+then
+    _parse_reason=$(cat "${OUTPUT_CANON}.failure-diag" 2>/dev/null || printf '%s' delimiter-extraction-failed)
+    printf 'DELIMITER_EXTRACTION_INVALID\n%s\n' "$_parse_reason" > "${OUTPUT_CANON}.failure-diag"
+    write_status_file "ERROR" "false" 0 0 "false" "true" "DELIMITER_EXTRACTION_INVALID"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "${OUTPUT_CANON}.parse"
+    printf '%s\n' "99" > "${OUTPUT_CANON}.done"
+    emit_kv STATUS "ERROR"
+    emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    exit 99
+fi
+
+PLAN_LINES=0
+DIFF_LINES=0
+SUMMARY_WRITTEN=false
+while IFS= read -r _parse_line || [[ -n "$_parse_line" ]]; do
+    case "$_parse_line" in
+        PLAN_LINES=*)   PLAN_LINES="${_parse_line#PLAN_LINES=}" ;;
+        DIFF_LINES=*)   DIFF_LINES="${_parse_line#DIFF_LINES=}" ;;
+        SUMMARY_WRITTEN=*) SUMMARY_WRITTEN="${_parse_line#SUMMARY_WRITTEN=}" ;;
+    esac
+done < "${OUTPUT_CANON}.parse"
+
+mv -f "$_plan_tmp" "$DESIGN_CANON/plan.txt"
+if [[ "$SUMMARY_WRITTEN" == "true" ]]; then
+    mv -f "$_summary_tmp" "$DESIGN_CANON/plan-summary.md"
+else
+    rm -f "$_summary_tmp"
+fi
+
+rm -f "$_codex_raw" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.stderr"
+write_status_file "OK" "true" "$PLAN_LINES" "$DIFF_LINES" "$SUMMARY_WRITTEN" "true" ""
+printf '%s\n' "0" > "${OUTPUT_CANON}.done"
+
+emit_kv STATUS "OK"
+emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+exit 0
