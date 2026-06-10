@@ -36,6 +36,8 @@
 
 === larch-quiet-cli.py-80658.log ===
 
+=== larch-quiet-cli.py-82290.log ===
+
 === larch-quiet-degraded-tools-gate.sh-21414.log ===
 
 === larch-quiet-read-session-env-key.sh-14651.log ===
@@ -112,6 +114,12 @@
 
 === larch-quiet-read-session-env-key.sh-55213.log ===
 
+=== larch-quiet-read-session-env-key.sh-60901.log ===
+
+=== larch-quiet-read-session-env-key.sh-60927.log ===
+
+=== larch-quiet-read-session-env-key.sh-60953.log ===
+
 === larch-quiet-read-session-env-key.sh-6404.log ===
 
 === larch-quiet-read-session-env-key.sh-67029.log ===
@@ -160,6 +168,8 @@
 
 === larch-quiet-run-relevant-checks-captured.sh-49676.log ===
 
+=== larch-quiet-run-relevant-checks-captured.sh-60978.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-6826.log ===
 
 === larch-quiet-run-step3-review.sh-42082.log ===
@@ -199,6 +209,10 @@ session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (
 session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
 
 === larch-quiet-ship.py-10164.log ===
+
+=== larch-quiet-ship.py-14979.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
 
 === larch-quiet-ship.py-34146.log ===
 
