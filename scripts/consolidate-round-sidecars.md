@@ -54,7 +54,9 @@ For each `larch-logs/<skill>/<run-id>/round-N/` directory that lacks
    `collect-agent-results.log`, `review-summary.json`, `coder.env`,
    `coder-codex.wrapper.log`, `coder-cursor.wrapper.log`).
 2. Composes `round-meta.json` with sections `tally`, `collector`,
-   `collect_log`, `summary`, `coder`, and `wrapper_logs`.
+   `summary`, `coder`, and `wrapper_logs`. (`collect-agent-results.log` is
+   detected and deleted but no longer written into `round-meta.json` — the live
+   `larch-log.sh write-round` path dropped `collect_log` from the schema.)
 3. Removes the individual sidecar files.
 4. Hashes each `reviewer-dyn-*.md` and writes it once to
    `larch-logs/shared/archetypes/<sha256-12>.md` (idempotent).

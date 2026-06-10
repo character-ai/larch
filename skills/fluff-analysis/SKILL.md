@@ -43,7 +43,7 @@ Logic lives in `scripts/`; SKILL.md is a thin coordinator. Per-script contracts 
 
 - `scripts/fluff-analysis.py` (contract: `scripts/fluff-analysis.md`) — the analyzer: extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering.
 - `scripts/test-fluff-analysis.sh` (contract: `scripts/test-fluff-analysis.md`) — offline regression harness over a synthetic `larch-logs` fixture.
-- `scripts/test-fluff-analysis-corpus.sh` — optional committed-corpus smoke for post-version low-value acceptance.
+- `scripts/test-fluff-analysis-corpus.sh` (contract: `scripts/test-fluff-analysis-corpus.md`) — optional committed-corpus smoke for post-version low-value acceptance.
 
 ## NEVER
 

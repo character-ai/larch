@@ -316,6 +316,8 @@ emit_record() {
     fi
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
+    # Extract metadata from the full body BEFORE truncating prose_body to 2000 chars
+    # so the Severity/focus lines are never lost even when they appear late in the body.
     body_severity="$(extract_body_severity "$body_redacted")"
     focus_area="$(extract_focus_area "$body_redacted")"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1

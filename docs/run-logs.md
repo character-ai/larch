@@ -423,7 +423,7 @@ the full round state before the later shared log-commit paths copy it into
 `larch-logs/implement/<RUN_ID>/round-<N>/` in the repo. There is no per-round
 commit.
 
-**`round-meta.json`** (Phase 3c, issue #3716) — the seven smallest per-round
+**`round-meta.json`** (Phase 3c, issue #3716) — the per-round
 sidecar files are consolidated into one JSON object rather than committed
 individually. Sections:
 
@@ -431,7 +431,6 @@ individually. Sections:
 |---|---|
 | `tally` | `review-tally.env` (KV → JSON object) |
 | `collector` | `collector-results.env` (raw text) |
-| `collect_log` | `collect-agent-results.log` (raw text) |
 | `summary` | `review-summary.json` (JSON passthrough) |
 | `coder` | `coder.env` (KV → JSON object) |
 | `wrapper_logs.cursor` | `coder-cursor.wrapper.log` (raw text) |
