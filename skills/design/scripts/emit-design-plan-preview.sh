@@ -61,8 +61,8 @@ normalize_summary_threshold() {
 plan_summary_is_fresh() {
     local plan_file="$1" summary_file="$2" _plan_mtime _summary_mtime
     [[ -s "$summary_file" && -s "$plan_file" ]] || return 1
-    _plan_mtime=$(stat -f '%m' "$plan_file" 2>/dev/null || stat -c '%Y' "$plan_file") || _plan_mtime=""
-    _summary_mtime=$(stat -f '%m' "$summary_file" 2>/dev/null || stat -c '%Y' "$summary_file") || _summary_mtime=""
+    _plan_mtime=$(stat -c '%Y' "$plan_file" 2>/dev/null || stat -f '%m' "$plan_file" 2>/dev/null) || _plan_mtime=""
+    _summary_mtime=$(stat -c '%Y' "$summary_file" 2>/dev/null || stat -f '%m' "$summary_file" 2>/dev/null) || _summary_mtime=""
     [[ -n "$_plan_mtime" && -n "$_summary_mtime" ]] || return 1
     [[ "$_summary_mtime" -ge "$_plan_mtime" ]]
 }
