@@ -45,6 +45,11 @@ case "$LARCH_PROBE_TTL_SECONDS" in
     ''|*[!0-9]*) LARCH_PROBE_TTL_SECONDS=60 ;;
 esac
 
+LARCH_PROBE_NEGATIVE_TTL_SECONDS="${LARCH_PROBE_NEGATIVE_TTL_SECONDS:-0}"
+case "$LARCH_PROBE_NEGATIVE_TTL_SECONDS" in
+    ''|*[!0-9]*) LARCH_PROBE_NEGATIVE_TTL_SECONDS=0 ;;
+esac
+
 LARCH_PROBE_TIMEOUT_SECONDS="${LARCH_PROBE_TIMEOUT_SECONDS:-30}"
 case "$LARCH_PROBE_TIMEOUT_SECONDS" in
     ''|*[!0-9]*|0) LARCH_PROBE_TIMEOUT_SECONDS=30 ;;
@@ -122,7 +127,17 @@ larch_try_read_fresh_stamp() {
     IFS= read -r line <"$stamp" || true
     val="${line//$'\r'/}"
     case "$val" in
-        true|false) printf -v "$out_var" '%s' "$val"; return 0 ;;
+        true) printf -v "$out_var" '%s' "$val"; return 0 ;;
+        false)
+            if (( LARCH_PROBE_NEGATIVE_TTL_SECONDS <= 0 )); then
+                return 1
+            fi
+            if (( age > LARCH_PROBE_NEGATIVE_TTL_SECONDS )); then
+                return 1
+            fi
+            printf -v "$out_var" '%s' "$val"
+            return 0
+            ;;
         *) return 1 ;;
     esac
 }
@@ -133,6 +148,36 @@ larch_write_bool_stamp() {
     stamp_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-probe-stamp.XXXXXX") || return 1
     printf '%s\n' "$val" >"$stamp_tmp"
     mv -f "$stamp_tmp" "$stamp_path"
+}
+
+larch_check_reviewers_test_log_step() {
+    local step="$1"
+    if [[ "${LARCH_CHECK_REVIEWERS_TEST_MODE:-}" = "1" && -n "${LARCH_CHECK_REVIEWERS_TEST_SETUP_LOG:-}" ]]; then
+        printf '%s\n' "$step" >>"$LARCH_CHECK_REVIEWERS_TEST_SETUP_LOG" 2>/dev/null || true
+    fi
+}
+
+larch_check_reviewers_test_allow_setup_step() {
+    local step="$1"
+    larch_check_reviewers_test_log_step "$step"
+    if [[ "${LARCH_CHECK_REVIEWERS_TEST_MODE:-}" = "1" && "${LARCH_CHECK_REVIEWERS_TEST_FAIL_SETUP_STEP:-}" = "$step" ]]; then
+        return 1
+    fi
+    return 0
+}
+
+larch_cursor_probe_setup_chain() {
+    larch_check_reviewers_test_allow_setup_step cursor_preread_service_token || return 1
+    cursor_preread_service_token || return 1
+    larch_check_reviewers_test_allow_setup_step cursor_auth_export_env || return 1
+    cursor_auth_export_env || return 1
+    larch_check_reviewers_test_allow_setup_step cursor_launcher_setup_private_config_dir || return 1
+    cursor_launcher_setup_private_config_dir || return 1
+}
+
+larch_cursor_probe_cleanup_private_config_dir() {
+    larch_check_reviewers_test_log_step cursor_launcher_cleanup_private_config_dir
+    cursor_launcher_cleanup_private_config_dir
 }
 
 # Sets second argument to wait exit status (0 ok, 124 timeout).
@@ -281,14 +326,22 @@ else
         _pf_rc=0
         cursor_auth_preflight || _pf_rc=$?
         if (( _pf_rc == 2 )); then
-            CURSOR_PRESENT=false
+            if ! larch_cursor_probe_setup_chain; then
+                CURSOR_PRESENT=false
+            else
+                AUTH_ATTEMPT="$MAX_AUTH_RETRIES"
+                _one_rc=0
+                larch_run_one_cursor_probe || _one_rc=$?
+                if (( _one_rc == 0 )); then
+                    CURSOR_PRESENT=true
+                else
+                    CURSOR_PRESENT=false
+                fi
+            fi
+            larch_cursor_probe_cleanup_private_config_dir
             larch_write_bool_stamp "$(larch_stamp_path cursor)" "$CURSOR_PRESENT" || true
         else
-            if ! {
-                cursor_preread_service_token &&
-                cursor_auth_export_env &&
-                cursor_launcher_setup_private_config_dir
-            }; then
+            if ! larch_cursor_probe_setup_chain; then
                 CURSOR_PRESENT=false
             else
                 AUTH_ATTEMPT=1
@@ -308,7 +361,7 @@ else
                     break
                 done
             fi
-            cursor_launcher_cleanup_private_config_dir
+            larch_cursor_probe_cleanup_private_config_dir
             larch_write_bool_stamp "$(larch_stamp_path cursor)" "$CURSOR_PRESENT" || true
         fi
     fi
@@ -322,8 +375,7 @@ elif [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
 else
     _CACHED_C=""
     _CODEX_STAMP_KEY=$(larch_codex_probe_stamp_key)
-    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C \
-        && [[ "$_CACHED_C" == "true" || "$_CODEX_STAMP_KEY" != "codex-env-key" ]]; then
+    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1

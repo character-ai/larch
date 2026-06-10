@@ -3,7 +3,7 @@
 Sourced library exposing Cursor auth helpers used by every live `cursor agent` call site:
 
 - `cursor_auth_export_env` — normalizes `CURSOR_API_KEY` in the environment so the Cursor child authenticates via the env var with **no `--api-key` argv element** (issue #3375). Whitespace-trims the value and re-exports it; `unset`s `CURSOR_API_KEY` when the trimmed value is empty/whitespace-only (preserves the `cursor login` keychain fallback) or contains an embedded newline/CR (fail-closed against paste corruption). Always returns 0 so it composes in `&&` chains.
-- `cursor_auth_preflight` — Darwin-gated read-only sanity check. Returns 0 when the launcher should proceed (env or keychain looks viable), returns 2 when both auth sources are demonstrably absent on Darwin. Writes an actionable multi-line message to stderr on the failure path.
+- `cursor_auth_preflight` — Darwin-gated read-only sanity check. Returns 0 when the launcher should proceed (env or keychain looks viable), returns 2 when both auth sources are demonstrably absent on Darwin after bounded retry. Writes an actionable multi-line message to stderr on the failure path.
 - `cursor_preread_service_token` — Darwin-gated best-effort keychain pre-read that exports the `cursor-user` / `cursor-access-token` service value into `CURSOR_API_KEY` when the env var is otherwise empty, so the Cursor child authenticates from the environment instead of performing its own keychain read.
 
 ## Why env-based auth (issue #3375)
@@ -24,14 +24,16 @@ Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `scr
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - `cursor_auth_export_env` mutates only `CURSOR_API_KEY` in the environment (export/unset); it builds no argv. Callers pass no auth argv element.
 - `cursor_auth_preflight` returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-review.sh --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
-- Darwin-only service-specific keychain probe (`security find-generic-password -a cursor-user -s cursor-access-token`); on non-Darwin, preflight is a no-op.
+- Darwin-only service-specific keychain probe (`security find-generic-password -a cursor-user -s cursor-access-token`); on non-Darwin, preflight is a no-op. Darwin preflight uses three attempts with 200ms sleeps between failed attempts. Each production attempt suppresses stdout and stderr with `>/dev/null 2>&1`. Exit `2` still means Cursor auth was not confirmed by preflight. Direct callers still receive the final actionable stderr after all attempts fail.
 - Darwin-only keychain pre-read uses `security find-generic-password -a cursor-user -s cursor-access-token -w`; failures and empty reads are silent no-ops so callers retain Cursor's default auth fallback.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.
 - Bash 3.2-safe: forbids `declare -n`, `local -n`, `mapfile`, `readarray`, and `eval` for secret-bearing assembly. Whitespace trim uses Bash-3.2-safe parameter expansion only.
 
 ## Test-mode gating (FINDING_6)
 
-Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `LIB_CURSOR_AUTH_TEST_SECURITY_RC`, `LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN`) is reachable ONLY when `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`. Production code paths ignore all `LIB_CURSOR_AUTH_TEST_*` vars unless that single sentinel is also set, so an operator setting one of the test vars alone cannot disable Darwin preflight or inject a fake pre-read token on a real machine.
+Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `LIB_CURSOR_AUTH_TEST_SECURITY_RC`, `LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ`, `LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN`) is reachable ONLY when `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`. Production code paths ignore all `LIB_CURSOR_AUTH_TEST_*` vars unless that single sentinel is also set, so an operator setting one of the test vars alone cannot disable Darwin preflight or inject a fake pre-read token on a real machine.
+
+In test mode, non-empty `LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ` wins over `LIB_CURSOR_AUTH_TEST_SECURITY_RC`. The sequence is consumed left to right, one mocked return code per retry attempt. If it runs out before retry ends, the last value repeats. If the sequence is unset or empty and `LIB_CURSOR_AUTH_TEST_SECURITY_RC` is set, that return code is reused for every retry attempt.
 
 ## Verified Cursor CLI behavior
 
@@ -41,7 +43,7 @@ Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `L
 
 `scripts/test-lib-cursor-auth.sh` (sibling contract `scripts/test-lib-cursor-auth.md`). Verifies:
 - `cursor_auth_export_env` exports the trimmed key for single-line / leading-or-trailing-whitespace values, and `unset`s `CURSOR_API_KEY` for empty / whitespace-only / embedded-newline / embedded-CR values.
-- `cursor_auth_preflight` returns 0 for non-empty key, 0 on non-Darwin, 0 on Darwin when keychain entry exists, 2 on Darwin with empty key + missing keychain entry.
+- `cursor_auth_preflight` returns 0 for non-empty key, 0 on non-Darwin, 0 on Darwin when keychain entry exists, 2 on Darwin with empty key + missing keychain entry, and covers bounded retry sequencing plus suppressed production retry stderr.
 - `cursor_preread_service_token` preserves an existing key, no-ops on non-Darwin, exports a mocked Darwin token, and no-ops on empty token reads.
 - `cursor_launcher_setup_auth_argv` wires the pre-read before `cursor_auth_export_env`, so a readable Darwin service becomes the exported `CURSOR_API_KEY`.
 - `cursor-auth-flags.sh` emits no argv flags and exits 0 (proceed) / 2 (Darwin preflight failure).

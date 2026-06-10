@@ -647,6 +647,218 @@ else
 fi
 assert_no_probe_homes "stamp login decoy cleanup" "$SCRATCH/t-stamp-login-decoy"
 
+# --- Cursor Option B: preflight miss gets one live fallback ---
+SB_OPTB_SUCCESS="$SCRATCH/bin-optb-success"
+mkdir -p "$SB_OPTB_SUCCESS" "$SCRATCH/t-optb-limited-success-home"
+cat > "$SB_OPTB_SUCCESS/cursor" <<'STUB'
+#!/usr/bin/env bash
+n=$(cat "${LARCH_TEST_CURSOR_COUNT:?}" 2>/dev/null || echo 0)
+echo "$((n + 1))" >"${LARCH_TEST_CURSOR_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTB_SUCCESS/cursor"
+out=$(run_cr "$SCRATCH/t-optb-limited-success" env PATH="$SB_OPTB_SUCCESS:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optb-limited-success-home" CURSOR_API_KEY= \
+    LARCH_TEST_CURSOR_COUNT="$SCRATCH/t-optb-limited-success/cursor-count" \
+    LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optb limited success" "CURSOR_PRESENT=true" "$out"
+if [[ "$(cat "$SCRATCH/t-optb-limited-success/cursor-count" 2>/dev/null || echo 0)" == "1" ]]; then
+    :
+else
+    fail "optb limited success should run exactly one live Cursor probe"
+fi
+
+SB_OPTB_NEG="$SCRATCH/bin-optb-negative"
+mkdir -p "$SB_OPTB_NEG" "$SCRATCH/t-optb-limited-negative-home"
+cat > "$SB_OPTB_NEG/cursor" <<'STUB'
+#!/usr/bin/env bash
+printf 'RAW_CURSOR_PROBE_STDERR_MARKER_SECURITY_CODE\n' >&2
+exit 1
+STUB
+chmod +x "$SB_OPTB_NEG/cursor"
+_optb_neg_err="$SCRATCH/t-optb-limited-negative.stderr"
+out=$(run_cr "$SCRATCH/t-optb-limited-negative" env PATH="$SB_OPTB_NEG:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optb-limited-negative-home" CURSOR_API_KEY= \
+    LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR" 2>"$_optb_neg_err")
+assert_line "optb limited negative" "CURSOR_PRESENT=false" "$out"
+grep -Fq 'RAW_CURSOR_PROBE_STDERR_MARKER_SECURITY_CODE' "$_optb_neg_err" 2>/dev/null \
+    && fail "optb limited negative must not leak raw Cursor probe stderr"
+
+SB_OPTB_AUTH="$SCRATCH/bin-optb-auth"
+mkdir -p "$SB_OPTB_AUTH" "$SCRATCH/t-optb-no-full-loop-home"
+cat > "$SB_OPTB_AUTH/cursor" <<'STUB'
+#!/usr/bin/env bash
+n=$(cat "${LARCH_TEST_CURSOR_COUNT:?}" 2>/dev/null || echo 0)
+echo "$((n + 1))" >"${LARCH_TEST_CURSOR_COUNT:?}"
+printf 'authentication failed\n' >&2
+exit 1
+STUB
+chmod +x "$SB_OPTB_AUTH/cursor"
+out=$(run_cr "$SCRATCH/t-optb-no-full-loop" env PATH="$SB_OPTB_AUTH:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optb-no-full-loop-home" CURSOR_API_KEY= \
+    LARCH_TEST_CURSOR_COUNT="$SCRATCH/t-optb-no-full-loop/cursor-count" \
+    LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optb no full loop terminal false" "CURSOR_PRESENT=false" "$out"
+if [[ "$(cat "$SCRATCH/t-optb-no-full-loop/cursor-count" 2>/dev/null || echo 0)" == "1" ]]; then
+    :
+else
+    fail "optb no full loop should run exactly one auth-classified Cursor probe"
+fi
+
+SB_OPTB_SETUP="$SCRATCH/bin-optb-setup"
+mkdir -p "$SB_OPTB_SETUP" "$SCRATCH/t-optb-setup-chain-home"
+cat > "$SB_OPTB_SETUP/cursor" <<'STUB'
+#!/usr/bin/env bash
+n=$(cat "${LARCH_TEST_CURSOR_COUNT:?}" 2>/dev/null || echo 0)
+echo "$((n + 1))" >"${LARCH_TEST_CURSOR_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTB_SETUP/cursor"
+_optb_setup_log="$SCRATCH/t-optb-setup-chain/setup.log"
+out=$(run_cr "$SCRATCH/t-optb-setup-chain" env PATH="$SB_OPTB_SETUP:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optb-setup-chain-home" CURSOR_API_KEY= \
+    LARCH_TEST_CURSOR_COUNT="$SCRATCH/t-optb-setup-chain/cursor-count" \
+    LARCH_CHECK_REVIEWERS_TEST_MODE=1 LARCH_CHECK_REVIEWERS_TEST_SETUP_LOG="$_optb_setup_log" \
+    LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optb setup-chain success" "CURSOR_PRESENT=true" "$out"
+for _step in cursor_preread_service_token cursor_auth_export_env cursor_launcher_setup_private_config_dir cursor_launcher_cleanup_private_config_dir; do
+    grep -Fxq "$_step" "$_optb_setup_log" 2>/dev/null || fail "optb setup-chain missing $_step"
+done
+
+SB_OPTB_SETUP_FAIL="$SCRATCH/bin-optb-setup-fail"
+mkdir -p "$SB_OPTB_SETUP_FAIL" "$SCRATCH/t-optb-setup-chain-fail-home"
+cat > "$SB_OPTB_SETUP_FAIL/cursor" <<'STUB'
+#!/usr/bin/env bash
+printf 'probe should be skipped when setup fails\n' >"${LARCH_TEST_CURSOR_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTB_SETUP_FAIL/cursor"
+_optb_setup_fail_log="$SCRATCH/t-optb-setup-chain-fail/setup.log"
+out=$(run_cr "$SCRATCH/t-optb-setup-chain-fail" env PATH="$SB_OPTB_SETUP_FAIL:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optb-setup-chain-fail-home" CURSOR_API_KEY= \
+    LARCH_TEST_CURSOR_COUNT="$SCRATCH/t-optb-setup-chain-fail/cursor-count" \
+    LARCH_CHECK_REVIEWERS_TEST_MODE=1 LARCH_CHECK_REVIEWERS_TEST_SETUP_LOG="$_optb_setup_fail_log" \
+    LARCH_CHECK_REVIEWERS_TEST_FAIL_SETUP_STEP=cursor_launcher_setup_private_config_dir \
+    LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optb setup-chain fail" "CURSOR_PRESENT=false" "$out"
+if [[ -f "$SCRATCH/t-optb-setup-chain-fail/cursor-count" ]]; then
+    fail "optb setup-chain failure should skip the one-shot Cursor probe"
+fi
+grep -Fxq 'cursor_launcher_setup_private_config_dir' "$_optb_setup_fail_log" 2>/dev/null \
+    || fail "optb setup-chain failure should reach private config setup"
+
+# --- Option C: false stamps are uncached by default and bounded when requested ---
+SB_OPTC_CURSOR="$SCRATCH/bin-optc-cursor"
+mkdir -p "$SB_OPTC_CURSOR" "$SCRATCH/t-optc-cursor" "$SCRATCH/t-optc-cursor-home"
+cat > "$SB_OPTC_CURSOR/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$SB_OPTC_CURSOR/cursor"
+printf 'false\n' >"$SCRATCH/t-optc-cursor/larch-cursor-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t-optc-cursor/larch-cursor-present-${STAMP_USER}.stamp"
+out=$(run_cr "$SCRATCH/t-optc-cursor" env PATH="$SB_OPTC_CURSOR:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optc-cursor-home" CURSOR_API_KEY= \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_PROBE_NEGATIVE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optc cursor false stamp ignored" "CURSOR_PRESENT=true" "$out"
+
+SB_OPTC_CURSOR_CACHED="$SCRATCH/bin-optc-cursor-cached"
+mkdir -p "$SB_OPTC_CURSOR_CACHED" "$SCRATCH/t-optc-cursor-cached" "$SCRATCH/t-optc-cursor-cached-home"
+cat > "$SB_OPTC_CURSOR_CACHED/cursor" <<'STUB'
+#!/usr/bin/env bash
+printf 'cursor cached false should not invoke probe\n' >"${LARCH_TEST_CURSOR_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTC_CURSOR_CACHED/cursor"
+printf 'false\n' >"$SCRATCH/t-optc-cursor-cached/larch-cursor-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t-optc-cursor-cached/larch-cursor-present-${STAMP_USER}.stamp"
+out=$(run_cr "$SCRATCH/t-optc-cursor-cached" env PATH="$SB_OPTC_CURSOR_CACHED:/usr/bin:/bin" \
+    HOME="$SCRATCH/t-optc-cursor-cached-home" CURSOR_API_KEY= \
+    LARCH_TEST_CURSOR_COUNT="$SCRATCH/t-optc-cursor-cached/cursor-count" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_PROBE_NEGATIVE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 "$CR")
+assert_line "optc cursor cached false" "CURSOR_PRESENT=false" "$out"
+if [[ -f "$SCRATCH/t-optc-cursor-cached/cursor-count" ]]; then
+    fail "optc cursor cached false should not invoke live Cursor probe"
+fi
+
+SB_OPTC_CODEX="$SCRATCH/bin-optc-codex"
+mkdir -p "$SB_OPTC_CODEX" "$SCRATCH/t-optc-codex-login"
+cat > "$SB_OPTC_CODEX/codex" <<'STUB'
+#!/usr/bin/env bash
+printf 'codex invoked\n' >>"${LARCH_TEST_CODEX_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTC_CODEX/codex"
+printf 'false\n' >"$SCRATCH/t-optc-codex-login/larch-codex-login-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t-optc-codex-login/larch-codex-login-present-${STAMP_USER}.stamp"
+out=$(run_cr "$SCRATCH/t-optc-codex-login" env PATH="$SB_OPTC_CODEX:/usr/bin:/bin" \
+    LARCH_TEST_CODEX_COUNT="$SCRATCH/t-optc-codex-login/codex-count" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_PROBE_NEGATIVE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "optc codex login false stamp ignored" "CODEX_PRESENT=true" "$out"
+if [[ -s "$SCRATCH/t-optc-codex-login/codex-count" ]] \
+   && [[ ! -f "$SCRATCH/t-optc-codex-login/larch-codex-env-key-present-${STAMP_USER}.stamp" ]]; then
+    :
+else
+    fail "optc codex login should seed/read login stamp path and avoid env-key stamp path"
+fi
+
+SB_OPTC_CODEX_CACHED="$SCRATCH/bin-optc-codex-cached"
+mkdir -p "$SB_OPTC_CODEX_CACHED" "$SCRATCH/t-optc-codex-login-cached"
+cat > "$SB_OPTC_CODEX_CACHED/codex" <<'STUB'
+#!/usr/bin/env bash
+printf 'codex cached false should not invoke probe\n' >"${LARCH_TEST_CODEX_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTC_CODEX_CACHED/codex"
+printf 'false\n' >"$SCRATCH/t-optc-codex-login-cached/larch-codex-login-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t-optc-codex-login-cached/larch-codex-login-present-${STAMP_USER}.stamp"
+out=$(run_cr "$SCRATCH/t-optc-codex-login-cached" env PATH="$SB_OPTC_CODEX_CACHED:/usr/bin:/bin" \
+    LARCH_TEST_CODEX_COUNT="$SCRATCH/t-optc-codex-login-cached/codex-count" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_PROBE_NEGATIVE_TTL_SECONDS=3600 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "optc codex login cached false" "CODEX_PRESENT=false" "$out"
+if [[ -f "$SCRATCH/t-optc-codex-login-cached/codex-count" ]]; then
+    fail "optc codex login cached false should not invoke live Codex probe"
+fi
+
+SB_OPTC_CODEX_ENV_CACHED="$SCRATCH/bin-optc-codex-env-cached"
+mkdir -p "$SB_OPTC_CODEX_ENV_CACHED" "$SCRATCH/t-optc-codex-env-key-cached"
+cat > "$SB_OPTC_CODEX_ENV_CACHED/codex" <<'STUB'
+#!/usr/bin/env bash
+printf 'codex env-key cached false should not invoke probe\n' >"${LARCH_TEST_CODEX_COUNT:?}"
+exit 0
+STUB
+chmod +x "$SB_OPTC_CODEX_ENV_CACHED/codex"
+printf 'false\n' >"$SCRATCH/t-optc-codex-env-key-cached/larch-codex-env-key-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t-optc-codex-env-key-cached/larch-codex-env-key-present-${STAMP_USER}.stamp"
+out=$(run_cr_with_env "$SCRATCH/t-optc-codex-env-key-cached" env PATH="$SB_OPTC_CODEX_ENV_CACHED:/usr/bin:/bin" \
+    OPENAI_API_KEY=sk-larch-probe-sentinel \
+    LARCH_TEST_CODEX_COUNT="$SCRATCH/t-optc-codex-env-key-cached/codex-count" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_PROBE_NEGATIVE_TTL_SECONDS=3600 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "optc codex env-key cached false" "CODEX_PRESENT=false" "$out"
+if [[ -f "$SCRATCH/t-optc-codex-env-key-cached/codex-count" ]]; then
+    fail "optc codex env-key cached false should not invoke live Codex probe"
+fi
+if grep -Fr 'sk-larch-probe-sentinel' "$SCRATCH/t-optc-codex-env-key-cached" 2>/dev/null; then
+    fail "optc codex env-key cached false must not leak OPENAI_API_KEY sentinel into TMPDIR"
+fi
+
 set +e
 (cd "$REPO_ROOT" && TMPDIR="$SCRATCH/probe-arg-tmp" LARCH_QUIET_DISABLE=1 "$CR" --probe >/dev/null 2>"$SCRATCH/unknown.stderr")
 rc=$?
