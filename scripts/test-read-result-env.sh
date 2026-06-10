@@ -145,6 +145,15 @@ assert_rc 'regular input ignores fallback' 0
 assert_file_contains 'regular primary wins' "$out" "INIT_STATUS='primary'"
 assert_file_not_contains 'fallback ignored for regular' "$out" "INIT_STATUS='fallback'"
 
+write_input "$primary" 'INIT_STATUS=ok' 'malformed-line'
+write_input "$fallback" 'INIT_STATUS=fallback'
+rm -f "$out"
+run_subject --input "$primary" --fallback-input "$fallback" --allow INIT_STATUS --output "$out"
+assert_rc 'malformed regular primary with fallback' 1
+if [ -f "$out" ]; then
+    assert_file_not_contains 'malformed primary must not fall back' "$out" "INIT_STATUS='fallback'"
+fi
+
 ln -s "$fallback" "$SCRATCH/fallback-link.env"
 run_subject --input "$SCRATCH/no-such.env" --fallback-input "$SCRATCH/fallback-link.env" --allow INIT_STATUS --output "$out"
 assert_rc 'symlink fallback input' 1
