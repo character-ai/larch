@@ -7,10 +7,12 @@ import json
 import os
 import re
 import shutil
-import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
+import config
+import logging_util
 import proc
 
 LARCH_SPARSE_DIRS = ".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
@@ -19,7 +21,7 @@ KEEP_VERSIONS = 8
 
 
 def err(message: str = "") -> None:
-    print(message, file=sys.stderr)
+    logging_util.BreadcrumbWriter().emit(message)
 
 
 def is_safe_version(value: str | None) -> bool:
@@ -229,26 +231,48 @@ def _get_stable_releases() -> list[str]:
     return [line.removeprefix("v") for line in result.stdout.splitlines() if is_safe_version(line.removeprefix("v"))]
 
 
-def _refresh_marketplace() -> None:
+def _recover_diagnostics() -> None:
+    clone = marketplace_clone_path()
+    err("")
+    err("Recovery: run these commands manually to reinstall:")
+    err("  claude plugin marketplace remove larch-local")
+    if clone is not None:
+        err(f"  rm -rf {clone}")
+    else:
+        err("  rm -rf ~/.claude/plugins/marketplaces/larch-local")
+    err(f"  claude plugin marketplace add character-ai/larch --sparse {LARCH_SPARSE_DIRS}")
+    err("  claude plugin install larch@larch-local")
+
+
+def _refresh_marketplace() -> bool:
     clone = marketplace_clone_path()
     if _marketplace_sparse_cone_matches():
         err("Refreshing larch marketplace in place (sparse clone present)...")
         result = proc.run(["claude", "plugin", "marketplace", "update", "larch-local"])
         if result.returncode == 0:
-            return
+            return True
         err("marketplace update failed; falling back to sparse re-add...")
     else:
         err("Adding larch marketplace (sparse checkout; excludes larch-logs)...")
     proc.run(["claude", "plugin", "marketplace", "remove", "larch-local"])
     if clone is not None and clone.exists():
         shutil.rmtree(clone)
-    proc.run(["claude", "plugin", "marketplace", "add", "character-ai/larch", "--sparse", *LARCH_SPARSE_DIRS.split()])
+    add = proc.run(["claude", "plugin", "marketplace", "add", "character-ai/larch", "--sparse", *LARCH_SPARSE_DIRS.split()])
+    return add.returncode == 0
+
+
+def _restore_operator_stdout() -> None:
+    if os.environ.get(config.ENV_LARCH_QUIET_PID) == str(os.getpid()):
+        with suppress(OSError):
+            os.dup2(3, 1)
 
 
 def run_main(argv: list[str]) -> int:
     if argv:
         err(f"ERROR=Unknown argument: {argv[0]}")
         return 1
+    logging_util.quiet_init(argv0="upgrade-larch.sh")
+    _restore_operator_stdout()
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path.cwd())).resolve()
     cache_dir = plugin_root.parent
     installed_version = plugin_root.name
@@ -258,13 +282,27 @@ def run_main(argv: list[str]) -> int:
         latest = releases[0] if releases else ""
     current = get_installed_larch_version() or installed_version
     cone_will_reconcile = not _marketplace_sparse_cone_matches()
+    active_root_stale = False
     if latest and current == latest and not cone_will_reconcile and (not is_cache_shaped_larch_root(plugin_root) or plugin_root.name == latest):
         write_install_stamp(cache_dir, current)
         prune_cached_versions(cache_dir, current, installed_version)
         err("")
         err(f"Already at latest stable larch release ({current}). No upgrade needed.")
         return 0
-    if latest and current == latest and cone_will_reconcile:
+    if (
+        latest
+        and current == latest
+        and is_cache_shaped_larch_root(plugin_root)
+        and plugin_root.name != latest
+    ):
+        active_root_stale = True
+        err("")
+        err(
+            f"Installed metadata is already at latest stable larch release ({current}), "
+            f"but this Claude Code session is still running cached larch {plugin_root.name}. "
+            "Refreshing the install and requiring restart...",
+        )
+    elif latest and current == latest and cone_will_reconcile:
         err("")
         err(f"Already at latest stable larch release ({current}), but the sparse checkout is out of date (allowlist changed). Reconciling the marketplace cone and reinstalling...")
     elif latest:
@@ -273,9 +311,16 @@ def run_main(argv: list[str]) -> int:
         err("Latest stable release could not be determined; upgrading unconditionally...")
     err("Uninstalling larch plugin...")
     proc.run(["claude", "plugin", "uninstall", "larch@larch-local"])
-    _refresh_marketplace()
+    if not _refresh_marketplace():
+        _recover_diagnostics()
+        err("LARCH_RESTART_REQUIRED=true")
+        return 1
     err("Installing larch plugin...")
     install = proc.run(["claude", "plugin", "install", "larch@larch-local"])
+    if install.returncode != 0:
+        _recover_diagnostics()
+        err("LARCH_RESTART_REQUIRED=true")
+        return install.returncode or 1
     actual = get_installed_larch_version()
     verified = bool(latest and actual == latest)
     if cone_will_reconcile:
@@ -284,7 +329,7 @@ def run_main(argv: list[str]) -> int:
         else:
             err("LARCH_CONE_RECONCILED=false")
         err("LARCH_RESTART_REQUIRED=true")
-    if not latest:
+    if not latest or active_root_stale:
         err("LARCH_RESTART_REQUIRED=true")
     elif verified and actual != current:
         err("LARCH_NEW_VERSION_INSTALLED=true")
@@ -303,6 +348,6 @@ def run_main(argv: list[str]) -> int:
     err("")
     if latest and not verified:
         err(f"Upgrade incomplete: expected stable version {latest} was not verified.")
-        return install.returncode or 1
+        return 1
     err("Upgrade complete. Restart Claude Code to apply the new version.")
     return 0

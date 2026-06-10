@@ -134,6 +134,13 @@ def test_affected_registry_targets_resolve_to_domain_modules() -> None:
     assert checked == 38
 
 
+def test_all_registry_targets_resolve_to_callable_mains() -> None:
+    for (domain, verb), (module_name, func_name) in cli._REGISTRY.items():  # pyright: ignore[reportPrivateUsage]
+        module = importlib.import_module(module_name)
+        target = getattr(module, func_name, None)
+        assert callable(target), f"{domain} {verb} -> {module_name}.{func_name}"
+
+
 # ---------------------------------------------------------------------------
 # Subprocess cases (integration)
 # ---------------------------------------------------------------------------

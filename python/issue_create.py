@@ -242,7 +242,11 @@ def parse_input_main(argv: list[str]) -> int:
         emit_kv(f"ITEM_{item_index}_TITLE", item.title)
         if item.body:
             body_path = out_dir / f"item-{item_index}-body.txt"
-            body_path.write_text(item.body, encoding="utf-8")
+            try:
+                body_path.write_text(item.body, encoding="utf-8")
+            except OSError as exc:
+                warn(f"ERROR: failed to write body file {body_path}: {exc}")
+                return 1
             emit_kv(f"ITEM_{item_index}_BODY_FILE", str(body_path))
         if item.malformed:
             emit_kv(f"ITEM_{item_index}_MALFORMED", "true")

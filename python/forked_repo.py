@@ -41,6 +41,7 @@ class SetupContext:
     lock_file: Path | None = None
     lock_dir: Path | None = None
     snapshot: RemoteSnapshot | None = None
+    remote_phase_active: bool = False
 
 
 def out_kv(key: str, value: object) -> None:
@@ -400,8 +401,19 @@ def restore_remote_state(snapshot: RemoteSnapshot) -> None:
         proc.run(["git", "config", "--add", key, value])
 
 
+def rollback_remotes_if_active(ctx: SetupContext) -> None:
+    if not ctx.remote_phase_active or ctx.snapshot is None:
+        return
+    err("ERROR: remote rewrite failed; attempting rollback")
+    if os.environ.get("LARCH_FORKED_REPO_INJECT_FAILURE") == "rollback":
+        err("RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure")
+    else:
+        restore_remote_state(ctx.snapshot)
+
+
 def phase_remotes(ctx: SetupContext) -> None:
     ctx.snapshot = snapshot_remote_state()
+    ctx.remote_phase_active = True
     classification = ctx.preflight_remote_classification or classify_remote_state(ctx.upstream.lower(), ctx.fork.lower(), ctx.gh_host)
     state, _, named_fork = classification.partition(" ")
     fork_ssh = ssh_url(ctx, "FORK", ctx.fork)
@@ -432,11 +444,7 @@ def phase_remotes(ctx: SetupContext) -> None:
         if proc.run(["git", "merge-base", "--is-ancestor", "origin/main", "main"]).returncode != 0:
             git_stdout(["merge", "--ff-only", "origin/main"])
     except Exception:
-        err("ERROR: remote rewrite failed; attempting rollback")
-        if os.environ.get("LARCH_FORKED_REPO_INJECT_FAILURE") == "rollback":
-            err("RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure")
-        elif ctx.snapshot is not None:
-            restore_remote_state(ctx.snapshot)
+        rollback_remotes_if_active(ctx)
         raise
 
 
@@ -449,9 +457,6 @@ def phase_submodules(ctx: SetupContext) -> None:
 
 def phase_verify(ctx: SetupContext) -> None:
     if os.environ.get("LARCH_FORKED_REPO_INJECT_FAILURE") == "in-verify":
-        if ctx.snapshot is not None:
-            err("ERROR: remote rewrite failed; attempting rollback")
-            restore_remote_state(ctx.snapshot)
         die("injected failure")
     err("")
     err("Final remotes:")
@@ -470,9 +475,11 @@ def phase_verify(ctx: SetupContext) -> None:
     err("")
     err(f"Fork workflow: branch off origin/main, push topic branches to origin, and open PRs from {ctx.fork}:<branch> to {ctx.upstream}:main.")
     out_kv("SETUP_FORKED_REPO_RESULT", "ok")
+    ctx.remote_phase_active = False
 
 
 def setup_main(argv: list[str]) -> int:
+    ctx: SetupContext | None = None
     try:
         ctx = parse_args(argv)
         phase_preflight(ctx)
@@ -483,8 +490,10 @@ def setup_main(argv: list[str]) -> int:
     except SystemExit as exc:
         return int(exc.code or 0)
     except SetupError:
+        if ctx is not None:
+            rollback_remotes_if_active(ctx)
         return 1
     finally:
-        if "ctx" in locals():
+        if ctx is not None:
             release_lock(ctx)
     return 0
