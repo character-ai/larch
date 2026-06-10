@@ -545,6 +545,8 @@ run_gate_wrapper() {
     local check_rc="$5"
     local output="$6"
     local marker="$7"
+    local max_attempts="${8:-}"
+    local sleep_seconds="${9:-}"
     RUN_STDOUT="$TMPDIR/${label}.stdout"
     RUN_STDERR="$TMPDIR/${label}.stderr"
     rm -f "$marker" "$TMPDIR/${label}.check-calls"
@@ -552,6 +554,8 @@ run_gate_wrapper() {
     env -u SESSION_ENV_PATH -u IMPLEMENT_TMPDIR \
         RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
         LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$timeout_value" \
+        LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS="$max_attempts" \
+        LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS="$sleep_seconds" \
         LARCH_TEST_GATE_PRESENT_LINE="$present_line" \
         LARCH_TEST_GATE_CHECK_RC="$check_rc" \
         LARCH_TEST_GATE_CHECK_CALLS="$TMPDIR/${label}.check-calls" \
@@ -563,7 +567,7 @@ run_gate_wrapper() {
 
 GATE_CODEX_OUT="$TMPDIR/gate-codex.txt"
 GATE_CODEX_MARKER="$TMPDIR/gate-codex-ran"
-run_gate_wrapper "gate-codex-unhealthy" codex 5 "CODEX_PRESENT=false" 0 "$GATE_CODEX_OUT" "$GATE_CODEX_MARKER"
+run_gate_wrapper "gate-codex-unhealthy" codex 5 "CODEX_PRESENT=false" 0 "$GATE_CODEX_OUT" "$GATE_CODEX_MARKER" 2 0
 assert_equals "gate-codex-unhealthy exit" "7" "$RUN_CODE"
 assert_file_content "gate-codex-unhealthy done" "${GATE_CODEX_OUT}.done" "7"
 assert_file_content "gate-codex-unhealthy output empty" "$GATE_CODEX_OUT" ""
@@ -576,7 +580,7 @@ fi
 
 GATE_CURSOR_OUT="$TMPDIR/gate-cursor.txt"
 GATE_CURSOR_MARKER="$TMPDIR/gate-cursor-ran"
-run_gate_wrapper "gate-cursor-unhealthy" cursor 5 "CURSOR_PRESENT=false" 0 "$GATE_CURSOR_OUT" "$GATE_CURSOR_MARKER"
+run_gate_wrapper "gate-cursor-unhealthy" cursor 5 "CURSOR_PRESENT=false" 0 "$GATE_CURSOR_OUT" "$GATE_CURSOR_MARKER" 2 0
 assert_equals "gate-cursor-unhealthy exit" "8" "$RUN_CODE"
 assert_file_content "gate-cursor-unhealthy done" "${GATE_CURSOR_OUT}.done" "8"
 assert_grep "gate-cursor-unhealthy diag" "health-probe fast-fail" "${GATE_CURSOR_OUT}.diag"
@@ -588,7 +592,7 @@ fi
 
 GATE_DEFAULT_ON_OUT="$TMPDIR/gate-default-on.txt"
 GATE_DEFAULT_ON_MARKER="$TMPDIR/gate-default-on-ran"
-run_gate_wrapper "gate-default-on" codex "" "CODEX_PRESENT=false" 0 "$GATE_DEFAULT_ON_OUT" "$GATE_DEFAULT_ON_MARKER"
+run_gate_wrapper "gate-default-on" codex "" "CODEX_PRESENT=false" 0 "$GATE_DEFAULT_ON_OUT" "$GATE_DEFAULT_ON_MARKER" 2 0
 assert_equals "gate-default-on exit" "7" "$RUN_CODE"
 assert_file_content "gate-default-on done" "${GATE_DEFAULT_ON_OUT}.done" "7"
 assert_grep "gate-default-on diag" "health-probe fast-fail" "${GATE_DEFAULT_ON_OUT}.diag"
