@@ -5,7 +5,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -158,7 +157,7 @@ fi
 
 if (( oos_accepted_count > 0 && oos_sink_count == oos_accepted_count )); then
     # #3550: tally-code-votes.sh already wrote normalized accepted OOS to
-    # $OOS_ACCEPTED_FILE — preserve it. oos-serialize.sh re-derives from
+    # $OOS_ACCEPTED_FILE — preserve it. The Python oos serialize CLI rebuilds
     # oos.md and cannot recover scope-drift blocks (bare ### FINDING_N:
     # without [OUT_OF_SCOPE]/[OOS] tags), and the missing-oos.md truncate
     # would wipe tally output; both branches are skipped.
@@ -172,7 +171,7 @@ elif [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
     fi
     oos_args=(--findings-file "$OOS_FILE" --output-file "$OOS_ACCEPTED_FILE")
     [[ -n "$SESSION_ENV_PATH" ]] && oos_args+=(--session-env-path "$SESSION_ENV_PATH")
-    "$SHARED_DIR/oos-serialize.sh" "${oos_args[@]}" >/dev/null
+    python3 "${PLUGIN_ROOT}/python/cli.py" oos serialize "${oos_args[@]}" >/dev/null
     rebuilt_count=0
     if [[ -s "$OOS_ACCEPTED_FILE" ]]; then
         rebuilt_count=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$OOS_ACCEPTED_FILE" 2>/dev/null || printf '0')

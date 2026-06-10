@@ -1564,7 +1564,7 @@ _implement_round_body() {
                 is_security_block "$block_file" || sec_rc=$?
                 if [[ "$sec_rc" -eq 1 ]]; then
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
-                    "$PLUGIN_ROOT/skills/shared/scripts/normalize-oos-block-header.sh" \
+                    python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
                         --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
                 elif [[ "$sec_rc" -eq 2 ]]; then

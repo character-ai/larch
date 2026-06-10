@@ -119,7 +119,6 @@ fi
 # OOS block is normalized to "### OOS_<seq>:" before entering the accepted-OOS
 # sinks, regardless of its ballot header (tagged FINDING_, scope-drift bare
 # FINDING_, or a pre-existing OOS_ id being renumbered into the run sequence).
-NORMALIZE_OOS_HELPER="$SCRIPT_DIR/../../shared/scripts/normalize-oos-block-header.sh"
 OOS_SEQ_SEED_HELPER="$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk"
 OOS_WRITE_SEQ=0
 if [[ -n "$SESSION_ENV_PATH" ]]; then
@@ -619,7 +618,8 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 else
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
                     normalized_file="$REVIEW_TMPDIR/normalized-oos-${OOS_WRITE_SEQ}.md"
-                    "$NORMALIZE_OOS_HELPER" --seq "$OOS_WRITE_SEQ" --block-file "$block" > "$normalized_file"
+                    python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
+                        --seq "$OOS_WRITE_SEQ" --block-file "$block" > "$normalized_file"
                     cat "$normalized_file" >> "$OOS_ACCEPTED_FILE"
                     printf '\n' >> "$OOS_ACCEPTED_FILE"
                     # Mirror to the parent-tmpdir sink only when the paths
