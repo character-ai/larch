@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 source "$SCRIPT_DIR/lib-phantom-probe.sh"
 
 usage() {
-    printf 'usage: %s <step-prefix> <short-name> [--base-remote <name>] [--base-ref <branch>]\n' "$(basename "$0")" >&2
+    printf 'usage: %s <step-prefix> <short-name> [--base-remote <name>] [--base-ref <branch>] [--forked-target true|false]\n' "$(basename "$0")" >&2
     exit 2
 }
 
@@ -23,6 +23,7 @@ shift 2
 
 base_remote=""
 base_ref=""
+forked_target="false"
 while [ $# -gt 0 ]; do
     case "$1" in
         --base-remote)
@@ -35,6 +36,12 @@ while [ $# -gt 0 ]; do
             base_ref="$2"
             shift 2
             ;;
+        --forked-target)
+            [ $# -ge 2 ] || usage
+            forked_target="$2"
+            case "$forked_target" in true|false) ;; *) usage ;; esac
+            shift 2
+            ;;
         *) usage ;;
     esac
 done
@@ -42,6 +49,10 @@ done
 larch_err "→ rebase-probe: ${step_prefix} ${short_name}"
 
 rebase_args=(--no-push --skip-if-pushed --keep-on-conflict)
+if [ "$forked_target" = "true" ]; then
+    [ -n "$base_remote" ] || base_remote=upstream
+    [ -n "$base_ref" ] || base_ref=main
+fi
 if [ -n "$base_remote" ]; then
     rebase_args+=(--base-remote "$base_remote")
 fi

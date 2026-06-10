@@ -50,6 +50,9 @@ main() {
         PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     fi
 
+    "$SCRIPT_DIR/cleanup.sh" --help >/dev/null 2>&1 || true
+    "$PLUGIN_ROOT/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 18 — cleanup" || true
+
     local session_env="$tmpdir/session-env.sh"
     if [ -f "$session_env" ]; then
         LARCH_TOKEN_SESSION_ID=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$session_env" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)

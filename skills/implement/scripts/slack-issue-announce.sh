@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: slack-issue-announce.sh --implement-tmpdir PATH"
+    larch_err "Usage: slack-issue-announce.sh --implement-tmpdir PATH [--best-effort]"
 }
 
 fail_usage() {
@@ -32,9 +32,11 @@ read_kv() {
 }
 
 IMPLEMENT_TMPDIR=""
+BEST_EFFORT=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --best-effort) BEST_EFFORT=true; shift ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -52,7 +54,7 @@ RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
 PR_URL="$(read_kv PR_URL "$SHIP_PR_STATE")"; [ -n "$PR_URL" ] || PR_URL="N/A"
 PR_TITLE="$(read_kv PR_TITLE "$SHIP_PR_STATE")"
 
-case "$ISSUE_NUMBER" in *[!0-9]*|"") emit_kv STATUS failed; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
+case "$ISSUE_NUMBER" in *[!0-9]*|"") emit_kv STATUS failed; emit_kv ERROR "ISSUE_NUMBER must be numeric"; [ "$BEST_EFFORT" = true ] && exit 0; exit 1 ;; esac
 
 if [ "$ISSUE_NUMBER" = "0" ]; then
     emit_kv STATUS skipped
@@ -71,6 +73,7 @@ text="Implement run $RUN_ID opened PR $PR_URL for tracking issue #$ISSUE_NUMBER"
 payload="$(jq -cn --arg text "$text" '{text:$text}')" || {
     emit_kv STATUS failed
     emit_kv ERROR "payload-json-failed"
+    [ "$BEST_EFFORT" = true ] && exit 0
     exit 1
 }
 
@@ -83,4 +86,5 @@ fi
 
 emit_kv STATUS failed
 emit_kv ERROR "$(tr '\n' ' ' < "$err_file" | head -c 500)"
+[ "$BEST_EFFORT" = true ] && exit 0
 exit 1

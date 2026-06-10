@@ -5,7 +5,7 @@ Thin Step 7 wrapper around `scripts/git-commit.sh`. Emits `token-ledger.sh` and 
 Usage:
 
 ```bash
-commit-review-fixes.sh [--message "Address code review feedback"] [files...]
+commit-review-fixes.sh [--stage-all] [--message "Address code review feedback"] [files...]
 ```
 
 Output:

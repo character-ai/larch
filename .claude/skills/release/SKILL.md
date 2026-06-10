@@ -35,21 +35,43 @@ Guard (abort before prepare):
 
 On failure, print a clear operator-visible error and stop.
 
-**Sync with `origin/main`** (after branch + tree guards pass; **skip on `--dry-run`** — dry-run performs no local git mutations; Step 2 `release-prepare.sh` still fetches read-only and emits `ERROR=stale-local-main` when local `main`/`HEAD` is not at `origin/main`):
-
-Unless `--dry-run`:
+**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch, fast-forward, or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` and fast-forward local `main` only when it is strictly behind `origin/main`; refuse (do not rebase) when local `main` has unpublished commits or has diverged, then continue to Step 2 and let `release-prepare.sh` report `ERROR=stale-local-main` if the cached refs still show a stale checkout.
 
 ```bash
-set +e
-rebase_out=$(scripts/rebase-push.sh --no-push --base-remote origin --base-ref main 2>&1)
-rebase_rc=$?
-set -e
+dry_run=false
+for _release_arg in $ARGUMENTS; do
+  [ "$_release_arg" = "--dry-run" ] && dry_run=true
+done
+unset _release_arg
+if [ "$dry_run" != "true" ]; then
+  set +e
+  sync_out=$(git fetch origin main --quiet 2>&1)
+  sync_rc=$?
+  if [ "$sync_rc" -eq 0 ]; then
+    local_main=$(git rev-parse main 2>/dev/null)
+    origin_main=$(git rev-parse origin/main 2>/dev/null)
+    if [ -n "$local_main" ] && [ -n "$origin_main" ] && [ "$local_main" = "$origin_main" ]; then
+      sync_out="SKIPPED_ALREADY_FRESH=true"
+      sync_rc=0
+    elif [ -n "$local_main" ] && [ -n "$origin_main" ] && git merge-base --is-ancestor "$local_main" "$origin_main"; then
+      sync_out=$(git merge --ff-only origin/main 2>&1)
+      sync_rc=$?
+    else
+      sync_out="LOCAL_MAIN_NOT_PUBLISHED=true"
+      sync_rc=3
+    fi
+  fi
+  set -e
+else
+  sync_out="DRY_RUN_SYNC_SKIPPED=true"
+  sync_rc=0
+fi
 ```
 
-Branch on `rebase_rc`:
-- **Exit 0**: local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `rebase_out` to note a no-op). Continue.
-- **Exit 1** (conflicts): print `**⚠ /release: rebase onto origin/main has conflicts. Resolve manually and retry.**` and stop.
-- **Other non-zero**: print `**⚠ /release: rebase onto origin/main failed (exit <rc>). Check network/git state.**` and stop.
+Branch on `sync_rc`:
+- **Exit 0**: on non-dry-run, local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `sync_out` to note a no-op); on `--dry-run`, sync was deliberately skipped. Continue.
+- **Exit 3** (`LOCAL_MAIN_NOT_PUBLISHED=true`): local `main` has unpublished commits or has diverged from `origin/main`; continue to Step 2 and let `release-prepare.sh` report `ERROR=stale-local-main`.
+- **Other non-zero**: print `**⚠ /release: sync with origin/main failed (exit <rc>). Check network/git state.**` and stop.
 
 On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
 
@@ -302,7 +324,7 @@ Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless not
 
 Repo-root helpers referenced from steps above:
 
-- `scripts/rebase-push.sh` — fetch and rebase local `main` onto `origin/main` (Step 1 sync on live runs only; skipped on `--dry-run`); invoke with `--no-push --base-remote origin --base-ref main`
+- `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
 - `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 

@@ -9,7 +9,7 @@ unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
 SUT_PROD="$REPO_ROOT/scripts/rebase-checkpoint-probe.sh"
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-[ -x "$SUT_PROD" ] || fail "case 17: production rebase-checkpoint-probe.sh must be executable"
+[ -x "$SUT_PROD" ] || fail "case 18: production rebase-checkpoint-probe.sh must be executable"
 
 TMPROOT="$(mktemp -d /tmp/larch-test-rebase-probe-XXXXXX)"
 trap 'rm -rf "$TMPROOT"' EXIT
@@ -331,6 +331,30 @@ grep -Fq -- '--base-remote' "$d/rebase.argv" || fail "c13 remote"
 grep -Fq -- 'upstream' "$d/rebase.argv" || fail "c13 upstream val"
 grep -Fq -- '--base-ref' "$d/rebase.argv" || fail "c13 ref flag"
 grep -Fq -- 'main' "$d/rebase.argv" || fail "c13 main val"
+
+# --- Case 13b: forked target defaults to upstream/main ---
+d="$TMPROOT/c13b"
+stage_with_stubs "$d"
+cat >"$d/rebase-push.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"$(dirname "$0")/rebase.argv"
+exit 0
+EOF
+cat >"$d/check-phantom-dirty.sh" <<'EOF'
+#!/usr/bin/env bash
+echo STATUS=clean
+exit 0
+EOF
+cat >"$d/append-execution-issue.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$d"/*.sh
+IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" p s --forked-target true >/dev/null 2>&1 || fail "c13b rc"
+grep -Fq -- '--base-remote' "$d/rebase.argv" || fail "c13b remote"
+grep -Fq -- 'upstream' "$d/rebase.argv" || fail "c13b upstream val"
+grep -Fq -- '--base-ref' "$d/rebase.argv" || fail "c13b ref flag"
+grep -Fq -- 'main' "$d/rebase.argv" || fail "c13b main val"
 
 # --- Case 14: regex rejection (real rebase-push) ---
 gitrepo="$TMPROOT/gitregex"

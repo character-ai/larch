@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: refresh-execution-issues.sh --implement-tmpdir PATH"
+    larch_err "Usage: refresh-execution-issues.sh --implement-tmpdir PATH [--best-effort]"
 }
 
 fail_usage() {
@@ -36,9 +36,11 @@ read_plugin_version() {
 }
 
 IMPLEMENT_TMPDIR=""
+BEST_EFFORT=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --best-effort) BEST_EFFORT=true; shift ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -60,7 +62,7 @@ if [ -z "$ISSUE" ] || [ "$ISSUE" = "0" ]; then
     emit_kv REASON issue-not-set
     exit 0
 fi
-case "$ISSUE" in *[!0-9]*) emit_kv REFRESHED false; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
+case "$ISSUE" in *[!0-9]*) emit_kv REFRESHED false; emit_kv ERROR "ISSUE_NUMBER must be numeric"; [ "$BEST_EFFORT" = true ] && exit 0; exit 1 ;; esac
 
 issue_log="$IMPLEMENT_TMPDIR/execution-issues.md"
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
@@ -88,6 +90,7 @@ count=0
 } > "$summary" || {
     emit_kv REFRESHED false
     emit_kv ERROR "could not write summary"
+    [ "$BEST_EFFORT" = true ] && exit 0
     exit 1
 }
 
@@ -100,4 +103,5 @@ fi
 
 emit_kv REFRESHED false
 emit_kv ERROR "$(tr '\n' ' ' < "$IMPLEMENT_TMPDIR/refresh-execution-issues.err" | head -c 500)"
+[ "$BEST_EFFORT" = true ] && exit 0
 exit 1

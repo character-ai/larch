@@ -65,3 +65,5 @@ Intentional delta vs the retired inline block: the wrapper does not pass `--prin
 ## Edit in sync
 
 Change this file when altering argv, rehydration keys, rooted paths, the `EMIT_BODY` gate, or failure capture behavior in `step-18b-final-report.sh`.
+
+Step 18b now also runs `cleanup.sh --help` non-destructively and marks `Step 18 — cleanup` internally so SKILL.md does not need separate telemetry fences.

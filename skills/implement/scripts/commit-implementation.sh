@@ -42,6 +42,23 @@ out_file="${TMPDIR:-/tmp}/commit-implementation.$$.out"
 err_file="${TMPDIR:-/tmp}/commit-implementation.$$.err"
 trap 'rm -f "$out_file" "$err_file"' EXIT
 
+read_session_key() {
+    local key=$1 default_value=$2 file
+    file="${IMPLEMENT_TMPDIR:-}/session-env.sh"
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
+if [ -z "${LARCH_TIMING_LEDGER:-}" ] || [ -z "${LARCH_TOKEN_SESSION_ID:-}" ] || [ -z "${LARCH_CLAUDE_SOURCE_FILE:-}" ]; then
+    LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
+    LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
+    LARCH_TIMING_LEDGER=$(read_session_key LARCH_TIMING_LEDGER "${LARCH_TIMING_LEDGER:-}")
+    export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+fi
+
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
 LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 

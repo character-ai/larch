@@ -16,3 +16,5 @@ Output:
 - `COMMITTED=true|false`
 - `SHA=<head-sha-or-empty>`
 - `ERROR=<message>` on failure
+
+When telemetry env keys are absent, the wrapper self-rehydrates `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` before marking Step 4.
