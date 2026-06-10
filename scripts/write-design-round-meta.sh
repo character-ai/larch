@@ -273,6 +273,20 @@ while [[ "$_i" -le "$_collect_failures" ]]; do
     _i=$((_i + 1))
 done
 
+# Read revise outcome from round-N/revise/revise.env when present (written by
+# revise-plan-with-waterfall.sh after the revise step runs for this round).
+_revise_status=""
+_revise_tier=""
+_revise_env="$ROUND_DIR/revise/revise.env"
+if [[ -f "$_revise_env" ]]; then
+    while IFS= read -r _rline || [[ -n "$_rline" ]]; do
+        case "$_rline" in
+            REVISE_STATUS=*) _revise_status="${_rline#REVISE_STATUS=}" ;;
+            REVISE_TIER=*)   _revise_tier="${_rline#REVISE_TIER=}" ;;
+        esac
+    done < "$_revise_env"
+fi
+
 if command -v jq >/dev/null 2>&1; then
     jq -n \
         --arg accepted "$ACCEPTED_COUNT" \
@@ -283,16 +297,18 @@ if command -v jq >/dev/null 2>&1; then
         --arg oos_rejected "$OOS_REJECTED_COUNT" \
         --arg panel_count "$_panel_count" \
         --arg collector "$_collector" \
-        '{tally:{ACCEPTED_COUNT:$accepted,REJECTED_COUNT:$rejected,EXONERATED_COUNT:$exonerated,NEUTRAL_COUNT:$neutral,OOS_ACCEPTED_COUNT:$oos_accepted,OOS_REJECTED_COUNT:$oos_rejected},summary:{panel:{total_slot_count:($panel_count|tonumber)}},collector:$collector}' \
+        --arg revise_status "$_revise_status" \
+        --arg revise_tier "$_revise_tier" \
+        '{tally:{ACCEPTED_COUNT:$accepted,REJECTED_COUNT:$rejected,EXONERATED_COUNT:$exonerated,NEUTRAL_COUNT:$neutral,OOS_ACCEPTED_COUNT:$oos_accepted,OOS_REJECTED_COUNT:$oos_rejected},summary:{panel:{total_slot_count:($panel_count|tonumber)}},collector:$collector,revise:{status:(if $revise_status=="" then null else $revise_status end),tier:(if $revise_tier=="" then null else $revise_tier end)}}' \
         >"$_meta_tmp" 2>/dev/null || : >"$_meta_tmp"
 fi
 
 if [[ ! -s "$_meta_tmp" ]]; then
     if command -v python3 >/dev/null 2>&1; then
-        python3 - "$ACCEPTED_COUNT" "$REJECTED_COUNT" "$EXONERATED_COUNT" "$NEUTRAL_COUNT" "$OOS_ACCEPTED_COUNT" "$OOS_REJECTED_COUNT" "$_panel_count" "$_collector" "$_meta_tmp" <<'PY' || : >"$_meta_tmp"
+        python3 - "$ACCEPTED_COUNT" "$REJECTED_COUNT" "$EXONERATED_COUNT" "$NEUTRAL_COUNT" "$OOS_ACCEPTED_COUNT" "$OOS_REJECTED_COUNT" "$_panel_count" "$_collector" "$_revise_status" "$_revise_tier" "$_meta_tmp" <<'PY' || : >"$_meta_tmp"
 import json
 import sys
-accepted, rejected, exonerated, neutral, oos_accepted, oos_rejected, panel_count, collector, out = sys.argv[1:10]
+accepted, rejected, exonerated, neutral, oos_accepted, oos_rejected, panel_count, collector, revise_status, revise_tier, out = sys.argv[1:12]
 obj = {
     "tally": {
         "ACCEPTED_COUNT": accepted,
@@ -304,6 +320,10 @@ obj = {
     },
     "summary": {"panel": {"total_slot_count": int(panel_count or 0)}},
     "collector": collector,
+    "revise": {
+        "status": revise_status or None,
+        "tier": revise_tier or None,
+    },
 }
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(obj, fh, indent=2)

@@ -19,8 +19,10 @@ later round or a retally cannot leak into round-N metadata.
 
 - `round-meta.json` with string tally keys `ACCEPTED_COUNT`, `REJECTED_COUNT`,
   `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, and
-  `OOS_REJECTED_COUNT`, plus `summary.panel.total_slot_count` and a collector
-  failure string.
+  `OOS_REJECTED_COUNT`, plus `summary.panel.total_slot_count`, a collector
+  failure string, and a `revise` object (`status` / `tier`) read from
+  `round-N/revise/revise.env` when present (both fields are `null` when the
+  revise step has not yet run or is absent).
 - `panel-manifest.ndjson` with one compact JSON object per non-blank slot record,
   containing only `slot`, `tool`, and `output`.
 

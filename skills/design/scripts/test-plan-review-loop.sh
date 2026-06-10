@@ -1907,4 +1907,70 @@ if problem_text(a) == problem_text(b):
     sys.exit(1)
 PY
 
+echo "=== multi-round: round-2 gets own round-meta.json without clobbering round-1 ==="
+# Regression for issue #3869: with 5 review passes, only round-1/round-meta.json
+# was appearing in the final summary because each successive pass overwrote the
+# same round directory. This test verifies that round-N gets its own round-meta.json
+# and that round-1's metadata is preserved when round-2 runs.
+DMR="$TMP/multi-round"
+mkdir -p "$DMR"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMR/plan.txt"
+printf 'feat\n' >"$DMR/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_important  # one accepted finding so round-meta.json is non-trivial
+write_voters_three
+# Use the real tally (unset any stub tally left by a previous test).
+unset LARCH_PLAN_REVIEW_TALLY_SH
+
+# Run round 1 (single accepted finding so round-meta.json will be written).
+out_mr1=$(run_loop "$DMR" 1)
+printf '%s\n' "$out_mr1" | grep -q '^LOOP_STATUS=complete$' || fail "multi-round round-1 should complete"
+[[ -s "$DMR/plan-review/round-1/round-meta.json" ]] || fail "round-1/round-meta.json missing after round 1"
+jq -e '.tally.ACCEPTED_COUNT == "1"' "$DMR/plan-review/round-1/round-meta.json" >/dev/null \
+    || fail "round-1/round-meta.json should record accepted count"
+assert_plan_round_timing_row "$DMR" 1
+
+# Run round 2 (no findings → converges). Simulate run-step3-review.sh incrementing
+# the round counter between passes.
+write_collect_no_findings  # round 2 has no findings → ACCEPTED_COUNT=0
+
+# Remove the stale accepted-plan-findings.md from round 1 so round 2 tallies clean.
+: >"$DMR/accepted-plan-findings.md"
+out_mr2=$(run_loop "$DMR" 2)
+printf '%s\n' "$out_mr2" | grep -q '^LOOP_STATUS=complete$' || fail "multi-round round-2 should complete"
+
+# round-2 should write round-2/round-meta.json with 0 accepted.
+[[ -s "$DMR/plan-review/round-2/round-meta.json" ]] || fail "round-2/round-meta.json missing after round 2 (#3869 regression)"
+jq -e '.tally.ACCEPTED_COUNT == "0"' "$DMR/plan-review/round-2/round-meta.json" >/dev/null \
+    || fail "round-2/round-meta.json should record 0 accepted for convergence round"
+# CRITICAL: round-1/round-meta.json must NOT be deleted by round-2.
+[[ -s "$DMR/plan-review/round-1/round-meta.json" ]] || fail "round-1/round-meta.json was destroyed by round-2 (#3869 regression)"
+jq -e '.tally.ACCEPTED_COUNT == "1"' "$DMR/plan-review/round-1/round-meta.json" >/dev/null \
+    || fail "round-1/round-meta.json accepted count changed after round-2 ran"
+assert_plan_round_timing_row "$DMR" 2
+
+echo "=== round-meta.json includes revise field (null before revise, populated after) ==="
+# write-design-round-meta.sh should emit revise:{status,tier} from revise/revise.env
+# when present, and null for both fields when the revise dir is absent (round not yet
+# revised, or final convergence round with no accepted findings).
+DRREV="$TMP/round-meta-revise"
+mkdir -p "$DRREV/plan-review/round-1/revise"
+printf 'REVISE_STATUS=ok\nREVISE_TIER=codex\n' >"$DRREV/plan-review/round-1/revise/revise.env"
+printf 'FINDING_1\taccepted\t\n' >"$DRREV/plan-review/round-1/findings-classification.tsv"
+"$ROOT/scripts/write-design-round-meta.sh" --round-dir "$DRREV/plan-review/round-1" 2>/dev/null
+[[ -s "$DRREV/plan-review/round-1/round-meta.json" ]] || fail "revise: round-meta.json not written"
+jq -e '.revise.status == "ok" and .revise.tier == "codex"' \
+    "$DRREV/plan-review/round-1/round-meta.json" >/dev/null \
+    || fail "revise fields not populated from revise.env"
+
+DRREV2="$TMP/round-meta-no-revise"
+mkdir -p "$DRREV2/plan-review/round-1"
+printf 'FINDING_1\taccepted\t\n' >"$DRREV2/plan-review/round-1/findings-classification.tsv"
+"$ROOT/scripts/write-design-round-meta.sh" --round-dir "$DRREV2/plan-review/round-1" 2>/dev/null
+[[ -s "$DRREV2/plan-review/round-1/round-meta.json" ]] || fail "no-revise: round-meta.json not written"
+jq -e '.revise.status == null and .revise.tier == null' \
+    "$DRREV2/plan-review/round-1/round-meta.json" >/dev/null \
+    || fail "revise fields should be null when revise.env absent"
+
 printf '%s\n' "test-plan-review-loop: ok"
