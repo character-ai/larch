@@ -2104,7 +2104,20 @@ run_evaluate_failure() {
             break
         fi
         if [ "$gh_logs_rc" -eq 3 ]; then
-            printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
+            printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); waiting up to 3600s (polling every 15s).\n' "$phase"
+            _ip_start=$(date +%s)
+            while true; do
+                sleep 15
+                "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$gh_logs_capture" 2>&1
+                gh_logs_rc=$?
+                [ "$gh_logs_rc" -ne 3 ] && break
+                _ip_elapsed=$(( $(date +%s) - _ip_start ))
+                [ "$_ip_elapsed" -ge 3600 ] && break
+            done
+            [ "$gh_logs_rc" -eq 0 ] || [ "$gh_logs_rc" -eq 3 ] || record_failure "$phase" "gh-run-logs.sh" "$gh_logs_rc" "$gh_logs_capture" "CI Issues"
+        fi
+        if [ "$gh_logs_rc" -eq 3 ]; then
+            printf 'ship-pr %s: CI still in progress after 1-hour wait; deferring vendor dispatch.\n' "$phase"
         elif [ "$gh_logs_rc" -eq 0 ]; then
             per_job_verification_retry=false
             ci_failed_capture="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.out"
