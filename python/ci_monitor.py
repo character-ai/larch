@@ -1427,9 +1427,9 @@ def evaluate_failure(
         )
         if upfront_logs.state == "in_progress":
             return FixResult(
-                status="fix-exhausted",
+                status="ci-still-in-progress",
                 detail=(
-                    f"ci-fix-exhausted: CI run {run_id} still in progress after "
+                    f"CI run {run_id} still in progress after "
                     f"{config.CI_MONITOR_IN_PROGRESS_TIMEOUT}s"
                 ),
             )
@@ -1681,11 +1681,18 @@ def monitor(
             cwd=cwd,
             launch_fn=launch_fn,
             sleep_fn=sleep_fn,
+            clock=clock,
             base_remote=base_remote,
             base_ref=base_ref,
             ci_fix_rebase_pending=ci_fix_rebase_pending,
             ctx=ctx,
         )
+        if fix.status == "ci-still-in-progress":
+            return _base_result(
+                did_fixing=False,
+                goto=False,
+                step=StepResult(outcome=Outcome.OK),
+            )
         if fix.status == "no-changes":
             return _base_result(
                 did_fixing=False,

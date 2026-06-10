@@ -735,9 +735,13 @@ def write_implement_env_main(argv: list[str]) -> int:
             )
         if not cwd.is_absolute():
             raise ValueError("Invalid --cwd: must be an absolute path")
+        try:
+            repo_cwd = str(cwd.resolve())
+        except OSError:
+            repo_cwd = str(cwd)
         data = {
             "IMPLEMENT_TMPDIR": str(tmpdir),
-            "REPO_CWD": str(cwd),
+            "REPO_CWD": repo_cwd,
             "SKILL_KIND": "implement",
         }
         _validate_no_newlines(data)

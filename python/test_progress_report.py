@@ -35,6 +35,19 @@ def test_no_live_run(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-un
     assert progress_report._report(str(tmp_path)) == ""
 
 
+def test_empty_cwd_returns_no_live_run(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _write_implement_pointer(home, "123", impl, cwd)
+    _write_mark(impl, "Step 2 — implementation")
+
+    assert progress_report._report("") == ""
+
+
 def test_design_pointer_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
@@ -148,6 +161,44 @@ def test_newest_pointer_wins(tmp_path: Path, monkeypatch) -> None:  # type: igno
     report = progress_report._report(str(cwd))
 
     assert report.startswith("implement: Step new")
+
+
+def test_canonical_cwd_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    repo = tmp_path / "repo"
+    alias = tmp_path / "alias"
+    repo.mkdir()
+    alias.symlink_to(repo)
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _write_implement_pointer(home, "123", impl, repo)
+    _write_mark(impl, "Step 2 — implementation")
+
+    report = progress_report._report(str(alias))
+
+    assert report.startswith("implement: Step 2 — implementation")
+
+
+def test_ship_pr_stalled_phase(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _write_implement_pointer(home, "123", impl, cwd)
+    (impl / "ship-pr-state.sh").write_text(
+        "PHASE=stalled\nCI_PASSED=false\nFAILED_RUN_ID=99\nSTALL_STEP=10\n",
+        encoding="utf-8",
+    )
+
+    report = progress_report._report(str(cwd))
+
+    assert "Ship-PR phase: stalled" in report
+    assert "CI passed: false" in report
+    assert "failed run: 99" in report
+    assert "stall step: 10" in report
 
 
 def test_cwd_mismatch(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

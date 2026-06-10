@@ -24,6 +24,9 @@ SHIP_PR_PHASES = frozenset({
     "pr-push",
     "merge",
     "postmerge",
+    "rebase",
+    "rebase-failed",
+    "stalled",
     "done",
 })
 
@@ -39,6 +42,15 @@ class LiveRun:
 
 def _sessions_root() -> Path:
     return Path.home() / ".cache" / "larch" / "sessions"
+
+
+def _canonical_repo_path(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        return os.path.realpath(path)
+    except OSError:
+        return path
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -112,6 +124,9 @@ def _implement_candidate(pointer: Path) -> LiveRun | None:
 
 
 def _discover_live_run(cwd: str) -> LiveRun | None:
+    if not cwd.strip():
+        return None
+    canonical_cwd = _canonical_repo_path(cwd)
     root = _sessions_root()
     try:
         pointers = list(root.glob("current-implement-env-*.sh")) + list(
@@ -127,7 +142,7 @@ def _discover_live_run(cwd: str) -> LiveRun | None:
             candidate = _design_candidate(pointer)
         if candidate is None:
             continue
-        if cwd and candidate.cwd != cwd:
+        if _canonical_repo_path(candidate.cwd) != canonical_cwd:
             continue
         candidates.append(candidate)
     if not candidates:
@@ -211,6 +226,21 @@ def _render_ship_pr(implement_tmpdir: Path) -> str:
     iteration = state.get("ITERATION", "")
     if iteration:
         lines.append(f"iteration: {iteration}")
+    ci_passed = state.get("CI_PASSED", "")
+    if ci_passed:
+        lines.append(f"CI passed: {ci_passed}")
+    failed_run_id = state.get("FAILED_RUN_ID", "")
+    if failed_run_id:
+        lines.append(f"failed run: {failed_run_id}")
+    stall_step = state.get("STALL_STEP", "")
+    if stall_step:
+        lines.append(f"stall step: {stall_step}")
+    bail_reason = state.get("BAIL_REASON", "")
+    if bail_reason:
+        lines.append(f"bail reason: {bail_reason}")
+    merge_result = state.get("MERGE_RESULT", "")
+    if merge_result:
+        lines.append(f"merge result: {merge_result}")
     return "\n".join(lines)
 
 

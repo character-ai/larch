@@ -159,6 +159,7 @@ export IMPLEMENT_TMPDIR
 
 if [[ "$STEP5_MODE" == "loop" ]]; then
     _progress_done_marker="$IMPLEMENT_TMPDIR/progress/done"
+    rm -f "$_progress_done_marker" 2>/dev/null || true
     trap 'mkdir -p "$(dirname "$_progress_done_marker")" 2>/dev/null; : > "$_progress_done_marker" 2>/dev/null || true' EXIT
 fi
 
