@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import difflib
 import hashlib
 import html
@@ -1015,16 +1016,12 @@ def _larch_sessions_cache_roots() -> list[Path]:
     roots: list[Path] = []
     xdg = os.environ.get("XDG_CACHE_HOME")
     if xdg:
-        try:
-            roots.append((Path(xdg).expanduser().resolve() / "larch" / "sessions"))
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            roots.append(Path(xdg).expanduser().resolve() / "larch" / "sessions")
     home = os.environ.get("HOME")
     if home:
-        try:
-            roots.append((Path(home).expanduser().resolve() / ".cache" / "larch" / "sessions"))
-        except OSError:
-            pass
+        with contextlib.suppress(OSError):
+            roots.append(Path(home).expanduser().resolve() / ".cache" / "larch" / "sessions")
     return roots
 
 
