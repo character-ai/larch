@@ -199,13 +199,13 @@ def test_failed_required_check_transient_logs_reruns_then_merges() -> None:
     assert (MERGE, "/repo") in runner.calls
 
 
-def test_failed_required_check_no_signature_still_reruns_once() -> None:
-    runner = _runner(checks=[_checks("fail"), _checks("pass"), _checks("pass")])
+def test_failed_required_check_no_signature_does_not_rerun() -> None:
+    runner = _runner(checks=[_checks("fail")])
     runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="assertion failed")
     runner.responses[RERUN] = _cr(RERUN)
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo", sleep_fn=lambda _s: None)
-    assert result.ok is True
-    assert [call[0] for call in runner.calls].count(RERUN) == 1
+    assert result.ok is False
+    assert all(call[0] != RERUN for call in runner.calls)
 
 
 def test_failed_logs_wait_until_ready_before_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -213,7 +213,7 @@ def test_failed_logs_wait_until_ready_before_rerun(monkeypatch: pytest.MonkeyPat
     runner = _runner(checks=[_checks("fail"), _checks("fail"), _checks("pass"), _checks("pass")])
     runner.sequential[RUN_VIEW] = [
         _cr(RUN_VIEW, rc=1, stderr="is still in progress; logs will be available"),
-        _cr(RUN_VIEW, stdout="plain failure"),
+        _cr(RUN_VIEW, stdout="Could not resolve host: api.github.com"),
     ]
     runner.responses[RERUN] = _cr(RERUN)
     sleeps, sleep_fn = _sleeps()
@@ -222,14 +222,14 @@ def test_failed_logs_wait_until_ready_before_rerun(monkeypatch: pytest.MonkeyPat
     assert sleeps[:2] == [float(config.CI_WAIT_POLL_INTERVAL_SEC), float(config.CI_WAIT_POLL_INTERVAL_SEC)]
 
 
-def test_failed_logs_never_ready_still_attempts_one_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_failed_logs_never_ready_does_not_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_log_ship, "_ci_wait_poll_budget", lambda: 1)
-    runner = _runner(checks=[_checks("fail"), _checks("fail"), _checks("pass"), _checks("pass")])
+    runner = _runner(checks=[_checks("fail"), _checks("fail")])
     runner.responses[RUN_VIEW] = _cr(RUN_VIEW, rc=1, stderr="still unavailable")
     runner.responses[RERUN] = _cr(RERUN)
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo", sleep_fn=lambda _s: None)
-    assert result.ok is True
-    assert [call[0] for call in runner.calls].count(RERUN) == 1
+    assert result.ok is False
+    assert all(call[0] != RERUN for call in runner.calls)
 
 
 def test_failed_check_without_run_id_fails() -> None:
@@ -243,7 +243,7 @@ def test_failed_check_without_run_id_fails() -> None:
 def test_stale_failure_after_rerun_settles_then_merges(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_log_ship, "_ci_wait_poll_budget", lambda: 3)
     runner = _runner(checks=[_checks("fail"), _checks("fail"), _checks("pending"), _checks("pass"), _checks("pass")])
-    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="plain failure")
+    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="Could not resolve host: api.github.com")
     runner.responses[RERUN] = _cr(RERUN)
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo", sleep_fn=lambda _s: None)
     assert result.ok is True
@@ -253,7 +253,7 @@ def test_stale_failure_after_rerun_settles_then_merges(monkeypatch: pytest.Monke
 def test_stale_failure_through_settle_budget_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_log_ship, "_ci_wait_poll_budget", lambda: 1)
     runner = _runner(checks=[_checks("fail"), _checks("fail"), _checks("fail")])
-    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="plain failure")
+    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="Could not resolve host: api.github.com")
     runner.responses[RERUN] = _cr(RERUN)
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo", sleep_fn=lambda _s: None)
     assert result.ok is False
@@ -262,7 +262,7 @@ def test_stale_failure_through_settle_budget_fails(monkeypatch: pytest.MonkeyPat
 
 def test_later_distinct_failure_after_one_rerun_fails() -> None:
     runner = _runner(checks=[_checks("fail", "999"), _checks("fail", "1000")])
-    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="plain failure")
+    runner.responses[RUN_VIEW] = _cr(RUN_VIEW, stdout="Could not resolve host: api.github.com")
     runner.responses[RERUN] = _cr(RERUN)
     result = design_log_ship.run_design_log_ci_merge(runner, pr=1, repo="o/r", cwd="/tmp/wt", merge_cwd="/repo", sleep_fn=lambda _s: None)
     assert result.ok is False

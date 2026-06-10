@@ -115,3 +115,47 @@ def test_emit_kv_rejects_newline_in_value() -> None:
 def test_emit_kv_rejects_carriage_return_in_value() -> None:
     with pytest.raises(ValueError, match="newline"):
         logging_util.emit_kv("KEY", "bad\rvalue")
+
+
+def test_quiet_init_prefers_design_tmpdir_over_implement_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    logging_util.reset_quiet_state()
+    design_tmpdir = tmp_path / "design"
+    implement_tmpdir = tmp_path / "implement"
+    design_tmpdir.mkdir()
+    implement_tmpdir.mkdir()
+    captured: list[Path] = []
+
+    def fake_open(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], flags: int, mode: int = 0o777) -> int:
+        _ = flags
+        _ = mode
+        captured.append(Path(os.fsdecode(path)))
+        return 12345
+
+    def fake_dup2(src: int, dst: int) -> int:
+        _ = src
+        return dst
+
+    def fake_close(fd: int) -> None:
+        _ = fd
+
+    monkeypatch.setenv(config.ENV_DESIGN_TMPDIR, str(design_tmpdir))
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(implement_tmpdir))
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_LOG_FILE, None)
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_ACTIVE, None)
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_PID, None)
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "dup2", fake_dup2)
+    monkeypatch.setattr(os, "close", fake_close)
+    try:
+        logging_util.quiet_init(argv0="design-log-ship.py")
+        assert captured
+        assert captured[0].parent == design_tmpdir
+    finally:
+        _ = os.environ.pop(config.ENV_LARCH_QUIET_LOG_FILE, None)
+        _ = os.environ.pop(config.ENV_LARCH_QUIET_ACTIVE, None)
+        _ = os.environ.pop(config.ENV_LARCH_QUIET_PID, None)
+        logging_util.reset_quiet_state()

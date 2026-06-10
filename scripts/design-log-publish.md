@@ -28,8 +28,10 @@ branch by:
    Files whose basename matches `design_artifact_excluded` are skipped before
    any trim/redact work. The deny-list is exclusion-only: it never adds files
    to the publish set, so per-run flushed design-log bytes cannot increase
-   when new deny arms land. Shared operational-scratch suffixes (also present
-   in `round_artifact_included` for `/implement`): `*.sidecar`, `*.dirty-tree`,
+   when new deny arms land. The Python bridge stderr scratch log
+   (`design-log-ship.stderr.log`) is excluded. Shared operational-scratch
+   suffixes (also present in `round_artifact_included` for `/implement`):
+   `*.sidecar`, `*.dirty-tree`,
    `*.untracked-baseline`, `*.done`, `*.diag`, `*.events.jsonl`,
    `*-output.txt.prompt`, `*-output-*.txt.prompt`. Plan-review-specific
    exclusions (#3534) deny raw transcripts (`cursor-plan-*-output*.txt`,
@@ -102,10 +104,10 @@ branch by:
    missing-bucket, pending, empty/no-checks, read-error, and any other non-pass
    classification do not merge.
    Design-log PRs get one bounded failed-run rerun using
-   `CI_MONITOR_TRANSIENT_RERUN_MAX=1`. Failed logs are collected for diagnostics
-   and readiness; transient signatures are recorded when present, but the log-only
-   path may rerun once even without a network signature. Failed-log readiness
-   polling and post-rerun stale-row settle polling are both bounded by the
+   `CI_MONITOR_TRANSIENT_RERUN_MAX=1`, only when failed logs contain a transient
+   network signature. Failed logs are collected for diagnostics and readiness;
+   ready logs without a transient signature fail closed without spending a rerun.
+   Failed-log readiness polling and post-rerun stale-row settle polling are both bounded by the
    checks wait budget derived from `CI_WAIT_TIMEOUT_SEC / CI_WAIT_POLL_INTERVAL_SEC`,
    so an immediately re-observed stale failed check row does not prematurely
    exhaust the rerun path while GitHub propagates the rerun.

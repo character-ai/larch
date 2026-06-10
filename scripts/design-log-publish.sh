@@ -301,7 +301,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|render-plan-*.prompt|timing-report-final.stderr.log|timing-report-final.failure.log)
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|design-log-ship.stderr.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|render-plan-*.prompt|timing-report-final.stderr.log|timing-report-final.failure.log)
             return 0
             ;;
     esac
@@ -1150,13 +1150,14 @@ else
             merge_rc=2
         else
             set +e
+            _dlship_stderr_log="${DESIGN_TMPDIR}/design-log-ship.stderr.log"
             _dlship_out=$(python3 "${SCRIPT_DIR}/../python/cli.py" ship design-log \
                 --pr-number "$PR_NUM" \
                 --repo "$REPO" \
                 --base-remote origin \
                 --base-ref "$ORIGIN_DEFAULT" \
                 --cwd "$WT_DIR" \
-                --merge-cwd "$REPO_ROOT" 2>&1)
+                --merge-cwd "$REPO_ROOT" 2>"$_dlship_stderr_log")
             _dlship_rc=$?
             set -e
             if [[ "${_dlship_rc:-0}" -ne 0 ]]; then

@@ -59,7 +59,9 @@ def quiet_init(*, argv0: str | None = None) -> None:
         return
     if active_pid == str(os.getpid()):
         return
-    tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    tmpdir = os.environ.get(config.ENV_DESIGN_TMPDIR, "")
+    if not tmpdir or not Path(tmpdir).is_dir():
+        tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not tmpdir or not Path(tmpdir).is_dir():
         tmpdir = os.environ.get("TMPDIR", "")
     if not tmpdir or not Path(tmpdir).is_dir():
