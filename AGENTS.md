@@ -53,7 +53,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 **Scope.** Applies only to human-facing prose: chat answers to the operator, and human-facing documents (PR descriptions, issue bodies, design notes, summaries, README and docs prose).
 
-- Explicit output formats take precedence. Never apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
+- Explicit output formats take precedence. Do not apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
 - Does not apply to code or code comments; match the surrounding style there.
 - Applies to new prose only. Do not rewrite or restyle existing text to conform. Every changed line needs to trace to the task at hand.
 - Precedence when rules conflict: explicit format contracts, then exact meaning, then these style rules.
