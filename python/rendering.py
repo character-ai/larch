@@ -251,7 +251,7 @@ def _scope_anchor_under_root(canon: Path, root: Path) -> bool:
 
 def _scope_anchor_tmp_or_cache_ok(canon: Path) -> bool:
     canon_s = str(canon)
-    if canon_s.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/")):
+    if canon_s.startswith(("/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/")):  # noqa: S108
         return True
     xdg_cache = os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))
     try:
