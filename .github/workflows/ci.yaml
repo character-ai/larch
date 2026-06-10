@@ -421,10 +421,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - name: Walk generators registry and check for drift
-        run: |
-          python3 python/cli.py generate check
           cache-dependency-path: .github/workflows/requirements-lint.txt
+      - name: Walk generators registry and check for drift
+        run: python3 python/cli.py generate check
       - name: Install lint dependencies
         env:
           PIP_RETRIES: "5"

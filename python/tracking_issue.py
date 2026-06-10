@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import cast
 
 import config
 import gh
 import redact
 from errors import ShipError
-from proc import Runner
+from proc import CommandResult, Runner
+from retry import with_transient_retry
 
 _MARKER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _LIFECYCLE_PREFIX_RE = re.compile(
@@ -99,6 +101,27 @@ def _upsert_marker(marker: str) -> str:
     return f"<!-- larch:{marker} -->"
 
 
+def _retry_gh(result_fn: Callable[[], CommandResult]) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = result_fn()
+        return result, result.returncode, result.stdout + result.stderr
+
+    return with_transient_retry(attempt).value
+
+
+def _comment_url_from_result(result: CommandResult) -> str:
+    text = result.stdout.strip()
+    if text.startswith("http"):
+        return text
+    try:
+        data_obj: object = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return ""
+    data = cast("dict[str, object]", data_obj) if isinstance(data_obj, dict) else {}
+    url = data.get("html_url", "")
+    return url if isinstance(url, str) else ""
+
+
 def _upsert_marker_comment(
     runner: Runner,
     issue: str,
@@ -175,22 +198,16 @@ def upsert_marker_comment(
             raise ShipError(msg)
         comment_id = found
     if comment_id is None:
-        result = gh.issue_comment(runner, issue, redacted, repo=repo, cwd=cwd)
+        result = _retry_gh(lambda: gh.issue_comment(runner, issue, redacted, repo=repo, cwd=cwd))
         if result.returncode != 0:
             msg = f"gh issue comment failed ({result.returncode})"
             raise ShipError(msg)
-        return "", True
-    result = gh.issue_comment_patch(runner, comment_id, redacted, repo=repo, cwd=cwd)
+        return _comment_url_from_result(result), False
+    result = _retry_gh(lambda: gh.issue_comment_patch(runner, comment_id, redacted, repo=repo, cwd=cwd))
     if result.returncode != 0:
         msg = f"gh issue comment patch failed ({result.returncode})"
         raise ShipError(msg)
-    try:
-        data_obj: object = json.loads(result.stdout or "{}")
-    except json.JSONDecodeError:
-        data_obj = {}
-    data = cast("dict[str, object]", data_obj) if isinstance(data_obj, dict) else {}
-    url = data.get("html_url", "")
-    return url if isinstance(url, str) else "", True
+    return _comment_url_from_result(result), True
 
 def upsert_summary(
     runner: Runner,

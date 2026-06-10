@@ -1043,6 +1043,24 @@ def find_issue_comment_id_by_marker(
     return -1
 
 
+def issue_comment_delete(
+    runner: Runner,
+    comment_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _gh(
+            runner,
+            ["api", f"/repos/{repo}/issues/comments/{comment_id}", "-X", "DELETE"],
+            cwd=cwd,
+        )
+        return result, result.returncode, _combined(result)
+
+    return with_transient_retry(attempt).value
+
+
 def issue_comment_patch(
     runner: Runner,
     comment_id: int,

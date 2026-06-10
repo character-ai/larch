@@ -73,6 +73,12 @@ def _err(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _write_payload(text: str) -> None:
+    stream = logging_util.contract_stream()
+    _ = stream.write(text)
+    stream.flush()
+
+
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -380,14 +386,14 @@ def render_specialist_main(argv: list[str]) -> int:
             )
             cache_file = Path(cache_dir) / f"r-{_sha256_text(key_input)}"
             if cache_file.is_file():
-                print(_read_text(cache_file), end="")
+                _write_payload(_read_text(cache_file))
                 return 0
             text = _render_specialist_text(args)
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             _write_text_atomic(cache_file, text)
-            print(text, end="")
+            _write_payload(text)
             return 0
-        print(_render_specialist_text(args), end="")
+        _write_payload(_render_specialist_text(args))
         return 0
     except (UsageError, RenderError) as exc:
         _err(f"render-specialist-prompt.sh: {exc}")
@@ -467,7 +473,7 @@ def render_reviewer_main(argv: list[str]) -> int:
                 if line == "":
                     continue
             out.append(line)
-        print("\n".join(out) + "\n", end="")
+        _write_payload("\n".join(out) + "\n")
         return 0
     except (SystemExit, UsageError, RenderError) as exc:
         _err(f"render-reviewer-prompt.sh: {exc}")
@@ -943,6 +949,26 @@ def _extract_sections(body: str) -> tuple[str, str]:
     return "\n".join(arch).rstrip("\n"), "\n".join(code).rstrip("\n")
 
 
+def _under_tmp_or_cache_root(path: Path) -> bool:
+    try:
+        canon = _canonical_path(path)
+    except OSError:
+        return False
+    roots: list[Path] = []
+    for env_name in ("TMPDIR", "XDG_CACHE_HOME"):
+        value = os.environ.get(env_name)
+        if value:
+            roots.append(Path(value).expanduser().resolve())
+    roots.extend([
+        Path("/tmp").resolve(),  # noqa: S108
+        Path("/private/tmp").resolve(),
+    ])
+    home = os.environ.get("HOME")
+    if home:
+        roots.append((Path(home) / ".cache" / "larch" / "sessions").resolve())
+    return any(canon == root or root in canon.parents for root in roots)
+
+
 def _assert_tmp_scoped(label: str, path_value: str, *, allow_external: bool) -> None:
     if not path_value or allow_external:
         return
@@ -952,7 +978,7 @@ def _assert_tmp_scoped(label: str, path_value: str, *, allow_external: bool) -> 
     raw = str(path)
     if raw.startswith(("/tmp/", "/private/tmp/", "/var/folders/")):  # noqa: S108
         return
-    if not _repo_relative_or_tmp_ok(path, REPO_ROOT):
+    if not _under_tmp_or_cache_root(path):
         raise UsageError(f"{label} file must be under an allowed temporary root (or pass --allow-external-paths)")
 
 
@@ -1052,7 +1078,7 @@ def diagrams_upsert_main(argv: list[str]) -> int:
             logging_util.emit_kv("CODE_FLOW_SOURCE", "absent" if code_source == "cleared" else code_source)
             return 0
         if not sections_redacted and comment_id is not None:
-            result = runner.run(["gh", "api", f"/repos/{repo}/issues/comments/{comment_id}", "-X", "DELETE"])
+            result = gh.issue_comment_delete(runner, comment_id, repo=repo)
             if result.returncode != 0:
                 raise ShipError("gh api comment delete failed")
             logging_util.emit_kv("UPSERT_STATUS", "ok")
