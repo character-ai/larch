@@ -156,8 +156,8 @@ if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
   exit "${PUBLISH_STUB_RC}"
 fi
 STUB
-    mkdir -p "$STUB/python"
-    cat >"$STUB/python/cli.py" <<'STUB'
+    mkdir -p "$FAKE_PLUGIN/python"
+    cat >"$FAKE_PLUGIN/python/cli.py" <<'STUB'
 import os
 import sys
 if sys.argv[1:3] != ["diagrams", "upsert"]:
