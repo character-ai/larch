@@ -47,6 +47,10 @@ replay_warn_error() {
     local line key value
     while IFS= read -r line || [ -n "$line" ]; do
         [ -z "$line" ] && continue
+        case "$line" in
+            *=*) ;;
+            *) continue ;;
+        esac
         key="${line%%=*}"
         value="${line#*=}"
         case "$key" in
