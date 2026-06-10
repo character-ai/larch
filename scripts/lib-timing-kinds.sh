@@ -85,6 +85,7 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-judge
     cursor-judge
     codex-exec
+    codex-plan-draft
     vendor-misc
     implement-code-flow
 )

@@ -973,11 +973,30 @@ if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
   _drafter_postplan_fallback_used=true
 fi
 printf '%s\n' "${_drafter_postplan_fallback_used}" > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
-DRAFTER_MODEL="${LARCH_DESIGN_PLAN_MODEL:-claude-fable-5}"
+# Vendor selection: LARCH_DESIGN_DRAFTER=codex|claude; when unset, prefer codex if CODEX_PRESENT=true.
+_step2b_drafter_vendor="${LARCH_DESIGN_DRAFTER:-}"
+if [[ -z "$_step2b_drafter_vendor" ]]; then
+  if [[ "${CODEX_PRESENT:-false}" == "true" ]]; then
+    _step2b_drafter_vendor="codex"
+  else
+    _step2b_drafter_vendor="claude"
+  fi
+fi
+_step2b_drafter_model=""
+if [[ "$_step2b_drafter_vendor" == "claude" ]]; then
+  _step2b_drafter_model="${LARCH_DESIGN_PLAN_MODEL:-claude-fable-5}"
+fi
 _step2b_drafter_skip_reason=""
-case "$DRAFTER_MODEL" in
-  ''|*[[:space:]]*|*[$'\n\r\t']*) _step2b_drafter_skip_reason="invalid-model" ;;
+case "$_step2b_drafter_vendor" in
+  codex|claude) ;;
+  ''|*[[:space:]]*|*[$'\n\r\t']*) _step2b_drafter_skip_reason="invalid-vendor" ;;
+  *) _step2b_drafter_skip_reason="unknown-vendor" ;;
 esac
+if [[ "$_step2b_drafter_vendor" == "claude" && -z "$_step2b_drafter_skip_reason" ]]; then
+  case "$_step2b_drafter_model" in
+    ''|*[[:space:]]*|*[$'\n\r\t']*) _step2b_drafter_skip_reason="invalid-model" ;;
+  esac
+fi
 rm -f "$DESIGN_TMPDIR/plan.txt" \
       "$DESIGN_TMPDIR/plan-summary.md" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
@@ -1050,15 +1069,26 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
   } > "$DESIGN_TMPDIR/step2b-drafter-prompt.txt"
   _repo_root="$(git -C "$PWD" rev-parse --show-toplevel)"
   set +e
-  "$CLAUDE_PLUGIN_ROOT/scripts/launch-claude-drafter.sh" \
-    --model "$DRAFTER_MODEL" \
-    --prompt-file "$DESIGN_TMPDIR/step2b-drafter-prompt.txt" \
-    --output-file "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
-    "${_baseline_arg[@]}" \
-    --timeout 1800 \
-    --timing-task-kind claude-plan-draft \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --repo-root "$_repo_root"
+  if [[ "$_step2b_drafter_vendor" == "codex" ]]; then
+    "$CLAUDE_PLUGIN_ROOT/scripts/launch-codex-drafter.sh" \
+      --prompt-file "$DESIGN_TMPDIR/step2b-drafter-prompt.txt" \
+      --output-file "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
+      "${_baseline_arg[@]}" \
+      --timeout 1800 \
+      --timing-task-kind codex-plan-draft \
+      --design-tmpdir "$DESIGN_TMPDIR" \
+      --repo-root "$_repo_root"
+  else
+    "$CLAUDE_PLUGIN_ROOT/scripts/launch-claude-drafter.sh" \
+      --model "$_step2b_drafter_model" \
+      --prompt-file "$DESIGN_TMPDIR/step2b-drafter-prompt.txt" \
+      --output-file "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
+      "${_baseline_arg[@]}" \
+      --timeout 1800 \
+      --timing-task-kind claude-plan-draft \
+      --design-tmpdir "$DESIGN_TMPDIR" \
+      --repo-root "$_repo_root"
+  fi
   _drafter_rc=$?
   set -e
 else
@@ -1104,20 +1134,20 @@ if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]
   env LARCH_QUIET_DISABLE=1 "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --variant step2b
-  printf '✅ 2b: drafter subprocess succeeded (model=%s plan_lines=%s diff_lines=%s)\n' "$DRAFTER_MODEL" "$_plan_lines" "$_diff_lines"
+  printf '✅ 2b: drafter subprocess succeeded (vendor=%s plan_lines=%s diff_lines=%s)\n' "$_step2b_drafter_vendor" "$_plan_lines" "$_diff_lines"
 elif [[ "$_drafter_dirty_block" == "true" ]]; then
   printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
   printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**"
 else
   rm -f "$DESIGN_TMPDIR/plan-summary.md"
   printf '%s\n' inline > "$DESIGN_TMPDIR/.step2b-plan-source"
-  printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (model=$DRAFTER_MODEL)**"
+  printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor=$_step2b_drafter_vendor)**"
   if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
     printf '%s\n' "Step 2b drafter fallback: ${_step2b_drafter_skip_reason:-rc-${_drafter_rc}}" > "$DESIGN_TMPDIR/step2b-drafter-fallback.log"
     "$CLAUDE_PLUGIN_ROOT/scripts/append-tool-failure.sh" \
       --log "$DESIGN_TMPDIR/execution-issues.md" \
       --site "design Step 2b drafter" \
-      --tool "launch-claude-drafter.sh" \
+      --tool "launch-${_step2b_drafter_vendor}-drafter.sh" \
       --exit-code "$_drafter_rc" \
       --category Warnings \
       --output-file "$DESIGN_TMPDIR/step2b-drafter-fallback.log" \

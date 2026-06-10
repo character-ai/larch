@@ -13,6 +13,7 @@ Generic auth-wired Codex prompt launcher for research lanes, voters, judges, and
 - `--with-effort`
 - `--usage-label LABEL` (default `codex_exec`)
 - `--timing-task-kind KIND` (default `codex-exec`)
+- `--trusted-instructions-file PATH` — write trusted `instructions` into temp `CODEX_HOME/config.toml` before appending stripped operator config (drops any existing top-level `instructions` from `~/.codex/config.toml`)
 
 ## Exit codes
 
