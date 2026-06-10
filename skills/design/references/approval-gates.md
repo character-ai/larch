@@ -98,7 +98,7 @@ The zero-findings short-circuit above is unchanged in both modes (nothing to app
 
 Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. The only operator prompts that can still fire inside the apply pipeline are the intentional safety brakes in `### Shared post-apply pipeline`, and they are unchanged by `--approve`:
 
-1. **Plan-size HARD trigger** (`design-postplan-emit.sh` rc=12 → Split / Override / Cancel).
+1. **Plan-size HARD trigger** (`design-postplan-emit.sh` rc=12): in the in-loop continuation path this is now warn-and-continue (no prompt; issue #3959); the Split / Override / Cancel prompt fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
 2. **Plan-command validator escalation** (rc=10): defects are first auto-corrected cross-vendor (see `SKILL.md` **### Plan command validator failure (shared)**); the helper enforces target-file-only writes, repo dirty-tree checks, per-site evidence, and optional-trailer preservation before the postplan fence is re-entered. The Fix-and-retry / Override / Cancel prompt fires only after auto-fix is exhausted.
 
 Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer halts: the driver records a warning in `execution-issues.md` and exits `0`. These size brakes are the only automatic halt on the apply path.
