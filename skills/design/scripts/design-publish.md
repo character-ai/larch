@@ -68,7 +68,7 @@ Update together: `skills/design/SKILL.md` Step 5c, `skills/design/scripts/render
 
 `skills/design/scripts/test-design-publish.sh` (contract: `test-design-publish.md`).
 
-Orchestrator handoff: `_publish_out` capture + file-first `.design-publish-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_publish_rc=1` is the normal plan-write failure path (parse, do not abort); `_publish_rc=4` routes to the shared validator-failure handler.
+Orchestrator handoff: stdout captured to a temp file (`_publish_stdout_file`); `read-result-env.sh --input .design-publish-result.env --fallback-input _publish_stdout_file` reads allowlisted keys (file-first, stdout fallback); `_publish_rc=3` forces a guaranteed-absent primary path so the stdout fallback wins (stdout authority on rc=3); WARN bodies from the parsed result are replayed to top-chat verbatim; exit `2` / unexpected non-zero (outside `{0,1,3,4}`) abort before result env parse; `_publish_rc=1` is the normal plan-block-write failure path (parse, do not abort); `_publish_rc=4` routes to the shared validator-failure handler.
 
 ## Recent contract coverage
 
