@@ -341,7 +341,7 @@ def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     if token_ledgers:
         argv.extend(["--token-ledger", str(token_ledgers[-1])])
     try:
-        result = subprocess.run(argv, text=True, capture_output=True, timeout=8, check=False)
+        result = subprocess.run(argv, text=True, capture_output=True, timeout=6, check=False)
     except (OSError, subprocess.SubprocessError):
         return ""
     if result.returncode != 0:

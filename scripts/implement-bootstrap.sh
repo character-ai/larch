@@ -648,6 +648,33 @@ phase_infra() {
                 fi
             fi
         fi
+
+        if [ -n "${LARCH_CLAUDE_PID:-}" ]; then
+            _ptr_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-pointer.XXXXXX") || _ptr_err=""
+            _ptr_rc=0
+            if [ -n "$_ptr_err" ]; then
+                python3 "$PY_CLI" session write-implement-env \
+                    --claude-pid "$LARCH_CLAUDE_PID" \
+                    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+                    --cwd "$PWD" 2>"$_ptr_err" || _ptr_rc=$?
+            else
+                python3 "$PY_CLI" session write-implement-env \
+                    --claude-pid "$LARCH_CLAUDE_PID" \
+                    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+                    --cwd "$PWD" 2>/dev/null || _ptr_rc=$?
+            fi
+            if [ "$_ptr_rc" -ne 0 ] && [ -n "$_ptr_err" ] && [ -s "$_ptr_err" ]; then
+                "$SCRIPT_DIR/append-tool-failure.sh" \
+                    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                    --site "implement-bootstrap resume-pointer-refresh" \
+                    --tool "session write-implement-env" \
+                    --exit-code "$_ptr_rc" \
+                    --category Warnings \
+                    --output-file "$_ptr_err" \
+                    --redact || true
+            fi
+            [ -n "$_ptr_err" ] && rm -f "$_ptr_err"
+        fi
     else
 
         local setup_cmd
