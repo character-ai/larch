@@ -332,4 +332,92 @@ grep -Fq 'merge_router_flags()' "$DESIGN_ROUTE" \
 grep -Fq -- '--approve-requested "$approve_requested"' "$REPO_ROOT/skills/design/SKILL.md" \
   || fail "case12: SKILL.md route fence must pass current --per-round-approval"
 
+# --- Resume route integration (Cases 13 and 13b) ---
+# Set up a fresh fake plugin with stubs needed for resume@* route.
+FAKE_RESUME_PLUGIN="$TMPROOT/fake-resume-plugin"
+STUB_RESUME_SCRIPTS="$FAKE_RESUME_PLUGIN/scripts"
+STUB_RESUME_DESIGN="$FAKE_RESUME_PLUGIN/skills/design/scripts"
+mkdir -p "$STUB_RESUME_SCRIPTS" "$FAKE_RESUME_PLUGIN/python" "$STUB_RESUME_DESIGN"
+for _lib in lib-quiet.sh lib-larch-log.sh append-tool-failure.sh append-execution-issue.sh; do
+  ln -sf "$REPO_ROOT/scripts/$_lib" "$STUB_RESUME_SCRIPTS/$_lib"
+done
+cat >"$FAKE_RESUME_PLUGIN/python/cli.py" <<STUB
+#!/usr/bin/env python3
+import os, subprocess, sys
+if sys.argv[1:3] == ["session", "write-design-env"]:
+    raise SystemExit(0)
+raise SystemExit(subprocess.call(["$PYTHON_BIN", "$REPO_ROOT/python/cli.py", *sys.argv[1:]]))
+STUB
+chmod +x "$FAKE_RESUME_PLUGIN/python/cli.py"
+# Minimal step-name-registry.tsv covering steps used by Cases 13 and 13b.
+printf 'step\tname\n3\tplan review\n2b\tplan draft\n' >"$STUB_RESUME_DESIGN/step-name-registry.tsv"
+# Parametric design-pause-load.sh stub: LARCH_TEST_PAUSE_STEP controls the STEP output.
+cat >"$STUB_RESUME_SCRIPTS/design-pause-load.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LOAD_OK=true\n'
+printf 'STEP=%s\n' "${LARCH_TEST_PAUSE_STEP:-3}"
+printf 'SESSION_ID=test-resume\n'
+printf 'MARKER_CLEARED=true\n'
+exit 0
+STUB
+chmod +x "$STUB_RESUME_SCRIPTS/design-pause-load.sh"
+
+# Case 13: resume@3 route; --approve-requested true OR-merges into run-params.json.
+D13="$TMPROOT/route13"
+mkdir -p "$D13"
+BODY13="$D13/body.txt"
+printf '<!-- larch:design-pause:start -->\n' >"$BODY13"
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+  --approve-requested false --skip-approve-requested false --output "$D13/run-params.json" >/dev/null
+set +e
+route13_out=$(CLAUDE_PLUGIN_ROOT="$FAKE_RESUME_PLUGIN" LARCH_TEST_PAUSE_STEP=3 \
+  "$DESIGN_ROUTE" \
+  --design-tmpdir "$D13" \
+  --issue 42 \
+  --issue-title "Feature fixture" \
+  --issue-body-file "$BODY13" \
+  --has-clarify-label false \
+  --claude-pid "$$" \
+  --session-id "route13" \
+  --partition-requested false \
+  --brainstorm-requested false \
+  --approve-requested true \
+  --skip-approve-requested false 2>&1)
+route13_rc=$?
+set -e
+[[ "$route13_rc" -eq 0 ]] || fail "case13: design-route.sh rc=$route13_rc out=$route13_out"
+printf '%s\n' "$route13_out" | grep -Fq 'ROUTE=resume@3' \
+  || fail "case13: design-route.sh did not emit resume@3 route: $route13_out"
+jq -e '.approve_requested == true' "$D13/run-params.json" >/dev/null \
+  || fail "case13: design-route.sh resume@* did not OR-merge approve_requested; got $(cat "$D13/run-params.json")"
+
+# Case 13b: resume@2b route; --partition-requested true OR-merges into run-params.json.
+D13B="$TMPROOT/route13b"
+mkdir -p "$D13B"
+BODY13B="$D13B/body.txt"
+printf '<!-- larch:design-pause:start -->\n' >"$BODY13B"
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+  --approve-requested false --skip-approve-requested false --output "$D13B/run-params.json" >/dev/null
+set +e
+route13b_out=$(CLAUDE_PLUGIN_ROOT="$FAKE_RESUME_PLUGIN" LARCH_TEST_PAUSE_STEP=2b \
+  "$DESIGN_ROUTE" \
+  --design-tmpdir "$D13B" \
+  --issue 42 \
+  --issue-title "Feature fixture" \
+  --issue-body-file "$BODY13B" \
+  --has-clarify-label false \
+  --claude-pid "$$" \
+  --session-id "route13b" \
+  --partition-requested true \
+  --brainstorm-requested false \
+  --approve-requested false \
+  --skip-approve-requested false 2>&1)
+route13b_rc=$?
+set -e
+[[ "$route13b_rc" -eq 0 ]] || fail "case13b: design-route.sh rc=$route13b_rc out=$route13b_out"
+printf '%s\n' "$route13b_out" | grep -Fq 'ROUTE=resume@2b' \
+  || fail "case13b: design-route.sh did not emit resume@2b route: $route13b_out"
+jq -e '.partition_requested == true' "$D13B/run-params.json" >/dev/null \
+  || fail "case13b: design-route.sh resume@* did not OR-merge partition_requested; got $(cat "$D13B/run-params.json")"
+
 echo "PASS: test-step0b-router-flag-recovery.sh"

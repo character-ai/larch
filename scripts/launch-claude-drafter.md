@@ -64,7 +64,7 @@ Any JSON envelope or extracted `.result` is scratch-only and removed before exit
 
 Claude is run with `--output-format json`. A successful subprocess must produce valid JSON with `is_error` absent/false and a non-empty string `.result`; invalid JSON, `is_error:true`, missing/non-string/empty `.result`, or 0-byte promoted result fails closed with `CLAUDE_JSON_RESULT_INVALID`, exit `99`, and no token-ledger row.
 
-The `.result` text is parsed from scratch with exact whole-line sentinels:
+The `.result` text is parsed from scratch by `scripts/parse-drafter-output.py` with exact whole-line sentinels:
 
 - `LARCH_PLAN_BEGIN` / `LARCH_PLAN_END` — required exactly once.
 - `LARCH_SUMMARY_BEGIN` / `LARCH_SUMMARY_END` — optional, but when present must be exactly one balanced non-empty pair.
@@ -87,3 +87,10 @@ Step 2b treats only `STATUS=dirty MODE=baseline-delta` as confirmed new drafter 
 After JSON promotion and delimiter extraction succeed, the launcher records `token-ledger.sh record-vendor claude_sub ... raw=<role>`, with `raw` derived locally from `--timing-task-kind` (`claude_draft`, `claude_scout`, `claude_vote`, or `claude_review`). Timing is recorded with vendor `claude` and the supplied task kind. JSON/delimiter failures skip token recording.
 
 Regression harness: `scripts/test-launch-claude-drafter.sh`.
+
+## Edit-in-sync
+
+- `scripts/parse-drafter-output.py` — shared sentinel parser; sentinel contract
+  changes must be made there and will affect both launchers.
+- `scripts/launch-codex-drafter.sh` — codex-side equivalent; keep status KV
+  contract identical so SKILL.md Step 2b can use either launcher.
