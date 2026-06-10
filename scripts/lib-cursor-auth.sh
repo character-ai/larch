@@ -137,7 +137,8 @@ cursor_auth_export_env() {
 #   2. If `uname -s` is not Darwin: return 0 (Linux/CI no-op — CURSOR_API_KEY
 #      is the only path; we don't second-guess Linux's auth chain).
 #   3. On Darwin with empty key: probe the macOS keychain for the exact
-#      `cursor-user`/`cursor-access-token` service entry. If it exists, return 0 (let
+#      `cursor-user`/`cursor-access-token` service entry up to three times,
+#      sleeping 200ms between failed attempts. If it exists, return 0 (let
 #      Cursor surface its own keychain failure if it strikes).
 #   4. On Darwin with empty key AND no keychain entry: write a multi-line
 #      actionable message to stderr (caller identity, doc pointer, two
@@ -150,7 +151,9 @@ cursor_auth_export_env() {
 # only when LARCH_LIB_CURSOR_AUTH_TEST_MODE=1. Production code paths ignore
 # all LIB_CURSOR_AUTH_TEST_* knobs unless that single sentinel is set, so an
 # operator (accidentally or maliciously) setting LIB_CURSOR_AUTH_TEST_UNAME
-# alone cannot disable Darwin preflight on a real machine.
+# alone cannot disable Darwin preflight on a real machine. In test mode,
+# LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ wins over LIB_CURSOR_AUTH_TEST_SECURITY_RC
+# and feeds one mocked return code per retry attempt.
 cursor_auth_preflight() {
     local key
     key="${CURSOR_API_KEY:-}"
@@ -170,19 +173,41 @@ cursor_auth_preflight() {
         return 0
     fi
 
-    local rc
-    if [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "${LIB_CURSOR_AUTH_TEST_SECURITY_RC:-}" ]; then
-        rc="$LIB_CURSOR_AUTH_TEST_SECURITY_RC"
-    else
-        if security find-generic-password -a cursor-user -s cursor-access-token >/dev/null 2>&1; then
-            rc=0
+    local attempt rc seq_remaining seq_last
+    seq_remaining="${LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ:-}"
+    seq_last=""
+    for attempt in 1 2 3; do
+        rc=""
+        if [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "$seq_remaining" ]; then
+            case "$seq_remaining" in
+                *,*)
+                    rc="${seq_remaining%%,*}"
+                    seq_remaining="${seq_remaining#*,}"
+                    ;;
+                *)
+                    rc="$seq_remaining"
+                    seq_remaining=""
+                    ;;
+            esac
+            seq_last="$rc"
+        elif [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "${LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ:-}" ] && [ -n "$seq_last" ]; then
+            rc="$seq_last"
+        elif [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "${LIB_CURSOR_AUTH_TEST_SECURITY_RC:-}" ]; then
+            rc="$LIB_CURSOR_AUTH_TEST_SECURITY_RC"
         else
-            rc=1
+            if security find-generic-password -a cursor-user -s cursor-access-token >/dev/null 2>&1; then
+                rc=0
+            else
+                rc=1
+            fi
         fi
-    fi
-    if [ "$rc" = "0" ]; then
-        return 0
-    fi
+        if [ "$rc" = "0" ]; then
+            return 0
+        fi
+        if [ "$attempt" -lt 3 ]; then
+            sleep 0.2
+        fi
+    done
 
     # Caller identity for the actionable message: BASH_SOURCE[1] is the
     # script that sourced this lib (pre-FINDING_7-rejection design).

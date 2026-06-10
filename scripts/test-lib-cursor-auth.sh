@@ -17,6 +17,8 @@ LIB="$REPO_ROOT/scripts/lib-cursor-auth.sh"
 
 PASS_COUNT=0
 FAIL_COUNT=0
+SCRATCH=$(mktemp -d /tmp/larch-test-lib-cursor-auth-XXXXXX)
+trap 'rm -rf "$SCRATCH"' EXIT
 fail() { echo "FAIL [$1]: $2" >&2; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
@@ -109,10 +111,59 @@ else
     fail 11 "stderr message missing required anchors; got:\n$STDERR"
 fi
 
+# Retry tests: Darwin keychain preflight reads are bounded to three attempts.
+RC=$(_preflight_run CURSOR_API_KEY= LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,0 LIB_CURSOR_AUTH_TEST_SECURITY_RC=)
+if [[ "$RC" == "0" ]]; then pass; else fail retry-1 "retry sequence 1,1,0 should return 0; got rc=$RC"; fi
+
+RC=$(_preflight_run CURSOR_API_KEY= LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=1,1,1 LIB_CURSOR_AUTH_TEST_SECURITY_RC=)
+if [[ "$RC" == "2" ]]; then pass; else fail retry-2 "retry sequence 1,1,1 should return 2; got rc=$RC"; fi
+
+RC=$(_preflight_run CURSOR_API_KEY= LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=0,1,1 LIB_CURSOR_AUTH_TEST_SECURITY_RC=)
+if [[ "$RC" == "0" ]]; then pass; else fail retry-3 "retry sequence 0,1,1 should return 0 on first attempt; got rc=$RC"; fi
+
+RC=$(_preflight_run CURSOR_API_KEY= LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_SECURITY_RC=1)
+if [[ "$RC" == "2" ]]; then pass; else fail retry-4 "single-value mock rc=1 should apply to every attempt and return 2; got rc=$RC"; fi
+
+RC=$(_preflight_run CURSOR_API_KEY= LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ=0 LIB_CURSOR_AUTH_TEST_SECURITY_RC=1)
+if [[ "$RC" == "0" ]]; then pass; else fail retry-5 "non-empty sequence should win over single-value mock; got rc=$RC"; fi
+
+SECURITY_STUB_BIN="$SCRATCH/security-bin"
+mkdir -p "$SECURITY_STUB_BIN"
+cat >"$SECURITY_STUB_BIN/security" <<'STUB'
+#!/usr/bin/env bash
+printf 'attempt\n' >>"${LARCH_TEST_SECURITY_ATTEMPT_LOG:?}"
+printf 'RAW_KEYCHAIN_RETRY_STDERR_MARKER\n' >&2
+exit 1
+STUB
+chmod +x "$SECURITY_STUB_BIN/security"
+SECURITY_ATTEMPT_LOG="$SCRATCH/security-attempts.log"
+STDERR=$(env -u LIB_CURSOR_AUTH_TEST_SECURITY_RC -u LIB_CURSOR_AUTH_TEST_SECURITY_RC_SEQ \
+    CURSOR_API_KEY= \
+    PATH="$SECURITY_STUB_BIN:/usr/bin:/bin" \
+    LARCH_TEST_SECURITY_ATTEMPT_LOG="$SECURITY_ATTEMPT_LOG" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    bash -c '
+        set -uo pipefail
+        # shellcheck source=/dev/null
+        . "'"$LIB"'"
+        cursor_auth_preflight
+    ' 2>&1 >/dev/null || true)
+SECURITY_ATTEMPT_COUNT=$(wc -l <"$SECURITY_ATTEMPT_LOG" 2>/dev/null || echo 0)
+SECURITY_ATTEMPT_COUNT="${SECURITY_ATTEMPT_COUNT//[[:space:]]/}"
+if [[ "$SECURITY_ATTEMPT_COUNT" == "3" ]] \
+   && ! grep -Fq 'RAW_KEYCHAIN_RETRY_STDERR_MARKER' <<<"$STDERR" \
+   && grep -Fq 'cursor-auth-preflight failed' <<<"$STDERR"; then
+    pass
+else
+    fail retry-6 "production security retries should suppress per-attempt stderr and emit only final actionable stderr; attempts=$(cat "$SECURITY_ATTEMPT_LOG" 2>/dev/null || true); stderr=$STDERR"
+fi
+
 # Test 12 (cursor-auth-flags.sh): when CURSOR_API_KEY empty, the preflight
 # gate fires (this is the F4 fix from review round 1). On a controlled-Linux
 # test-mode environment, preflight is a no-op so exit is 0 with no stdout.
 FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
@@ -122,6 +173,7 @@ if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "cursor-auth-flags.sh e
 # CURSOR_API_KEY set, the script is a preflight gate only and emits NO argv
 # flags (the cursor child reads CURSOR_API_KEY from the inherited environment).
 FLAGS_OUT=$(CURSOR_API_KEY="abc" \
+    LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
@@ -143,6 +195,7 @@ if [[ "$OUT" == "__unset__" ]]; then pass; else fail 14b "embedded CR in key sho
 # runtime markdown templates fail consistently rather than silently emitting
 # zero --api-key flags and falling through to keychain auth.
 FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
     LIB_CURSOR_AUTH_TEST_SECURITY_RC=1 \
@@ -157,6 +210,7 @@ fi
 # returns 0 (preflight no-op) and no flags. Pins that the new preflight gate
 # does not break Linux/CI keychain-irrelevant flow.
 FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
