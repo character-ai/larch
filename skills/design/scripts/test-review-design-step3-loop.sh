@@ -139,7 +139,7 @@ contains "$out" 'REVIEW_ROUND_COUNT=5' 'cap-hit review round count'
 grep -q '^STEP3_REVIEW_ROUND_NUM=$' <<<"$out" || fail 'cap-hit should clear STEP3_REVIEW_ROUND_NUM'
 
 
-echo '=== postplan operator rc ==='
+echo '=== postplan rc=12 warn-and-continue ==='
 D4="$TMP/postplan"
 write_common "$D4"
 write_ok_stubs "$D4"
@@ -150,7 +150,7 @@ dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
 done
-printf 'POSTPLAN_EMIT_STATUS=hard\nHARD_TRIGGER_FIRED=true\n' >"$dir/.design-postplan-emit-result.env"
+printf 'POSTPLAN_EMIT_STATUS=ok\nHARD_TRIGGER_FIRED=true\nPLAN_SIZE_STATUS=hard-trigger\n' >"$dir/.design-postplan-emit-result.env"
 exit 12
 STUB
 chmod +x "$D4/postplan-ok.sh"
@@ -161,12 +161,13 @@ round_stub="$(write_round_stub "$D4" "cat >\"$D4/accepted-plan-findings.md\" <<'
 FINDINGS
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
 out="$(run_loop "$D4" "$round_stub")"
-contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-operator-required' 'postplan operator envelope'
-contains "$out" 'POSTPLAN_RC=12' 'postplan rc carried'
-[[ "$(cat "$D4/.step3-round-1.phase")" == awaiting-postplan-operator ]] || fail 'postplan operator should persist awaiting-postplan-operator phase'
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan rc=12 warn-and-continue: complete envelope'
+contains "$out" 'WARN=plan-size hard trigger' 'postplan rc=12 warn-and-continue: WARN emitted'
+case "$out" in *'POSTPLAN_RC=12'*) fail 'postplan rc=12 should not appear in result (warn-and-continue)' ;; esac
+[[ -f "$D4/.completed/step-3" ]] || fail 'postplan rc=12 warn-and-continue: .completed/step-3 written'
 
 
-echo '=== postplan operator rc 10/13 envelopes ==='
+echo '=== postplan operator rc 10/13 envelopes (rc=12 no longer surfaces here) ==='
 for spec in '10:hard' '13:partition'; do
     rc="${spec%%:*}"
     label="${spec#*:}"

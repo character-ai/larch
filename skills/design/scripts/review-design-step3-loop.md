@@ -22,7 +22,7 @@ For round `N`, `$DESIGN_TMPDIR/.step3-round-N.phase` records one of:
 - `awaiting-apply` — review/tally has completed; accepted findings have not been applied.
 - `awaiting-revise` — the reviser is running or was interrupted before a confirmed apply.
 - `awaiting-post-apply` — the reviser applied findings; mechanical dedup/postplan must settle.
-- `awaiting-postplan-operator` — in-loop postplan returned rc 10/12/13/14; prompt-side operator handling is required. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N` before resume; the loop consumes the marker, runs HARD snapshots when applicable, and promotes to `awaiting-continuation`.
+- `awaiting-postplan-operator` — in-loop postplan returned rc 10/13/14; prompt-side operator handling is required. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N` before resume; the loop consumes the marker, runs HARD snapshots when applicable, and promotes to `awaiting-continuation`. **rc=12 (plan-size hard trigger) is no longer in this set** — it is now handled inline as warn-and-continue, emitting `WARN=plan-size hard trigger … proceeding as warning-only` and promoting directly to `awaiting-continuation` without surfacing `postplan-operator-required`.
 - `awaiting-continuation` — apply/postplan is settled; only `plan-review-continuation.sh` runs.
 
 Every bail-out resumes with:

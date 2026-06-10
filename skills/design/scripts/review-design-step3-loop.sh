@@ -423,7 +423,20 @@ step3_loop_run_post_apply() {
                 exec "$pause_sh" --design-tmpdir "$DESIGN_TMPDIR"
             fi
             ;;
-        10|12|13)
+        12)
+            # Plan-size hard trigger in continuation path: warn and continue (#3959).
+            emit_kv WARN "plan-size hard trigger (postplan rc=12) in continuation (round ${round_num}): proceeding as warning-only"
+            set +e
+            step3_loop_run_hard_snapshots "$round_num"
+            post_rc=$?
+            set -e
+            if [[ "$post_rc" -ne 0 ]]; then
+                return 31
+            fi
+            step3_loop_write_phase "$round_num" awaiting-continuation
+            return 0
+            ;;
+        10|13)
             POSTPLAN_RC="$postplan_rc"
             return 32
             ;;
