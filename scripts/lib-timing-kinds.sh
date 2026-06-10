@@ -38,6 +38,7 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-plan-voter
     cursor-plan-voter
     claude-plan-voter
+    claude-plan-draft
     claude-code-voter
     claude-plan-generic
     claude-decomp-generic

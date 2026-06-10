@@ -29,3 +29,5 @@ The script passes through waterfall dispatcher KVs including `FALLBACK_COUNT`, `
 ## Concise prune/log audit update
 
 `--round-num` selects the artifact directory under `plan-review/round-N/`; `--prune-round-num` remains the reviewer-prune filter counter. Dispatch writes `prune-decision.env` before every exit and emits the same prune KV tuple on stdout.
+
+Fallback Claude reviewer slots use `claude-sonnet-4-6`; these are both-externals-down backups and intentionally stay on the cheaper Sonnet model rather than the Fable voter/drafter model.

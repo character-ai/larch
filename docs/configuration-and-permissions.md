@@ -174,6 +174,28 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 - Cursor review prompts are wrapped with `/max-mode on.` and an effort suffix only when the effective risk is `high` (the default). Risk is `low` for diffs classified as docs-only, test-only, or generated-only by `classify-diff-mode.sh`; the security specialist always forces `high` regardless of diff classification. Pass `--risk low` explicitly to suppress max-mode for a specific launch. Codex review analogously omits `--with-effort` when risk is `low`.
 - To opt into earlier defaults (faster / lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2` or `LARCH_CURSOR_MODEL=composer-2-fast`
 
+### `LARCH_VOTER_MODEL`
+
+The model used by the always-on Claude voter when `scripts/launch-claude-review.sh --role voter` is called without an explicit `--model`.
+
+**When set:**
+- `/design` plan voting and `/review` / `/implement` code voting use this model for Claude Voter 1 unless the caller passes `--model` explicitly.
+
+**When not set:**
+- Defaults to `claude-fable-5`.
+
+### `LARCH_DESIGN_PLAN_MODEL`
+
+The model used by `/design` Step 2b's drafter subprocess (`scripts/launch-claude-drafter.sh`).
+
+**When set:**
+- Step 2b uses this model for the subprocess-first plan drafting path. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
+
+**When not set:**
+- Defaults to `claude-fable-5`.
+
+Clean launcher, content, status, or delimiter failures fall back to inline Step 2b drafting. Only confirmed baseline-delta new mutations (`STATUS=dirty MODE=baseline-delta` in the drafter `.dirty-tree` sidecar) block fallback until recovery.
+
 ### `OPENAI_API_KEY`
 
 When non-whitespace, the covered Codex paths (`launch-review.sh --tool codex`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `launch-codex-exec.sh`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.

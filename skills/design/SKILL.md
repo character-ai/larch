@@ -988,6 +988,186 @@ fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
 ```
 
+#### Step 2b drafter subprocess (attempt before inline drafting)
+
+Try the drafter subprocess first. The inline plan-drafting instructions below remain the fallback and must not be removed or rewritten. If the drafter reports structural success and dirty-tree eligibility, do **not** redraft the plan inline; proceed directly to the retained terminal postplan fence. If the drafter fails cleanly, delete stale `plan-summary.md`, log the failed tool, and continue with the inline drafting prose below unchanged.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+_drafter_postplan_fallback_used=false
+if [ -f "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done" ]; then
+  _drafter_postplan_fallback_used=true
+fi
+printf '%s\n' "${_drafter_postplan_fallback_used}" > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
+DRAFTER_MODEL="${LARCH_DESIGN_PLAN_MODEL:-claude-fable-5}"
+_step2b_drafter_skip_reason=""
+case "$DRAFTER_MODEL" in
+  ''|*[[:space:]]*|*[$'\n\r\t']*) _step2b_drafter_skip_reason="invalid-model" ;;
+esac
+rm -f "$DESIGN_TMPDIR/plan.txt" \
+      "$DESIGN_TMPDIR/plan-summary.md" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.done" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.dirty-tree" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.meta" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.stderr" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.stderr-tail" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.failure-diag" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.json" \
+      "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
+if [[ -z "$_step2b_drafter_skip_reason" ]]; then
+  _baseline_arg=()
+  if git -C "$PWD" status --porcelain > "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain" 2>/dev/null; then
+    _baseline_arg=(--baseline-porcelain "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain")
+  else
+    rm -f "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
+  fi
+  _resolved_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+  # shellcheck source=scripts/lib-untrusted-block.sh
+  source "$CLAUDE_PLUGIN_ROOT/scripts/lib-untrusted-block.sh"
+  {
+    printf '%s\n\n' 'You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.'
+    printf 'Trusted resolved design_classification: %s\n\n' "$_resolved_design_classification"
+    printf '%s\n' 'You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.'
+    printf '\n%s\n' 'Drafting requirements to follow:'
+    printf '%s\n' '- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.'
+    printf '%s\n' '- Incorporate approach synthesis, approved outline scope, discussion constraints, brainstorm ideas that do not conflict with binding decisions, and dialectic resolutions by disposition.'
+    printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN:.'
+    printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.'
+    printf '%s\n' '- The final plan body must end with a whole-line diff_lines: <N> trailer.'
+    printf '\n%s\n' 'Readability style (trusted):'
+    cat "$CLAUDE_PLUGIN_ROOT/skills/design/references/readability-style.md"
+    printf '\n%s\n' 'Required output format:'
+    printf '%s\n' 'LARCH_SUMMARY_BEGIN'
+    printf '%s\n' 'A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.'
+    printf '%s\n' 'LARCH_SUMMARY_END'
+    printf '%s\n' 'LARCH_PLAN_BEGIN'
+    printf '%s\n' 'Full implementation plan body ending with diff_lines: <N>.'
+    printf '%s\n' 'LARCH_PLAN_END'
+    printf '\n%s\n' 'Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.'
+    if [ -s "$DESIGN_TMPDIR/feature-description.txt" ]; then
+      printf '\n%s\n' 'Untrusted feature description:'
+      larch_emit_untrusted_file_block feature_description "$DESIGN_TMPDIR/feature-description.txt"
+    fi
+    if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]; then
+      printf '\n%s\n' 'Untrusted approach synthesis:'
+      larch_emit_untrusted_file_block approach_synthesis "$DESIGN_TMPDIR/approach-synthesis.txt"
+    fi
+    if [ -s "$DESIGN_TMPDIR/discussion-round1.md" ]; then
+      printf '\n%s\n' 'Untrusted discussion round 1:'
+      larch_emit_untrusted_file_block discussion_round1 "$DESIGN_TMPDIR/discussion-round1.md"
+    fi
+    if [ -s "$DESIGN_TMPDIR/design-outline.md" ] && [ -f "$DESIGN_TMPDIR/.outline-approved" ]; then
+      printf '\n%s\n' 'Untrusted approved design outline:'
+      larch_emit_untrusted_file_block design_outline "$DESIGN_TMPDIR/design-outline.md"
+    fi
+    if [ -s "$DESIGN_TMPDIR/brainstorm.md" ]; then
+      printf '\n%s\n' 'Untrusted brainstorm:'
+      larch_emit_untrusted_file_block brainstorm "$DESIGN_TMPDIR/brainstorm.md"
+    fi
+    if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+      printf '\n%s\n' 'Untrusted dialectic resolutions:'
+      larch_emit_untrusted_file_block dialectic_resolutions "$DESIGN_TMPDIR/dialectic-resolutions.md"
+    fi
+  } > "$DESIGN_TMPDIR/step2b-drafter-prompt.txt"
+  set +e
+  "$CLAUDE_PLUGIN_ROOT/scripts/launch-claude-drafter.sh" \
+    --model "$DRAFTER_MODEL" \
+    --prompt-file "$DESIGN_TMPDIR/step2b-drafter-prompt.txt" \
+    --output-file "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
+    "${_baseline_arg[@]}" \
+    --timeout 1800 \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --repo-root "$PWD"
+  _drafter_rc=$?
+  set -e
+else
+  # Use exit 2 to match launcher argv/config validation failures.
+  _drafter_rc=2
+fi
+_plan_lines=0
+if [ -s "$DESIGN_TMPDIR/plan.txt" ]; then
+  _plan_lines=$(wc -l < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
+fi
+_raw_threshold="${LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD:-120}"
+case "$_raw_threshold" in
+  ''|0|*[!0-9]*|0[0-9]*) _summary_threshold=120 ;;
+  *) _summary_threshold="$((10#${_raw_threshold}))" ;;
+esac
+_drafter_structural_ok=false
+if [[ "$_drafter_rc" -eq 0 ]] \
+  && [[ -s "$DESIGN_TMPDIR/plan.txt" ]] \
+  && tail -n 1 "$DESIGN_TMPDIR/plan.txt" | command grep -Eq '^diff_lines: [0-9][0-9]*$' \
+  && command grep -Fq 'PLAN_WRITTEN=true' "$DESIGN_TMPDIR/step2b-drafter-status.txt"; then
+  if (( _plan_lines > _summary_threshold )); then
+    if command grep -Fq 'SUMMARY_WRITTEN=true' "$DESIGN_TMPDIR/step2b-drafter-status.txt" && [[ -s "$DESIGN_TMPDIR/plan-summary.md" ]]; then
+      _drafter_structural_ok=true
+    fi
+  else
+    _drafter_structural_ok=true
+  fi
+fi
+_drafter_dirty_block=false
+_drafter_dirty_reason="unknown"
+if [[ -f "$DESIGN_TMPDIR/step2b-drafter-status.txt.dirty-tree" ]]; then
+  _dirty_status=""
+  _dirty_mode=""
+  while IFS= read -r _dirty_line || [[ -n "$_dirty_line" ]]; do
+    case "$_dirty_line" in
+      STATUS=*) _dirty_status="${_dirty_line#STATUS=}" ;;
+      MODE=*) _dirty_mode="${_dirty_line#MODE=}" ;;
+    esac
+  done < "$DESIGN_TMPDIR/step2b-drafter-status.txt.dirty-tree"
+  if [[ "$_dirty_status" == "dirty" && "$_dirty_mode" == "baseline-delta" ]]; then
+    _drafter_dirty_block=true
+    _drafter_dirty_reason="confirmed-baseline-delta"
+  fi
+elif [[ -s "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain" ]]; then
+  if git -C "$PWD" status --porcelain > "$DESIGN_TMPDIR/step2b-drafter-current.porcelain" 2>/dev/null \
+    && ! diff -u "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain" "$DESIGN_TMPDIR/step2b-drafter-current.porcelain" >/dev/null 2>&1; then
+    _drafter_dirty_block=true
+    _drafter_dirty_reason="missing-sidecar-positive-baseline-delta"
+  fi
+fi
+if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]]; then
+  printf '%s\n' drafter > "$DESIGN_TMPDIR/.step2b-plan-source"
+  _diff_lines="$(tail -n 1 "$DESIGN_TMPDIR/plan.txt" | sed 's/^diff_lines: //')"
+  if (( _plan_lines > _summary_threshold )); then
+    printf '\n## Plan Summary (drafter: %s)\n\n' "$DRAFTER_MODEL"
+    cat "$DESIGN_TMPDIR/plan-summary.md"
+    printf '\n'
+  else
+    printf '\n## Implementation Plan\n\n'
+    cat "$DESIGN_TMPDIR/plan.txt"
+    printf '\n'
+  fi
+  printf '✅ 2b: drafter subprocess succeeded (model=%s plan_lines=%s diff_lines=%s)\n' "$DRAFTER_MODEL" "$_plan_lines" "$_diff_lines"
+else
+  if [[ "$_drafter_dirty_block" == "true" ]]; then
+    printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
+    printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**" >&2
+    exit 1
+  fi
+  rm -f "$DESIGN_TMPDIR/plan-summary.md"
+  printf '%s\n' inline > "$DESIGN_TMPDIR/.step2b-plan-source"
+  printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (model=$DRAFTER_MODEL)**"
+  if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+    printf '%s\n' "Step 2b drafter fallback: ${_step2b_drafter_skip_reason:-rc-${_drafter_rc}}" > "$DESIGN_TMPDIR/step2b-drafter-fallback.log"
+    "$CLAUDE_PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+      --log "$DESIGN_TMPDIR/execution-issues.md" \
+      --site "design Step 2b drafter" \
+      --tool "launch-claude-drafter.sh" \
+      --exit-code "$_drafter_rc" \
+      --category Warnings \
+      --output-file "$DESIGN_TMPDIR/step2b-drafter-fallback.log" \
+      --redact >/dev/null 2>&1 || true
+  fi
+fi
+```
+
+When the fence above prints `✅ 2b: drafter subprocess succeeded`, skip the inline drafting paragraph and continue at the terminal postplan fence. When it prints the fallback warning, continue with the inline plan drafting instructions below and ensure the inline-written `plan.txt` replaces the drafter attempt; `plan-summary.md` has already been removed so later previews cannot reuse a stale generated summary.
+
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
 Read the tier with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
@@ -1087,6 +1267,8 @@ case "${_postplan_rc:-1}" in
     ;;
 esac
 ```
+
+If the terminal postplan fence reports that a drafter-sourced plan failed validation and re-entered inline drafting, run the inline Step 2b drafting instructions once, replacing `plan.txt`; do not invoke another drafter attempt during that retry. The sentinel `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done` prevents a second inline re-entry, so any later `_postplan_rc=10` follows the normal validator-failure path.
 
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b"` then run the retained **Step 2b.5** procedure before continuing.
 

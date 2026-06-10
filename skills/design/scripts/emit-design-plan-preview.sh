@@ -58,30 +58,51 @@ normalize_summary_threshold() {
     printf '%s' "$((10#${_t}))"
 }
 
+plan_summary_is_fresh() {
+    local plan_file="$1" summary_file="$2" _plan_mtime _summary_mtime
+    [[ -s "$summary_file" && -s "$plan_file" ]] || return 1
+    _plan_mtime=$(stat -f '%m' "$plan_file" 2>/dev/null || stat -c '%Y' "$plan_file") || _plan_mtime=""
+    _summary_mtime=$(stat -f '%m' "$summary_file" 2>/dev/null || stat -c '%Y' "$summary_file") || _summary_mtime=""
+    [[ -n "$_plan_mtime" && -n "$_summary_mtime" ]] || return 1
+    [[ "$_summary_mtime" -ge "$_plan_mtime" ]]
+}
+
 emit_plan_body() {
     local plan_file="$1"
     local large_note_fmt="$2"
-    local _plan_lines _plan_bytes _summary_threshold _outline
+    local _plan_lines _plan_bytes _summary_threshold _outline _summary_file
 
     _plan_lines=$(wc -l <"$plan_file" | tr -d ' ')
     _plan_bytes=$(wc -c <"$plan_file" | tr -d ' ')
     _summary_threshold=$(normalize_summary_threshold)
     if ((_plan_lines > _summary_threshold)); then
-        head -n 1 "$plan_file"
-        printf '\n**Section outline:**\n\n'
-        _outline=$(grep -E '^#{2,3} ' "$plan_file" | head -n 40 || true)
-        if [[ -n "$_outline" ]]; then
-            printf '%s\n' "$_outline"
+        _summary_file="$(dirname "$plan_file")/plan-summary.md"
+        if plan_summary_is_fresh "$plan_file" "$_summary_file"; then
+            cat "$_summary_file"
         else
-            head -n 30 "$plan_file"
+            head -n 1 "$plan_file"
+            printf '
+**Section outline:**
+
+'
+            _outline=$(grep -E '^#{2,3} ' "$plan_file" | head -n 40 || true)
+            if [[ -n "$_outline" ]]; then
+                printf '%s
+' "$_outline"
+            else
+                head -n 30 "$plan_file"
+            fi
         fi
         # large_note_fmt is controlled here (two %s for line/byte counts only).
         # shellcheck disable=SC2059
-        printf "\n${large_note_fmt}\n" "$_plan_lines" "$_plan_bytes"
+        printf "
+${large_note_fmt}
+" "$_plan_lines" "$_plan_bytes"
     else
         cat "$plan_file"
     fi
-    printf '\n'
+    printf '
+'
 }
 
 # Literal `$DESIGN_TMPDIR` is intentional (operator-facing path hint, not expansion).
