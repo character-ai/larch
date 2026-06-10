@@ -49,6 +49,23 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `SECURITY.md` — security policy
 - `docs/python-migration.md` — sh-to-py migration playbook: per-domain recipe, decision log, manifest format, and `lint-retired-scripts` usage
 
+## Output Style
+
+Scope: human-facing prose only. Explicit formats win; not for machine-parsed surfaces, code, or comments. New prose only.
+
+- Lead with the answer.
+- One idea per sentence.
+- Prefer bullets.
+- **Bold** key terms.
+- Use short headers.
+- In chat, confirm up front, then explain.
+- Stop early.
+- Answer what was asked.
+- Go shorter.
+- No em dashes; use periods, commas, colons, or semicolons.
+- Hedge claims; keep directives imperative.
+- Strunk & White: active voice; omit needless words.
+
 ## Conventions
 
 - Follow recent commit history style.
