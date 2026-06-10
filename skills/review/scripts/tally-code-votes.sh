@@ -573,27 +573,40 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
                 record_tally_outcome "$id" true accepted
             else
-                REJECTED_COUNT=$((REJECTED_COUNT + 1))
-                case "$result" in
-                    rejected)
-                        {
-                            printf '### [rejected] %s\n\n' "$id"
-                            printf '%s\n\n' "**Rejected subtype:** dismissed (0 YES)"
-                            cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
-                        } >> "$REJECTED_FINDINGS_FILE"
-                        ;;
-                    neutral)
-                        NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
-                        {
-                            printf '### [rejected] %s\n\n' "$id"
-                            printf '%s\n\n' "**Rejected subtype:** neutral (YES below acceptance threshold)"
-                            cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
-                        } >> "$REJECTED_FINDINGS_FILE"
-                        ;;
-                esac
-                record_tally_outcome "$id" false "$result"
+                # Option (b): non-accepted latent findings route to OOS track instead of
+                # rejected-findings.md so the more-useful severity tier can still be filed.
+                _body_severity_latent=false
+                if command grep -qi '^-[[:space:]]*\*\*Severity\*\*:[[:space:]]*latent[[:space:]]*$' "$block" 2>/dev/null; then
+                    _body_severity_latent=true
+                fi
+                if [[ "$_body_severity_latent" == "true" ]]; then
+                    cat "$block" >> "$OOS_FILE"
+                    printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s Result=%s (latent-rerouted)\n\n' "$yes" "$no" "$judge_error" "$result" >> "$OOS_FILE"
+                    OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT + 1))
+                    record_tally_outcome "$id" false "$result"
+                else
+                    REJECTED_COUNT=$((REJECTED_COUNT + 1))
+                    case "$result" in
+                        rejected)
+                            {
+                                printf '### [rejected] %s\n\n' "$id"
+                                printf '%s\n\n' "**Rejected subtype:** dismissed (0 YES)"
+                                cat "$block"
+                                printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
+                            } >> "$REJECTED_FINDINGS_FILE"
+                            ;;
+                        neutral)
+                            NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
+                            {
+                                printf '### [rejected] %s\n\n' "$id"
+                                printf '%s\n\n' "**Rejected subtype:** neutral (YES below acceptance threshold)"
+                                cat "$block"
+                                printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$judge_error"
+                            } >> "$REJECTED_FINDINGS_FILE"
+                            ;;
+                    esac
+                    record_tally_outcome "$id" false "$result"
+                fi
             fi
         else
             # OOS item

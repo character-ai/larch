@@ -506,12 +506,23 @@ fi
                 cat "$block" >> "$accepted_plan"
                 printf '\n' >> "$accepted_plan"
             else
-                rejected_count=$((rejected_count + 1))
-                {
-                    printf '### [Plan Review] %s\n\n' "$id"
-                    cat "$block"
-                    printf '\n'
-                } >> "$rejected_plan"
+                # Option (b): non-accepted latent findings route to OOS track instead of
+                # rejected-findings.md so the more-useful severity tier can still be filed.
+                _body_severity_latent=false
+                if command grep -qi '^-[[:space:]]*\*\*Severity\*\*:[[:space:]]*latent[[:space:]]*$' "$block" 2>/dev/null; then
+                    _body_severity_latent=true
+                fi
+                if [[ "$_body_severity_latent" == "true" ]]; then
+                    cat "$block" >> "$oos_file"
+                    printf '\nVote tally: YES=%s NO=%s JUDGE_ERROR=%s Result=%s (latent-rerouted)\n\n' "$TALLY_YES" "$TALLY_NO" "$TALLY_JUDGE_ERROR" "$result" >> "$oos_file"
+                else
+                    rejected_count=$((rejected_count + 1))
+                    {
+                        printf '### [Plan Review] %s\n\n' "$id"
+                        cat "$block"
+                        printf '\n'
+                    } >> "$rejected_plan"
+                fi
             fi
         else
             if [[ "$result" == "accepted" && "$security" == "true" ]]; then

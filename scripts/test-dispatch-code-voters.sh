@@ -357,7 +357,7 @@ grep -Fq 'fix proposals are informational; the coder decides the exact change' "
 grep -Fq 'dislike or distrust the proposed fix' "$prompt" || { echo "FAIL: $(basename "$prompt") missing dislike/distrust NO-vote guardrail" >&2; exit 1; }
 grep -Fq "For \`OOS_N:\` items" "$prompt" \
     || { echo "FAIL: $(basename "$prompt") missing canonical OOS_N clause" >&2; exit 1; }
-grep -Fq 'vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue.' "$prompt" \
+grep -Fq 'Treat any suggested remedy in the item body as *informational only*' "$prompt" \
     || { echo "FAIL: $(basename "$prompt") missing OOS problem-vs-solution body" >&2; exit 1; }
 grep -Fq 'FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated FINDING_N example" >&2; exit 1; }
 grep -Fq 'OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated OOS_N example" >&2; exit 1; }

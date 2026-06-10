@@ -8,7 +8,7 @@ RENDER="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
 BALLOT="$REPO_ROOT/README.md"
 
 # Shared tail of both OOS grammar variants — must appear verbatim in four doc/SKILL locations.
-CANONICAL_OOS_DRIFT_MARK='vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.'
+CANONICAL_OOS_DRIFT_MARK='Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.'
 
 assert_sentinel_lines_exclude_axis_tokens() {
     local out="$1" bad

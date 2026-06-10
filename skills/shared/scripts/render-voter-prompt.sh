@@ -82,10 +82,10 @@ printf '\n'
 
 case "$ID_GRAMMAR" in
     finding-only)
-        printf '%s\n' "For items prefixed with \`[OUT_OF_SCOPE]\`: vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
+        printf '%s\n' "For items prefixed with \`[OUT_OF_SCOPE]\`: apply the OOS Acceptance Rubric (skills/shared/oos-acceptance-rubric.md) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
         ;;
     finding-oos)
-        printf '%s\n' "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review): vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
+        printf '%s\n' "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review): apply the OOS Acceptance Rubric (skills/shared/oos-acceptance-rubric.md) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
         ;;
 esac
 
