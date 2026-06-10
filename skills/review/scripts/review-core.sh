@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 
 usage() {
@@ -274,11 +276,34 @@ append_review_execution_issue() {
         --entry "$entry" 2>/dev/null || true
 }
 
+ensure_prune_decision_env() {
+    local dest="$REVIEW_TMPDIR/prune-decision.env"
+    [[ -f "$dest" ]] && return 0
+    write_prune_decision_env "$dest" "$ROUND_NUM" false skipped 0 0 0 "" false || true
+}
+
+ensure_prune_nit_env() {
+    local dest="$REVIEW_TMPDIR/prune-nit.env" tmp
+    [[ -f "$dest" ]] && return 0
+    tmp="${dest}.tmp.$$"
+    if {
+        printf 'PRUNED_COUNT=0\n'
+        printf 'INSCOPE_REMAINING=0\n'
+        printf 'STATUS=skipped\n'
+    } > "$tmp"; then
+        mv -f "$tmp" "$dest" || rm -f "$tmp"
+    else
+        rm -f "$tmp"
+    fi
+}
+
 flush_round_log() {
     local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR:-}" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
+    ensure_prune_decision_env
+    ensure_prune_nit_env
     flush_err="$REVIEW_TMPDIR/review-core-write-round.log"
     set +e
     "$LARCH_LOG_SH" write-round \
@@ -659,7 +684,29 @@ dispatch_args=(
 [[ -n "$SESSION_ENV_PATH" ]] && dispatch_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$PRUNE_LEDGER" ]] && dispatch_args+=(--prune-ledger "$PRUNE_LEDGER")
 [[ -f "$REVIEW_TMPDIR/competition-notice.md" ]] && dispatch_args+=(--competition-notice-file "$REVIEW_TMPDIR/competition-notice.md")
+set +e
 "$DISPATCH_PANEL_SH" "${dispatch_args[@]}" > "$dispatch_out"
+dispatch_rc=$?
+set -e
+if [[ "$dispatch_rc" -ne 0 ]]; then
+    ensure_prune_decision_env
+    ensure_prune_nit_env
+    flush_round_log
+    emit_kv REVIEW_CORE_STATUS panel-failed
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE normal
+    emit_kv PANEL_SHAPE "$PANEL"
+    emit_kv THRESHOLD_REASON "dispatch-panel exited rc=$dispatch_rc"
+    exit 2
+fi
 
 external_outputs=$(kv_get "$dispatch_out" EXTERNAL_OUTPUT_FILES)
 claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)
@@ -673,6 +720,7 @@ scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
 scout_fail_reason=$(kv_get "$dispatch_out" SCOUT_FAIL_REASON)
 static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_pruned_empty=$(kv_get "$dispatch_out" PANEL_PRUNED_EMPTY)
+prune_status=$(kv_get "$dispatch_out" PRUNE_STATUS)
 pruned_combos=$(kv_get "$dispatch_out" PRUNED_COMBOS)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
@@ -695,7 +743,7 @@ emit_kv DYNAMIC_SLOTS "$dynamic_slots"
 [[ -n "$pruned_combos" ]] && emit_kv PRUNED_COMBOS "$pruned_combos"
 emit_kv PANEL_PRUNED_EMPTY "$panel_pruned_empty"
 
-if [[ "$panel_pruned_empty" == "true" ]]; then
+if [[ "$panel_pruned_empty" == "true" && "${prune_status:-}" == "pruned-empty" ]]; then
     snapshot_review_oos_state prune-skipped
     : > "$REVIEW_TMPDIR/findings.md"
     : > "$REVIEW_TMPDIR/accepted-findings.md"
@@ -707,6 +755,8 @@ if [[ "$panel_pruned_empty" == "true" ]]; then
         printf 'Round skipped: all reviewer combos pruned.\n'
     } > "$REVIEW_TMPDIR/voting-tally.md"
     restore_review_oos_state prune-skipped
+    ensure_prune_decision_env
+    ensure_prune_nit_env
     flush_round_log
     larch_err "→ review: round $ROUND_NUM skipped — all reviewer combos pruned"
     emit_kv REVIEW_CORE_STATUS prune-skipped
@@ -958,6 +1008,9 @@ set -e
 if [[ "$_prune_rc" -ne 0 ]]; then
     append_review_execution_issue "- **review-core / prune-nit-findings**: subprocess exited with rc=$_prune_rc (unexpected; failing open)."
 fi
+if ! cp -f "$prune_out" "$REVIEW_TMPDIR/prune-nit.env"; then
+    append_review_execution_issue "- **review-core / prune-nit-findings**: failed to persist prune-nit.env."
+fi
 _prune_count=$(kv_get "$prune_out" PRUNED_COUNT)
 _prune_count="${_prune_count:-0}"
 if [[ "${_prune_count}" != "0" ]]; then
@@ -1076,6 +1129,7 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
         copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
         copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
     fi
+    record_reviewer_prune_round "$findings_classification_tsv_file"
     flush_round_log
     emit_kv REVIEW_CORE_STATUS main-agent-vote-required
     emit_kv ROUND_NUM "$ROUND_NUM"

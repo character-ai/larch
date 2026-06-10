@@ -262,6 +262,7 @@ def filter_rows():
         emit("PRUNED_COUNT", "0")
         emit("PRUNED_COMBOS", "")
         emit("PANEL_PRUNED_EMPTY", "false")
+        emit("PRUNE_FAIL_OPEN", "true")
         warn(f"reviewer-prune: fail-open ledger read failed: {exc}")
         return
     eligible = []

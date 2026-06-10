@@ -81,6 +81,15 @@ def manifest_started(run_dir):
         return None
 
 
+def manifest_larch_version(run_dir):
+    try:
+        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
+    except (ValueError, TypeError):
+        return ""
+    value = data.get("larch_version", "")
+    return value if isinstance(value, str) else ""
+
+
 def tools_from(label):
     low = (label or "").lower()
     out = []
@@ -97,12 +106,43 @@ def is_dynamic(label):
     return "dyn-" in (label or "").lower()
 
 
+def normalize_severity(raw):
+    value = (raw or "").strip().lower()
+    aliases = {
+        "blocker": "important",
+        "critical": "important",
+        "major": "important",
+        "important": "important",
+        "minor": "latent",
+        "latent": "latent",
+        "nit": "nit",
+        "trivial": "nit",
+        "none": "(none)",
+        "(none)": "(none)",
+    }
+    return aliases.get(value, "(none)")
+
+
+def normalize_design_severity(raw):
+    value = (raw or "").strip().lower()
+    aliases = {
+        "major": "important",
+        "important": "important",
+        "minor": "latent",
+        "latent": "latent",
+        "nit": "nit",
+        "none": "(none)",
+        "(none)": "(none)",
+    }
+    return aliases.get(value, "(none)")
+
+
 def find_severity(text):
     match = re.search(r"\*\*Severity\*\*:\s*([a-zA-Z-]+)", text or "")
     if match:
-        return match.group(1).lower()
+        return normalize_severity(match.group(1))
     match = re.search(r"\[(blocker|critical|major|important|minor|latent|nit|trivial)\]", (text or "").lower())
-    return match.group(1) if match else ""
+    return normalize_severity(match.group(1)) if match else "(none)"
 
 
 def find_focus(text):
@@ -145,6 +185,30 @@ def period_of(cutoff, started_at=None, mtime=None):
     if cutoff.tzinfo is not None and when.tzinfo is None:
         when = when.replace(tzinfo=datetime.timezone.utc)
     return "post" if when >= cutoff else "pre"
+
+
+def parse_larch_version(raw):
+    raw = (raw or "").strip()
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", raw)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def parse_since_version(raw):
+    if not raw:
+        return None
+    parsed = parse_larch_version(raw)
+    if parsed is None:
+        raise argparse.ArgumentTypeError("expected X.Y.Z")
+    return parsed
+
+
+def period_of_version(since_version, larch_ver):
+    parsed = parse_larch_version(larch_ver)
+    if parsed is None:
+        return "unknown"
+    return "post" if parsed >= since_version else "pre"
 
 
 # --------------------------------------------------------------------------
@@ -190,7 +254,7 @@ def _cells(line):
 
 
 def parse_design_tsv(text):
-    """21-column design findings-classification.tsv -> {id: {...ratings}}."""
+    """22-column design findings-classification.tsv -> {id: {...ratings}}."""
     out = {}
     for line in (text or "").splitlines()[1:]:
         cells = _cells(line)
@@ -203,10 +267,11 @@ def parse_design_tsv(text):
         out[cells[0]] = {
             "result": get(2).lower(),
             "reviewers": get(1),
-            "severities": [s.lower() for s in (get(5), get(11), get(17)) if s],
+            "severities": [normalize_design_severity(s) for s in (get(5), get(11), get(17)) if s],
             "qualities": [q.lower() for q in (get(6), get(12), get(18)) if q],
             "correctness": [c.lower() for c in (get(4), get(10), get(16)) if c],
             "uncertain": [u.lower() for u in (get(7), get(13), get(19)) if u],
+            "body_severity": get(21),
         }
     return out
 
@@ -234,10 +299,10 @@ def parse_impl_tsv(text):
 # --------------------------------------------------------------------------
 # extraction
 # --------------------------------------------------------------------------
-def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min):
+def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min, since_version=None):
     records = []
-    records += _extract_implement(os.path.join(log_root, "implement"), cutoff)
-    records += _extract_design(os.path.join(log_root, "design"), cutoff)
+    records += _extract_implement(os.path.join(log_root, "implement"), cutoff, since_version)
+    records += _extract_design(os.path.join(log_root, "design"), cutoff, since_version)
     if include_in_progress and sessions_dir and os.path.isdir(sessions_dir):
         records += _extract_in_progress(sessions_dir, cutoff, inprogress_min)
     for rec in records:
@@ -245,7 +310,7 @@ def extract(log_root, sessions_dir, include_in_progress, cutoff, inprogress_min)
     return records
 
 
-def _extract_implement(impl_root, cutoff):
+def _extract_implement(impl_root, cutoff, since_version=None):
     records = []
     for run_dir in sorted(glob.glob(os.path.join(impl_root, "*"))):
         jf = os.path.join(run_dir, "review-findings-full.jsonl")
@@ -253,6 +318,8 @@ def _extract_implement(impl_root, cutoff):
             continue
         run_id = os.path.basename(run_dir)
         started = manifest_started(run_dir)
+        larch_version = manifest_larch_version(run_dir)
+        period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
         round_tsv = {}
         for tsv in glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv")):
             match = re.search(r"round-(\d+)", tsv)
@@ -278,6 +345,9 @@ def _extract_implement(impl_root, cutoff):
             rev_str = ", ".join(s for s in slots if isinstance(s, str))
             cat = data.get("category", "") or ""
             prose = data.get("prose_body", "") or ""
+            body_severity = data.get("body_severity", "") or ""
+            focus_area = data.get("focus_area", "") or find_focus(prose)
+            severity = normalize_severity(body_severity) if body_severity else find_severity(prose)
             title = cat
             if not title:
                 hmatch = re.search(r"(?m)^#{2,4}\s+(?:(?:FINDING|OOS|REJ)[_A-Z0-9]*\d[:\s]+)?(.*)$", prose)
@@ -286,28 +356,33 @@ def _extract_implement(impl_root, cutoff):
             records.append({
                 "skill": "implement", "source": "committed", "run_id": run_id,
                 "round": rnum, "phase": phase or "code-review", "finding_id": fid,
+                "larch_version": larch_version,
                 "outcome": outcome, "is_oos_id": fid.startswith("OOS"),
                 "title": title[:300],
-                "focus_area": find_focus(prose),
-                "severity": find_severity(prose),
+                "focus_area": focus_area,
+                "body_severity": body_severity,
+                "severity": severity,
                 "reviewers": rev_str, "tools": tools_from(rev_str), "is_dynamic": is_dynamic(rev_str),
                 "v_severities": ratings.get("severities", []),
                 "v_qualities": ratings.get("qualities", []),
                 "v_correctness": ratings.get("correctness", []),
                 "v_uncertain": ratings.get("uncertain", []),
-                "period": period_of(cutoff, started_at=started),
+                "period": period,
                 "text": (title + "\n" + prose)[:2000],
             })
     return records
 
 
-def _extract_design(design_root, cutoff):
+def _extract_design(design_root, cutoff, since_version=None):
     records = []
     for tsv in sorted(glob.glob(os.path.join(design_root, "*", "**", "findings-classification.tsv"), recursive=True)):
         block_dir = os.path.dirname(tsv)
         rmatch = re.search(r"/design/([^/]+)/", tsv.replace(os.sep, "/"))
         run_id = rmatch.group(1) if rmatch else ""
-        started = manifest_started(os.path.join(design_root, run_id))
+        run_dir = os.path.join(design_root, run_id)
+        started = manifest_started(run_dir)
+        larch_version = manifest_larch_version(run_dir)
+        period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
         rnmatch = re.search(r"round-(\d+)", block_dir)
         rnum = rnmatch.group(1) if rnmatch else ""
         tsv_recs = parse_design_tsv(read_text(tsv))
@@ -315,23 +390,31 @@ def _extract_design(design_root, cutoff):
         for fid, trec in tsv_recs.items():
             crec = content.get(fid, {})
             fields = crec.get("fields", {})
-            title = crec.get("title", "") or fields.get("concern", "")[:120]
+            reviewers = trec.get("reviewers", "") or fields.get("reviewer(s)", "")
+            title = crec.get("title", "") or fields.get("concern", "")[:120] or fid
+            body_severity = trec.get("body_severity", "") or ""
+            severity = normalize_design_severity(body_severity) if body_severity else (modal(trec.get("severities", [])) or normalize_design_severity(fields.get("severity", "")))
+            if severity == "":
+                severity = "(none)"
+            fallback_text = reviewers or fid
             records.append({
                 "skill": "design", "source": "committed", "run_id": run_id,
                 "round": rnum, "phase": "plan-review", "finding_id": fid,
+                "larch_version": larch_version,
                 "outcome": trec.get("result", ""), "is_oos_id": fid.startswith("OOS"),
                 "title": title[:300],
                 "focus_area": fields.get("focus area", ""),
-                "severity": (fields.get("severity", "") or "").lower(),
-                "reviewers": trec.get("reviewers", "") or fields.get("reviewer(s)", ""),
-                "tools": tools_from(trec.get("reviewers", "") or fields.get("reviewer(s)", "")),
-                "is_dynamic": is_dynamic(trec.get("reviewers", "") or fields.get("reviewer(s)", "")),
+                "body_severity": body_severity,
+                "severity": severity,
+                "reviewers": reviewers,
+                "tools": tools_from(reviewers),
+                "is_dynamic": is_dynamic(reviewers),
                 "v_severities": trec.get("severities", []),
                 "v_qualities": trec.get("qualities", []),
                 "v_correctness": trec.get("correctness", []),
                 "v_uncertain": trec.get("uncertain", []),
-                "period": period_of(cutoff, started_at=started),
-                "text": (title + "\n" + fields.get("concern", "") + "\n"
+                "period": period,
+                "text": (title + "\n" + (fields.get("concern", "") or fallback_text) + "\n"
                          + fields.get("proposed resolution", "") + "\n" + crec.get("raw", ""))[:2000],
             })
     return records
@@ -364,7 +447,13 @@ def _extract_in_progress(sessions_dir, cutoff, inprogress_min):
         for fid, trec in tally.items():
             crec = content.get(fid, {})
             fields = crec.get("fields", {})
-            title = crec.get("title", "") or fields.get("concern", "")[:120]
+            reviewers = trec.get("reviewers", "") or fields.get("reviewer(s)", "")
+            title = crec.get("title", "") or fields.get("concern", "")[:120] or fid
+            body_severity = trec.get("body_severity", "") or ""
+            severity = normalize_design_severity(body_severity) if body_severity else (modal(trec.get("severities", [])) or normalize_design_severity(fields.get("severity", "")))
+            if severity == "":
+                severity = "(none)"
+            fallback_text = reviewers or fid
             records.append({
                 "skill": "design", "source": "in_progress", "run_id": os.path.basename(sdir),
                 "round": "", "phase": "plan-review", "finding_id": fid,
@@ -377,7 +466,7 @@ def _extract_in_progress(sessions_dir, cutoff, inprogress_min):
                 "is_dynamic": is_dynamic(fields.get("reviewer(s)", "")),
                 "v_severities": [], "v_qualities": [], "v_correctness": [], "v_uncertain": [],
                 "period": period_of(cutoff, mtime=mtime),
-                "text": (title + "\n" + fields.get("concern", "") + "\n"
+                "text": (title + "\n" + (fields.get("concern", "") or fallback_text) + "\n"
                          + fields.get("proposed resolution", "") + "\n" + crec.get("raw", ""))[:2000],
             })
     return records
@@ -403,7 +492,7 @@ def acc_rate(rows):
 # --------------------------------------------------------------------------
 # report rendering
 # --------------------------------------------------------------------------
-def render(records, cutoff, min_group):
+def render(records, cutoff, min_group, since_version=None):
     design = [r for r in records if r["skill"] == "design"]
     impl = [r for r in records if r["skill"] == "implement"]
     d_inscope = [r for r in design if not r["is_oos_id"]]
@@ -432,8 +521,8 @@ def render(records, cutoff, min_group):
     out += _section_severity(i_all, d_inscope)
     out += _section_lanes(i_all, d_inscope)
     out += _section_accepted_low_value(i_all, d_inscope)
-    if cutoff is not None:
-        out += _section_prepost(i_all, d_inscope)
+    if cutoff is not None or since_version is not None:
+        out += _section_prepost(i_all, d_inscope, since_version=since_version)
     out += _section_recommendations(i_all, min_group)
     return "\n".join(out) + "\n"
 
@@ -540,13 +629,13 @@ def _section_severity(i_all, d_inscope):
     dby = collections.defaultdict(list)
     for rec in d_inscope:
         dby[modal(rec.get("v_severities", [])) or "(none)"].append(rec)
-    if any(dby.get(k) for k in ("major", "minor", "nit")):
+    if any(dby.get(k) for k in ("important", "latent", "nit")):
         out.append("")
         out.append("**design in-scope — modal voter severity → accept rate**")
         out.append("")
         out.append("| voter severity | n | acc% |")
         out.append("|---|--:|--:|")
-        for sev in ["blocker", "critical", "major", "important", "minor", "nit", "(none)"]:
+        for sev in ["blocker", "critical", "important", "latent", "nit", "(none)"]:
             sub = dby.get(sev)
             if not sub:
                 continue
@@ -584,15 +673,19 @@ def _section_accepted_low_value(i_all, d_inscope):
         out.append("- implement: **%.1f%%** of accepted findings were reviewer-severity nit/latent (%d/%d)"
                    % (pct(len(low), len(acc_impl)), len(low), len(acc_impl)))
     acc_d = [r for r in d_inscope if r["outcome"] == "accepted"]
-    low_d = [r for r in acc_d if modal(r.get("v_severities", [])) in ("nit", "minor")]
+    low_d = [r for r in acc_d if modal(r.get("v_severities", [])) in ("nit", "latent")]
     if acc_d:
-        out.append("- design: **%.1f%%** of accepted in-scope were modal-voter nit/minor (%d/%d)"
+        out.append("- design: **%.1f%%** of accepted in-scope were modal-voter nit/latent (%d/%d)"
                    % (pct(len(low_d), len(acc_d)), len(low_d), len(acc_d)))
     return out
 
 
-def _section_prepost(i_all, d_inscope):
-    out = ["", "## Pre/post cutoff", ""]
+def _section_prepost(i_all, d_inscope, since_version=None):
+    out = ["", "## Pre/post comparison" if since_version is not None else "## Pre/post cutoff", ""]
+    unknown = sum(1 for r in i_all + d_inscope if r.get("period") == "unknown")
+    if since_version is not None and unknown:
+        out.append("- unknown-version skipped: %d" % unknown)
+        out.append("")
     for label, rows, three in [("implement code-review", i_all, True), ("design in-scope", d_inscope, False)]:
         out.append("**%s**" % label)
         for per in ["pre", "post"]:
@@ -609,6 +702,35 @@ def _section_prepost(i_all, d_inscope):
                 out.append("- %s: n=%d (%d runs, %.1f/run) acc=%.1f%%"
                            % (per, total, runs, total / runs, rate))
         out.append("")
+    if i_all:
+        out.append("**implement code-review severity tiers**")
+        out.append("")
+        out.append("| period | severity | n | acc% | oos% | rej% |")
+        out.append("|---|---|--:|--:|--:|--:|")
+        for per in ["pre", "post"]:
+            per_rows = [r for r in i_all if r.get("period") == per]
+            if not per_rows:
+                continue
+            for sev in ["important", "latent", "nit", "(none)"]:
+                sub = [r for r in per_rows if normalize_severity(r.get("severity")) == sev]
+                total, acc, oos, rej = threeway(sub)
+                out.append("| %s | %s | %d | %.1f | %.1f | %.1f |"
+                           % (per, sev, total, pct(acc, total), pct(oos, total), pct(rej, total)))
+        out.append("")
+        for per in ["pre", "post"]:
+            per_rows = [r for r in i_all if r.get("period") == per]
+            if not per_rows:
+                continue
+            accepted = [r for r in per_rows if r.get("outcome") == "accepted"]
+            low = [r for r in accepted if normalize_severity(r.get("severity")) in ("nit", "latent")]
+            out.append("- %s accepted-low-value: %.1f%% (%d/%d)"
+                       % (per, pct(len(low), len(accepted)), len(low), len(accepted)))
+            counts = collections.Counter(normalize_severity(r.get("severity")) for r in per_rows)
+            out.append("- %s tier-composition: important %.1f%% latent %.1f%% nit %.1f%% (none) %.1f%%"
+                       % (per, pct(counts.get("important", 0), len(per_rows)),
+                          pct(counts.get("latent", 0), len(per_rows)),
+                          pct(counts.get("nit", 0), len(per_rows)),
+                          pct(counts.get("(none)", 0), len(per_rows))))
     out.append("_Small post samples are directional only._")
     return out
 
@@ -680,6 +802,8 @@ def main(argv=None):
                         help="ISO8601 lower bound for in-progress session mtime")
     parser.add_argument("--cutoff", default=None,
                         help="ISO8601 timestamp enabling a pre/post comparison section")
+    parser.add_argument("--since-version", default=None, type=parse_since_version, metavar="X.Y.Z",
+                        help="larch_version threshold enabling version-based pre/post comparison")
     parser.add_argument("--min-group", type=int, default=20,
                         help="minimum findings for a semantic group to appear (default 20)")
     parser.add_argument("--out", default=None, help="write report to FILE instead of stdout")
@@ -696,8 +820,8 @@ def main(argv=None):
     if since is not None:
         inprogress_min = since.timestamp()
 
-    records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min)
-    report = render(records, cutoff, max(1, args.min_group))
+    records = extract(log_root, args.sessions_dir, args.include_in_progress, cutoff, inprogress_min, args.since_version)
+    report = render(records, cutoff, max(1, args.min_group), since_version=args.since_version)
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

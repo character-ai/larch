@@ -3,13 +3,13 @@ required-file-presence	file-exists	docs/run-logs-required-files.tsv	all required
 exon-misclassification	grep-pattern	\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|	no EXON misclassifications in voting-tally.md	high
 oos-category-mangle	jsonl-field	plan-review accepted rows: .phase=="plan-review" and .outcome=="accepted" and (.category//""!="") and category not canonical	all plan-review accepted category fields use canonical values	high
 rej-category-blank	jsonl-field	review-findings-full.jsonl: ((.id//"")|type=="string" and startswith("REJ_")) and ((.category//"")=="") and ((.prose_body//"")|test("###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)"))	no REJ_* rows with blank category when prose_body has a category-shaped ### FINDING_ inner line (canonical tag, optional location colon)	medium
-ns-retry-sidecars	file-glob	round-*/*-ns-retry*.txt	no NS-retry sidecar files present	medium
+ns-retry-sidecars	reviewer-signals	round-meta.json reviewer_signals[].ns_retry_reason	no NS-retry signals in round-meta.json	medium
 cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present (NDJSON uses result informational when files exist)	low
 codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium
-codex-generalist-waste	composite	codex-generalist-output.txt == NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
+codex-generalist-waste	reviewer-signals	round-1 round-meta reviewer_signals codex-generalist NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
 execution-issues-categories	jsonl-field	.category != "Warnings"	no non-Warnings entries in execution-issues.ndjson	medium
 cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low
 changelog-rebase-conflicts	jsonl-field	execution-issues.ndjson: body mentions changelog with rebase/conflict	heuristic count for cumulative changelog-rebase delta	medium
 coder-tool	env-field	round-*/coder.env: CODER_TOOL	coder tool recorded in each round	low
-trailing-content-no-issues-found	grep-pattern	^NO_ISSUES_FOUND\n.+	no first-pass files with trailing content after NO_ISSUES_FOUND	medium
+trailing-content-no-issues-found	reviewer-signals	round-meta.json reviewer_signals[].first_pass_trailing_content	no first-pass trailing content after NO_ISSUES_FOUND in round-meta.json	medium
 oos-silent-drop	composite	oos-accepted*.md vs union(oos-issues.ndjson,oos-issues-created.md) URLs + git-log Inline-triage + rejected markers	non-security OOS blocks have filed URL, inline-triage, or explicit rejected-OOS evidence	high

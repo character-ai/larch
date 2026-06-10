@@ -28,6 +28,12 @@ assert_env_has_keys() {
     done
 }
 
+assert_no_prune_ledger_rows() {
+    local path="$1" message="$2"
+    [[ -f "$path" ]] || return 0
+    awk 'NR > 1 && $0 != "" { found=1 } END { exit found ? 1 : 0 }' "$path" || fail "$message"
+}
+
 sorted_file_list() {
     local root="$1"
     (
@@ -1081,8 +1087,9 @@ jq -e 'select(.slot == "cursor-plan-arch" and .tool == "cursor" and (.output | e
 echo "=== snapshot failure skips round metadata synthesis ==="
 D_SNAP="$TMP/snapshot-fail-meta"
 mkdir -p "$D_SNAP/plan-review/round-1"
-printf '{"tally":{"ACCEPTED_COUNT":"99"}}\n' >"$D_SNAP/plan-review/round-1/stale-round-meta.json"
-ln -sf stale-round-meta.json "$D_SNAP/plan-review/round-1/round-meta.json"
+# Use a symlink to a concise-allowlisted file (round-summary.env) to trigger snapshot failure.
+printf 'ROUND_NUM=1\n' >"$D_SNAP/plan-review/round-1/stale-round-summary.env"
+ln -sf stale-round-summary.env "$D_SNAP/plan-review/round-1/round-summary.env"
 printf '{"slot":"stale"}\n' >"$D_SNAP/plan-review/round-1/panel-manifest.ndjson"
 printf 'plan\n\ndiff_lines: 1\n' >"$D_SNAP/plan.txt"
 printf 'feat\n' >"$D_SNAP/feature-description.txt"
@@ -1631,7 +1638,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings-all.md\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-prune-label-map.tsv\nplan-review-prune-nit.env\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/ballot.txt\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/findings-in-scope.pre-dedup.md\nplan-review/round-1/findings-oos.md\nplan-review/round-1/findings.md\nplan-review/round-1/oos-accepted-design.md\nplan-review/round-1/oos.md\nplan-review/round-1/panel-manifest.ndjson\nplan-review/round-1/plan-review-scope-anchor.txt\nplan-review/round-1/plan-review-slots.ndjson\nplan-review/round-1/plan.txt\nplan-review/round-1/reviewer-prune-ledger.tsv\nplan-review/round-1/round-meta.json\nplan-review/round-1/round-summary.env\nplan-review/round-1/scout-plan-manifest.json\nplan-review/round-1/voting-tally.md\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nreviewer-prune-ledger.tsv\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings-all.md\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-prune-label-map.tsv\nplan-review-prune-nit.env\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/panel-manifest.ndjson\nplan-review/round-1/prune-decision.env\nplan-review/round-1/prune-nit.env\nplan-review/round-1/round-meta.json\nplan-review/round-1/round-summary.env\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nreviewer-prune-ledger.tsv\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 
@@ -1661,7 +1668,7 @@ write_collect_no_findings
 write_voters_three
 out_zd=$(run_loop "$DZD" 1)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero findings should stay degraded"
-[[ ! -s "$DZD/reviewer-prune-ledger.tsv" ]] || fail "degraded zero findings should not write prune ledger rows"
+assert_no_prune_ledger_rows "$DZD/reviewer-prune-ledger.tsv" "degraded zero findings should not write prune ledger rows"
 
 
 echo "=== single-pass: zero findings + no collector OK → degraded-empty-collector ==="
@@ -1675,7 +1682,7 @@ write_collect_no_findings
 write_voters_three
 out_z0=$(run_loop "$DZ0" 1)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "no collector OK should surface degraded-empty-collector"
-[[ ! -s "$DZ0/reviewer-prune-ledger.tsv" ]] || fail "degraded-empty-collector should not write prune ledger rows"
+assert_no_prune_ledger_rows "$DZ0/reviewer-prune-ledger.tsv" "degraded-empty-collector should not write prune ledger rows"
 
 
 echo "=== single-pass: stale session-root review artifacts cleared before round ==="

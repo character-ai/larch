@@ -113,6 +113,8 @@ contains "$envout" 'WARN=reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; se
 printf 'not\ta\tledger\n' > "$ledger"
 "$HELPER" filter --ledger "$ledger" --round 3 --manifest "$m" --out "$out" > "$envout"
 [[ "$(kv "$envout" PRUNE_ACTIVE)" == false ]] || fail "corrupt ledger fail-open inactive"
-contains "$envout" 'WARN=reviewer-prune: fail-open ledger read failed' "corrupt ledger warning"
+[[ "$(kv "$envout" PRUNE_FAIL_OPEN)" == true ]] || fail "corrupt ledger should emit PRUNE_FAIL_OPEN=true"
+not_contains "$envout" 'PRUNE_STATUS=' "filter stdout must not emit PRUNE_STATUS"
+contains "$envout" 'WARN=reviewer-prune: fail-open ledger read failed' "corrupt ledger advisory WARN"
 
 printf 'ok\n'

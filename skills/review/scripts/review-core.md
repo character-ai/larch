@@ -102,3 +102,6 @@ Harness: `skills/review/scripts/test-review-core.sh`, wired through `make test-r
 ## Conditional reviewer pruning
 
 `--prune-ledger FILE` is forwarded to `dispatch-panel.sh` so rounds 3-4 can filter `panel-manifest.ndjson` through `scripts/reviewer-prune.sh`. `review-core.sh` consumes the canonical post-filter manifest for threshold inputs, yield attribution, and the static coverage gate; the coverage gate derives expected static archetypes from the filtered manifest. `PANEL_PRUNED_EMPTY=true` returns `REVIEW_CORE_STATUS=prune-skipped` with empty artifacts before collection/threshold/aggregation/voting. Settled zero-findings and normal tally paths call `reviewer-prune.sh record` with the filtered manifest and findings-classification TSV; record failures emit `WARN` and do not change the settled review status. Empty zero-findings/prune-skipped paths snapshot and restore cumulative OOS mirrors so prior accepted OOS state is not truncated.
+## Concise prune/log audit update
+
+Before each round flush, `review-core.sh` guarantees `prune-decision.env` and `prune-nit.env` exist, writing skipped defaults for pre-dispatch and early-exit paths. Main-agent-vote-required rounds record launched reviewer slots before flushing when classification data exists.

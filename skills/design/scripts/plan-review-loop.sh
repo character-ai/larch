@@ -8,7 +8,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
-if [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
+if [[ ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-prune-decision.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] \
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
     PLUGIN_ROOT="$REPO_ROOT"
 fi
 # Optional harness overrides (see test-plan-review-loop.sh).
@@ -28,6 +31,8 @@ if [[ ! -x "$PLAN_BLOCK_STRIP_BODY_SH" ]]; then
 fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-prune-decision.sh
+source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
@@ -115,6 +120,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 mkdir -p "$DESIGN_TMPDIR"
+ensure_reviewer_prune_ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv"
 export DESIGN_TMPDIR
 
 if [[ -z "$FEATURE_FILE" ]]; then
@@ -502,12 +508,37 @@ _emit_plan_round_timing_row() {
     fi
 }
 
+_write_prune_decision_env() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-decision.env"
+    [[ -s "$dest" ]] && return 0
+    local prune_round="${PRUNE_ROUND_NUM:-$round_num}"
+    local prune_active="${PRUNE_ACTIVE:-false}" prune_status="${PRUNE_STATUS:-skipped}" panel_full="${PANEL_FULL:-0}"
+    local eligible="${ELIGIBLE:-${ELIGIBLE_COUNT:-0}}" pruned_count="${PRUNED_COUNT:-0}" pruned_combos="${PRUNED_COMBOS:-}" panel_empty="${PANEL_PRUNED_EMPTY:-false}"
+    write_prune_decision_env "$dest" "$prune_round" "$prune_active" "$prune_status" "$panel_full" "$eligible" "$pruned_count" "$pruned_combos" "$panel_empty" || true
+}
+
+_write_prune_nit_env() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-nit.env" tmp
+    [[ -f "$dest" ]] && return 0
+    mkdir -p "$(dirname "$dest")" || return 0
+    tmp="${dest}.tmp.$$"
+    if {
+        printf 'PRUNED_COUNT=0\n'
+        printf 'INSCOPE_REMAINING=0\n'
+        printf 'STATUS=skipped\n'
+    } > "$tmp"; then
+        mv -f "$tmp" "$dest" || rm -f "$tmp"
+    else
+        rm -f "$tmp"
+    fi
+}
+
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
     local snapshot_ok=true
-    if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
-        _persist_plan_round_start "$round_num" "${_round_start:-}"
-    else
+    if [[ "${LOOP_STATUS:-}" != "main-agent-vote-required" ]]; then
         _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
     fi
     if ! _snapshot_round_dir "$round_num"; then
@@ -515,6 +546,11 @@ _snapshot_terminal_exit_preserving_status() {
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
         snapshot_ok=false
     fi
+    if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
+        _persist_plan_round_start "$round_num" "${_round_start:-}"
+    fi
+    _write_prune_decision_env "$round_num"
+    _write_prune_nit_env "$round_num"
     _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "$summary_revise"
     case "${LOOP_STATUS:-}:${TALLY_PLAN_REVIEW_STATUS:-}" in
         main-agent-vote-required:*)
@@ -739,6 +775,10 @@ plan_review_should_record_prune_round() {
     local accepted_count="${2:-${ACCEPTED_COUNT:-0}}"
     local degraded_panel="${3:-${DEGRADED_PANEL:-0}}"
     local collector_ok="${4:-${collect_ok_count:-0}}"
+    if [[ "$loop_status" == "main-agent-vote-required" ]]; then
+        (( collector_ok > 0 )) || return 1
+        return 0
+    fi
     [[ "$loop_status" == "complete" ]] || return 1
     case "$accepted_count" in ''|*[!0-9]*) accepted_count=0 ;; esac
     case "$collector_ok" in ''|*[!0-9]*) collector_ok=0 ;; esac
@@ -849,6 +889,7 @@ _run_plan_review_round() {
     --cursor-present "$CURSOR_PRESENT" || true
 
 # --- Step 3: panel dispatch ---
+set +e
 _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
@@ -856,8 +897,27 @@ _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --plan-file "$PLAN_FILE" \
     --feature-file "$SCOPE_ANCHOR_FILE" \
     --timeout "$PANEL_TIMEOUT" \
+    --round-num "$round_num" \
     --prune-round-num "$PRUNE_ROUND_NUM" \
     --prune-ledger "$DESIGN_TMPDIR/reviewer-prune-ledger.tsv")
+_panel_dispatch_rc=$?
+set -e
+if [[ "$_panel_dispatch_rc" -ne 0 ]]; then
+    write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
+    : > "$DESIGN_TMPDIR/ballot.txt"
+    TALLY_PLAN_REVIEW_STATUS=panel-failed
+    AGGREGATOR_STATUS=skipped
+    ACCEPTED_COUNT=0
+    IMPORTANT_ACCEPTED_COUNT=0
+    NIT_ACCEPTED_COUNT=0
+    NON_NIT_ACCEPTED_COUNT=0
+    DEGRADED_PANEL=1
+    VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    VOTER_1_PARSE_RATE_STATUS=SKIPPED
+    LOOP_STATUS=panel-failed
+    set +e
+    return 1
+fi
 
 PANEL_DISPATCH_OK="true"
 PANEL_PATHS_FILE=""
@@ -869,9 +929,15 @@ DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
 ALL_SLOTS_DROPPED="false"
 DROPPED_SLOTS_FILE=""
-PANEL_PRUNED_EMPTY=false
-PANEL_MANIFEST="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+PRUNE_ACTIVE="false"
+PRUNE_STATUS="skipped"
+PANEL_FULL="0"
+ELIGIBLE="0"
+ELIGIBLE_COUNT="0"
+PRUNED_COUNT="0"
 PRUNED_COMBOS=""
+PANEL_PRUNED_EMPTY="false"
+PANEL_MANIFEST="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -887,13 +953,19 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         DROPPED_SLOTS_FILE) DROPPED_SLOTS_FILE="$_value" ;;
         PANEL_PRUNED_EMPTY) PANEL_PRUNED_EMPTY="$_value" ;;
+        PRUNE_ACTIVE) PRUNE_ACTIVE="$_value" ;;
+        PRUNE_STATUS) PRUNE_STATUS="$_value" ;;
+        PANEL_FULL) PANEL_FULL="$_value" ;;
+        ELIGIBLE) ELIGIBLE="$_value" ;;
+        ELIGIBLE_COUNT) ELIGIBLE_COUNT="$_value" ;;
+        PRUNED_COUNT) PRUNED_COUNT="$_value" ;;
         PANEL_MANIFEST) PANEL_MANIFEST="$_value" ;;
         PRUNED_COMBOS) PRUNED_COMBOS="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<< "$_panel_raw"
 
-if [[ "${PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
+if [[ "${PANEL_PRUNED_EMPTY:-false}" == "true" && "${PRUNE_STATUS:-}" == "pruned-empty" ]]; then
     write_empty_review_artifacts "Round skipped: all reviewer combos pruned." "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     _restore_prior_round_oos "${_prior_cum_oos:-}"
@@ -943,6 +1015,7 @@ if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" \
     VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     VOTER_1_PARSE_RATE_STATUS=SKIPPED
     LOOP_STATUS=panel-failed
+    set +e
     return 1
 fi
 
@@ -1494,6 +1567,8 @@ set -e
 if [[ "$_plan_prune_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-prune-nit: subprocess exited with rc=$_plan_prune_rc (failing open)"
 fi
+mkdir -p "$DESIGN_TMPDIR/plan-review/round-${round_num}"
+cp -f "$_plan_prune_out" "$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-nit.env" 2>/dev/null || emit_kv WARN "plan-review-prune-nit: failed to persist prune-nit.env"
 _plan_prune_count=""
 while IFS= read -r _pln || [[ -n "$_pln" ]]; do
     [[ -z "$_pln" ]] && continue
@@ -1592,6 +1667,7 @@ PY
         larch_err "plan-review-ballot: renumber failed on pre-dedup fallback (rc=$_ballot_rc)"
         LOOP_STATUS=panel-failed
         LOOP_REASON=panel-failed
+        set +e
         return 1
     fi
 fi
@@ -1782,6 +1858,10 @@ if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN
     _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
     _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
     _restore_prior_round_accepted_all "$_prior_accepted_all"
+    _mav_fc="$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/findings-classification.tsv"
+    if plan_review_should_record_prune_round "main-agent-vote-required" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$collect_ok_count"; then
+        plan_review_record_prune_round "${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}" "$_mav_fc"
+    fi
     _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
 fi
 

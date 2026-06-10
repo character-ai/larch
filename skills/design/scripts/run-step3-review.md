@@ -66,3 +66,6 @@ The cap warning remains boundary-qualified: `**⚠ Step 3: review-round cap (<ca
 ## Prune-round threading
 
 `run-step3-review.sh` writes `STEP3_REVIEW_ROUND_NUM` to `review-round-count.txt` before calling `plan-review-loop.sh` and also passes the same value explicitly as `--prune-round-num`. `plan-review-loop.sh` defaults omitted `--prune-round-num` to `--round-num` for direct single-pass callers and no longer reads `review-round-count.txt`.
+## Concise prune/log audit update
+
+For non-HARD workflows, artifact `ROUND_NUM` follows `STEP3_REVIEW_ROUND_NUM` before cleanup and dispatch. HARD workflows keep cursor read/advance semantics, and `--prune-round-num` remains the review counter.

@@ -25,3 +25,7 @@ The script passes through waterfall dispatcher KVs including `FALLBACK_COUNT`, `
 ## Conditional reviewer pruning
 
 `--prune-round-num N --prune-ledger FILE` enables `scripts/reviewer-prune.sh filter` after `plan-review-slots.ndjson` is fully built and before the waterfall dispatch. When rows are removed, the unfiltered manifest is copied to `plan-review-slots.pre-prune.ndjson` and the canonical `plan-review-slots.ndjson` is atomically replaced, so degradation math and downstream mapping use filtered counts. If the filtered manifest is empty, the dispatcher emits success KVs with `PANEL_PRUNED_EMPTY=true`, zero dynamic slots, `DEGRADED_ROUND=false`, an empty `PANEL_PATHS_FILE`, and exits before the waterfall. The both-externals-absent generic Claude path writes one `plan-review-slots.ndjson` row (`slot=claude-plan-generic`, `tool=claude_sub`) before emitting `PANEL_PATHS_FILE`; it is not pruned.
+
+## Concise prune/log audit update
+
+`--round-num` selects the artifact directory under `plan-review/round-N/`; `--prune-round-num` remains the reviewer-prune filter counter. Dispatch writes `prune-decision.env` before every exit and emits the same prune KV tuple on stdout.

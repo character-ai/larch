@@ -29,48 +29,31 @@ assert_revise_excluded() {
     fi
 }
 
-assert_included findings.md
-assert_excluded findings-in-scope.md
-assert_included findings-oos.md
+assert_included round-summary.env
 assert_included findings-classification.tsv
+assert_included prune-decision.env
+assert_included prune-nit.env
+
+assert_excluded findings.md
+assert_excluded findings-in-scope.md
+assert_excluded findings-oos.md
 assert_excluded accepted-plan-findings.md
 assert_excluded rejected-findings.md
-assert_included oos.md
-# Canonical pin for issue #3143 group A (oos-accepted-design.md allowlist coverage).
-assert_included oos-accepted-design.md
-assert_included oos-accepted-design.before.md
-assert_included ballot.txt
-assert_included voting-tally.md
-assert_included round-meta.json
-assert_included panel-manifest.ndjson
-assert_included plan-review-slots.ndjson
-assert_included plan-voter-slots.ndjson
-assert_included scout-plan-manifest.json
-assert_included round-summary.env
-assert_included round-start-s
-assert_included plan.txt
-assert_included claude-vote-output-first-pass.txt
-assert_included claude-vote-output.txt
-assert_included voter1-diag.txt
-
-assert_excluded cursor-plan-arch-output.txt
-assert_excluded codex-primary-plan-edge-output.txt
-assert_excluded cursor-plan-dyn-foo-output.txt
-assert_excluded codex-primary-plan-dyn-bar-output.txt
-assert_excluded voter-output.txt.prompt
-assert_excluded voter-output.txt.meta
-assert_excluded voter-output.txt.json
-assert_excluded voter-output.txt.cap-hit
-assert_excluded ballot-vote-prompt.txt
-assert_excluded vote-output.txt.events.jsonl
-assert_excluded vote-output.txt.sidecar
-assert_excluded vote-output.txt.done
-assert_excluded vote-output.txt.diag
-assert_excluded vote-output.txt.dirty-tree
-assert_excluded vote-output.txt.untracked-baseline
-assert_excluded cursor-plan-arch-output.txt.sidecar
-assert_excluded cursor-plan-arch-output.txt.prompt
-assert_excluded unknown.bin
+assert_excluded oos.md
+assert_excluded oos-accepted-design.md
+assert_excluded oos-accepted-design.before.md
+assert_excluded ballot.txt
+assert_excluded voting-tally.md
+assert_excluded plan-review-slots.ndjson
+assert_excluded plan-voter-slots.ndjson
+assert_excluded scout-plan-manifest.json
+assert_excluded reviewer-prune-ledger.tsv
+assert_excluded round-start-s
+assert_excluded plan.txt
+assert_excluded plan.diff
+assert_excluded claude-vote-output-first-pass.txt
+assert_excluded claude-vote-output.txt
+assert_excluded voter1-diag.txt
 
 assert_revise_excluded codex-output.txt
 assert_revise_excluded cursor-output.txt

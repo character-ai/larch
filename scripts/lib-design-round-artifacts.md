@@ -45,3 +45,6 @@ The revise include set is empty — no files from `revise/` appear in committed 
 `design_round_artifact_included` returns 0 for `*.failure-diag` so the composed
 vendor-failure carrier is preserved in plan-review round snapshots; the raw
 `*.sidecar.history` / `*.events.history` archives remain excluded.
+## Concise prune/log audit update
+
+The default plan-review round allowlist is exhaustive and concise: `round-summary.env`, `findings-classification.tsv`, `prune-decision.env`, and `prune-nit.env`. Raw findings, per-round plan/diff files, transcripts, vote prose, manifests, and per-round prune ledgers are excluded unless a caller explicitly uses a debug path.

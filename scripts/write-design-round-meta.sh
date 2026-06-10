@@ -210,8 +210,15 @@ fi
 _panel_tmp="$ROUND_DIR/panel-manifest.ndjson.tmp"
 _meta_tmp="$ROUND_DIR/round-meta.json.tmp"
 _panel_count=0
+# Prefer per-round copy; fall back to session-root copy (concise snapshots no longer
+# stage plan-review-slots.ndjson into round dirs).
+_slots_src="$ROUND_DIR/plan-review-slots.ndjson"
+if [[ ! -f "$_slots_src" ]]; then
+    _design_root=$(dirname "$(dirname "$ROUND_DIR")")
+    _slots_src="$_design_root/plan-review-slots.ndjson"
+fi
 if command -v python3 >/dev/null 2>&1; then
-    _panel_count=$(python3 - "$ROUND_DIR/plan-review-slots.ndjson" "$_panel_tmp" <<'PY' || printf '0'
+    _panel_count=$(python3 - "$_slots_src" "$_panel_tmp" <<'PY' || printf '0'
 import json
 import sys
 from pathlib import Path

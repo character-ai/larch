@@ -54,19 +54,40 @@ trap 'rm -rf "$FIX"' EXIT
 IMPL="$FIX/larch-logs/implement/RUN-IMPL-1"
 mkdir -p "$IMPL"
 cat > "$IMPL/manifest.json" <<'JSON'
-{"started_at":"2026-05-20T10:00:00Z","skill":"implement"}
+{"started_at":"2026-05-20T10:00:00Z","larch_version":"48.9.9","skill":"implement"}
 JSON
 cat > "$IMPL/review-findings-full.jsonl" <<'JSONL'
 {"id":"FINDING_2","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1","category":"Inverted guard skips required validation","prose_body":"## Inverted guard skips required validation\n- **Severity**: important\n- **Concern**: logic error: the check is inverted and the feature is broken."}
-{"id":"REJ_CR1_1","phase":"code-review","outcome":"rejected","reviewer_slots":["cursor-specialist-structure-output.txt"],"round_num":"1","category":"","prose_body":"## refactor: extract a helper for clarity\n- **Severity**: nit\n- **Concern**: this would be cleaner as a refactor; more readable."}
-{"id":"OOS_CR1_1","phase":"code-review","outcome":"out_of_scope","reviewer_slots":["cursor-specialist-edge-cases-output.txt"],"round_num":"1","category":"","prose_body":"## perf: avoid a redundant read\n- **Severity**: latent\n- **Concern**: a micro-optimization could cache this."}
+{"id":"REJ_CR1_1","phase":"code-review","outcome":"rejected","reviewer_slots":["cursor-specialist-structure-output.txt"],"round_num":"1","category":"","body_severity":"nit","focus_area":"code-quality","prose_body":"## refactor: extract a helper for clarity\n- **Concern**: this would be cleaner as a refactor; more readable."}
+{"id":"OOS_CR1_1","phase":"code-review","outcome":"out_of_scope","reviewer_slots":["cursor-specialist-edge-cases-output.txt"],"round_num":"1","category":"","body_severity":"latent","prose_body":"## perf: avoid a redundant read\n- **Concern**: a micro-optimization could cache this."}
+JSONL
+
+# ---- implement version fixture: post-version nits are not accepted ----
+IMPL_POST="$FIX/larch-logs/implement/RUN-IMPL-2"
+mkdir -p "$IMPL_POST"
+cat > "$IMPL_POST/manifest.json" <<'JSON'
+{"started_at":"2026-05-22T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+cat > "$IMPL_POST/review-findings-full.jsonl" <<'JSONL'
+{"id":"FINDING_3","phase":"code-review","outcome":"accepted","reviewer_slots":["codex-specialist-correctness-output.txt"],"round_num":"1","category":"Required write is missing","body_severity":"important","prose_body":"## Required write is missing"}
+{"id":"REJ_CR2_1","phase":"code-review","outcome":"rejected","reviewer_slots":["codex-specialist-testing-output.txt"],"round_num":"1","category":"Optional future test","body_severity":"latent","prose_body":"## Optional future test"}
+{"id":"OOS_CR2_1","phase":"code-review","outcome":"out_of_scope","reviewer_slots":["codex-specialist-style-output.txt"],"round_num":"1","category":"Naming nit","body_severity":"nit","prose_body":"## Naming nit"}
+JSONL
+
+IMPL_BAD_VERSION="$FIX/larch-logs/implement/RUN-IMPL-BAD"
+mkdir -p "$IMPL_BAD_VERSION"
+cat > "$IMPL_BAD_VERSION/manifest.json" <<'JSON'
+{"started_at":"2026-05-23T10:00:00Z","larch_version":"not-a-version","skill":"implement"}
+JSON
+cat > "$IMPL_BAD_VERSION/review-findings-full.jsonl" <<'JSONL'
+{"id":"FINDING_BAD","phase":"code-review","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1","category":"Bad version run","body_severity":"important","prose_body":"## Bad version run"}
 JSONL
 
 # ---- design fixture: one accepted-major in-scope, one rejected-nit ----
 DROUND="$FIX/larch-logs/design/RUN-DSGN-1/plan-review/round-1"
 mkdir -p "$DROUND"
 cat > "$FIX/larch-logs/design/RUN-DSGN-1/manifest.json" <<'JSON'
-{"started_at":"2026-05-21T10:00:00Z"}
+{"started_at":"2026-05-21T10:00:00Z","larch_version":"49.0.0"}
 JSON
 cat > "$DROUND/findings.md" <<'MD'
 ### FINDING_1:
@@ -81,9 +102,18 @@ cat > "$DROUND/findings.md" <<'MD'
 - **Focus area**: code-quality
 - **Concern**: A rename would be cleaner here.
 MD
-printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\n' > "$DROUND/findings-classification.tsv"
-printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\n' >> "$DROUND/findings-classification.tsv"
-printf 'FINDING_2\tCodex-Edge\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\n' >> "$DROUND/findings-classification.tsv"
+printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND/findings-classification.tsv"
+printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_2\tCodex-Edge\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\n' >> "$DROUND/findings-classification.tsv"
+
+
+DROUND2="$FIX/larch-logs/design/RUN-DSGN-2/plan-review/round-1"
+mkdir -p "$DROUND2"
+cat > "$FIX/larch-logs/design/RUN-DSGN-2/manifest.json" <<'JSON'
+{"started_at":"2026-05-22T10:00:00Z","larch_version":"49.0.0"}
+JSON
+printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND2/findings-classification.tsv"
+printf 'FINDING_9\tCodex-Concise\taccepted\tYES\ttrue\tminor\tgood\tfalse\tClaude\tYES\ttrue\tminor\tgood\tfalse\tCodex\tYES\ttrue\tminor\tgood\tfalse\tCursor\tlatent\n' >> "$DROUND2/findings-classification.tsv"
 
 echo "== running analyzer over fixture =="
 REPORT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1)
@@ -102,6 +132,67 @@ assert_contains "$REPORT" "reviewer-authored body severity" "implement severity 
 echo "== --cutoff enables pre/post section =="
 REPORT_CUT=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 --cutoff 2026-05-21T00:00:00Z)
 assert_contains "$REPORT_CUT" "## Pre/post cutoff" "pre/post section present with --cutoff"
+
+echo "== --since-version enables version pre/post section =="
+REPORT_VERSION=$(python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-group 1 --since-version 49.0.0)
+assert_contains "$REPORT_VERSION" "## Pre/post comparison" "version pre/post header"
+assert_contains "$REPORT_VERSION" "unknown-version skipped: 1" "malformed larch_version skipped"
+assert_contains "$REPORT_VERSION" "| post | nit | 1 | 0.0" "post nit acceptance is zero"
+assert_contains "$REPORT_VERSION" "post accepted-low-value: 0.0% (0/1)" "post accepted-low-value line"
+assert_contains "$REPORT_VERSION" "post tier-composition: important" "post tier composition line"
+assert_contains "$REPORT_VERSION" "| pre | nit | 1 | 0.0" "explicit body_severity drives pre nit tier"
+
+echo "== body_severity and focus_area survive prose cap =="
+LONG_PROSE=$(python3 -c "print('z' * 2500)")
+IMPL_CAP="$FIX/larch-logs/implement/RUN-IMPL-CAP"
+mkdir -p "$IMPL_CAP"
+cat > "$IMPL_CAP/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T10:00:00Z","larch_version":"49.0.0","skill":"implement"}
+JSON
+python3 - "$IMPL_CAP/review-findings-full.jsonl" "$LONG_PROSE" <<'PY'
+import json, sys
+path, prose = sys.argv[1], sys.argv[2]
+row = {
+    "id": "FINDING_CAP",
+    "phase": "code-review",
+    "outcome": "accepted",
+    "reviewer_slots": ["cursor-specialist-testing-output.txt"],
+    "round_num": "1",
+    "category": "Cap probe",
+    "body_severity": "nit",
+    "focus_area": "testing",
+    "prose_body": prose,
+}
+open(path, "w", encoding="utf-8").write(json.dumps(row) + "\n")
+PY
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, (49, 0, 0))
+rec = next(r for r in records if r.get("finding_id") == "FINDING_CAP")
+assert rec["severity"] == "nit", rec
+assert rec.get("focus_area") == "testing", rec
+assert len(rec.get("text", "")) <= 2000, len(rec.get("text", ""))
+PY
+PASS=$((PASS + 1))
+echo "  ok: body_severity and focus_area extracted before prose cap"
+
+echo "== concise design TSV severity is consumed without findings.md =="
+python3 - "$ANALYZER" "$FIX/larch-logs" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+records = mod.extract(sys.argv[2], "", False, None, None, (49, 0, 0))
+rec = next(r for r in records if r.get("finding_id") == "FINDING_9")
+assert rec["severity"] == "latent", rec
+assert rec["title"] == "FINDING_9", rec
+assert "Codex-Concise" in rec["text"], rec
+PY
+PASS=$((PASS + 1))
+echo "  ok: concise design severity fallback"
 
 echo "== missing log root exits 2 =="
 set +e

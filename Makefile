@@ -23,7 +23,7 @@ PYTHON ?= python3
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state
-.PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune
+.PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -81,7 +81,7 @@ lint-awk-multibyte-regex:
 # appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20
 
-test-harnesses-1: test-check-reviewers test-reviewer-prune
+test-harnesses-1: test-check-reviewers test-reviewer-prune test-lib-prune-decision
 
 test-harnesses-2: test-launch-cursor-ci test-compose-review-findings test-render-findings-batch test-render-run-summary test-render-review-phase-detail test-larch-logs-batches test-check-main-sync test-rebase-push-keep-on-conflict test-record-plan-review-round-timing test-check-stale-plugin test-relevant-checks-byte-budget test-gh-run-logs test-external-tool-registry test-legacy-title-prefix-literals-scope test-implement-relevant-checks-anti-halt
 
@@ -110,7 +110,7 @@ test-harnesses-14: test-dispatch-code-voters-happy test-prompt-template-invarian
 
 test-harnesses-15: test-launch-review-cursor-retry test-findings-classification test-scout-dynamic-archetypes test-step-7a test-validate-citations test-launch-claude-subprocess test-larch-logs-manifest test-preflight-args test-run-research-planner test-cache-root-validation test-lint-no-raw-stderr-after-quiet-init test-compose-pr-summary test-step3-orchestrator-fence test-tally-vote test-fetch-combinable-issues-filter
 
-test-harnesses-16: test-review-design-step3-loop test-design-log-publish test-review-and-fix-convergence test-dispatch-code-voters-edge-and-r3-claude test-lint-fix-loop test-run-step3-review test-allocate-candidates test-parse-input test-mermaid-fragments test-block-submodule test-ship-pr-rebase test-check-scope-reduction-marker test-references-headers test-render-cost-line-realism test-run-external-agent-args test-gather-context test-intra-batch-deps test-fluff-analysis
+test-harnesses-16: test-review-design-step3-loop test-design-log-publish test-review-and-fix-convergence test-dispatch-code-voters-edge-and-r3-claude test-lint-fix-loop test-run-step3-review test-allocate-candidates test-parse-input test-mermaid-fragments test-block-submodule test-ship-pr-rebase test-check-scope-reduction-marker test-references-headers test-render-cost-line-realism test-run-external-agent-args test-gather-context test-intra-batch-deps test-fluff-analysis test-fluff-analysis-corpus
 
 test-harnesses-17: test-dispatch-panel-reuse test-stall-recovery-report test-collect-findings test-audit-runs test-review-findings-classification test-wait-for-reviewers test-release-finish test-parse-prose-blockers test-step3-review-cap test-oos-serialize test-token-cost test-deny-edit-write test-generate-code-flow-diagram test-lib-design-tmpdir test-get-issue-context test-quick-mode-docs-sync test-implement-step2-routing test-review-relevant-checks-helper
 
@@ -133,6 +133,9 @@ test-redact-tmpdir-paths:
 
 test-reviewer-prune:
 	bash scripts/harness-timer.sh $@ bash scripts/test-reviewer-prune.sh
+
+test-lib-prune-decision:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-prune-decision.sh
 
 test-append-tool-failure:
 	bash scripts/harness-timer.sh $@ bash scripts/test-append-tool-failure.sh
@@ -184,6 +187,9 @@ test-analyze:
 
 test-fluff-analysis:
 	bash scripts/harness-timer.sh $@ bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
+
+test-fluff-analysis-corpus:
+	bash scripts/harness-timer.sh $@ bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-parse-prose-blockers:
 	bash scripts/harness-timer.sh $@ bash scripts/test-parse-prose-blockers.sh

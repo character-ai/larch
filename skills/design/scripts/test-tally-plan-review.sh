@@ -9,7 +9,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
 SUBJECT="$SCRIPT_DIR/tally-plan-review.sh"
-HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
+HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity'
 
 fail() {
     echo "FAIL: $1" >&2

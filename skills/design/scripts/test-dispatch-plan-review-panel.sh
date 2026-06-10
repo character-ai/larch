@@ -331,6 +331,7 @@ cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_STUB/python/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_STUB/skills/design/scripts/"
 chmod +x "$PLUGIN_STUB/scripts/redact-secrets.sh" \
@@ -391,6 +392,7 @@ cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_BAD/python/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_BAD/skills/design/scripts/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
@@ -481,6 +483,7 @@ cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
+cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_JSONL/skills/design/scripts/"
 mkdir -p "$PLUGIN_JSONL/python" "$PLUGIN_JSONL/skills/design/references"
@@ -527,5 +530,50 @@ _collect12=$(LARCH_QUIET_DISABLE=1 bash "$COLLECT_REAL" \
 printf '%s\n' "$_collect12" | grep -Fq 'STATUS=SENTINEL_TIMEOUT' && fail "jsonl both-absent collect must not SENTINEL_TIMEOUT"
 printf '%s\n' "$_collect12" | grep -Fq "STRUCTURED_SIDECAR=${_generic12}.jsonl" \
     || fail "jsonl both-absent collect must emit jsonl STRUCTURED_SIDECAR"
+
+echo "=== waterfall nonzero rc surfaces panel failure (not all-slots-dropped success) ==="
+FAIL_STUB="$TMP/waterfall-fail.sh"
+cat >"$FAIL_STUB" <<'FAIL_EOF'
+#!/usr/bin/env bash
+exit 3
+FAIL_EOF
+chmod +x "$FAIL_STUB"
+D_FAIL="$TMP/s-fail"
+prep "$D_FAIL"
+printf '{"archetypes":[]}\n' >"$D_FAIL/scout-plan-manifest.json"
+set +e
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$FAIL_STUB" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D_FAIL" \
+    --codex-present true \
+    --cursor-present true \
+    --plan-file "$D_FAIL/plan.txt" \
+    --timeout 60 >"$D_FAIL/out.env"
+fail_rc=$?
+set -e
+[[ "$fail_rc" -ne 0 ]] || fail "waterfall nonzero rc must propagate as panel failure"
+grep -Fq 'DISPATCH_OK=false' "$D_FAIL/out.env" || fail "waterfall failure must set DISPATCH_OK=false"
+
+echo "=== prune audit env written on dispatch ==="
+D_PRUNE="$TMP/s-prune"
+prep "$D_PRUNE"
+printf '{"archetypes":[]}\n' >"$D_PRUNE/scout-plan-manifest.json"
+log_prune="$D_PRUNE/wf.log"
+: >"$log_prune"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log_prune" \
+    WATERFALL_STUB_PATHS_OUT="$D_PRUNE/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D_PRUNE" \
+    --codex-present true \
+    --cursor-present true \
+    --plan-file "$D_PRUNE/plan.txt" \
+    --prune-round-num 1 \
+    --prune-ledger "$D_PRUNE/reviewer-prune-ledger.tsv" \
+    --timeout 60 >"$D_PRUNE/out.env"
+grep -Fq 'PRUNE_STATUS=' "$D_PRUNE/out.env" || fail "dispatch must emit PRUNE_STATUS"
+[[ -f "$D_PRUNE/plan-review/round-1/prune-decision.env" ]] || fail "dispatch must write prune-decision.env audit file"
 
 echo "All dispatch-plan-review-panel harness assertions passed."

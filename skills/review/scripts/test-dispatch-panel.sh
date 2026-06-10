@@ -886,6 +886,74 @@ printf '%s
 [[ ! -e "$prune_dir/waterfall.argv" ]] || { echo "FAIL: prune all should skip waterfall" >&2; exit 1; }
 [[ -s "$prune_dir/panel-manifest.pre-prune.ndjson" ]] || { echo "FAIL: prune all should preserve pre-prune manifest" >&2; exit 1; }
 [[ ! -s "$prune_dir/panel-manifest.ndjson" ]] || { echo "FAIL: pruned canonical manifest should be empty" >&2; exit 1; }
+[[ -f "$prune_dir/prune-decision.env" ]] || { echo "FAIL: pruned-empty dispatch must write prune-decision.env" >&2; exit 1; }
+grep -Fq 'PANEL_PRUNED_EMPTY=true' "$prune_dir/prune-decision.env" || { echo "FAIL: prune-decision.env missing PANEL_PRUNED_EMPTY" >&2; exit 1; }
+
+# Out-of-window pruning is skipped on round 1.
+round1_dir="$TMP/prune-round1"
+mkdir -p "$round1_dir"
+seed_case_inputs "$round1_dir"
+round1_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round1_dir/waterfall.argv" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$round1_dir/review.diff" \
+    --review-tmpdir "$round1_dir" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$round1_dir/plan.md" \
+    --round-num 1 \
+    --prune-ledger "$prune_ledger")
+printf '%s\n' "$round1_out" | grep -q '^PRUNE_STATUS=skipped$' || { echo "FAIL: round 1 prune status should be skipped" >&2; exit 1; }
+printf '%s\n' "$round1_out" | grep -q '^PRUNE_ACTIVE=false$' || { echo "FAIL: round 1 prune should be inactive" >&2; exit 1; }
+[[ -e "$round1_dir/waterfall.argv" ]] || { echo "FAIL: round 1 should still launch waterfall" >&2; exit 1; }
+
+# Corrupt ledger fail-open must not take pruned-empty early exit.
+fail_open_dir="$TMP/prune-fail-open"
+mkdir -p "$fail_open_dir"
+seed_case_inputs "$fail_open_dir"
+fail_open_ledger="$fail_open_dir/reviewer-prune-ledger.tsv"
+printf 'not\ta\tvalid\theader\n' >"$fail_open_ledger"
+fail_open_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$fail_open_dir/waterfall.argv" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$fail_open_dir/review.diff" \
+    --review-tmpdir "$fail_open_dir" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$fail_open_dir/plan.md" \
+    --round-num 3 \
+    --prune-ledger "$fail_open_ledger")
+printf '%s\n' "$fail_open_out" | grep -q '^PRUNE_STATUS=failed$' || { echo "FAIL: corrupt ledger should surface PRUNE_STATUS=failed" >&2; exit 1; }
+printf '%s\n' "$fail_open_out" | grep -q '^WARN=.*fail-open' || { echo "FAIL: corrupt ledger should emit fail-open WARN" >&2; exit 1; }
+printf '%s\n' "$fail_open_out" | grep -q '^PANEL_PRUNED_EMPTY=false$' || { echo "FAIL: fail-open must not mark PANEL_PRUNED_EMPTY" >&2; exit 1; }
+[[ -e "$fail_open_dir/waterfall.argv" ]] || { echo "FAIL: fail-open must continue to waterfall" >&2; exit 1; }
+[[ -f "$fail_open_dir/prune-decision.env" ]] || { echo "FAIL: fail-open dispatch must write prune-decision.env" >&2; exit 1; }
+
+# Partial prune keeps eligible slots and records active-dropped status.
+partial_dir="$TMP/prune-partial"
+mkdir -p "$partial_dir"
+seed_case_inputs "$partial_dir"
+partial_ledger="$partial_dir/reviewer-prune-ledger.tsv"
+cat >"$partial_ledger" <<'TSV'
+round	tool	slot	label	accepted_count
+1	cursor	security	cursor-specialist-security-output.txt	0
+1	codex	security	codex-specialist-security-output.txt	0
+2	cursor	security	cursor-specialist-security-output.txt	0
+2	codex	security	codex-specialist-security-output.txt	0
+TSV
+partial_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$partial_dir/waterfall.argv" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$partial_dir/review.diff" \
+    --review-tmpdir "$partial_dir" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$partial_dir/plan.md" \
+    --round-num 3 \
+    --prune-ledger "$partial_ledger")
+printf '%s\n' "$partial_out" | grep -q '^PRUNE_STATUS=active-dropped$' || { echo "FAIL: partial prune should be active-dropped" >&2; exit 1; }
+printf '%s\n' "$partial_out" | grep -q '^PANEL_PRUNED_EMPTY=false$' || { echo "FAIL: partial prune must not mark panel empty" >&2; exit 1; }
+[[ -e "$partial_dir/waterfall.argv" ]] || { echo "FAIL: partial prune should launch waterfall" >&2; exit 1; }
 
 fi  # end section: core regressions
 

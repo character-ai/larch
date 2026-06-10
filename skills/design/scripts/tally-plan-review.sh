@@ -401,9 +401,21 @@ parse_rating_for() {
     printf '%s\n' "$parsed"
 }
 
+extract_body_severity_for_block() {
+    local block="$1"
+    awk '
+        /^[[:space:]-]*\*\*Severity\*\*:[[:space:]]*/ {
+            sub(/^[[:space:]-]*\*\*Severity\*\*:[[:space:]]*/, "")
+            gsub(/[[:space:]]+$/, "")
+            print
+            exit
+        }
+    ' "$block"
+}
+
 write_findings_classification() {
     mkdir -p "$(dirname "$FINDINGS_CLASSIFICATION_OUT")"
-    local tmp id block reviewer kind result security tsv_result
+    local tmp id block reviewer kind result security tsv_result body_severity
     local p voter_file parsed vote correctness severity quality uncertain tool
     tmp=$(mktemp "${FINDINGS_CLASSIFICATION_OUT}.XXXXXX")
     emit_findings_classification_header > "$tmp"
@@ -411,6 +423,7 @@ write_findings_classification() {
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"
         reviewer=$(sanitize_tsv_cell "$(reviewer_for_block "$block")")
+        body_severity=$(sanitize_tsv_cell "$(extract_body_severity_for_block "$block")")
         tally_votes_for_id "$id"
         result="$TALLY_RESULT"
         tsv_result="$result"
@@ -442,7 +455,8 @@ write_findings_classification() {
                 row+=("" "" "" "" "" "")
             fi
         done
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$tmp"
+        row+=("$body_severity")
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$tmp"
     done < "$sorted_ids"
     mv -f "$tmp" "$FINDINGS_CLASSIFICATION_OUT"
 }

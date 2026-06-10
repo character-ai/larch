@@ -122,3 +122,6 @@ for vendor-agent launch failures. Producers append redacted per-slot parts via
 `append`) because the helper derives the full batch from the parts set on every
 flush, so repeated pre-commit flushes converge idempotently. See
 `docs/vendor-agent-diagnostics-audit.md`.
+## Concise prune/log audit update
+
+The batch table includes `reviewer-prune-ledger` as a run-root TSV replace batch for implement pruning audit history. Per-round skipped, failed, and pruned-empty states remain in `prune-decision.env` rather than synthetic ledger rows.

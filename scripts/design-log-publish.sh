@@ -325,6 +325,13 @@ design_artifact_excluded() {
         aggregate-validate.py|findings.md.tmp|composed-plan.redacted.md|ballot.txt)
             return 0
             ;;
+        plan.diff|composed-plan.diff)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
+            ;;
+        findings.md|findings-oos.md|findings-in-scope.md|accepted-plan-findings.md|rejected-findings.md|oos.md|oos-accepted-design.md|oos-accepted-design.before.md|voting-tally.md|plan-review-slots.ndjson|plan-review-slots.pre-prune.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-start-s|plan-review-scope-anchor.txt)
+            return 0
+            ;;
         *-plan-voter-prompt.txt|aggregator-prompt.md|aggregate-untagged-input.md)
             return 0
             ;;
@@ -334,13 +341,14 @@ design_artifact_excluded() {
         scout-plan-manifest.json.raw|scout-plan-manifest.json.raw.prompt)
             return 0
             ;;
-        *-vote-output.txt.meta|*-vote-output.txt.json)
-            return 0
+        *-vote-output.txt|*-vote-output-first-pass.txt|*-vote-output.txt.meta|*-vote-output.txt.json)
+            [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]] || return 0
+            return 1
             ;;
     esac
     # Phase 3b exclusions (#3715 logs-size-reduction).
     case "$name" in
-        findings-in-scope.md|timing-ledger.tsv|timing-ledger.tsv.lock|\
+        timing-ledger.tsv|timing-ledger.tsv.lock|\
         scout-dynamic-archetypes-prompt.md|plan.txt.before-revise|\
         composed-plan.md)
             return 0
@@ -387,6 +395,7 @@ design_publish_ancestor_within_root() {
 design_publish_stage_file() {
     local src="$1"
     local dest="$2"
+    local include_excluded="${3:-false}"
     local name trim_tmp redact_tmp redact_secrets
     name=$(basename "$src")
     if [[ -L "$src" ]]; then
@@ -395,7 +404,7 @@ design_publish_stage_file() {
     if [[ ! -f "$src" ]]; then
         return 0
     fi
-    if design_artifact_excluded "$name"; then
+    if [[ "$include_excluded" != "true" ]] && design_artifact_excluded "$name"; then
         return 0
     fi
     trim_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-trim.XXXXXX") || return 1
@@ -448,6 +457,27 @@ design_publish_stage_file() {
     return 0
 }
 
+design_publish_remove_stale_excluded() {
+    local root="$1" f base
+    [[ -n "$root" && -d "$root" ]] || return 0
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        base=$(basename "$f")
+        if [[ "${DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY:-false}" == "true" && "$f" == "$root/voting-tally.md" ]]; then
+            continue
+        fi
+        if design_artifact_excluded "$base"; then
+            rm -f "$f"
+        fi
+    done < <(find "$root" -type f 2>/dev/null || true)
+    if [[ -d "$root/plan-review" ]]; then
+        while IFS= read -r f || [[ -n "$f" ]]; do
+            [[ -z "$f" ]] && continue
+            rm -f "$f"
+        done < <(find "$root/plan-review" -type f -path '*/round-*/reviewer-prune-ledger.tsv' 2>/dev/null || true)
+    fi
+}
+
 design_publish_breadcrumbs() {
     local source_dir="$1" dest_dir="$2"
     larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
@@ -477,6 +507,7 @@ fi
 
 _top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
 ENUM_TOP_TMP="$_top_files"
+DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=false
 if ! find "$DESIGN_TMPDIR" -maxdepth 1 -type f | LC_ALL=C sort >"$_top_files"; then
     rm -f "$_top_files"
     ENUM_TOP_TMP=""
@@ -502,7 +533,14 @@ while IFS= read -r f || [[ -n "$f" ]]; do
             fi
             ;;
     esac
-    design_publish_stage_file "$f" "$RUN_DEST/$b" || {
+    _include_excluded=false
+    case "$b" in
+        voting-tally.md)
+            _include_excluded=true
+            DESIGN_PUBLISH_KEEP_TOP_VOTING_TALLY=true
+            ;;
+    esac
+    design_publish_stage_file "$f" "$RUN_DEST/$b" "$_include_excluded" || {
         larch_err "design-log-publish: staging failed for $f"
         emit_publish_result false
         exit 0
@@ -516,7 +554,7 @@ ENUM_TOP_TMP=""
 # `patch plan.txt composed-plan.diff -o composed-plan.md`.
 _composed_src="$DESIGN_TMPDIR/composed-plan.md"
 _plan_ref="$DESIGN_TMPDIR/plan.txt"
-if [[ -f "$_composed_src" && -f "$_plan_ref" ]]; then
+if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" && -f "$_composed_src" && -f "$_plan_ref" ]]; then
     _cdiff_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-composeddiff.XXXXXX")
     diff -u "$_plan_ref" "$_composed_src" >"$_cdiff_tmp" || true  # diff exits 1 on differences
     if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_cdiff_tmp" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/composed-plan.diff"; then
@@ -592,6 +630,8 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             fi
             if design_round_artifact_included "$_base"; then
                 :
+            elif [[ "$_base" == "plan.txt" ]]; then
+                continue
             elif design_artifact_excluded "$_base"; then
                 # Known top-level exclusion also applies at round level; skip silently.
                 continue
@@ -625,7 +665,8 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
     rm -f "$_pr_files"
     ENUM_PR_TMP=""
 
-    # Generate plan.diff (unified diff vs previous round) for rounds >= 2 (#3705).
+    # Generate plan.diff only for debug flushes; concise logs omit per-round plan diffs.
+    if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" ]]; then
     for _diff_rn in 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
         _prev_plan_src="$pr_root/round-$(( _diff_rn - 1 ))/plan.txt"
         _curr_plan_src="$pr_root/round-$_diff_rn/plan.txt"
@@ -642,6 +683,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
         fi
         rm -f "$_diff_out_f"
     done
+    fi
 fi
 
 if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; then
@@ -774,6 +816,8 @@ if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcru
     exit 0
 fi
 
+design_publish_remove_stale_excluded "$RUN_DEST"
+
 # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
 # the staged run tree before commit. Fail-closed on scrub failure. On a real
 # redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
@@ -826,6 +870,7 @@ if [[ -z "$_porcelain" ]]; then
         exit 0
     fi
     if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "$rel" | grep -q .; then
+        design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
         emit_publish_result true "" ""
     else
         larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
@@ -1149,5 +1194,6 @@ if [[ "$merge_rc" -ne 0 ]]; then
     exit 1
 fi
 
+design_publish_remove_stale_excluded "$REPO_ROOT/$rel"
 emit_publish_result true "$PR_NUM" "${PR_URL:-}"
 exit 0

@@ -269,6 +269,9 @@ else
         if [[ -z "$_wp_round" ]]; then
             _wp_round=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
         fi
+        if [[ "$_wp_round" != HARD && "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+            ROUND_NUM="$STEP3_REVIEW_ROUND_NUM"
+        fi
         _snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
         if [[ "$_wp_round" == HARD ]]; then
             _cursor_out=$("$_snap_sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")

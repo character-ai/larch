@@ -911,31 +911,39 @@ ACCEPTED_LINE="| FINDING_ABC | 0 | 0 | 3 | foo | accepted |"
 result=$(count_exon_lines "$ACCEPTED_LINE")
 assert_equal "$result" "0" "[23c] accepted line not matched"
 
-# Test 24: trailing-content-no-issues-found logic (matches audit-scan-run.sh: non-whitespace tail)
-echo "Test 24: audit-scan-run trailing-content check"
-has_trailing_content() {
-    local content="$1"
-    local first_line
-    first_line=$(printf '%s' "$content" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')
-    if [[ "$first_line" != "NO_ISSUES_FOUND" ]]; then
-        echo "pass"
-        return
-    fi
-    if printf '%s' "$content" | tail -n +2 | grep -qE '[^[:space:]]' 2>/dev/null; then
-        echo "fail"
-    else
-        echo "pass"
-    fi
-}
-result=$(has_trailing_content "NO_ISSUES_FOUND
-Extra content here")
-assert_equal "$result" "fail" "[24] NO_ISSUES_FOUND with trailing content → fail"
-result=$(has_trailing_content "NO_ISSUES_FOUND")
-assert_equal "$result" "pass" "[24b] bare NO_ISSUES_FOUND → pass"
-result=$(has_trailing_content "$(printf 'NO_ISSUES_FOUND\n\n\n')")
-assert_equal "$result" "pass" "[24d] whitespace-only trailing lines → pass (non-semantic)"
-result=$(has_trailing_content "Some findings here")
-assert_equal "$result" "pass" "[24c] content not starting with NO_ISSUES_FOUND → pass"
+# Test 24: trailing-content-no-issues-found via reviewer_signals (real scan function)
+echo "Test 24: audit-scan-run trailing-content via reviewer_signals"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R24_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-24-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'trailing-content-no-issues-found	reviewer-signals	x	x	medium'
+    } > "$R24_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R24_TMP/required-empty.tsv"
+    mkdir -p "$R24_TMP/run/round-1"
+    jq -nc '{
+        reviewer_signals: [{
+            output_basename: "cursor-specialist-edge-cases-output.txt",
+            slot_label: "cursor-specialist-edge-cases",
+            result_kind: "NO_ISSUES_FOUND",
+            ns_retry_reason: "",
+            first_pass_trailing_content: true
+        }]
+    }' > "$R24_TMP/run/round-1/round-meta.json"
+    r24_lines=$(bash "$SCAN_SCRIPT" --skill implement \
+        --run-dir "$R24_TMP/run" --pr 990024 \
+        --scans-tsv "$R24_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R24_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r24_res=$(printf '%s\n' "$r24_lines" | jq -r 'select(.scan=="trailing-content-no-issues-found") | .result // empty' | head -1)
+    r24_cnt=$(printf '%s\n' "$r24_lines" | jq -r 'select(.scan=="trailing-content-no-issues-found") | .count // empty' | head -1)
+    assert_equal "$r24_res" "fail" "[24] reviewer_signals trailing content → fail"
+    assert_equal "$r24_cnt" "1" "[24b] reviewer_signals trailing content count"
+    rm -rf "$R24_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
 
 # Test 25: OOS category mangle — canonical set
 echo "Test 25: audit-scan-run oos-category-mangle canonical categories"
@@ -1344,8 +1352,15 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35_TMP/required-empty.tsv"
     mkdir -p "$R35_TMP/run/round-1"
     printf '%s\n' '{"id":"OOS_1","category":"code-quality","prose_body":"ok"}' > "$R35_TMP/run/review-findings-full.jsonl"
-    : > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt"
-    printf '%s\n' 'NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN' > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt.meta"
+    jq -nc '{
+        reviewer_signals: [{
+            output_basename: "panel-ns-retry-sidecar.txt",
+            slot_label: "panel-ns-retry-sidecar",
+            result_kind: "NO_ISSUES_FOUND",
+            ns_retry_reason: "NO_ISSUES_FOUND_TOO_THIN",
+            first_pass_trailing_content: false
+        }]
+    }' > "$R35_TMP/run/round-1/round-meta.json"
     printf '%s\n' '{"category":"Errors","body":"not a warning"}' > "$R35_TMP/run/execution-issues.ndjson"
     r35_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35_TMP/run" --pr 990035 \
@@ -1363,6 +1378,94 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$ns_reasons" '{"NO_ISSUES_FOUND_TOO_THIN":1}' "[35e] ns-retry-sidecars reasons object"
     assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
     rm -rf "$R35_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35a: migrated reviewer_signals scans — codex-generalist-waste pass/fail/skip
+echo "Test 35a: audit-scan-run codex-generalist-waste via reviewer_signals"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35A_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35a-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'codex-generalist-waste	reviewer-signals	x	x	medium'
+    } > "$R35A_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35A_TMP/required-empty.tsv"
+    mkdir -p "$R35A_TMP/run/round-1"
+    jq -nc '{
+        reviewer_signals: [{
+            output_basename: "codex-generalist-output.txt",
+            slot_label: "codex-generalist",
+            result_kind: "NO_ISSUES_FOUND",
+            ns_retry_reason: "",
+            first_pass_trailing_content: false
+        }]
+    }' > "$R35A_TMP/run/round-1/round-meta.json"
+    jq -nc '{steps:[{name:"round-1 codex-generalist",duration_s:200}]}' > "$R35A_TMP/run/timing-report.json"
+    r35a_lines=$(bash "$SCAN_SCRIPT" --skill implement \
+        --run-dir "$R35A_TMP/run" --pr 990035 \
+        --scans-tsv "$R35A_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35A_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35a_res=$(printf '%s\n' "$r35a_lines" | jq -r 'select(.scan=="codex-generalist-waste") | .result // empty' | head -1)
+    assert_equal "$r35a_res" "fail" "[35a] codex-generalist NO_ISSUES_FOUND + slow timing → fail"
+    rm -rf "$R35A_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35a2: ns-retry-sidecars legacy fallback when reviewer_signals unavailable
+echo "Test 35a2: audit-scan-run ns-retry legacy sidecar fallback"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35A2_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35a2-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'ns-retry-sidecars	file-glob	x	x	medium'
+    } > "$R35A2_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35A2_TMP/required-empty.tsv"
+    mkdir -p "$R35A2_TMP/run/round-1"
+    printf 'retry body\n' > "$R35A2_TMP/run/round-1/cursor-specialist-testing-output-ns-retry.txt"
+    r35a2_lines=$(bash "$SCAN_SCRIPT" --skill implement \
+        --run-dir "$R35A2_TMP/run" --pr 990035 \
+        --scans-tsv "$R35A2_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35A2_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35a2_res=$(printf '%s\n' "$r35a2_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .result // empty' | head -1)
+    r35a2_cnt=$(printf '%s\n' "$r35a2_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .count // empty' | head -1)
+    assert_equal "$r35a2_res" "fail" "[35a2] legacy sidecar-only run → fail via fallback"
+    assert_equal "$r35a2_cnt" "1" "[35a2b] legacy sidecar-only count"
+    rm -rf "$R35A2_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35a3: malformed round-meta must not hide valid ns-retry signals from other rounds
+echo "Test 35a3: audit-scan-run ns-retry ignores malformed round-meta"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35A3_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35a3-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'ns-retry-sidecars	reviewer-signals	x	x	medium'
+    } > "$R35A3_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35A3_TMP/required-empty.tsv"
+    mkdir -p "$R35A3_TMP/run/round-1" "$R35A3_TMP/run/round-2"
+    printf '{not json\n' > "$R35A3_TMP/run/round-1/round-meta.json"
+    cat > "$R35A3_TMP/run/round-2/round-meta.json" <<'JSON'
+{"reviewer_signals":[{"output_basename":"cursor-specialist-testing-output.txt","slot_label":"testing","result_kind":"findings","ns_retry_reason":"OUTPUT_EMPTY"}]}
+JSON
+    r35a3_lines=$(bash "$SCAN_SCRIPT" --skill implement \
+        --run-dir "$R35A3_TMP/run" --pr 990036 \
+        --scans-tsv "$R35A3_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35A3_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35a3_res=$(printf '%s\n' "$r35a3_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .result // empty' | head -1)
+    r35a3_cnt=$(printf '%s\n' "$r35a3_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .count // empty' | head -1)
+    assert_equal "$r35a3_res" "fail" "[35a3] valid round-2 signal survives malformed round-1 meta"
+    assert_equal "$r35a3_cnt" "1" "[35a3b] ns-retry count from surviving round"
+    rm -rf "$R35A3_TMP"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
@@ -1932,6 +2035,17 @@ EOF46
     c46=$(bash "$COMP_SCRIPT" --scan-results-dir "$C46_TMP" --prior-frontmatter "$C46_TMP/prior.md")
     ns_tot=$(printf '%s' "$c46" | sed -n 's/^NS_RETRIES_CURSOR_SPECIALIST=//p')
     assert_equal "$ns_tot" "9" "[46] legacy prior key 7 + delta 2 → cumulative 9"
+    C46B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp46b-XXXXXX")
+    printf '%s\n' '{"scan":"ns-retry-sidecars","pr":1,"result":"skip","detail":"reviewer_signals signal unavailable"}' \
+        > "$C46B_TMP/scan-results-990046b-skip.ndjson"
+    printf '%s\n' '{"scan":"ns-retry-sidecars","pr":2,"result":"fail","count":3}' \
+        > "$C46B_TMP/scan-results-990046b-fail.ndjson"
+    c46b=$(bash "$COMP_SCRIPT" --scan-results-dir "$C46B_TMP")
+    ns_delta=$(printf '%s' "$c46b" | sed -n 's/^NS_RETRIES_DELTA=//p')
+    ns_skip=$(printf '%s' "$c46b" | sed -n 's/^NS_RETRIES_SKIPPED_RUNS=//p')
+    assert_equal "$ns_delta" "3" "[46b] skip rows do not add zero to NS_RETRIES_DELTA"
+    assert_equal "$ns_skip" "1" "[46c] skip rows increment NS_RETRIES_SKIPPED_RUNS"
+    rm -rf "$C46B_TMP"
     rm -rf "$C46_TMP"
 else
     echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"

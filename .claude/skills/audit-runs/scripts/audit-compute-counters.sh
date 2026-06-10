@@ -81,6 +81,7 @@ delta_oos_mangled=0
 delta_oos_clean=0
 delta_oos_blank=0
 delta_ns_retries=0
+delta_ns_retries_skipped=0
 delta_changelog=0
 category_stats_partial_any=false
 scan_files_found=0
@@ -121,10 +122,15 @@ for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
         delta_oos_blank=$((delta_oos_blank + val))
     fi
 
-    # ns-retry-sidecars count
-    val=$(jq -r 'select(.scan=="ns-retry-sidecars") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
-    val=$(num_or_zero "${val:-0}")
-    delta_ns_retries=$((delta_ns_retries + val))
+    # ns-retry-sidecars count (skip rows do not contribute zero to the delta)
+    ns_result=$(jq -r 'select(.scan=="ns-retry-sidecars") | .result // empty' "$ndjson_file" 2>/dev/null | head -1 || true)
+    if [ "$ns_result" = "fail" ]; then
+        val=$(jq -r 'select(.scan=="ns-retry-sidecars") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+        val=$(num_or_zero "${val:-0}")
+        delta_ns_retries=$((delta_ns_retries + val))
+    elif [ "$ns_result" = "skip" ]; then
+        delta_ns_retries_skipped=$((delta_ns_retries_skipped + 1))
+    fi
 
     # changelog-rebase-conflicts count (from audit-scan-run NDJSON)
     val=$(jq -r 'select(.scan=="changelog-rebase-conflicts") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
@@ -151,6 +157,7 @@ printf 'OOS_CATEGORIES_BLANK=%s\n' "$total_oos_blank"
 printf 'OOS_BLANK_DELTA=%s\n' "$delta_oos_blank"
 printf 'NS_RETRIES_CURSOR_SPECIALIST=%s\n' "$total_ns_retries"
 printf 'NS_RETRIES_DELTA=%s\n' "$delta_ns_retries"
+printf 'NS_RETRIES_SKIPPED_RUNS=%s\n' "$delta_ns_retries_skipped"
 printf 'CHANGELOG_REBASE_CONFLICTS=%s\n' "$total_changelog"
 printf 'CHANGELOG_DELTA=%s\n' "$delta_changelog"
 if [ "$category_stats_partial_any" = true ]; then
