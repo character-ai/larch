@@ -192,6 +192,7 @@ PR_LIST_FILE="$OUT_DIR/pr-list.tsv"
 : > "$PR_LIST_FILE"
 PR_COUNT=0
 missing_prs=()
+written_pr_numbers=""
 
 if [[ -n "$pr_numbers" ]]; then
   for pr in $pr_numbers; do
@@ -224,6 +225,7 @@ if [[ -n "$pr_numbers" ]]; then
     url="$(tsv_sanitize "$url")"
     printf '%s\t%s\t%s\t%s\t%s\n' "$number" "$title" "$labels" "$author" "$url" >> "$PR_LIST_FILE"
     PR_COUNT=$((PR_COUNT + 1))
+    written_pr_numbers="${written_pr_numbers} ${number}"
   done
 fi
 
@@ -231,9 +233,50 @@ if [[ ${#missing_prs[@]} -gt 0 ]]; then
   emit_error pr-metadata-incomplete "could not fetch PR metadata for: ${missing_prs[*]}"
 fi
 
-log_subject_count="$(git log "${BASELINE_TAG}..origin/main" --format=%s 2>/dev/null | grep -c . || true)"
-if [[ "${log_subject_count:-0}" -gt "$PR_COUNT" ]]; then
-  echo "WARN: git log has ${log_subject_count} commits but PR_COUNT=${PR_COUNT}; only subjects with trailing (#N) are included (maintainer-trusted commit messages)" >&2
+# GitHub API fallback: resolve commits without (#N) subject to their PRs.
+# For each unmatched commit, query the commits-to-pulls API; include resolved
+# PRs in the TSV. Commits with no associated PR are orphans — exit non-zero.
+orphan_shas=()
+orphan_subjs=()
+while IFS= read -r commit_line; do
+  [[ -n "$commit_line" ]] || continue
+  commit_sha="${commit_line%% *}"
+  commit_subj="${commit_line#* }"
+  # Skip commits already resolved via (#N) subject match
+  printf '%s\n' "$commit_subj" | grep -q '(#[0-9][0-9]*)$' && continue
+  api_tsv="$(gh api "repos/${REPO}/commits/${commit_sha}/pulls" \
+    --jq 'if length > 0 then .[0] | [(.number|tostring), .title, ((.labels // []) | map(.name) | join(",")), (.user.login // "unknown"), .html_url] | @tsv else "" end' \
+    2>/dev/null || true)"
+  if [[ -n "$api_tsv" ]]; then
+    IFS=$'\t' read -r api_num api_title api_labels api_author api_url <<< "$api_tsv"
+    if [[ " $written_pr_numbers " != *" ${api_num} "* ]]; then
+      api_title="$(tsv_sanitize "$api_title")"
+      api_labels="$(tsv_sanitize "$api_labels")"
+      api_author="$(tsv_sanitize "${api_author:-unknown}")"
+      api_url="$(tsv_sanitize "$api_url")"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$api_num" "$api_title" "$api_labels" "$api_author" "$api_url" >> "$PR_LIST_FILE"
+      PR_COUNT=$((PR_COUNT + 1))
+      written_pr_numbers="${written_pr_numbers} ${api_num}"
+      printf 'NOTE: commit %s resolved to PR #%s via GitHub API (%s)\n' \
+        "$commit_sha" "$api_num" "$commit_subj" >&2
+    fi
+  else
+    orphan_shas+=("$commit_sha")
+    orphan_subjs+=("$commit_subj")
+  fi
+done < <(git log "${BASELINE_TAG}..origin/main" --format='%H %s' 2>/dev/null || true)
+
+if [[ ${#orphan_shas[@]} -gt 0 ]]; then
+  for i in "${!orphan_shas[@]}"; do
+    printf 'WARN: commit %s has no associated pull request: %s\n' \
+      "${orphan_shas[$i]}" "${orphan_subjs[$i]}" >&2
+  done
+  orphan_sha_csv=""
+  for sha in "${orphan_shas[@]}"; do
+    orphan_sha_csv="${orphan_sha_csv:+${orphan_sha_csv},}${sha}"
+  done
+  echo "UNMATCHED_COMMITS=${orphan_sha_csv}"
+  emit_error unmatched-commits "commits with no associated pull request: ${orphan_sha_csv}"
 fi
 
 if [[ ! -x "$CLASSIFY_BUMP" ]]; then

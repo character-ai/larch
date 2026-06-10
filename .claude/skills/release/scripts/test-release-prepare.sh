@@ -45,6 +45,34 @@ case "$1" in
       exit 0
     fi
     ;;
+  api)
+    # Handle commits-to-pulls API: gh api repos/.../commits/<sha>/pulls [--jq ...]
+    path="${2:-}"
+    if [[ "$path" == *"/commits/"*"/pulls" ]]; then
+      sha="${path##*/commits/}"
+      sha="${sha%%/pulls*}"
+      fixture_dir="${GH_FIXTURE_API_COMMITS_DIR:-}"
+      if [[ -n "$fixture_dir" && -f "$fixture_dir/commits-pr-${sha}.json" ]]; then
+        payload="$(cat "$fixture_dir/commits-pr-${sha}.json")"
+      else
+        payload="[]"
+      fi
+      # Apply --jq filter when present
+      jq_expr=""
+      for arg in "$@"; do
+        if [[ "${prev_arg:-}" == "--jq" ]]; then
+          jq_expr="$arg"
+        fi
+        prev_arg="$arg"
+      done
+      if [[ -n "$jq_expr" ]]; then
+        printf '%s\n' "$payload" | jq -r "$jq_expr"
+      else
+        printf '%s\n' "$payload"
+      fi
+      exit 0
+    fi
+    ;;
 esac
 echo "unexpected gh: $*" >&2
 exit 9
@@ -104,9 +132,17 @@ case "$1" in
     fi
     ;;
   log)
-    if [[ "${2:-}" == "${GIT_BASELINE_TAG:?}..origin/main" && "${3:-}" == "--format=%s" ]]; then
-      printf '%s' "${GIT_LOG_SUBJECTS-}"
-      exit 0
+    if [[ "${2:-}" == "${GIT_BASELINE_TAG:?}..origin/main" ]]; then
+      case "${3:-}" in
+        --format=%s)
+          printf '%s' "${GIT_LOG_SUBJECTS-}"
+          exit 0
+          ;;
+        "--format=%H %s")
+          printf '%s' "${GIT_LOG_SHA_SUBJECTS-}"
+          exit 0
+          ;;
+      esac
     fi
     echo "unexpected git log: $*" >&2
     exit 1
@@ -186,11 +222,13 @@ run_prepare() {
   GH_FIXTURE_RELEASES="$case_dir/releases.json" \
   GH_FIXTURE_PR_DIR="$case_dir/prs" \
   GH_FIXTURE_OPEN_PRS="${GH_FIXTURE_OPEN_PRS:-[]}" \
+  GH_FIXTURE_API_COMMITS_DIR="${GH_FIXTURE_API_COMMITS_DIR:-}" \
   GIT_MAIN_OID="${GIT_MAIN_OID:-deadbeef00000000000000000000000000000001}" \
   GIT_ORIGIN_MAIN_OID="${GIT_ORIGIN_MAIN_OID:-deadbeef00000000000000000000000000000001}" \
   GIT_BASELINE_TAG="${GIT_BASELINE_TAG:-v1.0.0}" \
   GIT_BASELINE_OID="${GIT_BASELINE_OID:-cafebabe00000000000000000000000000000001}" \
   GIT_LOG_SUBJECTS="${GIT_LOG_SUBJECTS:-}" \
+  GIT_LOG_SHA_SUBJECTS="${GIT_LOG_SHA_SUBJECTS:-}" \
   GIT_FETCH_FAIL="${GIT_FETCH_FAIL:-}" \
   GIT_ORIGIN_PLUGIN_JSON="${GIT_ORIGIN_PLUGIN_JSON:-}" \
   GIT_ORIGIN_PLUGIN_JSON_FILE="${GIT_ORIGIN_PLUGIN_JSON_FILE:-}" \
@@ -452,26 +490,64 @@ else
   fail "baseline rev-parse fail: rc=$rc out=$out"
 fi
 
-# Case 13: log subjects exceed PR_COUNT → WARN on stderr
+# Case 13: commit without (#N) subject, API returns no PR → ERROR=unmatched-commits
 case_dir="$TMPDIR_BASE/c13"
-mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
+mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs" "$case_dir/api-commits"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
 write_fake_classify_bump "$case_dir/bin"
 printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
-GIT_LOG_SUBJECTS=$'Feature (#42)\nDocs without PR reference\n'
+# commits-pr fixture for the orphan SHA returns empty array (no PR)
+printf '[]\n' > "$case_dir/api-commits/commits-pr-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json"
 printf '{"number":42,"title":"Feature","labels":[{"name":"enhancement"}],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
   > "$case_dir/prs/pr-42.json"
 set +e
-out=$(cd "$REPO_ROOT" && run_prepare "$case_dir")
+out=$(cd "$REPO_ROOT" && \
+  GIT_LOG_SUBJECTS=$'Feature (#42)\nDocs without PR reference\n' \
+  GIT_LOG_SHA_SUBJECTS=$'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa Feature (#42)\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb Docs without PR reference\n' \
+  GH_FIXTURE_API_COMMITS_DIR="$case_dir/api-commits" \
+  run_prepare "$case_dir")
 rc=$?
 stderr=$(cat "$case_dir/stderr.log" 2>/dev/null || true)
 set -e
-if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^PR_COUNT=1$' \
-  && printf '%s\n' "$stderr" | grep -q 'WARN: git log has 2 commits but PR_COUNT=1'; then
+if [[ $rc -eq 1 ]] \
+  && printf '%s\n' "$out" | grep -q 'ERROR=unmatched-commits' \
+  && printf '%s\n' "$out" | grep -q 'UNMATCHED_COMMITS=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' \
+  && printf '%s\n' "$stderr" | grep -q 'WARN: commit bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb has no associated pull request'; then
   ok
 else
-  fail "log vs PR_COUNT warn: rc=$rc stderr=$stderr out=$out"
+  fail "unmatched-commits: rc=$rc out=$out stderr=$stderr"
+fi
+
+# Case 13b: commit without (#N) subject resolved via GitHub API → included in TSV
+case_dir="$TMPDIR_BASE/c13b"
+mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs" "$case_dir/api-commits"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+printf '{"number":42,"title":"Feature","labels":[{"name":"enhancement"}],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
+  > "$case_dir/prs/pr-42.json"
+# API resolves the orphan commit to PR #55
+printf '[{"number":55,"title":"Docs PR","labels":[],"user":{"login":"bob"},"html_url":"https://example.invalid/55"}]\n' \
+  > "$case_dir/api-commits/commits-pr-cccccccccccccccccccccccccccccccccccccccc.json"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  GIT_LOG_SUBJECTS=$'Feature (#42)\nDocs without PR reference\n' \
+  GIT_LOG_SHA_SUBJECTS=$'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa Feature (#42)\ncccccccccccccccccccccccccccccccccccccccc Docs without PR reference\n' \
+  GH_FIXTURE_API_COMMITS_DIR="$case_dir/api-commits" \
+  run_prepare "$case_dir")
+rc=$?
+stderr=$(cat "$case_dir/stderr.log" 2>/dev/null || true)
+set -e
+tsv_content=$(cat "$case_dir/out/pr-list.tsv" 2>/dev/null || true)
+if [[ $rc -eq 0 ]] \
+  && printf '%s\n' "$out" | grep -q '^PR_COUNT=2$' \
+  && printf '%s\n' "$tsv_content" | grep -q '^55	' \
+  && printf '%s\n' "$stderr" | grep -q 'NOTE: commit cccccccccccccccccccccccccccccccccccccccc resolved to PR #55'; then
+  ok
+else
+  fail "api-fallback: rc=$rc out=$out stderr=$stderr tsv=$tsv_content"
 fi
 
 # Case 14: real classify-bump integration (--base/--head wiring)
