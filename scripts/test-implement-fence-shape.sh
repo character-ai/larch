@@ -60,6 +60,8 @@ for start, end, body in fences:
     cmd = cmds[0]
     if not script_call.search(cmd):
         errors.append(f'fence {start}-{end}: command is not a repo script invocation: {cmd}')
+    if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', cmd):
+        errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {cmd}')
     if telemetry_only.search(cmd):
         errors.append(f'fence {start}-{end}: telemetry-only script invocation is not allowed: {cmd}')
     for _, raw in body:

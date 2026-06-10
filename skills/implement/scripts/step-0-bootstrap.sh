@@ -6,12 +6,42 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 MODE=""
+ISSUE_NUMBER_ARG=""
+PREFLIGHT_TMPDIR_ARG=""
+CODER_ARG=""
+EMERGENCY_REQUESTED_ARG=""
+SELF_REVIEW_ARG=""
+FORKED_TARGET_ARG=""
+UPSTREAM_REPO_ARG=""
+RUN_ID_ARG=""
+CALLER_ENV_ARG=""
+SESSION_ENV_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --mode requires a value' >&2; exit 2; }; MODE=$2; shift 2 ;;
+        --issue-number) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --issue-number requires a value' >&2; exit 2; }; ISSUE_NUMBER_ARG=$2; shift 2 ;;
+        --preflight-tmpdir) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --preflight-tmpdir requires a value' >&2; exit 2; }; PREFLIGHT_TMPDIR_ARG=$2; shift 2 ;;
+        --coder) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --coder requires a value' >&2; exit 2; }; CODER_ARG=$2; shift 2 ;;
+        --emergency-requested) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --emergency-requested requires a value' >&2; exit 2; }; EMERGENCY_REQUESTED_ARG=$2; shift 2 ;;
+        --self-review-requested) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --self-review-requested requires a value' >&2; exit 2; }; SELF_REVIEW_ARG=$2; shift 2 ;;
+        --forked-target) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --forked-target requires a value' >&2; exit 2; }; FORKED_TARGET_ARG=$2; shift 2 ;;
+        --upstream-repo) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --upstream-repo requires a value' >&2; exit 2; }; UPSTREAM_REPO_ARG=$2; shift 2 ;;
+        --run-id) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --run-id requires a value' >&2; exit 2; }; RUN_ID_ARG=$2; shift 2 ;;
+        --caller-env) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --caller-env requires a value' >&2; exit 2; }; CALLER_ENV_ARG=$2; shift 2 ;;
+        --session-env) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --session-env requires a value' >&2; exit 2; }; SESSION_ENV_ARG=$2; shift 2 ;;
         --help) printf '%s
-' 'Usage: step-0-bootstrap.sh --mode initial|resume'; exit 0 ;;
+' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--emergency-requested true|false] [--self-review-requested true|false] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
         *) printf '%s
 ' "step-0-bootstrap.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -53,6 +83,16 @@ rehydrate_larch_triplet() {
 
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 export IMPLEMENT_TMPDIR
+[ -n "$ISSUE_NUMBER_ARG" ] && TARGET_ISSUE_NUMBER="$ISSUE_NUMBER_ARG"
+[ -n "$PREFLIGHT_TMPDIR_ARG" ] && PREFLIGHT_TMPDIR="$PREFLIGHT_TMPDIR_ARG"
+[ -n "$CODER_ARG" ] && coder="$CODER_ARG"
+case "$EMERGENCY_REQUESTED_ARG" in true|false) emergency_requested="$EMERGENCY_REQUESTED_ARG" ;; esac
+case "$SELF_REVIEW_ARG" in true|false) self_review="$SELF_REVIEW_ARG" ;; esac
+case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; esac
+[ -n "$UPSTREAM_REPO_ARG" ] && UPSTREAM_REPO="$UPSTREAM_REPO_ARG"
+[ -n "$RUN_ID_ARG" ] && RUN_ID="$RUN_ID_ARG"
+[ -n "$CALLER_ENV_ARG" ] && CALLER_ENV_PATH="$CALLER_ENV_ARG"
+[ -n "$SESSION_ENV_ARG" ] && SESSION_ENV_PATH="$SESSION_ENV_ARG"
 rehydrate_plugin_root
 if [ "$MODE" = initial ] && [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ]; then
     set +e

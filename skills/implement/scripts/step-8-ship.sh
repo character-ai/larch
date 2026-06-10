@@ -46,6 +46,7 @@ MANIFEST_PATH_RESOLVED="${MANIFEST_PATH:-$(read_state_key MANIFEST_PATH "")}"
 TOOL_LABEL_RESOLVED="${coder:-$(read_state_key TOOL_LABEL "")}"
 NO_ADMIN_FALLBACK_RESOLVED="${no_admin_fallback:-$(read_state_key NO_ADMIN_FALLBACK "")}"
 NO_LOGS_COMMIT_RESOLVED="${no_logs_commit:-$(read_state_key NO_LOGS_COMMIT "")}"
+RESUME_PHASE_RESOLVED="${RESUME_PHASE:-$(read_state_key RESUME_PHASE "")}"
 
 require_value BRANCH_NAME "$BRANCH_NAME_RESOLVED"
 require_value RUN_ID "$RUN_ID_RESOLVED"
@@ -91,6 +92,8 @@ if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then
     --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
     --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"
 else
+_resume_args=()
+[ -n "$RESUME_PHASE_RESOLVED" ] && _resume_args+=(--resume-phase "$RESUME_PHASE_RESOLVED")
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
@@ -106,5 +109,6 @@ else
   --tool-label "$TOOL_LABEL_RESOLVED" \
   --no-admin-fallback "$NO_ADMIN_FALLBACK_RESOLVED" \
   --no-logs-commit "$NO_LOGS_COMMIT_RESOLVED" \
-  --repo "$REPO_RESOLVED"
+  --repo "$REPO_RESOLVED" \
+  "${_resume_args[@]}"
 fi
