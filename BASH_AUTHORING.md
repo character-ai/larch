@@ -12,8 +12,10 @@ Inside an orchestrator Bash tool block, `grep` is **not** the system `/usr/bin/g
 
 Two patterns are safe and equivalent in semantics to bare `grep`:
 
-- **`command grep PATTERN FILE || X`** — `command` bypasses the function and runs the system binary directly. Preferred (no wrapper detour, no extra subshell). Use this for `if command grep -q ...; then`, `command grep -v ... > tmp`, and any other probe shape.
-- **`( grep PATTERN FILE ) || X`** — explicit subshell wraps the function's inner exec subshell so the harness sees a normal subshell exit, not a top-level `claude` exit. Useful when you specifically want the function's `ugrep`-mode behavior (e.g. ignoring `.git/`); otherwise prefer `command grep`.
+- **`command grep PATTERN FILE || X`** — `command` bypasses the function and runs the system binary directly. Preferred (no wrapper detour, no extra subshell). Use this for `command grep -v ... > tmp` and other non-`if`-condition probe shapes. **Not safe in `if` conditions on bash 3.2** — use `( command grep ... )` for `if`-condition probes; see note below.
+- **`( grep PATTERN FILE ) || X`** — explicit subshell wraps the function's inner exec subshell so the harness sees a normal subshell exit, not a top-level `claude` exit. Also use `( command grep ... )` for `if`-condition probes on bash 3.2 (see note below). Useful when you specifically want the function's `ugrep`-mode behavior (e.g. ignoring `.git/`); otherwise prefer `command grep`.
+
+> **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero, even though `if grep ...; then` and `if /usr/bin/grep ...; then` are safe. For `if`-condition probes, use `( command grep ... )` (explicit subshell — the form from the second bullet above).
 
 Piped grep (`printf X | grep Y`, `cat file | grep Y`) is safe — the pipeline already runs grep in a subshell. Plain `grep` *inside* a `bash script.sh` invocation is also safe: the wrapper function is not exported, so child `bash` processes see the real `grep`. The hazard is specific to top-level `grep` lines in Markdown bash/sh/shell fences (and direct Bash tool blocks).
 
@@ -25,7 +27,7 @@ For grep-family probes where "no match" is informational, keep the original guid
 - `... || true` to suppress the non-zero exit (works for all grep variants, including `grep -c` which already prints `0` on no-match).
 - `... || echo 0` only for probes that produce **no stdout** on no-match — not for `grep -c`, which already emits a count before exiting 1.
 
-Apply these guards on top of the safe form, e.g. `command grep -q PATTERN file || true` or `( grep -c PATTERN file ) || true`. In `if` conditionals where exit 1 is the branch signal, `command grep` alone is sufficient — no extra `|| true`.
+Apply these guards on top of the safe form, e.g. `command grep -q PATTERN file || true` or `( grep -c PATTERN file ) || true`. In `if` conditionals where exit 1 is the branch signal, use `( command grep ... )` — no `|| true` needed; `command grep` alone is not bash 3.2-safe in `if` conditions (see note above).
 
 User-facing logs should not show error messages for expected no-match probes.
 

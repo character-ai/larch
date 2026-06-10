@@ -390,4 +390,31 @@ if grep -q 'Missing null guard' "$DESIGN_LATENT/rejected-findings.md" 2>/dev/nul
 fi
 echo "  ok: latent_reroute (plan) — rejected latent in oos.md, not rejected-findings.md"
 
+echo "=== non-accepted non-latent finding exits 0 and does not corrupt voting-tally.md (bash 3.2 regression) ==="
+DESIGN_NONLATENT_REJECT="$TMPROOT/design-nonlatent-reject"
+mkdir -p "$DESIGN_NONLATENT_REJECT"
+cat > "$DESIGN_NONLATENT_REJECT/ballot-nonlatent.md" <<'EOF'
+### FINDING_1: Missing validation
+- **Reviewer**: claude
+- **Concern**: Input is not validated.
+- **Suggested revision**: Add input validation.
+EOF
+cat > "$DESIGN_NONLATENT_REJECT/voter-nonlatent-no.txt" <<'EOF'
+FINDING_1: NO -- does not clear necessity gate
+EOF
+set +e
+"$SUBJECT" \
+    --ballot-file "$DESIGN_NONLATENT_REJECT/ballot-nonlatent.md" \
+    --voter-files "$DESIGN_NONLATENT_REJECT/voter-nonlatent-no.txt" \
+    --design-tmpdir "$DESIGN_NONLATENT_REJECT" > /dev/null
+_rc_nonlatent=$?
+set -e
+[[ "$_rc_nonlatent" -eq 0 ]] || fail "non-latent rejected finding should exit 0, got $_rc_nonlatent"
+grep -q 'FINDING_1' "$DESIGN_NONLATENT_REJECT/voting-tally.md" \
+    || fail "non-latent rejected: FINDING_1 row missing from voting-tally.md"
+if grep -q 'TALLY_PLAN_REVIEW_STATUS=' "$DESIGN_NONLATENT_REJECT/voting-tally.md" 2>/dev/null; then
+    fail "non-latent rejected: voting-tally.md corrupted with KV lines (bash 3.2 regression)"
+fi
+echo "  ok: non-latent rejected finding — exit 0, voting-tally.md not corrupted"
+
 echo "PASS: test-tally-plan-review.sh"
