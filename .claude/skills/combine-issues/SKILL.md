@@ -98,7 +98,7 @@ For each issue, parse its body and extract the individual items. Then for each i
       ```bash
       $PWD/skills/block-issue/scripts/add-blocked-by.sh <N> <M>
       ```
-      Keep the item as **actual**.
+      On failure, still keep the item as **actual** and emit a warning.
    c. If no implementing issue is found, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
 3. If the file exists, read the relevant lines (±20 lines around the stated line when a line number is given). Assess whether the concern is still present:
    - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
