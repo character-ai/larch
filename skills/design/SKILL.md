@@ -163,96 +163,64 @@ if [ ! -x "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" ]; 
   exit 1
 fi
 
-# Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
-set +e
-_argv_err_file="$(mktemp "${TMPDIR:-/tmp}/larch-design-argv.XXXXXX")" || {
+_argv_env="$(mktemp "${TMPDIR:-/tmp}/larch-argv.XXXXXX")" || {
+  printf '%s\n' "**⚠ /design: could not allocate argv parser env capture; aborting before session setup.**" >&2
+  exit 1
+}
+_argv_err_file="$(mktemp "${TMPDIR:-/tmp}/larch-argv-err.XXXXXX")" || {
+  rm -f "$_argv_env"
   printf '%s\n' "**⚠ /design: could not allocate argv parser stderr capture; aborting before session setup.**" >&2
   exit 1
 }
-_argv_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" <PUBLIC_ARGV_WORDS> 2>"$_argv_err_file")
+
+# Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
+set +e
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" \
+  --output "$_argv_env" \
+  2>"$_argv_err_file" \
+  <PUBLIC_ARGV_WORDS> \
+  >/dev/null
 _argv_rc=$?
 _argv_err="$(cat "$_argv_err_file" 2>/dev/null)"
 rm -f "$_argv_err_file"
 set -e
 
-hard_requested=false
-partition_requested=false
-brainstorm_requested=false
-approve_requested=false
-skip_approve_requested=false
-no_dedup_requested=false
-run_id=""
-POSITIONAL_KIND=none
-POSITIONAL_VALUE=""
-VALIDATION_ERROR=""
-_seen_HARD_REQUESTED=false
-_seen_PARTITION_REQUESTED=false
-_seen_BRAINSTORM_REQUESTED=false
-_seen_APPROVE_REQUESTED=false
-_seen_SKIP_APPROVE_REQUESTED=false
-_seen_NO_DEDUP_REQUESTED=false
-_seen_RUN_ID=false
-_seen_POSITIONAL_KIND=false
-_seen_POSITIONAL_VALUE=false
-_success_kv_count=0
-while IFS= read -r _line || [ -n "$_line" ]; do
-  [ -z "$_line" ] && continue
-  _key="${_line%%=*}"
-  _value="${_line#*=}"
-  case "$_key" in
-    HARD_REQUESTED) hard_requested="$_value"; _seen_HARD_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    PARTITION_REQUESTED) partition_requested="$_value"; _seen_PARTITION_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    BRAINSTORM_REQUESTED) brainstorm_requested="$_value"; _seen_BRAINSTORM_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    APPROVE_REQUESTED) approve_requested="$_value"; _seen_APPROVE_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    SKIP_APPROVE_REQUESTED) skip_approve_requested="$_value"; _seen_SKIP_APPROVE_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    NO_DEDUP_REQUESTED) no_dedup_requested="$_value"; _seen_NO_DEDUP_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    RUN_ID) run_id="$_value"; _seen_RUN_ID=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    POSITIONAL_KIND) POSITIONAL_KIND="$_value"; _seen_POSITIONAL_KIND=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    POSITIONAL_VALUE) POSITIONAL_VALUE="$_value"; _seen_POSITIONAL_VALUE=true; _success_kv_count=$((_success_kv_count + 1)) ;;
-    VALIDATION_ERROR) VALIDATION_ERROR="$_value" ;;
-    *)
-      printf '%s\n' "**⚠ /design: parse-design-argv.sh emitted unexpected stdout line; aborting before session setup.**" >&2
-      exit 1
-      ;;
-  esac
-done <<<"${_argv_out:-}"
-
 case "${_argv_err:-}" in
   *PUBLIC_ARGV_WORDS*)
+    rm -f "$_argv_env"
     printf '%s\n' "**⚠ /design: skill loader did not expand <PUBLIC_ARGV_WORDS>; aborting before session setup.**" >&2
     exit 1
     ;;
 esac
 
-if [ -n "$VALIDATION_ERROR" ] && [ "${_argv_rc:-0}" -ne 3 ]; then
-  printf '%s\n' "**⚠ /design: parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
-  exit 1
-fi
-if [ "${_argv_rc:-0}" -eq 3 ] || [ -n "$VALIDATION_ERROR" ]; then
-  if [ -n "$VALIDATION_ERROR" ]; then
-    printf '%s %s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" "$VALIDATION_ERROR" >&2
-  else
-    printf '%s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2
-  fi
-  exit 1
-fi
-if [ "${_argv_rc:-0}" -ne 0 ]; then
-  printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
-  exit 1
-fi
-if [ "$_success_kv_count" -ne 9 ] \
-  || [ "$_seen_HARD_REQUESTED" != true ] \
-  || [ "$_seen_PARTITION_REQUESTED" != true ] \
-  || [ "$_seen_BRAINSTORM_REQUESTED" != true ] \
-  || [ "$_seen_APPROVE_REQUESTED" != true ] \
-  || [ "$_seen_SKIP_APPROVE_REQUESTED" != true ] \
-  || [ "$_seen_NO_DEDUP_REQUESTED" != true ] \
-  || [ "$_seen_RUN_ID" != true ] \
-  || [ "$_seen_POSITIONAL_KIND" != true ] \
-  || [ "$_seen_POSITIONAL_VALUE" != true ]; then
-  printf '%s\n' "**⚠ /design: parse-design-argv.sh success output was incomplete; aborting before session setup.**" >&2
-  exit 1
-fi
+VALIDATION_ERROR=""
+case "${_argv_rc:-0}" in
+  0)
+    # shellcheck source=/dev/null
+    . "$_argv_env"
+    rm -f "$_argv_env"
+    if [ -n "${VALIDATION_ERROR:-}" ]; then
+      printf '%s\n' "**⚠ /design: parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
+      exit 1
+    fi
+    ;;
+  3)
+    # shellcheck source=/dev/null
+    . "$_argv_env"
+    rm -f "$_argv_env"
+    if [ -n "${VALIDATION_ERROR:-}" ]; then
+      printf '%s %s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" "$VALIDATION_ERROR" >&2
+    else
+      printf '%s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2
+    fi
+    exit 1
+    ;;
+  *)
+    rm -f "$_argv_env"
+    printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
+    exit 1
+    ;;
+esac
 case "$POSITIONAL_KIND" in
   issue | verbal | none) ;;
   *)
@@ -260,7 +228,16 @@ case "$POSITIONAL_KIND" in
     exit 1
     ;;
 esac
-printf '%s\n' "$_argv_out"
+printf 'HARD_REQUESTED=%s\nPARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n' \
+  "$hard_requested" \
+  "$partition_requested" \
+  "$brainstorm_requested" \
+  "$approve_requested" \
+  "$skip_approve_requested" \
+  "$no_dedup_requested" \
+  "$run_id" \
+  "$POSITIONAL_KIND" \
+  "$POSITIONAL_VALUE"
 ```
 
 On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`. Do not invoke Step 0a on any parser failure.
@@ -515,8 +492,13 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   _init_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-init-stdout.XXXXXX")" || {
+     printf '%s\n' "**⚠ Step 0b: could not allocate design-init-runparams stdout capture; aborting /design**" >&2
+     exit 1
+   }
+
    set +e
-   _init_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh" \
+   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh" \
      --design-tmpdir "$DESIGN_TMPDIR" \
      --issue "$ISSUE_NUMBER" \
      --session-id "$SESSION_ID" \
@@ -526,44 +508,59 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --brainstorm-requested "$brainstorm_requested" \
      --approve-requested "$approve_requested" \
      --skip-approve-requested "$skip_approve_requested" \
-     ${REPO:+--repo "$REPO"})
+     ${REPO:+--repo "$REPO"} \
+     >"$_init_stdout_file"
    _init_rc=$?
    set -e
    if [[ "${_init_rc:-0}" -eq 2 ]]; then
+     rm -f "$_init_stdout_file"
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -ne 0 && "${_init_rc:-0}" -ne 1 ]]; then
+     rm -f "$_init_stdout_file"
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (exit ${_init_rc}); aborting /design**" >&2
      exit 1
    fi
-   INIT_STATUS=""
-   if [[ -f "$DESIGN_TMPDIR/.design-init-runparams-result.env" ]]; then
-     if [[ -L "$DESIGN_TMPDIR/.design-init-runparams-result.env" ]]; then
-       printf '%s\n' "**⚠ Step 0b: design-init-runparams result env is a symlink; refusing to source**"
-     else
-       while IFS= read -r _line || [[ -n "$_line" ]]; do
-         _key="${_line%%=*}"; _value="${_line#*=}"
-         case "$_key" in
-           INIT_STATUS|RENAMED|RUN_PARAMS_PATH|DESIGN_CLASSIFICATION) printf -v "$_key" '%s' "$_value" ;;
-           WARN) printf '%s\n' "WARN=$_value" ;;
-         esac
-       done <"$DESIGN_TMPDIR/.design-init-runparams-result.env"
-     fi
+   _safe_init_env="$(mktemp "${TMPDIR:-/tmp}/larch-init-env.XXXXXX")" || {
+     rm -f "$_init_stdout_file"
+     printf '%s\n' "**⚠ Step 0b: could not allocate safe init result env; aborting /design**" >&2
+     exit 1
+   }
+
+   set +e
+   "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+     --input "$DESIGN_TMPDIR/.design-init-runparams-result.env" \
+     --fallback-input "$_init_stdout_file" \
+     --allow INIT_STATUS \
+     --allow RENAMED \
+     --allow RUN_PARAMS_PATH \
+     --allow DESIGN_CLASSIFICATION \
+     --output "$_safe_init_env"
+   _rre_rc=$?
+   set -e
+   rm -f "$_init_stdout_file"
+
+   if [[ "${_rre_rc:-0}" -ne 0 ]]; then
+     rm -f "$_safe_init_env"
+     printf '%s\n' "**⚠ Step 0b: read-result-env.sh failed for design-init-runparams result (exit ${_rre_rc}); aborting /design**" >&2
+     exit 1
    fi
-   while IFS= read -r _line || [[ -n "$_line" ]]; do
-     _key="${_line%%=*}"; _value="${_line#*=}"
-     case "$_key" in
-       INIT_STATUS|RENAMED|RUN_PARAMS_PATH|DESIGN_CLASSIFICATION) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-       WARN) printf '%s\n' "WARN=$_value" ;;
-     esac
-   done <<<"${_init_out:-}"
-   if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
+
+   # shellcheck source=/dev/null
+   . "$_safe_init_env"
+   rm -f "$_safe_init_env"
+
+   if [[ "${_init_rc:-0}" -eq 0 && ( "${INIT_STATUS:-}" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -eq 1 ]]; then
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -ne 0 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (exit ${_init_rc}); aborting /design**" >&2
      exit 1
    fi
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

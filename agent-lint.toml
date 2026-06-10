@@ -277,6 +277,12 @@ suppress = [
 # mirroring the runtime harness's opt-in shape) and
 # scripts/test-eval-set-structure.md (sibling contract).
 exclude = [
+  # read-result-env.sh is structurally invoked from skills/design/SKILL.md;
+  # its regression harness is Makefile-only (test-read-result-env target) and
+  # follows the same G004/dead-script false-positive pattern as the other
+  # root scripts/test-* harnesses below.
+  "scripts/test-read-result-env.sh",
+  "scripts/test-read-result-env.md",
   # larch-log-flush.sh is invoked by the Step 2 dispatcher through
   # "$PLUGIN_ROOT/scripts/larch-log-flush.sh"; agent-lint's dead-script rule
   # does not follow Bash-to-Bash variable-expanded caller edges.

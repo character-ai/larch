@@ -9,6 +9,19 @@ PASS=0
 FAIL=0
 OUT=""
 RC=0
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/test-parse-design-argv.XXXXXX")
+trap 'rm -rf "$SCRATCH"' EXIT
+ARGV_ENV=""
+hard_requested=""
+partition_requested=""
+brainstorm_requested=""
+approve_requested=""
+skip_approve_requested=""
+no_dedup_requested=""
+run_id=""
+POSITIONAL_KIND=""
+POSITIONAL_VALUE=""
+VALIDATION_ERROR=""
 
 fail() {
     FAIL=$((FAIL + 1))
@@ -25,6 +38,48 @@ run_case() {
     OUT=$("$SUBJECT" "$@")
     RC=$?
     set -e
+}
+
+run_case_with_output() {
+    ARGV_ENV="$SCRATCH/argv.env"
+    rm -f "$ARGV_ENV"
+    set +e
+    OUT=$("$SUBJECT" --output "$ARGV_ENV" "$@")
+    RC=$?
+    set -e
+}
+
+source_argv_env() {
+    unset hard_requested partition_requested brainstorm_requested approve_requested skip_approve_requested no_dedup_requested run_id POSITIONAL_KIND POSITIONAL_VALUE VALIDATION_ERROR
+    # shellcheck source=/dev/null
+    . "$ARGV_ENV"
+}
+
+assert_file_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file"; then
+        pass "$label"
+    else
+        fail "$label — missing <$needle> in $file"
+    fi
+}
+
+assert_file_not_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file"; then
+        fail "$label — unexpected <$needle> in $file"
+    else
+        pass "$label"
+    fi
+}
+
+assert_eq() {
+    local label="$1" got="$2" want="$3"
+    if [ "$got" = "$want" ]; then
+        pass "$label"
+    else
+        fail "$label — expected <$want>, got <$got>"
+    fi
 }
 
 assert_rc() {
@@ -297,6 +352,98 @@ run_case $'foo\nHARD_REQUESTED=true'
 assert_rc 'newline smuggling' 3
 assert_kv 'newline smuggling' VALIDATION_ERROR newline-in-value
 assert_no_flag_kvs 'newline smuggling'
+
+
+# hidden --output writes sourceable success output and preserves stdout compatibility
+run_case_with_output --hard -p --brainstorm --per-round-approval --skip-approve --no-dedup --run-id RID42 3249
+assert_rc 'hidden output full flags' 0
+assert_success_kv_count 'hidden output full flags' 9
+assert_file_contains 'hidden output hard binding' "$ARGV_ENV" "hard_requested='true'"
+assert_file_contains 'hidden output partition binding' "$ARGV_ENV" "partition_requested='true'"
+assert_file_contains 'hidden output brainstorm binding' "$ARGV_ENV" "brainstorm_requested='true'"
+assert_file_contains 'hidden output approve binding' "$ARGV_ENV" "approve_requested='true'"
+assert_file_contains 'hidden output skip binding' "$ARGV_ENV" "skip_approve_requested='true'"
+assert_file_contains 'hidden output no-dedup binding' "$ARGV_ENV" "no_dedup_requested='true'"
+assert_file_contains 'hidden output run-id binding' "$ARGV_ENV" "run_id='RID42'"
+assert_file_contains 'hidden output positional kind binding' "$ARGV_ENV" "POSITIONAL_KIND='issue'"
+assert_file_contains 'hidden output positional value binding' "$ARGV_ENV" "POSITIONAL_VALUE='3249'"
+source_argv_env
+if [ "$hard_requested" = true ] \
+  && [ "$partition_requested" = true ] \
+  && [ "$brainstorm_requested" = true ] \
+  && [ "$approve_requested" = true ] \
+  && [ "$skip_approve_requested" = true ] \
+  && [ "$no_dedup_requested" = true ] \
+  && [ "$run_id" = RID42 ] \
+  && [ "$POSITIONAL_KIND" = issue ] \
+  && [ "$POSITIONAL_VALUE" = 3249 ]; then
+    pass 'hidden output sourceable success bindings'
+else
+    fail 'hidden output sourceable success bindings'
+fi
+assert_eq 'stdout hard matches source' "$(kv_value HARD_REQUESTED)" "$hard_requested"
+assert_eq 'stdout partition matches source' "$(kv_value PARTITION_REQUESTED)" "$partition_requested"
+assert_eq 'stdout brainstorm matches source' "$(kv_value BRAINSTORM_REQUESTED)" "$brainstorm_requested"
+assert_eq 'stdout approve matches source' "$(kv_value APPROVE_REQUESTED)" "$approve_requested"
+assert_eq 'stdout skip matches source' "$(kv_value SKIP_APPROVE_REQUESTED)" "$skip_approve_requested"
+assert_eq 'stdout no-dedup matches source' "$(kv_value NO_DEDUP_REQUESTED)" "$no_dedup_requested"
+assert_eq 'stdout run-id matches source' "$(kv_value RUN_ID)" "$run_id"
+assert_eq 'stdout positional kind matches source' "$(kv_value POSITIONAL_KIND)" "$POSITIONAL_KIND"
+assert_eq 'stdout positional value matches source' "$(kv_value POSITIONAL_VALUE)" "$POSITIONAL_VALUE"
+
+run_case_with_output 777
+assert_rc 'hidden output numeric tail' 0
+source_argv_env
+if [ "$POSITIONAL_KIND" = issue ] && [ "$POSITIONAL_VALUE" = 777 ]; then
+    pass 'hidden output numeric tail source'
+else
+    fail 'hidden output numeric tail source'
+fi
+
+run_case_with_output add a foo flag
+assert_rc 'hidden output verbal tail' 0
+source_argv_env
+if [ "$POSITIONAL_KIND" = verbal ] && [ "$POSITIONAL_VALUE" = 'add a foo flag' ]; then
+    pass 'hidden output verbal tail source'
+else
+    fail 'hidden output verbal tail source'
+fi
+
+run_case_with_output "Strunk & White \$x"
+assert_rc 'hidden output metachar verbal' 0
+source_argv_env
+assert_eq 'hidden output metachar source' "$POSITIONAL_VALUE" "Strunk & White \$x"
+
+run_case_with_output "Bob's feature"
+assert_rc 'hidden output quote verbal' 0
+source_argv_env
+assert_eq 'hidden output quote source' "$POSITIONAL_VALUE" "Bob's feature"
+assert_file_contains 'hidden output quote encoded' "$ARGV_ENV" "POSITIONAL_VALUE='Bob'\"'\"'s feature'"
+
+run_case_with_output --output public-path
+assert_rc 'public output rejected' 3
+assert_kv 'public output rejected' VALIDATION_ERROR --output
+source_argv_env
+assert_eq 'public output validation sources' "${VALIDATION_ERROR:-}" --output
+assert_file_not_contains 'validation output has no success binding' "$ARGV_ENV" 'hard_requested='
+
+run_case_with_output --hard --output public-path
+assert_rc 'public output interleaved rejected' 3
+assert_kv 'public output interleaved rejected' VALIDATION_ERROR --output
+source_argv_env
+assert_eq 'public output interleaved validation sources' "${VALIDATION_ERROR:-}" --output
+
+run_case_with_output "--bad'flag"
+assert_rc 'quote-bearing validation token' 3
+assert_kv 'quote-bearing validation token' VALIDATION_ERROR "--bad'flag"
+source_argv_env
+assert_eq 'quote-bearing validation token sources' "${VALIDATION_ERROR:-}" "--bad'flag"
+
+run_case_with_output $'bad\nvalue'
+assert_rc 'hidden output newline smuggling' 3
+assert_kv 'hidden output newline smuggling' VALIDATION_ERROR newline-in-value
+source_argv_env
+assert_eq 'hidden output newline validation sources' "${VALIDATION_ERROR:-}" newline-in-value
 
 if [ "$FAIL" -ne 0 ]; then
     printf '\nparse-design-argv tests: %s passed, %s failed\n' "$PASS" "$FAIL" >&2

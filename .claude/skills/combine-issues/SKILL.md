@@ -91,19 +91,25 @@ OOS issues contain one or more items. Items follow two formats:
 
 For each issue, parse its body and extract the individual items. Then for each item:
 
-1. Read the `Location:` field (file path, optionally with a line number after `:`).
+1. Read the `Location:` field (file path, optionally with a line number after `:`). Strip any trailing `:line` suffix to get the repo-relative path.
 2. If the file does not exist in the repo:
-   a. Search open GitHub issues for in-flight work that would create or introduce the missing file. Use `gh issue list --state open --limit 100 --search "<bare-filename>"` where `<bare-filename>` is the final path component without its directory (e.g. `launch-claude-drafter.sh` from `scripts/launch-claude-drafter.sh`). Scan the returned titles and bodies for explicit references to the missing file or the feature it introduces.
-   b. If a matching open implementing issue `#<M>` is found, the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship:
+   a. Search for in-flight implementing work via the helper (never interpolate untrusted `Location:` text into shell command prose):
+      ```bash
+      $PWD/.claude/skills/combine-issues/scripts/search-implementing-issue.sh \
+        --file-path "<repo-relative-path>"
+      ```
+      The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
+   b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
       $PWD/skills/block-issue/scripts/add-blocked-by.sh <N> <M>
       ```
-      On failure, still keep the item as **actual** and emit a warning.
-   c. If no implementing issue is found, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
+      On failure, still keep the item as **actual** (not blocked) and emit a warning.
+   c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
+   d. If `STATUS=ambiguous`, the item is **actual** (not blocked) — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — implementing issue match ambiguous.` and include it in the oos-3/oos-4 flat list.
 3. If the file exists, read the relevant lines (±20 lines around the stated line when a line number is given). Assess whether the concern is still present:
    - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
    - If uncertain, default to **actual** (keep the item).
-4. Collect all **actual** items (including blocked ones) across all OOS issues into a flat list.
+4. Collect all **actual** items that are **not blocked** across all OOS issues into a flat list for oos-3/oos-4. **Blocked** items stay on their source issues — do not include them in deduplication or combination, and never close a source issue solely because its remaining items are blocked.
 
 If all items from all issues are stale, print `All [OOS] items are stale — nothing to combine.` and stop.
 
@@ -142,7 +148,7 @@ $PWD/.claude/skills/combine-issues/scripts/apply-combination.sh \
   --source-issues "<comma-separated issue numbers to close>"
 ```
 
-Only close a source issue if **all** of its items were consumed by this run (none survived actuality check in a different group and no items remain uncombined). If a source issue had some items discarded as stale and its remaining items were all consumed, close it. If a source issue contributed items to multiple groups, close it only after all groups are applied.
+Only close a source issue if **all** of its items were consumed by this run (none survived actuality check in a different group, none remain blocked on the source issue, and no items remain uncombined). If a source issue had some items discarded as stale and its remaining items were all consumed into combined issues, close it. If a source issue contributed items to multiple groups, close it only after all groups are applied. Never close a source issue that still has blocked items.
 
 Parse `COMBINED_ISSUE` and `CLOSED_ISSUES` from stdout. Print: `Combined <source refs> → #<new> (<N> source issues closed).`
 

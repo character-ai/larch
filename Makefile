@@ -18,7 +18,7 @@ PYTHON ?= python3
 .PHONY: test-stall-recovery-report test-step-18b-final-report
 .PHONY: test-design-pause-resume
 .PHONY: test-review-design-step3-loop
-.PHONY: test-parse-design-argv
+.PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
@@ -101,7 +101,7 @@ test-harnesses-9: test-dispatch-with-waterfall test-collect-agent-retry test-rev
 
 test-harnesses-10: test-design-pause-resume test-aggregate-findings test-prune-nit-findings test-tally-plan-review test-validate-citations-budget test-token-report test-emit-tally test-lint-literal-counts test-degraded-tools-gate test-plan-block test-lint-bare-grep-probe test-review-and-fix-parsers test-snapshot-plan-round test-resolve-repo test-compute-pr-line-counts test-commit-review-fixes test-implement-anti-halt test-lib-submodule-prohibition
 
-test-harnesses-11: test-dispatch-panel-core test-dispatch-plan-review-panel test-oos-file-conflict-deps test-cursor-implementer test-dispatch-code-voters-retry-codex-fail-and-fallback test-validate-plan-commands test-sessionstart test-lint-awk-multibyte-regex test-clarify-state test-trailer-helpers test-add-blocked-by test-parse-design-argv test-rebase-push-no-push-fetch-retry test-finalize-plan test-lib-title-eligibility test-normalize-oos-block-header test-implement-anti-polling-rule
+test-harnesses-11: test-dispatch-panel-core test-dispatch-plan-review-panel test-oos-file-conflict-deps test-cursor-implementer test-dispatch-code-voters-retry-codex-fail-and-fallback test-validate-plan-commands test-sessionstart test-lint-awk-multibyte-regex test-clarify-state test-trailer-helpers test-add-blocked-by test-read-result-env test-parse-design-argv test-rebase-push-no-push-fetch-retry test-finalize-plan test-lib-title-eligibility test-normalize-oos-block-header test-implement-anti-polling-rule
 
 test-harnesses-12: test-auto-fix-plan-commands test-tally-code-votes test-write-final-report test-gh-pr-body-update test-pipe-sigpipe-safety test-upgrade-larch-retention test-verify-skill-called test-log-phase test-scrub-submodule-paths test-cache-key-discipline test-review-implement-step5-loop-timing test-research-structure test-render-run-summary-format test-refresh-execution-issues test-github-remote-repo test-lib-title-markers
 test-harnesses-13: test-launch-codex-ci test-run-external-agent test-collect-agent-results test-check-plan-size test-dispatch-code-voters-retry-cursor test-capture-session-transcript test-check-topology-rule-paths test-review-and-fix-step5-starting-round test-lint-codex-exec-auth test-render-debate-retry-prompt test-token-cost-per-bucket test-render-voter-prompt test-git-push test-implement-rebase-macro test-git-commit-only test-scoreboard test-implement-positional-issue
@@ -449,6 +449,9 @@ test-design-publish:
 
 test-design-postplan-emit:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-postplan-emit.sh
+
+test-read-result-env:
+	bash scripts/harness-timer.sh $@ bash scripts/test-read-result-env.sh
 
 test-parse-design-argv:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-design-argv.sh
