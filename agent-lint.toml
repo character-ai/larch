@@ -133,12 +133,11 @@ suppress = [
 # dead-script excluded. scripts/test-implement-admission.sh is the admission matrix
 # harness (Makefile `test-implement-admission`).
 #
-# skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh
 # is the offline regression harness for the public fork-setup coordinator. It
 # creates local bare upstream/fork repositories, stubs `gh`, and is referenced
-# only from Makefile (test-set-up-forked-open-source-repo target) plus the
+# only from Makefile (make py-test) plus the
 # coordinator sibling contract, matching the same Makefile-only harness pattern
-# as the skill-local test harnesses above. lib-remotes.sh is a sourced-only
+# as the skill-local test harnesses above. forked-repo remote helpers is a sourced-only
 # helper referenced by the coordinator via `source`, which agent-lint does not
 # follow. Both sibling .md files are excluded below.
 #
@@ -578,11 +577,8 @@ exclude = [
   # python/cli.py session cleanup-tmpdir's invoke-time audit log. Referenced only from
   # (sibling contract), matching the same Makefile-only pattern as
   # scripts/test-preflight-args.sh above.
-  # skills/cleanup/scripts/test-cleanup.sh is the offline harness for age-based
   # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
-  # (test-cleanup target), matching the Makefile-only harness pattern above.
-  "skills/cleanup/scripts/test-cleanup.sh",
-  "skills/cleanup/scripts/test-cleanup.md",
+  # (make py-test), matching the Makefile-only harness pattern above.
   # python/cli.py session entry-gate. Referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as
   # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are
@@ -593,6 +589,10 @@ exclude = [
   # python/cli.py mermaid sanitize. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
   # matching the Makefile-only harness pattern above.
+  # scripts/test-redact-secrets.sh is the Makefile-only regression harness for
+  # scripts/redact-secrets.sh. The issue publication path is now covered in
+  # python/test_issue_create.py and python/test_redact.py.
+  "scripts/test-redact-secrets.sh",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",
@@ -625,7 +625,7 @@ exclude = [
   "scripts/lib-codex-launcher-common.sh",
   # scripts/lib-sparse-dirs.sh is a sourced-only shell library (no shebang,
   # not invokable directly) carrying the canonical plugin sparse install
-  # allowlist for upgrade-larch.sh and SessionStart probes. Referenced via
+  # allowlist for upgrade-larch run and SessionStart probes. Referenced via
   # source directives only, which agent-lint does not follow.
   "scripts/lib-sparse-dirs.sh",
   # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
@@ -946,8 +946,7 @@ exclude = [
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
-  "skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh",
-  "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh",
+  "python/forked_repo.py",
   # skills/implement/scripts/test-check-review-changes.sh is the offline
   # regression harness for skills/implement/scripts/check-review-changes.sh
   # (closes #651 — fixes the false-positive where any pre-existing untracked
@@ -977,14 +976,14 @@ exclude = [
   "scripts/test-anti-halt-banners.sh",
   "scripts/test-anti-improvised-wakeup.sh",
   "scripts/test-anti-improvised-wakeup.md",
-  # scripts/test-alias-target-resolution.sh is the regression harness for
-  # skills/alias/scripts/resolve-target.sh (closes the alias target-routing
+  # python/test_alias_skill.py is the regression harness for
+  # python/cli.py alias resolve-target (closes the alias target-routing
   # rework — adds plugin-repo detection + --private flag). Referenced only
-  # from Makefile (test-alias-target-resolution target) and the sibling
-  # scripts/test-alias-target-resolution.md (excluded under the skill-local-
+  # from Makefile (make py-test) and the sibling
+  # python/test_alias_skill.py (excluded under the skill-local-
   # sibling block below). Same Makefile-only pattern as the other test-*
   # harnesses above.
-  "scripts/test-alias-target-resolution.sh",
+  "python/test_alias_skill.py",
   # scripts/test-alias-structure.sh is the structural regression test for
   # skills/alias/SKILL.md (companion to the helper-script harness above).
   # Pins the prompt-side contract that target-dir resolution flows through
@@ -1001,12 +1000,10 @@ exclude = [
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
   "skills/design/scripts/test-design-publish.sh",
-  # release-step7-root.sh is sourced by /release Step 7 and upgrade-larch.sh;
+  # upgrade-larch release-step7-root is invoked by /release Step 7 and upgrade-larch run;
   # agent-lint's dead-script graph does not follow source directives or prompt
   # fence source comments, so exclude the sourced-only helper and contract.
-  "skills/upgrade-larch/scripts/release-step7-root.sh",
-  "skills/upgrade-larch/scripts/release-step7-root.md",
-  "skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh",
+  "python/cli.py upgrade-larch release-step7-root",
   "skills/design/scripts/test-design-pause-resume.sh",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
@@ -1172,7 +1169,7 @@ exclude = [
   # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
   "scripts/test-lib-title-markers.sh",
   # scripts/lib-title-eligibility.sh is a sourced-only grammar library for
-  # /design Step 0b and skills/issue/scripts/list-issues.sh. The harness
+  # /design Step 0b and python/cli.py issue list-issues. The harness
   # scripts/test-lib-title-eligibility.sh is Makefile-only. Agent-lint does
   # not follow sibling `source` directives or Makefile targets.
   "scripts/lib-title-eligibility.sh",
@@ -1344,15 +1341,9 @@ exclude = [
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
   # editing the sibling .sh). Excluded from S030/orphaned-skill-files.
-  "skills/alias/scripts/generate-alias.md",
-  "skills/alias/scripts/resolve-target.md",
-  "skills/issue/scripts/parse-input.md",
   "scripts/parse-prose-blockers.md",
   "scripts/blocker-helpers.md",
   "scripts/implement-admission.md",
-  "skills/set-up-forked-open-source-repo/scripts/lib-remotes.md",
-  "skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.md",
-  "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.md",
   "scripts/test-token-ledger.md",
   "scripts/test-token-report.md",
   "scripts/test-token-vendor-scrapers.md",
@@ -1413,11 +1404,11 @@ exclude = [
   "scripts/lib-net.md",
   "scripts/lib-finalize-state-keys.md",
   "python/session_env.py (session restore-finalize-state)",
-  # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
+  # python/test_alias_skill.py and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses
-  # added alongside skills/alias/scripts/resolve-target.sh. Same harness-
+  # added alongside python/cli.py alias resolve-target. Same harness-
   # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
-  "scripts/test-alias-target-resolution.md",
+  "python/test_alias_skill.py",
   "scripts/test-alias-structure.md",
   # skills/design/scripts/test-*.md files below are sibling contracts for
   # Makefile-only regression harnesses added with the design ACTION dispatcher
@@ -1610,10 +1601,8 @@ exclude = [
   "scripts/test-launch-codex-ci.md",
   "scripts/test-launch-claude-ci.sh",
   "scripts/test-launch-claude-ci.md",
-  # skills/cleanup/scripts/cleanup.md is the sibling contract for
-  # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
+  # python/cli.py cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
-  "skills/cleanup/scripts/cleanup.md",
   # scripts/test-compose-pr-summary.sh is the regression harness for the
   # PR-body summary composer. It is referenced from Makefile and from the
   # primary script's sibling contract, but NOT from SKILL.md runtime prose —

@@ -188,7 +188,7 @@ After a successful `release-finish.sh` re-run or promote-only retry, continue to
 Prefer the working-tree upgrade script over the installed Skill implementation so sparse allowlist changes apply in the same release cycle. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
 
 1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This is the running session's prune/stamp context, so it wins even when installed metadata names a newer version after a no-restart or retried release.
-2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `skills/upgrade-larch/scripts/release-step7-root.sh` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
+2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `python/cli.py upgrade-larch release-step7-root` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
 3. Prepare fallback: use `$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION}` only when Step 2's `CURRENT_VERSION` matches the parsed installed version, or when installed metadata is unavailable and `CURRENT_VERSION` is the sole defensible cache target.
 4. Last cache fallback: use a cache root only when exactly one version-shaped directory exists under `$HOME/.claude/plugins/cache/larch-local/larch/` and it matches `CURRENT_VERSION`. If zero or multiple version dirs exist, or the sole version does not match `CURRENT_VERSION`, do not pick arbitrarily.
 
@@ -211,17 +211,17 @@ NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
 RESOLVED_ROOT=""
 
-# shellcheck source=skills/upgrade-larch/scripts/release-step7-root.sh
-source "$PWD/skills/upgrade-larch/scripts/release-step7-root.sh"
-if ! RESOLVED_ROOT=$(resolve_release_step7_root "${CURRENT_VERSION:-}"); then
-  RESOLVED_ROOT=""
-fi
+ROOT_OUT=$(python3 "$PWD/python/cli.py" upgrade-larch release-step7-root --current-version "${CURRENT_VERSION:-}" 2>/dev/null || true)
+case "$ROOT_OUT" in
+  RESOLVED_ROOT=*) RESOLVED_ROOT="${ROOT_OUT#RESOLVED_ROOT=}" ;;
+  *) RESOLVED_ROOT="" ;;
+esac
 
 if [ -n "$RESOLVED_ROOT" ]; then
   echo "Applying the just-released larch sparse allowlist through the working-tree upgrade script..."
   upgrade_rc=0
   upgrade_out=$(
-    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh" 2>&1
+    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" python3 "$PWD/python/cli.py" upgrade-larch run 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
   if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \

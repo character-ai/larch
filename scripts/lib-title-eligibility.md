@@ -1,6 +1,6 @@
 # lib-title-eligibility.sh contract
 
-`scripts/lib-title-eligibility.sh` is a sourced-only Bash 3.2 library for issue-title eligibility grammar shared by `/design` Step 0b and `skills/issue/scripts/list-issues.sh`.
+`scripts/lib-title-eligibility.sh` is a sourced-only Bash 3.2 library for issue-title eligibility grammar shared by `/design` Step 0b and `python/cli.py issue list-issues`.
 
 ## Purpose
 
@@ -32,7 +32,7 @@ POSIX `[[:space:]]` trimming via `larch_title_trim_leading_ws`; lifecycle case f
 ## Primary callers
 
 - **`skills/design/SKILL.md` Step 0b sub-step 2.5** — source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh`
-- **`skills/issue/scripts/list-issues.sh`** — `# shellcheck source=scripts/lib-title-eligibility.sh` then `source "$PLUGIN_ROOT/scripts/lib-title-eligibility.sh"`; assign `DEDUP_SKIP_PREFIX_FILTER="$LARCH_TITLE_ARCHIVAL_PREFIX_JQ_FILTER"`. `PLUGIN_ROOT` prefers `CLAUDE_PLUGIN_ROOT` when `scripts/lib-title-eligibility.sh` exists there; otherwise falls back to the repo root via `skills/issue/scripts/../../..` (dev harnesses with a stale cache path).
+- **`python/cli.py issue list-issues`** — ports the same archival-prefix filter into Python and keeps parity with `LARCH_TITLE_ARCHIVAL_PREFIX_JQ_FILTER`.
 
 ## Test harness
 
@@ -40,4 +40,4 @@ POSIX `[[:space:]]` trimming via `larch_title_trim_leading_ws`; lifecycle case f
 
 ## Edit-in-sync
 
-Change grammar in this `.sh` file, update this `.md`, `scripts/test-lib-title-eligibility.sh`, `skills/design/SKILL.md` Step 0b prose, `scripts/test-design-structure.sh` anchors, and re-run `skills/issue/scripts/test-list-issues.sh` when the jq fragment changes.
+Change grammar in this `.sh` file, update this `.md`, `scripts/test-lib-title-eligibility.sh`, `skills/design/SKILL.md` Step 0b prose, `scripts/test-design-structure.sh` anchors, and re-run `python/test_issue_create.py` when the jq fragment changes.

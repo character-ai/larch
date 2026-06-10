@@ -3,12 +3,12 @@
 # Pins the prompt-side contract that target-dir resolution flows through a
 # single $TARGET_DIR variable computed at Step 2, threaded into Steps 2/3/4,
 # rather than via hardcoded `.claude/skills/<alias-name>` paths in any of those
-# sites. Companion to scripts/test-alias-target-resolution.sh: that harness
-# tests the resolve-target.sh helper; this harness tests that SKILL.md actually
-# *uses* the helper's output everywhere.
+# sites. Companion to python/test_alias_skill.py: that harness
+# tests the Python alias resolver; this harness tests that SKILL.md actually
+# *uses* the resolver's output everywhere.
 #
 # Asserts:
-#  (A) SKILL.md references resolve-target.sh exactly once (Step 2 invocation).
+#  (A) SKILL.md references python/cli.py alias resolve-target (Step 2 invocation).
 #  (B) Step 1 documents --private as a parsed flag.
 #  (C) Step 2 has the canonical non-eval allowlist parser literal
 #      (REPO_ROOT|PLUGIN_REPO|TARGET_DIR allowlist).
@@ -44,14 +44,11 @@ fail() {
 
 [[ -f "$SKILL_MD" ]] || fail "skills/alias/SKILL.md missing: $SKILL_MD"
 
-# (A) Exactly one resolve-target.sh invocation reference (under Step 2). The
-# sibling .md file path is also expected once, so total occurrences of the
-# string `resolve-target.sh` is at least 2 (one invocation, one prose pointer
-# at minimum). We assert >= 1 invocation by grepping for the script invocation
-# token specifically.
-resolve_invocation_count=$(grep -c 'skills/alias/scripts/resolve-target\.sh' "$SKILL_MD" || true)
+# (A) At least one resolver invocation reference (under Step 2). Grep for the
+# verbatim CLI prefix from the Step 2 bash block.
+resolve_invocation_count=$(grep -Fc 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target' "$SKILL_MD" || true)
 [[ "$resolve_invocation_count" -ge 1 ]] \
-  || fail "(A) expected resolve-target.sh to be referenced in SKILL.md, found 0"
+  || fail "(A) expected python/cli.py alias resolve-target to be referenced in SKILL.md, found 0"
 
 # (B) Step 1 parses --private.
 grep -q -- '--private' "$SKILL_MD" \
@@ -102,7 +99,7 @@ grep -q 'NEVER parse.*--merge.*--private' "$SKILL_MD" \
 grep -q 'NEVER hardcode' "$SKILL_MD" \
   || fail "(I.2) NEVER list should include the TARGET_DIR-threading rule"
 grep -q 'NEVER use .eval' "$SKILL_MD" \
-  || fail "(I.3) NEVER list should forbid eval of resolve-target.sh stdout"
+  || fail "(I.3) NEVER list should forbid eval of alias resolve-target stdout"
 
 # (J) Frontmatter argument-hint includes [--private].
 grep -q 'argument-hint: "\[--merge\] \[--private\]' "$SKILL_MD" \

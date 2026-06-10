@@ -8,7 +8,7 @@
 # Phase 1 (umbrella #348) foundation layer. Ships narrow subcommands —
 # create-issue, append-comment, rename, and mark-false-positive — that each
 # perform exactly one GitHub write while sharing the same KEY=value stdout envelope and
-# fail-closed redaction posture as skills/issue/scripts/create-one.sh.
+# fail-closed redaction posture as python/cli.py issue create-one.
 #
 # Subcommands:
 #   create-issue   --title T --body-file F [--repo OWNER/REPO]
@@ -19,7 +19,7 @@
 # Output contract (KEY=value on stdout; warnings on stderr). NAMESPACE note:
 # this script emits FAILED=true / ERROR=<msg> on failure — NOT the
 # ISSUE_FAILED=true / ISSUE_ERROR=<msg> prefix used by
-# skills/issue/scripts/create-one.sh. The divergence is intentional; this
+# python/cli.py issue create-one. The divergence is intentional; this
 # script is not an /issue layer component. Consumers must parse for the
 # FAILED= / ERROR= prefix exactly. Parsers must also use the ERROR= field
 # (not exit code alone) to distinguish error kinds because exit 1 covers
@@ -64,7 +64,7 @@
 #   * Structural choke point — compose full logical body in memory, pipe
 #     through scripts/redact-secrets.sh, THEN apply truncation. Never the
 #     reverse. Token-shaped byte sequences must not be sliced before
-#     redaction. Placement mirrors create-one.sh's single-choke-point
+#     redaction. Placement mirrors issue create-one's single-choke-point
 #     comment.
 #   * gh-failure redaction (fail-closed) — every gh invocation captures
 #     stderr separately. On non-success paths, captured stderr is passed

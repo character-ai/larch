@@ -20,8 +20,8 @@ neither is an exemption from the file-existence rule:
   discoverable and auditable; stubs point to the primary `.md`.
 - **Cross-tree harnesses.** A harness may live under `scripts/test-*.sh`
   while its primary lives at `skills/<name>/scripts/<primary>.sh` (e.g.
-  `scripts/test-alias-target-resolution.sh` testing
-  `skills/alias/scripts/resolve-target.sh`). The primary
+  `python/test_alias_skill.py` testing
+  `python/cli.py alias resolve-target`). The primary
   `.md` owns the full contract; the harness in `scripts/` still gets a
   sibling `.md` stub naming its primary.
 

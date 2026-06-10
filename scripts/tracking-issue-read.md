@@ -101,7 +101,7 @@ Three deterministic caps prevent context bloat. Exceeding any cap inserts an inl
 | `--max-comments N` | 50 | After this many surviving (post-filter) comments, inserts `[TRUNCATED — comment-count exceeded <N> comments]` and stops appending |
 | `--max-total-chars N` | 100000 | Applied to final `TASK_FILE` content as a safety net (`task-file-total` scope label) |
 
-Precedent: `skills/issue/scripts/fetch-issue-details.sh` applies similar body/comment caps to prevent context bloat. The `--max-comments` default of 50 is higher than `/issue`'s because tracking issues legitimately accumulate more lifecycle history.
+Precedent: `python/cli.py issue fetch-issue-details` applies similar body/comment caps to prevent context bloat. The `--max-comments` default of 50 is higher than `/issue`'s because tracking issues legitimately accumulate more lifecycle history.
 
 ## TASK_FILE envelope (FINDING_11 data-not-instructions wrapping)
 
@@ -131,7 +131,7 @@ Combination 3 (prompt-only) writes `TASK_FILE` verbatim with no envelope — pro
 
 ## Truncation-marker preservation
 
-Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers are mechanical pass-throughs for truncation markers specifically (`skills/issue/scripts/fetch-issue-details.sh` is a complete pass-through). (DECISION_2 voted 3-0 THESIS at design phase.)
+Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers are mechanical pass-throughs for truncation markers specifically (`python/cli.py issue fetch-issue-details` is a complete pass-through). (DECISION_2 voted 3-0 THESIS at design phase.)
 
 ## Known limitation: `--issue + --prompt` is not idempotent
 
@@ -167,7 +167,7 @@ Uses Bash 3.2-compatible constructs (indexed arrays only; no associative arrays,
 | `scripts/tracking-issue-write.sh` | Delegated-to for `append-comment` in combination 1. Its `--lifecycle-marker` emits the markers filtered here. |
 | `SECURITY.md` | Documents the data-not-instructions envelope as active mitigation and summary-marker feedback-loop guard. |
 | `scripts/tracking-issue-summary.sh` | Emits the summary markers filtered here. |
-| `skills/issue/scripts/fetch-issue-details.sh` | Precedent for caps + pagination handling (consulted during design). |
+| `python/cli.py issue fetch-issue-details` | Precedent for caps + pagination handling (consulted during design). |
 | `scripts/test-tracking-issue-read-sentinel.sh` | Regression harness for the `--sentinel` branch's `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` field contracts, plus argv `--issue` numeric validation. Must stay in sync with the contracts defined above; new behaviors in the `--sentinel` branch require new harness cases. |
 | `scripts/test-tracking-issue-read-sentinel.md` | Contract + invariants for the regression harness. Edit in the same PR as behavior or assertion changes. |
 

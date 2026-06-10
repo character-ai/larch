@@ -1752,7 +1752,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 ### 5b — File accepted OOS issues
 
-**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `redact-secrets.sh` inside `create-one.sh` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
+**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `python/redact.py` inside `issue create-one` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
 
 Mechanical staging + cap + file-conflict pre-pass run in Bash; the `/larch:issue` Skill call is prompt-side (same split as `/implement` Step 9a.1). Contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` (sibling `file-design-oos.md`); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-file-design-oos.sh` (sibling `test-file-design-oos.md`; Makefile target `test-file-design-oos`).
 

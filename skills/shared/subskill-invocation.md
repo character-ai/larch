@@ -211,7 +211,7 @@ Skill resolution from a consumer repo differs from resolution inside the larch p
 - **First**: try the bare name — `"implement"`, `"design"`, `"review"`.
 - **Second** (only if no skill matched): try the fully-qualified name — `"larch:implement"`, `"larch:design"`, `"larch:review"`.
 
-Never start with the fully-qualified name — it couples the caller to the plugin namespace and breaks in repos that install the plugin under a different name. The alias generator at `${CLAUDE_PLUGIN_ROOT}/skills/alias/scripts/generate-alias.sh` emits this fallback automatically for every alias — see the generated `## Behavior` section inside the `HEREDOC_BODY` block (lines 72-86) of that script; follow the same shape when authoring an invocation by hand.
+Never start with the fully-qualified name — it couples the caller to the plugin namespace and breaks in repos that install the plugin under a different name. The alias generator at `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias generate` emits this fallback automatically for every alias — see the generated `## Behavior` section inside the `HEREDOC_BODY` block (lines 72-86) of that script; follow the same shape when authoring an invocation by hand.
 
 ## Agent-type qualified-name-first fallback
 

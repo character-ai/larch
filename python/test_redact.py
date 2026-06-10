@@ -305,3 +305,10 @@ def test_report_tokens_tmpdir_redacted() -> None:
     redacted = redact.redact(text)
     assert "/tmp/larch-report-tokens" not in redacted
     assert "/var/folders" not in redacted
+
+
+def test_redact_outbound_covers_cursor_cli_key() -> None:
+    token = "crsr_0123456789abcdefghijklmnopqrstuvwxyzABCDEF"
+    out = redact.redact_outbound(f"publish {token}")
+    assert "<REDACTED-TOKEN>" in out
+    assert token not in out

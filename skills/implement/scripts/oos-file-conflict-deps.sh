@@ -8,7 +8,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-PARSER="$REPO_ROOT/skills/issue/scripts/parse-input.sh"
+PARSER=(python3 "$REPO_ROOT/python/cli.py" issue parse-input)
 REGEX_LIB="$REPO_ROOT/scripts/file-line-regex-lib.sh"
 
 INPUT_FILE=""
@@ -72,8 +72,8 @@ if [[ ! -f "$INPUT_FILE" ]]; then
     larch_err "ERROR: input file not found: $INPUT_FILE"
     exit 1
 fi
-if [[ ! -x "$PARSER" && ! -f "$PARSER" ]]; then
-    larch_err "ERROR: parse-input.sh not found: $PARSER"
+if [[ ! -f "$REPO_ROOT/python/cli.py" ]]; then
+    larch_err "ERROR: python/cli.py not found: $REPO_ROOT/python/cli.py"
     exit 1
 fi
 if [[ ! -f "$REGEX_LIB" ]]; then
@@ -89,14 +89,14 @@ WORK_DIR="$(mktemp -d "$TMPDIR_ROOT/oos-file-conflict-deps.XXXXXX")"
 
 parse_out="$WORK_DIR/parse.out"
 parse_dir="$WORK_DIR/parsed"
-if ! bash "$PARSER" --input-file "$INPUT_FILE" --output-dir "$parse_dir" > "$parse_out"; then
-    larch_err "ERROR: parse-input.sh failed for OOS batch"
+if ! "${PARSER[@]}" --input-file "$INPUT_FILE" --output-dir "$parse_dir" > "$parse_out"; then
+    larch_err "ERROR: issue parse-input failed for OOS batch"
     exit 1
 fi
 
 items_total="$(awk -F= '$1 == "ITEMS_TOTAL" { print $2 }' "$parse_out" | tail -1)"
 if ! [[ "$items_total" =~ ^[0-9]+$ ]]; then
-    larch_err "ERROR: parse-input.sh did not emit a numeric ITEMS_TOTAL"
+    larch_err "ERROR: issue parse-input did not emit a numeric ITEMS_TOTAL"
     exit 1
 fi
 

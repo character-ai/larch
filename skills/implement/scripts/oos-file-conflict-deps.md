@@ -6,7 +6,7 @@ is the Step 9a.1 pre-pass immediately before `/issue --input-file`.
 
 ## Invariants
 
-- **Parser delegation**. The helper invokes `skills/issue/scripts/parse-input.sh`
+- **Parser delegation**. The helper invokes `python/cli.py issue parse-input`
   once against the exact merged OOS batch file that `/issue` receives. It uses
   `ITEMS_TOTAL`, `ITEM_<i>_BODY_FILE`, and `ITEM_<i>_MALFORMED=true` from that
   stdout as the sole source of item order and body truth; it does not implement
@@ -76,6 +76,6 @@ When behavior changes, update these files together:
 - `skills/implement/references/oos-pipeline.md` Step 9a.1 procedure.
 - `scripts/file-line-regex-lib.sh` and its contract when the path grammar
   changes.
-- `skills/issue/scripts/parse-input.sh` and its contract when parser stdout
+- `python/cli.py issue parse-input` and its contract when parser stdout
   changes.
 - `skills/implement/scripts/test-oos-file-conflict-deps.sh` fixtures.

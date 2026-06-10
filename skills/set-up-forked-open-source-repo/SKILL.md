@@ -52,11 +52,10 @@ NOT see transport-time `insteadOf` rewrites.
 Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the coordinator (the script does not accept this flag). Then invoke the coordinator:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh" $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" forked-repo setup $ARGUMENTS
 ```
 
-The sibling contract for the coordinator lives at
-`${CLAUDE_PLUGIN_ROOT}/skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.md`.
+The coordinator contract lives in `python/forked_repo.py`.
 
 ## Arguments
 

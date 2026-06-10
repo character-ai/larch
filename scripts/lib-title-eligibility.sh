@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Sourced title-eligibility grammar helpers. Bash 3.2-compatible; do not execute.
 
-# Archival / dedup jq fragment (list-issues.sh): select when title should NOT be skipped.
+# Archival / dedup jq fragment (issue list-issues): select when title should NOT be skipped.
 # shellcheck disable=SC2016
 export LARCH_TITLE_ARCHIVAL_PREFIX_JQ_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
 
