@@ -16,6 +16,11 @@ UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:118: could not resolve $envout
 
 === larch-quiet-check-contains-pins.sh-64709.log ===
 
+=== larch-quiet-check-contains-pins.sh-79351.log ===
+UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:100: could not resolve $envout
+UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:111: could not resolve $envout
+UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:118: could not resolve $envout
+
 === larch-quiet-check-contains-pins.sh-84138.log ===
 UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:100: could not resolve $envout
 UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:111: could not resolve $envout
@@ -34,6 +39,8 @@ UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:118: could not resolve $envout
 === larch-quiet-cli.py-15429.log ===
 
 === larch-quiet-cli.py-2213.log ===
+
+=== larch-quiet-cli.py-23039.log ===
 
 === larch-quiet-cli.py-23812.log ===
 
@@ -61,6 +68,8 @@ UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:118: could not resolve $envout
 
 === larch-quiet-cli.py-93827.log ===
 
+=== larch-quiet-cli.py-94110.log ===
+
 === larch-quiet-cli.py-96467.log ===
 
 === larch-quiet-degraded-tools-gate.sh-8373.log ===
@@ -78,6 +87,24 @@ UNRESOLVED_VAR: scripts/test-reviewer-prune.sh:118: could not resolve $envout
 === larch-quiet-lint-fix-loop.sh-49286.log ===
 [sergey-zhupanov/implementing-bug-urgent-fix-fluff-analys-3796 cf3dd63cc] Apply relevant-checks fixes (Step 3)
  1 file changed, 9 insertions(+), 2 deletions(-)
+
+=== larch-quiet-persist-retally-step3-env.sh-4744.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-4817.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-4914.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5024.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5142.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5200.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5317.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5502.log ===
+
+=== larch-quiet-persist-retally-step3-env.sh-5647.log ===
 
 === larch-quiet-persist-retally-step3-env.sh-8735.log ===
 
@@ -185,6 +212,19 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 plan-review-loop.sh: unknown option: --convergence-threshold
 Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
 
+=== larch-quiet-plan-review-loop.sh-57028.log ===
+
+=== larch-quiet-plan-review-loop.sh-5785.log ===
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-5861.log ===
+plan-review-loop.sh: unknown option: --round-cap
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-5952.log ===
+plan-review-loop.sh: unknown option: --convergence-threshold
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
 === larch-quiet-plan-review-loop.sh-61361.log ===
 
 === larch-quiet-plan-review-loop.sh-63686.log ===
@@ -287,6 +327,18 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 
 === larch-quiet-read-session-env-key.sh-21670.log ===
 
+=== larch-quiet-read-session-env-key.sh-24838.log ===
+
+=== larch-quiet-read-session-env-key.sh-24868.log ===
+
+=== larch-quiet-read-session-env-key.sh-24900.log ===
+
+=== larch-quiet-read-session-env-key.sh-29624.log ===
+
+=== larch-quiet-read-session-env-key.sh-29657.log ===
+
+=== larch-quiet-read-session-env-key.sh-29688.log ===
+
 === larch-quiet-read-session-env-key.sh-30896.log ===
 
 === larch-quiet-read-session-env-key.sh-30931.log ===
@@ -327,11 +379,23 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 
 === larch-quiet-read-session-env-key.sh-66360.log ===
 
+=== larch-quiet-read-session-env-key.sh-70710.log ===
+
+=== larch-quiet-read-session-env-key.sh-70739.log ===
+
+=== larch-quiet-read-session-env-key.sh-70769.log ===
+
 === larch-quiet-read-session-env-key.sh-71664.log ===
+
+=== larch-quiet-read-session-env-key.sh-71687.log ===
 
 === larch-quiet-read-session-env-key.sh-71696.log ===
 
+=== larch-quiet-read-session-env-key.sh-71710.log ===
+
 === larch-quiet-read-session-env-key.sh-71728.log ===
+
+=== larch-quiet-read-session-env-key.sh-71738.log ===
 
 === larch-quiet-read-session-env-key.sh-73195.log ===
 
@@ -353,6 +417,12 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 
 === larch-quiet-read-session-env-key.sh-8338.log ===
 
+=== larch-quiet-read-session-env-key.sh-90329.log ===
+
+=== larch-quiet-read-session-env-key.sh-90357.log ===
+
+=== larch-quiet-read-session-env-key.sh-90387.log ===
+
 === larch-quiet-read-session-env-key.sh-92295.log ===
 
 === larch-quiet-read-session-env-key.sh-92337.log ===
@@ -372,6 +442,11 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 === larch-quiet-read-session-env-key.sh-9936.log ===
 
 === larch-quiet-read-session-env-key.sh-9970.log ===
+
+=== larch-quiet-refresh-run-logs.sh-90473.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.DRyyNw
 
 === larch-quiet-refresh-run-logs.sh-96903.log ===
 FLUSH_STATUS=ok
@@ -398,6 +473,10 @@ LOG=/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-render-final-summary-
 APPENDED=true
 LOG=/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-render-final-summary-bash32-lDgFzF/design/execution-issues.md
 
+=== larch-quiet-render-final-summary.sh-78653.log ===
+APPENDED=true
+LOG=/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-render-final-summary-bash32-g1yJ1P/design/execution-issues.md
+
 === larch-quiet-render-final-summary.sh-83447.log ===
 APPENDED=true
 LOG=/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-render-final-summary-bash32-vTq6dp/design/execution-issues.md
@@ -413,6 +492,8 @@ LOG=/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-render-final-summary-
 === larch-quiet-run-relevant-checks-captured.sh-57668.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-66388.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-70798.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-73285.log ===
 
@@ -453,13 +534,24 @@ POSTPLAN_EMIT_STATUS=ok
 === larch-quiet-run-step3-review.sh-9138.log ===
 POSTPLAN_EMIT_STATUS=ok
 
+=== larch-quiet-run-step3-review.sh-92831.log ===
+POSTPLAN_EMIT_STATUS=ok
+
 === larch-quiet-run-step3-review.sh-96758.log ===
 POSTPLAN_EMIT_STATUS=ok
 
 === larch-quiet-run-step3-review.sh-99874.log ===
 POSTPLAN_EMIT_STATUS=ok
 
+=== larch-quiet-ship.py-24945.log ===
+
+=== larch-quiet-ship.py-29735.log ===
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+
 === larch-quiet-ship.py-31025.log ===
+
+=== larch-quiet-ship.py-71783.log ===
 
 === larch-quiet-step-7a.sh-35075.log ===
 FLUSH_STATUS=ok
