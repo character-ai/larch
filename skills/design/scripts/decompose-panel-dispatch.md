@@ -11,3 +11,5 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 **Stdout**: forwards the waterfall dispatcher KVs (including `COMBINED_FALLBACK_COUNT`) and appends `PANEL_OUTPUTS_FILE`, `DEGRADED_PANEL` (true when `STATIC_DISPATCH_OK=false` or `COMBINED_FALLBACK_COUNT > floor(8/2)`), and `PANEL_STATUS`.
 
 **Harness override**: `DECOMPOSE_PANEL_WATERFALL_SH` — path to a stub `dispatch-with-waterfall.sh` for offline tests (`skills/design/scripts/test-decompose-panel-dispatch.sh`).
+
+Fallback Claude reviewer slots use `claude-sonnet-4-6`; these are both-externals-down backups and intentionally stay on the cheaper Sonnet model rather than the Fable voter/drafter model.

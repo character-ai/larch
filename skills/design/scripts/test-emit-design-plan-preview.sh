@@ -45,13 +45,68 @@ out2=$("$SUBJECT" --design-tmpdir "$d2" --variant step3)
 printf '%s\n' "$out2" | grep -Fq '**Section outline:**' || fail "outline mode missing section outline"
 printf '%s\n' "$out2" | grep -Fq '## Sec A' || fail "outline missing heading"
 
+
+# Large plan with fresh generated summary uses plan-summary.md instead of synthetic outline.
+d2s="$TMPROOT/d2s"
+mkdir -p "$d2s"
+{
+    printf '# SummaryPlan
+
+'
+    printf '## Synthetic heading that should be hidden by fresh summary
+
+'
+    for _ in $(seq 1 125); do printf 'summary-body
+'; done
+} >"$d2s/plan.txt"
+printf 'Generated drafter summary
+' >"$d2s/plan-summary.md"
+touch "$d2s/plan.txt"
+sleep 1
+touch "$d2s/plan-summary.md"
+out2s=$("$SUBJECT" --design-tmpdir "$d2s" --variant step3)
+printf '%s
+' "$out2s" | grep -Fq 'Generated drafter summary' || fail "fresh generated summary should be used"
+printf '%s
+' "$out2s" | grep -Fq 'Synthetic heading that should be hidden' && fail "fresh summary should replace synthetic outline"
+
+# Large plan with stale or empty summary falls back to synthetic outline.
+d2stale="$TMPROOT/d2stale"
+mkdir -p "$d2stale"
+{
+    printf '# StaleSummaryPlan
+
+'
+    printf '## Fresh Plan Heading
+
+'
+    for _ in $(seq 1 125); do printf 'stale-body
+'; done
+} >"$d2stale/plan.txt"
+printf 'Stale generated summary
+' >"$d2stale/plan-summary.md"
+touch -t 202001010000 "$d2stale/plan-summary.md"
+touch -t 202001010001 "$d2stale/plan.txt"
+out2stale=$("$SUBJECT" --design-tmpdir "$d2stale" --variant step3)
+printf '%s
+' "$out2stale" | grep -Fq '## Fresh Plan Heading' || fail "stale generated summary should fall back to outline"
+printf '%s
+' "$out2stale" | grep -Fq 'Stale generated summary' && fail "stale summary should not be printed"
+: >"$d2stale/plan-summary.md"
+touch "$d2stale/plan-summary.md"
+out2empty=$("$SUBJECT" --design-tmpdir "$d2stale" --variant step3)
+printf '%s
+' "$out2empty" | grep -Fq '## Fresh Plan Heading' || fail "empty generated summary should fall back to outline"
+
 # Small plan — full body (under default threshold)
 d3="$TMPROOT/d3"
 mkdir -p "$d3"
 printf '# Small\n\nHello\n\ndiff_lines: 1\n' >"$d3/plan.txt"
+printf 'Fresh summary ignored for small plan\n' >"$d3/plan-summary.md"
 out3=$("$SUBJECT" --design-tmpdir "$d3" --variant step3)
 printf '%s\n' "$out3" | grep -Fq 'Hello' || fail "small plan should include full body"
 printf '%s\n' "$out3" | grep -Fq 'very large' && fail "small plan should not print large-plan note"
+printf '%s\n' "$out3" | grep -Fq 'Fresh summary ignored for small plan' && fail "small plan should ignore generated summary"
 
 # step3 is a pure renderer: no sentinel written, always renders
 [[ ! -e "$d3/.step3-entry-plan-printed" ]] || fail "step3 pure renderer must not write .step3-entry-plan-printed sentinel"

@@ -372,4 +372,41 @@ PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
 grep -Fq 'vote on this with read tools' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
     || { echo "FAIL: --read-tools-add-dir voter prompt missing in stdin log" >&2; exit 1; }
 
+
+# --role voter default model resolves through LARCH_VOTER_MODEL; explicit --model wins.
+voter_model_prompt="$TMPROOT/voter-model-prompt.txt"
+printf 'vote model default
+' > "$voter_model_prompt"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/voter-model-default-out.txt" \
+    --prompt-file "$voter_model_prompt" \
+    --mode description \
+    --role voter \
+    --timeout 5 >/dev/null
+default_cmd_json=$(awk -F= '/^CMD_JSON=/{print substr($0,10)}' "$TMPROOT/voter-model-default-out.txt.meta")
+printf '%s
+' "$default_cmd_json" | jq -e '. | index("--model") as $i | $i != null and .[$i + 1] == "claude-fable-5"' >/dev/null \
+    || { echo "FAIL: voter default model should be claude-fable-5" >&2; exit 1; }
+LARCH_VOTER_MODEL=custom-voter-model PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/voter-model-env-out.txt" \
+    --prompt-file "$voter_model_prompt" \
+    --mode description \
+    --role voter \
+    --timeout 5 >/dev/null
+env_cmd_json=$(awk -F= '/^CMD_JSON=/{print substr($0,10)}' "$TMPROOT/voter-model-env-out.txt.meta")
+printf '%s
+' "$env_cmd_json" | jq -e '. | index("--model") as $i | $i != null and .[$i + 1] == "custom-voter-model"' >/dev/null \
+    || { echo "FAIL: LARCH_VOTER_MODEL should override voter default" >&2; exit 1; }
+LARCH_VOTER_MODEL=custom-voter-model PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/voter-model-explicit-out.txt" \
+    --prompt-file "$voter_model_prompt" \
+    --mode description \
+    --role voter \
+    --model explicit-voter-model \
+    --timeout 5 >/dev/null
+explicit_cmd_json=$(awk -F= '/^CMD_JSON=/{print substr($0,10)}' "$TMPROOT/voter-model-explicit-out.txt.meta")
+printf '%s
+' "$explicit_cmd_json" | jq -e '. | index("--model") as $i | $i != null and .[$i + 1] == "explicit-voter-model"' >/dev/null \
+    || { echo "FAIL: explicit --model should win for voter" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"

@@ -180,7 +180,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \
-        --model claude-opus-4-7 \
+        --model claude-sonnet-4-6 \
         --timeout "$TIMEOUT" \
         --timing-task-kind claude-plan-generic \
         "${waterfall_extra[@]+"${waterfall_extra[@]}"}" >/dev/null 2>"${_generic_output}.launch-stderr"
