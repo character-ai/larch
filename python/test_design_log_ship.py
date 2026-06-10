@@ -222,6 +222,40 @@ def test_failed_logs_wait_until_ready_before_rerun(monkeypatch: pytest.MonkeyPat
     assert sleeps[:2] == [float(config.CI_WAIT_POLL_INTERVAL_SEC), float(config.CI_WAIT_POLL_INTERVAL_SEC)]
 
 
+def test_failed_logs_wait_budget_resets_for_distinct_run_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(design_log_ship, "_ci_wait_poll_budget", lambda: 1)
+    runner = _runner(
+        checks=[
+            _checks("fail", "999"),
+            _checks("fail", "1000"),
+            _checks("fail", "1000"),
+            _checks("pass"),
+            _checks("pass"),
+        ],
+    )
+    run_view_999 = ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")
+    run_view_1000 = ("gh", "run", "view", "1000", "--repo", "o/r", "--log-failed")
+    rerun_1000 = ("gh", "run", "rerun", "1000", "--repo", "o/r", "--failed")
+    runner.responses[run_view_999] = _cr(run_view_999, rc=1, stderr="is still in progress; logs will be available")
+    runner.sequential[run_view_1000] = [
+        _cr(run_view_1000, rc=1, stderr="is still in progress; logs will be available"),
+        _cr(run_view_1000, stdout="Could not resolve host: api.github.com"),
+    ]
+    runner.responses[rerun_1000] = _cr(rerun_1000)
+    sleeps, sleep_fn = _sleeps()
+    result = design_log_ship.run_design_log_ci_merge(
+        runner,
+        pr=1,
+        repo="o/r",
+        cwd="/tmp/wt",
+        merge_cwd="/repo",
+        sleep_fn=sleep_fn,
+    )
+    assert result.ok is True
+    assert sleeps[:2] == [float(config.CI_WAIT_POLL_INTERVAL_SEC), float(config.CI_WAIT_POLL_INTERVAL_SEC)]
+    assert (rerun_1000, "/tmp/wt") in runner.calls
+
+
 def test_failed_logs_never_ready_does_not_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_log_ship, "_ci_wait_poll_budget", lambda: 1)
     runner = _runner(checks=[_checks("fail"), _checks("fail")])

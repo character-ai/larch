@@ -160,6 +160,7 @@ def run_design_log_ci_merge(
     failed_run_reruns = 0
     checks_wait_polls = 0
     log_ready_wait_polls = 0
+    log_ready_wait_run_id: str | None = None
     post_rerun_settle_wait_polls = 0
     post_rerun_failed_run_id: str | None = None
     max_wait_polls = _ci_wait_poll_budget()
@@ -238,6 +239,10 @@ def run_design_log_ci_merge(
                     detail=f"failed-run rerun budget exhausted after run {failed_run_id}",
                 )
 
+            if failed_run_id != log_ready_wait_run_id:
+                log_ready_wait_polls = 0
+                log_ready_wait_run_id = failed_run_id
+
             last_log_class = _classify_failed_run_for_rerun(
                 runner,
                 run_id=failed_run_id,
@@ -262,6 +267,7 @@ def run_design_log_ci_merge(
                 failed_run_reruns += 1
                 checks_wait_polls = 0
                 log_ready_wait_polls = 0
+                log_ready_wait_run_id = None
                 post_rerun_settle_wait_polls = 0
                 post_rerun_failed_run_id = failed_run_id
                 sleep_fn(float(config.CI_WAIT_POLL_INTERVAL_SEC))
