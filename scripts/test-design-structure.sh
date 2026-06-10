@@ -912,6 +912,37 @@ printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s %s\n'\'' "**⚠ /desig
 printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s\n'\'' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2' \
   || fail 'Step 0-pre rc=3 branch must retain without-token warning printf'
 
+step0b_route_block=$(
+  awk '
+    /_route_stdout_file=.*mktemp/ { in_block=1 }
+    in_block { print }
+    in_block && /^[[:space:]]*```[[:space:]]*$/ { exit }
+  ' "$SKILL_MD"
+)
+[ -n "$step0b_route_block" ] || fail 'Step 0b route fenced block extraction failed'
+printf '%s\n' "$step0b_route_block" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh' \
+  || fail 'Step 0b route block must call read-result-env.sh'
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--input "$DESIGN_TMPDIR/.design-route-result.env"' \
+  || fail 'Step 0b route block must pass design-route result env as --input'
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--fallback-input "$_route_stdout_file"' \
+  || fail 'Step 0b route block must pass captured stdout as fallback input'
+for _route_key in ROUTE BRAINSTORM_PREFIX TITLE_FILTER_REASON TITLE_FILTER_MARKER MARKER_AGE MARKER_TTL DESIGN_REENTRY_MARKER_PATH RESUME_STEP SESSION_ID RUN_ID TIER BRAINSTORM_DONE MARKER_CLEARED; do
+  printf '%s\n' "$step0b_route_block" | grep -Fq -- "--allow $_route_key" \
+    || fail "Step 0b route block must allowlist $_route_key"
+done
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--output "$_safe_route_env"' \
+  || fail 'Step 0b route block must write safe route env output'
+printf '%s\n' "$step0b_route_block" | grep -Fq '. "$_safe_route_env"' \
+  || fail 'Step 0b route block must source safe route env'
+printf '%s\n' "$step0b_route_block" | grep -Fq '>"$_route_stdout_file"' \
+  || fail 'Step 0b route block must capture design-route.sh stdout'
+if printf '%s\n' "$step0b_route_block" | grep -Fq '_route_out'; then
+  fail 'Step 0b route block must not reference _route_out'
+fi
+if printf '%s\n' "$step0b_route_block" | grep -Fq 'while IFS= read -r'; then
+  fail 'Step 0b route block must not retain an inline KV parse loop'
+fi
+
 step0b_init_block=$(
   awk '
     /_init_stdout_file=.*mktemp/ { in_block=1 }
