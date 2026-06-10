@@ -6,6 +6,8 @@
 
 === larch-quiet-check-review-changes.sh-70345.log ===
 
+=== larch-quiet-clear-implement-current-env.sh-6706.log ===
+
 === larch-quiet-clear-implement-current-env.sh-89049.log ===
 
 === larch-quiet-cli.py-52567.log ===
@@ -18,6 +20,14 @@
 
 === larch-quiet-degraded-tools-gate.sh-37796.log ===
 
+=== larch-quiet-implement-finalize.sh-6781.log ===
+LOG_WRITTEN=true
+LOG_PATH=<TMPDIR>/larch-logs/implement/6963167B-D1B6-4761-B1C1-51C742ED1C5C/manifest.json
+BYTES=630
+SHA256=1ebd5b4c9eef9f3b0ed94d839b41d852b651c4ec365e742cbc021038fbbc0481
+COMMIT_SHA=
+UNCHANGED=false
+
 === larch-quiet-implement-finalize.sh-89082.log ===
 LOG_WRITTEN=true
 LOG_PATH=<TMPDIR>/larch-logs/implement/6963167B-D1B6-4761-B1C1-51C742ED1C5C/manifest.json
@@ -25,6 +35,15 @@ BYTES=630
 SHA256=7af51ce04b16dc1e5a7e4885bc2e6cf0b84ff1a9c7728c94cdc10dec5b973618
 COMMIT_SHA=
 UNCHANGED=false
+LOG_WRITTEN=true
+LOG_PATH=<OPERATOR_REPO_PATH>/larch-logs/implement/6963167B-D1B6-4761-B1C1-51C742ED1C5C
+BYTES=0
+SHA256=
+COMMIT_SHA=a1c3449346c0d133082ebf1e56cda0fd7f311137
+UNCHANGED=false
+ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at <TMPDIR>
+📎 Tracking issue: https://github.com/character-ai/larch/issues/3950
+✅ 18: cleanup status=complete elapsed=12s
 
 === larch-quiet-read-session-env-key.sh-22975.log ===
 
@@ -65,6 +84,20 @@ UNCHANGED=false
 === larch-quiet-read-session-env-key.sh-50770.log ===
 
 === larch-quiet-read-session-env-key.sh-50818.log ===
+
+=== larch-quiet-read-session-env-key.sh-5913.log ===
+
+=== larch-quiet-read-session-env-key.sh-5964.log ===
+
+=== larch-quiet-read-session-env-key.sh-6016.log ===
+
+=== larch-quiet-read-session-env-key.sh-6468.log ===
+
+=== larch-quiet-read-session-env-key.sh-6514.log ===
+
+=== larch-quiet-read-session-env-key.sh-6560.log ===
+
+=== larch-quiet-read-session-env-key.sh-6602.log ===
 
 === larch-quiet-read-session-env-key.sh-70196.log ===
 
@@ -218,7 +251,11 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.ddOn1T
 
 === larch-quiet-timing-ledger.sh-39645.log ===
 
+=== larch-quiet-timing-ledger.sh-6391.log ===
+
 === larch-quiet-timing-ledger.sh-88830.log ===
+
+=== larch-quiet-timing-report.sh-6220.log ===
 
 === larch-quiet-timing-report.sh-88692.log ===
 
@@ -226,7 +263,11 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.ddOn1T
 
 === larch-quiet-token-ledger.sh-39582.log ===
 
+=== larch-quiet-token-ledger.sh-6314.log ===
+
 === larch-quiet-token-ledger.sh-88772.log ===
+
+=== larch-quiet-token-report.sh-6068.log ===
 
 === larch-quiet-token-report.sh-88575.log ===
 
