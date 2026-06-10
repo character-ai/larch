@@ -287,7 +287,7 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     (impl / "timing-ledger.tsv").write_text("v1\tmark\t1\timplement\tStep 5\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
     captured: list[list[str]] = []
 
-    def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
+    def fake_run(argv: list[str], **_kwargs: object):  # type: ignore[no-untyped-def]
         captured.append(list(argv))
 
         class Result:
