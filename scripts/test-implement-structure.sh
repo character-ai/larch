@@ -7,7 +7,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 python3 <<'PY'
 from pathlib import Path
-import sys, os
+import re, sys, os
 checks = []
 
 def require(path, needle, label):
@@ -124,6 +124,78 @@ require('scripts/rebase-checkpoint-probe.sh', '--forked-target', 'rebase probe f
 require('scripts/rebase-checkpoint-probe.md', '--forked-target true|false', 'rebase probe docs')
 require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target')
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
+
+skill_text = Path(skill).read_text()
+if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
+    checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
+if '--auto-mode' in skill_text:
+    checks.append('SKILL.md must not document --auto-mode flag (issue #2497)')
+for ref in [
+    'summary-comment-template.md', 'conflict-resolution.md', 'codex-manifest-schema.md',
+    'pr-body-template.md', 'step5-review-branches.md',
+]:
+    path = f'skills/implement/references/{ref}'
+    if not Path(path).is_file():
+        checks.append(f'missing reference {path}')
+require(skill, 'references/step5-review-branches.md', 'Step 5 review branches pointer')
+conflict_ref = Path('skills/implement/references/conflict-resolution.md')
+if conflict_ref.is_file():
+    conflict_text = conflict_ref.read_text()
+    for needle in ['caller_kind=ship_pr_pre_push', 'caller_kind=early_rebase']:
+        if needle not in conflict_text:
+            checks.append(f'conflict-resolution.md missing {needle!r}')
+require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
+require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper')
+require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
+require('skills/implement/scripts/step-0-bootstrap.sh', '--preserve-coder', 'step-0 resume preserve-coder')
+for needle in [
+    'degraded-tools-gate.sh', '--codex-present', '--cursor-present',
+    'read_session_key CODEX_PRESENT', 'read_session_key CURSOR_PRESENT',
+    'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
+]:
+    require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate {needle}')
+require('skills/implement/scripts/step-5-resume.sh', 'commit-review-fixes.sh" --stage-all || true', 'step-5-resume commit failure guard')
+require('skills/implement/scripts/step-5-resume.sh', 'run-step5-review.sh', 'step-5-resume review loop resume')
+require('scripts/ship-pr.sh', 'pr-create) advance_phase pr-prep; state_set RESUME_PHASE ""', 'ship-pr pr-create resume token consumption')
+exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
+if exit_matrix.is_file():
+    exit_text = exit_matrix.read_text()
+    for needle in [
+        'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**',
+        'Phase 4 exit 0 re-invokes the active Step 8+ selector',
+        'ship-pr-net-retries-python.count',
+        'RESUME_PHASE=pr-create',
+        'Read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `ship-pr-state.sh` on both paths.',
+    ]:
+        if needle not in exit_text:
+            checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
+require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'ship-pr exit matrix pointer')
+for needle in [
+    '_restore_finalize=false',
+    'restore-finalize-state',
+    'implement-finalize.sh" teardown',
+    'LARCH_SHIP_PR_IMPL:-python}" = "bash"',
+    'DESIGN_TMPDIR=\'\' LARCH_TIMING_SKILL=implement',
+]:
+    require('skills/implement/scripts/step-18-finalize.sh', needle, f'step-18-finalize {needle}')
+for needle in [
+    'default `LARCH_SHIP_PR_IMPL=python` runs the Python branch',
+    'Python driver selector',
+    'Unless `LARCH_SHIP_PR_IMPL=bash`, the `step-8-ship.sh` wrapper runs',
+    '## Load-Bearing Invariants',
+    'Two invariants enforced across multiple steps',
+]:
+    if needle not in skill_text:
+        checks.append(f'SKILL.md missing {needle!r}')
+for retired in [
+    'Version Bump Freshness', 'Degraded-Git Fail-Closed', '### Step 8a',
+    'phantom-probe-with-warn.sh" --step 8-pre-bump',
+    'default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract',
+]:
+    if retired in skill_text:
+        checks.append(f'SKILL.md must not retain retired surface {retired!r}')
+require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'command grep', 'step-8-oos-checkpoint command grep probes')
+require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'OOS_CHECKPOINT_RC', 'step-8-oos-checkpoint rc relay')
 
 if checks:
     print('\n'.join(checks), file=sys.stderr)

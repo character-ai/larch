@@ -71,7 +71,7 @@ if [ "$RECORD_ONLY" = true ]; then
   exit 0
 fi
 if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
-  "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/commit-review-fixes.sh" --stage-all
+  "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/commit-review-fixes.sh" --stage-all || true
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'

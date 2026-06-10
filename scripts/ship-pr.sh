@@ -3140,7 +3140,7 @@ main() {
                 advance_phase bump
                 state_set_many RESUME_PHASE "" CALLER_KIND ""
                 ;;
-            pr-create) advance_phase pr-prep ;;
+            pr-create) advance_phase pr-prep; state_set RESUME_PHASE "" ;;
             ci-initial) advance_phase ci-initial ;;
             ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
             evaluate-failure) advance_phase evaluate-failure ;;
