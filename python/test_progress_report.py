@@ -315,3 +315,55 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     assert "--timing-ledger" in argv
     assert "--skill" in argv
     assert argv[argv.index("--skill") + 1] == "implement"
+
+
+def test_strip_md_for_terminal() -> None:
+    raw = (
+        "## Review Phase Detail\n\n"
+        "| Round | Suggestions |\n"
+        "|--:|--:|\n"
+        "| 1 | 17 |\n"
+        "| **Total** | **17** |\n\n"
+        "**Top reviewers** (by suggestions accepted):\n"
+        "- slot/arch — 3\n\n"
+        "_Cost is a footnote._\n"
+    )
+    stripped = progress_report._strip_md_for_terminal(raw)
+    assert "## " not in stripped
+    assert "|--:" not in stripped
+    assert "**" not in stripped
+    assert "_Cost" not in stripped
+    assert "Review Phase Detail" in stripped
+    assert "| 1 | 17 |" in stripped
+    assert "| Total | 17 |" in stripped
+    assert "Top reviewers" in stripped
+    assert "Cost is a footnote." in stripped
+
+
+def test_render_review_detail_strips_markdown(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    run_id = "run-1"
+    flushed = impl / "larch-logs" / "implement" / run_id / "round-1"
+    flushed.mkdir(parents=True)
+    (flushed / "review-and-fix.env").write_text("", encoding="utf-8")
+    (impl / "timing-ledger.tsv").write_text("v1\tmark\t1\timplement\tStep 5\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
+
+    md_output = "## Review Phase Detail\n\n| Round |\n|--:|\n| **1** |\n\n_Footnote._\n"
+
+    def fake_run(_argv: list[str], **_kwargs: object):  # type: ignore[no-untyped-def]
+        class Result:
+            returncode = 0
+            stdout = md_output
+
+        return Result()
+
+    monkeypatch.setattr(progress_report.subprocess, "run", fake_run)
+
+    detail = progress_report._render_review_detail(impl, run_id)
+
+    assert "## " not in detail
+    assert "|--:" not in detail
+    assert "**" not in detail
+    assert "Review Phase Detail" in detail
+    assert "| 1 |" in detail
+    assert "Footnote." in detail
