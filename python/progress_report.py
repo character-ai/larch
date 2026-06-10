@@ -15,6 +15,11 @@ from pathlib import Path
 TIMING_MARK_MIN_COLS = 5
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
+
+_MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
+_MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+_MD_ITALIC_RE = re.compile(r"(?<![_\w])_([^_\n]+)_(?![_\w])")
+_MD_HEADING_RE = re.compile(r"^#{1,6} ")
 SHIP_PR_PHASES = frozenset({
     "checks",
     "ci-initial",
@@ -29,6 +34,19 @@ SHIP_PR_PHASES = frozenset({
     "stalled",
     "done",
 })
+
+
+def _strip_md_for_terminal(text: str) -> str:
+    """Remove Markdown decorators for plain-text terminal display."""
+    lines: list[str] = []
+    for raw in text.splitlines():
+        if _MD_TABLE_SEP_RE.match(raw.strip()):
+            continue
+        out = _MD_HEADING_RE.sub("", raw, count=1)
+        out = _MD_BOLD_RE.sub(r"\1", out)
+        out = _MD_ITALIC_RE.sub(r"\1", out)
+        lines.append(out)
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -346,7 +364,7 @@ def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
         return ""
     if result.returncode != 0:
         return ""
-    return result.stdout.strip()
+    return _strip_md_for_terminal(result.stdout.strip())
 
 
 def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
@@ -358,7 +376,7 @@ def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
     returned = _returned_reviewers(round_dir)
     header = (
         f"Step 5 code review — round {round_num} in progress\n"
-        f"  reviewers: {returned}/{total} returned  |  elapsed: {_round_elapsed(round_dir)}"
+        f"  reviewers: {returned}/{total} returned | elapsed: {_round_elapsed(round_dir)}"
     )
     detail = _render_review_detail(implement_tmpdir, run_id)
     return f"{header}\n\n{detail}" if detail else header
