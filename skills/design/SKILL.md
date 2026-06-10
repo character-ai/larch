@@ -1074,6 +1074,7 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
       larch_emit_untrusted_file_block dialectic_resolutions "$DESIGN_TMPDIR/dialectic-resolutions.md"
     fi
   } > "$DESIGN_TMPDIR/step2b-drafter-prompt.txt"
+  _repo_root="$(git -C "$PWD" rev-parse --show-toplevel)"
   set +e
   "$CLAUDE_PLUGIN_ROOT/scripts/launch-claude-drafter.sh" \
     --model "$DRAFTER_MODEL" \
@@ -1083,7 +1084,7 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     --timeout 1800 \
     --timing-task-kind claude-plan-draft \
     --design-tmpdir "$DESIGN_TMPDIR" \
-    --repo-root "$(git -C "$PWD" rev-parse --show-toplevel)"
+    --repo-root "$_repo_root"
   _drafter_rc=$?
   set -e
 else
