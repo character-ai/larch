@@ -55,7 +55,7 @@ def _classify_failed_run_for_rerun(
     except Exception as exc:  # pylint: disable=broad-except
         return FailedRunRerunClass("error", _detail(f"collect failed logs raised: {exc}"))
     if logs.state == "ready":
-        if retry.is_transient_net_signature(logs.text):
+        if ci_monitor.is_transient_failed_log(logs):
             return FailedRunRerunClass("ready_transient", "failed logs contain transient signature")
         return FailedRunRerunClass("ready_no_signature", "failed logs ready without transient signature")
     if logs.state == "in_progress":
@@ -85,6 +85,7 @@ def _required_checks_green_guard(
         if _pr_already_merged(runner, pr=pr, repo=repo, cwd=cwd):
             return DesignLogMergeResult(ok=True, already_merged=True, detail="PR already merged")
         try:
+            # required=True is load-bearing; poll_ci defaults required=False.
             status, failed_run_id = ci_monitor.checks_status(
                 runner,
                 pr=pr,
@@ -159,6 +160,7 @@ def run_design_log_ci_merge(
     failed_run_reruns = 0
     checks_wait_polls = 0
     log_ready_wait_polls = 0
+    log_ready_wait_run_id: str | None = None
     post_rerun_settle_wait_polls = 0
     post_rerun_failed_run_id: str | None = None
     max_wait_polls = _ci_wait_poll_budget()
@@ -237,6 +239,10 @@ def run_design_log_ci_merge(
                     detail=f"failed-run rerun budget exhausted after run {failed_run_id}",
                 )
 
+            if failed_run_id != log_ready_wait_run_id:
+                log_ready_wait_polls = 0
+                log_ready_wait_run_id = failed_run_id
+
             last_log_class = _classify_failed_run_for_rerun(
                 runner,
                 run_id=failed_run_id,
@@ -247,12 +253,21 @@ def run_design_log_ci_merge(
                 log_ready_wait_polls += 1
                 sleep_fn(float(config.CI_WAIT_POLL_INTERVAL_SEC))
                 continue
+            if last_log_class.kind != "ready_transient":
+                return DesignLogMergeResult(
+                    ok=False,
+                    detail=_detail(
+                        f"required check failed (non-transient): "
+                        f"run={failed_run_id} logs={last_log_class.kind}",
+                    ),
+                )
 
             rerun = ci_monitor.rerun_failed(runner, run_id=failed_run_id, repo=repo, cwd=cwd)
             if rerun.submitted or rerun.already_running:
                 failed_run_reruns += 1
                 checks_wait_polls = 0
                 log_ready_wait_polls = 0
+                log_ready_wait_run_id = None
                 post_rerun_settle_wait_polls = 0
                 post_rerun_failed_run_id = failed_run_id
                 sleep_fn(float(config.CI_WAIT_POLL_INTERVAL_SEC))

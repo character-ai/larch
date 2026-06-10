@@ -541,7 +541,7 @@ def poll_ci(
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
     cwd: str | None = None,
-    required: bool = False,
+    required: bool = False,  # Callers that restrict to required checks must pass required=True.
 ) -> tuple[CiStatus, Decision]:
     """Port of ci-wait.sh poll loop."""
     max_polls = max(1, math.ceil(timeout / config.CI_WAIT_POLL_INTERVAL_SEC))
@@ -724,6 +724,11 @@ def collect_failed_logs(
     if result.returncode != 0:
         return LogCollectResult(text=text, state="error")
     return LogCollectResult(text=text, state="ready")
+
+
+def is_transient_failed_log(logs: LogCollectResult) -> bool:
+    """Return True when the log points at a transient network failure."""
+    return logs.state == "ready" and retry.is_transient_net_signature(logs.text)
 
 
 def rerun_failed(
@@ -1432,8 +1437,7 @@ def evaluate_failure(
     blind_rerun_attempted = False
     if (
         transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX
-        and upfront_logs.state == "ready"
-        and retry.is_transient_net_signature(upfront_logs.text)
+        and is_transient_failed_log(upfront_logs)
     ):
         blind_rerun_attempted = True
         rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
