@@ -23,6 +23,7 @@ Default `--repo`: `character-ai/larch` when the skill does not override.
 | `BUMP_TYPE` | `MAJOR`, `MINOR`, or `PATCH` from classify-bump (`NONE` is not emitted here; `--base` skips idempotency) |
 | `PR_COUNT` | Rows written to the PR list TSV |
 | `PR_LIST_FILE` | Path to `<out-dir>/pr-list.tsv` |
+| `UNMATCHED_COMMITS` | Comma-separated SHAs of commits with no associated PR (only on exit **1** with `ERROR=unmatched-commits`) |
 
 ## PR list TSV
 
@@ -34,7 +35,7 @@ Tab-separated columns: `number`, `title`, `labels` (comma-separated), `author`, 
 2. **Origin coupling** — `origin` remote owner/repo must match `--repo` or `ERROR=origin-repo-mismatch`.
 3. **Fetch + verify tag** — `git fetch origin main --tags` must succeed; `git rev-parse --verify "$BASELINE_TAG^{commit}"` or `ERROR=baseline-tag-unresolvable`.
 4. **Stale local main** — after fetch, `main^{commit}`, `HEAD^{commit}`, and `origin/main^{commit}` must all match or `ERROR=stale-local-main`.
-5. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)` only (squash merges without that suffix are omitted from notes but still affect `classify-bump` diff scope). Emits `WARN` on stderr when commit count exceeds `PR_COUNT`. Commit subjects are **maintainer-trusted** for PR attribution in public release notes. Any `gh pr view` failure → `ERROR=pr-metadata-incomplete` (no silent drops). Deleted/null PR authors are recorded as `unknown`.
+5. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)` first. For commits whose subject does not carry `(#N)`, the GitHub commits-to-pulls API (`GET /repos/{owner}/{repo}/commits/{sha}/pulls`) is tried; resolved PRs are included in the TSV with a `NOTE:` line on stderr. Commits with no PR association from either method are *orphans* — emitted as `WARN:` lines on stderr, and the script exits **1** with `ERROR=unmatched-commits` plus `UNMATCHED_COMMITS=<sha>[,<sha>...]`. Commit subjects are **maintainer-trusted** for PR attribution in public release notes. Any `gh pr view` failure → `ERROR=pr-metadata-incomplete` (no silent drops). Deleted/null PR authors are recorded as `unknown`.
 6. **Bump** — `classify-bump.sh --base "$BASELINE_TAG" --head origin/main` from repo root; optional `--bump` overrides type and recomputes `NEW_VERSION` (decimal-forced `10#` arithmetic).
 
 ## Exit codes
@@ -42,7 +43,7 @@ Tab-separated columns: `number`, `title`, `labels` (comma-separated), `author`, 
 | Code | Meaning |
 |------|---------|
 | 0 | Success KV lines on stdout |
-| 1 | Operational failure; `ERROR=<token>` on stdout, human detail on stderr |
+| 1 | Operational failure; `ERROR=<token>` on stdout, human detail on stderr. `ERROR=unmatched-commits` also emits `UNMATCHED_COMMITS=<sha>[,<sha>...]` and per-commit `WARN:` lines on stderr. |
 
 ## In-flight / duplicate cut guards
 
