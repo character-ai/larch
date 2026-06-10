@@ -14,7 +14,7 @@ PYTHON ?= python3
 .PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
-.PHONY: test-step-7a
+.PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-step-18b-final-report
 .PHONY: test-design-pause-resume
 .PHONY: test-review-design-step3-loop
@@ -108,7 +108,7 @@ test-harnesses-13: test-launch-codex-ci test-run-external-agent test-collect-age
 
 test-harnesses-14: test-dispatch-code-voters-happy test-prompt-template-invariants test-implement-finalize test-merge-pr test-oos-disposition-gate test-launch-claude-review test-launch-claude-drafter test-launch-codex-drafter test-ci-wait test-implement-bootstrap-invoke test-check-mid-run-dirty-tree test-flush-execution-issues test-step-18b-final-report test-sentinel-write test-parse-plan-commands test-decompose-aggregator test-extract-plan-scope-paths test-run-step2-dispatch test-implement-fence-shape test-implement-timing-rehydration test-anti-improvised-wakeup
 
-test-harnesses-15: test-launch-review-cursor-retry test-findings-classification test-scout-dynamic-archetypes test-step-7a test-validate-citations test-launch-claude-subprocess test-larch-logs-manifest test-preflight-args test-run-research-planner test-cache-root-validation test-lint-no-raw-stderr-after-quiet-init test-compose-pr-summary test-step3-orchestrator-fence test-tally-vote test-fetch-combinable-issues-filter
+test-harnesses-15: test-launch-review-cursor-retry test-findings-classification test-scout-dynamic-archetypes test-step-7a test-step-8-ship test-validate-citations test-launch-claude-subprocess test-larch-logs-manifest test-preflight-args test-run-research-planner test-cache-root-validation test-lint-no-raw-stderr-after-quiet-init test-compose-pr-summary test-step3-orchestrator-fence test-tally-vote test-fetch-combinable-issues-filter
 
 test-harnesses-16: test-review-design-step3-loop test-design-log-publish test-review-and-fix-convergence test-dispatch-code-voters-edge-and-r3-claude test-lint-fix-loop test-run-step3-review test-allocate-candidates test-parse-input test-block-submodule test-ship-pr-rebase test-check-scope-reduction-marker test-references-headers test-render-cost-line-realism test-run-external-agent-args test-gather-context test-intra-batch-deps test-fluff-analysis test-fluff-analysis-corpus
 
@@ -727,6 +727,9 @@ test-flush-execution-issues:
 
 test-step-7a:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-7a.sh
+
+test-step-8-ship:
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-8-ship.sh
 
 test-post-tracking-issue:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-post-tracking-issue.sh

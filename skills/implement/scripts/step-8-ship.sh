@@ -110,5 +110,5 @@ _resume_args=()
   --no-admin-fallback "$NO_ADMIN_FALLBACK_RESOLVED" \
   --no-logs-commit "$NO_LOGS_COMMIT_RESOLVED" \
   --repo "$REPO_RESOLVED" \
-  "${_resume_args[@]}"
+  "${_resume_args[@]+"${_resume_args[@]}"}"
 fi
