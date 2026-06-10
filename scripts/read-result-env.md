@@ -4,6 +4,8 @@
 
 `read-result-env.sh` safely converts a machine `KEY=VALUE` result-env file into a sourceable env file containing only caller-allowlisted keys. It refuses symlinked and non-regular inputs so orchestrators can source the generated output without reopening untrusted paths.
 
+Allowlist filtering, symlink refusal, and CR/LF rejection are delegated to `phase_driver_read_result_env` (`skills/design/scripts/lib-phase-driver.sh`). This script owns: fallback-input selection, WARN/ERROR stdout replay, and single-quote encoding for sourceable output.
+
 ## Argv
 
 ```text
@@ -17,15 +19,15 @@ scripts/read-result-env.sh --input PATH --allow KEY [--allow KEY ...] --output P
 
 ## Result-env grammar
 
-The primary and fallback inputs use the identical parser:
+The primary and fallback inputs use the `phase_driver_read_result_env` parser:
 
 - Blank lines are ignored.
-- Every nonblank line must contain `=`.
 - Records split at the first `=` only.
 - Embedded `=` characters in values are preserved.
-- Values containing literal carriage-return bytes are rejected.
+- Nonblank lines without `=` are silently skipped.
+- Values containing CR or LF bytes are silently skipped (key not written).
 
-Physical newline smuggling is either a second parsed record or a malformed nonblank line without `=`; the helper never decodes escaped newlines.
+Physical newline smuggling is either a second parsed record or a nonblank line without `=` (silently skipped); the helper never decodes escaped newlines.
 
 ## Allowlist and replay
 
@@ -48,11 +50,7 @@ When fallback is used because the primary input is a symlink, the helper emits a
 | Code | Meaning |
 |------|---------|
 | `0` | Parsed successfully and atomically wrote `--output` |
-| `1` | Argv error; missing/symlink/non-regular primary without fallback; missing/symlink/non-regular fallback; malformed record; carriage-return value; output temp-file or move failure |
-
-## Bash 3.2
-
-Keep this helper compatible with macOS Bash 3.2: no associative arrays, namerefs, `mapfile`, case-conversion parameter expansion, `local -a`, or Bash 4-only redirects.
+| `1` | Argv error; missing/symlink/non-regular primary without fallback; missing/symlink/non-regular fallback; output temp-file or move failure |
 
 ## Symlink-refusal rationale
 
@@ -60,7 +58,7 @@ The caller sources only the generated output, never the primary result-env direc
 
 ## Harness
 
-`scripts/test-read-result-env.sh` covers allowlists, first-`=` parsing, primary/fallback parity, malformed-line refusal, fallback behavior, symlink breadcrumbs, fallback input refusal, quoting, sourceability, and WARN/ERROR replay.
+`scripts/test-read-result-env.sh` covers allowlists, first-`=` parsing, primary/fallback parity, malformed-line skip, fallback behavior, symlink breadcrumbs, fallback input refusal, quoting, sourceability, and WARN/ERROR replay.
 
 ```bash
 bash scripts/test-read-result-env.sh
