@@ -244,9 +244,16 @@ while IFS= read -r commit_line; do
   commit_subj="${commit_line#* }"
   # Skip commits already resolved via (#N) subject match
   printf '%s\n' "$commit_subj" | grep -q '(#[0-9][0-9]*)$' && continue
-  api_tsv="$(gh api "repos/${REPO}/commits/${commit_sha}/pulls" \
+  api_err_file="$(mktemp)"
+  api_tsv=""
+  if ! api_tsv="$(gh api "repos/${REPO}/commits/${commit_sha}/pulls" \
     --jq 'if length > 0 then .[0] | [(.number|tostring), .title, ((.labels // []) | map(.name) | join(",")), (.user.login // "unknown"), .html_url] | @tsv else "" end' \
-    2>/dev/null || true)"
+    2>"$api_err_file")"; then
+    api_tail="$(tail -5 "$api_err_file" 2>/dev/null || true)"
+    rm -f "$api_err_file"
+    emit_error pr-metadata-incomplete "commits-to-pulls lookup failed for ${commit_sha}${api_tail:+: $api_tail}"
+  fi
+  rm -f "$api_err_file"
   if [[ -n "$api_tsv" ]]; then
     IFS=$'\t' read -r api_num api_title api_labels api_author api_url <<< "$api_tsv"
     if [[ " $written_pr_numbers " != *" ${api_num} "* ]]; then

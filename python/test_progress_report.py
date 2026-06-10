@@ -250,3 +250,61 @@ def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: i
     assert "reviewers: 2/3 returned" in report
     assert "elapsed: 2m" in report
     assert report.endswith("detail")
+
+
+def test_step5_between_rounds_returns_empty(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "review-and-fix.env").write_text("STATUS=complete\n", encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+
+    assert progress_report._render_step5(impl, "run-1") == ""
+
+
+def test_review_rounds_root_prefers_live_tmpdir(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    run_id = "run-1"
+    flushed = impl / "larch-logs" / "implement" / run_id / "round-1"
+    live = impl / "round-2"
+    flushed.mkdir(parents=True)
+    live.mkdir(parents=True)
+    (flushed / "review-and-fix.env").write_text("", encoding="utf-8")
+    (live / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (live / "round-start-s").write_text("100\n", encoding="utf-8")
+
+    assert progress_report._review_rounds_root(impl, run_id) == impl
+    report = progress_report._render_step5(impl, run_id)
+    assert "round 2 in progress" in report
+
+
+def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    run_id = "run-1"
+    flushed = impl / "larch-logs" / "implement" / run_id / "round-1"
+    flushed.mkdir(parents=True)
+    (flushed / "review-and-fix.env").write_text("", encoding="utf-8")
+    (impl / "timing-ledger.tsv").write_text("v1\tmark\t1\timplement\tStep 5\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
+    captured: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(list(argv))
+        class Result:
+            returncode = 0
+            stdout = "detail-table"
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(progress_report.subprocess, "run", fake_run)
+
+    detail = progress_report._render_review_detail(impl, run_id)
+
+    assert detail == "detail-table"
+    assert captured
+    argv = captured[0]
+    assert "--rounds-root" in argv
+    rounds_root = argv[argv.index("--rounds-root") + 1]
+    assert rounds_root == str(flushed.parent)
+    assert "--timing-ledger" in argv
+    assert "--skill" in argv and argv[argv.index("--skill") + 1] == "implement"
