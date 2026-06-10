@@ -994,6 +994,29 @@ def _outer_backoff_seconds(attempt_index: int) -> float:
     return max(1.0, float(base))
 
 
+def _wait_for_ci_ready(
+    runner: Runner,
+    *,
+    run_id: str,
+    repo: str,
+    cwd: str | None = None,
+    sleep_fn: SleepFn = time.sleep,
+    clock: ClockFn = time.monotonic,
+) -> LogCollectResult:
+    """Poll collect_failed_logs every CI_MONITOR_IN_PROGRESS_POLL_INTERVAL seconds
+    until the run is no longer in_progress, or CI_MONITOR_IN_PROGRESS_TIMEOUT elapses.
+    """
+    deadline = clock() + config.CI_MONITOR_IN_PROGRESS_TIMEOUT
+    while True:
+        remaining = deadline - clock()
+        if remaining <= 0:
+            return collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+        sleep_fn(min(config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL, float(remaining)))
+        logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+        if logs.state != "in_progress":
+            return logs
+
+
 def _make_default_launch_fn(
     runner: Runner,
     *,
@@ -1381,12 +1404,30 @@ def evaluate_failure(
     base_ref: str = "main",
     ci_fix_rebase_pending: bool = False,
     ctx: RunContext | None = None,
+    clock: ClockFn = time.monotonic,
 ) -> FixResult:
     """Port of run_evaluate_failure outer loop."""
     if not run_id or not str(run_id).strip():
         return FixResult(status="waterfall-failed", detail="missing run_id")
 
     upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+    if upfront_logs.state == "in_progress":
+        upfront_logs = _wait_for_ci_ready(
+            runner,
+            run_id=run_id,
+            repo=repo,
+            cwd=cwd,
+            sleep_fn=sleep_fn,
+            clock=clock,
+        )
+        if upfront_logs.state == "in_progress":
+            return FixResult(
+                status="fix-exhausted",
+                detail=(
+                    f"ci-fix-exhausted: CI run {run_id} still in progress after "
+                    f"{config.CI_MONITOR_IN_PROGRESS_TIMEOUT}s"
+                ),
+            )
     upfront_ready_stash: LogCollectResult | None = None
     blind_rerun_attempted = False
     if (

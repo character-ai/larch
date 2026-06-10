@@ -1094,6 +1094,17 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
         },
     )
     sleeps: list[float] = []
+    # Fake clock: starts at 0, advances past the in-progress timeout on first sleep
+    # so the wait loop exits after one poll without blocking for a real hour.
+    clock_val = [0.0]
+
+    def fake_clock() -> float:
+        return clock_val[0]
+
+    def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+        clock_val[0] += ci_monitor.config.CI_MONITOR_IN_PROGRESS_TIMEOUT + 1
+
     fix = ci_monitor.evaluate_failure(
         runner,
         run_id="42",
@@ -1103,13 +1114,54 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
         _fix_attempts=0,
         cwd=None,
         launch_fn=launch_fn,
-        sleep_fn=sleeps.append,
+        sleep_fn=fake_sleep,
+        clock=fake_clock,
     )
     assert launch_count == 0
-    assert sleeps
+    # The wait loop should have slept exactly once at the poll interval before timing out.
+    assert sleeps == [float(ci_monitor.config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL)]
     assert fix.status == "fix-exhausted"
     assert fix.detail is not None
     assert fix.detail.startswith("ci-fix-exhausted")
+
+
+def test_wait_for_ci_ready_polls_until_ready() -> None:
+    """_wait_for_ci_ready polls every 15s and returns once the run exits in_progress."""
+    in_progress = _cr(
+        ("gh", "run", "view"),
+        rc=3,
+        stderr="is still in progress; logs will be available",
+    )
+    ready_log = _cr(("gh", "run", "view"), stdout="FAIL AssertionError\n")
+    runner = RecordingRunner({})
+    # sleep → poll sequence: one in_progress, then ready on the second poll
+    runner.sequential[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = [
+        in_progress,
+        ready_log,
+    ]
+    sleeps: list[float] = []
+    clock_val = [0.0]
+
+    def fake_clock() -> float:
+        return clock_val[0]
+
+    def fake_sleep(s: float) -> None:
+        sleeps.append(s)
+        clock_val[0] += s
+
+    result = ci_monitor._wait_for_ci_ready(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        run_id="42",
+        repo="o/r",
+        sleep_fn=fake_sleep,
+        clock=fake_clock,
+    )
+    # Two sleeps: one before the in_progress poll, one before the ready poll.
+    assert sleeps == [
+        float(ci_monitor.config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL),
+        float(ci_monitor.config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL),
+    ]
+    assert result.state == "ready"
 
 
 def test_evaluate_failure_deterministic_no_rerun() -> None:
