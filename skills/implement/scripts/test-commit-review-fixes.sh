@@ -24,6 +24,15 @@ printf '%s' "${GIT_COMMIT_ERR:-}" >&2
 exit "${GIT_COMMIT_RC:-0}"
 STUB
 chmod +x "$plugin/scripts/git-commit.sh"
+cat > "$plugin/scripts/token-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$plugin/scripts/timing-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$plugin/scripts/token-ledger.sh" "$plugin/scripts/timing-ledger.sh"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email a@b.test; git -C "$repo" config user.name tester
 printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" commit -qm init
@@ -34,6 +43,12 @@ assert_contains 'Address code review feedback' "$(cat "$TMP_ROOT/args.log")" 'de
 # Bash 3.2 regression: no-arg invocation must not abort on FILES[@] unbound variable
 out_noarg=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args-noarg.log" "$HELPER")
 assert_contains 'COMMITTED=true' "$out_noarg" 'no-arg invocation emits committed true'
+
+printf 'review fix\n' > "$repo/review-fix.txt"
+out_stage=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args-stage.log" "$HELPER" --stage-all)
+assert_contains 'COMMITTED=true' "$out_stage" 'stage-all invocation emits committed true'
+staged_names=$(git -C "$repo" diff --cached --name-only)
+assert_contains 'review-fix.txt' "$staged_names" '--stage-all stages untracked review fix'
 
 set +e
 failed=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args.log" GIT_COMMIT_RC=9 GIT_COMMIT_ERR='commit hook failed' "$HELPER" file.txt 2>/dev/null)

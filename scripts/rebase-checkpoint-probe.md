@@ -5,10 +5,10 @@ Combined `/implement` **Rebase Checkpoint Macro** surface: one `rebase-push.sh -
 ## Argv
 
 ```
-rebase-checkpoint-probe.sh <step-prefix> <short-name> [--base-remote <name>] [--base-ref <branch>]
+rebase-checkpoint-probe.sh <step-prefix> <short-name> [--base-remote <name>] [--base-ref <branch>] [--forked-target true|false]
 ```
 
-`--base-remote` / `--base-ref` are optional fork-mode passthrough flags (FINDING_4 — callers supply `BASE_ARGS=()`; the wrapper does not detect forked state).
+`--base-remote` / `--base-ref` are optional base overrides. `--forked-target true|false` is the `/implement` convenience flag: `true` maps to `--base-remote upstream --base-ref main` unless explicit base overrides are also present.
 
 ## Resolution (FINDING_8)
 
