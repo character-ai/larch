@@ -93,7 +93,7 @@ check_annotated_literal_lines() {
 }
 
 check_render_specialist_prompt_paths() {
-  local file="scripts/render-specialist-prompt.sh"
+  local file="python/cli.py render specialist"
 
   while IFS=: read -r line_no text; do
     [[ "$text" == *'Review all code changes'* ]] || continue

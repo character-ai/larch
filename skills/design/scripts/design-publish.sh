@@ -411,7 +411,7 @@ fi
 if [[ "$_run_upsert" == true ]]; then
     UPSERT_RAN=true
     set +e
-    _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
+    _upsert_out=$(python3 "$PLUGIN_ROOT/python/cli.py" diagrams upsert "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
     _upsert_rc=$?
     set -e
     printf '%s\n' "$_upsert_out" >"$DESIGN_TMPDIR/diagrams-architecture-upsert.stdout"
@@ -420,7 +420,7 @@ if [[ "$_run_upsert" == true ]]; then
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c.5" \
-            --tool "upsert-diagrams-comment.sh architecture" \
+            --tool "python/cli.py diagrams upsert architecture" \
             --exit-code "${_upsert_rc:-1}" \
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr" \

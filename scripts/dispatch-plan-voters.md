@@ -7,7 +7,7 @@
 
 ## Voter 1 (Claude)
 
-- Prompt from `skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-oos`, `--verification-context plan`), same renderer family as Voters 2–3.
+- Prompt from `python/cli.py render voter` (`--id-grammar finding-oos`, `--verification-context plan`), same renderer family as Voters 2–3.
 - Invokes `"$SCRIPT_DIR/launch-claude-review.sh"` with `--role voter`, `--read-tools-add-dir "$DESIGN_TMPDIR"`, `--timing-task-kind claude-plan-voter`, `--timeout 1200`, output at `$DESIGN_TMPDIR/claude-vote-output.txt`. The `--read-tools-add-dir` grants Claude an explicit scoped read-only tool grant (`--allowedTools Read --permission-mode plan`) for the session directory containing the ballot, replacing reliance on default-tool permissions.
 - On launcher failure or empty output, writes `voter1-diag.txt` and may append via `append-tool-failure.sh` (same pattern as code-review voter diagnostics).
 
@@ -34,7 +34,7 @@ Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballot
 
 ## Prompt integrity
 
-`make_prompt_file` checks the exit code of `render-voter-prompt.sh` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
+`make_prompt_file` checks the exit code of `python/cli.py render voter` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
 
 ## Inputs
 
@@ -73,4 +73,4 @@ When the panel is degraded, the dispatcher checks whether a failed external vote
 
 ## Scope anchor forwarding
 
-`--scope-anchor-file <path>` is optional. `/design` plan review passes the staged `$DESIGN_TMPDIR/plan-review-scope-anchor.txt`; the dispatcher forwards it to every `render-voter-prompt.sh` invocation, including retry prompts through the shared prompt files. Omitting the flag preserves existing voter prompts.
+`--scope-anchor-file <path>` is optional. `/design` plan review passes the staged `$DESIGN_TMPDIR/plan-review-scope-anchor.txt`; the dispatcher forwards it to every `python/cli.py render voter` invocation, including retry prompts through the shared prompt files. Omitting the flag preserves existing voter prompts.

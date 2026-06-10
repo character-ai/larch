@@ -76,7 +76,7 @@ All voters vote on **all** findings — no self-voting exclusion. Voters are ins
 
 Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
-<!-- OOS voter rubric: canonical text is emitted at runtime by skills/shared/scripts/render-voter-prompt.sh. Keep the following paragraph in sync with skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and skills/design/references/plan-review.md (Voter 1); scripts/test-render-voter-prompt.sh greps the shared substring across all four. -->
+<!-- OOS voter rubric: canonical text is emitted at runtime by python/cli.py render voter. Keep the following paragraph in sync with skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and skills/design/references/plan-review.md (Voter 1); scripts/test-python/cli.py render voter greps the shared substring across all four. -->
 
 For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.
 
@@ -91,7 +91,7 @@ Default-deny. If you are unsure whether a finding clears a necessity gate, vote 
 
 Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, "best practice", a performance / micro-optimization when the feature already meets its stated performance requirement, or cross-shell / cross-OS / tool-version portability speculation — those are Out-of-Scope signals, not acceptance signals.
 
-**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `skills/shared/scripts/render-voter-prompt.sh` for grammar-specific OOS wording (see the prose paragraph immediately above this fenced template for the canonical lowest-common-denominator clause). In this template's structural shape: YES files a GitHub issue for future tracking; NO means trivial/incorrect or not worth tracking. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use NO for trivial, incorrect, or not-issue-worthy observations.
+**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording (see the prose paragraph immediately above this fenced template for the canonical lowest-common-denominator clause). In this template's structural shape: YES files a GitHub issue for future tracking; NO means trivial/incorrect or not worth tracking. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use NO for trivial, incorrect, or not-issue-worthy observations.
 
 {BALLOT}
 

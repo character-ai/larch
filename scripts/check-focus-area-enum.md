@@ -8,7 +8,7 @@ It checks the canonical reviewer focus-area surfaces for enum text that includes
 Actions-style `::error` diagnostics and exits non-zero on drift.
 
 Primary caller: the `agent-sync` Makefile target, which also runs
-`scripts/check-generators.sh` and `scripts/check-topology-rule-paths.py`.
+`python3 python/cli.py generate check` and `scripts/check-topology-rule-paths.py`.
 
 Harness: covered indirectly by the `agent-sync` target and by
 `scripts/test-ci-failed-jobs.sh` mapping drift coverage.

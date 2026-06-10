@@ -9,7 +9,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   on the disabled path.
 - When `IMPLEMENT_TMPDIR` is set and `LARCH_RENDER_CACHE_DIR` is unset,
   the launcher exports `LARCH_RENDER_CACHE_DIR=$IMPLEMENT_TMPDIR/render-cache`
-  so all `render-specialist-prompt.sh` subprocesses in the same Bash invocation
+  so all `python/cli.py render specialist` subprocesses in the same Bash invocation
   share the session render cache.
 - `--output` is validated through `scripts/lib-validate-meta-path.sh` before
   launcher side effects.
@@ -166,16 +166,16 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   stderr emitted during a successful run" from "sidecar was never populated";
   no production consumer parses the marker, and vote tallying reads only the
   main `.txt` output.
-- `--commit-count <n>` (optional): passed through to `render-specialist-prompt.sh`
+- `--commit-count <n>` (optional): passed through to `python/cli.py render specialist`
   on `--agent-file` paths; when `1 ≤ n ≤ 5`, the rendered specialist prompt omits
   the `git log` instruction from its diff preamble. Stored in the specialist prompt
   sentinel (`${OUTPUT}.prompt`) so retry replay produces an identical prompt.
   Ignored on `--prompt` / `--prompt-file` paths.
-- `--plan-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
+- `--plan-file <path>` (optional): forwarded to `python/cli.py render specialist` on `--agent-file`
   diff-mode paths. Embeds the plan file's content inline in the prompt between `<implementation_plan>`
   tags so the reviewer can verify code against the plan. Stored in the Codex specialist prompt
   Ignored on `--prompt` / `--prompt-file` paths.
-- `--feature-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
+- `--feature-file <path>` (optional): forwarded to `python/cli.py render specialist` on `--agent-file`
   diff-mode paths. Embeds the feature description file's content inline between `<feature_description>`
   Ignored on `--prompt` / `--prompt-file` paths.
 

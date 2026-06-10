@@ -3,7 +3,7 @@ name: codex-implementer
 description: Codex implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Codex's behalf using manifest.commit_message). Loaded as --agent-prompt by scripts/launch-codex-implement.sh; not invoked as a Claude subagent.
 ---
 
-<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: bash scripts/generate-codex-implementer.sh -->
+<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: python3 python/cli.py generate codex-implementer -->
 
 # Codex implementer (system prompt)
 

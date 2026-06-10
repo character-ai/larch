@@ -333,9 +333,14 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_STUB/python/"
-cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_STUB/skills/design/scripts/"
+cat > "$PLUGIN_STUB/python/cli.py" <<'CLI_STUB'
+#!/usr/bin/env bash
+if [[ "${1:-} ${2:-}" != "render plan-review" ]]; then echo "unexpected cli args: $*" >&2; exit 2; fi
+shift 2
+printf 'stub plan review prompt for %s\n' "$*"
+CLI_STUB
 chmod +x "$PLUGIN_STUB/scripts/redact-secrets.sh" \
-    "$PLUGIN_STUB/skills/design/scripts/render-plan-review-prompt.sh"
+    "$PLUGIN_STUB/python/cli.py"
 mkdir -p "$PLUGIN_STUB/skills/design/references"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_STUB/skills/design/references/"
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
@@ -394,10 +399,10 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_BAD/python/"
-cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_BAD/skills/design/scripts/"
+cp python3 "$REPO_ROOT/python/cli.py" render plan-review "$PLUGIN_BAD/skills/design/scripts/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
 chmod +x "$PLUGIN_BAD/scripts/redact-secrets.sh" \
-    "$PLUGIN_BAD/skills/design/scripts/render-plan-review-prompt.sh"
+    "$PLUGIN_BAD/python/cli.py render plan-review"
 cat >"$PLUGIN_BAD/scripts/launch-claude-review.sh" <<'BAD_CLAUDE_STUB'
 #!/usr/bin/env bash
 OUTPUT=""
@@ -485,12 +490,12 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
-cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_JSONL/skills/design/scripts/"
+cp python3 "$REPO_ROOT/python/cli.py" render plan-review "$PLUGIN_JSONL/skills/design/scripts/"
 mkdir -p "$PLUGIN_JSONL/python" "$PLUGIN_JSONL/skills/design/references"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_JSONL/python/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
 chmod +x "$PLUGIN_JSONL/scripts/redact-secrets.sh" \
-    "$PLUGIN_JSONL/skills/design/scripts/render-plan-review-prompt.sh"
+    "$PLUGIN_JSONL/python/cli.py render plan-review"
 cat >"$PLUGIN_JSONL/scripts/launch-claude-review.sh" <<'JSONL_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""

@@ -130,16 +130,16 @@ assert_lint_ok heredoc "$heredoc"
 
 pr3051_pre="$TMPROOT/pr3051-pre"
 make_root "$pr3051_pre"
-cat > "$pr3051_pre/skills/design/scripts/render-plan-review-prompt.sh" <<'EOF'
+cat > "$pr3051_pre/python/cli.py render plan-review" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 prompt_body="${prompt_body//__READABILITY_STYLE_BLOCK__/$readability_style}"
 EOF
-assert_lint_fails_for pr3051-pre "$pr3051_pre" "skills/design/scripts/render-plan-review-prompt.sh:3: $unsafe_fragment"
+assert_lint_fails_for pr3051-pre "$pr3051_pre" "python/cli.py render plan-review:3: $unsafe_fragment"
 
 pr3051_post="$TMPROOT/pr3051-post"
 make_root "$pr3051_post"
-cat > "$pr3051_post/skills/design/scripts/render-plan-review-prompt.sh" <<'EOF'
+cat > "$pr3051_post/python/cli.py render plan-review" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 before="${prompt_body%%__READABILITY_STYLE_BLOCK__*}"

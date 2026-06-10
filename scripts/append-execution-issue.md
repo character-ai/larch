@@ -57,4 +57,4 @@ I/O failures keep the shorter `FAILED=true` / `ERROR=<message>` envelope and exi
 
 ## Edit-in-sync
 
-Update callers in `scripts/sanitize-mermaid-fragment.sh`, `scripts/larch-log.sh`, and Mermaid-related skill prose when changing this contract.
+Update callers in `python/cli.py mermaid sanitize`, `scripts/larch-log.sh`, and Mermaid-related skill prose when changing this contract.

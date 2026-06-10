@@ -3,15 +3,7 @@ paths:
   - "skills/shared/reviewer-templates.md"
   - "agents/code-reviewer.md"
   - "agents/reviewer-*.md"
-  - "scripts/generate-code-reviewer-agent.sh"
-  - "scripts/generate-code-reviewer-agent.md"
-  - "scripts/generate-reviewer-plan-fidelity-agent.sh"
-  - "scripts/generate-reviewer-plan-fidelity-agent.md"
-  - "scripts/generate-reviewer-code-robustness-agent.sh"
-  - "scripts/generate-reviewer-code-robustness-agent.md"
-  - "scripts/generate-reviewer-security-structure-tests-agent.sh"
-  - "scripts/generate-reviewer-security-structure-tests-agent.md"
-  - "scripts/check-generators.sh"
+  - "python/rendering.py"
   - "scripts/generators.tsv"
 ---
 
@@ -21,17 +13,17 @@ paths:
 `skills/shared/reviewer-templates.md` (canonical for generated agents; update
 triggers live there), then regenerate the affected agent file(s):
 
-- `bash scripts/generate-code-reviewer-agent.sh` → `agents/code-reviewer.md`
-- `bash scripts/generate-reviewer-plan-fidelity-agent.sh` → `agents/reviewer-plan-fidelity.md`
-- `bash scripts/generate-reviewer-code-robustness-agent.sh` → `agents/reviewer-code-robustness.md`
-- `bash scripts/generate-reviewer-security-structure-tests-agent.sh` → `agents/reviewer-security-structure-tests.md`
+- `python3 python/cli.py generate code-reviewer-agent` → `agents/code-reviewer.md`
+- `python3 python/cli.py generate reviewer-plan-fidelity-agent` → `agents/reviewer-plan-fidelity.md`
+- `python3 python/cli.py generate reviewer-code-robustness-agent` → `agents/reviewer-code-robustness.md`
+- `python3 python/cli.py generate reviewer-security-structure-tests-agent` → `agents/reviewer-security-structure-tests.md`
 
-CI's `agent-sync` job runs `scripts/check-generators.sh` to enforce drift across all registered generators.
+CI's `agent-sync` job runs `python3 python/cli.py generate check` to enforce drift across all registered generators.
 
 Hand-maintained specialist variants (`agents/reviewer-edge-cases.md`,
 `agents/reviewer-testing.md`, and any `agents/reviewer-*.md` file carrying the
 "specialist variant, hand-maintained" header) are not regenerated from
 `skills/shared/reviewer-templates.md` or the four archetype generators. Fold or
 specialization edits go directly into those agent files, then run
-`scripts/generate-pre-rendered-reviewer-prompts.sh` so
+`python3 python/cli.py generate pre-rendered-reviewer-prompts` so
 `agents/pre-rendered/` stays in sync.

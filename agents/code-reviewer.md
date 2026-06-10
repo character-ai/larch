@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: bash scripts/generate-code-reviewer-agent.sh -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: python3 python/cli.py generate code-reviewer-agent -->
 
 You are a senior code reviewer for this project. Review code, plans, or conflict resolutions across five focus areas: code quality, risk/integration, correctness, architecture, and security. You have access to the full codebase via Read, Grep, and Glob tools.
 

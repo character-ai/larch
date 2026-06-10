@@ -29,7 +29,7 @@ cat >"$TMP/ballot.txt" <<'BODY'
 ### FINDING_1:
 - **Concern**: [SCOPE-REDUCTION] remove unrelated refactor.
 BODY
-with_anchor=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+with_anchor=$(python3 "$REPO_ROOT/python/cli.py" render voter \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
@@ -57,7 +57,7 @@ outside="$HOME/larch-test-outside-scope-anchor.txt"
 printf 'outside\n' >"$outside"
 trap 'rm -rf "$TMP" "$outside"' EXIT
 set +e
-_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_out=$(python3 "$REPO_ROOT/python/cli.py" render voter \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
@@ -70,7 +70,7 @@ grep -Fq 'allowed local workspace' "$TMP/voter-invalid.err" || fail "outside sco
 grep -Fq 'Read the ballot from this path' <<<"$_out" || fail "outside scope anchor: ballot pointer missing from output"
 
 set +e
-_crlf_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_crlf_out=$(python3 "$REPO_ROOT/python/cli.py" render voter \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
@@ -86,7 +86,7 @@ python3 - <<'PY' >"$big_anchor"
 print("x" * 70000)
 PY
 set +e
-_big_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_big_out=$(python3 "$REPO_ROOT/python/cli.py" render voter \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \

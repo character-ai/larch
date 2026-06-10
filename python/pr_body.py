@@ -29,7 +29,7 @@ _OPEN_BRACKET = frozenset("[{(")
 _CLOSE_BRACKET = frozenset("]})")
 
 
-def _flowchart_rejects_pipe(line: str) -> bool:
+def flowchart_rejects_pipe(line: str) -> bool:
     """Port sanitize-mermaid-fragment.sh flowchart_reject (depth + quote aware)."""
     depth = 0
     quote = False
@@ -135,7 +135,7 @@ def compose_summary_bullets(
     return "\n".join(bullets) + "\n"
 
 
-def _body_start_line(lines: list[str]) -> int:
+def body_start_line(lines: list[str]) -> int:
     in_frontmatter = False
     frontmatter_started = False
     for index, raw in enumerate(lines, start=1):
@@ -156,7 +156,7 @@ def _body_start_line(lines: list[str]) -> int:
 
 def _validate_fence_body(body: str, _fence_num: int) -> list[str]:
     lines = body.splitlines()
-    start = _body_start_line(lines)
+    start = body_start_line(lines)
     if start == -1:
         return [config.MERMAID_REASON_UNCLOSED_FRONTMATTER]
     if start < 1 or start > len(lines):
@@ -165,7 +165,7 @@ def _validate_fence_body(body: str, _fence_num: int) -> list[str]:
     reasons: list[str] = []
     if _FLOWCHART_START.match(first):
         for line in lines[start - 1 :]:
-            if _flowchart_rejects_pipe(line):
+            if flowchart_rejects_pipe(line):
                 reasons.append(config.MERMAID_REASON_PIPE_IN_NODE)
                 break
     elif first == "sequenceDiagram":

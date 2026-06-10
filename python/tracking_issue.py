@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from typing import cast
 
 import config
 import gh
@@ -138,6 +140,57 @@ def _upsert_marker_comment(
         msg = f"gh issue comment patch failed ({result.returncode})"
         raise ShipError(msg)
 
+
+
+def upsert_marker_comment(
+    runner: Runner,
+    issue: str,
+    marker: str,
+    body: str,
+    *,
+    repo: str,
+    comment_id: int | None = None,
+    cwd: str | None = None,
+) -> tuple[str, bool]:
+    """Upsert an issue comment with an explicit full marker.
+
+    Returns ``(comment_url, updated)`` when GitHub exposes those fields; callers
+    that use a recording runner may receive an empty URL.
+    """
+    full_body = f"{marker}\n{body}"
+    redacted = redact.redact(full_body)
+    if "[content truncated" in redacted:
+        msg = "redaction failed for tracking-issue comment"
+        raise ShipError(msg)
+    if comment_id is None:
+        found = gh.find_issue_comment_id_by_marker(
+            runner,
+            issue,
+            marker,
+            repo=repo,
+            cwd=cwd,
+        )
+        if found is not None and found < 0:
+            msg = f"multiple tracking comments found for marker {marker!r}"
+            raise ShipError(msg)
+        comment_id = found
+    if comment_id is None:
+        result = gh.issue_comment(runner, issue, redacted, repo=repo, cwd=cwd)
+        if result.returncode != 0:
+            msg = f"gh issue comment failed ({result.returncode})"
+            raise ShipError(msg)
+        return "", True
+    result = gh.issue_comment_patch(runner, comment_id, redacted, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        msg = f"gh issue comment patch failed ({result.returncode})"
+        raise ShipError(msg)
+    try:
+        data_obj: object = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        data_obj = {}
+    data = cast("dict[str, object]", data_obj) if isinstance(data_obj, dict) else {}
+    url = data.get("html_url", "")
+    return url if isinstance(url, str) else "", True
 
 def upsert_summary(
     runner: Runner,

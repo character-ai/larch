@@ -51,15 +51,18 @@ require_voter_paths_file_nonempty() {
 
 make_wait_barrier_plugin_root() {
     local root="$1"
-    mkdir -p "$root/scripts" "$root/skills/shared/scripts"
+    mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
-#!/usr/bin/env bash
-printf 'stub voter prompt\n'
-printf 'Read the ballot from this path: /stub/ballot\n'
+    cat > "$root/python/cli.py" <<'STUB_RENDER'
+import sys
+if sys.argv[1:3] != ["render", "voter"]:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+print("stub voter prompt")
+print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
-    chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
+    chmod +x "$root/python/cli.py"
     cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -121,18 +124,21 @@ STUB_WAIT
 
 make_voter1_delayed_done_plugin_root() {
     local root="$1"
-    mkdir -p "$root/scripts" "$root/skills/shared/scripts"
+    mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     ln -sf "$REPO_ROOT/scripts/lib-voter-parse-rate.sh" "$root/scripts/lib-voter-parse-rate.sh"
     ln -sf "$REPO_ROOT/scripts/parse-judge-vote-and-rating.sh" "$root/scripts/parse-judge-vote-and-rating.sh"
     ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/dispatch-code-voters.sh" "$root/scripts/dispatch-code-voters.sh"
-    cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
-#!/usr/bin/env bash
-printf 'stub voter prompt\n'
-printf 'Read the ballot from this path: /stub/ballot\n'
+    cat > "$root/python/cli.py" <<'STUB_RENDER'
+import sys
+if sys.argv[1:3] != ["render", "voter"]:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+print("stub voter prompt")
+print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
-    chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
+    chmod +x "$root/python/cli.py"
     cat > "$root/scripts/launch-claude-review.sh" <<'STUB_CLAUDE'
 #!/usr/bin/env bash
 set -euo pipefail

@@ -9,6 +9,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
 - `errors.py`, `outcomes.py`, `run_context.py` — typed errors and run context
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` mirrors `scripts/lib-quiet.sh` stream routing but intentionally opens quiet logs in append-forensics mode instead of bash's truncate-per-initialization behavior, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
+- `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py`, `report_tokens_render.py`, `report_tokens_plot.py`, `report_tokens_issue.py`, `report_tokens_cli.py` — live `/report-tokens` scan, pricing, render, plot-subprocess, issue-posting, and CLI pipeline.
@@ -28,6 +29,7 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
+- `test_rendering.py` — pytest coverage replacing the retired renderer/generator bash harnesses.
 - `test_<module>.py` — colocated unit tests; `test_support.py` provides the shared list-queue `RecordingRunner` (with `test_run_logs.py` preserving `git_commits` via a subclass and `test_ci_monitor.py` retaining its keyed runner); `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies

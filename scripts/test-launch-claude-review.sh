@@ -42,7 +42,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: bad timeout exit=$rc" >&2; exit 1; }
 
-# Test --agent-file path: render-specialist-prompt.sh is invoked; output still reaches caller.
+# Test --agent-file path: python/cli.py render specialist is invoked; output still reaches caller.
 # Use a real agent file from the repo (code-reviewer.md is always present).
 agent_file="$REPO_ROOT/agents/code-reviewer.md"
 agent_output="$TMPROOT/agent-out.txt"

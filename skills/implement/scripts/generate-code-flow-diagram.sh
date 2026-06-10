@@ -92,7 +92,7 @@ cp "$raw" "$candidate" || {
     exit 1
 }
 
-if "$PLUGIN_ROOT/scripts/sanitize-mermaid-fragment.sh" \
+if python3 "$PLUGIN_ROOT/python/cli.py" mermaid sanitize \
     --input "$candidate" \
     --from-md \
     --warnings-step "7a" >"$sanitize_log" 2>&1; then

@@ -86,5 +86,5 @@ pass). Routed sites:
 
 Reviewed and intentionally **not** routed (LOW): `scripts/eval-research.sh` git
 stderr (dev/eval harness), `scripts/validate-citations.sh` `__VC_DRY_RUN` test
-seam, `scripts/generate-topology-docs.sh` awk stderr over committed TSV, and
+seam, `python3 python/cli.py generate topology-docs` awk stderr over committed TSV, and
 ~40 static `print_usage` heredoc relays.

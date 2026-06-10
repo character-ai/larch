@@ -39,13 +39,13 @@ EOF
 mv "$LANE_STATUS_TMP" "$LANE_STATUS_FILE"
 ```
 
-Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/scripts/render-lane-status.md`.
+Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/rendering.py`.
 
 ## External Reviewer Setup (if `codex_available` or `cursor_available`)
 
 The research report is already written to `$RESEARCH_TMPDIR/research-report.txt` from Step 1.5, so both Codex and Cursor can read it.
 
-External reviewer prompts are rendered from the unified Code Reviewer archetype in `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh`. Before launching either external lane, write the shared prompt inputs to `$RESEARCH_TMPDIR`:
+External reviewer prompts are rendered from the unified Code Reviewer archetype in `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` via `${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer`. Before launching either external lane, write the shared prompt inputs to `$RESEARCH_TMPDIR`:
 
 ```bash
 cat > "$RESEARCH_TMPDIR/research-question.txt" <<'LARCH_RESEARCH_END_a3f2b1'
@@ -64,7 +64,7 @@ LARCH_INSCOPE_END_a3f2b1
 Run Cursor **first** in the parallel message (it takes the longest). Render the prompt **in foreground** before the background launch:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
+${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \
@@ -114,7 +114,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 Run Codex **second** in the parallel message (after Cursor):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
+${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \
@@ -213,7 +213,7 @@ EOF
 mv "$LANE_STATUS_TMP" "$LANE_STATUS_FILE"
 ```
 
-Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/scripts/render-lane-status.md`.
+Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/rendering.py`.
 
 ## Codex and Cursor Negotiation (in parallel)
 

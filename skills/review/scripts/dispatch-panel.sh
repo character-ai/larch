@@ -192,7 +192,7 @@ synthesize_dynamic_slots() {
         if [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]]; then
             render_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
         fi
-        "$PLUGIN_ROOT/scripts/render-specialist-prompt.sh" "${render_args[@]}" > "$rendered_prompt"
+        python3 "$PLUGIN_ROOT/python/cli.py" render specialist "${render_args[@]}" > "$rendered_prompt"
         if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
             jq -cn \
                 --arg slot "dyn-$name" \

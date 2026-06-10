@@ -43,8 +43,8 @@ suppress = [
   # implementer launchers, not review/synthesis agents.
   # Suppression is global because agent-lint does not support per-file
   # exceptions for this rule. Drift defense for the reviewer family lives
-  # in the registry walker (scripts/check-generators.sh, which dispatches
-  # scripts/generate-code-reviewer-agent.sh --check via scripts/generators.tsv)
+  # in the registry walker (python3 python/cli.py generate check, which dispatches
+  # python3 python/cli.py generate code-reviewer-agent --check via scripts/generators.tsv)
   # + the existing CI pin on the focus-area enum.
   "template-marker-missing",
 ]
@@ -256,14 +256,14 @@ suppress = [
 # scripts/test-review-structure.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/test-render-reviewer-prompt.sh is the regression harness for
-# scripts/render-reviewer-prompt.sh (closes #417 — alignment of /research
+# scripts/test-python/cli.py render reviewer is the regression harness for
+# python/cli.py render reviewer (closes #417 — alignment of /research
 # Codex+Cursor validation lanes with the unified code-reviewer archetype).
 # The renderer itself is structurally referenced from skills/research/
 # references/validation-phase.md (loaded via MANDATORY directive from
 # skills/research/SKILL.md) and is therefore not excluded; the test harness
 # is referenced only from Makefile (test-render-reviewer-prompt target) and
-# scripts/test-render-reviewer-prompt.md (sibling contract), matching the
+#  (sibling contract), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
 #
 # scripts/eval-research.sh is the opt-in /research evaluation harness
@@ -465,10 +465,10 @@ exclude = [
   # skills/design/scripts/plan-review-loop.sh through $DEDUP_PLAN_LINES_PY;
   # agent-lint's G004/dead-script rule does not follow shell variable indirection.
   "skills/design/scripts/dedup-plan-lines.py",
-  # scripts/classify-diff-mode.sh is invoked from scripts/render-specialist-prompt.sh
+  # scripts/classify-diff-mode.sh is invoked from python/cli.py render specialist
   # via a `CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"` shell variable rather
   # than a literal path — agent-lint's G004/dead-script rule does not follow shell
-  # variable indirection. render-specialist-prompt.sh itself IS structurally
+  # variable indirection. python/cli.py render specialist itself IS structurally
   # referenced from launch-review.sh --tool cursor / skills/review/SKILL.md.
   "scripts/classify-diff-mode.sh",
   # scripts/parse-judge-vote-and-rating.sh is invoked by
@@ -589,12 +589,10 @@ exclude = [
   # excluded.
   # for the presence-detection (CODEX_PRESENT/CURSOR_PRESENT) defaults in
   # python/cli.py session setup. Referenced only from Makefile
-  # scripts/test-mermaid-fragments.sh is the regression harness for
-  # sanitize-mermaid-fragment.sh. Referenced only
+  #  is the regression harness for
+  # python/cli.py mermaid sanitize. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
   # matching the Makefile-only harness pattern above.
-  "scripts/test-mermaid-fragments.sh",
-  "scripts/test-mermaid-fragments.md",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",
@@ -680,23 +678,23 @@ exclude = [
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
   "scripts/external-tool-registry.sh",
-  # scripts/generate-code-reviewer-agent.sh is invoked through
-  # scripts/generators.tsv by scripts/check-generators.sh. agent-lint's
+  # python3 python/cli.py generate code-reviewer-agent is invoked through
+  # scripts/generators.tsv by python3 python/cli.py generate check. agent-lint's
   # dead-script scanner does not resolve TSV registry entries, so the exemplar
   # generator is excluded explicitly.
-  "scripts/generate-code-reviewer-agent.sh",
+  "python3 python/cli.py generate code-reviewer-agent",
   # These generators are invoked through the same scripts/generators.tsv
   # registry walker. agent-lint does not resolve TSV rows, so exclude them
   # alongside the exemplar generator above.
-  "scripts/generate-reviewer-plan-fidelity-agent.sh",
-  "scripts/generate-reviewer-code-robustness-agent.sh",
-  "scripts/generate-reviewer-security-structure-tests-agent.sh",
-  "scripts/generate-pre-rendered-reviewer-prompts.sh",
-  "scripts/generate-cursor-implementer.sh",
-  "scripts/generate-codex-implementer.sh",
-  # scripts/generate-topology-docs.sh is invoked through the same generator
+  "python3 python/cli.py generate reviewer-plan-fidelity-agent",
+  "python3 python/cli.py generate reviewer-code-robustness-agent",
+  "python3 python/cli.py generate reviewer-security-structure-tests-agent",
+  "python3 python/cli.py generate pre-rendered-reviewer-prompts",
+  "python3 python/cli.py generate cursor-implementer",
+  "python3 python/cli.py generate codex-implementer",
+  # python3 python/cli.py generate topology-docs is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
-  "scripts/generate-topology-docs.sh",
+  "python3 python/cli.py generate topology-docs",
   # scripts/consolidate-round-sidecars.sh is the one-shot operator migration
   # script for Phase 3c (issue #3716): converts committed round directories
   # from individual sidecar files to round-meta.json and pools reviewer-dyn-*.md
@@ -733,11 +731,11 @@ exclude = [
   # (test-external-tool-registry target) and scripts/test-external-tool-registry.md
   # (sibling contract).
   "scripts/test-external-tool-registry.sh",
-  # scripts/test-check-generators.sh is the regression harness for the
+  # scripts/test-python/cli.py generate check is the regression harness for the
   # generator-registry walker. Referenced only from Makefile
-  # (test-check-generators target) and scripts/test-check-generators.md
+  # (test-check-generators target) and
   # (sibling contract).
-  "scripts/test-check-generators.sh",
+  "scripts/test-python/cli.py generate check",
   # scripts/test-check-topology-rule-paths.sh is the regression harness for
   # scripts/check-topology-rule-paths.py (the TSV-vs-rule-paths coverage
   # guard). The check script itself IS structurally referenced from
@@ -748,11 +746,11 @@ exclude = [
   # scripts/test-check-topology-rule-paths.md (sibling contract), matching
   # the same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-check-topology-rule-paths.sh",
-  # scripts/test-generate-topology-docs.sh is the regression harness for the
+  # scripts/test-python/cli.py generate topology-docs is the regression harness for the
   # topology projection generator. Referenced only from Makefile
-  # (test-generate-topology-docs target) and scripts/test-generate-topology-docs.md
+  # (test-generate-topology-docs target) and
   # (sibling contract).
-  "scripts/test-generate-topology-docs.sh",
+  "scripts/test-python/cli.py generate topology-docs",
   # scripts/test-launch-review.sh is the unified regression harness for the
   # Codex and Cursor review launcher paths. Referenced only from
   # Makefile (test-launch-review target) and scripts/test-launch-review.md
@@ -826,10 +824,10 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern as the other
   # root test-* harnesses above.
   "scripts/test-dispatch-plan-voters.sh",
-  # scripts/test-render-voter-prompt.sh is the offline harness for
-  # skills/shared/scripts/render-voter-prompt.sh (Makefile test-render-voter-prompt
-  # target + scripts/test-render-voter-prompt.md sibling contract).
-  "scripts/test-render-voter-prompt.sh",
+  # scripts/test-python/cli.py render voter is the offline harness for
+  # python/cli.py render voter (Makefile test-render-voter-prompt
+  # target +  sibling contract).
+  "scripts/test-python/cli.py render voter",
   # scripts/test-rebase-push.sh is the regression harness for
   # scripts/rebase-push.sh (#856). It is referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as the other
@@ -1134,24 +1132,23 @@ exclude = [
   "scripts/test-quick-mode-docs-sync.sh",
   "scripts/test-research-structure.sh",
   "scripts/test-review-structure.sh",
-  "scripts/test-render-reviewer-prompt.sh",
+  "scripts/test-python/cli.py render reviewer",
   "scripts/test-step0b-router-flag-recovery.sh",
   "scripts/test-step0b-router-flag-recovery.md",
-  # scripts/test-render-specialist-prompt.sh is the regression harness for
-  # scripts/render-specialist-prompt.sh (the specialist reviewer prompt
+  # scripts/test-python/cli.py render specialist is the regression harness for
+  # python/cli.py render specialist (the specialist reviewer prompt
   # renderer for /review's 5-specialist panel). The renderer itself
   # IS structurally referenced from skills/review/SKILL.md Step 2 launch
   # procedure; the test harness is referenced only from Makefile
-  # (test-render-specialist-prompt target) and scripts/test-render-specialist-prompt.md
+  # (test-render-specialist-prompt target) and
   # (sibling contract), matching the same Makefile-only pattern.
-  "scripts/test-render-specialist-prompt.sh",
-  # scripts/test-render-debate-retry-prompt.sh is the regression harness for
-  # scripts/render-debate-retry-prompt.sh (dialectic waterfall corrective prompts).
+  "scripts/test-python/cli.py render specialist",
+  # scripts/test-python/cli.py render debate-retry is the regression harness for
+  # python/cli.py render debate-retry (dialectic waterfall corrective prompts).
   # The renderer is referenced from skills/design/references/dialectic-execution.md
   # and skills/shared/dialectic-protocol.md; the harness is Makefile-only
   # (test-render-debate-retry-prompt target) plus sibling .md.
-  "scripts/test-render-debate-retry-prompt.sh",
-  "scripts/test-render-debate-retry-prompt.md",
+  "scripts/test-python/cli.py render debate-retry",
   # scripts/test-design-log-publish.sh exercises design-log-publish.sh
   # (Makefile test-design-log-publish target + sibling .md). Same
   # Makefile-only harness pattern as test-tracking-issue-write.sh.
@@ -1216,18 +1213,18 @@ exclude = [
   "scripts/test-implement-finalize.sh",
   # python/cli.py session restore-finalize-state, wired into Makefile
   # the other test-* harnesses above.
-  # scripts/test-render-lane-status.sh is the regression harness for
-  # scripts/render-lane-status.sh (the /research lane-attribution formatter
+  # scripts/test-python/cli.py render lane-status is the regression harness for
+  # python/cli.py render lane-status (the /research lane-attribution formatter
   # added by #421). Wired only via Makefile test-render-lane-status target;
   # the formatter itself IS structurally referenced from skills/research/
   # SKILL.md Step 3, but the harness is not — same Makefile-only shape as
   # the other test-* harnesses above.
-  "scripts/test-render-lane-status.sh",
-  # scripts/render-lane-status-lib.sh is a sourced-only helper (no shebang,
+  "scripts/test-python/cli.py render lane-status",
+  # python/rendering.py is a sourced-only helper (no shebang,
   # not executable, defines render_lane() and sanitize_reason() consumed by
-  # render-lane-status.sh via `source`). Same "sourced library" shape as
+  # python/cli.py render lane-status via `source`). Same "sourced library" shape as
   # scripts/lib-count-commits.sh above.
-  "scripts/render-lane-status-lib.sh",
+  "python/rendering.py",
   # /research evaluation harness + structural test (closes #419). Both
   # scripts are referenced only from Makefile (eval-research target,
   # test-eval-set-structure standalone target — neither is a lint
@@ -1371,11 +1368,7 @@ exclude = [
   "scripts/check-reviewers.md",
   "scripts/test-check-reviewers.md",
   "scripts/test-external-tool-registry.md",
-  "scripts/test-check-generators.md",
-  "scripts/generate-pre-rendered-reviewer-prompts.md",
   "scripts/test-check-topology-rule-paths.md",
-  "scripts/generate-topology-docs.md",
-  "scripts/test-generate-topology-docs.md",
   # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
   # by generated implementer prompts, not an invokable agent with frontmatter.
   "agents/_implementer-base.md",
@@ -1658,11 +1651,10 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-render-review-phase-detail.sh",
   "scripts/test-render-review-phase-detail.md",
-  # scripts/test-upsert-diagrams-comment.sh is the offline harness for the
+  # scripts/test-python/cli.py diagrams upsert is the offline harness for the
   # shared larch:diagrams helper. It is referenced from Makefile and from the
   # helper's sibling contract rather than from SKILL.md runtime prose.
-  "scripts/test-upsert-diagrams-comment.sh",
-  "scripts/test-upsert-diagrams-comment.md",
+  "scripts/test-python/cli.py diagrams upsert",
   # scripts/compose-tally-record.sh is the JSON-envelope composer for tally
   # batches. It is invoked internally by scripts/write-tally.sh (the public
   # entry point) rather than directly from SKILL.md orchestrator prose.

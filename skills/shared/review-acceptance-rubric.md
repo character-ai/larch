@@ -53,16 +53,16 @@ the spec is the originating issue scope (the staged scope anchor / feature descr
 
 The following surfaces embed this rubric's necessity-gate language. When the rubric changes, update all of them and run `make test-render-voter-prompt`:
 
-- `skills/shared/scripts/render-voter-prompt.sh` — embeds rubric body verbatim for external voters
+- `python/cli.py render voter` — embeds rubric body verbatim for external voters
 - `skills/shared/reviewer-templates.md` — Necessity gate subsection for reviewer self-filter
-- `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `scripts/generate-code-reviewer-agent.sh`)
-- `agents/reviewer-plan-fidelity.md` — generated (re-run `scripts/generate-reviewer-plan-fidelity-agent.sh`)
-- `agents/reviewer-code-robustness.md` — generated (re-run `scripts/generate-reviewer-code-robustness-agent.sh`)
-- `agents/reviewer-security-structure-tests.md` — generated (re-run `scripts/generate-reviewer-security-structure-tests-agent.sh`)
-- `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `scripts/generate-pre-rendered-reviewer-prompts.sh`
-- `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `scripts/generate-pre-rendered-reviewer-prompts.sh`
-- `skills/design/scripts/render-plan-review-prompt.sh` — plan-review external prompts
-- `scripts/render-specialist-prompt.sh` — code-review external prompts (competition notice)
+- `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `python3 python/cli.py generate code-reviewer-agent`)
+- `agents/reviewer-plan-fidelity.md` — generated (re-run `python3 python/cli.py generate reviewer-plan-fidelity-agent`)
+- `agents/reviewer-code-robustness.md` — generated (re-run `python3 python/cli.py generate reviewer-code-robustness-agent`)
+- `agents/reviewer-security-structure-tests.md` — generated (re-run `python3 python/cli.py generate reviewer-security-structure-tests-agent`)
+- `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `python/cli.py render plan-review` — plan-review external prompts
+- `python/cli.py render specialist` — code-review external prompts (competition notice)
 - `skills/design/references/plan-review.md` — Voter 1 and Codex/Cursor voter instructions + competition notice
 - `skills/shared/voting-protocol.md` — voter prompt template YES definition
 - `skills/shared/oos-acceptance-rubric.md` — OOS materiality gate (separate concern: accepts OOS ballot items for filing)

@@ -112,7 +112,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$PLAN_FILE" ]] && render_args+=(--plan-file "$PLAN_FILE")
     [[ -n "$FEATURE_FILE" ]] && render_args+=(--feature-file "$FEATURE_FILE")
     TEMP_PROMPT=$(mktemp "$(dirname "$OUTPUT")/claude-review-prompt.XXXXXX")
-    "$SCRIPT_DIR/render-specialist-prompt.sh" "${render_args[@]}" > "$TEMP_PROMPT"
+    python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${render_args[@]}" > "$TEMP_PROMPT"
     PROMPT_FILE="$TEMP_PROMPT"
 elif [[ -n "$PROMPT" ]]; then
     TEMP_PROMPT=$(mktemp "$(dirname "$OUTPUT")/claude-review-prompt.XXXXXX")
