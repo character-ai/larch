@@ -653,6 +653,10 @@ fi
 
 run_health_gate_case() {
     local label="$1" tool="$2" env_timeout="$3" session_timeout="$4" implement_timeout="$5" present_line="$6" checker_rc="$7" timeout_rc="$8"
+    local max_attempts sleep_seconds calls_before_true
+    max_attempts="${9:-}"
+    sleep_seconds="${10:-}"
+    calls_before_true="${11:-}"
     local case_dir="$TMPDIR_ROOT/health-$label"
     local rc_file="$case_dir/rc"
     local call_file="$case_dir/checker-call"
@@ -700,6 +704,17 @@ set -euo pipefail
     printf 'ARGS=%s\n' "$*"
     printf 'AUTH_RETRIES=%s\n' "${LARCH_EXTERNAL_AUTH_RETRIES:-}"
 } >> "${LARCH_TEST_CHECKER_CALL:?}"
+# When LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE > 0, suppress PRESENT_LINE output
+# for the first N calls so retry-recovery tests can simulate transient failures.
+# Each call appends 2 lines (ARGS + AUTH_RETRIES), so call number = lines / 2.
+calls_before_true="${LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE:-0}"
+if [[ "$calls_before_true" -gt 0 ]]; then
+    line_count=$(wc -l < "${LARCH_TEST_CHECKER_CALL}" | tr -d ' \t')
+    call_num=$(( line_count / 2 ))
+    if [[ "$call_num" -le "$calls_before_true" ]]; then
+        exit "${LARCH_TEST_CHECKER_RC:-0}"
+    fi
+fi
 if [[ -n "${LARCH_TEST_PRESENT_LINE:-}" ]]; then
     printf '%s\n' "$LARCH_TEST_PRESENT_LINE"
 fi
@@ -727,6 +742,9 @@ EOF
 
     set +e
     LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_timeout" \
+        LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS="$max_attempts" \
+        LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS="$sleep_seconds" \
+        LARCH_TEST_CHECKER_CALLS_BEFORE_TRUE="$calls_before_true" \
         LARCH_TEST_PRESENT_LINE="$present_line" \
         LARCH_TEST_CHECKER_RC="$checker_rc" \
         LARCH_TEST_TIMEOUT_RC="$timeout_rc" \
@@ -762,11 +780,11 @@ else
     fail "health gate codex healthy should call check-reviewers with skip-cursor and one auth retry"
 fi
 
-assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CURSOR_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CURSOR_PRESENT=false" 0 "" 2 0 >/dev/null
 assert_health_gate_rc "health gate timeout 124 unhealthy before fail-open" 1 codex 5 "" "" "" 0 124 >/dev/null
 assert_health_gate_rc "health gate timeout 143 unhealthy before fail-open" 1 cursor 5 "" "" "" 0 143 >/dev/null
 
-_hg_default=$(assert_health_gate_rc "health gate defaults on without explicit timeout" 1 codex "" "" "" "CODEX_PRESENT=false" 0 "")
+_hg_default=$(assert_health_gate_rc "health gate defaults on without explicit timeout" 1 codex "" "" "" "CODEX_PRESENT=false" 0 "" 2 0)
 if [[ -e "$_hg_default/checker-call" ]]; then
     pass
 else
@@ -780,8 +798,8 @@ else
     fail "health gate zero opt-out must not call check-reviewers"
 fi
 
-assert_health_gate_rc "health gate reads SESSION_ENV_PATH" 1 cursor "" 5 "" "CURSOR_PRESENT=false" 0 "" >/dev/null
-assert_health_gate_rc "health gate reads IMPLEMENT_TMPDIR session env" 1 codex "" "" 5 "CODEX_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate reads SESSION_ENV_PATH" 1 cursor "" 5 "" "CURSOR_PRESENT=false" 0 "" 2 0 >/dev/null
+assert_health_gate_rc "health gate reads IMPLEMENT_TMPDIR session env" 1 codex "" "" 5 "CODEX_PRESENT=false" 0 "" 2 0 >/dev/null
 
 _hg_non_tool=$(assert_health_gate_rc "health gate ignores non external tool" 0 claude 5 "" "" "CODEX_PRESENT=false" 0 "")
 if [[ ! -e "$_hg_non_tool/checker-call" ]]; then
@@ -791,6 +809,10 @@ else
 fi
 
 assert_health_gate_rc "health gate fail-open on unparsable non-timeout result" 0 codex 5 "" "" "" 2 "" >/dev/null
+
+# Retry recovery: first probe returns false (transient), second returns true → rc=0.
+# Uses max_attempts=2, sleep_seconds=0, calls_before_true=1.
+assert_health_gate_rc "health gate retry recovers on second attempt" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "" 2 0 1 >/dev/null
 
 assert_resolver_timeout() {
     local label="$1" env_val="$2" session_val="$3" implement_val="$4" want="$5"
