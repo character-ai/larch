@@ -19,6 +19,7 @@ RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
 DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.sh"
 PARSE_DESIGN_ARGV_SH="$REPO_ROOT/skills/design/scripts/parse-design-argv.sh"
+READ_RESULT_ENV_SH="$REPO_ROOT/scripts/read-result-env.sh"
 DESIGN_ROUTE_SH="$REPO_ROOT/skills/design/scripts/design-route.sh"
 DESIGN_INIT_SH="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
@@ -864,6 +865,83 @@ if printf '%s\n' "$step0pre_block" | grep -Fq "= '\${CLAUDE_PLUGIN_ROOT}'"; then
   fail 'Step 0-pre must not compare CLAUDE_PLUGIN_ROOT against a bare ${CLAUDE_PLUGIN_ROOT} sentinel (loader expands it; use a de-tokenized literal)'
 fi
 contains "$PARSE_DESIGN_ARGV_SH" 'assert_safe_kv_value' 'parse-design-argv.sh missing newline guard on emitted values'
+[[ -x "$READ_RESULT_ENV_SH" ]] || fail 'read-result-env.sh must exist and be executable'
+
+argv_call_block=$(printf '%s\n' "$step0pre_block" | awk '
+  index($0, "parse-design-argv.sh") && index($0, "${CLAUDE_PLUGIN_ROOT}") { in_call=1 }
+  in_call { print }
+  in_call && /_argv_rc=\$\?/ { exit }
+')
+[ -n "$argv_call_block" ] || fail 'Step 0-pre parse-design-argv invocation block extraction failed'
+argv_output_line=$(printf '%s\n' "$argv_call_block" | awk '/--output "\$_argv_env"/ {print NR; exit}')
+argv_placeholder_line=$(printf '%s\n' "$argv_call_block" | awk '/<PUBLIC_ARGV_WORDS>/ {print NR; exit}')
+[[ -n "$argv_output_line" && -n "$argv_placeholder_line" && "$argv_output_line" -lt "$argv_placeholder_line" ]] \
+  || fail 'Step 0-pre must pass --output "$_argv_env" before <PUBLIC_ARGV_WORDS>'
+argv_stderr_line=$(printf '%s\n' "$argv_call_block" | awk '/2>"\$_argv_err_file"/ {print NR; exit}')
+[[ -n "$argv_stderr_line" && -n "$argv_placeholder_line" && "$argv_stderr_line" -lt "$argv_placeholder_line" ]] \
+  || fail 'Step 0-pre must redirect parser stderr before <PUBLIC_ARGV_WORDS>'
+printf '%s\n' "$argv_call_block" | grep -Fq '>/dev/null' \
+  || fail 'Step 0-pre must suppress parser stdout when using --output'
+if printf '%s\n' "$argv_call_block" | awk 'seen && /--output/ {found=1} /<PUBLIC_ARGV_WORDS>/ {seen=1} END {exit found ? 0 : 1}'; then
+  fail 'Step 0-pre must not pass trailing --output after <PUBLIC_ARGV_WORDS>'
+fi
+printf '%s\n' "$step0pre_block" | grep -Fq '. "$_argv_env"' \
+  || fail 'Step 0-pre must source $_argv_env'
+if printf '%s\n' "$step0pre_block" | grep -Fq '_argv_out'; then
+  fail 'Step 0-pre must not reference _argv_out after stdout capture removal'
+fi
+if printf '%s\n' "$step0pre_block" | grep -Fq '_success_kv_count'; then
+  fail 'Step 0-pre must not retain _success_kv_count'
+fi
+if printf '%s\n' "$step0pre_block" | grep -Fq '_seen_'; then
+  fail 'Step 0-pre must not retain _seen_ parse-loop sentinels'
+fi
+if printf '%s\n' "$step0pre_block" | grep -Fq 'while IFS= read -r'; then
+  fail 'Step 0-pre must not retain an inline KV parse loop'
+fi
+printf '%s\n' "$step0pre_block" | grep -Fq "printf 'HARD_REQUESTED=%s\nPARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n'" \
+  || fail 'Step 0-pre must print sourced-value diagnostic from lowercase bindings'
+printf '%s\n' "$step0pre_block" | grep -Fq 'parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.' \
+  || fail 'Step 0-pre must retain VALIDATION_ERROR/non-3 mismatch guard'
+argv_err_capture_line=$(printf '%s\n' "$step0pre_block" | awk '/_argv_err="\$\(cat "\$_argv_err_file"/ {print NR; exit}')
+argv_literal_guard_line=$(printf '%s\n' "$step0pre_block" | awk '/\*PUBLIC_ARGV_WORDS\*/ {print NR; exit}')
+[[ -n "$argv_err_capture_line" && -n "$argv_literal_guard_line" && "$argv_err_capture_line" -lt "$argv_literal_guard_line" ]] \
+  || fail 'Step 0-pre must keep literal PUBLIC_ARGV_WORDS stderr guard after _argv_err capture'
+printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s %s\n'\'' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" "$VALIDATION_ERROR" >&2' \
+  || fail 'Step 0-pre rc=3 branch must retain with-token warning printf'
+printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s\n'\'' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2' \
+  || fail 'Step 0-pre rc=3 branch must retain without-token warning printf'
+
+step0b_init_block=$(
+  awk '
+    /_init_stdout_file=.*mktemp/ { in_block=1 }
+    in_block { print }
+    in_block && /^[[:space:]]*```[[:space:]]*$/ { exit }
+  ' "$SKILL_MD"
+)
+[ -n "$step0b_init_block" ] || fail 'Step 0b init fenced block extraction failed'
+printf '%s\n' "$step0b_init_block" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh' \
+  || fail 'Step 0b init block must call read-result-env.sh'
+printf '%s\n' "$step0b_init_block" | grep -Fq -- '--input "$DESIGN_TMPDIR/.design-init-runparams-result.env"' \
+  || fail 'Step 0b init block must pass design-init result env as --input'
+printf '%s\n' "$step0b_init_block" | grep -Fq -- '--fallback-input "$_init_stdout_file"' \
+  || fail 'Step 0b init block must pass captured stdout as fallback input'
+for _init_key in INIT_STATUS RENAMED RUN_PARAMS_PATH DESIGN_CLASSIFICATION; do
+  printf '%s\n' "$step0b_init_block" | grep -Fq -- "--allow $_init_key" \
+    || fail "Step 0b init block must allowlist $_init_key"
+done
+printf '%s\n' "$step0b_init_block" | grep -Fq -- '--output "$_safe_init_env"' \
+  || fail 'Step 0b init block must write safe init env output'
+printf '%s\n' "$step0b_init_block" | grep -Fq '. "$_safe_init_env"' \
+  || fail 'Step 0b init block must source safe init env'
+printf '%s\n' "$step0b_init_block" | grep -Fq '>"$_init_stdout_file"' \
+  || fail 'Step 0b init block must capture design-init-runparams stdout'
+if printf '%s\n' "$step0b_init_block" | grep -Fq '_init_out'; then
+  fail 'Step 0b init block must not reference _init_out'
+fi
+if printf '%s\n' "$step0b_init_block" | grep -Fq 'while IFS= read -r'; then
+  fail 'Step 0b init block must not retain an inline KV parse loop'
+fi
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
 [[ -x "$DESIGN_POSTPLAN_EMIT_SH" ]] || fail "design-postplan-emit.sh must be executable"

@@ -51,11 +51,21 @@ Rename and run-params writes are idempotent on replay.
 
 Rename runs before `write-run-params.sh`. If rename succeeds but `write-run-params.sh` exits non-zero (`INIT_STATUS=contract-drift`), the issue title may already show `[DESIGNING]` without a fresh `run-params.json`. Retries must re-run the full driver from Step 0b; do not route from a stale or missing `run-params.json` until `INIT_STATUS=ok` and the file exist.
 
+## Orchestrator handoff
+
+The result-env schema is unchanged: `.design-init-runparams-result.env` carries `INIT_STATUS`, `RENAMED`, `RUN_PARAMS_PATH`, `DESIGN_CLASSIFICATION`, and `WARN` records.
+
+`skills/design/SKILL.md` captures producer stdout to a temp file and reads `.design-init-runparams-result.env` through `scripts/read-result-env.sh`. The orchestrator allowlists `INIT_STATUS`, `RENAMED`, `RUN_PARAMS_PATH`, and `DESIGN_CLASSIFICATION`, then sources only the helper-generated safe env file.
+
+Producer stdout is used only as a narrow compatibility fallback when the primary result-env is missing, symlinked, or non-regular. A regular result-env remains the source of truth; fallback does not mask malformed regular result-env contents. If fallback is used because the result-env is symlinked, `read-result-env.sh` preserves the operator-visible symlink-refusal breadcrumb before parsing fallback.
+
+WARN/ERROR replay is handled by `read-result-env.sh`. Result-env and fallback stdout parsing use the same grammar: blank lines ignored, nonblank no-`=` lines rejected, and first-`=` splitting with embedded `=` preserved in values.
+
+Exit `2` / unexpected non-zero aborts remain orchestrator-owned. `_init_rc=1` may carry `INIT_STATUS=contract-drift` or `INIT_STATUS=env-refresh-failed`; the driver has already printed detailed `larch_err` diagnostics for both statuses, so the orchestrator propagates status + exit with only the short generic abort.
+
 ## Harness
 
-`scripts/test-design-structure.sh` (env-before-rename line-order, jq-merge greps); `scripts/test-step0b-router-flag-recovery.sh` replicates jq-merge.
-
-Orchestrator handoff: `_init_out` capture + file-first `.design-init-runparams-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_init_rc=1` may carry `INIT_STATUS=contract-drift` or `INIT_STATUS=env-refresh-failed`. The driver has already printed detailed `larch_err` diagnostics for both statuses, so the orchestrator propagates status + exit with only the short generic abort.
+`scripts/test-design-structure.sh` (env-before-rename line-order, jq-merge greps, `read-result-env.sh` handoff shape); `scripts/test-step0b-router-flag-recovery.sh` replicates jq-merge.
 
 ## Recent contract coverage
 

@@ -104,6 +104,25 @@ run_direct_relevant_targets() {
     PY_TEST_SKIP_WARNED=0
     while IFS= read -r f; do
         case "$f" in
+            scripts/read-result-env.sh|scripts/read-result-env.md)
+                append_target_once test-read-result-env
+                append_target_once test-design-structure
+                ;;
+            scripts/test-read-result-env.sh|scripts/test-read-result-env.md)
+                append_target_once test-read-result-env
+                ;;
+            skills/design/scripts/parse-design-argv.sh|skills/design/scripts/parse-design-argv.md)
+                append_target_once test-parse-design-argv
+                append_target_once test-design-structure
+                ;;
+            skills/design/scripts/test-parse-design-argv.sh)
+                append_target_once test-parse-design-argv
+                ;;
+            skills/design/scripts/design-init-runparams.md)
+                append_target_once test-design-structure
+                ;;
+        esac
+        case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|python/session_env.py|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
                 append_target_once test-step0b-router-flag-recovery
                 ;;
