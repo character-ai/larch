@@ -19,7 +19,15 @@ if skill.count("rebase-checkpoint-probe.sh\" 1.r 'plan materialization' --forked
 if skill.count("rebase-checkpoint-probe.sh\" 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('4.r direct probe must pass --forked-target')
 if skill.count("rebase-checkpoint-probe.sh\" 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('7.r direct probe must pass --forked-target')
 if 'BASE_ARGS=()' in skill: errors.append('SKILL.md still contains inline BASE_ARGS blocks')
-for needle in ['**Orchestrator contract — parse the wrapper stdout**', 'REBASE_OUTCOME=conflict', 'Call-site registry', '7a.r']:
+for needle in [
+    '**Orchestrator contract — parse the wrapper stdout**',
+    'REBASE_OUTCOME=conflict',
+    '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
+    '**⚠ Rebase onto main failed unexpectedly',
+    'Call-site registry',
+    'caller_kind=early_rebase',
+    '7a.r',
+]:
     if needle not in ref: errors.append(f'rebase reference missing {needle}')
 if '--forked-target)' not in probe or 'base_remote=upstream' not in probe or 'base_ref=main' not in probe:
     errors.append('rebase-checkpoint-probe.sh does not implement --forked-target upstream/main mapping')

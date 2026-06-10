@@ -243,7 +243,6 @@ Wrapper-internal reachability: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/s
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-export LARCH_CLAUDE_PID="$PPID"
 # Foreground required
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial --issue-number "$TARGET_ISSUE_NUMBER" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --emergency-requested "${emergency_requested:-false}" --self-review-requested "${self_review:-false}" --forked-target "${forked_target:-false}" --upstream-repo "${UPSTREAM_REPO:-}" --run-id "${RUN_ID:-}" --caller-env "${CALLER_ENV_PATH:-}" --session-env "${SESSION_ENV_PATH:-}" --coder "${coder:-}"
 ```
@@ -280,7 +279,6 @@ Step 0 dirty-tree recovery gate:
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-export LARCH_CLAUDE_PID="$PPID"
 # Dirty-tree resume preserves implementer selection — see scripts/parse-bootstrap-routing-envelope.md (--preserve-coder).
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume
 ```
@@ -886,7 +884,6 @@ Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRAC
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 export IMPLEMENT_TMPDIR
-export STALL_TRACKING="${STALL_TRACKING:-false}"
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18a-gate.sh" --stall-tracking-memory "${STALL_TRACKING:-false}"
 ```
 
@@ -923,7 +920,6 @@ Cap the per-run token/timing ledgers **before** teardown removes them. The `larc
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 export IMPLEMENT_TMPDIR
-export LARCH_CLAUDE_PID="$PPID"
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18-finalize.sh"
 ```
 

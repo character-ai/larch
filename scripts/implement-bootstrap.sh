@@ -721,6 +721,10 @@ phase_infra() {
 
         IMPLEMENT_TMPDIR="$SESSION_TMPDIR"
         export IMPLEMENT_TMPDIR
+        if [ -n "${PREFLIGHT_TMPDIR_OPT:-}" ]; then
+            printf 'PREFLIGHT_TMPDIR=%s\n' "$PREFLIGHT_TMPDIR_OPT" >"$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp"
+            mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
+        fi
 
         if [ -n "${LARCH_CLAUDE_PID:-}" ]; then
             _ptr_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-pointer.XXXXXX") || _ptr_err=""

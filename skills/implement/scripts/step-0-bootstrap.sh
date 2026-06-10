@@ -94,27 +94,56 @@ case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; e
 [ -n "$CALLER_ENV_ARG" ] && CALLER_ENV_PATH="$CALLER_ENV_ARG"
 [ -n "$SESSION_ENV_ARG" ] && SESSION_ENV_PATH="$SESSION_ENV_ARG"
 rehydrate_plugin_root
-if [ "$MODE" = resume ] && [ -z "${TARGET_ISSUE_NUMBER:-}" ] && [ -z "${ISSUE_NUMBER:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
-    _sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
-    if [ -f "$_sentinel" ]; then
-        _sentinel_out=$("$CLAUDE_PLUGIN_ROOT/scripts/tracking-issue-read.sh" --sentinel "$_sentinel" 2>/dev/null || true)
-        _sentinel_issue=$(printf '%s\n' "$_sentinel_out" | grep '^ISSUE_NUMBER=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-        _sentinel_run_id=$(printf '%s\n' "$_sentinel_out" | grep '^RUN_ID=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-        [ -n "$_sentinel_issue" ] && TARGET_ISSUE_NUMBER="$_sentinel_issue" && ISSUE_NUMBER="$_sentinel_issue"
-        if [ -z "${RUN_ID:-}" ] && [ -n "$_sentinel_run_id" ]; then
-            RUN_ID="$_sentinel_run_id"
-        fi
+read_run_flag_key() {
+    local key=$1 default_value=$2 file
+    file="${IMPLEMENT_TMPDIR:-}/run-flags.sh"
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$default_value"
     fi
-    if [ -z "${TARGET_ISSUE_NUMBER:-}" ]; then
-        _session_issue=$(read_session_key ISSUE_NUMBER "")
-        [ -n "$_session_issue" ] && TARGET_ISSUE_NUMBER="$_session_issue" && ISSUE_NUMBER="$_session_issue"
+}
+if [ "$MODE" = resume ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
+    if [ -z "${PREFLIGHT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env" ]; then
+        # shellcheck source=/dev/null
+        . "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
+    fi
+    if [ -z "${forked_target:-}" ]; then
+        _session_forked=$(read_session_key FORKED_TARGET "false")
+        case "$_session_forked" in true|false) forked_target="$_session_forked" ;; esac
+    fi
+    case "${emergency_requested:-}" in true|false) ;; *)
+        _run_emergency=$(read_run_flag_key EMERGENCY_REQUESTED "")
+        case "$_run_emergency" in true|false) emergency_requested="$_run_emergency" ;; esac
+        ;;
+    esac
+    case "${self_review:-}" in true|false) ;; *)
+        _run_self_review=$(read_run_flag_key SELF_REVIEW_REQUESTED "")
+        case "$_run_self_review" in true|false) self_review="$_run_self_review" ;; esac
+        ;;
+    esac
+    if [ -z "${TARGET_ISSUE_NUMBER:-}" ] && [ -z "${ISSUE_NUMBER:-}" ]; then
+        _sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
+        if [ -f "$_sentinel" ]; then
+            _sentinel_out=$("$CLAUDE_PLUGIN_ROOT/scripts/tracking-issue-read.sh" --sentinel "$_sentinel" 2>/dev/null || true)
+            _sentinel_issue=$(printf '%s\n' "$_sentinel_out" | grep '^ISSUE_NUMBER=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+            _sentinel_run_id=$(printf '%s\n' "$_sentinel_out" | grep '^RUN_ID=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+            [ -n "$_sentinel_issue" ] && TARGET_ISSUE_NUMBER="$_sentinel_issue" && ISSUE_NUMBER="$_sentinel_issue"
+            if [ -z "${RUN_ID:-}" ] && [ -n "$_sentinel_run_id" ]; then
+                RUN_ID="$_sentinel_run_id"
+            fi
+        fi
+        if [ -z "${TARGET_ISSUE_NUMBER:-}" ]; then
+            _session_issue=$(read_session_key ISSUE_NUMBER "")
+            [ -n "$_session_issue" ] && TARGET_ISSUE_NUMBER="$_session_issue" && ISSUE_NUMBER="$_session_issue"
+        fi
     fi
     if [ -z "${RUN_ID:-}" ]; then
         _session_run_id=$(read_session_key RUN_ID "")
         [ -n "$_session_run_id" ] && RUN_ID="$_session_run_id"
     fi
 fi
-if [ "$MODE" = initial ] && [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ]; then
+if [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ]; then
     set +e
     _fork_env_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-fork-env.sh")
     _fork_env_rc=$?
@@ -142,6 +171,10 @@ fi
 export forked_target emergency_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO FORK_REPO FORK_OWNER
 export LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"
+if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
+    printf 'PREFLIGHT_TMPDIR=%s\n' "$PREFLIGHT_TMPDIR" >"$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp"
+    mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
+fi
 set +e
 _inv_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-bootstrap-invoke.sh" --mode "$MODE")
 _inv_rc=$?
