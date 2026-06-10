@@ -42,6 +42,7 @@ JOURNAL_EVENT_SHIP_RESULT: Final = "ship-result"
 NEEDS_USER_FIRST_FIXER_NON_HEALTH: Final = "first-fixer-non-health"
 NEEDS_USER_CI_FIX_EXHAUSTED: Final = "ci-fix-exhausted"
 NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED: Final = "fix-attempts-exhausted"
+NEEDS_USER_REVIEW_REQUIRED: Final = "review-required"
 
 # Subprocess / CI wait
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
@@ -180,6 +181,7 @@ MERGE_RESULT_CI_NOT_READY: Final = "ci_not_ready"
 MERGE_RESULT_VERSION_ALREADY_PUBLISHED: Final = "version_already_published"
 MERGE_RESULT_POLICY_DENIED: Final = "policy_denied"
 MERGE_RESULT_ADMIN_FAILED: Final = "admin_failed"
+MERGE_RESULT_REVIEW_REQUIRED: Final = "review_required"
 MERGE_RESULT_ERROR: Final = "error"
 MERGE_RESULTS: Final[frozenset[str]] = frozenset({
     MERGE_RESULT_MERGED,
@@ -189,6 +191,7 @@ MERGE_RESULTS: Final[frozenset[str]] = frozenset({
     MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
     MERGE_RESULT_POLICY_DENIED,
     MERGE_RESULT_ADMIN_FAILED,
+    MERGE_RESULT_REVIEW_REQUIRED,
     MERGE_RESULT_ERROR,
 })
 MERGE_RESULT_DRIVER_ALREADY_MERGED: Final = "already_merged"

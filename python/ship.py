@@ -176,6 +176,7 @@ def _step_result_to_ship(
             config.NEEDS_USER_CI_FIX_EXHAUSTED,
             config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
             config.NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
+            config.NEEDS_USER_REVIEW_REQUIRED,
             "local-unfixable",
         ):
             if reason == token or reason.startswith((f"{token}:", f"{token}\n")):
@@ -1570,6 +1571,27 @@ def run_ship(
                     transient_retries=transient_retries,
                 )
                 continue
+            if merged.result == config.MERGE_RESULT_REVIEW_REQUIRED:
+                _write_terminal_state(
+                    working.with_(
+                        stall_tracking=True,
+                        stall_step="merge",
+                        final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
+                    ),
+                    Outcome.NEEDS_USER_INPUT,
+                    "merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
+                return ShipResult(
+                    Outcome.NEEDS_USER_INPUT,
+                    needs_user_reason=config.NEEDS_USER_REVIEW_REQUIRED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail=merged.error or "PR requires approving review",
+                )
             pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
             working = working.with_(
                 merge_result=merged.result,

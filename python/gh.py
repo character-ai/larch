@@ -709,6 +709,29 @@ def _pr_checks_text_all_pass(text: str) -> bool:
     return _CHECKS_TEXT_BAD_RE.search(text) is None
 
 
+def pr_review_decision(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str:
+    """Return reviewDecision for a PR ('REVIEW_REQUIRED', 'APPROVED', 'CHANGES_REQUESTED', or '')."""
+    result = _retry_read(
+        runner,
+        ["pr", "view", str(number), "--repo", repo, "--json", "reviewDecision"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return ""
+    try:
+        data = _as_json_object(_loads_json(result.stdout, context="pr reviewDecision"), context="pr reviewDecision")
+        value = data.get("reviewDecision")
+        return str(value) if value else ""
+    except ShipError:
+        return ""
+
+
 def pr_checks_all_pass(
     runner: Runner,
     number: int,

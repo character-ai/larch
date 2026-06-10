@@ -499,6 +499,7 @@ classify_from_evidence() {
 
     case "$step" in
         3|6) printf 'contract-failure\n'; return 0 ;;
+        merge-loop-iteration-cap) printf 'unrecoverable\n'; return 0 ;;
     esac
     case "$bail" in
         adopted-issue-closed|tracking-init-failed) printf 'unrecoverable\n'; return 0 ;;
@@ -827,7 +828,7 @@ root_cause_template() {
 
 safe_step_value() {
     local value=${1:-}
-    if [ "$value" = "bump-branch-guard" ]; then
+    if [ "$value" = "bump-branch-guard" ] || [ "$value" = "merge-loop-iteration-cap" ]; then
         printf '%s\n' "$value"
     elif [[ "$value" =~ ^(2|3|5|6)$ ]]; then
         printf '%s\n' "$value"

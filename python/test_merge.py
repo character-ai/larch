@@ -82,7 +82,7 @@ def test_redact_merge_diagnostic_truncates() -> None:
 
 
 def test_merge_results_table_is_exhaustive() -> None:
-    assert len(config.MERGE_RESULTS) == 8
+    assert len(config.MERGE_RESULTS) == 9
     assert "already_merged" not in config.MERGE_RESULTS
 
 
