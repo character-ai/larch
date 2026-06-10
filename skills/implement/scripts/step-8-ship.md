@@ -1,6 +1,6 @@
 # step-8-ship.sh
 
-Step 8+ ship-driver selector. Derives CLONE_TAG_FULL, enforces the Python 3.11 JSON fallback, and invokes either python/cli.py ship pr or scripts/ship-pr.sh with the canonical argv.
+Step 8+ ship-driver selector. Derives CLONE_TAG_FULL, rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when prompt-side variables are absent, enforces the Python 3.11 JSON fallback, and invokes either python/cli.py ship pr or scripts/ship-pr.sh with the canonical argv.
 
 ## Caller
 
@@ -14,6 +14,7 @@ The wrapper relays the underlying helper stdout unchanged unless this file names
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
+- Self-rehydrates `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `MERGE`, `DRAFT`, `FORKED_TARGET`, `REPO_UNAVAILABLE`, `MANIFEST_PATH`, `TOOL_LABEL`, `NO_ADMIN_FALLBACK`, and `NO_LOGS_COMMIT` from `ship-pr-state.sh` before invoking the active driver.
 - Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
 
 ## Edit-in-sync

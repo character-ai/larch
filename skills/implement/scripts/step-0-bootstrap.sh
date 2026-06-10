@@ -55,13 +55,32 @@ IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 export IMPLEMENT_TMPDIR
 rehydrate_plugin_root
 if [ "$MODE" = initial ] && [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ]; then
-    "$CLAUDE_PLUGIN_ROOT/scripts/implement-fork-env.sh"
+    set +e
+    _fork_env_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-fork-env.sh")
+    _fork_env_rc=$?
+    set -e
+    if [ "$_fork_env_rc" -ne 0 ]; then
+        printf '%s\n' "$_fork_env_out"
+        exit "$_fork_env_rc"
+    fi
+    while IFS= read -r _fork_env_line || [ -n "$_fork_env_line" ]; do
+        case "$_fork_env_line" in
+            CALLER_ENV_PATH=*) CALLER_ENV_PATH=${_fork_env_line#*=} ;;
+            UPSTREAM_REPO=*) UPSTREAM_REPO=${_fork_env_line#*=} ;;
+            FORK_REPO=*) FORK_REPO=${_fork_env_line#*=} ;;
+            FORK_OWNER=*) FORK_OWNER=${_fork_env_line#*=} ;;
+            FORKED_TARGET=*) forked_target=${_fork_env_line#*=} ;;
+        esac
+    done <<EOF
+$_fork_env_out
+EOF
+    printf '%s\n' "$_fork_env_out"
 fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     rehydrate_larch_triplet
 fi
 export forked_target emergency_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
-export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO
+export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO FORK_REPO FORK_OWNER
 export LARCH_CLAUDE_PID="${PPID}"
 set +e
 _inv_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-bootstrap-invoke.sh" --mode "$MODE")

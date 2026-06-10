@@ -7,7 +7,7 @@ Structural `/implement` telemetry harness. The invariant is wrapper-owned rehydr
 - Reject stale two-key exports in `skills/implement/SKILL.md`.
 - Reject inline telemetry/read-key commands inside SKILL.md Bash fences.
 - Require key wrappers (`step-2-entry.sh`, `step-5-resume.sh`, `step-18-finalize.sh`) to resolve `LARCH_TIMING_LEDGER` and mark timing with `LARCH_TIMING_SKILL=implement`.
-- Require plugin-rooted Bash fences to carry the canonical source guard and preserve pre-bootstrap awk fallbacks.
+- Require plugin-rooted Bash fences to carry the canonical source guard, export `IMPLEMENT_TMPDIR`, and preserve pre-bootstrap awk fallbacks.
 - Pin #3425 ordering inside `step-18-finalize.sh`: closing marks happen before teardown, with exactly one SKILL.md invocation.
 
 ## Caller

@@ -31,6 +31,18 @@ read_session_key() {
     fi
 }
 
+read_state_key() {
+    local file=$1 key=$2 default_value=$3 line
+    if [ -f "$file" ]; then
+        line=$(grep "^${key}=" "$file" 2>/dev/null | tail -n 1 || true)
+        if [ -n "$line" ]; then
+            printf '%s\n' "${line#*=}"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$default_value"
+}
+
 rehydrate_larch_triplet() {
     LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
     LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
@@ -39,5 +51,12 @@ rehydrate_larch_triplet() {
 }
 
 rehydrate_plugin_root
+run_id=$(read_session_key LARCH_RUN_ID "${RUN_ID:-}")
+if [ -z "$run_id" ]; then
+    run_id=$(read_state_key "$IMPLEMENT_TMPDIR/ship-pr-state.sh" RUN_ID "")
+fi
+if [ -z "$run_id" ]; then
+    run_id=$(read_state_key "$IMPLEMENT_TMPDIR/finalize-state.sh" RUN_ID "")
+fi
 "$CLAUDE_PLUGIN_ROOT/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 16 — rejected findings" || true
-"$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-rejected-findings.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true
+"$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-rejected-findings.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$run_id" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true

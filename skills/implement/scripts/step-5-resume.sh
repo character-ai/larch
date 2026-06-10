@@ -67,11 +67,11 @@ if [ -f "$round_start_file" ]; then
     --start-s "$round_start_s" \
     --end-s "$end_s" || true
 fi
-if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
-  "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/commit-review-fixes.sh" --stage-all
-fi
 if [ "$RECORD_ONLY" = true ]; then
   exit 0
+fi
+if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; then
+  "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/commit-review-fixes.sh" --stage-all
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'

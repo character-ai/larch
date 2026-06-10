@@ -35,19 +35,22 @@ Guard (abort before prepare):
 
 On failure, print a clear operator-visible error and stop.
 
-**Sync with `origin/main`** (after branch + tree guards pass; **skip on `--dry-run`** — dry-run performs no local git mutations; Step 2 `release-prepare.sh` still fetches read-only and emits `ERROR=stale-local-main` when local `main`/`HEAD` is not at `origin/main`):
-
-Unless `--dry-run`:
+**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not run `scripts/rebase-push.sh`; the preview path must not mutate local `main` or the worktree. Continue to Step 2 and let `release-prepare.sh` report `ERROR=stale-local-main` if the cached refs show that the checkout is not current.
 
 ```bash
-set +e
-rebase_out=$(scripts/rebase-push.sh --no-push --base-remote origin --base-ref main 2>&1)
-rebase_rc=$?
-set -e
+if [ "$dry_run" != "true" ]; then
+  set +e
+  rebase_out=$(scripts/rebase-push.sh --no-push --base-remote origin --base-ref main 2>&1)
+  rebase_rc=$?
+  set -e
+else
+  rebase_out="DRY_RUN_SYNC_SKIPPED=true"
+  rebase_rc=0
+fi
 ```
 
 Branch on `rebase_rc`:
-- **Exit 0**: local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `rebase_out` to note a no-op). Continue.
+- **Exit 0**: on non-dry-run, local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `rebase_out` to note a no-op); on `--dry-run`, sync was deliberately skipped. Continue.
 - **Exit 1** (conflicts): print `**⚠ /release: rebase onto origin/main has conflicts. Resolve manually and retry.**` and stop.
 - **Other non-zero**: print `**⚠ /release: rebase onto origin/main failed (exit <rc>). Check network/git state.**` and stop.
 

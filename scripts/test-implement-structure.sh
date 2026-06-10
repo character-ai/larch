@@ -44,6 +44,7 @@ for script in [
     'run-step-checks.sh" --site step5-self-review',
     'commit-review-fixes.sh" --stage-all',
     'run-step-checks.sh" --site step5-review-fixes',
+    'step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
     'step-6-entry.sh',
     'run-step-checks.sh" --site step6',
@@ -81,6 +82,10 @@ require('skills/implement/scripts/commit-review-fixes.sh', 'git add -A', 'commit
 require('skills/implement/scripts/commit-implementation.sh', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18b-final-report.sh', 'cleanup.sh" --help', 'step-18b cleanup smoke')
 require('skills/implement/scripts/step-18b-final-report.sh', 'Step 18 — cleanup', 'step-18b telemetry mark')
+require('skills/implement/scripts/step-0-bootstrap.sh', 'CALLER_ENV_PATH=*) CALLER_ENV_PATH=', 'step-0 fork metadata caller-env parse')
+require('skills/implement/scripts/step-0-bootstrap.sh', 'UPSTREAM_REPO=*) UPSTREAM_REPO=', 'step-0 fork metadata upstream parse')
+require('skills/implement/scripts/step-8-ship.sh', 'read_state_key', 'step-8 ship state rehydration')
+require(skill, 'NO_ADMIN_FALLBACK=$no_admin_fallback', 'ship state no-admin fallback persistence')
 require('scripts/rebase-checkpoint-probe.sh', '--forked-target', 'rebase probe forked target flag')
 require('scripts/rebase-checkpoint-probe.md', '--forked-target true|false', 'rebase probe docs')
 require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target')

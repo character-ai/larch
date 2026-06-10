@@ -48,3 +48,4 @@ if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
 fi
 printf 'OOS_CHECKPOINT_RC=%s\n' "$_oos_chk_rc"
 [ "$_oos_chk_rc" -ne 0 ] && exit "$_oos_chk_rc"
+exit 0

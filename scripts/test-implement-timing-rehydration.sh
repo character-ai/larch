@@ -56,6 +56,7 @@ from pathlib import Path
 import sys
 lines=Path('skills/implement/SKILL.md').read_text().splitlines()
 source_guard='[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
+tmpdir_export='export IMPLEMENT_TMPDIR'
 in_fence=False; start=0; body=[]; errors=[]; guard_count=0; awk_count=0
 for i,line in enumerate(lines,1):
     if line.lstrip().startswith('```bash'):
@@ -64,6 +65,8 @@ for i,line in enumerate(lines,1):
         text='\n'.join(body)
         if '${CLAUDE_PLUGIN_ROOT}' in text and source_guard not in text:
             errors.append(f'fence starting {start}: missing canonical plugin-root source guard')
+        if '${CLAUDE_PLUGIN_ROOT}' in text and '$IMPLEMENT_TMPDIR' in text and tmpdir_export not in text:
+            errors.append(f'fence starting {start}: missing IMPLEMENT_TMPDIR export')
         guard_count += sum(1 for raw in body if raw.strip()==source_guard)
         awk_count += sum(1 for raw in body if 'LARCH_CLAUDE_PLUGIN_ROOT=' in raw)
         in_fence=False

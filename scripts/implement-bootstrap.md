@@ -1,6 +1,6 @@
 # implement-bootstrap.sh
 
-Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`); wrapper harness: `skills/implement/scripts/test-implement-bootstrap-invoke.sh`.
+Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 via `skills/implement/scripts/step-0-bootstrap.sh` (`--mode initial` / `--mode resume`), which delegates to `scripts/implement-bootstrap-invoke.sh`. **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`); wrapper harness: `skills/implement/scripts/test-implement-bootstrap-invoke.sh`.
 
 ## argv
 

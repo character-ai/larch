@@ -40,6 +40,8 @@ def logical_commands(body):
             continue
         if stripped == 'export CLAUDE_PLUGIN_ROOT':
             continue
+        if stripped == 'export IMPLEMENT_TMPDIR':
+            continue
         cur.append(stripped)
         if not stripped.endswith('\\'):
             commands.append(' '.join(cur))

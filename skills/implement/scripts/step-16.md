@@ -1,6 +1,6 @@
 # step-16.sh
 
-Step 16 rejected-findings wrapper. Marks Step 16 telemetry and invokes write-rejected-findings.sh.
+Step 16 rejected-findings wrapper. Marks Step 16 telemetry, rehydrates `RUN_ID` from session/state when the prompt-side variable is absent, and invokes `write-rejected-findings.sh`.
 
 ## Caller
 

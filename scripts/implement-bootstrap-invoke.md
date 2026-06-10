@@ -57,7 +57,7 @@ This script must **never** write or append `$IMPLEMENT_TMPDIR/session-env.sh`. O
 
 ## Primary caller
 
-`skills/implement/SKILL.md` Step 0 (initial + dirty-tree `--mode resume`).
+`skills/implement/scripts/step-0-bootstrap.sh` (initial + dirty-tree `--mode resume`) from `skills/implement/SKILL.md` Step 0.
 
 ## Offline harness
 
