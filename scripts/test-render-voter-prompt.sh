@@ -159,10 +159,12 @@ case_scope_anchor_delimiter_breakout() {
 
 case_canonical_text_drift_guard() {
     local f
+    [[ -f "$REPO_ROOT/skills/implement/references/step5-review-branches.md" ]] \
+        || { echo "FAIL: missing Step 5 review branches reference" >&2; exit 1; }
     for f in \
         "$REPO_ROOT/skills/shared/voting-protocol.md" \
         "$REPO_ROOT/skills/design/SKILL.md" \
-        "$REPO_ROOT/skills/implement/SKILL.md" \
+        "$REPO_ROOT/skills/implement/references/step5-review-branches.md" \
         "$REPO_ROOT/skills/design/references/plan-review.md"; do
         grep -Fq "$CANONICAL_OOS_DRIFT_MARK" "$f" \
             || { echo "FAIL: drift guard substring missing from $f" >&2; exit 1; }

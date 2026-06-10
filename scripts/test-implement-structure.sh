@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
+STEP5_REVIEW_BRANCHES_REF="$REFS_DIR/step5-review-branches.md"
 RESTORE_FINALIZE_SH="$REPO_ROOT/python/session_env.py"
 LIB_FINALIZE_KEYS_SH="$REPO_ROOT/scripts/lib-finalize-state-keys.sh"
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
@@ -75,9 +76,12 @@ for heading in "## Load-Bearing Invariants" "## NEVER List" "## Rebase Checkpoin
   [[ "$count" == "1" ]] || fail "expected exactly one $heading heading, found $count"
 done
 
-for ref in summary-comment-template.md conflict-resolution.md codex-manifest-schema.md pr-body-template.md; do
+for ref in summary-comment-template.md conflict-resolution.md codex-manifest-schema.md pr-body-template.md step5-review-branches.md; do
   [[ -f "$REFS_DIR/$ref" ]] || fail "missing reference: $ref"
 done
+[[ -f "$STEP5_REVIEW_BRANCHES_REF" ]] || fail "missing Step 5 review branches reference"
+grep -Fq 'references/step5-review-branches.md' "$SKILL_MD" \
+  || fail "SKILL.md Step 5 must point to step5-review-branches.md"
 
 grep -Fq 'Two invariants enforced across multiple steps' "$SKILL_MD" \
   || fail "SKILL.md must document two Load-Bearing Invariants after Phase 1 (#3364)"
@@ -399,6 +403,16 @@ grep -Fq 'on the Python path, re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}
   || fail "SKILL.md must document Python Exit 0/OOS re-entry without --resume-phase"
 grep -Fq 'Restore finalize-state.sh only when required. Bash opt-in always restores from' "$SKILL_MD" \
   || fail "SKILL.md must document conditional Step 18 restore gate"
+grep -Fq '**See NEVER #11 — do NOT write or recreate `$IMPLEMENT_TMPDIR/finalize-state.sh` from prompt-side orchestrator code.**' "$SKILL_MD" \
+  || fail "SKILL.md Title-prefix lifecycle must retain NEVER #11 finalize-state guard"
+grep -Fq 'session restore-finalize-state` is reconstruction for bash opt-in or stale/missing finalize per the gate below, not an unconditional prompt-side writer' "$SKILL_MD" \
+  || fail "SKILL.md Title-prefix lifecycle must retain restore-finalize-state guidance"
+grep -Fq 'Under `forked_target=true`, skip only the tracking-issue rename / summary-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown`' "$SKILL_MD" \
+  || fail "SKILL.md Title-prefix lifecycle must retain fork-mode teardown carve-out"
+! grep -Fq 'It performs the title-prefix terminal transition' "$SKILL_MD" \
+  || fail "SKILL.md Title-prefix lifecycle must not retain redundant teardown transition narration"
+! grep -Fq 'implement-finalize.md` § `teardown`' "$SKILL_MD" \
+  || fail "SKILL.md Title-prefix lifecycle must not retain redundant implement-finalize.md teardown SSOT narration"
 grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]; then' "$SKILL_MD" \
   || fail "SKILL.md Step 18 restore gate must cover bash opt-in"
 grep -Fq 'elif [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then' "$SKILL_MD" \
