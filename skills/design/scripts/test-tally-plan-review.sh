@@ -364,4 +364,30 @@ set -e
 [[ $(grep -c '^VOTING_TALLY_FILE=' /tmp/larch-tally-plan-review-noballot.out || true) -eq 1 ]] || fail "missing ballot should emit VOTING_TALLY_FILE once"
 [[ -s "$DESIGN_NOBALLOT/voting-tally.md" ]] || fail "voting-tally.md missing or empty on unreadable ballot"
 
+echo "=== non-accepted latent finding routes to oos.md, not rejected-findings.md (option b) ==="
+DESIGN_LATENT="$TMPROOT/design-latent-reroute"
+mkdir -p "$DESIGN_LATENT"
+cat > "$DESIGN_LATENT/ballot-latent.md" <<'EOF'
+### FINDING_1: Missing null guard
+- **Reviewer**: claude
+- **Severity**: latent
+- **Concern**: Null pointer when input is empty.
+- **Suggested revision**: Add a guard.
+EOF
+cat > "$DESIGN_LATENT/voter-latent-no.txt" <<'EOF'
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- does not clear necessity gate
+EOF
+"$SUBJECT" \
+    --ballot-file "$DESIGN_LATENT/ballot-latent.md" \
+    --voter-files "$DESIGN_LATENT/voter-latent-no.txt" \
+    --design-tmpdir "$DESIGN_LATENT" > /dev/null
+command grep -q 'Missing null guard' "$DESIGN_LATENT/oos.md" 2>/dev/null \
+    || fail "latent_reroute (plan): rejected latent must be in oos.md"
+command grep -q 'latent-rerouted' "$DESIGN_LATENT/oos.md" 2>/dev/null \
+    || fail "latent_reroute (plan): latent-rerouted marker missing from oos.md"
+if command grep -q 'Missing null guard' "$DESIGN_LATENT/rejected-findings.md" 2>/dev/null; then
+    fail "latent_reroute (plan): rejected latent must NOT be in rejected-findings.md"
+fi
+echo "  ok: latent_reroute (plan) — rejected latent in oos.md, not rejected-findings.md"
+
 echo "PASS: test-tally-plan-review.sh"
