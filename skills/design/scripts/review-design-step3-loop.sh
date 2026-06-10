@@ -384,6 +384,14 @@ step3_loop_run_apply() {
     fi
     step3_loop_write_phase "$round_num" awaiting-post-apply
 
+    # Refresh round-meta.json now that revise/revise.env is available. This
+    # adds revise.status and revise.tier to the per-round metadata so the
+    # Review Phase Detail table can show which tier applied each round.
+    local _rmd_sh="${WRITE_DESIGN_ROUND_META_SH:-$PLUGIN_ROOT/scripts/write-design-round-meta.sh}"
+    if [[ -x "$_rmd_sh" ]]; then
+        "$_rmd_sh" --round-dir "$DESIGN_TMPDIR/plan-review/round-${round_num}" 2>/dev/null || true
+    fi
+
     step3_loop_run_dedup "$round_num"
     return $?
 }
