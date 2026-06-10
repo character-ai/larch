@@ -151,3 +151,11 @@ scripts/test-generate-topology-docs.sh	#3675
 scripts/test-generate-topology-docs.md	#3675
 skills/design/scripts/test-plan-review-prompt.sh	#3675
 skills/design/scripts/test-plan-review-prompt.md	#3675
+skills/shared/scripts/oos-serialize.sh	#3923
+skills/shared/scripts/oos-serialize.md	#3923
+skills/shared/scripts/test-oos-serialize.sh	#3923
+skills/shared/scripts/test-oos-serialize.md	#3923
+skills/shared/scripts/normalize-oos-block-header.sh	#3923
+skills/shared/scripts/normalize-oos-block-header.md	#3923
+skills/shared/scripts/test-normalize-oos-block-header.sh	#3923
+skills/shared/scripts/test-normalize-oos-block-header.md	#3923

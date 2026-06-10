@@ -78,6 +78,22 @@ def test_dispatch_lint_retired_scripts() -> None:
     assert rc == 0
 
 
+def test_dispatch_oos_serialize() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"oos": MagicMock(oos_serialize_main=mock_main)}):
+        rc = cli.main(["oos", "serialize", "--findings-file", "f", "--output-file", "o"])
+    mock_main.assert_called_once_with(["--findings-file", "f", "--output-file", "o"])
+    assert rc == 0
+
+
+def test_dispatch_oos_normalize_header() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"oos": MagicMock(oos_normalize_header_main=mock_main)}):
+        rc = cli.main(["oos", "normalize-header", "--seq", "1"])
+    mock_main.assert_called_once_with(["--seq", "1"])
+    assert rc == 0
+
+
 def test_exit_passthrough_from_delegated_main() -> None:
     mock_main = MagicMock(return_value=42)
     with patch.dict("sys.modules", {"ship": MagicMock(main=mock_main)}):

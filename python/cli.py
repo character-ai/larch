@@ -40,6 +40,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "gh-body-inline"): ("lint_gh_body_inline", "main"),
     ("lint", "codex-exec-auth"): ("lint_codex_exec_auth", "main"),
     ("lint", "skill-invocations"): ("lint_skill_invocations", "main"),
+    ("oos", "serialize"): ("oos", "oos_serialize_main"),
+    ("oos", "normalize-header"): ("oos", "oos_normalize_header_main"),
     ("git", "commit"): ("git", "commit_main"),
     ("git", "stage"): ("git", "stage_main"),
     ("git", "amend-add"): ("git", "amend_add_main"),

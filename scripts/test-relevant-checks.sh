@@ -464,6 +464,19 @@ setup_python_source_repo() {
     )
 }
 
+setup_oos_python_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b oos-python-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/oos.py
+        git add python/oos.py
+        git commit -q -m "touch oos python"
+    )
+}
+
 setup_python_pylintrc_repo() {
     local dir="$1"
     setup_git_repo "$dir"
@@ -474,6 +487,23 @@ setup_python_pylintrc_repo() {
         printf '%s\n' "[MASTER]" > python/.pylintrc
         git add python/.pylintrc
         git commit -q -m "touch pylintrc only"
+    )
+}
+
+setup_oos_caller_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b oos-caller-change
+        mkdir -p skills/review/scripts skills/review-and-fix/scripts
+        printf '%s\n' "# emit tally" > skills/review/scripts/emit-tally.md
+        printf '%s\n' "# tally code votes" > skills/review/scripts/tally-code-votes.md
+        printf '%s\n' "# review and fix" > skills/review-and-fix/scripts/review-and-fix.md
+        git add skills/review/scripts/emit-tally.md \
+            skills/review/scripts/tally-code-votes.md \
+            skills/review-and-fix/scripts/review-and-fix.md
+        git commit -q -m "touch oos caller docs"
     )
 }
 
@@ -637,6 +667,48 @@ assert_stdout_contains "3n: routes py-lint and py-test" "$RUN_OUT" \
     "=== Running direct relevant make target(s): py-lint py-test ==="
 assert_stdout_contains "3n: make invokes py-lint and py-test" "$RUN_OUT" \
     "make stub: py-lint py-test"
+
+echo "=== Section 3o: OOS Python routing ==="
+
+REPO_3O="$TMPROOT/repo-oos-python"
+STUB_3O="$TMPROOT/stub-oos-python"
+setup_oos_python_repo "$REPO_3O"
+make_stub_dir_with_py_tools "$STUB_3O" present absent
+run_checks "$REPO_3O" "$(controlled_path_with_py_tools "$STUB_3O")"
+assert_exit_eq "3o: OOS Python change exits 0 with py tools" "$RUN_EXIT" 0
+assert_stdout_contains "3o: routes py-lint and py-test" "$RUN_OUT" \
+    "=== Running direct relevant make target(s): py-lint py-test ==="
+assert_stdout_not_contains "3o: does not route removed serializer harness" "$RUN_OUT" \
+    "test-oos-serialize"
+assert_stdout_not_contains "3o: does not route removed normalizer harness" "$RUN_OUT" \
+    "test-normalize-oos-block-header"
+
+echo "=== Section 3p: migrated-scripts manifest routes py-test with tools ==="
+
+REPO_3P="$TMPROOT/repo-migrated-scripts-pytest"
+STUB_3P="$TMPROOT/stub-migrated-scripts-pytest"
+setup_migrated_scripts_manifest_repo "$REPO_3P"
+make_stub_dir_with_py_tools "$STUB_3P" present absent
+run_checks "$REPO_3P" "$(controlled_path_with_py_tools "$STUB_3P")"
+assert_exit_eq "3p: migrated-scripts routes lint and py-test" "$RUN_EXIT" 0
+assert_stdout_contains "3p: routes lint-retired-scripts and py-test" "$RUN_OUT" \
+    "=== Running direct relevant make target(s): lint-retired-scripts py-test ==="
+
+echo "=== Section 3q: OOS caller routing ==="
+
+REPO_3Q="$TMPROOT/repo-oos-caller"
+STUB_3Q="$TMPROOT/stub-oos-caller"
+setup_oos_caller_repo "$REPO_3Q"
+make_stub_dir "$STUB_3Q" present absent
+run_checks "$REPO_3Q" "$(controlled_path "$STUB_3Q")"
+assert_exit_eq "3q: OOS caller docs route integration harnesses" "$RUN_EXIT" 0
+assert_stdout_contains "3q: routes emit tally harness" "$RUN_OUT" "test-emit-tally"
+assert_stdout_contains "3q: routes tally code votes harness" "$RUN_OUT" "test-tally-code-votes"
+assert_stdout_contains "3q: routes review and fix harness" "$RUN_OUT" "test-review-and-fix"
+assert_stdout_not_contains "3q: does not route removed serializer harness" "$RUN_OUT" \
+    "test-oos-serialize"
+assert_stdout_not_contains "3q: does not route removed normalizer harness" "$RUN_OUT" \
+    "test-normalize-oos-block-header"
 
 echo "=== Section 4: preflight failure ==="
 
