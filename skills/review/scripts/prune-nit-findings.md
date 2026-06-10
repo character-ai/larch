@@ -62,7 +62,11 @@ prune-nit-findings.sh --findings-file PATH [--oos-file PATH] [--input-mode code|
 
 - Never exits non-zero (fail open contract).
 - Never modifies files when `STATUS=skipped` or `STATUS=disabled`.
-- `latent` and `important` findings are untouched.
+- `latent` and `important` findings are intentionally untouched by this script
+  (option b: latent findings stay in-scope at vote time; `tally-code-votes.sh`
+  and `tally-plan-review.sh` re-route non-accepted latent blocks to `oos.md`
+  after voting, preserving the in-PR-fix path for genuine-correctness latent
+  findings that do pass the in-scope gate).
 - Pruned blocks in `--oos-file` retain all original fields including
   `- **Severity**: nit`.
 

@@ -59,7 +59,7 @@ The canonical OOS problem-vs-solution clause exists in **six** logical places:
 4. `skills/implement/SKILL.md` — Step 5 MAV paragraph (`finding-only`, scoped to `[OUT_OF_SCOPE]` findings).
 5. `skills/design/references/plan-review.md` — Voter 1 instruction (`finding-oos`).
 
-The drift harness `case_canonical_text_drift_guard` greps a **shared substring** (identical tail of both grammar variants) across the four Markdown / SKILL locations (2–5). When you change OOS wording, update all six locations and run `make test-render-voter-prompt`.
+The drift harness `case_canonical_text_drift_guard` greps a **shared tail substring** (`Treat any suggested remedy in the item body as *informational only*…`) across the four Markdown / SKILL locations (2–5). The OOS acceptance standard itself now references `skills/shared/oos-acceptance-rubric.md`; the shared tail still enforces remedy-is-informational alignment. When you change OOS wording, update all six locations and run `make test-render-voter-prompt`.
 
 The necessity-gate rubric exists in **four** sync locations:
 

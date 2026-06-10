@@ -943,6 +943,58 @@ else
     FAIL=1; printf '  FAIL dead_slots: degraded panel banner missing\n'
 fi
 
+echo "# Case: non-accepted latent finding routes to oos.md, not rejected-findings.md (option b)"
+TMP="$WORKDIR/case_latent_reroute"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Fix null dereference
+- **Reviewer**: claude-output.txt
+- **Concern**: Null pointer on empty input.
+- **Suggested revision**: Guard with a nil check.
+- **Severity**: latent
+- **Correctness**: partially-true
+
+### FINDING_2: Add missing test
+- **Reviewer**: claude-output.txt
+- **Concern**: No test for the happy path.
+- **Suggested revision**: Add a test.
+- **Severity**: nit
+- **Correctness**: true
+EOF
+: > "$TMP/oos-accepted-review.md"
+: > "$TMP/oos.md"
+: > "$TMP/rejected-findings.md"
+: > "$TMP/accepted-findings.md"
+printf 'FINDING_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- does not clear necessity gate\nFINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=weak UNCERTAIN=false -- latent only\n' > "$TMP/codex-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" \
+    --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+# latent finding was rejected in-scope → must be in oos.md, NOT rejected-findings.md
+if command grep -q 'Fix null dereference' "$TMP/oos.md" 2>/dev/null; then
+    printf '  ok   latent_reroute: rejected latent in oos.md\n'
+else
+    FAIL=1; printf '  FAIL latent_reroute: rejected latent not found in oos.md\n'
+fi
+if command grep -q 'latent-rerouted' "$TMP/oos.md" 2>/dev/null; then
+    printf '  ok   latent_reroute: latent-rerouted marker in oos.md\n'
+else
+    FAIL=1; printf '  FAIL latent_reroute: latent-rerouted marker missing from oos.md\n'
+fi
+if command grep -q 'Fix null dereference' "$TMP/rejected-findings.md" 2>/dev/null; then
+    FAIL=1; printf '  FAIL latent_reroute: rejected latent must NOT be in rejected-findings.md\n'
+else
+    printf '  ok   latent_reroute: rejected latent absent from rejected-findings.md\n'
+fi
+# [OUT_OF_SCOPE]-tagged FINDING_2 (nit) goes through normal OOS path, not latent reroute
+if command grep -q 'Add missing test' "$TMP/oos.md" 2>/dev/null; then
+    printf '  ok   latent_reroute: nit/OOS finding still appears in oos.md\n'
+else
+    FAIL=1; printf '  FAIL latent_reroute: nit/OOS finding missing from oos.md\n'
+fi
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-tally-code-votes.sh\n'
     exit 0

@@ -16,7 +16,7 @@ WARNING_STRING='**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS
 INPUT_FILE=""
 OUTPUT_FILE=""
 OUTPUT_PROVIDED=0
-ISSUES_CAP="${OOS_ISSUES_PER_RUN_CAP-5}"
+ISSUES_CAP="${OOS_ISSUES_PER_RUN_CAP-1}"
 EXCERPT_MAX="${OOS_ISSUE_CAP_EXCERPT_MAX-200}"
 
 if ! [[ "$ISSUES_CAP" =~ ^[0-9]+$ ]] || (( ISSUES_CAP <= 0 )); then

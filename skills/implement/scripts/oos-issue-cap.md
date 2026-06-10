@@ -35,7 +35,7 @@ the file-conflict pre-pass that consumes that same path.
   `### OOS_<cap>:` aggregate, and renumbers headings to `OOS_1..OOS_<cap>`.
   `OOS_ISSUES_PER_RUN_CAP=1` keeps zero original entries and rolls the whole
   batch into a single `OOS_1` aggregate.
-- **Env validation**. `OOS_ISSUES_PER_RUN_CAP` defaults to `5` and
+- **Env validation**. `OOS_ISSUES_PER_RUN_CAP` defaults to `1` and
   `OOS_ISSUE_CAP_EXCERPT_MAX` defaults to `200`. Both are validated as positive
   integers with explicit empty strings treated as invalid. Invalid values exit
   2.

@@ -331,13 +331,13 @@ treated as version-file conflicts.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 
-Default `5` (positive integer). `/implement` Step 9a.1 uses
+Default `1` (positive integer). `/implement` Step 9a.1 uses
 `skills/implement/scripts/oos-issue-cap.sh` to cap the number of accepted
 out-of-scope issues filed in a single run. When the accepted item count exceeds
 the cap, the helper keeps the first `cap - 1` items and rolls the remaining
-items into one summary issue; `OOS_ISSUES_PER_RUN_CAP=1` rolls all items into a
-single summary issue. Empty, zero, negative, or non-numeric values fail closed
-with helper exit `2`.
+items into one summary issue; `OOS_ISSUES_PER_RUN_CAP=1` (the default) rolls all
+items into a single summary issue. Empty, zero, negative, or non-numeric values
+fail closed with helper exit `2`.
 
 ### `OOS_ISSUE_CAP_EXCERPT_MAX`
 
