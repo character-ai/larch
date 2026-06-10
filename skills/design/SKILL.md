@@ -54,7 +54,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 📊 Sketches (quick): | Cursor-Generic: ⏳ | Codex-Generic: ✅ 3m5s |
 
-or for Step 3 plan review (10-reviewer panel):
+or for Step 3 plan review:
 
 📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s | Codex-Requirements: ⏳ |
 ```

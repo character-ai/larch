@@ -94,6 +94,9 @@ readonly POS_MARKERS=(
 # internal contexts only.
 readonly STALE_PHRASES=(
   "6 Cursor specialists"
+  "Four active archetypes"
+  "4 specialists per available vendor"
+  "4 specialists per vendor"
   "1 Claude Code Reviewer subagent, 1 round"
   "no external reviewers"
   "no externals, no voting"

@@ -1,6 +1,6 @@
 # dispatch-plan-review-panel.sh
 
-**Purpose**: Renders static plan-review prompts (10 slots), appends dynamic slots from `$DESIGN_TMPDIR/scout-plan-manifest.json` (`dyn-cursor-plan-<slug>` / `dyn-codex-plan-<slug>`), and dispatches via `scripts/dispatch-with-waterfall.sh` with `--no-fallback`.
+**Purpose**: Renders static plan-review prompts (per-archetype vendor rows), appends dynamic slots from `$DESIGN_TMPDIR/scout-plan-manifest.json` (`dyn-cursor-plan-<slug>` / `dyn-codex-plan-<slug>`), and dispatches via `scripts/dispatch-with-waterfall.sh` with `--no-fallback`.
 
 **Primary callers**: `skills/design/SKILL.md` Step 3.
 

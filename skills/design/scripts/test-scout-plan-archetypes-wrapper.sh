@@ -58,6 +58,12 @@ setup_design_dir() {
     printf 'source\n' >"$d/source-env.sh"
 }
 
+PROMPT_TEMPLATE="$REPO_ROOT/skills/design/scripts/scout-plan-archetypes-prompt.txt"
+grep -Fq 'four personalities per available vendor' "$PROMPT_TEMPLATE" || fail "prompt must describe four static plan-review personalities"
+grep -Fq 'Requirements/Completeness' "$PROMPT_TEMPLATE" || fail "prompt must list Requirements archetype"
+! grep -Fq 'five personalities' "$PROMPT_TEMPLATE" || fail "prompt must not claim five static personalities"
+! grep -Fq '**Edge**' "$PROMPT_TEMPLATE" || fail "prompt must not list Edge as an active static archetype"
+
 echo "=== scope-files from plan with three backtick paths ==="
 D1="$TMP/d1"
 setup_design_dir "$D1"

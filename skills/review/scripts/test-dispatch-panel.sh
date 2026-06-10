@@ -723,7 +723,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$plan_file")
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
-[[ "$claude_count" -ge 4 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
+[[ "$claude_count" -ge 3 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
 assert_emit_tally_panel() {
