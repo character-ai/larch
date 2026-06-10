@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 # read-result-env.sh — safely convert result-env KVs into a sourceable allowlisted env.
+# Delegates allowlist filtering, symlink refusal, and CR/LF rejection to
+# phase_driver_read_result_env (skills/design/scripts/lib-phase-driver.sh);
+# this script adds: fallback-input logic, WARN/ERROR stdout replay, and
+# single-quote encoding of values for sourceable output.
 
 set -euo pipefail
+
+_RRE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=skills/design/scripts/lib-phase-driver.sh
+source "$_RRE_SCRIPT_DIR/../skills/design/scripts/lib-phase-driver.sh"
 
 usage() {
     printf '%s\n' 'usage: read-result-env.sh --input PATH [--fallback-input PATH] --allow KEY ... --output PATH' >&2
@@ -34,46 +42,20 @@ valid_var_name() {
     esac
 }
 
-is_allowed_key() {
-    local key="$1"
-    local allowed=""
-    while IFS= read -r allowed || [ -n "$allowed" ]; do
-        [ -z "$allowed" ] && continue
-        [ "$key" = "$allowed" ] && return 0
-    done <<EOF_ALLOW
-$ALLOW_KEYS
-EOF_ALLOW
-    return 1
-}
-
-parse_env_file() {
+replay_warn_error() {
     local input_path="$1"
-    local output_tmp="$2"
-    local line=""
-    local key=""
-    local value=""
-    : >"$output_tmp" || return 1
+    local line key value
     while IFS= read -r line || [ -n "$line" ]; do
         [ -z "$line" ] && continue
         case "$line" in
             *=*) ;;
-            *) return 1 ;;
+            *) continue ;;
         esac
         key="${line%%=*}"
         value="${line#*=}"
-        case "$value" in
-            *$'\r'*) return 1 ;;
-        esac
         case "$key" in
             WARN) printf '%s\n' "WARN=$value" ;;
             ERROR) printf '%s\n' "ERROR=$value" ;;
-            *)
-                if is_allowed_key "$key"; then
-                    printf '%s=' "$key" >>"$output_tmp" || return 1
-                    quote_single "$value" >>"$output_tmp" || return 1
-                    printf '\n' >>"$output_tmp" || return 1
-                fi
-                ;;
         esac
     done <"$input_path"
 }
@@ -81,7 +63,7 @@ parse_env_file() {
 INPUT_PATH=""
 FALLBACK_INPUT=""
 OUTPUT_PATH=""
-ALLOW_KEYS=""
+ALLOW_KEYS_ARRAY=()
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -98,8 +80,7 @@ while [ "$#" -gt 0 ]; do
         --allow)
             [ "$#" -ge 2 ] || { usage; exit 1; }
             valid_var_name "$2" || { usage; exit 1; }
-            ALLOW_KEYS="${ALLOW_KEYS}${ALLOW_KEYS:+
-}$2"
+            ALLOW_KEYS_ARRAY+=("$2")
             shift 2
             ;;
         --output)
@@ -159,9 +140,20 @@ output_tmp=$(mktemp "${out_dir}/.${out_base}.XXXXXX") || exit 1
 cleanup_tmp=true
 trap 'if [ "${cleanup_tmp:-false}" = true ]; then rm -f "$output_tmp"; fi' EXIT HUP INT TERM
 
-if ! parse_env_file "$SOURCE_PATH" "$output_tmp"; then
-    exit 1
-fi
+# Replay WARN/ERROR lines to stdout before allowlisted KV parsing.
+replay_warn_error "$SOURCE_PATH"
+
+# Delegate KV parsing to phase_driver_read_result_env, then quote_single-encode
+# each value to produce sourceable output.
+: >"$output_tmp" || exit 1
+while IFS= read -r _rre_pair || [ -n "$_rre_pair" ]; do
+    _rre_key="${_rre_pair%%=*}"
+    _rre_value="${_rre_pair#*=}"
+    printf '%s=' "$_rre_key" >>"$output_tmp" || exit 1
+    quote_single "$_rre_value" >>"$output_tmp" || exit 1
+    printf '\n' >>"$output_tmp" || exit 1
+done < <(phase_driver_read_result_env "$SOURCE_PATH" "${ALLOW_KEYS_ARRAY[@]}")
+
 if ! mv "$output_tmp" "$OUTPUT_PATH"; then
     exit 1
 fi

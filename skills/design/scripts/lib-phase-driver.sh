@@ -94,6 +94,10 @@ phase_driver_read_result_env() {
         return 1
     fi
     while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in
+            *=*) ;;
+            *) continue ;;
+        esac
         key="${line%%=*}"
         value="${line#*=}"
         for allowed in "${allowlist[@]}"; do

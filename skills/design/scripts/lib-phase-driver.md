@@ -23,7 +23,7 @@ Driver emits normalized status KVs (and writes `$DESIGN_TMPDIR/.step3-review-res
 | `phase_driver_session_get` | Awk KV read from `KEY=VAL` lines |
 | `phase_driver_resolve_plugin_root` | `CLAUDE_PLUGIN_ROOT` → session-env `LARCH_CLAUDE_PLUGIN_ROOT` → tree-walk from `skills/design/scripts` |
 | `phase_driver_write_result_env` | Atomic `mktemp` + `mv` write; refuses symlink target |
-| `phase_driver_read_result_env` | Allowlisted KV parse; refuses symlink source |
+| `phase_driver_read_result_env` | Allowlisted KV parse; refuses symlink source. Also used by `scripts/read-result-env.sh` as its core parser |
 
 Diagnostics use `larch_err` / `emit_kv` from `scripts/lib-quiet.sh`.
 

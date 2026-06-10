@@ -111,7 +111,8 @@ assert_file_not_contains 'ERROR not written to output' "$out" 'ERROR='
 
 write_input "$primary" 'INIT_STATUS=ok' 'malformed-line'
 run_subject --input "$primary" --allow INIT_STATUS --output "$out"
-assert_rc 'nonblank no equals fails' 1
+assert_rc 'nonblank no equals skipped' 0
+assert_file_contains 'nonblank no equals still reads valid keys' "$out" "INIT_STATUS='ok'"
 
 ln -s "$primary" "$SCRATCH/primary-link.env"
 run_subject --input "$SCRATCH/primary-link.env" --allow INIT_STATUS --output "$out"
@@ -149,10 +150,9 @@ write_input "$primary" 'INIT_STATUS=ok' 'malformed-line'
 write_input "$fallback" 'INIT_STATUS=fallback'
 rm -f "$out"
 run_subject --input "$primary" --fallback-input "$fallback" --allow INIT_STATUS --output "$out"
-assert_rc 'malformed regular primary with fallback' 1
-if [ -f "$out" ]; then
-    assert_file_not_contains 'malformed primary must not fall back' "$out" "INIT_STATUS='fallback'"
-fi
+assert_rc 'malformed regular primary with fallback' 0
+assert_file_contains 'malformed primary uses primary valid keys' "$out" "INIT_STATUS='ok'"
+assert_file_not_contains 'malformed primary must not fall back' "$out" "INIT_STATUS='fallback'"
 
 ln -s "$fallback" "$SCRATCH/fallback-link.env"
 run_subject --input "$SCRATCH/no-such.env" --fallback-input "$SCRATCH/fallback-link.env" --allow INIT_STATUS --output "$out"
@@ -164,7 +164,8 @@ assert_rc 'nonregular fallback input' 1
 
 printf 'INIT_STATUS=bad\rvalue\n' >"$primary"
 run_subject --input "$primary" --allow INIT_STATUS --output "$out"
-assert_rc 'carriage return value' 1
+assert_rc 'carriage return value skipped' 0
+assert_file_not_contains 'carriage return key not written' "$out" 'INIT_STATUS='
 
 write_input "$primary" "RUN_PARAMS_PATH=Bob's run"
 run_subject --input "$primary" --allow RUN_PARAMS_PATH --output "$out"

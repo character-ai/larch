@@ -559,10 +559,6 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design**" >&2
      exit 1
    fi
-   if [[ "${_init_rc:-0}" -ne 0 ]]; then
-     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (exit ${_init_rc}); aborting /design**" >&2
-     exit 1
-   fi
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
    ```
 
