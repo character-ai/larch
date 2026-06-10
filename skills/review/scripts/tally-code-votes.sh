@@ -576,7 +576,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 # Option (b): non-accepted latent findings route to OOS track instead of
                 # rejected-findings.md so the more-useful severity tier can still be filed.
                 _body_severity_latent=false
-                if command grep -qi '^-[[:space:]]*\*\*Severity\*\*:[[:space:]]*latent[[:space:]]*$' "$block" 2>/dev/null; then
+                if /usr/bin/grep -qi '^-[[:space:]]*\*\*Severity\*\*:[[:space:]]*latent[[:space:]]*$' "$block" 2>/dev/null; then
                     _body_severity_latent=true
                 fi
                 if [[ "$_body_severity_latent" == "true" ]]; then
