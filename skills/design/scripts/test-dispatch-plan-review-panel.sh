@@ -333,16 +333,10 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_STUB/python/"
-cat > "$PLUGIN_STUB/python/cli.py" <<'CLI_STUB'
-#!/usr/bin/env bash
-if [[ "${1:-} ${2:-}" != "render plan-review" ]]; then echo "unexpected cli args: $*" >&2; exit 2; fi
-shift 2
-printf 'stub plan review prompt for %s\n' "$*"
-CLI_STUB
-chmod +x "$PLUGIN_STUB/scripts/redact-secrets.sh" \
-    "$PLUGIN_STUB/python/cli.py"
-mkdir -p "$PLUGIN_STUB/skills/design/references"
+chmod +x "$PLUGIN_STUB/scripts/redact-secrets.sh"
+mkdir -p "$PLUGIN_STUB/skills/design/references" "$PLUGIN_STUB/skills/shared"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_STUB/skills/design/references/"
+cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_STUB/skills/shared/"
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""
@@ -391,7 +385,7 @@ grep -Fq '<reviewer_feature_description encoding="literal-redacted">' "$D10/clau
 
 echo "=== both-absent malformed generic output => dispatch not ok ==="
 PLUGIN_BAD="$TMP/plugin-bad-generic"
-mkdir -p "$PLUGIN_BAD/scripts" "$PLUGIN_BAD/python" "$PLUGIN_BAD/skills/design/scripts" "$PLUGIN_BAD/skills/design/references"
+mkdir -p "$PLUGIN_BAD/scripts" "$PLUGIN_BAD/python" "$PLUGIN_BAD/skills/design/scripts" "$PLUGIN_BAD/skills/design/references" "$PLUGIN_BAD/skills/shared"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_BAD/scripts/"
@@ -399,10 +393,10 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_BAD/python/"
-cp python3 "$REPO_ROOT/python/cli.py" render plan-review "$PLUGIN_BAD/skills/design/scripts/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
+cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_BAD/skills/shared/"
 chmod +x "$PLUGIN_BAD/scripts/redact-secrets.sh" \
-    "$PLUGIN_BAD/python/cli.py render plan-review"
+    "$PLUGIN_BAD/python/cli.py"
 cat >"$PLUGIN_BAD/scripts/launch-claude-review.sh" <<'BAD_CLAUDE_STUB'
 #!/usr/bin/env bash
 OUTPUT=""
@@ -490,12 +484,12 @@ cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-prune-decision.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
-cp python3 "$REPO_ROOT/python/cli.py" render plan-review "$PLUGIN_JSONL/skills/design/scripts/"
-mkdir -p "$PLUGIN_JSONL/python" "$PLUGIN_JSONL/skills/design/references"
+mkdir -p "$PLUGIN_JSONL/python" "$PLUGIN_JSONL/skills/design/references" "$PLUGIN_JSONL/skills/shared"
 cp "$REPO_ROOT/python/"*.py "$PLUGIN_JSONL/python/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
+cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_JSONL/skills/shared/"
 chmod +x "$PLUGIN_JSONL/scripts/redact-secrets.sh" \
-    "$PLUGIN_JSONL/python/cli.py render plan-review"
+    "$PLUGIN_JSONL/python/cli.py"
 cat >"$PLUGIN_JSONL/scripts/launch-claude-review.sh" <<'JSONL_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""
