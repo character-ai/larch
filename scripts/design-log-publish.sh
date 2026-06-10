@@ -362,6 +362,13 @@ design_artifact_excluded() {
             return 0
             ;;
     esac
+    # Synthesized by write-design-round-meta.sh; excluded per concise-allowlist
+    # principle (#3929) — round-level manifests are not committed to design logs.
+    case "$name" in
+        panel-manifest.ndjson|round-meta.json)
+            return 0
+            ;;
+    esac
     # Raw plan-review transcripts/diagnostics excluded; findings.md / voting-tally.md canonical (#3534).
     case "$name" in
         cursor-plan-*-output*.txt|codex-primary-plan-*-output*.txt|claude-plan-*-output*.txt)

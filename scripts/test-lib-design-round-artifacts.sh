@@ -54,6 +54,8 @@ assert_excluded plan.diff
 assert_excluded claude-vote-output-first-pass.txt
 assert_excluded claude-vote-output.txt
 assert_excluded voter1-diag.txt
+assert_excluded panel-manifest.ndjson
+assert_excluded round-meta.json
 
 assert_revise_excluded codex-output.txt
 assert_revise_excluded cursor-output.txt

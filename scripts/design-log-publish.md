@@ -60,7 +60,8 @@ branch by:
    `architecture-diagram.md` (same Mermaid body lives in the `larch:diagrams`
    issue comment). The exclusion list is
    also consulted for round-level files encountered in the round staging loop
-   (so ballot.txt in a round directory is silently skipped rather than erroring).
+   (so ballot.txt, panel-manifest.ndjson, and round-meta.json in a round
+   directory are silently skipped rather than erroring).
    All other top-level basenames pass through (deny-only model). `findings.md` /
    `voting-tally.md` under `plan-review/` remain canonical.
    **Top-level dedup**: after computing the last round source directory, the
