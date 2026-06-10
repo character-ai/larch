@@ -916,12 +916,19 @@ grep -Fq 'INPUT_<i>' "$OOS_PIPELINE_MD" \
 grep -Fq 'materialize-manifest-oos.sh' "$STEP2_IMPLEMENT_SH" \
   || fail "step2-implement.sh must invoke materialize-manifest-oos.sh"
 # Post-decouple: materialize-manifest-oos.sh is called by step2-implement.sh (Step 2
-# post-dispatch) but no longer by ship-pr.sh or python/ship.py — OOS filing moved
-# to a mandatory post-ship step backed by python/file_oos.py (#3650).
+# post-dispatch) but no longer by ship-pr.sh — OOS filing moved to a mandatory
+# post-ship orchestrator step backed by python/file_oos.py (#3650). ship.py may
+# only gate on accepted OOS via file_oos detection (#3917), not run the filing pipeline.
 ! grep -qi 'oos\|OOS' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must have no OOS references after #3650 decoupling"
-! grep -qi 'oos\|OOS' "$PY_SHIP" \
-  || fail "python/ship.py must have no OOS references after #3650 decoupling"
+grep -Fq 'import file_oos' "$PY_SHIP" \
+  || fail "python/ship.py must import file_oos for OOS gating (#3917)"
+grep -Fq 'needs_user_reason="oos-filing"' "$PY_SHIP" \
+  || fail "python/ship.py must signal oos-filing when accepted OOS present (#3917)"
+grep -Fq 'OOS_PENDING' "$PY_SHIP" \
+  || fail "python/ship.py must read OOS_PENDING state for OOS gating (#3917)"
+! grep -Fq 'materialize-manifest-oos' "$PY_SHIP" \
+  || fail "python/ship.py must not invoke materialize-manifest-oos (#3650)"
 [[ -f "$REPO_ROOT/python/file_oos.py" ]] \
   || fail "python/file_oos.py must exist (post-ship OOS engine, #3650)"
 step1_block=$(awk '/^1\. \*\*Resolve accepted-OOS inputs\*\*/{flag=1; print; next} flag && /^2\. \*\*/{exit} flag{print}' "$OOS_PIPELINE_MD")
