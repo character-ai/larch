@@ -1561,16 +1561,33 @@ def run_ship(
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
-                iteration += 1
-                _write_ship_state(
-                    working,
-                    phase="ci-initial",
-                    iteration=iteration,
-                    rebase_count=rebase_count,
-                    fix_attempts=fix_attempts,
-                    transient_retries=transient_retries,
-                )
-                continue
+                if merged.result == config.MERGE_RESULT_CI_NOT_READY:
+                    review_decision = gh.pr_review_decision(
+                        runner,
+                        working.pr_number or 0,
+                        repo=working.repo,
+                        cwd=repo_root,
+                    )
+                    if review_decision == "REVIEW_REQUIRED":
+                        merged = merge.MergeResult(
+                            result=config.MERGE_RESULT_REVIEW_REQUIRED,
+                            error=(
+                                f"PR requires approving review (mergeStateStatus=BLOCKED): "
+                                f"approve the PR or merge manually with --admin. "
+                                f"Original: {merged.error}"
+                            ),
+                        )
+                if merged.result != config.MERGE_RESULT_REVIEW_REQUIRED:
+                    iteration += 1
+                    _write_ship_state(
+                        working,
+                        phase="ci-initial",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
+                    continue
             if merged.result == config.MERGE_RESULT_REVIEW_REQUIRED:
                 _write_terminal_state(
                     working.with_(
