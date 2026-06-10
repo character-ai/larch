@@ -309,6 +309,28 @@ run_cleanup "$work"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "custom-retention-one-day CACHE_REMOVED"
 unset LARCH_CLEANUP_RETENTION_DAYS
 
+# --- stale-implement-pointer-reaped -------------------------------------------
+work="$TMP/stale-implement-pointer-reaped"
+mkdir -p "$work/xdg-cache/larch/sessions"
+printf 'IMPLEMENT_TMPDIR=%s\nREPO_CWD=/tmp/missing-repo\nSKILL_KIND=implement\n' \
+    "/tmp/missing-implement-tmpdir" > "$work/xdg-cache/larch/sessions/current-implement-env-stale.sh"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-implement-pointer-reaped exit $CASE_RC"
+[[ ! -f "$CASE_SESSIONS/current-implement-env-stale.sh" ]] || fail "stale-implement-pointer-reaped should remove stale implement pointer"
+assert_eq "$(kv_get IMPLEMENT_POINTERS_REMOVED "$CASE_OUTPUT")" "1" "stale-implement-pointer-reaped IMPLEMENT_POINTERS_REMOVED"
+
+# --- live-implement-pointer-kept ----------------------------------------------
+work="$TMP/live-implement-pointer-kept"
+mkdir -p "$work/xdg-cache/larch/sessions" "$work/live-impl"
+printf 'IMPLEMENT_TMPDIR=%s\nREPO_CWD=/tmp/repo\nSKILL_KIND=implement\n' \
+    "$work/live-impl" > "$work/xdg-cache/larch/sessions/current-implement-env-live.sh"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "live-implement-pointer-kept exit $CASE_RC"
+[[ -f "$CASE_SESSIONS/current-implement-env-live.sh" ]] || fail "live-implement-pointer-kept should keep live implement pointer"
+assert_eq "$(kv_get IMPLEMENT_POINTERS_REMOVED "$CASE_OUTPUT")" "0" "live-implement-pointer-kept IMPLEMENT_POINTERS_REMOVED"
+
 # --- dangling-symlink-reaped --------------------------------------------------
 work="$TMP/dangling-symlink-reaped"
 mkdir -p "$work/xdg-cache/larch/sessions"

@@ -49,6 +49,10 @@ case "$1" in
     # Handle commits-to-pulls API: gh api repos/.../commits/<sha>/pulls [--jq ...]
     path="${2:-}"
     if [[ "$path" == *"/commits/"*"/pulls" ]]; then
+      if [[ "${GH_FIXTURE_API_FAIL:-}" == "1" ]]; then
+        echo "simulated gh api failure" >&2
+        exit 1
+      fi
       sha="${path##*/commits/}"
       sha="${sha%%/pulls*}"
       fixture_dir="${GH_FIXTURE_API_COMMITS_DIR:-}"
@@ -548,6 +552,29 @@ if [[ $rc -eq 0 ]] \
   ok
 else
   fail "api-fallback: rc=$rc out=$out stderr=$stderr tsv=$tsv_content"
+fi
+
+# Case 13c: commits-to-pulls API failure → ERROR=pr-metadata-incomplete (not unmatched-commits)
+case_dir="$TMPDIR_BASE/c13c"
+mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+printf '{"number":42,"title":"Feature","labels":[{"name":"enhancement"}],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
+  > "$case_dir/prs/pr-42.json"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  GIT_LOG_SUBJECTS=$'Feature (#42)\nDocs without PR reference\n' \
+  GIT_LOG_SHA_SUBJECTS=$'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa Feature (#42)\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb Docs without PR reference\n' \
+  GH_FIXTURE_API_FAIL=1 \
+  run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=pr-metadata-incomplete'; then
+  ok
+else
+  fail "api-failure: rc=$rc out=$out"
 fi
 
 # Case 14: real classify-bump integration (--base/--head wiring)

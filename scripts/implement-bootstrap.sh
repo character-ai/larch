@@ -566,7 +566,7 @@ phase_infra() {
     local gate_err setup_out setup_err branch_out gate_out
     local branch_rc gate_rc setup_rc
     local dynamic_archetypes_value="" caller_dynamic_archetypes
-    local session_env_args _source_exit
+    local session_env_args _source_exit _ptr_err _ptr_rc
     local resume_existing_tmpdir=""
 
     branch_out=$("$SCRIPT_DIR/create-branch.sh" --check)
@@ -694,6 +694,33 @@ phase_infra() {
 
         IMPLEMENT_TMPDIR="$SESSION_TMPDIR"
         export IMPLEMENT_TMPDIR
+
+        if [ -n "${LARCH_CLAUDE_PID:-}" ]; then
+            _ptr_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-pointer.XXXXXX") || _ptr_err=""
+            _ptr_rc=0
+            if [ -n "$_ptr_err" ]; then
+                python3 "$PY_CLI" session write-implement-env \
+                    --claude-pid "$LARCH_CLAUDE_PID" \
+                    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+                    --cwd "$PWD" 2>"$_ptr_err" || _ptr_rc=$?
+            else
+                python3 "$PY_CLI" session write-implement-env \
+                    --claude-pid "$LARCH_CLAUDE_PID" \
+                    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+                    --cwd "$PWD" 2>/dev/null || _ptr_rc=$?
+            fi
+            if [ "$_ptr_rc" -ne 0 ] && [ -n "$_ptr_err" ] && [ -s "$_ptr_err" ]; then
+                "$SCRIPT_DIR/append-tool-failure.sh" \
+                    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                    --site "implement-bootstrap phase_infra" \
+                    --tool "session write-implement-env" \
+                    --exit-code "$_ptr_rc" \
+                    --category Warnings \
+                    --output-file "$_ptr_err" \
+                    --redact || true
+            fi
+            [ -n "$_ptr_err" ] && rm -f "$_ptr_err"
+        fi
 
         python3 "$PY_CLI" session write-id --output "$IMPLEMENT_TMPDIR/session-id"
         LARCH_TOKEN_SESSION_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)

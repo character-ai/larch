@@ -39,6 +39,15 @@ Machine-readable `KEY=value` lines. `LARCH_QUIET_DISABLE=1` is forced for this s
 
 `phase_plan_materialize` populates `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE`. `phase_coder_select` populates `coder` and, only when the implicit waterfall reaches Claude because both external implementers are unavailable, `coder_fallback=true`.
 
+On fresh-session infra setup, when `LARCH_CLAUDE_PID` is present, the script
+best-effort writes
+`~/.cache/larch/sessions/current-implement-env-$LARCH_CLAUDE_PID.sh` via
+`python3 "$PY_CLI" session write-implement-env`. The pointer records
+`IMPLEMENT_TMPDIR`, `REPO_CWD`, and `SKILL_KIND=implement` for the
+UserPromptSubmit progress hook. Pointer-write failures are logged as
+`Warnings` and do not block `/implement`; resume-tail re-entry does not rewrite
+the pointer.
+
 `diff_lines: <N>` in `plan.txt` is informational sizing context. It does not route the implementer; `phase_coder_select` and the bail table below are the routing authority.
 
 `BRANCH_SELECTED` values:

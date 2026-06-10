@@ -912,3 +912,43 @@ def test_local_cleanup_flush_orphan_non_flush_and_squash_gap(tmp_path: Path) -> 
     assert "BRANCH_DELETED=true" in squash_result.stdout
     assert "Dropping 1 prior-run larch-log flush commit(s)" in squash_result.stderr
     assert _git(["rev-parse", "HEAD"], cwd=squash_repo).stdout.strip() == expected
+
+
+def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    impl = tmp_path / "sessions" / "impl"
+    impl.mkdir(parents=True)
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+
+    rc = session_env.write_implement_env_main(
+        ["--claude-pid", "12345", "--implement-tmpdir", str(impl), "--cwd", str(cwd)]
+    )
+
+    pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-12345.sh"
+    assert rc == 0
+    assert pointer.read_text(encoding="utf-8") == (
+        f"IMPLEMENT_TMPDIR={impl}\nREPO_CWD={cwd}\nSKILL_KIND=implement\n"
+    )
+
+    clear_rc = session_env.clear_implement_pointer_main(["--claude-pid", "12345"])
+
+    assert clear_rc == 0
+    assert not pointer.exists()
+
+
+def test_write_implement_env_rejects_bad_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+
+    rc = session_env.write_implement_env_main(
+        ["--claude-pid", "0", "--implement-tmpdir", str(impl), "--cwd", str(cwd)]
+    )
+
+    assert rc == 1
+    assert not (home / ".cache" / "larch" / "sessions").exists()

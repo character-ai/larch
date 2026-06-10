@@ -251,6 +251,7 @@ export CLAUDE_PLUGIN_ROOT
 [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ] && ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 export forked_target emergency_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO
+export LARCH_CLAUDE_PID="$PPID"
 # Foreground required
 # phase-anchor: implement-bootstrap Step 0 through coder select
 set +e
@@ -265,6 +266,7 @@ if [ "$_inv_rc" -ne 0 ]; then
 fi
 # shellcheck source=scripts/parse-bootstrap-routing-envelope.sh
 . "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh"
+printf '%s\n' 'progress: type p (or progress) at any time'
 ```
 
 Parse the routing envelope from wrapper stdout and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (see bash block above). `scripts/implement-bootstrap.md` is the bootstrap behavior contract; `scripts/implement-bootstrap-invoke.md` is the wrapper contract. Offline harnesses: `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`) and `skills/implement/scripts/test-implement-bootstrap-invoke.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap-invoke.md`). Routing after parsing:
@@ -720,6 +722,7 @@ Print once before the `run-step5-review.sh` invocation:
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+printf '%s\n' 'progress: type p (or progress) at any time'
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -778,6 +781,7 @@ Then re-invoke the loop wrapper:
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+printf '%s\n' 'progress: type p (or progress) at any time'
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -1316,6 +1320,7 @@ if [ "$_restore_finalize" = true ]; then
     printf '%s\n' "**⚠ Step 18: restore-finalize-state.sh failed; proceeding to teardown.**" >&2
   fi
 fi
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session clear-implement-pointer --claude-pid "${LARCH_CLAUDE_PID:-$PPID}" 2>/dev/null || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" teardown \
   --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR"

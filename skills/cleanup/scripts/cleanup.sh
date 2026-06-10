@@ -6,6 +6,7 @@
 #   CACHE_REMOVED=<N>      Entries removed from ~/.cache/larch/sessions/.
 #   TMP_REMOVED=<N>        Entries removed from /tmp matching larch patterns.
 #   SYMLINKS_REMOVED=<N>   Dangling current-design-env-*.sh symlinks removed.
+#   IMPLEMENT_POINTERS_REMOVED=<N>  Stale current-implement-env-*.sh pointer files removed.
 
 set -euo pipefail
 
@@ -144,9 +145,34 @@ fi
 
 emit_kv SYMLINKS_REMOVED "$SYMLINKS_REMOVED"
 
+# --- Reap stale current-implement-env-*.sh pointer files ----------------------
+IMPLEMENT_POINTERS_REMOVED=0
+if [[ -d "$SESSIONS_PARENT" ]]; then
+    while IFS= read -r -d $'\0' pointer; do
+        [[ -f "$pointer" ]] || continue
+        [[ -L "$pointer" ]] && continue
+        impl_tmpdir=""
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            case "$line" in
+                IMPLEMENT_TMPDIR=*)
+                    impl_tmpdir="${line#IMPLEMENT_TMPDIR=}"
+                    break
+                    ;;
+            esac
+        done < "$pointer"
+        if [[ -z "$impl_tmpdir" || ! -d "$impl_tmpdir" ]]; then
+            rm -f "$pointer"
+            (( IMPLEMENT_POINTERS_REMOVED++ )) || true
+        fi
+    done < <(find "$SESSIONS_PARENT" -maxdepth 1 -name 'current-implement-env-*.sh' -type f -print0 2>/dev/null) || true
+fi
+
+emit_kv IMPLEMENT_POINTERS_REMOVED "$IMPLEMENT_POINTERS_REMOVED"
+
 # --- Summary ------------------------------------------------------------------
 larch_err ""
 larch_err "Cleanup complete:"
 larch_err "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
 larch_err "  /tmp (larch patterns):    $TMP_REMOVED entries removed"
 larch_err "  dangling design-env links: $SYMLINKS_REMOVED removed"
+larch_err "  stale implement-env files: $IMPLEMENT_POINTERS_REMOVED removed"

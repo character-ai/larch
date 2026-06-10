@@ -1120,9 +1120,9 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
     assert launch_count == 0
     # The wait loop should have slept exactly once at the poll interval before timing out.
     assert sleeps == [float(ci_monitor.config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL)]
-    assert fix.status == "fix-exhausted"
+    assert fix.status == "ci-still-in-progress"
     assert fix.detail is not None
-    assert fix.detail.startswith("ci-fix-exhausted")
+    assert "still in progress after" in fix.detail
 
 
 def test_wait_for_ci_ready_polls_until_ready() -> None:

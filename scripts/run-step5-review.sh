@@ -157,6 +157,12 @@ fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
+if [[ "$STEP5_MODE" == "loop" ]]; then
+    _progress_done_marker="$IMPLEMENT_TMPDIR/progress/done"
+    rm -f "$_progress_done_marker" 2>/dev/null || true
+    trap 'mkdir -p "$(dirname "$_progress_done_marker")" 2>/dev/null; : > "$_progress_done_marker" 2>/dev/null || true' EXIT
+fi
+
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CODEX_PRESENT="$(session_get "$SESSION_ENV_PATH" CODEX_PRESENT false)"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"

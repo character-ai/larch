@@ -56,6 +56,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-progress-report.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
