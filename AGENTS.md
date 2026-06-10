@@ -51,20 +51,27 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 ## Output Style
 
-Scope: human-facing prose only. Explicit formats win; not for machine-parsed surfaces, code, or comments. New prose only.
+**Scope.** Applies only to human-facing prose: chat answers to the operator, and human-facing documents (PR descriptions, issue bodies, design notes, summaries, README and docs prose).
 
-- Lead with the answer.
-- One idea per sentence.
-- Prefer bullets.
-- **Bold** key terms.
-- Use short headers.
-- In chat, confirm up front, then explain.
-- Stop early.
-- Answer what was asked.
-- Go shorter.
-- No em dashes; use periods, commas, colons, or semicolons.
-- Hedge claims; keep directives imperative.
-- Strunk & White: active voice; omit needless words.
+- Explicit output formats always win. Never apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and the `diff_lines:` line), vote tables, structured findings, commit-message conventions.
+- Does not apply to code or code comments; match the surrounding style there.
+- Applies to new prose only. Do not rewrite or restyle existing text to conform (no em-dash sweeps, no reformatting of adjacent paragraphs). Every changed line must still trace to the task at hand.
+- Precedence when rules conflict: explicit format contracts, then exact meaning, then these style rules.
+
+**Style rules.**
+
+- Lead with the answer. The first line answers the question. No preamble.
+- One idea per sentence. Keep sentences short.
+- Prefer bullets over paragraphs. If a paragraph is forming, break it up.
+- **Bold** the key terms so the text scans.
+- Use small chunks with short headers when it helps (for example **Before:**, **After:**, **Why:**).
+- In chat answers, confirm or correct up front ("Right" / "Not quite"), then explain.
+- Stop early. Answer what was asked. Cut filler.
+- Avoid long preambles, walls of prose, and burying the answer at the bottom.
+- When unsure how short to go: go shorter.
+- Never use em dashes. Use periods, commas, colons, or semicolons instead.
+- Hedge uncertain claims ("may contain", "can fail") instead of absolutes. Keep instructions imperative; do not hedge directives.
+- Strunk & White: use active voice; omit needless words; prefer concrete nouns and verbs.
 
 ## Conventions
 
