@@ -1918,6 +1918,32 @@ git -C "$clone_ballot" pull -q origin main
 [[ ! -f "$clone_ballot/larch-logs/design/RUNBALLOT1/plan-review/round-1/findings.md" ]] || fail "findings.md should be concise-excluded"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
+echo "=== synthesized round-meta.json + panel-manifest.ndjson silently skipped (#3929) ==="
+TMPSYNTH=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-synth.XXXXXX")
+clone_synth=$(setup_clone_with_origin_head "$TMPSYNTH")
+stub_synth="$TMPSYNTH/stub"
+make_gh_stub "$stub_synth"
+export PATH="$stub_synth:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+export TEST_CLONE_ROOT="$clone_synth"
+export TEST_MERGE_BRANCH="larch-log-design-RUNSYNTH1"
+mkdir -p "$TMPSYNTH/design/plan-review/round-1"
+printf 'body\n' >"$TMPSYNTH/design/plan.txt"
+printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMPSYNTH/design/plan-review/round-1/findings-classification.tsv"
+printf 'LOOP_STATUS=complete\n' >"$TMPSYNTH/design/plan-review/round-1/round-summary.env"
+printf '{"slot":"correctness","tool":"codex","output":"codex-specialist-correctness-output.txt"}\n' >"$TMPSYNTH/design/plan-review/round-1/panel-manifest.ndjson"
+printf '{"tally":{"ACCEPTED_COUNT":"1"},"panel_count":1}\n' >"$TMPSYNTH/design/plan-review/round-1/round-meta.json"
+out_synth=$(
+    (cd "$clone_synth" && bash "$PUBLISH" --design-tmpdir "$TMPSYNTH/design" --run-id "RUNSYNTH1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_synth" == *"PUBLISH_OK=true"* ]] || fail "synthesized round artifacts should not prevent publish: $out_synth"
+git -C "$clone_synth" pull -q origin main
+[[ -f "$clone_synth/larch-logs/design/RUNSYNTH1/plan-review/round-1/findings-classification.tsv" ]] || fail "findings-classification.tsv should be staged"
+[[ -f "$clone_synth/larch-logs/design/RUNSYNTH1/plan-review/round-1/round-summary.env" ]] || fail "round-summary.env should be staged"
+[[ ! -f "$clone_synth/larch-logs/design/RUNSYNTH1/plan-review/round-1/panel-manifest.ndjson" ]] || fail "panel-manifest.ndjson should not be staged from round directory"
+[[ ! -f "$clone_synth/larch-logs/design/RUNSYNTH1/plan-review/round-1/round-meta.json" ]] || fail "round-meta.json should not be staged from round directory"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
 echo "=== plan.txt round-1-only + plan.diff for rounds >= 2 (#3705) ==="
 TMPMULTIROUND=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-multiround.XXXXXX")
 clone_mr=$(setup_clone_with_origin_head "$TMPMULTIROUND")
