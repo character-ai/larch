@@ -138,7 +138,7 @@ write_dynamic_prompt() {
         vendor_note=" (Codex)"
     fi
     {
-        printf '%s\n' "You are a supplementary plan-review specialist (dynamic archetype \`${slug}\`). The static /design panel already covers Arch, Edge, Innovation, Pragmatic, and Requirements${vendor_note}. Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:"
+        printf '%s\n' "You are a supplementary plan-review specialist (dynamic archetype \`${slug}\`). The static /design panel already covers Arch, Innovation, Pragmatic, and Requirements${vendor_note}. Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:"
         printf '\n'
         emit_untrusted_dynamic_body "$body_file"
         printf '\n'
@@ -165,9 +165,9 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     _generic_output="$DESIGN_TMPDIR/claude-plan-generic-output.txt"
     _generic_prompt="$DESIGN_TMPDIR/claude-plan-generic.prompt"
     {
-        printf '%s\n' "You are a combined plan-review panel applying all five standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
+        printf '%s\n' "You are a combined plan-review panel applying all four standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
         printf '\n'
-        for _archetype in arch edge innovation pragmatic requirements; do
+        for _archetype in arch innovation pragmatic requirements; do
             _role_render=$(render_plan_review_prompt "$_archetype" cursor "$PLAN_FILE")
             _role_line="${_role_render%%$'\n'*}"
             printf '%s\n\n' "$_role_line"
@@ -231,7 +231,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     exit 0
 fi
 
-for _archetype in arch edge innovation pragmatic requirements; do
+for _archetype in arch innovation pragmatic requirements; do
     if [[ "$CURSOR_PRESENT" == "true" ]]; then
         render_plan_review_prompt "$_archetype" cursor "$PLAN_FILE" \
             >"$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
@@ -242,7 +242,7 @@ for _archetype in arch edge innovation pragmatic requirements; do
     fi
 done
 
-for _archetype in arch edge innovation pragmatic requirements; do
+for _archetype in arch innovation pragmatic requirements; do
     if [[ "$CURSOR_PRESENT" == "true" ]]; then
         _append_manifest_row "cursor-plan-${_archetype}" cursor \
             "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \

@@ -939,7 +939,7 @@ def write_run_params_main(argv: list[str]) -> int:
             raise ValueError("missing required flag: --output")
         if args.classification not in {"SIMPLE", "HARD"}:
             raise ValueError(f"invalid --classification: {args.classification}")
-        if args.sketch_budget and args.sketch_budget not in {"0", "2", "4"}:
+        if args.sketch_budget and args.sketch_budget not in {"0", "2", "3", "4"}:
             raise ValueError(f"invalid --sketch-budget: {args.sketch_budget}")
         if args.workflow_path and args.workflow_path not in {"SIMPLE", "HARD"}:
             raise ValueError(f"invalid --workflow-path: {args.workflow_path}")

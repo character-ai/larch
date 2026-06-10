@@ -584,9 +584,9 @@ case "$fm_snip" in *"Reviewing the plan against the repo"*) ;; *) echo "FAIL: fo
 # is same-line-only, so a separate-line TSV reaches the gate intact and this
 # exercises the dispatch gate's preamble-salvage path.
 manifest="$TMPROOT/slots-nf-salvage-tsv.ndjson"
-printf '{"slot":"cursor-plan-edge","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+printf '{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
     "$TMPROOT/nf-salvage-tsv.txt" "$prompt" >"$manifest"
-salvage_tsv_content=$'Reviewing the plan and tracing cited code paths for edge cases.\nschema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tcorrectness\tscripts/foo.sh:42\tLock before validation\tRace between runs\tMove lock after validation'
+salvage_tsv_content=$'Reviewing the plan and tracing cited code paths for failure paths.\nschema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tcorrectness\tscripts/foo.sh:42\tLock before validation\tRace between runs\tMove lock after validation'
 out=$(PATH="$STUB_BIN:$PATH" \
     CURSOR_STUB_RESULT_CONTENT="$salvage_tsv_content" \
     "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \

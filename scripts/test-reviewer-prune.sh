@@ -18,18 +18,18 @@ manifest_code() {
     cat > "$1" <<JSON
 {"slot":"dyn-foo","tool":"cursor","output":"$TMP/dyn-foo-output.txt","prompt_file":"$TMP/prompt.md"}
 {"slot":"dyn-foo-codex","tool":"codex","output":"$TMP/dyn-foo-codex-output.txt","prompt_file":"$TMP/prompt.md"}
-{"slot":"security","tool":"cursor","output":"$TMP/cursor-specialist-security-output.txt","agent":"$TMP/a.md"}
+{"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"$TMP/a.md"}
 JSON
 }
 
 manifest_plan() {
     cat > "$1" <<JSON
 {"slot":"cursor-plan-arch","tool":"cursor","output":"$TMP/cursor-plan-arch-output.txt","prompt_file":"$TMP/p.md"}
-{"slot":"codex-plan-edge","tool":"codex","output":"$TMP/codex-primary-plan-edge-output.txt","prompt_file":"$TMP/p.md"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"$TMP/codex-primary-plan-pragmatic-output.txt","prompt_file":"$TMP/p.md"}
 JSON
     cat > "$2" <<'MAP'
 cursor-plan-arch	Cursor-Arch
-codex-plan-edge	Codex-Edge
+codex-plan-pragmatic	Codex-Pragmatic
 MAP
 }
 
@@ -43,14 +43,14 @@ FINDING_1	dyn-foo-output.txt|dyn-foo-codex-output.txt	accepted
 FINDING_2	dyn-foo-codex-output.txt	accepted
 FINDING_3	dyn-foo-output.txt-phase2	accepted
 FINDING_4	dyn-foo-output.txt (retry)	accepted
-OOS_1	cursor-specialist-security-output.txt	accepted
+OOS_1	cursor-specialist-edge-cases-output.txt	accepted
 FINDING_5	dyn-foo-output.txt-codex-output.txt	accepted
 FINDING_6	dyn-foo-output.txt	rejected
 TSV
 "$HELPER" record --ledger "$ledger" --round 1 --manifest "$m" --classification "$classification"
 contains "$ledger" $'1\tcursor\tdyn-foo\tdyn-foo-output.txt\t3' "code label exact/normalization count"
 contains "$ledger" $'1\tcodex\tdyn-foo-codex\tdyn-foo-codex-output.txt\t2' "code codex count"
-contains "$ledger" $'1\tcursor\tsecurity\tcursor-specialist-security-output.txt\t1' "accepted OOS count"
+contains "$ledger" $'1\tcursor\tedge-cases\tcursor-specialist-edge-cases-output.txt\t1' "accepted OOS count"
 not_contains "$ledger" $'dyn-foo-output.txt-codex-output.txt\t1' "shared-prefix token must not create label row"
 
 cat > "$classification" <<'TSV'
@@ -70,14 +70,14 @@ label_map="$TMP/labels.tsv"
 manifest_plan "$plan_manifest" "$label_map"
 cat > "$TMP/plan-classification.tsv" <<'TSV'
 finding_id	finding_reviewers	voting_result
-FINDING_1	Cursor-Arch Codex-Edge	accepted
+FINDING_1	Cursor-Arch Codex-Pragmatic	accepted
 FINDING_2	Cursor-Arch	accepted
 OOS_1	Cursor-Arch	accepted
-FINDING_3	Cursor-Arch,Codex-Edge	accepted
+FINDING_3	Cursor-Arch,Codex-Pragmatic	accepted
 TSV
 "$HELPER" record --ledger "$ledger" --round 2 --manifest "$plan_manifest" --classification "$TMP/plan-classification.tsv" --label-map "$label_map"
 contains "$ledger" $'2\tcursor\tcursor-plan-arch\tCursor-Arch\t4' "plan whitespace/comma token matching"
-contains "$ledger" $'2\tcodex\tcodex-plan-edge\tCodex-Edge\t2' "plan second token matching"
+contains "$ledger" $'2\tcodex\tcodex-plan-pragmatic\tCodex-Pragmatic\t2' "plan second token matching"
 
 # Build two zero-strike rounds and assert round 3 pruning, clean slate, and round 5 re-probe.
 manifest_code "$m"
@@ -97,7 +97,7 @@ done
 [[ "$(kv "$envout" PRUNE_ACTIVE)" == true ]] || fail "round3 prune active"
 [[ "$(kv "$envout" PANEL_PRUNED_EMPTY)" == true ]] || fail "all-pruned marker"
 [[ ! -s "$out" ]] || fail "all-pruned output should be empty"
-contains "$envout" 'PRUNED_COMBOS=cursor:dyn-foo,codex:dyn-foo-codex,cursor:security' "pruned combo list"
+contains "$envout" 'PRUNED_COMBOS=cursor:dyn-foo,codex:dyn-foo-codex,cursor:edge-cases' "pruned combo list"
 
 one_round_ledger="$TMP/one-round-ledger.tsv"
 "$HELPER" record --ledger "$one_round_ledger" --round 2 --manifest "$m" --classification "$TMP/zero.tsv"

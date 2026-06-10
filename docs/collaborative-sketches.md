@@ -16,12 +16,11 @@ For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simp
 
 ### Hard Mode
 
-HARD mode keeps one slot per personality across a Cursor/Codex diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic):
+HARD mode keeps one slot per personality across a Cursor/Codex diagonal split (Cursor-Arch + Codex-Innovation + Codex-Pragmatic):
 
 | Agent | Harness | Role | Focus |
 |---|---|---|---|
 | **Cursor — Arch** (skipped if Cursor down) | Cursor | Architecture/Standards | Clean design, proper layering, reuse of existing libraries |
-| **Cursor — Edge** (skipped if Cursor down) | Cursor | Edge-cases/Failure-modes | Boundary conditions, error handling, failure recovery |
 | **Codex — Innovation** (skipped if Codex down) | Codex | Innovation/Exploration | Creative alternatives, unconventional solutions, questioned assumptions |
 | **Codex — Pragmatic** (skipped if Codex down) | Codex | Pragmatism/Safety | Smallest change set, avoid regressions, protect existing features |
 
@@ -53,7 +52,7 @@ The handling of unavailable external tools differs across workflow phases:
 flowchart TD
     START([Feature description]) --> TIER{Design tier}
     TIER -->|SIMPLE| SIMPLE_SENTINEL[Step 2a entry fence writes SIMPLE sentinel artifacts]
-    TIER -->|HARD| HARD_LAUNCH[Launch 4 personality sketches]
+    TIER -->|HARD| HARD_LAUNCH[Launch 3 personality sketches]
     HARD_LAUNCH --> HARD_WAIT[Wait for sketches]
     HARD_WAIT --> SYNTHESIS[Approach synthesis]
     HARD_LAUNCH -->|both tools down| HARD_ZERO[Step 2a.3 writes degraded no-sketch sentinels]
@@ -76,7 +75,7 @@ flowchart TD
    - Identifies where approaches agree (likely the majority)
    - Identifies divergence points and makes reasoned calls with justification
    - Notes which ideas from each sketch are incorporated
-   - (Regular mode only) Highlights personality-specific concerns: **Architecture/Standards**, **Pragmatism/Safety**, **Edge-case/Failure-mode**, **Innovation/Exploration**
+   - (Regular mode only) Highlights personality-specific concerns: **Architecture/Standards**, **Pragmatism/Safety**, **Innovation/Exploration**
    - (SIMPLE mode) Uses the sentinel `NO_SKETCHES_CLASSIFIED_SIMPLE` instead of fabricated agreement
    - Lists contested decisions in a structured format for the dialectic debate phase
 

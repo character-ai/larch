@@ -710,7 +710,7 @@ git add -A
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** foreground `run-step5-review.sh` Bash tool call that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh` with 4 specialists per vendor (Cursor + Codex) plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** foreground `run-step5-review.sh` Bash tool call that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and all-pruned rounds consume a round slot and advance toward the round-5 full re-probe.
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
@@ -718,7 +718,7 @@ Use the `DYNAMIC_ARCHETYPES_CAP` and `ROUND_CAP` lines emitted by the Step 5 tel
 
 Print once before the `run-step5-review.sh` invocation:
 
-`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 4 specialists per vendor (Cursor + Codex, mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap=$dynamic_archetypes_cap**`
+`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero); dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"

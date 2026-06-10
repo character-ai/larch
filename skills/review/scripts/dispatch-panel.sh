@@ -108,10 +108,10 @@ queue_external_slot() {
 [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (reviewer-testing injects the folded plan-fidelity scan)"; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
-# Both panels: 4 specialists per vendor; one row per active archetype/vendor.
+# Both panels: specialists per vendor; one row per active archetype/vendor.
 # Both panels always include testing with folded plan-fidelity (plan file required above).
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-static_specialists=(security correctness edge-cases testing)
+static_specialists=(correctness edge-cases testing)
 
 for name in "${static_specialists[@]}"; do
     if [[ "$CURSOR_AVAILABLE" == "true" ]]; then

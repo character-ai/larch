@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$tmp"
-external="$tmp/codex-specialist-security-output.txt"
+external="$tmp/codex-specialist-correctness-output.txt"
 claude="$tmp/claude-generic-output.txt"
 printf 'reviewer finding\n' > "$external"
 printf 'claude finding\n' > "$claude"
@@ -62,7 +62,7 @@ printf '0\n' > "$claude.done"
 external_outputs="$external"
 if [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
   external_outputs=""
-  for slot in security correctness edge-cases testing; do
+  for slot in correctness edge-cases testing; do
     file="$tmp/codex-specialist-${slot}-output.txt"
     printf 'external static %s\n' "$slot" > "$file"
     printf 'STATUS=clean\n' > "$file.dirty-tree"
@@ -71,7 +71,7 @@ if [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
 fi
 if [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
   claude_outputs=""
-  for slot in security correctness edge-cases testing; do
+  for slot in correctness edge-cases testing; do
     file="$tmp/cursor-specialist-${slot}-output-phase3.txt"
     printf 'claude static %s\n' "$slot" > "$file"
     printf '0\n' > "$file.done"
@@ -104,7 +104,7 @@ if [[ "${TEST_PANEL_PRUNED_EMPTY:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
   printf 'PANEL_PRUNED_EMPTY=true\n'
   printf 'PRUNE_STATUS=pruned-empty\n'
-  printf 'PRUNED_COMBOS=cursor:security,codex:security\n'
+  printf 'PRUNED_COMBOS=cursor:correctness,codex:correctness\n'
   printf 'EXTERNAL_OUTPUT_FILES=\nCLAUDE_OUTPUT_FILES=\n'
   printf 'STATIC_SLOT_COUNT=0\nSLOT_COUNT=0\nDYNAMIC_SLOTS=0\n'
   printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
@@ -117,13 +117,13 @@ if [[ -n "${TEST_SCOUT_FAIL_REASON:-}" ]]; then
 fi
 printf 'DYNAMIC_SLOTS=%s\n' "${TEST_DYNAMIC_SLOTS:-0}"
 printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
-printf 'STATIC_SLOT_COUNT=%s\n' "${TEST_STATIC_SLOT_COUNT:-4}"
-printf 'SLOT_COUNT=%s\n' "$(( ${TEST_STATIC_SLOT_COUNT:-4} + ${TEST_DYNAMIC_SLOTS:-0} ))"
+printf 'STATIC_SLOT_COUNT=%s\n' "${TEST_STATIC_SLOT_COUNT:-3}"
+printf 'SLOT_COUNT=%s\n' "$(( ${TEST_STATIC_SLOT_COUNT:-3} + ${TEST_DYNAMIC_SLOTS:-0} ))"
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
 if [[ "${TEST_DROPPED_SLOTS:-false}" == "true" ]]; then
   dropped="$tmp/dropped-slots.tsv"
-  printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
-  printf 'STATUS=dirty\nTRACKED_PATHS_FILE=%s/tracked.z\n' "$tmp" > "$tmp/codex-specialist-security-output.txt.dirty-tree"
+  printf 'correctness\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
+  printf 'STATUS=dirty\nTRACKED_PATHS_FILE=%s/tracked.z\n' "$tmp" > "$tmp/codex-specialist-correctness-output.txt.dirty-tree"
   printf 'dropped\0' > "$tmp/tracked.z"
   printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
 fi
@@ -139,23 +139,23 @@ if [[ -n "${TEST_DISPATCH_ARGV_LOG:-}" ]]; then
 fi
 if [[ "${TEST_FULL_STATIC_MANIFEST:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
-  for slot in security correctness edge-cases testing; do
+  for slot in correctness edge-cases testing; do
     printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
   done
 elif [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
-  for slot in security correctness edge-cases testing; do
+  for slot in correctness edge-cases testing; do
     printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
   done
 elif [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
-  for slot in security correctness edge-cases testing; do
+  for slot in correctness edge-cases testing; do
     printf '{"slot":"%s","tool":"cursor","output":"%s/cursor-specialist-%s-output-phase3.txt","agent":"agents/reviewer-%s.md"}\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
   done
 else
   cat > "$tmp/panel-manifest.ndjson" <<EOF
-{"slot":"security","tool":"codex","output":"$external","agent":"agents/reviewer-security.md"}
-{"slot":"security","tool":"cursor","output":"$tmp/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
+{"slot":"correctness","tool":"codex","output":"$external","agent":"agents/reviewer-correctness.md"}
+{"slot":"correctness","tool":"cursor","output":"$tmp/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
 {"slot":"generic","tool":"claude","output":"$claude","agent":"agents/reviewer-generic.md"}
 EOF
 fi
@@ -181,9 +181,6 @@ rtmp="${rtmp:-$(dirname "$findings")}"
 case "${TEST_COLLECTOR_VARIANT:-ok-all}" in
   missing-testing)
     cat > "$rtmp/collector-results.env" <<EOF
-REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
-STATUS=OK
-
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=OK
 
@@ -197,9 +194,6 @@ EOF
     ;;
   external-files-only)
     cat > "$rtmp/collector-results.env" <<EOF
-REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
-STATUS=ERROR
-
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=ERROR
 
@@ -213,9 +207,6 @@ EOF
     ;;
   cap-hit-all)
     cat > "$rtmp/collector-results.env" <<EOF
-REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
-STATUS=cap_hit
-
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=cap_hit
 
@@ -229,9 +220,6 @@ EOF
     ;;
   missing-testing-with-drops)
     cat > "$rtmp/collector-results.env" <<EOF
-REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
-STATUS=OK
-
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=OK
 
@@ -242,9 +230,6 @@ EOF
     ;;
   *)
     cat > "$rtmp/collector-results.env" <<EOF
-REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
-STATUS=OK
-
 REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=OK
 
@@ -655,7 +640,7 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
     echo "FAIL: zero-findings round map missing round-1 binding" >&2
     exit 1
 }
-jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 4 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 4' \
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 3 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 3' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 run_core_flush "$TMP/zero-flush")
@@ -669,7 +654,7 @@ dispatch_argv_log="$TMP/dispatch-argv.log"
 out=$(TEST_FINDINGS=0 TEST_PRUNE_LEDGER="$prune_ledger" TEST_DISPATCH_ARGV_LOG="$dispatch_argv_log" run_core "$TMP/zero-prune-ledger")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq "prune_ledger=$prune_ledger" "$dispatch_argv_log" || { echo "FAIL: review-core did not forward --prune-ledger" >&2; exit 1; }
-grep -Fq $'1\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$prune_ledger" || { echo "FAIL: zero-findings round did not write prune ledger row" >&2; cat "$prune_ledger" >&2; exit 1; }
+grep -Fq $'1\tcodex\tcorrectness\tcodex-specialist-correctness-output.txt\t0' "$prune_ledger" || { echo "FAIL: zero-findings round did not write prune ledger row" >&2; cat "$prune_ledger" >&2; exit 1; }
 
 out=$(TEST_PANEL_PRUNED_EMPTY=true run_core "$TMP/prune-skipped")
 assert_contains "$out" 'REVIEW_CORE_STATUS=prune-skipped'
@@ -681,13 +666,13 @@ grep -Fq 'PRUNE_STATUS=' "$TMP/prune-skipped/prune-decision.env" || { echo "FAIL
 threshold_argv_log="$TMP/threshold-argv.log"
 out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=cap-hit-all TEST_THRESHOLD_ARGV_LOG="$threshold_argv_log" run_core "$TMP/claude-fallback")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-grep -Fq 'cursor-specialist-security-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
+grep -Fq 'cursor-specialist-correctness-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
 
 both_vendor_threshold_log="$TMP/both-vendor-threshold-argv.log"
-out=$(TEST_FINDINGS=0 TEST_STATIC_SLOT_COUNT=8 TEST_THRESHOLD_ARGV_LOG="$both_vendor_threshold_log" run_core "$TMP/both-vendor-threshold")
+out=$(TEST_FINDINGS=0 TEST_STATIC_SLOT_COUNT=6 TEST_THRESHOLD_ARGV_LOG="$both_vendor_threshold_log" run_core "$TMP/both-vendor-threshold")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-grep -Fq 'intended=8' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing intended=8" >&2; exit 1; }
-grep -Fq 'launched=8' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing launched=8" >&2; exit 1; }
+grep -Fq 'intended=6' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing intended=6" >&2; exit 1; }
+grep -Fq 'launched=6' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing launched=6" >&2; exit 1; }
 
 set +e
 out=$(TEST_FINDINGS=0 TEST_EXTERNAL_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=external-files-only run_core "$TMP/external-files-coverage" 2>&1)
@@ -722,11 +707,11 @@ grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): t
     exit 1
 }
 
-out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/partial-static-pass")
+out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=6 run_core "$TMP/partial-static-pass")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 
 set +e
-out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_FULL_STATIC_MANIFEST=true TEST_COLLECTOR_VARIANT=missing-testing-with-drops TEST_DROPPED_ARCHETYPE=testing TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/dropped-archetype-coverage" 2>&1)
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_FULL_STATIC_MANIFEST=true TEST_COLLECTOR_VARIANT=missing-testing-with-drops TEST_DROPPED_ARCHETYPE=testing TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=6 run_core "$TMP/dropped-archetype-coverage" 2>&1)
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: missing both peers for one static archetype should exit 2" >&2; echo "$out" >&2; exit 1; }
@@ -740,13 +725,13 @@ dropped_argv_log="$TMP/dropped-threshold-argv.log"
 out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_CHECKPOINT_STATUS=dirty TEST_THRESHOLD_ARGV_LOG="$dropped_argv_log" TEST_EXPECT_DROPPED_SLOTS_FILE="$TMP/dropped-wire/dropped-slots.tsv" run_core "$TMP/dropped-wire")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq "dropped=$TMP/dropped-wire/dropped-slots.tsv" "$dropped_argv_log" || { echo "FAIL: dropped slots file not forwarded to threshold" >&2; exit 1; }
-grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-security-output.txt' "$TMP/dropped-wire/review-dirty-tree-summary.env" || { echo "FAIL: dropped static dirty-tree sidecar not recovered" >&2; exit 1; }
+grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-correctness-output.txt' "$TMP/dropped-wire/review-dirty-tree-summary.env" || { echo "FAIL: dropped static dirty-tree sidecar not recovered" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=3'
-jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 7' \
+jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 6' \
     "$TMP/zero-scout/review-summary.json" >/dev/null || { echo "FAIL: zero-scout review-summary.json missing dynamic panel fields" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=parse-failed TEST_SCOUT_FAIL_REASON=json_parse run_core "$TMP/zero-scout-parse-failed")
@@ -840,7 +825,7 @@ fi
 assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=2'
-jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 6' \
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 5' \
     "$TMP/panel-failed/review-summary.json" >/dev/null || { echo "FAIL: panel-failed review-summary.json missing panel telemetry" >&2; exit 1; }
 
 mkdir -p "$TMP/agg-exhaust-core"
@@ -879,7 +864,7 @@ jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
 main_agent_prune_ledger="$TMP/main-agent-prune-ledger.tsv"
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_PRUNE_LEDGER="$main_agent_prune_ledger" run_core "$TMP/main-agent-prune")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
-grep -Fq $'1\tcodex\tsecurity\tcodex-specialist-security-output.txt\t0' "$main_agent_prune_ledger" \
+grep -Fq $'1\tcodex\tcorrectness\tcodex-specialist-correctness-output.txt\t0' "$main_agent_prune_ledger" \
     || { echo "FAIL: main-agent-vote-required should write launched-slot prune ledger rows" >&2; cat "$main_agent_prune_ledger" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core_flush "$TMP/main-agent-flush")
@@ -918,7 +903,7 @@ grep -Fq 'RECOVERY_TAKEN=true' "$TMP/dirty/review-dirty-tree-summary.env"
 
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=unknown TEST_CHECKPOINT_STATUS=unknown run_core "$TMP/unknown")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-security-output.txt' "$TMP/unknown/review-dirty-tree-summary.env"
+grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-correctness-output.txt' "$TMP/unknown/review-dirty-tree-summary.env"
 
 issues_parent="$TMP/issues-parent"
 mkdir -p "$issues_parent"

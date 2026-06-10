@@ -262,7 +262,7 @@ cat > "$BALLOT2" <<'EOF'
 - Concern: example shows `focus-area = security` in code.
 
 ### OOS_4: Unfenced security tag
-- **Reviewer**: Codex-Edge
+- **Reviewer**: Codex-Pragmatic
 - focus-area = security
 - Concern: real security finding.
 EOF
@@ -385,7 +385,7 @@ command grep -q 'Missing null guard' "$DESIGN_LATENT/oos.md" 2>/dev/null \
     || fail "latent_reroute (plan): rejected latent must be in oos.md"
 command grep -q 'latent-rerouted' "$DESIGN_LATENT/oos.md" 2>/dev/null \
     || fail "latent_reroute (plan): latent-rerouted marker missing from oos.md"
-if command grep -q 'Missing null guard' "$DESIGN_LATENT/rejected-findings.md" 2>/dev/null; then
+if grep -q 'Missing null guard' "$DESIGN_LATENT/rejected-findings.md" 2>/dev/null; then
     fail "latent_reroute (plan): rejected latent must NOT be in rejected-findings.md"
 fi
 echo "  ok: latent_reroute (plan) — rejected latent in oos.md, not rejected-findings.md"

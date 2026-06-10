@@ -72,7 +72,7 @@ assert_count() {
     [[ "$count" == "$expected" ]] || fail "$label: expected $expected occurrences of '$needle', got $count"
 }
 
-archetypes=(arch edge innovation pragmatic requirements)
+archetypes=(arch innovation pragmatic requirements)
 vendors=(codex cursor)
 
 for archetype in "${archetypes[@]}"; do
@@ -109,7 +109,7 @@ for archetype in "${archetypes[@]}"; do
 done
 
 # Archetype-specific full_role prose check (once per archetype, vendor=codex as the representative)
-for _arch_check in "arch:Emphasize maintainability" "edge:boundary conditions" "innovation:Question assumptions" "pragmatic:Minimize scope" "requirements:every stated goal"; do
+for _arch_check in "arch:boundary conditions" "innovation:Question assumptions" "pragmatic:failure recovery" "requirements:every stated goal"; do
     _arch="${_arch_check%%:*}"
     _phrase="${_arch_check#*:}"
     _out="$TMPROOT/full-role-${_arch}.txt"

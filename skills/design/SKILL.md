@@ -7,13 +7,13 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with the mechanical plan-review panel on both tiers (rounds 1-2 and 5 use the full static diagonal; rounds 3-4 may be reduced only by `reviewer-prune.sh`; plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the mechanical plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
+Design an implementation plan for a feature and review it with the mechanical plan-review panel on both tiers (rounds 1-2 and 5 use the full static diagonal; rounds 3-4 may be reduced only by `reviewer-prune.sh`; plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the mechanical plan-review panel; HARD runs 3 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
 **Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--hard` | `false` | Opt into HARD (default is SIMPLE): 4 sketches, dialectic when contested, full review panel, 5 total review runs |
+| `--hard` | `false` | Opt into HARD (default is SIMPLE): 3 sketches, dialectic when contested, full review panel, 5 total review runs |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
 | `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
@@ -50,13 +50,13 @@ Design an implementation plan for a feature and review it with the mechanical pl
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
 ```
-📊 Sketches (regular): | Cursor-Arch: ⏳ | Cursor-Edge: ✅ 3m5s | Codex-Innovation: ❌ 8m3s | Codex-Pragmatic: ✅ 4m2s |
+📊 Sketches (regular): | Cursor-Arch: ⏳ | Codex-Innovation: ❌ 8m3s | Codex-Pragmatic: ✅ 4m2s |
 
 📊 Sketches (quick): | Cursor-Generic: ⏳ | Codex-Generic: ✅ 3m5s |
 
 or for Step 3 plan review (10-reviewer panel):
 
-📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Edge: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Edge: ✅ 3m10s | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s | Codex-Requirements: ⏳ |
+📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s | Codex-Requirements: ⏳ |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable). This replaces individual per-agent completion messages. → shared/progress-reporting.md
@@ -122,7 +122,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the primary SIMPLE-tier write site for `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers (written in the guarded SIMPLE block **before** pause-check), with Step 2a.5 allowed to repair legacy or corrupted SIMPLE pauses before skipping. HARD always runs 4 personality sketches; HARD's `.completed/step-2a` is folded into the Step 2a.5 prelude, both `step-2a` and `step-2a.5` into the Step 2b prelude, and the zero-sketch degraded branch fence before jumping to Step 2b. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
+1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the primary SIMPLE-tier write site for `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers (written in the guarded SIMPLE block **before** pause-check), with Step 2a.5 allowed to repair legacy or corrupted SIMPLE pauses before skipping. HARD always runs 3 personality sketches; HARD's `.completed/step-2a` is folded into the Step 2a.5 prelude, both `step-2a` and `step-2a.5` into the Step 2b prelude, and the zero-sketch degraded branch fence before jumping to Step 2b. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
 
@@ -738,9 +738,9 @@ fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
+Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, `3`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=3`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
 
-**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 4 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
+**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 3 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
 
 A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
 
@@ -750,14 +750,13 @@ Launch no external agents and no Claude fallback agents. When `_design_classific
 
 Skip Step 2a.5 and proceed directly to Step 2b only after the full SIMPLE sentinel package and both completion markers are present. If a resumed SIMPLE run reaches this branch without that complete package, do not fall through to regular sketch launch; continue to the Step 2a.5 repair guard. Do NOT call `collect-agent-results.sh`.
 
-### Regular mode (`sketch_budget=4`) — 4 sketch agents
+### Regular mode (`sketch_budget=3`) — 3 sketch agents
 
-The 4 sketch slots are **2 Cursor + 2 Codex**. A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207):
+The 3 sketch slots are **1 Cursor + 2 Codex**. A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207):
 
 1. **Cursor — Architecture/Standards** (skipped if Cursor unavailable).
-2. **Cursor — Edge-cases/Failure-modes** (skipped if Cursor unavailable).
-3. **Codex — Innovation/Exploration** (skipped if Codex unavailable).
-4. **Codex — Pragmatism/Safety** (skipped if Codex unavailable).
+2. **Codex — Innovation/Exploration** (skipped if Codex unavailable).
+3. **Codex — Pragmatism/Safety** (skipped if Codex unavailable).
 
 When the assigned external is unavailable, the slot is skipped — no Claude substitution (#3207) — and the phase proceeds with fewer sketches (possibly zero if both tools are down).
 
@@ -776,13 +775,13 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b. If `read-design-classification.sh` returns `SIMPLE` but that full package is incomplete, route to Step 2a.5 repair instead of launching regular sketches.
 
-**Regular mode**: when `sketch_budget=4`, up to 4 sketch slots run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
+**Regular mode**: when `sketch_budget=3`, up to 3 sketch slots run in parallel: 1 Cursor slot (Architecture/Standards) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
 **Quick/simple mode**: when `sketch_budget=2`, up to 2 sketch slots run in parallel: 1 Cursor-Generic + 1 Codex-Generic. A slot whose tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
-**MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
+**MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the three personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
 
-**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot **skip** notes (#3207: an unavailable tool's slot is skipped, not Claude-replaced).
+**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 3 regular-mode external slots (1 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot **skip** notes (#3207: an unavailable tool's slot is skipped, not Claude-replaced).
 
 **`<FEATURE_DESCRIPTION>` substitution (outline + brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists, prepend a concise `## Approved direction (outline)` section containing the approved outline. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, also prepend a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
 
@@ -807,14 +806,13 @@ fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ```
 
-**Regular mode** (4 external output files when both tools available):
+**Regular mode** (3 external output files when both tools available):
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
-  "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
 ```
@@ -847,16 +845,15 @@ Read all sketches that ran (fewer when an external tool was unavailable; if zero
 2. Identifies where they **diverge** and makes a reasoned call on each contested point with justification
 3. Notes which ideas from each sketch are being incorporated into the full plan
 
-**Regular mode only** (`sketch_budget=4`, personality-specific highlights — skip these when `sketch_budget=2`):
+**Regular mode only** (`sketch_budget=3`, personality-specific highlights — skip these when `sketch_budget=2`):
 
-4. Highlights any **Architecture/Standards** concerns that should be addressed in the plan
-5. Highlights any **Pragmatism/Safety** warnings about regression risk or unnecessary complexity
-6. Surfaces any **Edge-case/Failure-mode** risks that should be addressed in the plan's Failure modes section
-7. Notes any **Innovation/Exploration** alternatives worth preserving as options even when not chosen
+4. Highlights any **Architecture/Standards** concerns that should be addressed in the plan, including boundary conditions, error handling gaps, and failure paths
+5. Highlights any **Pragmatism/Safety** warnings about regression risk, unnecessary complexity, failure recovery, race conditions, or silent data corruption
+6. Notes any **Innovation/Exploration** alternatives worth preserving as options even when not chosen
 
-**Quick mode** (`sketch_budget=2`): attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-7 above. Use generic agreement/divergence analysis only.
+**Quick mode** (`sketch_budget=2`): attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-6 above. Use generic agreement/divergence analysis only.
 
-8. Lists contested decisions as a structured markdown list in `$DESIGN_TMPDIR/contested-decisions.md`. Use this schema:
+7. Lists contested decisions as a structured markdown list in `$DESIGN_TMPDIR/contested-decisions.md`. Use this schema:
 
    ```markdown
    ### DECISION_1: <short title>
@@ -1354,11 +1351,11 @@ Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/em
 
 **Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with existing artifacts.
 
-**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 6 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 3). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
+**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: static external slots (Cursor + Codex for Arch, Innovation, Pragmatic, Requirements) plus **up to 6 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 3). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
 **MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for reviewer prompts, the Competition notice blockquote, ballot handling, voting thresholds, Finalize Plan Review, and artifact templates. **Scout, panel dispatch, collection, aggregation, voting, and tally run inside** `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Round timing helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.sh` (sibling `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.md`; harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-record-plan-review-round-timing.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-record-plan-review-round-timing.md`). Renderer and harness references are unchanged (`render-plan-review-prompt.md`, `scout-plan-archetypes-wrapper.md`, `dispatch-plan-review-panel.md`, etc.). Scope-anchor helper surface: `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-strip-body.sh` strips prior `larch:plan` blocks before anchoring issue scope; `${CLAUDE_PLUGIN_ROOT}/scripts/check-scope-reduction-marker.sh` validates leading `[SCOPE-REDUCTION]` marker handling. Regression coverage: `${CLAUDE_PLUGIN_ROOT}/scripts/test-plan-block-strip-body.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/test-check-scope-reduction-marker.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-scope-anchor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-scope-anchor.md`), and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-persist-retally-step3-env.sh` (offline harness for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/persist-retally-step3-env.sh`; sibling contracts `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/persist-retally-step3-env.md` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-persist-retally-step3-env.md`). **agent-lint S030 pins** (literal paths retained in SKILL.md): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
 
-Launch **all static + eligible dynamic reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent. **Spawn order for static slots** remains slowest-first: 5 Cursor archetypes (Arch, Edge, Innovation, Pragmatic, Requirements), then 5 Codex archetypes — dynamic slots follow in the manifest built by `dispatch-plan-review-panel.sh` (called from `plan-review-loop.sh`). Each reviewer receives the plan text and the staged scope anchor at `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` (issue narrative with `larch:plan` stripped, plus approved outline when present). Non-empty `$DESIGN_TMPDIR/brainstorm.md` is merged only into optional non-binding `plan-review-feature-context.txt`, not the binding anchor. Each must **only report findings** — never edit files.
+Launch **all static + eligible dynamic reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent. **Spawn order for static slots** remains slowest-first: Cursor archetypes (Arch, Innovation, Pragmatic, Requirements), then Codex archetypes — dynamic slots follow in the manifest built by `dispatch-plan-review-panel.sh` (called from `plan-review-loop.sh`). Each reviewer receives the plan text and the staged scope anchor at `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` (issue narrative with `larch:plan` stripped, plus approved outline when present). Non-empty `$DESIGN_TMPDIR/brainstorm.md` is merged only into optional non-binding `plan-review-feature-context.txt`, not the binding anchor. Each must **only report findings** — never edit files.
 
 ### External Reviewer Setup (if `codex_available` or `cursor_available`)
 

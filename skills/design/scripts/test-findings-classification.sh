@@ -25,7 +25,7 @@ write_ballot() {
     local path="$1"
     cat > "$path" <<'EOF'
 ### FINDING_1: First finding
-- **Reviewer(s)**: Cursor-Edge	Codex-Arch
+- **Reviewer(s)**: Cursor-Pragmatic	Codex-Arch
 - **Severity**: important
 - **Focus area**: correctness
 - **Location**: src/a
@@ -134,7 +134,7 @@ assert_cell "$OUT" FINDING_1 v2_tool Codex
 assert_cell "$OUT" FINDING_1 v3_tool Cursor
 assert_cell "$OUT" FINDING_1 v1_quality excellent
 assert_cell "$OUT" OOS_3 v2_vote NO
-assert_cell "$OUT" FINDING_1 finding_reviewers "Cursor-Edge Codex-Arch"
+assert_cell "$OUT" FINDING_1 finding_reviewers "Cursor-Pragmatic Codex-Arch"
 assert_all_rows_21_fields "$OUT"
 
 echo "=== parser axis order, partial row, casing, duplicates, delimiter ==="

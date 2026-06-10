@@ -97,14 +97,14 @@ cat > "$DROUND/findings.md" <<'MD'
 - **Concern**: Plan omits a required file; the feature is incomplete without it.
 
 ### FINDING_2:
-- **Reviewer(s)**: Codex-Edge
+- **Reviewer(s)**: Codex-Pragmatic
 - **Severity**: important
 - **Focus area**: code-quality
 - **Concern**: A rename would be cleaner here.
 MD
 printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\n' > "$DROUND/findings-classification.tsv"
 printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\n' >> "$DROUND/findings-classification.tsv"
-printf 'FINDING_2\tCodex-Edge\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\n' >> "$DROUND/findings-classification.tsv"
+printf 'FINDING_2\tCodex-Pragmatic\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\n' >> "$DROUND/findings-classification.tsv"
 
 
 DROUND2="$FIX/larch-logs/design/RUN-DSGN-2/plan-review/round-1"

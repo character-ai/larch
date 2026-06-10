@@ -22,7 +22,7 @@ Before sending to voters, assign each deduplicated finding a stable sequential I
 - **Suggested revision**: <what to change>
 ```
 
-Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Plan-fidelity`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Codex-Plan-fidelity`) for its hard panel. Simple panels add `Claude-Generic` and use a reduced external-specialist set. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor`; `/review` uses specialist labels (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`) for its hard panel. Simple panels add `Claude-Generic` and use a reduced external-specialist set. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -213,7 +213,7 @@ Full scoreboard format (used in standalone mode):
 
 The **Neutral** column counts all non-accepted findings that award **0** points to the proposer (≥1 YES but below acceptance threshold). The **Rejected** column counts non-accepted findings that cost **−1** point (0 YES). A single finding is counted in **at most one** of these two columns.
 
-Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Plan-fidelity`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Codex-Plan-fidelity`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
+Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Correctness`/`Testing`/`Edge-cases`/`Codex-Correctness`/`Codex-Testing`/`Codex-Edge-cases`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
 
 ## Out-of-Scope Observations
 

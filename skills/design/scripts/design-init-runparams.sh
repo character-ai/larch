@@ -162,7 +162,7 @@ if [[ "$CLASSIFICATION" == SIMPLE ]]; then
     workflow_path=SIMPLE
 else
     design_classification_reason='argv tier: --hard'
-    sketch_budget=4
+    sketch_budget=3
     workflow_path=HARD
 fi
 design_classification_source=caller-forwarded

@@ -37,7 +37,9 @@
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
-- Non-accepted in-scope findings are written to `rejected-findings.md`.
+- Non-accepted in-scope findings are written to `rejected-findings.md`, except
+  latent-severity findings, which are rerouted to `oos.md` with a
+  `latent-rerouted` marker.
 - OOS visibility output is written to `oos.md`.
 - Accepted OOS output is written to `oos-accepted-design.md` under `$DESIGN_TMPDIR`.
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
