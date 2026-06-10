@@ -982,6 +982,29 @@ def write_run_params_main(argv: list[str]) -> int:
         return 2
 
 
+def read_design_classification(path: Path | str) -> str:
+    """Resolve SIMPLE|HARD from run-params.json; default HARD."""
+    path_str = str(path)
+    target = Path(path)
+    if not path_str or path_str == "run-params.json" or not target.is_file():
+        return "HARD"
+    try:
+        value = json.loads(target.read_text(encoding="utf-8")).get("design_classification")
+        if value in {"SIMPLE", "HARD"}:
+            return value
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "HARD"
+    if re.search(r'"design_classification"\s*:\s*"SIMPLE"', text):
+        return "SIMPLE"
+    if re.search(r'"design_classification"\s*:\s*"HARD"', text):
+        return "HARD"
+    return "HARD"
+
+
 def read_classification_main(argv: list[str]) -> int:
     path = argv[0] if argv else str(Path(os.environ.get("DESIGN_TMPDIR", "")) / "run-params.json")
     def warn(msg: str) -> None:
@@ -996,25 +1019,18 @@ def read_classification_main(argv: list[str]) -> int:
         print("HARD")
         return 0
     try:
-        value = json.loads(target.read_text(encoding="utf-8")).get("design_classification")
-        if value in {"SIMPLE", "HARD"}:
-            print(value)
-            return 0
-    except (OSError, json.JSONDecodeError, AttributeError):
-        pass
-    try:
         text = target.read_text(encoding="utf-8", errors="replace")
     except OSError:
         warn(f"run-params not readable: {path}")
         print("HARD")
         return 0
-    if re.search(r'"design_classification"\s*:\s*"SIMPLE"', text):
-        print("SIMPLE")
-    elif re.search(r'"design_classification"\s*:\s*"HARD"', text):
-        print("HARD")
-    else:
+    classification = read_design_classification(target)
+    if classification == "HARD" and not re.search(
+        r'"design_classification"\s*:\s*"(?:SIMPLE|HARD)"',
+        text,
+    ):
         warn("design_classification missing or invalid")
-        print("HARD")
+    print(classification)
     return 0
 
 

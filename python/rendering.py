@@ -73,7 +73,7 @@ class RenderError(RuntimeError):
 
 
 def _err(message: str) -> None:
-    print(message, file=sys.stderr)
+    logging_util.BreadcrumbWriter().emit(message)
 
 
 def _write_payload(text: str) -> None:
@@ -84,6 +84,18 @@ def _write_payload(text: str) -> None:
 
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _iter_physical_lines(path: Path, *, crlf_prefix: str) -> Iterable[tuple[int, str]]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        text = handle.read()
+    for row, line in enumerate(text.split("\n"), start=1):
+        if "\r" in line:
+            suffix = " (use LF)" if crlf_prefix.endswith(":") else ""
+            raise RenderError(f"{crlf_prefix}{row}: CRLF line endings not allowed{suffix}")
+        if not line or line.startswith("#"):
+            continue
+        yield row, line
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -788,15 +800,7 @@ def render_plan_review_main(argv: list[str]) -> int:
                     "--feature-file must be a readable regular non-empty file (not a symlink) at most 64 KiB",
                 )
             feature_file = _validate_design_prompt_file(feature_path, "--feature-file", design_tmpdir)
-        classification_path = design_tmpdir / "run-params.json"
-        classification = "HARD"
-        if classification_path.is_file():
-            try:
-                value = json.loads(_read_text(classification_path)).get("design_classification")
-                if value in {"SIMPLE", "HARD"}:
-                    classification = value
-            except json.JSONDecodeError:
-                classification = "HARD"
+        classification = session_env.read_design_classification(design_tmpdir / "run-params.json")
         tier = "**Tier emphasis: SIMPLE.** This is a minimum-change review lane. Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Accept YES only for findings that keep or restore that minimum-change contract. Vote NO on nits, style concerns, and forward-looking issues that are not worth tracking." if classification == "SIMPLE" else "**Tier emphasis: HARD.** Bias your findings toward **thoroughness**. Flag missed considerations, edge cases, and architectural concerns. Request additions when warranted. Engage seriously with all findings."
         rubric = _read_text(REPO_ROOT / "skills" / "shared" / "review-acceptance-rubric.md").split("\n---", 1)[0].rstrip("\n")
         scope = ""
@@ -1466,6 +1470,8 @@ def _validate_topology_row(row: int, key: str, value: str, composition: str, run
     path = REPO_ROOT / runtime
     if not path.is_file():
         raise RenderError(f"row {row}: runtime_authority not found: {runtime}")
+    if proc.run(["git", "ls-files", "--error-unmatch", "--", runtime], cwd=str(REPO_ROOT), check=False).returncode != 0:
+        raise RenderError(f"row {row}: runtime_authority is not tracked by git: {runtime}")
     if value not in _read_text(path):
         raise RenderError(f"row {row}: value '{value}' not found in runtime_authority: {runtime}")
 
@@ -1474,11 +1480,8 @@ def _topology_text() -> str:
     rows: list[tuple[str, str, str, str]] = []
     seen_keys: set[str] = set()
     seen_anchors: set[str] = set()
-    for row, line in enumerate(_read_text(Path(os.environ.get("LARCH_TOPOLOGY_TSV", str(REPO_ROOT / "skills" / "shared" / "topology.tsv")))).splitlines(), start=1):
-        if line.endswith("\r"):
-            raise RenderError(f"row {row}: CRLF line endings not allowed")
-        if not line or line.startswith("#"):
-            continue
+    topology_path = Path(os.environ.get("LARCH_TOPOLOGY_TSV", str(REPO_ROOT / "skills" / "shared" / "topology.tsv")))
+    for row, line in _iter_physical_lines(topology_path, crlf_prefix="row "):
         parts = line.split("\t")
         if len(parts) != TOPOLOGY_COLUMN_COUNT or not parts[0] or not parts[1] or not parts[3]:
             raise RenderError(f"row {row}: malformed row; expected exactly four tab-separated columns with key, value, and runtime_authority non-empty")
@@ -1563,11 +1566,7 @@ def generate_check_main(argv: list[str]) -> int:
             raise RenderError("check-generators: not inside a git work tree")
         commands: list[str] = []
         outputs: list[str] = []
-        for row, line in enumerate(_read_text(registry).splitlines(), start=1):
-            if line.endswith("\r"):
-                raise RenderError(f"scripts/generators.tsv:{row}: CRLF line endings not allowed (use LF)")
-            if not line or line.startswith("#"):
-                continue
+        for row, line in _iter_physical_lines(registry, crlf_prefix="scripts/generators.tsv:"):
             parts = line.split("\t")
             if len(parts) != GENERATOR_COLUMN_COUNT or not parts[0] or not parts[1]:
                 raise RenderError(f"scripts/generators.tsv:{row}: malformed row; expected exactly two non-empty tab-separated columns")

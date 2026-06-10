@@ -110,12 +110,68 @@ import os
 import sys
 from pathlib import Path
 
+def _diagrams_upsert_stub() -> int:
+    code_file = ""
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == "--repo" and i + 1 < len(sys.argv):
+            i += 2
+            continue
+        if sys.argv[i] == "--code-flow-file" and i + 1 < len(sys.argv):
+            code_file = sys.argv[i + 1]
+            i += 2
+            continue
+        i += 1
+    calls_log = os.environ.get("STEP7A_CALLS_LOG", "")
+    if calls_log:
+        with open(calls_log, "a", encoding="utf-8") as handle:
+            if code_file and Path(code_file).is_file():
+                handle.write(f"upsert-diagrams-content {code_file}\n")
+            handle.write(f"python/cli.py {' '.join(sys.argv[1:])}\n")
+    if os.environ.get("STEP7A_UPSERT_FAIL", "0") == "1":
+        print("upsert failed", file=sys.stderr)
+        return 1
+    body_capture = os.environ.get("STEP7A_UPSERT_BODY_CAPTURE", "")
+    if body_capture:
+        capture_path = Path(body_capture)
+        capture_path.write_text("", encoding="utf-8")
+        existing = os.environ.get("STEP7A_UPSERT_EXISTING_BODY_FILE", "")
+        if existing and Path(existing).is_file():
+            lines = Path(existing).read_text(encoding="utf-8").splitlines()
+            if lines and lines[0] == "<!-- larch:diagrams v1 -->":
+                keep = False
+                arch_lines: list[str] = []
+                for line in lines:
+                    if line == "## Code Flow Diagram":
+                        keep = False
+                    elif line == "## Architecture Diagram":
+                        keep = True
+                        continue
+                    elif keep:
+                        arch_lines.append(line)
+                if arch_lines:
+                    with capture_path.open("a", encoding="utf-8") as handle:
+                        for line in arch_lines:
+                            handle.write(f"{line}\n")
+        if capture_path.stat().st_size > 0 and code_file and Path(code_file).is_file():
+            with capture_path.open("a", encoding="utf-8") as handle:
+                handle.write("\n\n")
+        if code_file and Path(code_file).is_file():
+            with capture_path.open("a", encoding="utf-8") as handle:
+                handle.write(Path(code_file).read_text(encoding="utf-8"))
+    print("UPSERT_STATUS=ok")
+    print("COMMENT_URL=https://example.test/comment/1")
+    print("UPDATED=true")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 3 and sys.argv[1] == "diagrams" and sys.argv[2] == "upsert":
+        raise SystemExit(_diagrams_upsert_stub())
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
@@ -156,49 +212,6 @@ case "${STEP7A_GEN_MODE:-ok}" in
         exit 99
         ;;
 esac
-STUB
-
-    mkdir -p "$root/python"
-    cat > "$root/python/cli.py" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-code_file=""
-repo=""
-args="$*"
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --repo) repo=$2; shift 2 ;;
-        --code-flow-file) code_file=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-[ -n "$code_file" ] && [ -f "$code_file" ] && printf 'upsert-diagrams-content %s\n' "$code_file" >> "$STEP7A_CALLS_LOG"
-printf 'python/cli.py diagrams upsert %s\n' "$args" >> "$STEP7A_CALLS_LOG"
-if [ "${STEP7A_UPSERT_FAIL:-0}" = "1" ]; then
-    printf 'upsert failed\n' >&2
-    exit 1
-fi
-[ -n "${STEP7A_UPSERT_BODY_CAPTURE:-}" ] && {
-    : > "$STEP7A_UPSERT_BODY_CAPTURE"
-    if [ -n "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ] && [ -f "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ]; then
-        first_line=$(head -n 1 "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" 2>/dev/null || true)
-        if [ "$first_line" = '<!-- larch:diagrams v1 -->' ]; then
-            awk '
-                BEGIN { capture = 0 }
-                /^## Code Flow Diagram$/ { capture = 0 }
-                /^## Architecture Diagram$/ { capture = 1 }
-                capture { print }
-            ' "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" >> "$STEP7A_UPSERT_BODY_CAPTURE"
-        fi
-    fi
-    if [ -s "$STEP7A_UPSERT_BODY_CAPTURE" ] && [ -n "$code_file" ] && [ -f "$code_file" ]; then
-        printf '\n\n' >> "$STEP7A_UPSERT_BODY_CAPTURE"
-    fi
-    [ -n "$code_file" ] && [ -f "$code_file" ] && cat "$code_file" >> "$STEP7A_UPSERT_BODY_CAPTURE"
-}
-printf 'UPSERT_STATUS=ok\n'
-printf 'COMMENT_URL=https://example.test/comment/1\n'
-printf 'UPDATED=true\n'
 STUB
 
     cat > "$root/scripts/rebase-checkpoint-probe.sh" <<'STUB'
