@@ -43,6 +43,7 @@ from typing import Any, TextIO, cast
 import checks
 import ci_monitor
 import config
+import file_oos
 import finalize
 import gh
 import git
@@ -105,6 +106,7 @@ _ALLOWED_SHIP_STATE_KEYS = frozenset({
     "DONE_RENAME_APPLIED",
     "CI_PASSED",
     "TOOL_LABEL",
+    "OOS_PENDING",
 })
 _TERMINAL_ONLY_STATE_KEYS = frozenset({
     "EXIT_CODE",
@@ -483,6 +485,7 @@ def _write_ship_state(
         "MANIFEST_PATH": ctx.manifest_path,
         "MERGE": _state_bool(value=ctx.merge),
         "DRAFT": _state_bool(value=ctx.draft),
+        "OOS_PENDING": _state_bool(value=ctx.oos_pending),
         "PR_CLOSED": _state_bool(value=ctx.pr_closed),
         "PR_NUMBER": "" if ctx.pr_number is None else str(ctx.pr_number),
         "PR_URL": ctx.pr_url,
@@ -583,6 +586,7 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         ("BAIL_NEEDS_USER_INPUT", "bail_needs_user_input"),
         ("PR_CLOSED", "pr_closed"),
         ("CI_FIX_REBASE_PENDING", "ci_fix_rebase_pending"),
+        ("OOS_PENDING", "oos_pending"),
     ):
         value = state.get(key, "")
         if value:
@@ -1236,6 +1240,15 @@ def run_ship(
                     terminal_outcome=postbump.outcome,
                 )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
+
+            if fresh_context.oos_pending and not fresh_context.forked_target and not fresh_context.repo_unavailable:
+                oos_count = file_oos.count_non_security(
+                    file_oos.accepted_oos_paths(Path(fresh_context.tmpdir))
+                )
+                if oos_count > 0:
+                    return ShipResult(
+                        Outcome.NEEDS_USER_INPUT, needs_user_reason="oos-filing"
+                    )
 
             pr_context = fresh_context
         else:

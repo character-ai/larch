@@ -2364,3 +2364,116 @@ def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.Monke
     assert finalize_state["STALL_TRACKING"] == "true"
     assert finalize_state["EXIT_CODE"] == "4"
     assert "STALL_TRACKING=true\n" in state_file.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# OOS filing signal tests
+# ---------------------------------------------------------------------------
+
+def _patch_fresh_path_pre_pr_create(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+
+
+def test_oos_pending_exits_with_filing_reason_when_accepted_oos_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    _ = (tmp_path / "oos-accepted-review.md").write_text(
+        "### OOS_1: Some finding\nSome body.\n",
+        encoding="utf-8",
+    )
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "oos-filing"
+
+
+def test_oos_pending_false_skips_oos_check_despite_accepted_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    _ = (tmp_path / "oos-accepted-review.md").write_text(
+        "### OOS_1: Some finding\nSome body.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr, "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(ShipError("past-oos-check")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, oos_pending=False), runner=RecordingRunner(), cwd=str(tmp_path)
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert "past-oos-check" in result.detail
+
+
+def test_oos_check_skipped_when_forked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    _ = (tmp_path / "oos-accepted-review.md").write_text(
+        "### OOS_1: Some finding\nSome body.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr, "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(ShipError("past-oos-check")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, forked=True), runner=RecordingRunner(), cwd=str(tmp_path)
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert "past-oos-check" in result.detail
+
+
+def test_oos_check_skipped_when_repo_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    _ = (tmp_path / "oos-accepted-review.md").write_text(
+        "### OOS_1: Some finding\nSome body.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr, "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(ShipError("past-oos-check")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, repo_unavailable=True), runner=RecordingRunner(), cwd=str(tmp_path)
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert "past-oos-check" in result.detail
+
+
+def test_oos_check_no_signal_when_no_accepted_oos_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_fresh_path_pre_pr_create(monkeypatch)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr, "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(ShipError("past-oos-check")),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert "past-oos-check" in result.detail
