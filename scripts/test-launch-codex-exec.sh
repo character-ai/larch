@@ -386,5 +386,53 @@ else
     fail "model-args failure writes preflight bundle"
 fi
 
+# --trusted-instructions-file: rejection cases
+assert_fails "trusted-instructions-file: rejects missing file" \
+    --output "$OUT" --timeout 60 --prompt hi \
+    --trusted-instructions-file "$TMPDIR_BASE/nonexistent-trusted.txt"
+SYMLINK_TARGET="$TMPDIR_BASE/symlink-target.txt"
+SYMLINK_PATH="$TMPDIR_BASE/symlink-trusted.txt"
+printf 'instructions content\n' >"$SYMLINK_TARGET"
+ln -sf "$SYMLINK_TARGET" "$SYMLINK_PATH"
+assert_fails "trusted-instructions-file: rejects symlink" \
+    --output "$OUT" --timeout 60 --prompt hi \
+    --trusted-instructions-file "$SYMLINK_PATH"
+TRIPLE_QUOTE_FILE="$TMPDIR_BASE/triple-quote.txt"
+printf "instructions '''\n" >"$TRIPLE_QUOTE_FILE"
+assert_fails "trusted-instructions-file: rejects triple-single-quote content" \
+    --output "$OUT" --timeout 60 --prompt hi \
+    --trusted-instructions-file "$TRIPLE_QUOTE_FILE"
+
+# --trusted-instructions-file: happy path prepends instructions and strips stale block
+HOME_TIF="$TMPDIR_BASE/home-tif"
+CONFIG_TIF="$TMPDIR_BASE/tif.config.toml"
+OUT_TIF="$TMPDIR_BASE/exec-tif-out.txt"
+mkdir -p "$HOME_TIF/.codex"
+printf '%s\n' \
+    "instructions = '''" \
+    'stale instructions' \
+    "'''" \
+    '[model_providers.keep]' \
+    'name = "keep section"' >"$HOME_TIF/.codex/config.toml"
+TRUSTED_FILE="$TMPDIR_BASE/trusted.txt"
+printf 'Always be brief\n' >"$TRUSTED_FILE"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" HOME="$HOME_TIF" \
+    CODEX_STUB_CONFIG_FILE="$CONFIG_TIF" \
+    env -u OPENAI_API_KEY bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_TIF" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello" \
+    --trusted-instructions-file "$TRUSTED_FILE") \
+    >"$TMPDIR_BASE/launcher-tif.stdout" 2>"$TMPDIR_BASE/launcher-tif.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq "instructions = '''" "$CONFIG_TIF" \
+    && grep -Fq 'Always be brief' "$CONFIG_TIF" \
+    && grep -Fq 'name = "keep section"' "$CONFIG_TIF" \
+    && ! grep -Fq 'stale instructions' "$CONFIG_TIF"; then
+    ok "trusted-instructions-file: prepends instructions and strips stale block"
+else
+    fail "trusted-instructions-file: prepends instructions and strips stale block (rc=$rc config=$(cat "$CONFIG_TIF" 2>/dev/null || echo MISSING))"
+fi
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

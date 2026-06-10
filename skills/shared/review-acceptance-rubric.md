@@ -51,7 +51,7 @@ the spec is the originating issue scope (the staged scope anchor / feature descr
 
 ## Update triggers
 
-The following surfaces embed this rubric's necessity-gate language. When the rubric changes, update all of them and run `make test-render-voter-prompt`:
+The following surfaces embed this rubric's necessity-gate language. When the rubric changes, update all of them and run `make test-prompt-template-invariants`:
 
 - `python/cli.py render voter` — embeds rubric body verbatim for external voters
 - `skills/shared/reviewer-templates.md` — Necessity gate subsection for reviewer self-filter
