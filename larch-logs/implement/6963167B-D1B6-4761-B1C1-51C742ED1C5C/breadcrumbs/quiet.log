@@ -29,6 +29,23 @@ BYTES=630
 SHA256=064eac3c0dcf68be3573cd5d4aeb123511c21329f33bead676fa0c70421d2db6
 COMMIT_SHA=
 UNCHANGED=false
+LOG_WRITTEN=true
+LOG_PATH=<OPERATOR_REPO_PATH>/larch-logs/implement/6963167B-D1B6-4761-B1C1-51C742ED1C5C
+BYTES=0
+SHA256=
+COMMIT_SHA=1e28d0a28d0b831d8f29ceed707e681d32fb9f88
+UNCHANGED=false
+ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at <TMPDIR>
+📎 Tracking issue: https://github.com/character-ai/larch/issues/3950
+✅ 18: cleanup status=complete elapsed=11s
+
+=== larch-quiet-implement-finalize.sh-39004.log ===
+LOG_WRITTEN=true
+LOG_PATH=<TMPDIR>/larch-logs/implement/6963167B-D1B6-4761-B1C1-51C742ED1C5C/manifest.json
+BYTES=630
+SHA256=e3d7fd0488ae1abb267614cc7514b18dc4021427fd47d594a61eaabbfb7e5da9
+COMMIT_SHA=
+UNCHANGED=false
 
 === larch-quiet-implement-finalize.sh-6781.log ===
 LOG_WRITTEN=true
@@ -284,6 +301,8 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.ddOn1T
 
 === larch-quiet-timing-ledger.sh-35279.log ===
 
+=== larch-quiet-timing-ledger.sh-38957.log ===
+
 === larch-quiet-timing-ledger.sh-39645.log ===
 
 === larch-quiet-timing-ledger.sh-6391.log ===
@@ -299,6 +318,8 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.ddOn1T
 === larch-quiet-token-ledger.sh-21143.log ===
 
 === larch-quiet-token-ledger.sh-35218.log ===
+
+=== larch-quiet-token-ledger.sh-38894.log ===
 
 === larch-quiet-token-ledger.sh-39582.log ===
 
