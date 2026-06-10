@@ -93,7 +93,7 @@ def test_setup_submodule_failure_rolls_back_via_setup_main(monkeypatch: Any, cap
 
 
 def test_classify_remote_state_origin_upstream_only(monkeypatch: Any) -> None:
-    calls = {
+    calls: dict[tuple[str, ...], str] = {
         ("git", "remote"): "origin\n",
         ("git", "config", "--get-all", "remote.origin.url"): "https://github.com/acme/project.git\n",
         ("git", "config", "--get-all", "remote.origin.pushurl"): "",
