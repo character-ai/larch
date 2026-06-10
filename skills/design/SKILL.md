@@ -339,8 +339,12 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   _route_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-route-stdout.XXXXXX")" || {
+     printf '%s\n' "**⚠ Step 0b: could not allocate design-route stdout capture; aborting /design**" >&2
+     exit 1
+   }
    set +e
-   _route_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh" \
+   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh" \
      --design-tmpdir "$DESIGN_TMPDIR" \
      --issue "$ISSUE_NUMBER" \
      --issue-title "$ISSUE_TITLE" \
@@ -348,14 +352,21 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      --has-clarify-label "$HAS_CLARIFY_LABEL" \
      --claude-pid "$PPID" \
      --session-id "$SESSION_ID" \
-     ${REPO:+--repo "$REPO"})
+     --partition-requested "$partition_requested" \
+     --brainstorm-requested "$brainstorm_requested" \
+     --approve-requested "$approve_requested" \
+     --skip-approve-requested "$skip_approve_requested" \
+     ${REPO:+--repo "$REPO"} \
+     >"$_route_stdout_file"
    _route_rc=$?
    set -e
    if [[ "${_route_rc:-0}" -eq 2 ]]; then
+     rm -f "$_route_stdout_file"
      printf '%s\n' "**⚠ Step 0b: design-route.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
    if [[ "${_route_rc:-0}" -ne 0 ]]; then
+     rm -f "$_route_stdout_file"
      printf '%s\n' "**⚠ Step 0b: design-route.sh failed (exit ${_route_rc}); aborting /design**" >&2
      exit 1
    fi
@@ -367,32 +378,39 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    MARKER_TTL=300
    DESIGN_REENTRY_MARKER_PATH=""
    RESUME_STEP=""
-   _route_warn_lines=()
-   _route_error_lines=()
-   if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
-     if [[ -L "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
-       printf '%s\n' "**⚠ Step 0b: design-route result env is a symlink; refusing to source**"
-     else
-       while IFS= read -r _line || [[ -n "$_line" ]]; do
-         _key="${_line%%=*}"; _value="${_line#*=}"
-         case "$_key" in
-           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
-             printf -v "$_key" '%s' "$_value" ;;
-           WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
-           ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
-         esac
-       done <"$DESIGN_TMPDIR/.design-route-result.env"
-     fi
+   _safe_route_env="$(mktemp "${TMPDIR:-/tmp}/larch-route-env.XXXXXX")" || {
+     rm -f "$_route_stdout_file"
+     printf '%s\n' "**⚠ Step 0b: could not allocate safe route result env; aborting /design**" >&2
+     exit 1
+   }
+   set +e
+   "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+     --input "$DESIGN_TMPDIR/.design-route-result.env" \
+     --fallback-input "$_route_stdout_file" \
+     --allow ROUTE \
+     --allow BRAINSTORM_PREFIX \
+     --allow TITLE_FILTER_REASON \
+     --allow TITLE_FILTER_MARKER \
+     --allow MARKER_AGE \
+     --allow MARKER_TTL \
+     --allow DESIGN_REENTRY_MARKER_PATH \
+     --allow RESUME_STEP \
+     --allow SESSION_ID \
+     --allow RUN_ID \
+     --allow TIER \
+     --allow BRAINSTORM_DONE \
+     --allow MARKER_CLEARED \
+     --output "$_safe_route_env"
+   _rre_rc=$?
+   set -e
+   if [[ "${_rre_rc:-0}" -ne 0 ]]; then
+     rm -f "$_route_stdout_file" "$_safe_route_env"
+     printf '%s\n' "**⚠ Step 0b: could not read design-route result env; aborting /design**" >&2
+     exit 1
    fi
-   while IFS= read -r _line || [[ -n "$_line" ]]; do
-     _key="${_line%%=*}"; _value="${_line#*=}"
-     case "$_key" in
-       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
-         [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-      WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
-      ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
-     esac
-   done <<<"${_route_out:-}"
+   # shellcheck source=/dev/null
+   . "$_safe_route_env"
+   rm -f "$_route_stdout_file" "$_safe_route_env"
    if [[ "$BRAINSTORM_PREFIX" == true ]]; then
      brainstorm_requested=true
      printf '%s\n' "**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**"
@@ -421,52 +439,15 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
      printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
-   _post_route_env="$DESIGN_TMPDIR/.design-route-result.env"
-   if [[ ! -f "$_post_route_env" || -L "$_post_route_env" ]]; then
-     printf '%s\n' "**⚠ Step 0b: design-route result env missing or is a symlink; refusing to read**" >&2
-     exit 1
-   fi
-   ROUTE=""
-   while IFS= read -r _line || [[ -n "$_line" ]]; do
-     _key="${_line%%=*}"; _value="${_line#*=}"
-     case "$_key" in
-       ROUTE) printf -v ROUTE '%s' "$_value" ;;
-     esac
-   done <"$_post_route_env"
    case "${ROUTE:-}" in
      cancel-title-filter|cancel-reentry-guard)
        exit 1 ;;
    esac
-   if [[ "${ROUTE:-}" == resume@* || "${ROUTE:-}" == already-planned ]]; then
-     if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$approve_requested" == true || "$skip_approve_requested" == true ]]; then
-       if [[ -f "$DESIGN_TMPDIR/run-params.json" && ! -L "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-         _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
-         _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
-         if jq -c \
-           --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
-           --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
-           --argjson merge_a "$([[ "$approve_requested" == true ]] && echo true || echo false)" \
-           --argjson merge_s "$([[ "$skip_approve_requested" == true ]] && echo true || echo false)" \
-           '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a) | .skip_approve_requested = (.skip_approve_requested == true or $merge_s)' \
-           "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
-           mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
-           rm -f "$_rp_err"
-         else
-           "$CLAUDE_PLUGIN_ROOT/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b route flag merge" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
-           rm -f "$_rp_merge" "$_rp_err"
-         fi
-       elif [[ ! -f "$DESIGN_TMPDIR/run-params.json" || -L "$DESIGN_TMPDIR/run-params.json" ]]; then
-         printf '%s\n' "**⚠ 0b: cannot merge current router flags into run-params.json on ${ROUTE}; file missing or unsafe. Re-run from Step 0b after repairing run params.**"
-       else
-         printf '%s\n' '**⚠ 0b: jq unavailable; current router flags may not persist into resumed/already-planned flow.**'
-       fi
-     fi
-   fi
    ```
 
-   After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` directly (file-first; refuse symlinks) and parse only allowlisted `ROUTE=`. Do not rely on `_route_out` or merged stdout KVs after the fence. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
+   After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` through `${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh` (file-first with KV-filtered stdout fallback) and source only allowlisted keys. Do not parse raw route stdout except as the helper fallback. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
-   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). The route fence above still OR-merges current `--partition`, `--brainstorm`, `--per-round-approval`, and `--skip-approve` argv booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
+   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). `design-route.sh` still OR-merges current `--partition`, `--brainstorm`, Brainstorm title-prefix auto-enable, `--per-round-approval`, and `--skip-approve` booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
 3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
@@ -1374,25 +1355,58 @@ Step 3 invokes exactly one foreground `run-step3-review.sh --mode loop` call. Th
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
+  printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**"
+  exit 1
+}
 set +e
-_plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --mode loop)
+  --mode loop \
+  >"$_plan_review_stdout_file"
 _plan_review_rc=$?
 set -e
-if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-  if [[ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-    printf '%s\n' "**⚠ Step 3: step3 review result env is a symlink; refusing to source**"
-  else
-    while IFS= read -r _line || [[ -n "$_line" ]]; do
-      _key="${_line%%=*}"; _value="${_line#*=}"
-      case "$_key" in
-        LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|SCOPE_ANCHOR_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
-          printf -v "$_key" '%s' "$_value" ;;
-        WARN) printf '%s\n' "WARN=$_value" ;;
-      esac
-    done <"$DESIGN_TMPDIR/.step3-review-result.env"
-  fi
+_step3_primary_regular=false
+if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+  _step3_primary_regular=true
+fi
+_safe_step3_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-env.XXXXXX")" || {
+  rm -f "$_plan_review_stdout_file"
+  printf '%s\n' "**⚠ Step 3: could not allocate safe step3 review result env; aborting plan review**"
+  exit 1
+}
+set +e
+"${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+  --input "$DESIGN_TMPDIR/.step3-review-result.env" \
+  --fallback-input "$_plan_review_stdout_file" \
+  --allow LOOP_STATUS \
+  --allow STEP3_REVIEW_LOOP_STATUS \
+  --allow POSTPLAN_RC \
+  --allow DEDUP_RC \
+  --allow PLAN_REVIEW_CONTINUE_REASON \
+  --allow FINAL_ROUND_NUM \
+  --allow ACCEPTED_COUNT \
+  --allow IMPORTANT_ACCEPTED_COUNT \
+  --allow DEGRADED_PANEL \
+  --allow ROUNDS_COMPLETED \
+  --allow TALLY_PLAN_REVIEW_STATUS \
+  --allow AGGREGATOR_STATUS \
+  --allow VOTING_TALLY_FILE \
+  --allow SCOPE_ANCHOR_FILE \
+  --allow STEP3_REVIEW_CAP_REACHED \
+  --allow STEP3_REVIEW_ROUND_NUM \
+  --allow ROUND_NUM \
+  --allow REVIEW_ROUND_COUNT \
+  --output "$_safe_step3_env"
+_rre_rc=$?
+set -e
+if [[ "${_rre_rc:-0}" -ne 0 ]]; then
+  rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
+  printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**"
+  LOOP_STATUS=panel-failed
+else
+  # shellcheck source=/dev/null
+  . "$_safe_step3_env"
 fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
@@ -1400,18 +1414,14 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
     STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
       [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       ;;
-    LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
-      if [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
-        [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
-      else
-        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
+    WARN)
+      if [[ "$_step3_primary_regular" == true ]]; then
+        printf '%s\n' "WARN=$_value"
       fi
       ;;
-    ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|SCOPE_ANCHOR_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM)
-      [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-    WARN) printf '%s\n' "WARN=$_value" ;;
   esac
-done <<<"${_plan_review_out:-}"
+done <"$_plan_review_stdout_file"
+rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
   exit 1
@@ -1768,16 +1778,22 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+   _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
+     printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
+     exit 1
+   }
    set +e
-   _publish_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
+   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
      --design-tmpdir "$DESIGN_TMPDIR" \
      --issue "$ISSUE_NUMBER" \
      --session-id "$SESSION_ID" \
      --claude-pid "$PPID" \
-     ${REPO:+--repo "$REPO"})
+     ${REPO:+--repo "$REPO"} \
+     >"$_publish_stdout_file"
    _publish_rc=$?
    set -e
    if [[ "${_publish_rc:-0}" -eq 2 ]]; then
+     rm -f "$_publish_stdout_file"
      printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
@@ -1785,6 +1801,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
      printf '%s\n' "**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**" >&2
    fi
    if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 && "${_publish_rc:-0}" -ne 4 ]]; then
+     rm -f "$_publish_stdout_file"
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
      exit 1
    fi
@@ -1799,38 +1816,55 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    UPSERT_STATUS=""
    ARCHITECTURE_SOURCE=""
    FINAL_SUMMARY_PATH=""
-   _publish_warn_lines=()
-   _publish_parse_ok=false
-   if [[ -f "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
-     if [[ -L "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
-       printf '%s\n' "**⚠ Step 5c: design-publish result env is a symlink; refusing to source**"
-     else
-       _publish_parse_ok=true
-       while IFS= read -r _line || [[ -n "$_line" ]]; do
-         _key="${_line%%=*}"; _value="${_line#*=}"
-         case "$_key" in
-           PLAN_WRITE_OK|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) printf -v "$_key" '%s' "$_value" ;;
-           WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
-         esac
-       done <"$DESIGN_TMPDIR/.design-publish-result.env"
-     fi
+   PR_NUMBER=""
+   PR_URL=""
+   RECOVERY_BRANCH=""
+   LOG_RECOVERY_BRANCH=""
+   _publish_input="$DESIGN_TMPDIR/.design-publish-result.env"
+   _publish_input_is_temp=false
+   if [[ "${_publish_rc:-0}" -eq 3 ]]; then
+     _publish_input="$DESIGN_TMPDIR/.design-publish-result.env.rc3-primary-missing.$$"
+     _publish_input_is_temp=true
+     rm -f "$_publish_input"
    fi
-   while IFS= read -r _line || [[ -n "$_line" ]]; do
-     _key="${_line%%=*}"; _value="${_line#*=}"
-     case "$_key" in
-       PLAN_WRITE_OK|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-       WARN)
-         if [[ "$_publish_parse_ok" != true ]]; then
-           _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
-           if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi
-         fi
-         ;;
-     esac
-   done <<<"${_publish_out:-}"
-   if [[ "$_publish_parse_ok" != true ]] && [[ "${_publish_rc:-0}" -ne 3 ]]; then
+   _safe_publish_env="$(mktemp "${TMPDIR:-/tmp}/larch-publish-env.XXXXXX")" || {
+     rm -f "$_publish_stdout_file"
+     if [[ "$_publish_input_is_temp" == true ]]; then rm -f "$_publish_input"; fi
+     printf '%s\n' "**⚠ Step 5c: could not allocate safe publish result env; aborting /design**" >&2
+     exit 1
+   }
+   set +e
+   "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+     --input "$_publish_input" \
+     --fallback-input "$_publish_stdout_file" \
+     --allow PLAN_WRITE_OK \
+     --allow VALIDATE_STATUS \
+     --allow VALIDATE_DEFECT_COUNT \
+     --allow VALIDATE_SKIPPED_COUNT \
+     --allow VALIDATE_UNSAFE_TOKEN_COUNT \
+     --allow VALIDATE_LOG_FILE \
+     --allow PUBLISH_OK \
+     --allow RENAMED \
+     --allow UPSERT_STATUS \
+     --allow ARCHITECTURE_SOURCE \
+     --allow FINAL_SUMMARY_PATH \
+     --allow PR_NUMBER \
+     --allow PR_URL \
+     --allow RECOVERY_BRANCH \
+     --allow LOG_RECOVERY_BRANCH \
+     --output "$_safe_publish_env"
+   _rre_rc=$?
+   set -e
+   if [[ "${_rre_rc:-0}" -ne 0 ]]; then
+     rm -f "$_publish_stdout_file" "$_safe_publish_env"
+     if [[ "$_publish_input_is_temp" == true ]]; then rm -f "$_publish_input"; fi
      printf '%s\n' "**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**" >&2
      exit 1
    fi
+   # shellcheck source=/dev/null
+   . "$_safe_publish_env"
+   rm -f "$_publish_stdout_file" "$_safe_publish_env"
+   if [[ "$_publish_input_is_temp" == true ]]; then rm -f "$_publish_input"; fi
    if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
      mkdir -p "$DESIGN_TMPDIR/.completed"
      : > "$DESIGN_TMPDIR/.completed/step-5c"
@@ -1839,7 +1873,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs the same `design-publish.sh` call; Override re-runs it with `--skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
 
-**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, always parse through `read-result-env.sh` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
 
 **Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 

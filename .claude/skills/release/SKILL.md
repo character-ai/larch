@@ -35,7 +35,9 @@ Guard (abort before prepare):
 
 On failure, print a clear operator-visible error and stop.
 
-**Sync with `origin/main`** (after branch + tree guards pass, including on `--dry-run`):
+**Sync with `origin/main`** (after branch + tree guards pass; **skip on `--dry-run`** — dry-run performs no local git mutations; Step 2 `release-prepare.sh` still fetches read-only and emits `ERROR=stale-local-main` when local `main`/`HEAD` is not at `origin/main`):
+
+Unless `--dry-run`:
 
 ```bash
 set +e
@@ -48,6 +50,8 @@ Branch on `rebase_rc`:
 - **Exit 0**: local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `rebase_out` to note a no-op). Continue.
 - **Exit 1** (conflicts): print `**⚠ /release: rebase onto origin/main has conflicts. Resolve manually and retry.**` and stop.
 - **Other non-zero**: print `**⚠ /release: rebase onto origin/main failed (exit <rc>). Check network/git state.**` and stop.
+
+On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
 
 ## Step 2 — Prepare (read-only)
 
@@ -298,7 +302,7 @@ Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless not
 
 Repo-root helpers referenced from steps above:
 
-- `scripts/rebase-push.sh` — fetch and rebase local `main` onto `origin/main` (Step 1 sync); invoke with `--no-push --base-remote origin --base-ref main`
+- `scripts/rebase-push.sh` — fetch and rebase local `main` onto `origin/main` (Step 1 sync on live runs only; skipped on `--dry-run`); invoke with `--no-push --base-remote origin --base-ref main`
 - `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 

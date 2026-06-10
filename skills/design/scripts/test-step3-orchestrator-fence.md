@@ -1,6 +1,6 @@
 # test-step3-orchestrator-fence.sh
 
-Hermetic harness for `skills/design/SKILL.md` Step 3 `run-step3-review.sh` handoff fence (result env sourcing, stdout merge, `LOOP_STATUS` allow-list, exit-2 short-circuit).
+Hermetic harness for `skills/design/SKILL.md` Step 3 `run-step3-review.sh` handoff fence (`read-result-env.sh` safe loading, narrow stdout loop-envelope overlay, `LOOP_STATUS` allow-list, exit-2 short-circuit).
 
 ## Gate-B-bypass helper
 

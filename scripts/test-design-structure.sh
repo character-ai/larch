@@ -684,7 +684,7 @@ contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing pe
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
 contains "$SKILL_MD" 'run-step3-review.sh' 'SKILL must invoke run-step3-review.sh'
-contains "$SKILL_MD" 'step3 review result env is a symlink; refusing to source' 'SKILL must read allowlisted KVs from .step3-review-result.env'
+contains "$SKILL_MD" '--input "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must read allowlisted KVs from .step3-review-result.env via read-result-env.sh'
 [[ -x "$RUN_STEP3_SH" ]] || fail 'run-step3-review.sh must be executable'
 [[ -f "$RUN_STEP3_MD" ]] || fail "run-step3-review.md missing: $RUN_STEP3_MD"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -804,8 +804,8 @@ grep -Fq 'set +e' "$RUN_STEP3_SH" \
 grep -Fq '_plan_review_rc=$?' "$SKILL_MD" \
   || fail "(14c0c) SKILL.md missing _plan_review_rc capture for run-step3-review.sh"
 # shellcheck disable=SC2016 # Markdown/bash excerpt literal; $DESIGN_TMPDIR must not expand here.
-contains "$SKILL_MD" '-f "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must source .step3-review-result.env when present'
-contains "$SKILL_MD" 'WARN) printf' 'SKILL must re-emit WARN lines from step3 review handoff'
+contains "$SKILL_MD" '--fallback-input "$_plan_review_stdout_file"' 'SKILL must pass Step 3 stdout as read-result-env fallback'
+contains "$SKILL_MD" 'if [[ "$_step3_primary_regular" == true ]]; then' 'SKILL must retain narrow stdout WARN replay for Step 3'
 contains "$SKILL_MD" 'missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
 contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
@@ -911,6 +911,37 @@ printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s %s\n'\'' "**⚠ /desig
   || fail 'Step 0-pre rc=3 branch must retain with-token warning printf'
 printf '%s\n' "$step0pre_block" | grep -Fq 'printf '\''%s\n'\'' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2' \
   || fail 'Step 0-pre rc=3 branch must retain without-token warning printf'
+
+step0b_route_block=$(
+  awk '
+    /_route_stdout_file=.*mktemp/ { in_block=1 }
+    in_block { print }
+    in_block && /^[[:space:]]*```[[:space:]]*$/ { exit }
+  ' "$SKILL_MD"
+)
+[ -n "$step0b_route_block" ] || fail 'Step 0b route fenced block extraction failed'
+printf '%s\n' "$step0b_route_block" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh' \
+  || fail 'Step 0b route block must call read-result-env.sh'
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--input "$DESIGN_TMPDIR/.design-route-result.env"' \
+  || fail 'Step 0b route block must pass design-route result env as --input'
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--fallback-input "$_route_stdout_file"' \
+  || fail 'Step 0b route block must pass captured stdout as fallback input'
+for _route_key in ROUTE BRAINSTORM_PREFIX TITLE_FILTER_REASON TITLE_FILTER_MARKER MARKER_AGE MARKER_TTL DESIGN_REENTRY_MARKER_PATH RESUME_STEP SESSION_ID RUN_ID TIER BRAINSTORM_DONE MARKER_CLEARED; do
+  printf '%s\n' "$step0b_route_block" | grep -Fq -- "--allow $_route_key" \
+    || fail "Step 0b route block must allowlist $_route_key"
+done
+printf '%s\n' "$step0b_route_block" | grep -Fq -- '--output "$_safe_route_env"' \
+  || fail 'Step 0b route block must write safe route env output'
+printf '%s\n' "$step0b_route_block" | grep -Fq '. "$_safe_route_env"' \
+  || fail 'Step 0b route block must source safe route env'
+printf '%s\n' "$step0b_route_block" | grep -Fq '>"$_route_stdout_file"' \
+  || fail 'Step 0b route block must capture design-route.sh stdout'
+if printf '%s\n' "$step0b_route_block" | grep -Fq '_route_out'; then
+  fail 'Step 0b route block must not reference _route_out'
+fi
+if printf '%s\n' "$step0b_route_block" | grep -Fq 'while IFS= read -r'; then
+  fail 'Step 0b route block must not retain an inline KV parse loop'
+fi
 
 step0b_init_block=$(
   awk '
@@ -1662,7 +1693,7 @@ assert_folded_sentinel_writes() {
   grep -Fq '[[ "${PLAN_WRITE_OK:-}" == true ]]' "$tmp" \
     || fail '(21) Step 5c design-publish fence missing PLAN_WRITE_OK=true gate'
   assert_step_sentinel_inside_guard "$tmp" 'step-5c' 'if [[ "${PLAN_WRITE_OK:-}" == true ]]; then' 'Step 5c design-publish fence'
-  parse_line=$(grep -nF 'done <<<"${_publish_out:-}"' "$tmp" | head -1 | cut -d: -f1 || true)
+	  parse_line=$(grep -nF '. "$_safe_publish_env"' "$tmp" | head -1 | cut -d: -f1 || true)
   sentinel_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp" | head -1 | cut -d: -f1 || true)
   pause_line=$(grep -nF 'design-pause-save.sh' "$tmp" | head -1 | cut -d: -f1 || true)
   [[ -n "$parse_line" && -n "$sentinel_line" && -n "$pause_line" ]] \
@@ -1780,8 +1811,12 @@ assert_publish_fence_guards() {
     || fail '(21) design-publish fence must not write step-5b'
   grep -Fq '[[ "${PLAN_WRITE_OK:-}" == true ]]' "$tmp" \
     || fail '(21) design-publish fence missing PLAN_WRITE_OK=true step-5c guard'
-  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp" \
-    || fail '(21) design-publish fence must write step-5c after PLAN_WRITE_OK parse'
+	  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"' "$tmp" \
+	    || fail '(21) design-publish fence must write step-5c after PLAN_WRITE_OK parse'
+	  grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh' "$tmp" \
+	    || fail '(21) design-publish fence must call read-result-env.sh'
+	  grep -Fq '.design-publish-result.env.rc3-primary-missing.$$' "$tmp" \
+	    || fail '(21) design-publish fence must force stdout authority on rc=3'
 
   extract_bash_fence_after_marker "$SKILL_MD" 'Mechanical Gate C plan emit' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Gate C preview fence missing'
