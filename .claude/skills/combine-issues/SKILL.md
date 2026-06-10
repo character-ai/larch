@@ -92,15 +92,22 @@ OOS issues contain one or more items. Items follow two formats:
 For each issue, parse its body and extract the individual items. Then for each item:
 
 1. Read the `Location:` field (file path, optionally with a line number after `:`).
-2. If the file does not exist in the repo, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
+2. If the file does not exist in the repo:
+   a. Search open GitHub issues for in-flight work that would create or introduce the missing file. Use `gh issue list --state open --limit 100 --search "<bare-filename>"` where `<bare-filename>` is the final path component without its directory (e.g. `launch-claude-drafter.sh` from `scripts/launch-claude-drafter.sh`). Scan the returned titles and bodies for explicit references to the missing file or the feature it introduces.
+   b. If a matching open implementing issue `#<M>` is found, the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship:
+      ```bash
+      $PWD/skills/block-issue/scripts/add-blocked-by.sh <N> <M>
+      ```
+      Keep the item as **actual**.
+   c. If no implementing issue is found, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
 3. If the file exists, read the relevant lines (±20 lines around the stated line when a line number is given). Assess whether the concern is still present:
    - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
    - If uncertain, default to **actual** (keep the item).
-4. Collect all **actual** items across all OOS issues into a flat list.
+4. Collect all **actual** items (including blocked ones) across all OOS issues into a flat list.
 
 If all items from all issues are stale, print `All [OOS] items are stale — nothing to combine.` and stop.
 
-Emit a summary: `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.`
+Emit a summary: `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.` When any blocked items were found, append: `(<B> item(s) kept as blocked by in-flight implementing issues.)`
 
 <!-- step:oos-3 — Deduplicate -->
 
