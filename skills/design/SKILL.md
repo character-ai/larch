@@ -1095,23 +1095,12 @@ _plan_lines=0
 if [ -s "$DESIGN_TMPDIR/plan.txt" ]; then
   _plan_lines=$(wc -l < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
 fi
-_raw_threshold="${LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD:-120}"
-case "$_raw_threshold" in
-  ''|0|*[!0-9]*|0[0-9]*) _summary_threshold=120 ;;
-  *) _summary_threshold="$((10#${_raw_threshold}))" ;;
-esac
 _drafter_structural_ok=false
 if [[ "$_drafter_rc" -eq 0 ]] \
   && [[ -s "$DESIGN_TMPDIR/plan.txt" ]] \
   && tail -n 1 "$DESIGN_TMPDIR/plan.txt" | command grep -Eq '^diff_lines: [0-9][0-9]*$' \
   && command grep -Fq 'PLAN_WRITTEN=true' "$DESIGN_TMPDIR/step2b-drafter-status.txt"; then
-  if (( _plan_lines > _summary_threshold )); then
-    if command grep -Fq 'SUMMARY_WRITTEN=true' "$DESIGN_TMPDIR/step2b-drafter-status.txt" && [[ -s "$DESIGN_TMPDIR/plan-summary.md" ]]; then
-      _drafter_structural_ok=true
-    fi
-  else
-    _drafter_structural_ok=true
-  fi
+  _drafter_structural_ok=true
 fi
 _drafter_dirty_block=false
 _drafter_dirty_reason="unknown"
