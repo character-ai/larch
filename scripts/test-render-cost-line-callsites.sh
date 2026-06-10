@@ -31,10 +31,11 @@ b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
 test "$b" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens to render-run-summary'
 pass 'render-final-summary per-bucket argv shape'
 
+# Step 17 Bash literals moved to skills/implement/scripts/step-17.sh wrapper
 # shellcheck disable=SC2016
-grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
+grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
-grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on non-empty summary body'
+grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
 grep -Fq 'step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18b-final-report.sh'
 # shellcheck disable=SC2016
