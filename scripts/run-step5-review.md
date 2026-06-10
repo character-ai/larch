@@ -31,6 +31,14 @@ Derived sources:
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
 - `$IMPLEMENT_TMPDIR/session-env.sh`: forwarded as `--session-env-path`.
 
+Progress hook marker:
+
+- In `--mode loop`, the launcher installs an EXIT trap that writes
+  `$IMPLEMENT_TMPDIR/progress/done` when the Step 5 loop process exits on any
+  path. The progress-report engine treats that marker as "Step 5 is no longer
+  active" and falls through to the generic renderer. Single-round and MAV-apply
+  modes do not write the marker.
+
 Hardcoded downstream flag:
 
 - `--mode diff`

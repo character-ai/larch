@@ -18,9 +18,10 @@ _self_initialized_quiet = False
 
 
 def reset_quiet_state() -> None:
-    """Reset process-local quiet state for tests and subprocess re-entry."""
+    """Reset quiet routing state for tests and subprocess re-entry."""
     global _self_initialized_quiet  # noqa: PLW0603
     _self_initialized_quiet = False
+    _clear_quiet_env()
 
 
 def _env_truthy(name: str) -> bool:
@@ -47,6 +48,7 @@ def _quiet_active() -> bool:
 def _clear_quiet_env() -> None:
     _ = os.environ.pop(config.ENV_LARCH_QUIET_ACTIVE, None)
     _ = os.environ.pop(config.ENV_LARCH_QUIET_PID, None)
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_LOG_FILE, None)
 
 
 def quiet_init(*, argv0: str | None = None) -> None:

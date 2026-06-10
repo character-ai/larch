@@ -572,6 +572,26 @@ def _design_symlink_path(pid: str) -> Path:
     return home / ".cache" / "larch" / "sessions" / (f"current-design-env-{pid}.sh" if pid else "current-design-env.sh")
 
 
+def _implement_pointer_path(pid: str) -> Path:
+    return Path.home() / ".cache" / "larch" / "sessions" / f"current-implement-env-{pid}.sh"
+
+
+def _validate_claude_pid(pid: str) -> None:
+    if not re.match(r"^[1-9][0-9]{0,6}$", pid):
+        raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
+
+
+def _assert_no_symlink_path_or_ancestors(path: Path) -> None:
+    current = path
+    while True:
+        if current.is_symlink():
+            msg = f"refusing symlinked pointer path or ancestor: {current}"
+            raise OSError(msg)
+        if current == current.parent:
+            break
+        current = current.parent
+
+
 def _validate_design_current_env_link(symlink_path: Path, pid: str) -> None:
     expected = _design_symlink_path(pid)
     if symlink_path != expected:
@@ -687,6 +707,70 @@ def write_design_env_main(argv: list[str]) -> int:
             tmp_link.unlink()
         tmp_link.symlink_to(out_path)
         tmp_link.replace(symlink_path)
+        return 0
+    except (OSError, ValueError) as exc:
+        _err(f"ERROR={exc}")
+        return 1
+
+
+def write_implement_env_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session write-implement-env", add_help=False)
+    parser.add_argument("--claude-pid", default="")
+    parser.add_argument("--implement-tmpdir", default="")
+    parser.add_argument("--cwd", default="")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    logging_util.quiet_init(argv0="write-implement-current-env.sh")
+    try:
+        _validate_claude_pid(args.claude_pid)
+        tmpdir = Path(args.implement_tmpdir)
+        cwd = Path(args.cwd)
+        if not tmpdir.is_absolute() or not tmpdir.is_dir():
+            raise ValueError("Invalid --implement-tmpdir: must be an existing absolute directory")
+        if not is_allowed_session_tmpdir(tmpdir):
+            raise ValueError(
+                f"implement-tmpdir: path must be under /tmp/, /private/tmp/, /var/folders/, or {cleanup_cache_sessions_root()}/"
+            )
+        if not cwd.is_absolute():
+            raise ValueError("Invalid --cwd: must be an absolute path")
+        data = {
+            "IMPLEMENT_TMPDIR": str(tmpdir),
+            "REPO_CWD": str(cwd),
+            "SKILL_KIND": "implement",
+        }
+        _validate_no_newlines(data)
+        target = _implement_pointer_path(args.claude_pid)
+        expected_parent = Path.home() / ".cache" / "larch" / "sessions"
+        if target.parent != expected_parent:
+            raise ValueError(f"implement current-env path mismatch: {target}")
+        _assert_no_symlink_path_or_ancestors(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _assert_no_symlink_path_or_ancestors(target)
+        _atomic_write(target, _kv_text(data), create_parent=False)
+        return 0
+    except (OSError, ValueError) as exc:
+        _err(f"ERROR={exc}")
+        return 1
+
+
+def clear_implement_pointer_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session clear-implement-pointer", add_help=False)
+    parser.add_argument("--claude-pid", default="")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    logging_util.quiet_init(argv0="clear-implement-current-env.sh")
+    try:
+        _validate_claude_pid(args.claude_pid)
+        target = _implement_pointer_path(args.claude_pid)
+        sessions_root = Path.home() / ".cache" / "larch" / "sessions"
+        if target.parent != sessions_root or target.name != f"current-implement-env-{args.claude_pid}.sh":
+            raise ValueError(f"implement current-env path mismatch: {target}")
+        if target.exists() or target.is_symlink():
+            target.unlink()
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")

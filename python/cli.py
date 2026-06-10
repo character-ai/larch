@@ -14,6 +14,7 @@ import sys
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
+    ("progress", "report"): ("progress_report", "report_main"),
     ("report-tokens", "analyze"): ("report_tokens_cli", "main"),
     ("lint", "retired-scripts"): ("migration_lint", "main"),
     ("lint", "mermaid-fences"): ("lint_mermaid_fences", "main"),
@@ -64,6 +65,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "write-env"): ("session_env", "write_env_main"),
     ("session", "read-key"): ("session_env", "read_key_main"),
     ("session", "write-design-env"): ("session_env", "write_design_env_main"),
+    ("session", "write-implement-env"): ("session_env", "write_implement_env_main"),
+    ("session", "clear-implement-pointer"): ("session_env", "clear_implement_pointer_main"),
     ("session", "write-run-params"): ("session_env", "write_run_params_main"),
     ("session", "read-classification"): ("session_env", "read_classification_main"),
     ("session", "write-id"): ("session_env", "write_id_main"),
