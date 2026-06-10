@@ -819,7 +819,7 @@ export IMPLEMENT_TMPDIR
 
 The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, records `CI_PASSED=true` internally when Step 10 sees `ACTION=merge` and advances from `ci-initial` to `ci-merge` in the same `ship-pr.sh` invocation, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. CI-fix rebase + force-push lives inside the active Step 8+ driver (`run_rebase_rebump`); the orchestrator does not invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` (retirement stub; #3364 Phase 1). If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
 
-> **Continue to Step 16 after ship-pr reaches `PHASE=done`.** Do NOT stop after PR creation, merge, local cleanup, or teardown output; Steps 16 and 18 still own prompt-side rejected-findings replay and final token/timing caps.
+> **Continue to Step 16.** Do NOT stop after PR creation, merge, local cleanup, or teardown output — ship-pr reaching `PHASE=done` is not the end of the run; Steps 16 and 18 still own prompt-side rejected-findings replay and final token/timing caps.
 
 <!-- step:16 — Rejected Code Review Findings Report -->
 
