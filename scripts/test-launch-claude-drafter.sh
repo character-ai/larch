@@ -35,6 +35,9 @@ case "${LARCH_TEST_CLAUDE_MODE:-ok}" in
     bad-delim)
         jq -cn --arg result $'LARCH_PLAN_BEGIN\nbody\nLARCH_PLAN_BEGIN\ndiff_lines: 2\nLARCH_PLAN_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
         ;;
+    nested-plan-in-summary)
+        jq -cn --arg result $'LARCH_SUMMARY_BEGIN\nLARCH_PLAN_BEGIN\nnested plan\ndiff_lines: 2\nLARCH_PLAN_END\nsummary tail\nLARCH_SUMMARY_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
+        ;;
     missing-diff)
         jq -cn --arg result $'LARCH_PLAN_BEGIN\n## Plan\nNo trailer\nLARCH_PLAN_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
         ;;
@@ -138,7 +141,7 @@ for mode in invalid-json is-error empty-result; do
 done
 
 # Delimiter and final trailer failures fail closed.
-for mode in bad-delim missing-diff; do
+for mode in bad-delim nested-plan-in-summary missing-diff; do
     set +e
     LARCH_TEST_CLAUDE_MODE="$mode" run_drafter "$d3" "$d3/status-$mode.txt" >/dev/null 2>"$TMPROOT/$mode.err"
     rc=$?

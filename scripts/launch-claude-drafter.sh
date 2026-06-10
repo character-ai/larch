@@ -291,6 +291,8 @@ if sb and sb[0] >= se[0]:
     raise SystemExit('invalid summary sentinels: reversed or empty summary envelope')
 if sb and (pb[0] < sb[0] < pe[0] or pb[0] < se[0] < pe[0]):
     raise SystemExit('invalid sentinels: nested summary inside plan envelope')
+if sb and sb[0] < pb[0] < pe[0] < se[0]:
+    raise SystemExit('invalid sentinels: nested plan inside summary envelope')
 plan_lines = lines[pb[0] + 1:pe[0]]
 if not plan_lines or not ''.join(plan_lines).strip():
     raise SystemExit('empty extracted plan body')

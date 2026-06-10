@@ -1032,8 +1032,12 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     printf '%s\n' 'You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.'
     printf '\n%s\n' 'Drafting requirements to follow:'
     printf '%s\n' '- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.'
-    printf '%s\n' '- Incorporate approach synthesis, approved outline scope, discussion constraints, brainstorm ideas that do not conflict with binding decisions, and dialectic resolutions by disposition.'
-    printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN:.'
+    printf '%s\n' '- Read approach-synthesis.txt: if it is exactly NO_SKETCHES_CLASSIFIED_SIMPLE, draft from direct codebase/doc inspection without fabricating sketch agreement; if exactly NO_SKETCHES_DEGRADED_HARD, preserve HARD thoroughness without fabricating sketch agreement.'
+    printf '%s\n' '- Read discussion-round1.md when present for scope boundaries and hard constraints.'
+    printf '%s\n' '- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.'
+    printf '%s\n' '- Read brainstorm.md when present as additive ideation only when it does not conflict with binding dialectic resolutions or explicit user refusals.'
+    printf '%s\n' '- Read dialectic-resolutions.md when present and branch on Disposition: voted — follow Resolution and address antithesis; fallback-to-synthesis / bucket-skipped / over-cap — synthesis stands, note Why reason, do not fabricate antithesis-engagement prose.'
+    printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).'
     printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.'
     printf '%s\n' '- The final plan body must end with a whole-line diff_lines: <N> trailer.'
     printf '\n%s\n' 'Readability style (trusted):'
@@ -1143,12 +1147,10 @@ if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]
     printf '\n'
   fi
   printf '✅ 2b: drafter subprocess succeeded (model=%s plan_lines=%s diff_lines=%s)\n' "$DRAFTER_MODEL" "$_plan_lines" "$_diff_lines"
+elif [[ "$_drafter_dirty_block" == "true" ]]; then
+  printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
+  printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**"
 else
-  if [[ "$_drafter_dirty_block" == "true" ]]; then
-    printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
-    printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**" >&2
-    exit 1
-  fi
   rm -f "$DESIGN_TMPDIR/plan-summary.md"
   printf '%s\n' inline > "$DESIGN_TMPDIR/.step2b-plan-source"
   printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (model=$DRAFTER_MODEL)**"
@@ -1167,6 +1169,8 @@ fi
 ```
 
 When the fence above prints `✅ 2b: drafter subprocess succeeded`, skip the inline drafting paragraph and continue at the terminal postplan fence. When it prints the fallback warning, continue with the inline plan drafting instructions below and ensure the inline-written `plan.txt` replaces the drafter attempt; `plan-summary.md` has already been removed so later previews cannot reuse a stale generated summary.
+
+When the fence writes `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=step-2b-drafter` and `RECOVERY_REQUIRED=true`, fire the dirty-tree recovery `AskUserQuestion` before inline fallback or postplan. Use `$DESIGN_TMPDIR/.dirty-tree-prompted-step-2b-drafter` so one logical boundary prompts once. On **Restore a clean tree and continue**, re-run `check-mid-run-dirty-tree.sh --mode checkpoint` (or compare current porcelain to `step2b-drafter-baseline.porcelain` when present) and continue only when clean; then rewrite `dirty-tree-detected.env` with `RECOVERY_REQUIRED=false` and resume Step 2b inline fallback. On **Cancel this design run**, preserve `$DESIGN_TMPDIR` and exit /design. Do not fall through to inline drafting or postplan while `RECOVERY_REQUIRED=true`.
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
@@ -1241,6 +1245,30 @@ case "${_postplan_rc:-1}" in
         esac
       done <"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
     fi
+    _step2b_plan_source=""
+    if [[ -f "$DESIGN_TMPDIR/.step2b-plan-source" ]]; then
+      _step2b_plan_source=$(tr -d '[:space:]' < "$DESIGN_TMPDIR/.step2b-plan-source")
+    fi
+    _drafter_postplan_fallback_used=false
+    if [[ -f "$DESIGN_TMPDIR/.step2b-postplan-fallback-used" ]]; then
+      read -r _drafter_postplan_fallback_used < "$DESIGN_TMPDIR/.step2b-postplan-fallback-used" || _drafter_postplan_fallback_used=false
+    fi
+    _postplan_dirty_recovery=false
+    if [[ -f "$DESIGN_TMPDIR/dirty-tree-detected.env" ]]; then
+      while IFS= read -r _dirty_env_line || [[ -n "$_dirty_env_line" ]]; do
+        case "$_dirty_env_line" in
+          RECOVERY_REQUIRED=true) _postplan_dirty_recovery=true ;;
+        esac
+      done < "$DESIGN_TMPDIR/dirty-tree-detected.env"
+    fi
+    if [[ "$_step2b_plan_source" == "drafter" && "$_drafter_postplan_fallback_used" != "true" && "$_postplan_dirty_recovery" != "true" ]]; then
+      : > "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done"
+      printf 'true\n' > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
+      printf 'inline\n' > "$DESIGN_TMPDIR/.step2b-plan-source"
+      rm -f "$DESIGN_TMPDIR/plan-summary.md"
+      : > "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-pending"
+      printf '%s\n' "**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**"
+    fi
     ;;
   11)
     exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
@@ -1268,7 +1296,7 @@ case "${_postplan_rc:-1}" in
 esac
 ```
 
-If the terminal postplan fence reports that a drafter-sourced plan failed validation and re-entered inline drafting, run the inline Step 2b drafting instructions once, replacing `plan.txt`; do not invoke another drafter attempt during that retry. The sentinel `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done` prevents a second inline re-entry, so any later `_postplan_rc=10` follows the normal validator-failure path.
+If the terminal postplan fence prints `**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**` or leaves `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-pending`, run the inline Step 2b drafting instructions once, replacing `plan.txt`, then re-run the terminal postplan fence above; do not invoke another drafter attempt during that retry. The sentinel `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done` prevents a second inline re-entry, so any later `_postplan_rc=10` follows the normal validator-failure path.
 
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b"` then run the retained **Step 2b.5** procedure before continuing.
 
