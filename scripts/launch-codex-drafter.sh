@@ -11,6 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() {
@@ -62,18 +65,8 @@ OUTPUT_DIR="$(cd "$(dirname "$OUTPUT_FILE")" && pwd -P)" || { larch_err "launch-
     || { larch_err "launch-codex-drafter.sh: --output-file outside design tmpdir"; exit 2; }
 OUTPUT_CANON="$OUTPUT_DIR/$(basename "$OUTPUT_FILE")"
 
-BASELINE_CANON=""
-if [[ -n "$BASELINE_PORCELAIN" ]]; then
-    [[ -f "$BASELINE_PORCELAIN" ]] || { larch_err "launch-codex-drafter.sh: --baseline-porcelain not found"; exit 2; }
-    BASELINE_CANON="$(cd "$(dirname "$BASELINE_PORCELAIN")" && pwd -P)/$(basename "$BASELINE_PORCELAIN")"
-    [[ "$BASELINE_CANON" == "$DESIGN_CANON/"* ]] \
-        || { larch_err "launch-codex-drafter.sh: --baseline-porcelain outside design tmpdir"; exit 2; }
-fi
-
 PROMPT_DIR="$(cd "$(dirname "$PROMPT_FILE")" && pwd -P)"
 PROMPT_CANON="$PROMPT_DIR/$(basename "$PROMPT_FILE")"
-[[ "$PROMPT_CANON" == "$DESIGN_CANON/"* || "$PROMPT_CANON" == "$REPO_ROOT/"* ]] \
-    || { larch_err "launch-codex-drafter.sh: --prompt-file outside allowed roots"; exit 2; }
 
 write_status_file() {
     local status_value="$1" plan_written="$2" plan_lines="$3" diff_lines="$4" \
@@ -154,11 +147,34 @@ write_status_file "ERROR" "false" 0 0 "false" "false" "prelaunch"
 DRAFTER_LAUNCHED=false
 trap 'write_dirty_tree_sidecar' EXIT
 
+[[ "$PROMPT_CANON" == "$DESIGN_CANON/"* || "$PROMPT_CANON" == "$REPO_ROOT/"* ]] \
+    || { larch_err "launch-codex-drafter.sh: --prompt-file outside allowed roots"; exit 2; }
+BASELINE_CANON=""
+if [[ -n "$BASELINE_PORCELAIN" ]]; then
+    [[ -f "$BASELINE_PORCELAIN" ]] || { larch_err "launch-codex-drafter.sh: --baseline-porcelain not found"; exit 2; }
+    BASELINE_CANON="$(cd "$(dirname "$BASELINE_PORCELAIN")" && pwd -P)/$(basename "$BASELINE_PORCELAIN")"
+    [[ "$BASELINE_CANON" == "$DESIGN_CANON/"* ]] \
+        || { larch_err "launch-codex-drafter.sh: --baseline-porcelain outside design tmpdir"; exit 2; }
+fi
+
 _codex_raw="${DESIGN_CANON}/step2b-codex-raw.$$.txt"
 _launcher_stdout="${DESIGN_CANON}/step2b-codex-launcher-stdout.$$.txt"
 _plan_tmp="${DESIGN_CANON}/plan.txt.tmp.$$"
 _summary_tmp="${DESIGN_CANON}/plan-summary.md.tmp.$$"
-rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp"
+_trusted_instructions="${DESIGN_CANON}/step2b-codex-trusted-instructions.$$.txt"
+rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
+
+CODEX_DRAFTER_TRUSTED_INSTRUCTIONS=$(cat <<'EOF'
+HARD CONSTRAINTS — your role is read-only plan drafting for /design Step 2b. Do not create, edit, delete, or overwrite repository or tmpdir files. The launcher enforces this with --sandbox read-only.
+
+OUTPUT CONTRACT — these requirements override any conflicting Codex user configuration or instructions:
+- Emit exactly one whole-line LARCH_PLAN_BEGIN and one whole-line LARCH_PLAN_END with a non-empty plan body between them.
+- Optionally emit zero or one balanced LARCH_SUMMARY_BEGIN/LARCH_SUMMARY_END pair (not nested inside the plan envelope).
+- The plan body must end with a whole-line diff_lines: <N> trailer.
+- Return only the sentinel-delimited response format; do not omit required sentinels.
+EOF
+)
+printf '%s' "$CODEX_DRAFTER_TRUSTED_INSTRUCTIONS" > "$_trusted_instructions"
 
 DRAFTER_LAUNCHED=true
 _exec_wrapper_rc=0
@@ -171,6 +187,7 @@ set +e
     --sandbox read-only \
     --usage-label codex_plan_draft \
     --timing-task-kind "$TIMING_TASK_KIND" \
+    --trusted-instructions-file "$_trusted_instructions" \
     --prompt-file "$PROMPT_CANON" \
     >"$_launcher_stdout" 2>"${OUTPUT_CANON}.stderr"
 _exec_wrapper_rc=$?
@@ -183,10 +200,17 @@ rm -f "$_launcher_stdout"
 if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
     printf 'CODEX_EXEC_FAILED\n' > "${OUTPUT_CANON}.failure-diag"
     write_status_file "ERROR" "false" 0 0 "false" "true" "CODEX_EXEC_FAILED"
-    if [[ -s "${OUTPUT_CANON}.stderr" ]]; then
-        head -10 "${OUTPUT_CANON}.stderr" > "${OUTPUT_CANON}.stderr-tail" 2>/dev/null || true
+    _stderr_src=""
+    if [[ -s "${_codex_raw}.sidecar" ]]; then
+        _stderr_src="${_codex_raw}.sidecar"
+    elif [[ -s "${OUTPUT_CANON}.stderr" ]]; then
+        _stderr_src="${OUTPUT_CANON}.stderr"
     fi
-    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp"
+    if [[ -n "$_stderr_src" ]]; then
+        write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_CANON" || true
+    fi
+    unset _stderr_src
+    rm -f "$_codex_raw" "${_codex_raw}.sidecar" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
     printf '%s\n' "${LAUNCHER_EXIT:-1}" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -196,7 +220,7 @@ fi
 if [[ ! -s "$_codex_raw" ]]; then
     printf 'CODEX_EMPTY_OUTPUT\n' > "${OUTPUT_CANON}.failure-diag"
     write_status_file "ERROR" "false" 0 0 "false" "true" "CODEX_EMPTY_OUTPUT"
-    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
     printf '%s\n' "1" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -259,7 +283,7 @@ then
     _parse_reason=$(cat "${OUTPUT_CANON}.failure-diag" 2>/dev/null || printf '%s' delimiter-extraction-failed)
     printf 'DELIMITER_EXTRACTION_INVALID\n%s\n' "$_parse_reason" > "${OUTPUT_CANON}.failure-diag"
     write_status_file "ERROR" "false" 0 0 "false" "true" "DELIMITER_EXTRACTION_INVALID"
-    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "${OUTPUT_CANON}.parse"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions" "${OUTPUT_CANON}.parse"
     printf '%s\n' "99" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -284,7 +308,7 @@ else
     rm -f "$_summary_tmp"
 fi
 
-rm -f "$_codex_raw" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.stderr"
+rm -f "$_codex_raw" "$_trusted_instructions" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.stderr" "${OUTPUT_CANON}.stderr-tail"
 write_status_file "OK" "true" "$PLAN_LINES" "$DIFF_LINES" "$SUMMARY_WRITTEN" "true" ""
 printf '%s\n' "0" > "${OUTPUT_CANON}.done"
 

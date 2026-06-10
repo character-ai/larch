@@ -106,7 +106,7 @@ test-harnesses-11: test-dispatch-panel-core test-dispatch-plan-review-panel test
 test-harnesses-12: test-auto-fix-plan-commands test-tally-code-votes test-write-final-report test-gh-pr-body-update test-pipe-sigpipe-safety test-upgrade-larch-retention test-verify-skill-called test-log-phase test-scrub-submodule-paths test-cache-key-discipline test-review-implement-step5-loop-timing test-research-structure test-render-run-summary-format test-refresh-execution-issues test-github-remote-repo test-lib-title-markers
 test-harnesses-13: test-launch-codex-ci test-run-external-agent test-collect-agent-results test-check-plan-size test-dispatch-code-voters-retry-cursor test-capture-session-transcript test-check-topology-rule-paths test-review-and-fix-step5-starting-round test-lint-codex-exec-auth test-render-debate-retry-prompt test-token-cost-per-bucket test-render-voter-prompt test-git-push test-implement-rebase-macro test-git-commit-only test-scoreboard test-implement-positional-issue
 
-test-harnesses-14: test-dispatch-code-voters-happy test-prompt-template-invariants test-implement-finalize test-merge-pr test-oos-disposition-gate test-launch-claude-review test-launch-claude-drafter test-ci-wait test-implement-bootstrap-invoke test-check-mid-run-dirty-tree test-flush-execution-issues test-step-18b-final-report test-sentinel-write test-parse-plan-commands test-decompose-aggregator test-extract-plan-scope-paths test-run-step2-dispatch test-implement-timing-rehydration test-anti-improvised-wakeup
+test-harnesses-14: test-dispatch-code-voters-happy test-prompt-template-invariants test-implement-finalize test-merge-pr test-oos-disposition-gate test-launch-claude-review test-launch-claude-drafter test-launch-codex-drafter test-ci-wait test-implement-bootstrap-invoke test-check-mid-run-dirty-tree test-flush-execution-issues test-step-18b-final-report test-sentinel-write test-parse-plan-commands test-decompose-aggregator test-extract-plan-scope-paths test-run-step2-dispatch test-implement-timing-rehydration test-anti-improvised-wakeup
 
 test-harnesses-15: test-launch-review-cursor-retry test-findings-classification test-scout-dynamic-archetypes test-step-7a test-validate-citations test-launch-claude-subprocess test-larch-logs-manifest test-preflight-args test-run-research-planner test-cache-root-validation test-lint-no-raw-stderr-after-quiet-init test-compose-pr-summary test-step3-orchestrator-fence test-tally-vote test-fetch-combinable-issues-filter
 
@@ -1057,6 +1057,9 @@ test-launch-claude-review:
 
 test-launch-claude-drafter:
 	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-drafter.sh
+
+test-launch-codex-drafter:
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-drafter.sh
 
 test-dispatch-with-waterfall:
 	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-with-waterfall.sh

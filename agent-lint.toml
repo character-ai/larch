@@ -404,6 +404,8 @@ exclude = [
   # Agent-lint's dead-script graph does not resolve that variable indirection.
   "scripts/launch-codex-drafter.sh",
   "scripts/launch-codex-drafter.md",
+  "scripts/test-launch-codex-drafter.sh",
+  "scripts/test-launch-codex-drafter.md",
   # larch-log-batches.sh is sourced by lib-larch-log.sh; agent-lint does not
   # follow Bash source edges.
   "scripts/larch-log-batches.sh",

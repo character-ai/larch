@@ -47,7 +47,7 @@ Side files written under `<output-file>.*`:
 - `.done` — exit code
 - `.stderr` — Codex stderr on failure (removed on success)
 - `.failure-diag` — failure classification token (on ERROR)
-- `.stderr-tail` — first 10 lines of stderr (on exec failure)
+- `.stderr-tail` — redacted stderr tail via `write_failed_agent_stderr_tail` (on exec failure)
 
 Under `DESIGN_TMPDIR`:
 - `plan.txt` — extracted plan body ending with `diff_lines: N`
@@ -71,7 +71,7 @@ Token and timing recording are handled inside `launch-codex-exec.sh`.
 
 ## Harness
 
-No dedicated offline harness. Covered by manual smoke-test (run `/design` on a
-real issue with `CODEX_PRESENT=true`). `scripts/test-launch-claude-drafter.sh`
-covers the shared Python sentinel parser logic via the claude path; add a codex
-path harness when Step 2b vendor dispatch reaches stable test coverage.
+`scripts/test-launch-codex-drafter.sh` covers launcher wiring, trusted-instructions
+override, sentinel parsing, dirty-tree handling, failure branches, and argv
+propagation. `scripts/test-launch-claude-drafter.sh` covers the Claude path with
+the same shared Python sentinel parser logic.

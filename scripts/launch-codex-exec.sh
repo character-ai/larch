@@ -25,9 +25,10 @@ WITH_EFFORT=false
 USAGE_LABEL="codex_exec"
 TIMING_TASK_KIND="codex-exec"
 ADD_DIRS=()
+TRUSTED_INSTRUCTIONS_FILE=""
 
 usage() {
-    larch_err "Usage: launch-codex-exec.sh --output PATH --timeout SECONDS (--prompt STRING | --prompt-file PATH) [--workdir PATH] [--add-dir PATH]... [--sandbox full-auto|read-only] [--with-effort] [--usage-label LABEL] [--timing-task-kind KIND]"
+    larch_err "Usage: launch-codex-exec.sh --output PATH --timeout SECONDS (--prompt STRING | --prompt-file PATH) [--workdir PATH] [--add-dir PATH]... [--sandbox full-auto|read-only] [--with-effort] [--usage-label LABEL] [--timing-task-kind KIND] [--trusted-instructions-file PATH]"
 }
 
 die() {
@@ -74,6 +75,7 @@ while [[ $# -gt 0 ]]; do
         --with-effort) WITH_EFFORT=true; shift ;;
         --usage-label) [ $# -ge 2 ] || die "--usage-label requires a value"; USAGE_LABEL=$2; shift 2 ;;
         --timing-task-kind) [ $# -ge 2 ] || die "--timing-task-kind requires a value"; TIMING_TASK_KIND=$2; shift 2 ;;
+        --trusted-instructions-file) [ $# -ge 2 ] || die "--trusted-instructions-file requires a value"; TRUSTED_INSTRUCTIONS_FILE=$2; shift 2 ;;
         --help) usage; exit 0 ;;
         *) die "unknown flag: $1" ;;
     esac
@@ -111,7 +113,29 @@ CODEX_HOME_DIR=""
 trap 'rm -f "${MODEL_ARGS_TMP:-}"; rm -rf "${CODEX_HOME_DIR:-}"' EXIT
 
 CODEX_HOME_DIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-exec-home-XXXXXX")
-if [[ -f ~/.codex/config.toml ]]; then
+if [[ -n "$TRUSTED_INSTRUCTIONS_FILE" ]]; then
+    [[ -f "$TRUSTED_INSTRUCTIONS_FILE" ]] || die "--trusted-instructions-file not found: $TRUSTED_INSTRUCTIONS_FILE"
+    [[ ! -L "$TRUSTED_INSTRUCTIONS_FILE" ]] || die "--trusted-instructions-file must not be a symlink"
+    _trusted_instructions_body=$(cat "$TRUSTED_INSTRUCTIONS_FILE")
+    if grep -Fq "'''" <<< "$_trusted_instructions_body"; then
+        die "trusted instructions file contains TOML triple-single-quote delimiter"
+    fi
+    {
+        printf "instructions = '''\n%s\n'''\n\n" "$_trusted_instructions_body"
+        if [[ -f ~/.codex/config.toml ]]; then
+            awk "
+                /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*'''/ { skip=1; block_end=\"'''\"; next }
+                /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*\"\"\"/ { skip=1; block_end=\"\\\"\\\"\\\"\"; next }
+                skip && index(\$0, block_end) { skip=0; next }
+                skip { next }
+                /^[[:space:]]*instructions[[:space:]]*=/ { next }
+                { print }
+            " ~/.codex/config.toml
+            printf '\n'
+        fi
+    } > "$CODEX_HOME_DIR/config.toml"
+    unset _trusted_instructions_body
+elif [[ -f ~/.codex/config.toml ]]; then
     cp ~/.codex/config.toml "$CODEX_HOME_DIR/config.toml"
 fi
 
