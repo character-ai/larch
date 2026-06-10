@@ -1153,10 +1153,10 @@ grep -Fq '5c.5→5c.7→5c.8→6' "$SKILL_MD" \
 DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
 [[ -x "$DESIGN_PUBLISH_SH" ]] || fail "design-publish.sh must be executable"
 publish_plan_line=$(grep -nF 'plan-block-write.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
-publish_upsert_line=$(grep -nF 'upsert-diagrams-comment.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+publish_upsert_line=$(grep -nF 'python/cli.py diagrams upsert' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_log_line=$(grep -nF 'design-log-publish.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 [[ -n "$publish_plan_line" && -n "$publish_upsert_line" && -n "$publish_log_line" && "$publish_plan_line" -lt "$publish_upsert_line" && "$publish_upsert_line" -lt "$publish_log_line" ]] \
-  || fail "(15b) design-publish.sh must call plan-block-write.sh before upsert-diagrams-comment.sh before design-log-publish.sh"
+  || fail "(15b) design-publish.sh must call plan-block-write.sh before python/cli.py diagrams upsert before design-log-publish.sh"
 grep -Fq 'architecture-diagram.skipped' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must handle architecture-diagram.skipped sentinel"
 grep -Fq -- '--clear-architecture' "$DESIGN_PUBLISH_SH" \
@@ -1472,7 +1472,7 @@ echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 # FINDING_2678 removed: YES↔EXONERATE phrase no longer valid after EXONERATE removal (PR #3647).
 
 # Check: voter YES/NO-only instructions pinned in plan-review.md + renderer.
-RENDER_VOTER_SH="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
+RENDERING_PY="$REPO_ROOT/python/rendering.py"
 
 voter1_line=$(grep -n '^- \*\*Voter 1\*\*' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$voter1_line" ]] || fail "plan-review.md missing '- **Voter 1**' prompt anchor"
@@ -1486,8 +1486,8 @@ shared_text=$(sed -n "${shared_line}p" "$PLAN_REVIEW_MD")
 grep -Fq 'Vote YES only if' <<< "$shared_text" \
   || fail "plan-review.md shared Voter 2/3 prompt missing YES/NO-only instruction"
 
-grep -Fq 'Vote NO only when the stated problem is not real or not worth raising' "$RENDER_VOTER_SH" \
-  || fail "render-voter-prompt.sh missing voter NO-only guard instruction"
+grep -Fq 'Vote NO only when the stated problem is not real or not worth raising' "$RENDERING_PY" \
+  || fail "python/rendering.py missing voter NO-only guard instruction"
 
 echo "PASS: voter YES/NO-only instructions pinned in plan-review.md + renderer"
 
@@ -1951,8 +1951,8 @@ grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
 grep -Fq '_publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must subshell-capture design-log-publish.sh stdout"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq '_upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh"' "$DESIGN_PUBLISH_SH" \
-  || fail "(15b) design-publish.sh must subshell-capture upsert-diagrams-comment.sh stdout"
+grep -Fq '_upsert_out=$(python3 "$PLUGIN_ROOT/python/cli.py" diagrams upsert' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must subshell-capture python/cli.py diagrams upsert stdout"
 grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must require .completed/step-5b precondition"
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \

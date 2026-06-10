@@ -319,27 +319,27 @@ grep 'collect-agent-results.sh' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
 
 # ---------------------------------------------------------------------------
 # (14) Specialist prompt rendering is wired (#659).
-#      Assertion (14) checks that SKILL.md references render-specialist-prompt.sh
+#      Assertion (14) checks that SKILL.md references python/cli.py render specialist
 #      and that the script accepts --mode for diff/description mode handling.
 # ---------------------------------------------------------------------------
-grep -Fq 'render-specialist-prompt.sh' "$SKILL_MD" \
-  || fail "(14) SKILL.md does not reference 'render-specialist-prompt.sh' — specialist prompt rendering is not wired"
-grep -Fq -- '--mode' "$REPO_ROOT/scripts/render-specialist-prompt.sh" \
-  || fail "(14) scripts/render-specialist-prompt.sh does not accept '--mode' — diff/description mode handling is missing"
+grep -Fq 'python/cli.py render specialist' "$SKILL_MD" \
+  || fail "(14) SKILL.md does not reference 'python/cli.py render specialist' — specialist prompt rendering is not wired"
+grep -Fq -- '--mode' "$REPO_ROOT/python/rendering.py" \
+  || fail "(14) python/rendering.py does not accept '--mode' — diff/description mode handling is missing"
 
 # ---------------------------------------------------------------------------
-# (15) Description-mode OOS marking is handled by scripts/render-specialist-prompt.sh
+# (15) Description-mode OOS marking is handled by python/cli.py render specialist
 #      (for specialist reviewers) and by the agent file output format section
 #      (for all reviewers). OOS anchor language lives in the render script's
 #      description preamble, not inline in SKILL.md. The dual-list contract (In-Scope
 #      Findings + Out-of-Scope Observations) is enforced by the specialist agent
-#      files' Output format section and by test-render-specialist-prompt.sh.
-#      This assertion verifies that scripts/render-specialist-prompt.sh exists
+#      files' Output format section and by test-python/cli.py render specialist.
+#      This assertion verifies that python/cli.py render specialist exists
 #      and the 5 specialist agent files exist with the dual-list output headers.
 # ---------------------------------------------------------------------------
-RENDERER="$REPO_ROOT/scripts/render-specialist-prompt.sh"
+RENDERER="$REPO_ROOT/python/rendering.py"
 [[ -f "$RENDERER" ]] \
-  || fail "(15) scripts/render-specialist-prompt.sh does not exist — specialist prompt rendering is broken"
+  || fail "(15) python/rendering.py does not exist — specialist prompt rendering is broken"
 for specialist in reviewer-structure reviewer-correctness reviewer-testing reviewer-security reviewer-edge-cases; do
   agent_file="$REPO_ROOT/agents/${specialist}.md"
   [[ -f "$agent_file" ]] \

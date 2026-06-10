@@ -1071,14 +1071,14 @@ sanitize_diagram_or_placeholder() {
     local file=$1 placeholder=$2 label=$3 out reason rc fail_file
     if [ -n "$file" ] && [ -f "$file" ]; then
         fail_file=$(failure_capture_path pr-prep)
-        out=$("$SCRIPT_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md --warnings-step "9a" 2>"$fail_file")
+        out=$(python3 "$SCRIPT_DIR/../python/cli.py" mermaid sanitize --input "$file" --from-md --warnings-step "9a" 2>"$fail_file")
         rc=$?
         printf '%s\n' "$out" >> "$fail_file"
         if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^STATUS=ok$'; then
             cat "$file"
             return 0
         fi
-        record_failure pr-prep "sanitize-mermaid-fragment.sh ($label)" "$rc" "$fail_file" Warnings
+        record_failure pr-prep "python/cli.py mermaid sanitize ($label)" "$rc" "$fail_file" Warnings
         reason=$(kv_value REASON_TOKEN "$out")
         [ -n "$reason" ] || reason="unknown"
         "$SCRIPT_DIR/append-execution-issue.sh" --log "$IMPLEMENT_TMPDIR/execution-issues.md" --category Warnings --entry "Step 9a — PR-body diagram $label rejected: $reason" >/dev/null 2>&1 || true

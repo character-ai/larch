@@ -12,7 +12,7 @@ Use this when CI logs mention topology documentation or `skills/shared/topology.
 After editing `skills/shared/topology.tsv` (or related anchors), run:
 
 ```bash
-bash scripts/generate-topology-docs.sh
+python3 python/cli.py generate topology-docs
 ```
 
-Use `bash scripts/generate-topology-docs.sh --check` to validate without writing when debugging.
+Use `python3 python/cli.py generate topology-docs --check` to validate without writing when debugging.

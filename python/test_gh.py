@@ -995,6 +995,27 @@ def test_find_issue_comment_id_by_marker() -> None:
     assert comment_id == 99
 
 
+def test_find_issue_comment_id_by_marker_paginated_json() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api"),
+                0,
+                '[{"id":1,"body":"other"}][{"id":101,"body":"<!-- larch:diagrams v1 -->\\nbody"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    comment_id = gh.find_issue_comment_id_by_marker(
+        runner,
+        "42",
+        "<!-- larch:diagrams v1 -->",
+        repo="owner/repo",
+    )
+    assert comment_id == 101
+
+
 def test_find_issue_comment_id_by_marker_normalizes_bom_crlf() -> None:
     runner = RecordingRunner(
         responses=[

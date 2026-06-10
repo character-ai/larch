@@ -47,8 +47,8 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, Code Flow generation, shared diagrams-comment upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - The classifier, diagram generator, and 7a.r rebase probe use module-level `base_remote` / `base_ref`, defaulting to `origin/main` and switching to `upstream/main` when `--forked-target true` is on argv or when `LARCH_FORKED_TARGET=true` is rehydrated from `$IMPLEMENT_TMPDIR/session-env.sh` during session-key lookup.
 - `LARCH_FORKED_TARGET` has no direct shell-environment fallback; only argv and the session-env file are honored.
-- When `REPO` or `UPSTREAM_REPO` is present in `$IMPLEMENT_TMPDIR/session-env.sh`, Step 7a threads the resolved owner/repo to `scripts/upsert-diagrams-comment.sh` via `--repo`.
-- Step 7a writes `$IMPLEMENT_TMPDIR/code-flow-section.md` only when `generate-code-flow-diagram.sh` reports `STATUS=ok`. The file contains the `## Code Flow Diagram` section passed to `scripts/upsert-diagrams-comment.sh`.
+- When `REPO` or `UPSTREAM_REPO` is present in `$IMPLEMENT_TMPDIR/session-env.sh`, Step 7a threads the resolved owner/repo to `python/cli.py diagrams upsert` via `--repo`.
+- Step 7a writes `$IMPLEMENT_TMPDIR/code-flow-section.md` only when `generate-code-flow-diagram.sh` reports `STATUS=ok`. The file contains the `## Code Flow Diagram` section passed to `python/cli.py diagrams upsert`.
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `tracking-issue-summary.sh` directly and does not use a `runid=` marker for diagrams.
@@ -57,7 +57,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 
 ## Regression checklist
 
-- Green generation writes `code-flow-section.md` and invokes `scripts/upsert-diagrams-comment.sh`.
+- Green generation writes `code-flow-section.md` and invokes `python/cli.py diagrams upsert`.
 - Prior Architecture content is preserved by the shared helper while Code Flow is replaced.
 - No prior diagrams comment produces a Code Flow-only body.
 - `STATUS=skipped` and `STATUS=failed` omit `code-flow-section.md` and skip the upsert.

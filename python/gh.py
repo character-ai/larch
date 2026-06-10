@@ -123,6 +123,33 @@ def _loads_json(text: str, *, context: str) -> object:
         raise ShipError(msg) from exc
 
 
+def _loads_json_paginated_list(text: str, *, context: str) -> list[object]:
+    stripped = (text or "").strip()
+    if not stripped:
+        return []
+    try:
+        return _as_json_list(_loads_json(stripped, context=context), context=context)
+    except ShipError:
+        pass
+    decoder = json.JSONDecoder()
+    merged: list[object] = []
+    idx = 0
+    length = len(stripped)
+    while idx < length:
+        while idx < length and stripped[idx].isspace():
+            idx += 1
+        if idx >= length:
+            break
+        try:
+            page, end = decoder.raw_decode(stripped, idx)
+        except json.JSONDecodeError as exc:
+            msg = f"gh JSON parse failed ({context}): {exc}"
+            raise ShipError(msg) from exc
+        merged.extend(_as_json_list(page, context=context))
+        idx = end
+    return merged
+
+
 def _as_json_object(data: object, *, context: str) -> dict[str, object]:
     if not isinstance(data, dict):
         msg = f"gh JSON parse failed ({context}): expected object"
@@ -1020,10 +1047,7 @@ def find_issue_comment_id_by_marker(
     if result.returncode != 0:
         msg = f"gh api comments fetch failed ({result.returncode})"
         raise ShipError(msg)
-    rows_obj = _as_json_list(
-        _loads_json(result.stdout or "[]", context="issue comments"),
-        context="issue comments",
-    )
+    rows_obj = _loads_json_paginated_list(result.stdout or "[]", context="issue comments")
     ids: list[int] = []
     for row_obj in rows_obj:
         row = _as_json_object(row_obj, context="issue comment row")
@@ -1041,6 +1065,24 @@ def find_issue_comment_id_by_marker(
     if len(ids) == 1:
         return ids[0]
     return -1
+
+
+def issue_comment_delete(
+    runner: Runner,
+    comment_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _gh(
+            runner,
+            ["api", f"/repos/{repo}/issues/comments/{comment_id}", "-X", "DELETE"],
+            cwd=cwd,
+        )
+        return result, result.returncode, _combined(result)
+
+    return with_transient_retry(attempt).value
 
 
 def issue_comment_patch(

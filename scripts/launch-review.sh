@@ -253,7 +253,7 @@ fi
 : "${TIMING_TASK_KIND:=codex-review}"
 TIMING_START_S=$(date +%s)
 
-# Propagate render-specialist-prompt.sh cache dir from session context when not
+# Propagate python/cli.py render specialist cache dir from session context when not
 # already set. All reviewer launchers in the same Bash invocation inherit this,
 # enabling within-session cache sharing across parallel specialist launches.
 if [[ -z "${LARCH_RENDER_CACHE_DIR:-}" ]] && [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
@@ -299,7 +299,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
     _pf_first_line=$(head -1 -- "$PROMPT_FILE" 2>/dev/null || true)
     if [[ "$_pf_first_line" == "LARCH_PROMPT_SENTINEL=1" ]]; then
         # Hash+kind sentinel written by the non-retry (happy) path for --agent-file
-        # launches. Reconstruct the full prompt via render-specialist-prompt.sh and
+        # launches. Reconstruct the full prompt via python/cli.py render specialist and
         # verify the SHA-256 hash to catch renderer changes between launch and retry.
         _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_comp_file="" _s_diff="" _s_commit_count="" _s_plan_file="" _s_feature_file=""
         while read -r _s_line; do
@@ -331,7 +331,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         [[ -n "$_s_commit_count" ]] && _s_render_args+=(--commit-count "$_s_commit_count")
         [[ -n "$_s_plan_file" ]] && _s_render_args+=(--plan-file "$_s_plan_file")
         [[ -n "$_s_feature_file" ]] && _s_render_args+=(--feature-file "$_s_feature_file")
-        PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${_s_render_args[@]}")
+        PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${_s_render_args[@]}")
         _s_reconstructed_hash=""
         if command -v shasum >/dev/null 2>&1; then
             _s_reconstructed_hash=$(printf '%s' "$PROMPT" | LC_ALL=C shasum -a 256 | awk '{print $1}')
@@ -370,7 +370,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")
     [[ -n "$FEATURE_FILE" ]] && RENDER_ARGS+=(--feature-file "$FEATURE_FILE")
-    PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
+    PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${RENDER_ARGS[@]}")
 fi
 
 # Issue #1529: deliver the HARD-CONSTRAINTS read-only preamble through
@@ -481,7 +481,7 @@ PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 # Retry-safe: for specialist (--agent-file) launches without free-form
 # --description-text, write a compact hash+kind sentinel instead of the full
 # prompt body to reduce sidecar I/O on the happy path. On retry the launcher
-# reads the sentinel and reconstructs via render-specialist-prompt.sh.
+# reads the sentinel and reconstructs via python/cli.py render specialist.
 # For generic (--prompt / --prompt-file) and description-mode paths, write the
 # full prompt verbatim so retry replay always has the text available.
 if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
@@ -947,7 +947,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")
     [[ -n "$FEATURE_FILE" ]] && RENDER_ARGS+=(--feature-file "$FEATURE_FILE")
-    PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
+    PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${RENDER_ARGS[@]}")
 fi
 
 # Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Cursor

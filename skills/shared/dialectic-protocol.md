@@ -40,7 +40,7 @@ Every decision selected by Step 2a.5 gets exactly one resolution entry with one 
 When either side fails the **debate quorum gate** (including `no_output` from a failed collector `STATUS` for that side), that side alone enters a **per-side waterfall** before the orchestrator finalizes `Disposition: fallback-to-synthesis` for the whole decision:
 
 1. **1st retry** targets the **other** external relative to that side's original launch tool, **unless** the pre-retry-wave `check-reviewers.sh` refresh shows that tool is unavailable — then skip directly to tier 2.
-2. **2nd retry** targets **Claude** (Agent-tool inline debater) with a corrective prompt from `scripts/render-debate-retry-prompt.sh`. This is the **only** permitted Claude debater slot (final retry). GitHub issue #98 still forbids Claude as the **primary** debater or **1st-retry** debater.
+2. **2nd retry** targets **Claude** (Agent-tool inline debater) with a corrective prompt from `python/cli.py render debate-retry`. This is the **only** permitted Claude debater slot (final retry). GitHub issue #98 still forbids Claude as the **primary** debater or **1st-retry** debater.
 3. **Parallelism**: thesis and antithesis 1st retries launch together when both need them; same for coordinated 2nd-retry waves. **Serialism within a side**: never launch retry2 for a side before retry1 for that side has been collected and re-evaluated.
 4. **Presence re-check**: refresh **only** `dialectic_codex_available` / `dialectic_cursor_available` before each retry wave; never mutate orchestrator-wide `codex_available` / `cursor_available`.
 5. **Outputs**: original `debate-<n>-<tool>-<side>.txt`; 1st retry `debate-<n>-<retry-tool>-<side>-retry1.txt`; 2nd Claude `debate-<n>-claude-<side>-retry2.txt`.

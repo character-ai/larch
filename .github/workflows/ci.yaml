@@ -417,14 +417,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Walk generators registry and check for drift
-        run: |
-          bash scripts/check-generators.sh
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: .github/workflows/requirements-lint.txt
+      - name: Walk generators registry and check for drift
+        run: python3 python/cli.py generate check
       - name: Install lint dependencies
         env:
           PIP_RETRIES: "5"

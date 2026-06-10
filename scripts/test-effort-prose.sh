@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 
 PATTERN='Work at (your )?maximum reasoning effort level[.]'
 FILES=(
-  scripts/render-specialist-prompt.sh
+  python/rendering.py
   skills/design/SKILL.md
   skills/design/references/sketch-prompts.md
   skills/design/references/sketch-launch.md

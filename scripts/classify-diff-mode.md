@@ -23,8 +23,8 @@
 - 0: classification emitted
 - 2: usage error or missing diff file
 
-**Primary caller**: `scripts/render-specialist-prompt.sh`, which falls back to `generic` if this helper fails.
+**Primary caller**: `python/cli.py render specialist`, which falls back to `generic` if this helper fails.
 
-**Harness**: Covered by `scripts/test-render-specialist-prompt.sh` because the classifier only exists to drive renderer prompt selection.
+**Harness**: Covered by `scripts/test-python/cli.py render specialist` because the classifier only exists to drive renderer prompt selection.
 
-**Edit-in-sync**: When changing the mode enum, generated-artifact source, or path classification rules, update `scripts/render-specialist-prompt.sh`, `scripts/render-specialist-prompt.md`, and `scripts/test-render-specialist-prompt.sh` in the same PR.
+**Edit-in-sync**: When changing the mode enum, generated-artifact source, or path classification rules, update `python/cli.py render specialist`, `python/rendering.py`, and `scripts/test-python/cli.py render specialist` in the same PR.

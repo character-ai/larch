@@ -10,7 +10,7 @@ Cross-cutting regression harness that asserts structural invariants in rendered 
 | `scripts/dispatch-plan-voters.sh` | `Verify silently`; `Output ONLY vote lines`; `PLAN_VOTER_PARSE_RATE_RETRY_PREFIX`; `make_plan_voter_retry_prompt_file` |
 | `skills/review-and-fix/scripts/review-and-fix.sh` | `Output ONLY result lines`; acceptable-output example; `emit_submodule_prohibition` call |
 | `scripts/lint-fix-loop.sh` | `FIXED:` / `UNFIXABLE:` result-shape spec; acceptable final-line shapes example; `emit_submodule_prohibition` call |
-| `skills/design/scripts/render-plan-review-prompt.sh` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |
+| `python/cli.py render plan-review` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |
 | `scripts/scout-dynamic-archetypes.sh` | `prompt_body` constraints block; closing-sentence requirement; closing-sentence repair code |
 | `scripts/collect-agent-results.sh` | format-agnostic NS_STRONG_HEADER; absence of old `### FINDING_N` format reference |
 

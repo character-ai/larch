@@ -93,16 +93,26 @@ check_annotated_literal_lines() {
 }
 
 check_render_specialist_prompt_paths() {
-  local file="scripts/render-specialist-prompt.sh"
+  local file="python/rendering.py"
+
+  [[ -f "$REPO_ROOT/$file" ]] || {
+    report_violation "$file" 1 "renderer source file missing" "$file"
+    return
+  }
 
   while IFS=: read -r line_no text; do
     [[ "$text" == *'Review all code changes'* ]] || continue
     if ! has_nearby_annotation "$file" "$line_no"; then
       report_violation "$file" "$line_no" "per-session diff path in rendered external prompt lacks annotation" "$text"
     fi
-  done < <(grep -nF -- "\${DIFF_FILE}" "$REPO_ROOT/$file" || true)
+  done < <(grep -nF -- "args.diff_file" "$REPO_ROOT/$file" || true)
 
-  check_annotated_literal_lines "$file" "\${SCOPE_FILES}" "per-session scope-file path in rendered external prompt lacks annotation"
+  while IFS=: read -r line_no text; do
+    [[ "$text" == *'canonical file list'* ]] || continue
+    if ! has_nearby_annotation "$file" "$line_no"; then
+      report_violation "$file" "$line_no" "per-session scope-file path in rendered external prompt lacks annotation" "$text"
+    fi
+  done < <(grep -nF -- "args.scope_files" "$REPO_ROOT/$file" || true)
 }
 
 prompt_block_bounds() {

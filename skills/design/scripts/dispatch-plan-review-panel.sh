@@ -77,7 +77,7 @@ render_plan_review_prompt() {
     if [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]]; then
         args+=(--feature-file "$FEATURE_FILE")
     fi
-    bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" "${args[@]}"
+    python3 "${PLUGIN_ROOT}/python/cli.py" render plan-review "${args[@]}"
 }
 
 append_shared_prompt_tail() {

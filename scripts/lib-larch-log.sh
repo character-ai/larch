@@ -149,7 +149,7 @@ larch_log_validate_batch_payload() {
             rm -f "$impl_tmp"
             ;;
         mermaid)
-            "$LARCH_LOG_LIB_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md >/dev/null \
+            python3 "$LARCH_LOG_LIB_DIR/../python/cli.py" mermaid sanitize --input "$file" --from-md >/dev/null \
                 || larch_log_fail 2 "mermaid sanitizer rejected $batch"
             ;;
         json-lines)

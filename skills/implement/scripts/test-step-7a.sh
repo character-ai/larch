@@ -110,12 +110,68 @@ import os
 import sys
 from pathlib import Path
 
+def _diagrams_upsert_stub() -> int:
+    code_file = ""
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == "--repo" and i + 1 < len(sys.argv):
+            i += 2
+            continue
+        if sys.argv[i] == "--code-flow-file" and i + 1 < len(sys.argv):
+            code_file = sys.argv[i + 1]
+            i += 2
+            continue
+        i += 1
+    calls_log = os.environ.get("STEP7A_CALLS_LOG", "")
+    if calls_log:
+        with open(calls_log, "a", encoding="utf-8") as handle:
+            if code_file and Path(code_file).is_file():
+                handle.write(f"upsert-diagrams-content {code_file}\n")
+            handle.write(f"python/cli.py {' '.join(sys.argv[1:])}\n")
+    if os.environ.get("STEP7A_UPSERT_FAIL", "0") == "1":
+        print("upsert failed", file=sys.stderr)
+        return 1
+    body_capture = os.environ.get("STEP7A_UPSERT_BODY_CAPTURE", "")
+    if body_capture:
+        capture_path = Path(body_capture)
+        capture_path.write_text("", encoding="utf-8")
+        existing = os.environ.get("STEP7A_UPSERT_EXISTING_BODY_FILE", "")
+        if existing and Path(existing).is_file():
+            lines = Path(existing).read_text(encoding="utf-8").splitlines()
+            if lines and lines[0] == "<!-- larch:diagrams v1 -->":
+                keep = False
+                arch_lines: list[str] = []
+                for line in lines:
+                    if line == "## Code Flow Diagram":
+                        keep = False
+                    elif line == "## Architecture Diagram":
+                        keep = True
+                        continue
+                    elif keep:
+                        arch_lines.append(line)
+                if arch_lines:
+                    with capture_path.open("a", encoding="utf-8") as handle:
+                        for line in arch_lines:
+                            handle.write(f"{line}\n")
+        if capture_path.stat().st_size > 0 and code_file and Path(code_file).is_file():
+            with capture_path.open("a", encoding="utf-8") as handle:
+                handle.write("\n\n")
+        if code_file and Path(code_file).is_file():
+            with capture_path.open("a", encoding="utf-8") as handle:
+                handle.write(Path(code_file).read_text(encoding="utf-8"))
+    print("UPSERT_STATUS=ok")
+    print("COMMENT_URL=https://example.test/comment/1")
+    print("UPDATED=true")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 3 and sys.argv[1] == "diagrams" and sys.argv[2] == "upsert":
+        raise SystemExit(_diagrams_upsert_stub())
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
@@ -156,48 +212,6 @@ case "${STEP7A_GEN_MODE:-ok}" in
         exit 99
         ;;
 esac
-STUB
-
-    cat > "$root/scripts/upsert-diagrams-comment.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-code_file=""
-repo=""
-args="$*"
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --repo) repo=$2; shift 2 ;;
-        --code-flow-file) code_file=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-[ -n "$code_file" ] && [ -f "$code_file" ] && printf 'upsert-diagrams-content %s\n' "$code_file" >> "$STEP7A_CALLS_LOG"
-printf 'upsert-diagrams-comment.sh %s\n' "$args" >> "$STEP7A_CALLS_LOG"
-if [ "${STEP7A_UPSERT_FAIL:-0}" = "1" ]; then
-    printf 'upsert failed\n' >&2
-    exit 1
-fi
-[ -n "${STEP7A_UPSERT_BODY_CAPTURE:-}" ] && {
-    : > "$STEP7A_UPSERT_BODY_CAPTURE"
-    if [ -n "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ] && [ -f "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ]; then
-        first_line=$(head -n 1 "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" 2>/dev/null || true)
-        if [ "$first_line" = '<!-- larch:diagrams v1 -->' ]; then
-            awk '
-                BEGIN { capture = 0 }
-                /^## Code Flow Diagram$/ { capture = 0 }
-                /^## Architecture Diagram$/ { capture = 1 }
-                capture { print }
-            ' "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" >> "$STEP7A_UPSERT_BODY_CAPTURE"
-        fi
-    fi
-    if [ -s "$STEP7A_UPSERT_BODY_CAPTURE" ] && [ -n "$code_file" ] && [ -f "$code_file" ]; then
-        printf '\n\n' >> "$STEP7A_UPSERT_BODY_CAPTURE"
-    fi
-    [ -n "$code_file" ] && [ -f "$code_file" ] && cat "$code_file" >> "$STEP7A_UPSERT_BODY_CAPTURE"
-}
-printf 'UPSERT_STATUS=ok\n'
-printf 'COMMENT_URL=https://example.test/comment/1\n'
-printf 'UPDATED=true\n'
 STUB
 
     cat > "$root/scripts/rebase-checkpoint-probe.sh" <<'STUB'
@@ -318,18 +332,18 @@ STUB
 
 install_real_diagrams_helper() {
     local root=$1
-    cp "$REPO_ROOT/scripts/upsert-diagrams-comment.sh" "$root/scripts/upsert-diagrams-comment.sh"
+    cp "$REPO_ROOT/python/cli.py" "$root/python/cli.py"
     cp "$REPO_ROOT/scripts/tracking-issue-summary.sh" "$root/scripts/tracking-issue-summary.sh"
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
     cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
-    cp "$REPO_ROOT/scripts/sanitize-mermaid-fragment.sh" "$root/scripts/sanitize-mermaid-fragment.sh"
+    : # mermaid sanitize is handled by the copied Python CLI
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
-        "$root/scripts/upsert-diagrams-comment.sh" \
+        "$root/python/cli.py" \
         "$root/scripts/tracking-issue-summary.sh" \
         "$root/scripts/redact-secrets.sh" \
         "$root/scripts/redact-tmpdir-paths.sh" \
-        "$root/scripts/sanitize-mermaid-fragment.sh"
+        "$root/python/cli.py"
 }
 
 install_diagrams_gh_stub() {
@@ -342,7 +356,7 @@ printf 'gh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
 if [ "$1" = "api" ]; then
     endpoint=$2
     if [[ "$endpoint" == "/repos/owner/repo/issues/42/comments" ]]; then
-        printf '101\t<!-- larch:diagrams v1 -->\n'
+        printf '[{"id":101,"body":"<!-- larch:diagrams v1 -->\\n"}]\n'
         exit 0
     fi
     if [[ "$endpoint" == "/repos/owner/repo/issues/comments/101" ]]; then
@@ -485,11 +499,11 @@ assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.l
 assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "upsert-diagrams-content" "green generate before compose"
-assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "upsert-diagrams-comment.sh" "green compose before upsert"
-assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-comment.sh" "rebase-checkpoint-probe.sh" "green upsert before rebase"
+assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "python/cli.py diagrams upsert" "green compose before upsert"
+assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "rebase-checkpoint-probe.sh" "green upsert before rebase"
 assert_call_order "$CASE_DIR/calls.log" "rebase-checkpoint-probe.sh" "flush-execution-issues.sh" "green rebase before flush"
 assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/code-flow-section.md" "green writes expected code flow section"
-assert_contains "upsert-diagrams-comment.sh --issue 42 --repo owner/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
+assert_contains "python/cli.py diagrams upsert --issue 42 --repo owner/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
 assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "green does not call tracking summary directly"
 
 new_case architecture-env-ignored
@@ -513,7 +527,7 @@ assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip prints skip line"
 assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip omits code flow section"; else fail "diagram-skip omits code flow section"; fi
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip skips diagrams upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip skips diagrams upsert"
 
 new_case diagram-skip-forked
 make_forked_skip_repo "$CASE_DIR/repo"
@@ -526,7 +540,7 @@ assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip-forked emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
 assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip-forked omits code flow section"; else fail "diagram-skip-forked omits code flow section"; fi
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked skips diagrams upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked skips diagrams upsert"
 
 new_case diagram-generate-forked
 make_forked_generate_repo "$CASE_DIR/repo"
@@ -538,7 +552,7 @@ assert_equals 0 "$rc" "diagram-generate-forked exits 0"
 assert_contains "DIAGRAM_STATUS=ok" "$out" "diagram-generate-forked emits diagram ok"
 assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes tmpdir to generator"
 assert_contains "--base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes upstream base args to generator"
-assert_contains "upsert-diagrams-comment.sh --issue 42 --repo upstream/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked threads repo to upsert"
+assert_contains "python/cli.py diagrams upsert --issue 42 --repo upstream/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked threads repo to upsert"
 
 new_case preserve-architecture
 cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
@@ -633,7 +647,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-rejected exits 0"
 assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected emits skipped"
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips diagrams upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips diagrams upsert"
 assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
@@ -649,7 +663,7 @@ for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclo
     set -e
     assert_equals 0 "$rc" "diagram-rejected-$sanitizer_token exits 0"
     assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected-$sanitizer_token emits skipped"
-    assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token skips diagrams upsert"
+    assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token skips diagrams upsert"
     assert_contains "COMMENT_URL=" "$out" "diagram-rejected-$sanitizer_token emits empty comment URL"
     if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-rejected-$sanitizer_token omits code flow section"; else fail "diagram-rejected-$sanitizer_token omits code flow section"; fi
 done
@@ -673,7 +687,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-generation-failure exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-generation-failure emits failed"
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-generation-failure skips diagrams upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-generation-failure skips diagrams upsert"
 assert_contains "COMMENT_URL=" "$out" "diagram-generation-failure skips comment"
 assert_file_contains "Existing --> Preserved" "$CASE_DIR/body.md" "diagram-generation-failure leaves prior issue body unchanged"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-generation-failure omits code flow section"; else fail "diagram-generation-failure omits code flow section"; fi
@@ -687,7 +701,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-failure-sanitizer exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure-sanitizer emits failed"
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer skips diagrams upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer skips diagrams upsert"
 assert_contains "COMMENT_URL=" "$out" "diagram-failure-sanitizer emits empty comment URL"
 if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-failure-sanitizer omits code flow section"; else fail "diagram-failure-sanitizer omits code flow section"; fi
 
@@ -745,7 +759,7 @@ out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number "
 rc=$?
 set -e
 assert_equals 0 "$rc" "ISSUE_NUMBER empty exits 0"
-assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
+assert_not_contains "python/cli.py diagrams upsert" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
 assert_contains "COMMENT_URL=" "$out" "ISSUE_NUMBER empty emits empty URL"
 assert_contains "rebase-checkpoint-probe.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty still runs rebase"
 

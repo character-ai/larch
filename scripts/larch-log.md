@@ -135,7 +135,7 @@ that is not a pointer-only placeholder. Batches that declare the `json-lines`
 sanitizer must be empty or contain one valid JSON value per non-empty line.
 Batches that declare the `json-object` sanitizer must parse as one JSON object.
 Batches that declare the `mermaid` sanitizer (in `larch-log-batches.sh`) also use
-`sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
+`python/cli.py mermaid sanitize --from-md` and fail closed on rejection; no
 current batch uses the Mermaid sanitizer — it is reserved for future opt-in.
 
 **Log-root resolution** is single-tier (see `lib-larch-log.sh`):

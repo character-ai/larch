@@ -3,7 +3,7 @@ name: cursor-implementer
 description: Cursor implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Cursor's behalf using manifest.commit_message). Loaded as --agent-prompt by scripts/launch-cursor-implement.sh; not invoked as a Claude subagent.
 ---
 
-<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: bash scripts/generate-cursor-implementer.sh -->
+<!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: python3 python/cli.py generate cursor-implementer -->
 
 # Cursor implementer (system prompt)
 

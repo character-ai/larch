@@ -412,7 +412,7 @@ if [ -n "$ISSUE_NUMBER" ] && [ -s "$IMPLEMENT_TMPDIR/code-flow-section.md" ]; th
     fi
     upsert_args+=(--code-flow-file "$IMPLEMENT_TMPDIR/code-flow-section.md")
     set +e
-    "$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${upsert_args[@]}" >"$upsert_out" 2>"$upsert_err"
+    python3 "$PLUGIN_ROOT/python/cli.py" diagrams upsert "${upsert_args[@]}" >"$upsert_out" 2>"$upsert_err"
     upsert_rc=$?
     set +e
     upsert_status=$(kv_value UPSERT_STATUS "$upsert_out")

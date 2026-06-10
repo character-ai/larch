@@ -12,6 +12,23 @@ import importlib
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("render", "specialist"): ("rendering", "render_specialist_main"),
+    ("render", "reviewer"): ("rendering", "render_reviewer_main"),
+    ("render", "debate-retry"): ("rendering", "render_debate_retry_main"),
+    ("render", "lane-status"): ("rendering", "render_lane_status_main"),
+    ("render", "voter"): ("rendering", "render_voter_main"),
+    ("render", "plan-review"): ("rendering", "render_plan_review_main"),
+    ("mermaid", "sanitize"): ("rendering", "mermaid_sanitize_main"),
+    ("diagrams", "upsert"): ("rendering", "diagrams_upsert_main"),
+    ("generate", "code-reviewer-agent"): ("rendering", "generate_code_reviewer_agent_main"),
+    ("generate", "reviewer-plan-fidelity-agent"): ("rendering", "generate_reviewer_plan_fidelity_agent_main"),
+    ("generate", "reviewer-code-robustness-agent"): ("rendering", "generate_reviewer_code_robustness_agent_main"),
+    ("generate", "reviewer-security-structure-tests-agent"): ("rendering", "generate_reviewer_security_structure_tests_agent_main"),
+    ("generate", "pre-rendered-reviewer-prompts"): ("rendering", "generate_pre_rendered_reviewer_prompts_main"),
+    ("generate", "codex-implementer"): ("rendering", "generate_codex_implementer_main"),
+    ("generate", "cursor-implementer"): ("rendering", "generate_cursor_implementer_main"),
+    ("generate", "topology-docs"): ("rendering", "generate_topology_docs_main"),
+    ("generate", "check"): ("rendering", "generate_check_main"),
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
     ("progress", "report"): ("progress_report", "report_main"),

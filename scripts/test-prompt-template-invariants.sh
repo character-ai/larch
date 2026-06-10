@@ -195,14 +195,14 @@ assert_contains "lint-fix acceptable final-line shapes" \
 assert_contains "lint-fix PROHIBITION via lib" \
     '## PROHIBITION: Submodules' "$lint_prompt"
 
-# ── render-plan-review-prompt.sh runtime render smoke ────────────────────────
+# ── python/cli.py render plan-review runtime render smoke ────────────────────────
 
 plan_review_out="$TMP/render-plan-review-prompt.txt"
 design_tmpdir="$TMP/design-tmpdir"
 mkdir -p "$design_tmpdir"
 cp "$plan_file" "$design_tmpdir/plan.txt"
 printf '{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}\n' > "$design_tmpdir/run-params.json"
-"$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" \
+python3 "$REPO_ROOT/python/cli.py" render plan-review \
     --archetype arch \
     --vendor codex \
     --plan-file "$design_tmpdir/plan.txt" \
@@ -217,10 +217,10 @@ assert_contains "plan-reviewer anti-preamble directive" \
 assert_contains "plan-reviewer no-issues sentinel instruction" \
     '{"no_issues_found": true}' "$plan_review_out"
 
-# ── render-specialist-prompt.sh runtime render smoke ─────────────────────────
+# ── python/cli.py render specialist runtime render smoke ─────────────────────────
 
 specialist_out="$TMP/render-specialist-prompt.txt"
-"$REPO_ROOT/scripts/render-specialist-prompt.sh" \
+python3 "$REPO_ROOT/python/cli.py" render specialist \
     --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
     --mode diff \
     --diff-file "$diff_file" \

@@ -87,16 +87,21 @@ STUB
 chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
 PLUGIN_ROOT_STUB="$TMP/plugin-root"
-mkdir -p "$PLUGIN_ROOT_STUB/scripts" "$PLUGIN_ROOT_STUB/skills/shared/scripts"
-cp "$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
-# render-voter-prompt.sh reads review-acceptance-rubric.md at $REPO_ROOT/skills/shared/
+mkdir -p "$PLUGIN_ROOT_STUB/scripts" "$PLUGIN_ROOT_STUB/python" "$PLUGIN_ROOT_STUB/skills/shared"
+cat > "$PLUGIN_ROOT_STUB/python/cli.py" <<STUB_CLI
+#!/usr/bin/env python3
+import os
+import sys
+os.execv(sys.executable, [sys.executable, "$REPO_ROOT/python/cli.py", *sys.argv[1:]])
+STUB_CLI
+# python/cli.py render voter reads review-acceptance-rubric.md at $REPO_ROOT/skills/shared/
 cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_ROOT_STUB/skills/shared/review-acceptance-rubric.md"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_ROOT_STUB/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_ROOT_STUB/scripts/lib-untrusted-block.sh"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_ROOT_STUB/scripts/lib-scope-anchor-handoff.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
-chmod +x "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
+chmod +x "$PLUGIN_ROOT_STUB/python/cli.py"
 chmod +x "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
 
 cat > "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh" <<'STUB'

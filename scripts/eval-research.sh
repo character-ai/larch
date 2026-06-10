@@ -107,7 +107,7 @@ larch_quiet_init
 # baseline ref). The third arg also rejects a following flag name as the
 # value (issue #780): a `--*` candidate would otherwise bind to
 # `BASELINE_REF` because the validity regex permits hyphens —
-# parallels `take_value` in scripts/render-reviewer-prompt.sh.
+# parallels `take_value` in python/cli.py render reviewer.
 require_value() {
   local flag="$1" argc="$2" next_val="${3:-}"
   if (( argc < 2 )) || [[ "$next_val" == --* ]]; then

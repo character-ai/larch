@@ -8,11 +8,11 @@ block emission in reviewer prompt renderers.
   `encoding="literal-redacted"` tag, redacted/escaped body, and closing tag).
   Untrusted framing prose is caller-owned immediately before the block (or, for
   subprocess context blocks, immediately after the opening tag and before the
-  body); see `render-plan-review-prompt.sh`.
+  body); see `python/cli.py render plan-review`.
 - **Primary callers**: `scripts/launch-claude-subprocess.sh`,
-  `skills/design/scripts/render-plan-review-prompt.sh`,
+  `python/cli.py render plan-review`,
   `skills/design/scripts/revise-plan-with-waterfall.sh`,
-  `skills/shared/scripts/render-voter-prompt.sh`.
+  `python/cli.py render voter`.
 - **Invariants**: redaction runs before escaping; block content is data, not
   instructions (see `SECURITY.md` "Plan-review scope-anchor pipeline" —
   inline-renderer surface). Idempotent load guard

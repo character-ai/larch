@@ -2,8 +2,7 @@
 paths:
   - "skills/shared/topology.tsv"
   - "docs/topology.md"
-  - "scripts/generate-topology-docs.sh"
-  - "scripts/generate-topology-docs.md"
+  - "python/rendering.py"
   - "skills/design/references/sketch-launch.md"
   - "skills/design/references/flags.md"
   - "skills/design/references/plan-review.md"
@@ -27,7 +26,7 @@ paths:
 
 **Adding/changing a topology count** → update the runtime authority first,
 edit `skills/shared/topology.tsv`, then run
-`bash scripts/generate-topology-docs.sh` to regenerate `docs/topology.md`.
+`python3 python/cli.py generate topology-docs` to regenerate `docs/topology.md`.
 Consumer docs linking to `docs/topology.md` need no edit unless you add a
 new row anchor.
 

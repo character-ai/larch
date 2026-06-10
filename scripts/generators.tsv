@@ -1,14 +1,11 @@
-# Format: <generator-script>	<output-path>
-# Each generator-script must support `--check` mode (exit 0 if output is in
-# sync, non-zero on drift) and its `--check` mode MUST validate the artifact
-# named in column 2 of its row. See scripts/check-generators.md for the
-# walker contract and scripts/generate-code-reviewer-agent.md for the
-# exemplar generator.
-scripts/generate-code-reviewer-agent.sh	agents/code-reviewer.md
-scripts/generate-reviewer-plan-fidelity-agent.sh	agents/reviewer-plan-fidelity.md
-scripts/generate-reviewer-code-robustness-agent.sh	agents/reviewer-code-robustness.md
-scripts/generate-reviewer-security-structure-tests-agent.sh	agents/reviewer-security-structure-tests.md
-scripts/generate-pre-rendered-reviewer-prompts.sh	agents/pre-rendered/.manifest
-scripts/generate-cursor-implementer.sh	agents/cursor-implementer.md
-scripts/generate-codex-implementer.sh	agents/codex-implementer.md
-scripts/generate-topology-docs.sh	docs/topology.md
+# Format: <generator-verb>	<output-path>
+# Each generator verb is invoked as `python3 python/cli.py generate <verb> --check`.
+# Column 2 remains the committed artifact validated by that verb.
+generate code-reviewer-agent	agents/code-reviewer.md
+generate reviewer-plan-fidelity-agent	agents/reviewer-plan-fidelity.md
+generate reviewer-code-robustness-agent	agents/reviewer-code-robustness.md
+generate reviewer-security-structure-tests-agent	agents/reviewer-security-structure-tests.md
+generate pre-rendered-reviewer-prompts	agents/pre-rendered/.manifest
+generate cursor-implementer	agents/cursor-implementer.md
+generate codex-implementer	agents/codex-implementer.md
+generate topology-docs	docs/topology.md

@@ -12,7 +12,7 @@ The `dispatch-with-waterfall.sh` invocation is wrapped with `set +e`/`set -e` so
 
 ## Prompt integrity
 
-`make_voter_prompt_file` checks the exit code of `render-voter-prompt.sh` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
+`make_voter_prompt_file` checks the exit code of `python/cli.py render voter` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
 
 ## Inputs
 
@@ -27,7 +27,7 @@ The `dispatch-with-waterfall.sh` invocation is wrapped with `set +e`/`set -e` so
 
 ## Voter-role context shape
 
-All launched voter dispatches use `mode=description`. The voter prompt is rendered by `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-oos`, `--verification-context code`; see `skills/shared/scripts/render-voter-prompt.md`) and directs the model to Read the ballot plus bounded regular-file copies of diff/plan context produced under `--review-tmpdir` (`diff-context.txt`, `plan-context.txt`). Cited `<file>:<line>` references in each finding give it everything needed to verify on demand while keeping the voter context under the byte caps enforced by `make_bounded_context_copy`.
+All launched voter dispatches use `mode=description`. The voter prompt is rendered by `${CLAUDE_PLUGIN_ROOT}/python/cli.py render voter` (`--id-grammar finding-oos`, `--verification-context code`; see `python/rendering.py`) and directs the model to Read the ballot plus bounded regular-file copies of diff/plan context produced under `--review-tmpdir` (`diff-context.txt`, `plan-context.txt`). Cited `<file>:<line>` references in each finding give it everything needed to verify on demand while keeping the voter context under the byte caps enforced by `make_bounded_context_copy`.
 
 ## Behavior
 

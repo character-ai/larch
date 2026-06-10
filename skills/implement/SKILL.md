@@ -898,7 +898,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 **MANDATORY — READ ENTIRE FILE** before writing `larch:diagrams` summary comments: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`.
 
 `skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one foreground Bash call. Do NOT write a `diagrams` larch-log batch.
-The helper invokes `${CLAUDE_PLUGIN_ROOT}/scripts/upsert-diagrams-comment.sh` for the stable issue-scoped `<!-- larch:diagrams v1 -->` comment, and only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
+The helper invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py diagrams upsert` for the stable issue-scoped `<!-- larch:diagrams v1 -->` comment, and only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 

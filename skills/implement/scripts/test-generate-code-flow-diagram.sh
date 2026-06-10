@@ -33,16 +33,20 @@ flowchart TD
 EOF
 printf 'STATUS=OK\n'
 STUB
-cat > "$plugin/scripts/sanitize-mermaid-fragment.sh" <<'STUB'
-#!/usr/bin/env bash
-if [ "${SANITIZE_REJECT:-}" = 1 ]; then
-    printf 'STATUS=rejected\n'
-    printf '%s\n' "${SANITIZE_REASON_LINE:-REASON_TOKEN=test-reject}"
-    exit 1
-fi
-printf 'STATUS=ok\n'
+mkdir -p "$plugin/python"
+cat > "$plugin/python/cli.py" <<'STUB'
+import os
+import sys
+if sys.argv[1:3] != ["mermaid", "sanitize"]:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+if os.environ.get("SANITIZE_REJECT") == "1":
+    print("STATUS=rejected")
+    print(os.environ.get("SANITIZE_REASON_LINE", "REASON_TOKEN=test-reject"))
+    raise SystemExit(1)
+print("STATUS=ok")
 STUB
-chmod +x "$plugin/scripts/launch-claude-subprocess.sh" "$plugin/scripts/sanitize-mermaid-fragment.sh"
+chmod +x "$plugin/scripts/launch-claude-subprocess.sh" "$plugin/python/cli.py"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email a@b.test; git -C "$repo" config user.name tester
 printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" commit -qm init

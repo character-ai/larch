@@ -23,7 +23,6 @@ paths = [
     '''^skills/review/scripts/test-review-core\.sh$''',
     '''^skills/shared/scripts/test-render-assessor-prompt\.sh$''',
     '''^scripts/test-launch-claude-ci\.sh$''',
-    '''^scripts/test-upsert-diagrams-comment\.sh$''',
     '''^scripts/test-breadcrumb-monitor\.sh$''',
     '''^scripts/test-breadcrumb-monitor\.md$''',
     '''^scripts/test-design-log-publish\.sh$''',

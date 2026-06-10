@@ -156,15 +156,24 @@ if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
   exit "${PUBLISH_STUB_RC}"
 fi
 STUB
-    cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "upsert-diagrams $*" >>"${UPSERT_LOG:?}"
-[[ -n "${CALL_LOG:-}" ]] && echo "upsert-diagrams $*" >>"$CALL_LOG"
-if [[ "${UPSERT_STUB_RC:-0}" -ne 0 ]]; then
-  exit "${UPSERT_STUB_RC}"
-fi
-echo "UPSERT_STATUS=${UPSERT_STATUS_VALUE:-ok}"
-echo "ARCHITECTURE_SOURCE=${ARCH_SOURCE_VALUE:-file}"
+    mkdir -p "$FAKE_PLUGIN/python"
+    cat >"$FAKE_PLUGIN/python/cli.py" <<'STUB'
+import os
+import sys
+if sys.argv[1:3] != ["diagrams", "upsert"]:
+    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+    raise SystemExit(2)
+args = " ".join(sys.argv[3:])
+with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
+    handle.write(f"upsert-diagrams {args}\n")
+if os.environ.get("CALL_LOG"):
+    with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+        handle.write(f"upsert-diagrams {args}\n")
+rc = int(os.environ.get("UPSERT_STUB_RC", "0"))
+if rc:
+    raise SystemExit(rc)
+print(f"UPSERT_STATUS={os.environ.get('UPSERT_STATUS_VALUE', 'ok')}")
+print(f"ARCHITECTURE_SOURCE={os.environ.get('ARCH_SOURCE_VALUE', 'file')}")
 STUB
     cat >"$STUB/tracking-issue-write.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -861,7 +870,7 @@ set -e
 assert_rc "upsert failure non-blocking" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must still complete publish tail"
-grep -q 'upsert-diagrams-comment.sh' "$D_UPSERT_FAIL/execution-issues.md" 2>/dev/null \
+grep -q 'python/cli.py diagrams upsert' "$D_UPSERT_FAIL/execution-issues.md" 2>/dev/null \
   || fail "upsert failure must append to execution-issues.md"
 grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
   || fail "upsert failure must still attempt [DESIGNED] rename"
