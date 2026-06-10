@@ -1,12 +1,20 @@
 ---
 name: combine-issues
-description: "Use when asked to try to combine existing issue to reduce issue count.  Examine all open issues that are not currently being worked on, and see if any number of them can be combined into one issue (closing the source issues afterwords), in order to save tokens / reduce the number of tasks to do.  Good candidated would be issues that either work in the same code area, or that apply very similar changes to different code areas, but think of other criteria that it would be appropriate as well.  Again, the primary goal is to reduce the tokens spent on executing unnecessarily fine-grained tasks."
+description: "Use when asked to try to combine existing issue to reduce issue count.  Examine all open issues that are not currently being worked on, and see if any number of them can be combined into one issue (closing the source issues afterwords), in order to save tokens / reduce the number of tasks to do.  Good candidated would be issues that either work in the same code area, or that apply very similar changes to different code areas, but think of other criteria that it would be appropriate as well.  Again, the primary goal is to reduce the tokens spent on executing unnecessarily fine-grained tasks.  Use `/combine-issues --oos` when asked to combine out-of-scope (OOS) issues — operates only on issues whose title starts with `[OOS]`, checks each item for actuality, discards stale items, and proposes an aggressive combination scheme."
 allowed-tools: Bash, Read, Write
 ---
 
 # Combine Issues
 
 Reduce open issue count by merging related issues into combined ones. The primary goal is saving tokens — fewer, broader issues mean fewer `/design` + `/implement` execution cycles and less duplicated context loading.
+
+## Flags
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--oos` | off | OOS mode: operate only on open issues with a `[OOS]` title prefix. Checks each item for actuality, discards stale items, then proposes an aggressive combination scheme. See **OOS Mode** section below for the full step flow. |
+
+When `--oos` is present, skip the standard Steps 1–3 below and follow the **OOS Mode** section instead.
 
 ## When to Combine
 
@@ -57,6 +65,81 @@ $PWD/.claude/skills/combine-issues/scripts/apply-combination.sh \
 Parse `COMBINED_ISSUE` and `CLOSED_ISSUES` from stdout. Print a summary line per group: `Combined #X, #Y, #Z → #<new> (<N> issues closed)`.
 
 After all groups are applied, print a final tally: `Done — <N> issues combined into <M>, net reduction: <N-M>`.
+
+## OOS Mode (`--oos`)
+
+Operates only on open issues whose title starts with the `[OOS]` prefix followed by a space (prefix match, not substring). Fetches them, checks actuality item-by-item, discards stale items, and proposes an aggressive combination.
+
+<!-- step:oos-1 — Fetch OOS Issues -->
+
+```bash
+$PWD/.claude/skills/combine-issues/scripts/fetch-combinable-issues.sh --oos
+```
+
+OOS title-prefix filtering logic lives in `$PWD/.claude/skills/combine-issues/scripts/oos-issues-title-filter.jq` beside the fetch script.
+
+Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open [OOS] issues found.` and stop.
+
+Read the JSON file at `$ISSUES_FILE`.
+
+<!-- step:oos-2 — Actuality Check (per item) -->
+
+OOS issues contain one or more items. Items follow two formats:
+
+- **Single-item**: the entire body is one item (common for auto-filed single findings; body typically has `- **Description**: ...` and optional `- **Location**: ...` fields).
+- **Multi-item**: body contains multiple `### Item N — <title>` sections, each with its own `**Location**:`, `**Severity**:`, etc. fields.
+
+For each issue, parse its body and extract the individual items. Then for each item:
+
+1. Read the `Location:` field (file path, optionally with a line number after `:`).
+2. If the file does not exist in the repo, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
+3. If the file exists, read the relevant lines (±20 lines around the stated line when a line number is given). Assess whether the concern is still present:
+   - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
+   - If uncertain, default to **actual** (keep the item).
+4. Collect all **actual** items across all OOS issues into a flat list.
+
+If all items from all issues are stale, print `All [OOS] items are stale — nothing to combine.` and stop.
+
+Emit a summary: `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.`
+
+<!-- step:oos-3 — Deduplicate -->
+
+Remove duplicate items: two items are duplicates when they reference the same `Location:` and describe the same concern (identical or near-identical description). Keep the more detailed copy. Emit `Deduplication: removed <D> duplicate(s).` when `D > 0`.
+
+<!-- step:oos-4 — Propose Aggressive Combination Scheme -->
+
+Combine the remaining actual items into the **minimal** number of combined issues subject to one constraint: no single combined issue should be notably too large or risky to implement in one pass (rough heuristic: more than ~15 items or covering >5 unrelated subsystems is too large).
+
+Within that constraint, combine **aggressively** — unlike the standard mode, unrelated items may be grouped together if it reduces issue count. Prefer grouping by:
+
+1. Same file or module (strongest signal).
+2. Same severity or focus area.
+3. Any remaining items: pack into a single catch-all combined issue unless it would exceed the size heuristic.
+
+For each proposed combined issue:
+
+1. List source issue numbers and item titles.
+2. Draft a combined title (e.g., `[OOS] <brief theme> — <N> items`) and a combined body that uses `### Item N — <title>` format, preserving all actionable content.
+3. Note which source issues will be closed (all source issues whose items are fully consumed).
+
+Present the proposed scheme to the user. Ask: "Apply all groups (yes), apply specific groups (list), or cancel (no)?"
+
+<!-- step:oos-5 — Apply -->
+
+For each approved group, write the combined body to a temp file, then invoke:
+
+```bash
+$PWD/.claude/skills/combine-issues/scripts/apply-combination.sh \
+  --title "<combined title>" \
+  --body-file "<temp-file>" \
+  --source-issues "<comma-separated issue numbers to close>"
+```
+
+Only close a source issue if **all** of its items were consumed by this run (none survived actuality check in a different group and no items remain uncombined). If a source issue had some items discarded as stale and its remaining items were all consumed, close it. If a source issue contributed items to multiple groups, close it only after all groups are applied.
+
+Parse `COMBINED_ISSUE` and `CLOSED_ISSUES` from stdout. Print: `Combined <source refs> → #<new> (<N> source issues closed).`
+
+After all groups, print: `Done — <K> actual items from <N> OOS issues combined into <M> new issues, <C> source issues closed.`
 
 ## Anti-patterns
 

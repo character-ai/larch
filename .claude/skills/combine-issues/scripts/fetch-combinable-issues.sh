@@ -13,10 +13,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 TITLE_FILTER_JQ="$SCRIPT_DIR/combinable-issues-title-filter.jq"
 
 REPO=""
+OOS_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo) REPO="$2"; shift 2 ;;
+    --oos)  OOS_MODE=true; shift ;;
     *)
       echo "ERROR=Unknown argument: $1" >&2
       exit 1
@@ -46,7 +48,12 @@ if [[ -z "$RAW" || "$RAW" == "[]" ]]; then
   exit 0
 fi
 
-FILTERED=$(echo "$RAW" | jq -f "$TITLE_FILTER_JQ")
+if [[ "$OOS_MODE" == "true" ]]; then
+  OOS_FILTER_JQ="$SCRIPT_DIR/oos-issues-title-filter.jq"
+  FILTERED=$(echo "$RAW" | jq -f "$OOS_FILTER_JQ")
+else
+  FILTERED=$(echo "$RAW" | jq -f "$TITLE_FILTER_JQ")
+fi
 
 TMPFILE=$(mktemp /tmp/combine-issues-XXXXXX)
 echo "$FILTERED" > "$TMPFILE"
