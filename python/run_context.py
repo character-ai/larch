@@ -93,6 +93,7 @@ class RunContext:
     rebase_count: int = 0
     fix_attempts: int = 0
     transient_retries: int = 0
+    oos_pending: bool = True
 
     @classmethod
     def from_env(cls, *, env: dict[str, str] | None = None) -> RunContext:
