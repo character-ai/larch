@@ -954,7 +954,7 @@ cat > "$TMP/ballot.md" <<'EOF'
 - **Severity**: latent
 - **Correctness**: partially-true
 
-### FINDING_2: Add missing test
+### FINDING_2: [OUT_OF_SCOPE] Add missing test
 - **Reviewer**: claude-output.txt
 - **Concern**: No test for the happy path.
 - **Suggested revision**: Add a test.

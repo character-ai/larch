@@ -139,14 +139,14 @@ case_basic_cap() {
 
 echo "=== test-oos-issue-cap ==="
 
-case_basic_cap "case-cap-exceeded-default" "" 5 5 7
+case_basic_cap "case-cap-exceeded-default" "" 1 1 7
 case_basic_cap "case-cap-exceeded-explicit" "3" 3 3 7
 
 input="$(make_input case-under-cap)"
 build_many_oos "$input" 3
 output="$TMP_ROOT/case-under-cap/out.md"
 stderr_file="$TMP_ROOT/case-under-cap/stderr.txt"
-run_helper "$input" "$output" "$stderr_file"
+run_helper "$input" "$output" "$stderr_file" "OOS_ISSUES_PER_RUN_CAP=5"
 status="$RUN_STATUS"
 if assert_status "case-under-cap" "$status" 0 && assert_byte_equal "case-under-cap" "$input" "$output"; then
     pass_case "case-under-cap"
@@ -156,7 +156,7 @@ input="$(make_input case-cap-equals-count)"
 build_many_oos "$input" 5
 output="$TMP_ROOT/case-cap-equals-count/out.md"
 stderr_file="$TMP_ROOT/case-cap-equals-count/stderr.txt"
-run_helper "$input" "$output" "$stderr_file"
+run_helper "$input" "$output" "$stderr_file" "OOS_ISSUES_PER_RUN_CAP=5"
 status="$RUN_STATUS"
 if assert_status "case-cap-equals-count" "$status" 0 && assert_byte_equal "case-cap-equals-count" "$input" "$output"; then
     pass_case "case-cap-equals-count"
