@@ -989,6 +989,8 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Try the drafter subprocess first. The inline plan-drafting instructions below remain the fallback and must not be removed or rewritten. If the drafter reports structural success and dirty-tree eligibility, do **not** redraft the plan inline; proceed directly to the retained terminal postplan fence. If the drafter fails cleanly, delete stale `plan-summary.md`, log the failed tool, and continue with the inline drafting prose below unchanged.
 
+Use `timeout: 1800000` on the Bash tool call for this drafter subprocess fence.
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
@@ -1079,8 +1081,9 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     --output-file "$DESIGN_TMPDIR/step2b-drafter-status.txt" \
     "${_baseline_arg[@]}" \
     --timeout 1800 \
+    --timing-task-kind claude-plan-draft \
     --design-tmpdir "$DESIGN_TMPDIR" \
-    --repo-root "$PWD"
+    --repo-root "$(git -C "$PWD" rev-parse --show-toplevel)"
   _drafter_rc=$?
   set -e
 else
@@ -1134,15 +1137,9 @@ fi
 if [[ "$_drafter_structural_ok" == "true" && "$_drafter_dirty_block" != "true" ]]; then
   printf '%s\n' drafter > "$DESIGN_TMPDIR/.step2b-plan-source"
   _diff_lines="$(tail -n 1 "$DESIGN_TMPDIR/plan.txt" | sed 's/^diff_lines: //')"
-  if (( _plan_lines > _summary_threshold )); then
-    printf '\n## Plan Summary (drafter: %s)\n\n' "$DRAFTER_MODEL"
-    cat "$DESIGN_TMPDIR/plan-summary.md"
-    printf '\n'
-  else
-    printf '\n## Implementation Plan\n\n'
-    cat "$DESIGN_TMPDIR/plan.txt"
-    printf '\n'
-  fi
+  env LARCH_QUIET_DISABLE=1 "$CLAUDE_PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --variant step2b
   printf '✅ 2b: drafter subprocess succeeded (model=%s plan_lines=%s diff_lines=%s)\n' "$DRAFTER_MODEL" "$_plan_lines" "$_diff_lines"
 elif [[ "$_drafter_dirty_block" == "true" ]]; then
   printf 'STATUS=%s\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON=%s\n' "dirty" "$_drafter_dirty_reason" > "$DESIGN_TMPDIR/dirty-tree-detected.env"
