@@ -287,8 +287,9 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     (impl / "timing-ledger.tsv").write_text("v1\tmark\t1\timplement\tStep 5\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
     captured: list[list[str]] = []
 
-    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+    def fake_run(argv, **_kwargs):  # type: ignore[no-untyped-def]
         captured.append(list(argv))
+
         class Result:
             returncode = 0
             stdout = "detail-table"
@@ -307,4 +308,5 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     rounds_root = argv[argv.index("--rounds-root") + 1]
     assert rounds_root == str(flushed.parent)
     assert "--timing-ledger" in argv
-    assert "--skill" in argv and argv[argv.index("--skill") + 1] == "implement"
+    assert "--skill" in argv
+    assert argv[argv.index("--skill") + 1] == "implement"
