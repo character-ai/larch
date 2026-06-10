@@ -1,12 +1,12 @@
 # AGENTS.md
 
-This repository **is** the larch Claude Code plugin. Editing here modifies what ships to consumers. See `README.md` for features and the skill catalog. See `docs/installation-and-setup.md` for installation and prerequisites, `docs/configuration-and-permissions.md` for env vars and permissions, and `docs/linting.md` for Makefile targets and linters.
+This repository **is** the larch Claude Code plugin. Edits here ship to consumers. See `README.md`, `docs/installation-and-setup.md`, `docs/configuration-and-permissions.md`, and `docs/linting.md`.
 
 ## Repository layout
 
 Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
-`python/` holds stdlib-only runtime modules, including `session_env.py` for session/state lifecycle verbs. The ship-pr→Python driver is live by default at `/implement` Step 8+ via `python3 python/cli.py ship pr` (delegating to `python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to select the legacy `scripts/ship-pr.sh` path. `/report-tokens` is live via `python3 python/cli.py report-tokens analyze` (delegating to `python/report_tokens_cli.py`); the retired `run-analysis.sh` wrapper has been removed. See `python/README.md` for layout and `make py-lint` / `make py-test`.
+`python/` holds stdlib-only runtime modules. `python3 python/cli.py ship pr` is the live ship-pr driver by default; set `LARCH_SHIP_PR_IMPL=bash` for legacy `scripts/ship-pr.sh`. `/report-tokens` uses `python3 python/cli.py report-tokens analyze`. See `python/README.md` and `make py-lint` / `make py-test`.
 
 ## Load Semantics
 
@@ -16,7 +16,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 ## Editing rules
 
-- Always respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate and resolve the underlying issue. The guard ships via `hooks/hooks.json` only — `.claude/settings.json` no longer mirrors it, so contributors developing in this repo must load larch as a plugin (`claude --plugin-dir .` or the local marketplace) to pick up the guard.
+- Respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate the underlying issue. The guard ships via `hooks/hooks.json` only; contributors need larch loaded as a plugin (`claude --plugin-dir .` or the local marketplace) to pick it up.
 - After any change, run `bash scripts/relevant-checks.sh` (or `make lint`, which exercises the same pre-commit hooks repo-wide).
 - Update `SECURITY.md` when security-relevant behavior changes.
 
@@ -37,14 +37,14 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/external-reviewers.md`, `docs/collaborative-sketches.md` — Codex/Cursor integration
 - `docs/topology.md` — generated consumer-doc topology projection
 - `docs/run-logs.md` — committed run-log directory structure, batch file reference, and tracking-issue comment contracts
-- `docs/issue-anchored-plan.md` — **LIVE** normative wire format for the /design ↔ /implement plan handoff, clarification round-trip, and `/design` pause pointer (`larch:plan` + `larch:design-pause` body markers, `larch:clarify-*` comments, label helper). `/implement` Preflight enforces plan presence/adequacy and refuse exit **3** (`--emergency` may bypass these gates with loud warnings; semantic materiality still fires); `/design` writes/updates the plan block and posts clarify responses. Landed work may still extend `Makefile`, `agent-lint.toml`, harnesses under `scripts/test-*.sh`, and (when an `/implement` run is recorded) paths under `larch-logs/implement/` per `docs/run-logs.md`.
-- `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `scripts/clarify-comment-post.sh`, `scripts/clarify-state.sh`, `scripts/clarify-label.sh`, `scripts/test-plan-block.sh`, `scripts/test-clarify-comment.sh`, `scripts/test-clarify-state.sh` — helpers and offline harnesses for that wire format (Makefile registers the `test-*` targets).
+- `docs/issue-anchored-plan.md` — **LIVE** wire format for /design ↔ /implement handoff, clarification round-trip, and `/design` pause pointer. `/implement` Preflight enforces plan gates; `/design` writes the plan block and clarify responses.
+- `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `scripts/clarify-comment-post.sh`, `scripts/clarify-state.sh`, `scripts/clarify-label.sh`, `scripts/test-plan-block.sh`, `scripts/test-clarify-comment.sh`, `scripts/test-clarify-state.sh` — helpers and offline harnesses for that wire format.
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `scripts/larch-log.md`, `scripts/larch-log-batches.md` — committed run-log contract and batch table
 - `.claude/skills/release/scripts/classify-bump.md` — authoritative release classification rules
 - `skills/shared/topology.tsv` — projection rows for cross-doc topology counts; runtime authorities listed in the TSV remain source of truth
-- `skills/shared/subskill-invocation.md` — sub-skill invocation conventions (invocation patterns, `allowed-tools` narrowing, post-invocation verification, anti-halt continuation reminder, session-env handoff)
-- `skills/shared/skill-design-principles.md` — design principles for every larch skill (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration); Section III overrides Section IV for larch skills
+- `skills/shared/subskill-invocation.md` — sub-skill invocation conventions
+- `skills/shared/skill-design-principles.md` — design principles for every larch skill; Section III overrides Section IV
 - `skills/shared/reviewer-templates.md` — Code Reviewer archetype (canonical; `agents/code-reviewer.md` is generated from it)
 - `SECURITY.md` — security policy
 - `docs/python-migration.md` — sh-to-py migration playbook: per-domain recipe, decision log, manifest format, and `lint-retired-scripts` usage
@@ -53,9 +53,9 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 **Scope.** Applies only to human-facing prose: chat answers to the operator, and human-facing documents (PR descriptions, issue bodies, design notes, summaries, README and docs prose).
 
-- Explicit output formats always win. Never apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and the `diff_lines:` line), vote tables, structured findings, commit-message conventions.
+- Explicit output formats take precedence. Never apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
 - Does not apply to code or code comments; match the surrounding style there.
-- Applies to new prose only. Do not rewrite or restyle existing text to conform (no em-dash sweeps, no reformatting of adjacent paragraphs). Every changed line must still trace to the task at hand.
+- Applies to new prose only. Do not rewrite or restyle existing text to conform. Every changed line needs to trace to the task at hand.
 - Precedence when rules conflict: explicit format contracts, then exact meaning, then these style rules.
 
 **Style rules.**
@@ -77,16 +77,16 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 - Follow recent commit history style.
 - Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `launch-review.sh --tool cursor` and `launch-review.sh --tool codex` detect mid-run pollution but do not serialize concurrent runners.
-- Single-`/design` invariant: One `/design` per repo at a time (workflow/`gh` hygiene, mirroring `/implement` single-runner) — **not** because PID-keyed symlinks would collide across clones; isolation is per–Claude PID, not per-repo serialization.
+- Single-`/design` invariant: One `/design` per repo at a time for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.
 - Run `gh pr create` through the skill, not manually.
-- Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` (e.g., hooks) may continue to call `gh issue create` directly — the rule targets interactive / assistant-driven issue creation only.
-- **Don't spawn a Monitor or a Bash `run_in_background` polling loop (`for`/`while`/`until` + `sleep`) to watch another `run_in_background` job finish — and don't reach for `ScheduleWakeup` as a third polling mechanism either.** For long-running helper scripts (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, etc.), rely on Bash `<task-notification>` for one-shot completion (the harness auto-backgrounds an overrunning foreground call). Use Monitor only for logs, external polling, or event streams. See `skills/implement/SKILL.md` NEVER #9 for incident-level rationale.
-- **Do not poll the task output file once per turn while a `run_in_background` task runs.** Reading the task output file each turn to check progress is polling by another name — each read costs a full LLM turn (the #3175 incident burned ~80 turns this way, via repeated Bash reads of the task output file). The polling-loop bullet above already routes completion through `<task-notification>`; this names the manual per-turn-read shape that bullet does not. Read the task output once, after completion — never re-read it across turns. See `skills/shared/orchestrator-never.md` for the incident-level rationale.
-- **`/review --subagent` requires `SendMessage`.** Standalone `/review --diff --subagent` runs the review loop (Steps 1-3: gather context, launch reviewers, collect/vote/fix) in an isolated Agent-tool subagent (see `skills/review/references/heavy-worker.md`). If `SendMessage` is unavailable, omit `--subagent`. `/implement` Step 5 no longer invokes `/review`; it calls `skills/review-and-fix/scripts/review-and-fix.sh` directly.
-- **`/design` is inline-only** in the invoking agent — follow `skills/design/SKILL.md` for the step script and `skills/design/references/flags.md` for flag-level detail (there is no separate `SendMessage`-isolated `/design` mode).
-- **NEVER improvise ScheduleWakeup outside skill-script direction.** After a one-shot skill's terminal `✅`, do not call `ScheduleWakeup`, narrate loop-sleep prose, or schedule another turn unless that skill's script explicitly directs it; looping belongs to `/loop`'s `<<autonomous-loop-dynamic>>` sentinel only. See `skills/implement/SKILL.md` NEVER #9, `skills/shared/orchestrator-never.md` (canonical incident-level "Why" / "How to apply" narrative), and `skills/research/SKILL.md` (entry pointer / policy context).
-- **NEVER write `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** Treat it read-only like `finalize-state.sh`; use only guarded `python/cli.py session write-*` verbs, `python/cli.py session setup`, and `scripts/persist-post-plan-keys.sh` after Preflight. If plan materialization drops keys, fix the upstream writer — never append via prompt-side `printf`. See `skills/implement/SKILL.md` NEVER #14 for the #2326 incident rationale.
+- Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` may call it directly.
+- **Don't spawn a Monitor or Bash polling loop to watch another `run_in_background` job finish, and don't use `ScheduleWakeup` for that.** For long helpers, rely on Bash `<task-notification>` for one-shot completion. Use Monitor only for logs, external polling, or event streams. See `skills/implement/SKILL.md` NEVER #9.
+- **Do not poll the task output file once per turn while a `run_in_background` task runs.** Read the task output once, after completion. See `skills/shared/orchestrator-never.md`.
+- **`/review --subagent` requires `SendMessage`.** If `SendMessage` is unavailable, omit `--subagent`. `/implement` Step 5 calls `skills/review-and-fix/scripts/review-and-fix.sh` directly.
+- **`/design` is inline-only** in the invoking agent. Follow `skills/design/SKILL.md` and `skills/design/references/flags.md`.
+- **NEVER improvise ScheduleWakeup outside skill-script direction.** After a one-shot skill's terminal `✅`, do not call `ScheduleWakeup`, narrate loop-sleep prose, or schedule another turn unless that skill's script explicitly directs it. See `skills/shared/orchestrator-never.md`.
+- **NEVER write `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** Treat it read-only like `finalize-state.sh`; use guarded `python/cli.py session write-*` verbs, `python/cli.py session setup`, and `scripts/persist-post-plan-keys.sh`. If plan materialization drops keys, fix the upstream writer.
 
 ## Honesty
 
@@ -108,4 +108,4 @@ For Q&A about this repository, default to direct file reads instead of dispatchi
    - The answer plausibly spans more than three files that cannot be enumerated up front.
    - A targeted grep returned more than 20 hits across unfamiliar directories.
 
-Before escalating, announce the escalation in one sentence so the user can interrupt. Treat subagents as a larger-context tool: a subagent spends roughly 15k-25k tokens of baseline overhead before doing useful work, while a direct Read costs a few hundred to a few thousand tokens.
+Before escalating, announce it in one sentence so the user can interrupt. Treat subagents as a larger-context tool: they spend roughly 15k-25k tokens before useful work, while a direct Read costs far less.
