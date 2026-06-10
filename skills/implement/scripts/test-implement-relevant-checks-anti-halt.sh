@@ -48,9 +48,11 @@ BEGIN {
     needle_commit = sprintf("`%s`; commit via", rc_token)
 }
 function is_invocation_site(line) {
-    # Match only concrete launcher invocations (quoted ${CLAUDE_PLUGIN_ROOT}/scripts/…),
-    # not prose footnotes or the anti-halt reminder that name the script basename-only.
-    return line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/run-relevant-checks-captured\.sh/
+    # Match concrete launcher invocations: either the direct helper or the
+    # per-step wrapper (run-step-checks.sh) that wraps it — but not prose
+    # footnotes or anti-halt reminders that name the script basename-only.
+    return line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/run-relevant-checks-captured\.sh/ \
+        || line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/implement\/scripts\/run-step-checks\.sh/
 }
 
 {
