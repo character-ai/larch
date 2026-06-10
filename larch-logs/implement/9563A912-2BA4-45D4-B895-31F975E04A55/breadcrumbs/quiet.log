@@ -10,6 +10,8 @@
 
 === larch-quiet-check-contains-pins.sh-81025.log ===
 
+=== larch-quiet-check-contains-pins.sh-88432.log ===
+
 === larch-quiet-check-contains-pins.sh-88984.log ===
 
 === larch-quiet-check-contains-pins.sh-9681.log ===
@@ -23,6 +25,8 @@
 === larch-quiet-cli.py-341.log ===
 
 === larch-quiet-cli.py-35830.log ===
+
+=== larch-quiet-cli.py-70635.log ===
 
 === larch-quiet-cli.py-7114.log ===
 
@@ -74,6 +78,14 @@
 
 === larch-quiet-read-session-env-key.sh-36060.log ===
 
+=== larch-quiet-read-session-env-key.sh-41484.log ===
+
+=== larch-quiet-read-session-env-key.sh-41513.log ===
+
+=== larch-quiet-read-session-env-key.sh-41544.log ===
+
+=== larch-quiet-read-session-env-key.sh-41614.log ===
+
 === larch-quiet-read-session-env-key.sh-47251.log ===
 
 === larch-quiet-read-session-env-key.sh-47280.log ===
@@ -86,6 +98,12 @@
 
 === larch-quiet-read-session-env-key.sh-48127.log ===
 
+=== larch-quiet-read-session-env-key.sh-49588.log ===
+
+=== larch-quiet-read-session-env-key.sh-49619.log ===
+
+=== larch-quiet-read-session-env-key.sh-49647.log ===
+
 === larch-quiet-read-session-env-key.sh-55083.log ===
 
 === larch-quiet-read-session-env-key.sh-55116.log ===
@@ -96,9 +114,25 @@
 
 === larch-quiet-read-session-env-key.sh-6404.log ===
 
+=== larch-quiet-read-session-env-key.sh-67029.log ===
+
+=== larch-quiet-read-session-env-key.sh-67060.log ===
+
+=== larch-quiet-read-session-env-key.sh-67091.log ===
+
+=== larch-quiet-read-session-env-key.sh-67163.log ===
+
 === larch-quiet-read-session-env-key.sh-6768.log ===
 
 === larch-quiet-read-session-env-key.sh-6791.log ===
+
+=== larch-quiet-read-session-env-key.sh-70702.log ===
+
+=== larch-quiet-read-session-env-key.sh-70733.log ===
+
+=== larch-quiet-read-session-env-key.sh-70764.log ===
+
+=== larch-quiet-read-session-env-key.sh-70832.log ===
 
 === larch-quiet-read-session-env-key.sh-82240.log ===
 
@@ -124,9 +158,14 @@
 
 === larch-quiet-run-relevant-checks-captured.sh-48153.log ===
 
+=== larch-quiet-run-relevant-checks-captured.sh-49676.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-6826.log ===
 
 === larch-quiet-run-step3-review.sh-42082.log ===
+POSTPLAN_EMIT_STATUS=ok
+
+=== larch-quiet-run-step3-review.sh-67648.log ===
 POSTPLAN_EMIT_STATUS=ok
 
 === larch-quiet-session-setup.sh-2757.log ===
@@ -134,15 +173,32 @@ POSTPLAN_EMIT_STATUS=ok
 === larch-quiet-session-setup.sh-2893.log ===
 session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
 
+=== larch-quiet-session-setup.sh-41450.log ===
+
+=== larch-quiet-session-setup.sh-41578.log ===
+session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
+
 === larch-quiet-session-setup.sh-55043.log ===
 
 === larch-quiet-session-setup.sh-55181.log ===
+session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
+
+=== larch-quiet-session-setup.sh-66991.log ===
+
+=== larch-quiet-session-setup.sh-67125.log ===
+session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
+
+=== larch-quiet-session-setup.sh-70664.log ===
+
+=== larch-quiet-session-setup.sh-70796.log ===
 session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
 
 === larch-quiet-session-setup.sh-82208.log ===
 
 === larch-quiet-session-setup.sh-82337.log ===
 session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
+
+=== larch-quiet-ship.py-10164.log ===
 
 === larch-quiet-ship.py-34146.log ===
 
