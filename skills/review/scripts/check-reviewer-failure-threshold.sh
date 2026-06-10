@@ -15,7 +15,7 @@ usage() {
 
 COLLECTOR_RESULTS_FILE=""
 PANEL=""
-INTENDED_SLOTS="4"
+INTENDED_SLOTS="3"
 LAUNCHED_SLOTS=""
 DROPPED_SLOTS_FILE=""
 ROUND_NUM="1"
@@ -48,10 +48,9 @@ ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "check-reviewer-failure-threshold.sh: --round-num must be a positive integer"; exit 2; }
 [[ -z "$DROPPED_SLOTS_FILE" || -f "$DROPPED_SLOTS_FILE" ]] || { larch_err "check-reviewer-failure-threshold.sh: --dropped-slots-file must name a file"; exit 2; }
 
-# The 4-archetype panel may emit one vendor (4 slots) or both vendors (8
-# slots); callers pass the emitted static denominator. Dynamic scout reviewers
-# are excluded from the threshold denominator and should not affect the static
-# panel result.
+# Callers pass the emitted static denominator. Dynamic scout reviewers are
+# excluded from the threshold denominator and should not affect the static panel
+# result.
 INTENDED_SLOTS=$((10#$INTENDED_SLOTS))
 
 is_dynamic_reviewer_basename() {
@@ -243,7 +242,7 @@ if [[ -n "$LAUNCHED_SLOTS" ]]; then
     FAILED_SLOTS=$(( FAILED_SLOTS + UNACCOUNTED_NEVER_LAUNCHED ))
 fi
 
-# Threshold: >50% of intended panel size. 4 slots → fail at 3; 8 slots → fail at 5.
+# Threshold: >50% of intended panel size.
 HALF_PLUS_ONE_MIN=$(( INTENDED_SLOTS / 2 + 1 ))
 THRESHOLD_OK=true
 THRESHOLD_REASON=""

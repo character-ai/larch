@@ -609,7 +609,7 @@ static_archetype_coverage_ok() {
             fi
         done < "$panel_manifest"
     else
-        printf '%s\n' security correctness edge-cases testing > "$expected_file"
+        printf '%s\n' correctness edge-cases testing > "$expected_file"
     fi
     if [[ ! -s "$expected_file" ]]; then
         return 0

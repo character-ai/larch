@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `--collector-results-file FILE` | path | yes | The per-slot status records written by `scripts/collect-agent-results.sh` (blank-line-separated; each record has `STATUS=<value>`). |
 | `--panel hard\|simple` | enum | yes | Panel shape label. Both shapes use the caller-supplied static denominator. |
-| `--intended-slots N` | non-negative int | no | Static slot denominator. Default is `4` for single-vendor/back-compat callers; both-vendor review panels pass `8`. |
+| `--intended-slots N` | non-negative int | no | Static slot denominator. Review panels pass the emitted static denominator. |
 | `--launched-slots N` | non-negative int | no | When set, static slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures unless dropped-slot accounting is already present. Dynamic scout slots are excluded. |
 | `--dropped-slots-file FILE` | path | no | TSV from `dispatch-with-waterfall.sh --no-fallback` (`slot<TAB>tool<TAB>reason<TAB>snippet`). Static dropped rows count as failures; `dyn-*` rows are excluded. |
 | `--reviewer-output-files FILE...` | paths | no | Additional reviewer transcript files to count when they are static Cursor/Codex specialist outputs not already present in the collector records. This lets callers credit substantive phase-2/phase-3 or otherwise recovered static outputs while still excluding dynamic `dyn-*` reviewers. |
@@ -22,7 +22,7 @@ Emits to FD 3 (`emit_kv`):
 
 | Key | Value |
 |---|---|
-| `INTENDED_SLOTS` | caller-supplied static denominator (`4` default; commonly `8` when both vendors are available) |
+| `INTENDED_SLOTS` | caller-supplied static denominator |
 | `SUCCEEDED_SLOTS` | count of static-slot records with `STATUS=OK` or `STATUS=cap_hit` |
 | `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit`, plus dropped static rows and applicable never-launched slots |
 | `COUNTED_SLOTS` | total static slots counted from collector records plus deduped static files supplied via `--reviewer-output-files` |
@@ -33,7 +33,7 @@ Emits to FD 3 (`emit_kv`):
 
 ## Threshold
 
-> 50% of intended panel size. Implementation: failure threshold is `INTENDED_SLOTS / 2 + 1` (integer division). For 4 slots this is 3; for 8 slots this is 5.
+> 50% of intended panel size. Implementation: failure threshold is `INTENDED_SLOTS / 2 + 1` (integer division).
 
 ## STATUS classification
 

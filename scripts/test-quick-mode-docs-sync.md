@@ -25,7 +25,7 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
-| `4 specialists per vendor (Cursor + Codex)` | case-sensitive `grep -F` | Pins the four-archetype static panel emitted once per available vendor. |
+| `specialists per vendor` | case-sensitive `grep -F` | Pins the static panel emitted once per available vendor without hardcoding the current archetype count. |
 
 Together these markers pin the public Step 5 topology phrases that the harness currently enforces. They do not mechanically pin every related Step 5 phrase, such as the round cap or internal script argv posture; add those strings to `POS_MARKERS` first if they need the same cross-doc enforcement.
 
@@ -117,4 +117,4 @@ Whenever any of the following change, update them in the same PR:
 - `grep -Fq` is used for all fixed-string checks (portable between GNU and BSD).
 - `mktemp -d` + `trap ... EXIT` ensures self-test fixtures are cleaned up even on failure paths.
 
-- The default harness also checks `skills/review/diagram.svg` for the canonical phrase `4 specialists per vendor (Cursor + Codex)` and rejects the stale phrase `6 Cursor specialists` there.
+- The default harness also checks `skills/review/diagram.svg` for the canonical phrase `specialists per vendor` and rejects the stale phrase `6 Cursor specialists` there.

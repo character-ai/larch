@@ -104,11 +104,11 @@ grep -Fq -- '--feature-file' "$log1" || fail "feature-file not forwarded"
 grep -Fq -- '--require-first-line-pattern ^[[:space:]]*(schema_version|\{"no_issues_found)' "$log1" \
     || fail "plan-review first-line pattern not forwarded"
 manifest_line_count=$(grep -c . "$D1/plan-review-slots.ndjson" || true)
-[[ "$manifest_line_count" == "10" ]] || fail "expected 10 ndjson lines, got $manifest_line_count"
+[[ "$manifest_line_count" == "8" ]] || fail "expected 8 ndjson lines, got $manifest_line_count"
 grep -Fq -- '--no-fallback' "$log1" || fail "plan-review dispatch must pass --no-fallback"
 jq -s -e 'all(.[]; has("fallback_group") | not)' "$D1/plan-review-slots.ndjson" >/dev/null \
     || fail "plan-review rows must not include fallback_group"
-for archetype in arch edge innovation pragmatic requirements; do
+for archetype in arch innovation pragmatic requirements; do
     jq -s -e --arg a "$archetype" '
         [.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))]
         | length == 2
@@ -143,7 +143,7 @@ _drops_path=$(grep '^DROPPED_SLOTS_FILE=' "$D1D/out.env" | head -1 | cut -d= -f2
 [[ -n "$_drops_path" && -f "$_drops_path" ]] || fail "forwarded DROPPED_SLOTS_FILE must name an existing file"
 grep -Fq 'format-gate-miss' "$_drops_path" || fail "forwarded drops file must carry the format-gate-miss record"
 
-echo "=== two dynamic archetypes => 14 slots ==="
+echo "=== two dynamic archetypes => 12 slots ==="
 D2="$TMP/s2"
 prep "$D2"
 cat >"$D2/scout-plan-manifest.json" <<'JSON'
@@ -166,7 +166,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --feature-file "$D2/feature-description.txt" \
     --timeout 60 >"$D2/out.env"
 grep -Fq 'DYNAMIC_SLOT_COUNT=4' "$D2/out.env" || fail "expected 4 dynamic slot rows"
-[[ "$(grep -c . "$D2/plan-review-slots.ndjson")" == "14" ]] || fail "expected 14 ndjson lines"
+[[ "$(grep -c . "$D2/plan-review-slots.ndjson")" == "12" ]] || fail "expected 12 ndjson lines"
 grep -Fq 'dyn-cursor-plan-alpha' "$D2/plan-review-slots.ndjson" || fail "dyn cursor alpha"
 grep -Fq 'dyn-codex-plan-beta' "$D2/plan-review-slots.ndjson" || fail "dyn codex beta"
 jq -e . "$D2/plan-review-slots.ndjson" >/dev/null || fail "manifest must remain valid ndjson"
@@ -191,7 +191,7 @@ if grep -Rq '\*\*Reviewer\*\*' "$D2"/render-plan-*.prompt "$D2"/render-plan-curs
     fail "unexpected **Reviewer** instruction in rendered prompts"
 fi
 
-echo "=== DEGRADED_ROUND when all manifest slots have paths (14 slots) ==="
+echo "=== DEGRADED_ROUND when all manifest slots have paths (12 slots) ==="
 D3="$TMP/s3"
 prep "$D3"
 cp "$D2/scout-plan-manifest.json" "$D3/scout-plan-manifest.json"
@@ -200,7 +200,7 @@ log3="$D3/wf.log"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     WATERFALL_STUB_LOG="$log3" \
     WATERFALL_STUB_PATHS_OUT="$D3/paths.out" \
-    W_STUB_PATH_LINES=14 \
+    W_STUB_PATH_LINES=12 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
     --design-tmpdir "$D3" \
@@ -208,7 +208,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D3/plan.txt" \
     --timeout 60 >"$D3/out.env"
-grep -Fq 'DEGRADED_ROUND=false' "$D3/out.env" || fail "full paths-file on 14 slots should not degrade"
+grep -Fq 'DEGRADED_ROUND=false' "$D3/out.env" || fail "full paths-file on 12 slots should not degrade"
 
 D4="$TMP/s4"
 prep "$D4"
@@ -218,7 +218,7 @@ log4="$D4/wf.log"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     WATERFALL_STUB_LOG="$log4" \
     WATERFALL_STUB_PATHS_OUT="$D4/paths.out" \
-    W_STUB_PATH_LINES=7 \
+    W_STUB_PATH_LINES=6 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
     --design-tmpdir "$D4" \
@@ -226,7 +226,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D4/plan.txt" \
     --timeout 60 >"$D4/out.env"
-grep -Fq 'DEGRADED_ROUND=true' "$D4/out.env" || fail "partial paths-file (7/14) should degrade"
+grep -Fq 'DEGRADED_ROUND=true' "$D4/out.env" || fail "partial paths-file (6/12) should degrade"
 
 D5="$TMP/s5"
 prep "$D5"
@@ -247,7 +247,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --timeout 60 >"$D5/out.env"
 grep -Fq 'DEGRADED_ROUND=true' "$D5/out.env" || fail "static dispatch false should degrade"
 
-echo "=== DEGRADED_ROUND when paths-file is empty but slots were manifest (14 slots) ==="
+echo "=== DEGRADED_ROUND when paths-file is empty but slots were manifest (12 slots) ==="
 D7="$TMP/s7"
 prep "$D7"
 cp "$D2/scout-plan-manifest.json" "$D7/scout-plan-manifest.json"
@@ -301,7 +301,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D8/plan.txt" \
     --timeout 60 >"$D8/out.env"
-[[ "$(grep -c . "$D8/plan-review-slots.ndjson" || true)" == "5" ]] || fail "codex-down expected 5 cursor rows"
+[[ "$(grep -c . "$D8/plan-review-slots.ndjson" || true)" == "4" ]] || fail "codex-down expected 4 cursor rows"
 grep -Fq 'codex-plan-' "$D8/plan-review-slots.ndjson" && fail "codex-down must not emit codex rows"
 
 echo "=== availability matrix: cursor-down => codex-only rows ==="
@@ -320,7 +320,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present false \
     --plan-file "$D9/plan.txt" \
     --timeout 60 >"$D9/out.env"
-[[ "$(grep -c . "$D9/plan-review-slots.ndjson" || true)" == "5" ]] || fail "cursor-down expected 5 codex rows"
+[[ "$(grep -c . "$D9/plan-review-slots.ndjson" || true)" == "4" ]] || fail "cursor-down expected 4 codex rows"
 grep -Fq 'cursor-plan-' "$D9/plan-review-slots.ndjson" && fail "cursor-down must not emit cursor rows"
 
 echo "=== availability matrix: both-absent => generic Claude reviewer ==="

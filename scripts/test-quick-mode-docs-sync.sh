@@ -82,7 +82,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
   "3-judge panel on every round|insensitive"
-  "4 specialists per vendor (Cursor + Codex)|sensitive"
+  "specialists per vendor|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -94,6 +94,9 @@ readonly POS_MARKERS=(
 # internal contexts only.
 readonly STALE_PHRASES=(
   "6 Cursor specialists"
+  "Four active archetypes"
+  "4 specialists per available vendor"
+  "4 specialists per vendor"
   "1 Claude Code Reviewer subagent, 1 round"
   "no external reviewers"
   "no externals, no voting"
@@ -259,7 +262,7 @@ run_default() {
   # Required cross-reference: Note A in docs/review-agents.md -> voting-protocol.md
   check_xref "$REPO_ROOT/$XREF_DOC" "$XREF_DOC (Note A xref)" "$XREF_PATH" "$REPO_ROOT" || true
 
-  if grep -Fq -- "4 specialists per vendor (Cursor + Codex)" "$REPO_ROOT/skills/review/diagram.svg"; then
+  if grep -Fq -- "specialists per vendor" "$REPO_ROOT/skills/review/diagram.svg"; then
     echo "PASS: skills/review/diagram.svg — canonical review-panel phrase present"
     PASS_COUNT=$((PASS_COUNT + 1))
   else
@@ -318,7 +321,7 @@ This is a fixture describing /implement Step 5.
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
-The review loop uses 4 specialists per vendor (Cursor + Codex) in the Step 5 posture.
+The review loop uses specialists per vendor in the Step 5 posture.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -332,7 +335,7 @@ Stale-phrase fixture: contains every positive marker so only the stale phrase ca
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
-The review loop uses 4 specialists per vendor (Cursor + Codex) in the Step 5 posture.
+The review loop uses specialists per vendor in the Step 5 posture.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

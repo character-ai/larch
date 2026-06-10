@@ -14,11 +14,9 @@ TIMING_TASK_KINDS_ALLOWED=(
     claude-ci-fix
     claude-review
     codex-sketch-arch
-    codex-sketch-edge
     codex-sketch-innovation
     codex-sketch-pragmatic
     cursor-sketch-arch
-    cursor-sketch-edge
     cursor-sketch-innovation
     cursor-sketch-pragmatic
     codex-sketch-generic
@@ -26,12 +24,10 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-brainstorm
     codex-brainstorm
     codex-plan-arch
-    codex-plan-edge
     codex-plan-innovation
     codex-plan-pragmatic
     codex-plan-requirements
     cursor-plan-arch
-    cursor-plan-edge
     cursor-plan-innovation
     cursor-plan-pragmatic
     cursor-plan-requirements
@@ -47,7 +43,6 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-plan-autofix
     codex-review-voter
     cursor-review-voter
-    claude-phase3-security
     claude-phase3-correctness
     claude-phase3-edge-cases
     claude-phase3-testing
@@ -58,28 +53,22 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-specialist-structure
     cursor-specialist-correctness
     cursor-specialist-testing
-    cursor-specialist-security
     cursor-specialist-edge-cases
     cursor-specialist-plan-fidelity
     codex-specialist-structure
     codex-specialist-correctness
     codex-specialist-testing
-    codex-specialist-security
     codex-specialist-edge-cases
     codex-specialist-plan-fidelity
-    cursor-phase1-security
     cursor-phase1-correctness
     cursor-phase1-edge-cases
     cursor-phase1-testing
-    cursor-phase2-security
     cursor-phase2-correctness
     cursor-phase2-edge-cases
     cursor-phase2-testing
-    codex-phase1-security
     codex-phase1-correctness
     codex-phase1-edge-cases
     codex-phase1-testing
-    codex-phase2-security
     codex-phase2-correctness
     codex-phase2-edge-cases
     codex-phase2-testing

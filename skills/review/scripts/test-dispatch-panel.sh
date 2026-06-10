@@ -168,7 +168,7 @@ while IFS= read -r output || [[ -n "$output" ]]; do
 done < <(jq -r '.output' "$slots")
 if [[ "${TEST_WATERFALL_EMIT_DROPPED:-false}" == "true" ]]; then
     dropped="$(dirname "$slots")/dropped-slots.tsv"
-    printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
+    printf 'correctness\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
     printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
 fi
 printf 'ALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n' "$outputs" "$tools"
@@ -234,11 +234,11 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$plan_file")
 grep -Fq 'PANEL_MODE=waterfall' <<< "$out"
 grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
-[[ -s "$TMP/simple/cursor-specialist-security-output.txt" ]]
-[[ -s "$TMP/simple/codex-specialist-security-output.txt" ]]
+[[ -s "$TMP/simple/cursor-specialist-correctness-output.txt" ]]
+[[ -s "$TMP/simple/codex-specialist-correctness-output.txt" ]]
 
 simple_breadcrumbs_err="$TMP/simple-breadcrumbs.stderr"
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
@@ -248,7 +248,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --cursor-available true \
     --panel simple \
     --plan-file "$plan_file" 2>"$simple_breadcrumbs_err")
-grep -Fq '→ review: launching 8 reviewers (4 Cursor static, 4 Codex static, 0 dynamic)' "$simple_breadcrumbs_err"
+grep -Fq '→ review: launching 6 reviewers (3 Cursor static, 3 Codex static, 0 dynamic)' "$simple_breadcrumbs_err"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -258,10 +258,10 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$plan_file")
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
-[[ -s "$TMP/hard/cursor-specialist-security-output.txt" ]]
-[[ -s "$TMP/hard/codex-specialist-security-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
+[[ -s "$TMP/hard/cursor-specialist-correctness-output.txt" ]]
+[[ -s "$TMP/hard/codex-specialist-correctness-output.txt" ]]
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -271,9 +271,9 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel simple \
     --plan-file "$plan_file" \
     --round-num 2)
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
-[[ -s "$TMP/simple-round2/codex-specialist-security-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
+[[ -s "$TMP/simple-round2/codex-specialist-correctness-output.txt" ]]
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -283,9 +283,9 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$plan_file" \
     --round-num 2)
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
-[[ -s "$TMP/hard-round2/codex-specialist-security-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
+[[ -s "$TMP/hard-round2/codex-specialist-correctness-output.txt" ]]
 
 fi  # end section: core (panels)
 
@@ -306,8 +306,8 @@ grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq -- '--codex-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present true to scout" >&2; exit 1; }
 grep -Fq -- '--cursor-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present true to scout" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=14' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=12' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic4/panel-manifest.ndjson")
 [[ "$dyn_prompt_slots" = "6" ]] || { echo "FAIL: expected 6 dynamic prompt_file slots" >&2; exit 1; }
 [[ -s "$TMP/dynamic4/dyn-api-contract-output.txt" ]]
@@ -367,7 +367,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 
 # parse-failed and claude-failed fixtures are single-tier (--cursor-available false
 # — #3704 flipped the scout waterfall to Cursor → Claude, so the claude-only path
@@ -384,7 +384,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'SLOT_COUNT=4' <<< "$out"
+grep -Fq 'SLOT_COUNT=3' <<< "$out"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/dynamic-fail/scout-round1-status.env"
 
 cat > "$TMP/scout-valid8.json" <<'JSON'
@@ -412,8 +412,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-grep -Fq 'SLOT_COUNT=14' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=12' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic8/panel-manifest.ndjson")
 [[ "$dyn_prompt_slots" = "6" ]] || { echo "FAIL: expected 6 dynamic prompt_file slots" >&2; exit 1; }
 
@@ -657,8 +657,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 3)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=6' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=8' <<< "$out"
-[[ -s "$TMP/oversized-diff/cursor-specialist-security-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+[[ -s "$TMP/oversized-diff/cursor-specialist-correctness-output.txt" ]]
 
 parent_tmp="$TMP/implement-parent"
 round_tmp="$parent_tmp/round-1"
@@ -723,7 +723,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$plan_file")
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
-[[ "$claude_count" -ge 4 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
+[[ "$claude_count" -ge 3 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
 assert_emit_tally_panel() {
@@ -854,16 +854,12 @@ seed_case_inputs "$prune_dir"
 prune_ledger="$prune_dir/reviewer-prune-ledger.tsv"
 cat >"$prune_ledger" <<'TSV'
 round	tool	slot	label	accepted_count
-1	cursor	security	cursor-specialist-security-output.txt	0
-1	codex	security	codex-specialist-security-output.txt	0
 1	cursor	correctness	cursor-specialist-correctness-output.txt	0
 1	codex	correctness	codex-specialist-correctness-output.txt	0
 1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
 1	codex	edge-cases	codex-specialist-edge-cases-output.txt	0
 1	cursor	testing	cursor-specialist-testing-output.txt	0
 1	codex	testing	codex-specialist-testing-output.txt	0
-2	cursor	security	cursor-specialist-security-output.txt	0
-2	codex	security	codex-specialist-security-output.txt	0
 2	cursor	correctness	cursor-specialist-correctness-output.txt	0
 2	codex	correctness	codex-specialist-correctness-output.txt	0
 2	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
@@ -936,10 +932,10 @@ seed_case_inputs "$partial_dir"
 partial_ledger="$partial_dir/reviewer-prune-ledger.tsv"
 cat >"$partial_ledger" <<'TSV'
 round	tool	slot	label	accepted_count
-1	cursor	security	cursor-specialist-security-output.txt	0
-1	codex	security	codex-specialist-security-output.txt	0
-2	cursor	security	cursor-specialist-security-output.txt	0
-2	codex	security	codex-specialist-security-output.txt	0
+1	cursor	correctness	cursor-specialist-correctness-output.txt	0
+1	codex	correctness	codex-specialist-correctness-output.txt	0
+2	cursor	correctness	cursor-specialist-correctness-output.txt	0
+2	codex	correctness	codex-specialist-correctness-output.txt	0
 TSV
 partial_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$partial_dir/waterfall.argv" "$SCRIPT" \
     --mode diff \

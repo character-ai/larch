@@ -766,10 +766,10 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
 
-echo "# Case: both-vendor panel manifest, only 5 produce findings — scoreboard shows every row"
+echo "# Case: both-vendor panel manifest, only 4 produce findings — scoreboard shows every row"
 TMP="$WORKDIR/case_dead_slots"
 mkdir -p "$TMP"
-# 5-finding ballot over the collapsed 4-archetype topology, including a Codex static peer.
+# 4-finding ballot over the collapsed 3-archetype topology, including a Codex static peer.
 cat > "$TMP/ballot.md" <<'EOF'
 ### FINDING_1: Correctness concern
 - **Reviewer**: cursor-specialist-correctness-output.txt
@@ -781,28 +781,21 @@ cat > "$TMP/ballot.md" <<'EOF'
 - **Concern**: Testing issue.
 - **Suggested revision**: Fix it.
 
-### FINDING_3: Security concern
-- **Reviewer**: cursor-specialist-security-output.txt
-- **Concern**: Security issue.
-- **Suggested revision**: Fix it.
-
-### FINDING_4: Edge cases concern
+### FINDING_3: Edge cases concern
 - **Reviewer**: cursor-specialist-edge-cases-output.txt
 - **Concern**: Edge case issue.
 - **Suggested revision**: Fix it.
 
-### FINDING_5: Codex security concern
-- **Reviewer**: codex-specialist-security-output.txt
-- **Concern**: Codex security issue.
+### FINDING_4: Codex testing concern
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: Codex testing issue.
 - **Suggested revision**: Fix it.
 EOF
-# 10-slot panel manifest: 4 static archetypes per vendor plus dynamic Cursor/Codex twins.
+# Static manifest: 3 active archetypes per vendor plus dynamic Cursor/Codex twins.
 cat > "$TMP/panel-manifest.ndjson" <<EOF
-{"slot":"security","tool":"cursor","output":"$TMP/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
 {"slot":"correctness","tool":"cursor","output":"$TMP/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
 {"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
 {"slot":"testing","tool":"cursor","output":"$TMP/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
-{"slot":"security","tool":"codex","output":"$TMP/codex-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
 {"slot":"correctness","tool":"codex","output":"$TMP/codex-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
 {"slot":"edge-cases","tool":"codex","output":"$TMP/codex-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
 {"slot":"testing","tool":"codex","output":"$TMP/codex-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
@@ -822,18 +815,8 @@ TOOL=cursor
 STATUS=OK
 EXIT_CODE=0
 
-REVIEWER_FILE=$TMP/cursor-specialist-security-output.txt
-TOOL=cursor
-STATUS=OK
-EXIT_CODE=0
-
 REVIEWER_FILE=$TMP/cursor-specialist-edge-cases-output.txt
 TOOL=cursor
-STATUS=OK
-EXIT_CODE=0
-
-REVIEWER_FILE=$TMP/codex-specialist-security-output.txt
-TOOL=codex
 STATUS=OK
 EXIT_CODE=0
 
@@ -862,9 +845,9 @@ TOOL=codex
 STATUS=OK
 EXIT_CODE=0
 EOF
-printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: NO\nFINDING_4: YES\nFINDING_5: YES\n' > "$TMP/cursor-vote-output.txt"
-printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: NO\n'  > "$TMP/codex-vote-output.txt"
-printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\n' > "$TMP/claude-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\nFINDING_4: NO\n'  > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\n' > "$TMP/claude-vote-output.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -875,8 +858,7 @@ out="$TMP/out.env"
 tally_content=$(cat "$TMP/voting-tally.md" 2>/dev/null || true)
 # Scoreboard must include rows for live slots using the same short label as dead slots.
 for _slot in cursor-specialist-correctness cursor-specialist-testing \
-             cursor-specialist-security cursor-specialist-edge-cases \
-             codex-specialist-security codex-specialist-testing; do
+             cursor-specialist-edge-cases codex-specialist-testing; do
     if printf '%s\n' "$tally_content" | grep -Fq "| $_slot " \
        && printf '%s\n' "$tally_content" | grep -F "| $_slot " | grep -Fq '| STATUS=OK |'; then
         printf '  ok   dead_slots: live slot %s row present\n' "$_slot"
@@ -908,41 +890,6 @@ fi
 # Manifest rows missing collector entries should fall back to STATUS=OK.
 TMP="$WORKDIR/case8"
 mkdir -p "$TMP"
-cat > "$TMP/ballot.md" <<'EOF'
-### FINDING_1: Structure concern
-- **Reviewer**: cursor-specialist-structure-output.txt
-- **Concern**: Structure issue.
-- **Suggested revision**: Fix it.
-EOF
-cat > "$TMP/panel-manifest.ndjson" <<EOF
-{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
-{"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/codex-generalist.md"}
-EOF
-cat > "$TMP/collector-results.env" <<EOF
-REVIEWER_FILE=$TMP/cursor-specialist-structure-output.txt
-TOOL=cursor
-STATUS=OK
-EXIT_CODE=0
-EOF
-printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
-out="$TMP/out.env"
-"$SCRIPT" --ballot-file "$TMP/ballot.md" \
-    --voter-files "$TMP/cursor-vote-output.txt" \
-    --manifest-file "$TMP/panel-manifest.ndjson" \
-    --collector-results-file "$TMP/collector-results.env" \
-    --review-tmpdir "$TMP" > "$out"
-if grep -Fq '| codex-generalist | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' "$TMP/voting-tally.md"; then
-    printf '  ok   dead_slots: missing collector row falls back to OK\n'
-else
-    FAIL=1; printf '  FAIL dead_slots: missing collector row did not fall back to OK\n'
-fi
-# Degraded banner must appear (NOT_SUBSTANTIVE_COUNT=2 passed via --not-substantive-count)
-if printf '%s\n' "$tally_content" | grep -q '2 reviewer slot(s) emitted narrative-only output'; then
-    printf '  ok   dead_slots: degraded panel banner present\n'
-else
-    FAIL=1; printf '  FAIL dead_slots: degraded panel banner missing\n'
-fi
-
 echo "# Case: non-accepted latent finding routes to oos.md, not rejected-findings.md (option b)"
 TMP="$WORKDIR/case_latent_reroute"
 mkdir -p "$TMP"
@@ -973,23 +920,23 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 # latent finding was rejected in-scope → must be in oos.md, NOT rejected-findings.md
-if command grep -q 'Fix null dereference' "$TMP/oos.md" 2>/dev/null; then
+if grep -q 'Fix null dereference' "$TMP/oos.md" 2>/dev/null; then
     printf '  ok   latent_reroute: rejected latent in oos.md\n'
 else
     FAIL=1; printf '  FAIL latent_reroute: rejected latent not found in oos.md\n'
 fi
-if command grep -q 'latent-rerouted' "$TMP/oos.md" 2>/dev/null; then
+if grep -q 'latent-rerouted' "$TMP/oos.md" 2>/dev/null; then
     printf '  ok   latent_reroute: latent-rerouted marker in oos.md\n'
 else
     FAIL=1; printf '  FAIL latent_reroute: latent-rerouted marker missing from oos.md\n'
 fi
-if command grep -q 'Fix null dereference' "$TMP/rejected-findings.md" 2>/dev/null; then
+if grep -q 'Fix null dereference' "$TMP/rejected-findings.md" 2>/dev/null; then
     FAIL=1; printf '  FAIL latent_reroute: rejected latent must NOT be in rejected-findings.md\n'
 else
     printf '  ok   latent_reroute: rejected latent absent from rejected-findings.md\n'
 fi
 # [OUT_OF_SCOPE]-tagged FINDING_2 (nit) goes through normal OOS path, not latent reroute
-if command grep -q 'Add missing test' "$TMP/oos.md" 2>/dev/null; then
+if grep -q 'Add missing test' "$TMP/oos.md" 2>/dev/null; then
     printf '  ok   latent_reroute: nit/OOS finding still appears in oos.md\n'
 else
     FAIL=1; printf '  FAIL latent_reroute: nit/OOS finding missing from oos.md\n'

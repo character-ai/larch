@@ -338,7 +338,7 @@ PROMPT3="$DESIGN_TMPDIR/p3.prompt"
 PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 {
     printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT1"'","prompt_file":"'"$PROMPT1"'"}'
-    printf '%s\n' '{"slot":"cursor-plan-edge","tool":"cursor","output":"'"$OUT2"'","prompt_file":"'"$PROMPT2"'"}'
+    printf '%s\n' '{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"'"$OUT2"'","prompt_file":"'"$PROMPT2"'"}'
     printf '%s\n' '{"slot":"cursor-plan-innov","tool":"cursor","output":"'"$OUT3"'","prompt_file":"'"$PROMPT3"'"}'
 } >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
 printf '%s\n' "$OUT1" "$OUT2" "$OUT3" >"$PATHS"
@@ -405,7 +405,7 @@ PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 : >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
 DROPS="$DESIGN_TMPDIR/plan-review-slots.ndjson.output-files.dropped-slots"
 printf 'cursor-plan-arch\tcursor\tformat-gate-miss\tReviewing the plan against the repo: it looks solid overall.\n' >"$DROPS"
-printf 'codex-plan-edge\tcodex\tcollector-failure\tSTATUS=CODEX_USAGE_LIMIT \n' >>"$DROPS"
+printf 'codex-plan-pragmatic\tcodex\tcollector-failure\tSTATUS=CODEX_USAGE_LIMIT \n' >>"$DROPS"
 printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\nDEGRADED_ROUND=true\nALL_SLOTS_DROPPED=true\nDROPPED_SLOTS_FILE=%s\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$DROPS" "$PATHS" "$PATHS"
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"

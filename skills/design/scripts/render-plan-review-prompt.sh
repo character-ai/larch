@@ -23,7 +23,7 @@ FEATURE_FILE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'EOF'
-Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path> --design-tmpdir <path>
+Usage: render-plan-review-prompt.sh --archetype <arch|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path> --design-tmpdir <path>
 EOF
 }
 
@@ -52,16 +52,13 @@ done
 
 case "$ARCHETYPE" in
     arch)
-        full_role="You are an Architecture/Standards reviewer. Emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns."
-        ;;
-    edge)
-        full_role="You are an Edge-case/Failure-mode reviewer. Focus on boundary conditions, error handling, failure recovery, race conditions, and silent data corruption."
+        full_role="You are an Architecture/Standards reviewer. Emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Also flag boundary conditions, error handling gaps, and failure paths."
         ;;
     innovation)
         full_role="You are an Innovation/Exploration reviewer. Question assumptions, suggest creative alternatives, and flag plans that ignore unconventional but stronger solutions."
         ;;
     pragmatic)
-        full_role="You are a Pragmatism/Safety reviewer. Minimize scope, avoid unnecessary complexity, and ensure existing features are not broken."
+        full_role="You are a Pragmatism/Safety reviewer. Minimize scope, avoid unnecessary complexity, and ensure existing features are not broken. Also flag failure recovery, race conditions, and silent data corruption risks."
         ;;
     requirements)
         full_role="You are a Requirements/Completeness reviewer. Verify that every stated goal, acceptance criterion, and constraint from the feature description is addressed in the plan — flag gaps where the plan is silent, drifts from the stated requirements, or fails to mention required testing or validation for new acceptance criteria."
