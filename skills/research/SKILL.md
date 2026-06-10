@@ -220,7 +220,7 @@ Print: `> **🔶 /research 3: report**`
 Render the per-lane attribution headers from `$RESEARCH_TMPDIR/lane-status.txt`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/python/cli.py render lane-status --input "$RESEARCH_TMPDIR/lane-status.txt"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render lane-status --input "$RESEARCH_TMPDIR/lane-status.txt"
 ```
 
 Parse the seven output lines via prefix-strip (NOT `cut -d=`, since rendered values can contain `=` characters):

@@ -1614,7 +1614,7 @@ Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. T
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py mermaid sanitize" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" mermaid sanitize \
   --input "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
   --from-md \
   --warnings-step "3b"

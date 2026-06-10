@@ -64,7 +64,7 @@ LARCH_INSCOPE_END_a3f2b1
 Run Cursor **first** in the parallel message (it takes the longest). Render the prompt **in foreground** before the background launch:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \
@@ -114,7 +114,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 Run Codex **second** in the parallel message (after Cursor):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \
