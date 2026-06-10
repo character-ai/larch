@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-route.sh --design-tmpdir PATH --issue N --issue-title STR --issue-body-file PATH --has-clarify-label true|false --claude-pid N --session-id STR [--repo OWNER/REPO]'
+    larch_err 'Usage: design-route.sh --design-tmpdir PATH --issue N --issue-title STR --issue-body-file PATH --has-clarify-label true|false --claude-pid N --session-id STR [--partition-requested true|false] [--brainstorm-requested true|false] [--approve-requested true|false] [--skip-approve-requested true|false] [--repo OWNER/REPO]'
 }
 
 MARK_START='^[[:space:]]*<!--[[:space:]]+larch:plan:start[[:space:]]+-->[[:space:]]*$'
@@ -46,6 +46,14 @@ validate_repo() {
         '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
+}
+
+validate_bool_arg() {
+    local label="$1" value="$2"
+    case "$value" in
+        true | false) ;;
+        *) fail "$label must be true or false" ;;
+    esac
 }
 
 plan_block_present() {
@@ -80,6 +88,10 @@ CLAUDE_PID=""
 SESSION_ID_ARG=""
 SESSION_ID_ARG_SEEN=false
 REPO=""
+PARTITION_REQUESTED=false
+BRAINSTORM_REQUESTED=false
+APPROVE_REQUESTED=false
+SKIP_APPROVE_REQUESTED=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -117,6 +129,26 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || fail '--session-id requires a value'
             SESSION_ID_ARG="$2"
             SESSION_ID_ARG_SEEN=true
+            shift 2
+            ;;
+        --partition-requested)
+            [[ $# -ge 2 ]] || fail '--partition-requested requires a value'
+            PARTITION_REQUESTED="$2"
+            shift 2
+            ;;
+        --brainstorm-requested)
+            [[ $# -ge 2 ]] || fail '--brainstorm-requested requires a value'
+            BRAINSTORM_REQUESTED="$2"
+            shift 2
+            ;;
+        --approve-requested)
+            [[ $# -ge 2 ]] || fail '--approve-requested requires a value'
+            APPROVE_REQUESTED="$2"
+            shift 2
+            ;;
+        --skip-approve-requested)
+            [[ $# -ge 2 ]] || fail '--skip-approve-requested requires a value'
+            SKIP_APPROVE_REQUESTED="$2"
             shift 2
             ;;
         --repo)
@@ -158,6 +190,10 @@ esac
 validate_plain_scalar issue-title "$ISSUE_TITLE"
 validate_session_id_arg "$SESSION_ID_ARG"
 [[ -n "$REPO" ]] && validate_repo "$REPO"
+validate_bool_arg --partition-requested "$PARTITION_REQUESTED"
+validate_bool_arg --brainstorm-requested "$BRAINSTORM_REQUESTED"
+validate_bool_arg --approve-requested "$APPROVE_REQUESTED"
+validate_bool_arg --skip-approve-requested "$SKIP_APPROVE_REQUESTED"
 
 if [[ -L "$ISSUE_BODY_FILE" ]] || [[ ! -f "$ISSUE_BODY_FILE" ]] || [[ ! -r "$ISSUE_BODY_FILE" ]]; then
     fail 'issue-body-file must be a readable regular file'
@@ -229,8 +265,42 @@ route_emit_stdout_and_exit() {
 }
 
 emit_route_result() {
+    merge_router_flags
     route_write_result_env
     route_emit_stdout_and_exit
+}
+
+merge_router_flags() {
+    case "$ROUTE" in
+        resume@* | already-planned) ;;
+        *) return 0 ;;
+    esac
+    if [[ "$PARTITION_REQUESTED" != true && "$BRAINSTORM_REQUESTED" != true && "$BRAINSTORM_PREFIX" != true && "$APPROVE_REQUESTED" != true && "$SKIP_APPROVE_REQUESTED" != true ]]; then
+        return 0
+    fi
+    local run_params="$DESIGN_TMPDIR/run-params.json"
+    local _rp_merge _rp_err
+    if [[ -f "$run_params" && ! -L "$run_params" ]] && command -v jq >/dev/null 2>&1; then
+        _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
+        _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
+        if jq -c \
+            --argjson merge_p "$([[ "$PARTITION_REQUESTED" == true ]] && echo true || echo false)" \
+            --argjson merge_b "$([[ "$BRAINSTORM_REQUESTED" == true || "$BRAINSTORM_PREFIX" == true ]] && echo true || echo false)" \
+            --argjson merge_a "$([[ "$APPROVE_REQUESTED" == true ]] && echo true || echo false)" \
+            --argjson merge_s "$([[ "$SKIP_APPROVE_REQUESTED" == true ]] && echo true || echo false)" \
+            '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .approve_requested = (.approve_requested == true or $merge_a) | .skip_approve_requested = (.skip_approve_requested == true or $merge_s)' \
+            "$run_params" >"$_rp_merge" 2>"$_rp_err"; then
+            mv -f "$_rp_merge" "$run_params"
+            rm -f "$_rp_err"
+        else
+            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b route flag merge" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
+            rm -f "$_rp_merge" "$_rp_err"
+        fi
+    elif [[ ! -f "$run_params" || -L "$run_params" ]]; then
+        WARN_LINES+=("**⚠ 0b: cannot merge current router flags into run-params.json on ${ROUTE}; file missing or unsafe. Re-run from Step 0b after repairing run params.**")
+    else
+        WARN_LINES+=('**⚠ 0b: jq unavailable; current router flags may not persist into resumed/already-planned flow.**')
+    fi
 }
 
 render_cancel_summary() {

@@ -3,10 +3,12 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+READ_RESULT_ENV_SH="$REPO_ROOT/scripts/read-result-env.sh"
+
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
-    local _repo_root
-    _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+    local _repo_root="$REPO_ROOT"
     "$_repo_root/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$design_tmpdir" --gate-b-bypass >/dev/null
 }
 export -f apply_gate_b_bypass_sentinels
@@ -33,13 +35,13 @@ fail() {
 }
 
 # Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --mode loop handoff).
-# rc=2 check first; display pass; safe-env load via -f && ! -L; file-first vs later-wins.
+# Display pass; shared read-result-env safe load; narrow stdout overlay for loop envelope keys.
 apply_step3_display_pass() {
     local plan_review_out="$1"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         case "$_key" in
-            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM|WARN)
+            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM|WARN)
                 : ;;
             *)
                 printf '%s\n' "$_line" ;;
@@ -51,13 +53,7 @@ apply_step3_handoff() {
     local design_tmpdir="$1" plan_review_out="$2" plan_review_rc="$3"
     unset -v LOOP_STATUS STEP3_REVIEW_LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
         TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE STEP3_REVIEW_CAP_REACHED \
-        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE POSTPLAN_RC DEDUP_RC FINAL_ROUND_NUM
-
-    # rc=2 first: abort before display pass, safe-env load, parse, or normalization.
-    if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
-        printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
-        return 2
-    fi
+        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE POSTPLAN_RC DEDUP_RC PLAN_REVIEW_CONTINUE_REASON FINAL_ROUND_NUM
 
     if [[ "${DISPLAY_ONLY:-}" == 1 ]]; then
         apply_step3_display_pass "${plan_review_out:-}"
@@ -67,49 +63,65 @@ apply_step3_handoff() {
     # Display pass: print verbatim except twelve-key allowlist KEY=value and WARN=.
     apply_step3_display_pass "${plan_review_out:-}"
 
-    # Safe-env load: -f && ! -L (no "is a symlink; refusing to source" message).
-    _step3_safe_env_loaded=false
+    local _stdout_file _safe_env _rre_rc _step3_primary_regular
+    _stdout_file="$design_tmpdir/step3.stdout"
+    printf '%s' "${plan_review_out:-}" >"$_stdout_file"
+    _safe_env="$design_tmpdir/step3.safe.env"
+    _step3_primary_regular=false
     if [[ -f "$design_tmpdir/.step3-review-result.env" && ! -L "$design_tmpdir/.step3-review-result.env" ]]; then
-        _step3_safe_env_loaded=true
-        while IFS= read -r _line || [[ -n "$_line" ]]; do
-            _key="${_line%%=*}"
-            _value="${_line#*=}"
-            case "$_key" in
-                LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
-                    printf -v "$_key" '%s' "$_value" ;;
-                WARN) printf '%s\n' "WARN=$_value" ;;
-            esac
-        done <"$design_tmpdir/.step3-review-result.env"
+        _step3_primary_regular=true
+    fi
+    set +e
+    "$READ_RESULT_ENV_SH" \
+        --input "$design_tmpdir/.step3-review-result.env" \
+        --fallback-input "$_stdout_file" \
+        --allow LOOP_STATUS \
+        --allow STEP3_REVIEW_LOOP_STATUS \
+        --allow POSTPLAN_RC \
+        --allow DEDUP_RC \
+        --allow PLAN_REVIEW_CONTINUE_REASON \
+        --allow FINAL_ROUND_NUM \
+        --allow ACCEPTED_COUNT \
+        --allow IMPORTANT_ACCEPTED_COUNT \
+        --allow DEGRADED_PANEL \
+        --allow ROUNDS_COMPLETED \
+        --allow TALLY_PLAN_REVIEW_STATUS \
+        --allow AGGREGATOR_STATUS \
+        --allow VOTING_TALLY_FILE \
+        --allow SCOPE_ANCHOR_FILE \
+        --allow STEP3_REVIEW_CAP_REACHED \
+        --allow STEP3_REVIEW_ROUND_NUM \
+        --allow ROUND_NUM \
+        --allow REVIEW_ROUND_COUNT \
+        --output "$_safe_env"
+    _rre_rc=$?
+    set -e
+    if [[ "$_rre_rc" -eq 0 ]]; then
+        # shellcheck source=/dev/null
+        . "$_safe_env"
+    else
+        LOOP_STATUS=panel-failed
     fi
 
-    # Stdout parse: file-first (fill missing) when safe env loaded; later-wins when not.
-    # rc!=0 override for LOOP_STATUS/TALLY applies only on the no-safe-env path.
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         _value="${_line#*=}"
         case "$_key" in
-            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
-                if [[ "$_step3_safe_env_loaded" == true ]]; then
-                    [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
-                elif [[ "${plan_review_rc:-0}" -ne 0 ]]; then
-                    [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
-                else
-                    printf -v "$_key" '%s' "$_value"
-                fi
-                ;;
             STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
                 [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
                 ;;
-            STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE)
-                if [[ "$_step3_safe_env_loaded" == true ]]; then
-                    [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
-                else
-                    printf -v "$_key" '%s' "$_value"
+            WARN)
+                if [[ "$_step3_primary_regular" == true ]]; then
+                    printf '%s\n' "WARN=$_value"
                 fi
                 ;;
-            WARN) printf '%s\n' "WARN=$_value" ;;
         esac
-    done <<<"${plan_review_out:-}"
+    done <"$_stdout_file"
+
+    if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
+        printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+        return 2
+    fi
 
     if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
         if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
@@ -120,7 +132,7 @@ apply_step3_handoff() {
             complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
             main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
         esac
-    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
+    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
         LOOP_STATUS=panel-failed
     fi
 }
@@ -194,7 +206,7 @@ else
     fail "missing file expected panel-failed got ${LOOP_STATUS:-}"
 fi
 
-echo "=== stdout fills only missing keys after file ==="
+echo "=== stdout overlay is narrow after file ==="
 D5="$TMP/merge"
 mkdir -p "$D5"
 printf 'LOOP_STATUS=complete\nREVIEW_ROUND_COUNT=1\n' >"$D5/.step3-review-result.env"
@@ -202,10 +214,10 @@ apply_step3_handoff "$D5" 'LOOP_STATUS=panel-failed
 REVIEW_ROUND_COUNT=9
 ROUND_NUM=2
 ' 0
-if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 1 && "${ROUND_NUM:-}" == 2 ]]; then
-    pass 'stdout fills missing keys only'
+if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 1 && -z "${ROUND_NUM:-}" ]]; then
+    pass 'stdout overlay ignores non-envelope keys when file is primary'
 else
-    fail "merge expected complete/1/2 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}/${ROUND_NUM:-}"
+    fail "narrow overlay expected complete/1/<empty> got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}/${ROUND_NUM:-}"
 fi
 
 echo "=== no-safe-env rc!=0 stdout overrides (symlink file) ==="
@@ -234,7 +246,7 @@ else
     fail "safe-env rc!=0 expected complete/3 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
 fi
 
-echo "=== safe-env rc=2 returns 2 before parse (no LOOP_STATUS from file) ==="
+echo "=== safe-env rc=2 returns 2 after shared reader ==="
 D6C="$TMP/safe-env-rc2"
 mkdir -p "$D6C"
 printf 'LOOP_STATUS=complete\n' >"$D6C/.step3-review-result.env"
@@ -247,10 +259,10 @@ if [[ "$_apply_rc" -eq 2 ]]; then
 else
     fail "safe-env rc=2 expected exit 2 got $_apply_rc"
 fi
-if [[ -z "${LOOP_STATUS:-}" ]]; then
-    pass 'safe-env rc=2 LOOP_STATUS not set (fence aborted before parse)'
+if [[ "${LOOP_STATUS:-}" == complete ]]; then
+    pass 'safe-env rc=2 loaded LOOP_STATUS before abort'
 else
-    fail "safe-env rc=2 should not set LOOP_STATUS; got ${LOOP_STATUS:-}"
+    fail "safe-env rc=2 expected complete before abort; got ${LOOP_STATUS:-}"
 fi
 
 echo "=== invalid LOOP_STATUS normalizes to panel-failed ==="

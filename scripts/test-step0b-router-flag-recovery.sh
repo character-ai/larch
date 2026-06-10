@@ -7,6 +7,7 @@ REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 PYTHON_BIN=$(command -v python3)
 WRITER=("$PYTHON_BIN" "$REPO_ROOT/python/cli.py" session write-run-params)
 DESIGN_INIT="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
+DESIGN_ROUTE="$REPO_ROOT/skills/design/scripts/design-route.sh"
 HOST_JQ=$(command -v jq) || { echo "FAIL: host jq required" >&2; exit 1; }
 HOST_JQ_DIR=$(dirname "$HOST_JQ")
 
@@ -287,16 +288,48 @@ set -e
 printf '%s\n' "$out11" | grep -Fq 'jq is unavailable' \
   || fail "case11: missing jq-unavailable WARN on stdout"
 
-# Case 12: prompt-side Step 0b route fence must merge current argv flags into
-# resumed and already-planned flows, not only fresh proceed flows.
+# Case 12: design-route.sh owns current argv flag merges for already-planned
+# flows, not the prompt-side Step 0b route fence.
+D12="$TMPROOT/route12"
+mkdir -p "$D12"
+BODY12="$D12/body.txt"
+cat >"$BODY12" <<'EOF_BODY12'
+Fixture
+<!-- larch:plan:start -->
+## Plan
+## Acceptance
+diff_lines: 1
+<!-- larch:plan:end -->
+EOF_BODY12
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+  --approve-requested false --skip-approve-requested true --output "$D12/run-params.json" >/dev/null
+set +e
+route12_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$DESIGN_ROUTE" \
+  --design-tmpdir "$D12" \
+  --issue 42 \
+  --issue-title "Brainstorm: feature fixture" \
+  --issue-body-file "$BODY12" \
+  --has-clarify-label false \
+  --claude-pid "$$" \
+  --session-id "route12" \
+  --partition-requested true \
+  --brainstorm-requested false \
+  --approve-requested true \
+  --skip-approve-requested false 2>&1)
+route12_rc=$?
+set -e
+[[ "$route12_rc" -eq 0 ]] || fail "case12: design-route.sh rc=$route12_rc out=$route12_out"
+printf '%s\n' "$route12_out" | grep -Fq 'ROUTE=already-planned' \
+  || fail "case12: design-route.sh did not emit already-planned route: $route12_out"
+jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true and .skip_approve_requested == true' "$D12/run-params.json" >/dev/null \
+  || fail "case12: design-route.sh route merge regressed; got $(cat "$D12/run-params.json")"
+
+# Static pins ensure the route driver owns the merge helper and SKILL.md only
+# passes current argv flags into the driver.
+grep -Fq 'merge_router_flags()' "$DESIGN_ROUTE" \
+  || fail "case12: design-route.sh missing merge_router_flags()"
 # shellcheck disable=SC2016 # fixed-string probe for literal SKILL.md shell text.
-grep -Fq 'if [[ "${ROUTE:-}" == resume@* || "${ROUTE:-}" == already-planned ]]; then' "$REPO_ROOT/skills/design/SKILL.md" \
-  || fail "case12: SKILL.md missing resume/already-planned route flag merge guard"
-# shellcheck disable=SC2016 # fixed-string probe for literal jq filter text.
-grep -Fq '.approve_requested = (.approve_requested == true or $merge_a)' "$REPO_ROOT/skills/design/SKILL.md" \
-  || fail "case12: SKILL.md route merge must preserve current --per-round-approval"
-# shellcheck disable=SC2016 # fixed-string probe for literal jq filter text.
-grep -Fq '.skip_approve_requested = (.skip_approve_requested == true or $merge_s)' "$REPO_ROOT/skills/design/SKILL.md" \
-  || fail "case12: SKILL.md route merge must preserve current --skip-approve"
+grep -Fq -- '--approve-requested "$approve_requested"' "$REPO_ROOT/skills/design/SKILL.md" \
+  || fail "case12: SKILL.md route fence must pass current --per-round-approval"
 
 echo "PASS: test-step0b-router-flag-recovery.sh"
