@@ -81,7 +81,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.
 - Run `gh pr create` through the skill, not manually.
 - Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` may call it directly.
-- **Don't spawn a Monitor or Bash polling loop to watch another `run_in_background` job finish, and don't use `ScheduleWakeup` for that.** For long helpers, rely on Bash `<task-notification>` for one-shot completion. Use Monitor only for logs, external polling, or event streams. See `skills/implement/SKILL.md` NEVER #9.
+- **Don't spawn a Monitor or a Bash `run_in_background` polling loop (`for`/`while`/`until` + `sleep`) to watch another job finish, and don't use `ScheduleWakeup` for that.** For long helpers, rely on Bash `<task-notification>` for one-shot completion. Use Monitor only for logs, external polling, or event streams. See `skills/implement/SKILL.md` NEVER #9.
 - **Do not poll the task output file once per turn while a `run_in_background` task runs.** Read the task output once, after completion. See `skills/shared/orchestrator-never.md`.
 - **`/review --subagent` requires `SendMessage`.** If `SendMessage` is unavailable, omit `--subagent`. `/implement` Step 5 calls `skills/review-and-fix/scripts/review-and-fix.sh` directly.
 - **`/design` is inline-only** in the invoking agent. Follow `skills/design/SKILL.md` and `skills/design/references/flags.md`.
