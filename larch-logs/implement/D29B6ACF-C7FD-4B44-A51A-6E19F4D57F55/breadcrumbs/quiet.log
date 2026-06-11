@@ -44,6 +44,8 @@
 
 === larch-quiet-git-current-branch.sh-40855.log ===
 
+=== larch-quiet-git-stage.sh-19267.log ===
+
 === larch-quiet-git-stage.sh-45904.log ===
 
 === larch-quiet-git-stage.sh-47817.log ===
@@ -281,6 +283,8 @@ read-session-env-key.sh: --file is required
 
 === larch-quiet-read-session-env-key.sh-99824.log ===
 
+=== larch-quiet-rebase-push.sh-23889.log ===
+
 === larch-quiet-rebase-push.sh-50173.log ===
 
 === larch-quiet-rebase-push.sh-50867.log ===
@@ -289,6 +293,11 @@ read-session-env-key.sh: --file is required
 FLUSH_STATUS=ok
 RECORDS=1
 APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.SHvUFC
+
+=== larch-quiet-refresh-run-logs.sh-45929.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.qCvir6
 
 === larch-quiet-run-relevant-checks-captured.sh-1766.log ===
 
@@ -303,6 +312,10 @@ LAUNCHER_FAILURE_CLASS=none
 LAUNCHER_FAILURE_REASON=
 
 === larch-quiet-ship.py-48027.log ===
+
+=== larch-quiet-ship.py-68226.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
 
 === larch-quiet-step-7a.sh-59117.log ===
 FLUSH_STATUS=ok
