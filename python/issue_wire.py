@@ -27,7 +27,7 @@ _MALFORMED_TOKENS = {
     "end-before-start",
 }
 
-# Byte-compatible with scripts/lib-title-eligibility.sh
+# Byte-compatible with the legacy title-eligibility shell helper.
 ARCHIVAL_JQ_FILTER = 'select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
 ARCHIVAL_REPORT_RE = re.compile(r"^\[.*report\] ", re.IGNORECASE)
 LIFECYCLE_REJECT_RE = re.compile(r"^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED)\]", re.IGNORECASE)
