@@ -248,6 +248,18 @@ for retired in [
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'command grep', 'step-8-oos-checkpoint command grep probes')
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'OOS_CHECKPOINT_RC', 'step-8-oos-checkpoint rc relay')
 
+# Step 4 skip prose must reference commit-implementation.sh, not git-commit.sh.
+require(skill, 'Skip the `commit-implementation.sh` invocation.', 'Step 4 skip prose references commit-implementation.sh')
+forbid(skill, 'Skip the `git-commit.sh` invocation.', 'Step 4 skip prose must not reference git-commit.sh')
+# git-commit.sh must not appear anywhere under skills/implement/ (root scripts/git-commit.sh is OK).
+import subprocess
+r = subprocess.run(
+    ['git', 'grep', '-rl', 'git-commit.sh', '--', 'skills/implement/'],
+    capture_output=True, text=True
+)
+if r.stdout.strip():
+    checks.append(f'git-commit.sh appears under skills/implement/: {r.stdout.strip()}')
+
 if checks:
     print('\n'.join(checks), file=sys.stderr)
     sys.exit(1)

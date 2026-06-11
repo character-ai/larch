@@ -66,4 +66,13 @@ set -e
 if [ "$rc" -ne 0 ]; then pass 'missing message exits non-zero'; else fail 'missing message exits non-zero'; fi
 assert_contains 'COMMITTED=false' "$bad" 'missing message emits envelope'
 
+# Unknown option --stage-all: exit 2, COMMITTED=false, hint on stderr
+set +e
+unknown_out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --stage-all 2>"$TMP_ROOT/hint.err"; echo "rc=$?")
+set -e
+unknown_rc=$(printf '%s' "$unknown_out" | awk -F= '/^rc=/{print $2}')
+if [ "$unknown_rc" -eq 2 ]; then pass 'unknown option exits 2'; else fail "unknown option exits 2 (got $unknown_rc)"; fi
+assert_contains 'COMMITTED=false' "$unknown_out" 'unknown option emits COMMITTED=false'
+assert_contains 'commit-review-fixes.sh' "$(cat "$TMP_ROOT/hint.err")" 'unknown option emits hint mentioning commit-review-fixes.sh'
+
 finish
