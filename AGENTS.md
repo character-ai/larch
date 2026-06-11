@@ -38,7 +38,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/topology.md` — generated consumer-doc topology projection
 - `docs/run-logs.md` — committed run-log directory structure, batch file reference, and tracking-issue comment contracts
 - `docs/issue-anchored-plan.md` — **LIVE** wire format for /design ↔ /implement handoff, clarification round-trip, and `/design` pause pointer. `/implement` Preflight enforces plan gates; `/design` writes the plan block and clarify responses.
-- `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `scripts/clarify-comment-post.sh`, `scripts/clarify-state.sh`, `scripts/clarify-label.sh`, `scripts/test-plan-block.sh`, `scripts/test-clarify-comment.sh`, `scripts/test-clarify-state.sh` — helpers and offline harnesses for that wire format.
+- `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `python/cli.py clarify {state,comment-post,label}`, `scripts/test-plan-block.sh`, `python/test_clarify.py` — helpers and offline harnesses for that wire format.
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `scripts/larch-log.md`, `scripts/larch-log-batches.md` — committed run-log contract and batch table
 - `.claude/skills/release/scripts/classify-bump.md` — authoritative release classification rules

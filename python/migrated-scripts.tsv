@@ -159,3 +159,13 @@ skills/shared/scripts/normalize-oos-block-header.sh	#3923
 skills/shared/scripts/normalize-oos-block-header.md	#3923
 skills/shared/scripts/test-normalize-oos-block-header.sh	#3923
 skills/shared/scripts/test-normalize-oos-block-header.md	#3923
+scripts/clarify-state.sh	#3924
+scripts/clarify-state.md	#3924
+scripts/clarify-comment-post.sh	#3924
+scripts/clarify-comment-post.md	#3924
+scripts/clarify-label.sh	#3924
+scripts/clarify-label.md	#3924
+scripts/test-clarify-state.sh	#3924
+scripts/test-clarify-state.md	#3924
+scripts/test-clarify-comment.sh	#3924
+scripts/test-clarify-comment.md	#3924

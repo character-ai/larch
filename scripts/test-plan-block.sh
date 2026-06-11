@@ -260,8 +260,7 @@ set -e
 [[ "$rc" == "1" ]] || fail "named-block invalid repo exit $rc"
 grep -q 'ERROR=invalid-repo' "$TMP/w-bad-repo.out" || fail "named-block invalid repo error missing"
 
-LABEL_HELPER="$REPO_ROOT/scripts/clarify-label.sh"
-[ -x "$LABEL_HELPER" ] || fail "clarify-label.sh not executable"
-grep -Fq -- '--create-if-missing' "$LABEL_HELPER" || fail "clarify-label.sh missing --create-if-missing flag"
+python3 "$REPO_ROOT/python/cli.py" clarify label --help >"$TMP/clarify-label-help.out"
+grep -Fq -- '--create-if-missing' "$TMP/clarify-label-help.out" || fail "clarify label missing --create-if-missing flag"
 
 echo "All assertions passed."

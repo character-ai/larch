@@ -15,6 +15,7 @@ _AKIA_RE = re.compile(r"AKIA[0-9A-Z]{16}")
 _JWT_RE = re.compile(
     r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
 )
+_CRSR_RE = re.compile(r"crsr_[A-Za-z0-9_-]{20,}")
 _PEM_ANCHOR = r"^[\t \v\f\r>]*"
 _PEM_BEGIN_RE = re.compile(
     rf"{_PEM_ANCHOR}-----BEGIN [A-Z ]*PRIVATE KEY-----",
@@ -268,6 +269,7 @@ def _split_on_newline_only(text: str) -> list[str]:
 
 def _redact_line_local(line: str) -> str:
     line = _SK_RE.sub(config.REDACTED_TOKEN, line)
+    line = _CRSR_RE.sub(config.REDACTED_TOKEN, line)
     line = _GH_RE.sub(config.REDACTED_TOKEN, line)
     line = _AKIA_RE.sub(config.REDACTED_TOKEN, line)
     return _JWT_RE.sub(config.REDACTED_TOKEN, line)

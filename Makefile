@@ -237,10 +237,10 @@ test-plan-review-scope-anchor:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-plan-review-scope-anchor.sh
 
 test-clarify-comment:
-	bash scripts/harness-timer.sh $@ bash scripts/test-clarify-comment.sh
+	cd python && $(PYTHON) -m pytest test_clarify.py
 
 test-clarify-state:
-	bash scripts/harness-timer.sh $@ bash scripts/test-clarify-state.sh
+	cd python && $(PYTHON) -m pytest test_clarify.py
 
 test-check-stale-plugin:
 	bash scripts/harness-timer.sh $@ bash scripts/test-check-stale-plugin.sh
