@@ -8,6 +8,8 @@
 
 === larch-quiet-check-contains-pins.sh-26256.log ===
 
+=== larch-quiet-check-contains-pins.sh-39084.log ===
+
 === larch-quiet-check-contains-pins.sh-56730.log ===
 
 === larch-quiet-check-contains-pins.sh-63740.log ===
@@ -22,11 +24,19 @@
 
 === larch-quiet-cli.py-37144.log ===
 
+=== larch-quiet-cli.py-52273.log ===
+Makefile:239: references retired path 'skills/cleanup/scripts/test-cleanup.sh'
+Makefile:251: references retired path 'skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh'
+Makefile:402: references retired path 'scripts/test-alias-target-resolution.sh'
+Makefile:444: references retired path 'skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh'
+
 === larch-quiet-cli.py-55745.log ===
 
 === larch-quiet-cli.py-61039.log ===
 
 === larch-quiet-cli.py-61525.log ===
+
+=== larch-quiet-cli.py-71897.log ===
 
 === larch-quiet-cli.py-73793.log ===
 
@@ -38,6 +48,8 @@
 
 === larch-quiet-cli.py-8470.log ===
 
+=== larch-quiet-cli.py-84948.log ===
+
 === larch-quiet-cli.py-88527.log ===
 
 === larch-quiet-degraded-tools-gate.sh-36134.log ===
@@ -46,7 +58,15 @@
 [sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 77fc5040e] Fix CI failure (main-agent)
  1 file changed, 2 insertions(+), 5 deletions(-)
 
+=== larch-quiet-git-commit.sh-53724.log ===
+[sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 a2e296618] Remove stale Makefile targets for tests deleted by #3688
+ 1 file changed, 10 insertions(+), 32 deletions(-)
+
 === larch-quiet-git-current-branch.sh-40855.log ===
+
+=== larch-quiet-git-force-push.sh-65903.log ===
+To github.com:character-ai/larch.git
+ + f6ed3e32c...a588c14f4 sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 -> sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 (forced update)
 
 === larch-quiet-git-stage.sh-19267.log ===
 
@@ -281,6 +301,18 @@ read-session-env-key.sh: --file is required
 
 === larch-quiet-read-session-env-key.sh-45142.log ===
 
+=== larch-quiet-read-session-env-key.sh-4894.log ===
+
+=== larch-quiet-read-session-env-key.sh-4957.log ===
+
+=== larch-quiet-read-session-env-key.sh-5005.log ===
+
+=== larch-quiet-read-session-env-key.sh-794.log ===
+
+=== larch-quiet-read-session-env-key.sh-870.log ===
+
+=== larch-quiet-read-session-env-key.sh-955.log ===
+
 === larch-quiet-read-session-env-key.sh-99747.log ===
 
 === larch-quiet-read-session-env-key.sh-99786.log ===
@@ -307,13 +339,24 @@ FLUSH_STATUS=ok
 RECORDS=1
 APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.qCvir6
 
+=== larch-quiet-refresh-run-logs.sh-59227.log ===
+FLUSH_STATUS=already-flushed
+RECORDS=0
+
+=== larch-quiet-run-relevant-checks-captured.sh-1047.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-1766.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-32979.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-45185.log ===
 
+=== larch-quiet-run-relevant-checks-captured.sh-5074.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-99860.log ===
+
+=== larch-quiet-run-step3-review.sh-726.log ===
+POSTPLAN_EMIT_STATUS=ok
 
 === larch-quiet-ship.py-14969.log ===
 
@@ -324,6 +367,10 @@ LAUNCHER_FAILURE_REASON=
 === larch-quiet-ship.py-48027.log ===
 
 === larch-quiet-ship.py-68226.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
+
+=== larch-quiet-ship.py-73869.log ===
 LAUNCHER_FAILURE_CLASS=none
 LAUNCHER_FAILURE_REASON=
 
@@ -350,6 +397,9 @@ parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91
 
 === larch-quiet-tally-code-votes.sh-99486.log ===
 parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.034FjN/case_parser_failure_warn/missing-vote-output.txt
+
+=== larch-quiet-tally-code-votes.sh-99671.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.wZBjYq/case_parser_failure_warn/missing-vote-output.txt
 
 === larch-quiet-timing-ledger.sh-44672.log ===
 
