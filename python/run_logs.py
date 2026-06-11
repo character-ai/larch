@@ -417,7 +417,7 @@ def _plugin_version() -> str:
         try:
             data = json.loads(plugin_json.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                version = str(data.get("version", "") or "").strip()
+                version = str(cast("dict[str, Any]", data).get("version", "") or "").strip()
                 if version and version != "null":
                     return version
         except (OSError, json.JSONDecodeError):
@@ -2393,15 +2393,18 @@ def _manifest_field(data: dict[str, Any], key: str) -> str:
 
 
 def _manifest_step9a1_explicitly_skipped(data: dict[str, Any]) -> bool:
-    steps = data.get("steps_ran") or {}
-    return isinstance(steps, dict) and steps.get("step9a1") is False
+    steps_raw = data.get("steps_ran")
+    steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
+    return steps.get("step9a1") is False
 
 
 def _manifest_steps_ran_empty(data: dict[str, Any]) -> bool:
     steps = data.get("steps_ran")
     if steps is None:
         return True
-    return isinstance(steps, dict) and len(steps) == 0
+    if not isinstance(steps, dict):
+        return False
+    return len(cast("dict[str, Any]", steps)) == 0
 
 
 def _manifest_steps_ran_nonempty_without_step9a1(data: dict[str, Any]) -> bool:
@@ -2971,7 +2974,8 @@ def larch_log_write_round_main(argv: list[str]) -> int:
             if not isinstance(row, dict):
                 lines.append(line)
                 continue
-            slot = str(row.get("slot", ""))
+            row_dict = cast("dict[str, Any]", row)
+            slot = str(row_dict.get("slot", ""))
             if slot in archetype_refs and "archetype_ref" not in row:
                 row["archetype_ref"] = archetype_refs[slot]
                 changed = True
