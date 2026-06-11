@@ -55,7 +55,7 @@ grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summ
 # shellcheck disable=SC2016
 grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of $IMPLEMENT_TMPDIR/summary-final.md' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 full-body exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
-grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'
+grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/scripts/design-step-final-summary.sh" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'
 grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
 grep -Fq 'emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
