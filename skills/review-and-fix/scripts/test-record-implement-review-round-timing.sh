@@ -78,10 +78,10 @@ mkdir -p "$TMP_BASE/round-5"
 awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 5 && $7 == 50 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
 order_tmp=$(mktemp -d "$TMP_BASE/order.XXXXXX")
 mkdir -p "$order_tmp/round-6"
-"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$order_tmp/timing-ledger.tsv" mark "Step 5 — code review"
+python3 "$REPO_ROOT/python/cli.py" timing --ledger "$order_tmp/timing-ledger.tsv" mark "Step 5 — code review"
 printf '%s\n' 60 > "$order_tmp/round-6/round-start-s"
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$order_tmp" --round 6 --start-s 60 --end-s 70
-"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$order_tmp/timing-ledger.tsv" mark "Step 7 — commit review fixes"
+python3 "$REPO_ROOT/python/cli.py" timing --ledger "$order_tmp/timing-ledger.tsv" mark "Step 7 — commit review fixes"
 awk -F '\t' '
     $2 == "round" && $6 == 6 { round_line=NR }
     $2 == "mark" && $5 == "Step 7 — commit review fixes" { step7_line=NR }

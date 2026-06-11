@@ -89,7 +89,7 @@ rm -f "$DESIGN_TMPDIR/token-report-final.json" "$DESIGN_TMPDIR/token-report-fina
 set +e
 export DESIGN_TMPDIR
 export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
-"$PLUGIN_ROOT/scripts/token-report.sh" --full --format json \
+python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json \
     --output "$DESIGN_TMPDIR/token-report-final.json" 2>"$DESIGN_TMPDIR/token-report-final.stderr.log"
 trc=$?
 set -e
@@ -101,7 +101,7 @@ fi
 set +e
 LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
     env -u IMPLEMENT_TMPDIR \
-    "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json \
+    python3 "$PLUGIN_ROOT/python/cli.py" timing report --full --format json \
     --output "$DESIGN_TMPDIR/timing-report-final.json" 2>"$DESIGN_TMPDIR/timing-report-final.stderr.log"
 tmrc=$?
 set -e
@@ -152,7 +152,7 @@ if [ "$jq_ok" = true ]; then
             "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design final summary" \
-                --tool "token-report.sh" \
+                --tool "python3 python/cli.py token report" \
                 --exit-code "${trc:-1}" \
                 --category Warnings \
                 --redact \
@@ -200,7 +200,7 @@ else
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design final summary" \
-            --tool "token-report.sh" \
+            --tool "python3 python/cli.py token report" \
             --exit-code "${trc:-1}" \
             --category Warnings \
             --redact \
@@ -218,7 +218,7 @@ if [ -z "$DURATION" ]; then
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design final summary" \
-            --tool "timing-report.sh" \
+            --tool "python3 python/cli.py timing report" \
             --exit-code "${tmrc:-1}" \
             --category Warnings \
             --redact \

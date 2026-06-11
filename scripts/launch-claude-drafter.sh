@@ -292,7 +292,7 @@ if [[ "$exit_code" -eq 0 ]]; then
         read -r _cl_in _cl_out _cl_cr _cl_cc < <(jq -r '.usage // {} | "\(.input_tokens // 0) \(.output_tokens // 0) \(.cache_read_input_tokens // 0) \(.cache_creation_input_tokens // 0)"' "$json_tmp" 2>/dev/null || echo "0 0 0 0")
         if [[ "$_cl_in" =~ ^[0-9]+$ && "$_cl_out" =~ ^[0-9]+$ && "$_cl_cr" =~ ^[0-9]+$ && "$_cl_cc" =~ ^[0-9]+$ ]]; then
             _cl_total=$((_cl_in + _cl_out + _cl_cr + _cl_cc))
-            "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
+            python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor claude_sub \
                 input="$_cl_in" output="$_cl_out" cache_read="$_cl_cr" \
                 cache_create="$_cl_cc" total="$_cl_total" raw="$TOKEN_RAW" >/dev/null 2>&1 || true
         fi
@@ -313,7 +313,7 @@ fi
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 
 END_S=$(date +%s)
-"$SCRIPT_DIR/timing-ledger.sh" record-vendor-task \
+python3 "$SCRIPT_DIR/../python/cli.py" timing record-vendor-task \
     --vendor claude \
     --task-kind "$TIMING_TASK_KIND" \
     --start-s "$START_S" \

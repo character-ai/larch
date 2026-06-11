@@ -195,7 +195,7 @@ if awk -F '\t' '$2 == "mark" && $4 == "implement" && $5 == "Step 5 — code revi
 else
     fail "loop resume records Step 5 timing mark"
 fi
-"$REPO_ROOT/scripts/timing-report.sh" --ledger "$case_dir/timing-ledger.tsv" --full --format json --output "$case_dir/timing-report.json" >/dev/null
+python3 "$REPO_ROOT/python/cli.py" timing report --ledger "$case_dir/timing-ledger.tsv" --full --format json --output "$case_dir/timing-report.json" >/dev/null
 if command -v jq >/dev/null 2>&1 && jq -e '.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review")' "$case_dir/timing-report.json" >/dev/null; then
     pass "loop resume mark appears in timing-report"
 else

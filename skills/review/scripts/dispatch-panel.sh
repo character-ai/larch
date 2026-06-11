@@ -70,7 +70,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Export so launch-review.sh subprocesses inherit it and timing-ledger.sh
+# Export so launch-review.sh subprocesses inherit it and python3 python/cli.py timing
 # can resolve the per-run ledger via the SESSION_ENV_PATH fallback.
 export SESSION_ENV_PATH
 

@@ -72,10 +72,10 @@ fi
     --implement-tmpdir "$IMPL_TMPDIR" 2>/dev/null || true
 
 # Re-render and write token and timing reports.
-"$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true
+python3 "$SCRIPT_DIR/../python/cli.py" token report  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch token-report --input-file "$IMPL_TMPDIR/token-report-refresh.json" 2>/dev/null || true
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing report --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 # #3713: stage the vendor-failure-diagnostics batch from per-slot parts so a

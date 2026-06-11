@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-render-cost-line-callsites.sh — render-cost-line.sh is standalone-only post #2714.
+# test-render-cost-line-callsites.sh — python3 python/cli.py token render-cost-line is standalone-only post #2714.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -7,7 +7,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 if git -C "$REPO" grep -rln 'render-cost-line\.sh' -- skills >/dev/null 2>&1; then
     git -C "$REPO" grep -rln 'render-cost-line\.sh' -- skills >&2 || true
-    fail 'skills/** must not reference render-cost-line.sh'
+    fail 'skills/** must not reference python3 python/cli.py token render-cost-line'
 fi
 pass 'zero render-cost-line references under skills/'
 
@@ -15,15 +15,15 @@ allowed_re='^(scripts/render-cost-line\.sh|scripts/render-cost-line\.md|scripts/
 while IFS= read -r rel; do
     [[ -n "$rel" ]] || continue
     if ! printf '%s\n' "$rel" | grep -Eq "$allowed_re"; then
-        fail "unexpected render-cost-line.sh reference in $rel"
+        fail "unexpected python3 python/cli.py token render-cost-line reference in $rel"
     fi
 done < <(git -C "$REPO" grep -rln 'render-cost-line\.sh' -- scripts 2>/dev/null || true)
 pass 'scripts/ render-cost-line references are allowlist-only'
 
-if grep -Fq '💰 Cost:' "$REPO/scripts/token-report.sh"; then
-    fail 'token-report.sh must not contain 💰 Cost: literal (summary/markdown paths)'
+if grep -Fq '💰 Cost:' "$REPO/python/tokens.py"; then
+    fail 'python3 python/cli.py token report must not contain 💰 Cost: literal (summary/markdown paths)'
 fi
-pass 'token-report.sh has no 💰 Cost: literal'
+pass 'token report implementation has no 💰 Cost: literal'
 
 f="$REPO/skills/design/scripts/render-final-summary.sh"
 grep -Fq 'render-run-summary.sh' "$f" || fail 'render-final-summary.sh must invoke render-run-summary.sh'

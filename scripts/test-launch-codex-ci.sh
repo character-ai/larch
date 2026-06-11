@@ -46,7 +46,7 @@ if grep -q -- "--task-kind \"\$TIMING_TASK_KIND\"" "$REPO_ROOT/scripts/launch-co
 if grep -q 'plan-file' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --plan-file"; else fail "script supports --plan-file"; fi
 if grep -q -- '--failure-log' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --failure-log"; else fail "script supports --failure-log"; fi
 if grep -q 'Local reproduction invariant' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "fix role prompt carries local reproduction invariant"; else fail "fix role prompt carries local reproduction invariant"; fi
-if grep -q 'codex-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes codex-ci-fix"; else fail "timing allow-list includes codex-ci-fix"; fi
+if grep -q 'codex-ci-fix' "$REPO_ROOT/python/timing.py TIMING_TASK_KINDS_ALLOWED"; then ok "timing allow-list includes codex-ci-fix"; else fail "timing allow-list includes codex-ci-fix"; fi
 
 cat > "$TMPDIR_BASE/token-record" <<'EOF'
 TOOL=codex
@@ -56,7 +56,7 @@ CACHE_READ=90
 TOTAL=105
 RAW=codex_ci_fix
 EOF
-"$REPO_ROOT/scripts/append-token-record.sh" --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
+python3 "$REPO_ROOT/python/cli.py" token append-record --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
 if grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson" \
     && grep -q '"input":10' "$TMPDIR_BASE/token-report.ndjson" \
     && grep -q '"cache_read":90' "$TMPDIR_BASE/token-report.ndjson" \
@@ -175,7 +175,7 @@ else
     fail "runtime success writes per-bucket codex token-record: $(cat "${OUT_SUCCESS}.token-record" 2>/dev/null)"
 fi
 rm -f "$TMPDIR_BASE/token-report.ndjson"
-"$REPO_ROOT/scripts/append-token-record.sh" --input "${OUT_SUCCESS}.token-record" --tmpdir "$TMPDIR_BASE"
+python3 "$REPO_ROOT/python/cli.py" token append-record --input "${OUT_SUCCESS}.token-record" --tmpdir "$TMPDIR_BASE"
 if grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson" \
     && grep -q '"input":100' "$TMPDIR_BASE/token-report.ndjson" \
     && grep -q '"cache_read":900' "$TMPDIR_BASE/token-report.ndjson" \
@@ -245,7 +245,7 @@ else
     fail "runtime no-usage leaves codex token-record empty: $(cat "${OUT_EMPTY}.token-record" 2>/dev/null)"
 fi
 rm -f "$TMPDIR_BASE/token-report.ndjson"
-"$REPO_ROOT/scripts/append-token-record.sh" --input "${OUT_EMPTY}.token-record" --tmpdir "$TMPDIR_BASE" >/dev/null 2>&1 || true
+python3 "$REPO_ROOT/python/cli.py" token append-record --input "${OUT_EMPTY}.token-record" --tmpdir "$TMPDIR_BASE" >/dev/null 2>&1 || true
 if [[ ! -e "$TMPDIR_BASE/token-report.ndjson" ]] || ! grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson"; then
     ok "empty codex token-record appends no ledger row"
 else

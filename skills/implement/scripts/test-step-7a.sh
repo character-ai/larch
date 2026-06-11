@@ -309,12 +309,12 @@ done
 } >> "$log"
 STUB
 
-    for stub in token-ledger.sh timing-ledger.sh token-report.sh timing-report.sh; do
+    for stub in python3 python/cli.py token python3 python/cli.py timing python3 python/cli.py token report python3 python/cli.py timing report; do
         cat > "$root/scripts/$stub" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s %s\n' "$(basename "$0")" "$*" >> "$STEP7A_CALLS_LOG"
-if [ "$(basename "$0")" = "token-report.sh" ] || [ "$(basename "$0")" = "timing-report.sh" ]; then
+if [ "$(basename "$0")" = "python3 python/cli.py token report" ] || [ "$(basename "$0")" = "python3 python/cli.py timing report" ]; then
     out=""
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -496,8 +496,8 @@ assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "green passes tmpdir to generator"
 assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.log")" "green passes origin base args to generator"
-assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "upsert-diagrams-content" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "python/cli.py diagrams upsert" "green compose before upsert"
 assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "rebase-checkpoint-probe.sh" "green upsert before rebase"

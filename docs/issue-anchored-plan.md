@@ -196,7 +196,7 @@ against Step 3 / Gate C plan previews, the mechanical behavior is the live
 `emit-design-plan-preview.sh --variant gatec` (Gate C) wired in
 `skills/design/SKILL.md` (see `docs/configuration-and-permissions.md` —
 `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` and the **Chat-order note** there); do not assume duplicated inline fenced
-bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `timing-ledger.sh mark` line before the preview output.
+bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `python3 python/cli.py timing mark` line before the preview output.
 
 Emergency mode is intentionally narrow: `/implement --emergency` may downgrade
 `BLOCK_PRESENT=false`, malformed plan extraction, `AUDIT=refuse`, and the

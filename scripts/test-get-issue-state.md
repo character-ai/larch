@@ -10,7 +10,7 @@ The harness runs offline with a PATH-stubbed `gh`. It pins the new numeric `--is
 
 ## Makefile wiring
 
-Makefile target: `test-get-issue-state` — `bash scripts/harness-timer.sh $@ bash scripts/test-get-issue-state.sh`.
+Makefile target: `test-get-issue-state` — `python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-get-issue-state.sh`.
 
 Shard placement: `test-harnesses-18`, alongside `test-tracking-issue-read-sentinel`.
 

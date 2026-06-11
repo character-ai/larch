@@ -203,7 +203,7 @@ if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT_ARG" != "true" ]]; then
     exit 0
 fi
 
-LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
+LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark "Step 2 — implementation" || true
 
 REQUIRES_HEAD_UNCHANGED=false
 # Set true at the Step 4 LAUNCHER_EXIT gate when a complete, well-formed

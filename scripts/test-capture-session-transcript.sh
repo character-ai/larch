@@ -86,7 +86,7 @@ run_capture() {
 }
 
 # Returns the Claude project dir path for a given repo dir and home dir,
-# mirroring token-claude-source.sh encoding (repo-root → sed 's#/#-#g').
+# mirroring python3 python/cli.py token claude-source encoding (repo-root → sed 's#/#-#g').
 project_dir_for_repo() {
     local repo_dir="$1"
     local home_dir="$2"

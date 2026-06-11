@@ -25,4 +25,4 @@ Expressions 4-9 handle the operator-path carve-outs. Slash-terminated operator p
 
 ## Edit-in-sync
 
-When changing the accepted tempdir roots or session prefix list, update `python/cli.py session setup`, `python/cli.py session cleanup-tmpdir`, `scripts/implement-finalize.sh`, `scripts/token-tally.sh`, this contract, and `scripts/test-redact-tmpdir-paths.sh`.
+When changing the accepted tempdir roots or session prefix list, update `python/cli.py session setup`, `python/cli.py session cleanup-tmpdir`, `scripts/implement-finalize.sh`, `python3 python/cli.py token lane-write/lane-report`, this contract, and `scripts/test-redact-tmpdir-paths.sh`.

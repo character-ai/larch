@@ -105,7 +105,7 @@ _emit_timing_record() {
     end_s=$(date +%s)
     (( rc == 0 )) && status=complete || status=signal
     [[ -n "${TIMING_START_S:-}" && -n "${OUTPUT:-}" ]] || return 0
-    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+    python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
         --vendor codex \
         --task-kind "${TIMING_TASK_KIND:-codex-review}" \
         --start-s "$TIMING_START_S" \
@@ -213,7 +213,7 @@ fi
 # Per-step token budget cap: short-circuit before spawning Codex when the
 # combined vendor spend since the last ledger mark already exceeds the cap.
 if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
-    _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-review}" 2>/dev/null || true)
+    _budget_out=$(python3 "$SCRIPT_DIR/../python/cli.py" token check-budget --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
         larch_errf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
@@ -246,7 +246,7 @@ fi
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
 # already validated above (#1480); apply the same predicate to the env path
 # and fall back silently. Whitespace-only and other invalid-but-non-flag
-# shapes rely on timing-ledger.sh's regex backstop (do not extend here).
+# shapes rely on python3 python/cli.py timing's regex backstop (do not extend here).
 if [[ -z "$TIMING_TASK_KIND" || "$TIMING_TASK_KIND" == --* ]]; then
     TIMING_TASK_KIND="codex-review"
 fi
@@ -693,7 +693,7 @@ _emit_timing_record() {
     end_s=$(date +%s)
     (( rc == 0 )) && status=complete || status=signal
     [[ -n "${TIMING_START_S:-}" && -n "${OUTPUT:-}" ]] || return 0
-    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+    python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
         --vendor cursor \
         --task-kind "${TIMING_TASK_KIND:-cursor-review}" \
         --start-s "$TIMING_START_S" \
@@ -799,7 +799,7 @@ fi
 # Per-step token budget cap: short-circuit before spawning Cursor when the
 # combined vendor spend since the last ledger mark already exceeds the cap.
 if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
-    _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-cursor-review}" 2>/dev/null || true)
+    _budget_out=$(python3 "$SCRIPT_DIR/../python/cli.py" token check-budget --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-cursor-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
         larch_errf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
@@ -819,7 +819,7 @@ fi
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
 # already validated above (#1480); apply the same predicate to the env path
 # and fall back silently. Whitespace-only and other invalid-but-non-flag
-# shapes rely on timing-ledger.sh's regex backstop (do not extend here).
+# shapes rely on python3 python/cli.py timing's regex backstop (do not extend here).
 if [[ -z "$TIMING_TASK_KIND" || "$TIMING_TASK_KIND" == --* ]]; then
     TIMING_TASK_KIND="cursor-review"
 fi
@@ -1241,7 +1241,7 @@ if [[ -s "$OUTPUT" ]]; then
         read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "${OUTPUT}.json" 2>/dev/null || echo "0 0 0 0")
         if [[ "$INP" =~ ^[0-9]+$ && "$OUT" =~ ^[0-9]+$ && "$CR" =~ ^[0-9]+$ && "$CW" =~ ^[0-9]+$ ]]; then
             TOT=$((INP + OUT + CR + CW))
-            "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_review" >/dev/null 2>&1 || true
+            python3 "$PLUGIN_ROOT/python/cli.py" token record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_review" >/dev/null 2>&1 || true
         fi
         # Distinguish Cursor's empty .result envelope from malformed JSON or
         # generic empty output so the collector can report the backend failure

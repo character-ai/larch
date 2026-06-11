@@ -30,7 +30,7 @@ All snapshot, compare, and report paths are under `$IMPLEMENT_TMPDIR/` (never cw
 
 Helpers invoked with rooted paths:
 
-- `"$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$tmpdir/token-report-rendered.json"`
+- `python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json --output "$tmpdir/token-report-rendered.json"`
 - `"$SCRIPT_DIR/write-final-report.sh" --implement-tmpdir "$tmpdir"` (no `--print-stdout`)
 
 Non-zero helper exits are captured to the failure logs above and appended with `append-tool-failure.sh` (best-effort); the wrapper continues.

@@ -84,7 +84,7 @@ Step 2b treats only `STATUS=dirty MODE=baseline-delta` as confirmed new drafter 
 
 ## Token and timing rows
 
-After JSON promotion and delimiter extraction succeed, the launcher records `token-ledger.sh record-vendor claude_sub ... raw=<role>`, with `raw` derived locally from `--timing-task-kind` (`claude_draft`, `claude_scout`, `claude_vote`, or `claude_review`). Timing is recorded with vendor `claude` and the supplied task kind. JSON/delimiter failures skip token recording.
+After JSON promotion and delimiter extraction succeed, the launcher records `python3 python/cli.py token record-vendor claude_sub ... raw=<role>`, with `raw` derived locally from `--timing-task-kind` (`claude_draft`, `claude_scout`, `claude_vote`, or `claude_review`). Timing is recorded with vendor `claude` and the supplied task kind. JSON/delimiter failures skip token recording.
 
 Regression harness: `scripts/test-launch-claude-drafter.sh`.
 

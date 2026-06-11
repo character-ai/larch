@@ -84,7 +84,7 @@ done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
   chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$plugin/scripts/append-tool-failure.sh"
-  cat >"$plugin/scripts/token-report.sh" <<'STUB'
+  cat >"$plugin/python3 python/cli.py token report" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${TOKEN_MODE:-ok}" = fail ]; then
@@ -99,7 +99,7 @@ while [ $# -gt 0 ]; do
 done
 exit 0
 STUB
-  chmod +x "$plugin/scripts/token-report.sh"
+  chmod +x "$plugin/python3 python/cli.py token report"
   cat >"$plugin/skills/implement/scripts/write-final-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -284,14 +284,14 @@ awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, 
 STUB
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$int_plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/token-cost.sh" "$int_plugin/scripts/token-cost.sh"
-cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$int_plugin/scripts/lib-cost-line-format.sh"
+cp "$REPO_ROOT/python/report_tokens_cost.py" "$int_plugin/python/report_tokens_cost.py"
+cp "$REPO_ROOT/scripts/render-run-summary.sh inline cost formatter" "$int_plugin/scripts/render-run-summary.sh inline cost formatter"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$int_plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
 chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" "$int_plugin/scripts/append-tool-failure.sh" \
-  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/scripts/token-cost.sh" \
+  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/python/report_tokens_cost.py" \
   "$int_plugin/scripts/redact-secrets.sh"
-cat >"$int_plugin/scripts/token-report.sh" <<'STUB'
+cat >"$int_plugin/python3 python/cli.py token report" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 while [ $# -gt 0 ]; do
@@ -311,7 +311,7 @@ cat >"$int_plugin/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$int_plugin/scripts/token-report.sh" "$int_plugin/scripts/tracking-issue-summary.sh" "$int_plugin/scripts/larch-log.sh"
+chmod +x "$int_plugin/python3 python/cli.py token report" "$int_plugin/scripts/tracking-issue-summary.sh" "$int_plugin/scripts/larch-log.sh"
 cp "$SOURCE_HELPER" "$int_impl/step-18b-final-report.sh"
 cp "$REPO_ROOT/skills/implement/scripts/write-final-report.sh" "$int_impl/write-final-report.sh"
 chmod +x "$int_impl/step-18b-final-report.sh" "$int_impl/write-final-report.sh"

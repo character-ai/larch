@@ -5,7 +5,7 @@ Black-box harness for `scripts/launch-codex-exec.sh`.
 Pinned cases:
 
 - launcher is referenced by `lint-fix-loop.sh`
-- `codex-exec` is listed in `lib-timing-kinds.sh`
+- `codex-exec` is listed in `python/timing.py`
 - happy path exits 0 and emits `LAUNCHER_EXIT=0`
 - auth setup failure writes a preflight bundle and emits `LAUNCHER_EXIT` mirroring the auth-prep exit code (typically `1`)
 - `agent-model-args.sh` failure writes a preflight bundle

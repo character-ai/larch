@@ -24,15 +24,15 @@ printf '%s' "${GIT_COMMIT_ERR:-}" >&2
 exit "${GIT_COMMIT_RC:-0}"
 STUB
 chmod +x "$plugin/scripts/git-commit.sh"
-cat > "$plugin/scripts/token-ledger.sh" <<'STUB'
+cat > "$plugin/python3 python/cli.py token" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-cat > "$plugin/scripts/timing-ledger.sh" <<'STUB'
+cat > "$plugin/python3 python/cli.py timing" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$plugin/scripts/token-ledger.sh" "$plugin/scripts/timing-ledger.sh"
+chmod +x "$plugin/python3 python/cli.py token" "$plugin/python3 python/cli.py timing"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email a@b.test; git -C "$repo" config user.name tester
 printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" commit -qm init

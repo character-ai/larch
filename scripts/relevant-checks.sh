@@ -259,7 +259,7 @@ run_direct_relevant_targets() {
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
-            python/fixtures/**|scripts/token-cost.sh|scripts/token-cost.md)
+            python/fixtures/**)
                 maybe_append_py_test_target
                 ;;
             skills/report-tokens/SKILL.md|skills/report-tokens/scripts/plot-cost-over-time.py|skills/report-tokens/scripts/plot-cost-over-time.md|docs/run-logs.md)

@@ -28,7 +28,7 @@ bash .claude/skills/audit-runs/scripts/test-audit-runs.sh
 
 ## Wiring
 
-Wired into `make lint` via the `test-audit-runs` target in the `Makefile` (same `harness-timer.sh` wrapper pattern as `test-find-lock-issue`). Listed in `docs/linting.md` harness inventory.
+Wired into `make lint` via the `test-audit-runs` target in the `Makefile` (same `python3 python/cli.py timing harness-mark` wrapper pattern as `test-find-lock-issue`). Listed in `docs/linting.md` harness inventory.
 
 ## Edit-in-sync
 

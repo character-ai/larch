@@ -353,11 +353,11 @@ cat >"$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh" <<'STUB'
 printf '%s' "${1:-}"
 STUB
 chmod +x "$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh"
-cat >"$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh" <<'STUB'
+cat >"$CURSOR_FAKE_ROOT/python3 python/cli.py timing" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh"
+chmod +x "$CURSOR_FAKE_ROOT/python3 python/cli.py timing"
 
 CURSOR_RUN_STUB="$TMP/cursor-run-stub.sh"
 cat >"$CURSOR_RUN_STUB" <<'STUB'

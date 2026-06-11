@@ -395,7 +395,7 @@ run_codex() {
         _tr_kv() {
             awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$_token_record"
         }
-        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$SCRIPT_DIR/token-ledger.sh" record-vendor codex \
+        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor codex \
             input="$(_tr_kv INPUT)" \
             output="$(_tr_kv OUTPUT)" \
             cache_read="$(_tr_kv CACHE_READ)" \

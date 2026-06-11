@@ -51,8 +51,7 @@ main() {
     fi
 
     "$SCRIPT_DIR/cleanup.sh" --help >/dev/null 2>&1 || true
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
-    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
+    python3 "$PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 18 — cleanup" || true
 
     local session_env="$tmpdir/session-env.sh"
     if [ -f "$session_env" ]; then
@@ -72,11 +71,11 @@ main() {
 
     : >"$token_fail_log" 2>/dev/null || true
     local token_rc=0
-    if "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$tmpdir/token-report-rendered.json" >>"$token_fail_log" 2>&1; then
+    if python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json --output "$tmpdir/token-report-rendered.json" >>"$token_fail_log" 2>&1; then
         :
     else
         token_rc=$?
-        append_failure_best_effort "Step 18 — cleanup" "token-report.sh" "$token_rc" "$token_fail_log"
+        append_failure_best_effort "Step 18 — cleanup" "python3 python/cli.py token report" "$token_rc" "$token_fail_log"
     fi
 
     if [ -f "$tmpdir/summary-final.md" ]; then

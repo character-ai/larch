@@ -35,4 +35,4 @@ After every run (including success), the launcher prints `emit_kv LAUNCHER_EXIT`
 
 ## Edit In Sync
 
-Keep this file aligned with `scripts/launch-codex-ci.sh`, `scripts/launch-claude-ci.sh`, `scripts/append-token-record.sh`, `scripts/lib-timing-kinds.sh`, and launcher argv tests.
+Keep this file aligned with `scripts/launch-codex-ci.sh`, `scripts/launch-claude-ci.sh`, `python3 python/cli.py token append-record`, `python/timing.py TIMING_TASK_KINDS_ALLOWED`, and launcher argv tests.

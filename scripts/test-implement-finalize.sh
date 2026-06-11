@@ -225,22 +225,22 @@ done
 printf '%s\n' "$default"
 STUB
     chmod +x "$SANDBOX/python/stubs/session/read-key"
-    cat > "$SANDBOX/scripts/token-ledger.sh" <<STUB
+    cat > "$SANDBOX/python3 python/cli.py token" <<STUB
 #!/usr/bin/env bash
 echo "token-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
 exit 0
 STUB
-    cat > "$SANDBOX/scripts/timing-ledger.sh" <<STUB
+    cat > "$SANDBOX/python3 python/cli.py timing" <<STUB
 #!/usr/bin/env bash
 echo "timing-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
 exit 0
 STUB
-    cat > "$SANDBOX/scripts/token-report.sh" <<'STUB'
+    cat > "$SANDBOX/python3 python/cli.py token report" <<'STUB'
 #!/usr/bin/env bash
 echo "token report"
 exit 0
 STUB
-    cat > "$SANDBOX/scripts/timing-report.sh" <<'STUB'
+    cat > "$SANDBOX/python3 python/cli.py timing report" <<'STUB'
 #!/usr/bin/env bash
 echo "timing report"
 exit 0

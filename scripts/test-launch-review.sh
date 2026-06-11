@@ -710,7 +710,7 @@ STUB_EOF
         rm -f "$LCR_LEDGER"
     fi
 
-    # Issue #1874 regression: verify ### Codex section appears in token-report.sh output.
+    # Issue #1874 regression: verify ### Codex section appears in python3 python/cli.py token report output.
     # Stub writes Codex --json usage to stdout, which the launcher captures in
     # ${OUTPUT}.events.jsonl for per-bucket token accounting.
     LCR_STDOUT_BIN="$TMPDIR/lcr-stdout-bin"
@@ -736,7 +736,7 @@ STUB_EOF
     LCR_REPORT_STDERR="$TMPDIR/lcr-report.stderr"
 
     LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" LARCH_TOKEN_LEDGER="$LCR_REPORT_LEDGER" \
-        "$REPO_ROOT/scripts/token-ledger.sh" mark "Step 5 — code review" >/dev/null 2>&1 || true
+        python3 "$REPO_ROOT/python/cli.py" token mark "Step 5 — code review" >/dev/null 2>&1 || true
 
     set +e
     LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
@@ -766,14 +766,14 @@ STUB_EOF
         LCR_EMPTY_TRANSCRIPT=$(mktemp "$TMPDIR/lcr-empty-XXXXXX")
         : > "$LCR_EMPTY_TRANSCRIPT"
         CODEX_REPORT_MD=$(LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
-            "$REPO_ROOT/scripts/token-report.sh" \
+            python3 "$REPO_ROOT/python/cli.py" token report \
             --ledger "$LCR_REPORT_LEDGER" \
             --transcript "$LCR_EMPTY_TRANSCRIPT" \
             --full --markdown 2>/dev/null || true)
         if printf '%s\n' "$CODEX_REPORT_MD" | grep -Fq '### Codex'; then
             pass
         else
-            fail "issue#1874 codex-stdout-sidecar: ### Codex missing from token-report.sh output; got=$(printf '%s' "$CODEX_REPORT_MD")"
+            fail "issue#1874 codex-stdout-sidecar: ### Codex missing from python3 python/cli.py token report output; got=$(printf '%s' "$CODEX_REPORT_MD")"
         fi
         rm -f "$LCR_REPORT_LEDGER" "$LCR_EMPTY_TRANSCRIPT"
     fi

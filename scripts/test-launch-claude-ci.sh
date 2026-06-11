@@ -49,7 +49,7 @@ if grep -q -- '--failure-log' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok 
 if grep -q '<<<FAILURE_LOG_EXCERPT>>>' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "failure log fenced in prompt"; else fail "failure log fenced in prompt"; fi
 if grep -q 'Local reproduction invariant' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "fix role includes local reproduction invariant"; else fail "fix role includes local reproduction invariant"; fi
 if ! grep -q 'MODE=baseline REASON=claude-subprocess' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "prompt_writer_persona_no_read_only_preamble"; else fail "prompt_writer_persona_no_read_only_preamble"; fi
-if grep -q 'claude-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes claude-ci-fix"; else fail "timing allow-list includes claude-ci-fix"; fi
+if grep -q 'claude-ci-fix' "$REPO_ROOT/python/timing.py TIMING_TASK_KINDS_ALLOWED"; then ok "timing allow-list includes claude-ci-fix"; else fail "timing allow-list includes claude-ci-fix"; fi
 
 printf 'sk-ant-api03-secretkey\n' >"$TMPDIR_BASE/fl.log"
 if grep -q 'redact-secrets' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "failure_log_content_redacted_via_redact_secrets_sh_in_prompt"; else fail "redact pipeline referenced"; fi

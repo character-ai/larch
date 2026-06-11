@@ -218,7 +218,7 @@ make_design_tmpdir() {
   printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
   printf 'v1\tmark\t10\tdesign\tdesign Step 3 — plan review\t-\t-\t-\t-\t-\t-\t-\t-\n' >"$d/timing-ledger.tsv"
   DESIGN_TMPDIR="$d" LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$d/timing-ledger.tsv" \
-    "$REPO_ROOT/scripts/timing-ledger.sh" record-round \
+    python3 "$REPO_ROOT/python/cli.py" timing record-round \
       --skill design --step "design Step 3 — plan review" --round 1 --start-s 10 --end-s 15 \
       --accepted 0 --rejected 0 >/dev/null
 }

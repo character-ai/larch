@@ -95,7 +95,7 @@ render_fresh_timing_report_for_pause_publish() {
     tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-pause-timing.XXXXXX") || {
         : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
         printf '%s\n' "mktemp failed while preparing timing-report-final.json" >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
-        log_failure "timing-report.sh" "$DESIGN_TMPDIR/timing-report-final.failure.log"
+        log_failure "python3 python/cli.py timing report" "$DESIGN_TMPDIR/timing-report-final.failure.log"
         rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
         return 0
     }
@@ -111,7 +111,7 @@ render_fresh_timing_report_for_pause_publish() {
     set +e
     env -u IMPLEMENT_TMPDIR \
         LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
-        "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$tmp_json" > /dev/null 2>"$tmp_stderr"
+        python3 "$SCRIPT_DIR/../python/cli.py" timing report --full --format json --output "$tmp_json" > /dev/null 2>"$tmp_stderr"
     render_rc=$?
     set -e
     if [[ "$render_rc" -eq 0 && -s "$tmp_json" ]] && jq -e . "$tmp_json" >/dev/null 2>>"$tmp_stderr"; then
@@ -120,7 +120,7 @@ render_fresh_timing_report_for_pause_publish() {
         return 0
     fi
     rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
-    log_failure "timing-report.sh" "$tmp_stderr"
+    log_failure "python3 python/cli.py timing report" "$tmp_stderr"
     rm -rf "$tmp_dir"
 }
 

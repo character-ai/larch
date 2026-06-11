@@ -393,7 +393,7 @@ dispatch_vendor_fix() {
                 "$_wrapped_prompt" \
                 >"$run_dir/cursor.wrapper.log" 2>&1 || cursor_rc=$?
             timing_end_s="$(date +%s)"
-            DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_SKILL=design "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+            DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_SKILL=design python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
                 --vendor cursor \
                 --task-kind cursor-plan-autofix \
                 --start-s "$timing_start_s" \

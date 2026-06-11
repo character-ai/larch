@@ -192,11 +192,11 @@ exit 0
 STUB
     chmod +x "$SANDBOX/python/stubs/session/write-id"
 
-    cat >"$SANDBOX/scripts/token-claude-source.sh" <<'STUB'
+    cat >"$SANDBOX/python3 python/cli.py token claude-source" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/token-claude-source.sh"
+    chmod +x "$SANDBOX/python3 python/cli.py token claude-source"
 
     cat >"$SANDBOX/scripts/append-tool-failure.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -224,21 +224,21 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/append-tool-failure.sh"
 
-    cat >"$SANDBOX/scripts/token-ledger.sh" <<'STUB'
+    cat >"$SANDBOX/python3 python/cli.py token" <<'STUB'
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 printf 'token-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/token-ledger.sh"
+    chmod +x "$SANDBOX/python3 python/cli.py token"
 
-    cat >"$SANDBOX/scripts/timing-ledger.sh" <<'STUB'
+    cat >"$SANDBOX/python3 python/cli.py timing" <<'STUB'
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 printf 'timing-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/timing-ledger.sh"
+    chmod +x "$SANDBOX/python3 python/cli.py timing"
 
     cat >"$SANDBOX/scripts/tracking-issue-read.sh" <<'STUB'
 #!/usr/bin/env bash

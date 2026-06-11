@@ -9,7 +9,7 @@ Coverage:
 - relative `--plan-file` rejection and launcher support check
 - unsupported output character rejection
 - literal `codex-ci-fix` timing allow-list coverage
-- `append-token-record.sh` normalization of Codex per-bucket token sidecars
+- `python3 python/cli.py token append-record` normalization of Codex per-bucket token sidecars
 - runtime Codex `--json` usage capture into `${OUTPUT}.events.jsonl`
 - fail-closed empty token-record behavior when no usage event is emitted
 - stderr-routed auth failure classification

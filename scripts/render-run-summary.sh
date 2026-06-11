@@ -4,10 +4,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
-TOKEN_COST_SH="$SCRIPT_DIR/token-cost.sh"
-# shellcheck source=scripts/lib-cost-line-format.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-cost-line-format.sh"
+larch_emit_cost_line() {
+    local tc="${1:-0}" cc="${2:-0}" dc="${3:-0}" uc="${4:-0}" n="${5:-0}" cs="${6:-0}"
+    local total_disp c_disp d_disp u_disp cs_disp tok_k
+    total_disp=$(awk -v x="$tc" 'BEGIN { printf "$%.2f\n", x+0 }' | tr -d '\n')
+    c_disp=$(awk -v x="$cc" 'BEGIN { printf "$%.2f\n", x+0 }' | tr -d '\n')
+    d_disp=$(awk -v x="$dc" 'BEGIN { printf "$%.2f\n", x+0 }' | tr -d '\n')
+    u_disp=$(awk -v x="$uc" 'BEGIN { printf "$%.2f\n", x+0 }' | tr -d '\n')
+    cs_disp=$(awk -v x="$cs" 'BEGIN { printf "$%.2f\n", x+0 }' | tr -d '\n')
+    tok_k=$(awk -v n="$n" 'BEGIN { if (n == "") n = 0; printf "%d\n", int((n+500)/1000) }')
+    printf '💰 Cost: TOTAL ~%s — Claude %s, Codex %s, Cursor %s, Claude (subprocess) %s  |  Tokens: %sk\n' \
+        "$total_disp" "$c_disp" "$d_disp" "$u_disp" "$cs_disp" "$tok_k"
+}
 
 emit_diag() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
@@ -163,19 +171,11 @@ if [ "$COST_UNAVAILABLE" = true ]; then
     cost_lines=""
 else
     cost_lines=""
-    if [ -x "$TOKEN_COST_SH" ]; then
-        cost_lines=$("$TOKEN_COST_SH" \
-            "${claude_args[@]}" \
-            "${codex_args[@]}" \
-            "${cursor_args[@]}" \
-            "${claude_sub_args[@]}" 2>"$cost_errf") || cost_lines=""
-    else
-        cost_lines=$("$PLUGIN_ROOT/scripts/token-cost.sh" \
-            "${claude_args[@]}" \
-            "${codex_args[@]}" \
-            "${cursor_args[@]}" \
-            "${claude_sub_args[@]}" 2>"$cost_errf") || cost_lines=""
-    fi
+    cost_lines=$(python3 "$PLUGIN_ROOT/python/cli.py" token cost \
+        "${claude_args[@]}" \
+        "${codex_args[@]}" \
+        "${cursor_args[@]}" \
+        "${claude_sub_args[@]}" 2>"$cost_errf") || cost_lines=""
     if [ -s "$cost_errf" ]; then
         cat "$cost_errf" >&2
     fi

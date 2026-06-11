@@ -44,7 +44,7 @@ else
     fail "lint-fix-loop references launch-codex-exec.sh"
 fi
 
-if grep -q 'codex-exec' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then
+if grep -q 'codex-exec' "$REPO_ROOT/python/timing.py TIMING_TASK_KINDS_ALLOWED"; then
     ok "timing allow-list includes codex-exec"
 else
     fail "timing allow-list includes codex-exec"

@@ -4,7 +4,7 @@ Offline regression harness for `parse-plan-commands.sh` (golden TSV fixtures).
 
 ## Running
 
-`make test-parse-plan-commands` (via `scripts/harness-timer.sh`).
+`make test-parse-plan-commands` (via `python3 python/cli.py timing harness-mark`).
 
 ## Contract
 

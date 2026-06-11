@@ -46,16 +46,16 @@ plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
-cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-format.sh"
+cp "$REPO_ROOT/python/report_tokens_cost.py" "$plugin/python/report_tokens_cost.py"
+cp "$REPO_ROOT/scripts/render-run-summary.sh inline cost formatter" "$plugin/scripts/render-run-summary.sh inline cost formatter"
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
-cp "$REPO_ROOT/scripts/compute-pr-line-counts.sh" "$plugin/scripts/compute-pr-line-counts.sh"
+cp "$REPO_ROOT/python3 python/cli.py token compute-pr-line-counts" "$plugin/python3 python/cli.py token compute-pr-line-counts"
 cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
+chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/python/report_tokens_cost.py" \
     "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
-    "$plugin/scripts/redact-secrets.sh" "$plugin/scripts/compute-pr-line-counts.sh" \
+    "$plugin/scripts/redact-secrets.sh" "$plugin/python3 python/cli.py token compute-pr-line-counts" \
     "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
@@ -619,7 +619,7 @@ done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
 chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
-cat > "$plugin/scripts/token-report.sh" <<'STUB'
+cat > "$plugin/python3 python/cli.py token report" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 while [ $# -gt 0 ]; do
@@ -630,7 +630,7 @@ while [ $# -gt 0 ]; do
 done
 exit 0
 STUB
-chmod +x "$plugin/scripts/token-report.sh"
+chmod +x "$plugin/python3 python/cli.py token report"
 kv_step18() {
   awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"
 }

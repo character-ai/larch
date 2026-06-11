@@ -188,7 +188,7 @@ fi
 # Per-step token budget cap: short-circuit before spawning Codex when the
 # combined vendor spend since the last ledger mark already exceeds the cap.
 if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
-    _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-implement}" 2>/dev/null || true)
+    _budget_out=$(python3 "$SCRIPT_DIR/../python/cli.py" token check-budget --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-implement}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
         larch_err "⚠ launch-codex-implement.sh: step token budget cap of $TOKEN_BUDGET_CAP tokens exceeded ($(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}') combined vendor tokens); external implementer fan-out skipped"
@@ -206,16 +206,16 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
 fi
 
 # Token-ledger step mark runs here (not in step2-implement.sh before launch):
-# check-step-token-budget.sh sums vendor totals since the last JSONL "mark"
+# token check-budget sums vendor totals since the last JSONL "mark"
 # row; an early mark would reset the window and hide spend that must trigger
 # cap_hit before Codex spawns.
-"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
+python3 "$PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
 # already validated above (#1480); apply the same predicate to the env path
 # and fall back silently. Whitespace-only and other invalid-but-non-flag
-# shapes rely on timing-ledger.sh's regex backstop (do not extend here).
+# shapes rely on python3 python/cli.py timing's regex backstop (do not extend here).
 if [[ -z "$TIMING_TASK_KIND" || "$TIMING_TASK_KIND" == --* ]]; then
     TIMING_TASK_KIND="codex-implement"
 fi
@@ -227,7 +227,7 @@ emit_timing_record() {
     local end_s status
     end_s=$(date +%s)
     (( rc == 0 )) && status=complete || status=signal
-    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
         --vendor codex \
         --task-kind "$TIMING_TASK_KIND" \
         --start-s "$TIMING_START_S" \
