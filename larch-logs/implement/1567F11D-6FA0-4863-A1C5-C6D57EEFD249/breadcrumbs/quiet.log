@@ -10,11 +10,15 @@
 
 === larch-quiet-check-contains-pins.sh-57922.log ===
 
+=== larch-quiet-check-contains-pins.sh-74012.log ===
+
 === larch-quiet-check-contains-pins.sh-88779.log ===
 
 === larch-quiet-check-review-changes.sh-3958.log ===
 
 === larch-quiet-cli.py-11776.log ===
+
+=== larch-quiet-cli.py-17471.log ===
 
 === larch-quiet-cli.py-17514.log ===
 
@@ -28,6 +32,8 @@
 
 === larch-quiet-cli.py-50066.log ===
 
+=== larch-quiet-cli.py-56378.log ===
+
 === larch-quiet-cli.py-57544.log ===
 
 === larch-quiet-cli.py-6304.log ===
@@ -36,13 +42,67 @@
 
 === larch-quiet-cli.py-78103.log ===
 
+=== larch-quiet-cli.py-81540.log ===
+
 === larch-quiet-cli.py-93023.log ===
 
 === larch-quiet-cli.py-9405.log ===
 
 === larch-quiet-degraded-tools-gate.sh-18429.log ===
 
+=== larch-quiet-git-commit.sh-87429.log ===
+[sergey-zhupanov/implementing-design-skill-md-d3-terminal-3823 2db986bcc] Fix CI failure (main-agent)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
 === larch-quiet-git-current-branch.sh-90327.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-44107.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-44419.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-44638.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-44922.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-45227.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-45286.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-45477.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-45696.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.zNR5va/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-45817.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-46016.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-46299.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.VuVAEk/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-46418.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-46640.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-46906.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47167.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47442.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47677.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47943.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-48196.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-48437.log ===
+
+=== larch-quiet-read-plugin-version.sh-64772.log ===
+
+=== larch-quiet-read-plugin-version.sh-67937.log ===
 
 === larch-quiet-read-session-env-key.sh-18203.log ===
 
@@ -51,6 +111,12 @@
 === larch-quiet-read-session-env-key.sh-18321.log ===
 
 === larch-quiet-read-session-env-key.sh-18380.log ===
+
+=== larch-quiet-read-session-env-key.sh-26099.log ===
+
+=== larch-quiet-read-session-env-key.sh-26168.log ===
+
+=== larch-quiet-read-session-env-key.sh-26214.log ===
 
 === larch-quiet-read-session-env-key.sh-33125.log ===
 
@@ -62,11 +128,25 @@
 
 === larch-quiet-read-session-env-key.sh-33246.log ===
 
+=== larch-quiet-read-session-env-key.sh-35597.log ===
+
+=== larch-quiet-read-session-env-key.sh-35629.log ===
+
+=== larch-quiet-read-session-env-key.sh-35666.log ===
+
+=== larch-quiet-read-session-env-key.sh-35771.log ===
+
 === larch-quiet-read-session-env-key.sh-3806.log ===
 
 === larch-quiet-read-session-env-key.sh-3878.log ===
 
 === larch-quiet-read-session-env-key.sh-3921.log ===
+
+=== larch-quiet-read-session-env-key.sh-49530.log ===
+
+=== larch-quiet-read-session-env-key.sh-49583.log ===
+
+=== larch-quiet-read-session-env-key.sh-49622.log ===
 
 === larch-quiet-read-session-env-key.sh-7304.log ===
 
@@ -80,9 +160,27 @@
 
 === larch-quiet-read-session-env-key.sh-94096.log ===
 
+=== larch-quiet-refresh-run-logs.sh-92635.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.j8Sp9E
+
+=== larch-quiet-run-relevant-checks-captured.sh-26257.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-49677.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-7427.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-94130.log ===
+
+=== larch-quiet-session-setup.sh-35561.log ===
+
+=== larch-quiet-session-setup.sh-35716.log ===
+session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)
+
+=== larch-quiet-ship.py-74472.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
 
 === larch-quiet-step-7a.sh-84908.log ===
 FLUSH_STATUS=ok

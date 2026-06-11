@@ -166,25 +166,64 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "cache_create_5m": 0,
+          "input": 3,
+          "cache_read": 395727,
+          "cache_create": 3960,
+          "cache_create_5m": 3960,
           "cache_create_1h": 0,
-          "output": 0,
-          "total": 0
+          "output": 1237,
+          "total": 400927
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 3,
+              "cache_read": 395727,
+              "cache_create": 3960,
+              "cache_create_5m": 3960,
+              "cache_create_1h": 0,
+              "output": 1237,
+              "total": 400927
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 30,
+          "cache_read": 3973847,
+          "cache_create": 612216,
+          "cache_create_5m": 612216,
+          "cache_create_1h": 0,
+          "output": 8843,
+          "total": 4594936
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 30,
+              "cache_read": 3973847,
+              "cache_create": 612216,
+              "cache_create_5m": 612216,
+              "cache_create_1h": 0,
+              "output": 8843,
+              "total": 4594936
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 39,
-      "cache_read": 2255003,
-      "cache_create": 1985315,
-      "cache_create_5m": 1985315,
+      "input": 72,
+      "cache_read": 6624577,
+      "cache_create": 2601491,
+      "cache_create_5m": 2601491,
       "cache_create_1h": 0,
-      "output": 9370,
-      "total": 4249727
+      "output": 19450,
+      "total": 9245590
     }
   },
   "codex": {
@@ -255,6 +294,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -341,12 +388,20 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 26,
+          "output": 10024,
+          "total": 10050
+        }
       }
     ],
     "totals": {
-      "input": 5566785,
-      "output": 339511,
-      "total": 74652952
+      "input": 5566811,
+      "output": 349535,
+      "total": 74663002
     }
   },
   "claude_sub": {
@@ -422,21 +477,29 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 59,
+          "output": 8643,
+          "total": 2091901
+        }
       }
     ],
     "totals": {
-      "input": 33017,
-      "output": 304117,
-      "total": 12846776
+      "input": 33076,
+      "output": 312760,
+      "total": 14938677
     }
   },
   "BUCKETS_claude": {
-    "input": 39,
-    "cache_read": 2255003,
-    "cache_create_5m": 1985315,
+    "input": 72,
+    "cache_read": 6624577,
+    "cache_create_5m": 2601491,
     "cache_create_1h": 0,
-    "output": 9370,
-    "total": 4249727
+    "output": 19450,
+    "total": 9245590
   },
   "BUCKETS_codex": {
     "input": 4978165,
@@ -445,17 +508,17 @@
     "total": 112105430
   },
   "BUCKETS_cursor": {
-    "input": 5566785,
+    "input": 5566811,
     "cache_read": 68746656,
-    "output": 339511,
-    "total": 74652952
+    "output": 349535,
+    "total": 74663002
   },
   "BUCKETS_claude_sub": {
-    "input": 33017,
-    "cache_read": 10938797,
-    "cache_create_5m": 1570845,
+    "input": 33076,
+    "cache_read": 12880632,
+    "cache_create_5m": 1712209,
     "cache_create_1h": 0,
-    "output": 304117,
-    "total": 12846776
+    "output": 312760,
+    "total": 14938677
   }
 }
