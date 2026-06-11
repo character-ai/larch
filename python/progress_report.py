@@ -538,6 +538,19 @@ def _fresh_design_round_manifest(round_dir: Path, step_start_s: int | None) -> P
     return manifest
 
 
+def _has_nonempty_output_at_least_as_new_as(manifest: Path, threshold: float) -> bool:
+    sidecar = _fresh_output_sidecar(manifest)
+    paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(manifest)
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if stat.st_size > 0 and stat.st_mtime >= threshold:
+            return True
+    return False
+
+
 def _fresh_design_root_manifest(
     design_tmpdir: Path,
     round_dir: Path,
@@ -550,6 +563,14 @@ def _fresh_design_root_manifest(
     manifest_mtime = _path_mtime_s(manifest)
     if floor is None or manifest_mtime is None or manifest_mtime < floor:
         return None
+    if _design_round_start_s(round_dir) is None:
+        round_dir_mtime = _path_mtime_s(round_dir)
+        if (
+            round_dir_mtime is not None
+            and manifest_mtime < round_dir_mtime
+            and not _has_nonempty_output_at_least_as_new_as(manifest, round_dir_mtime)
+        ):
+            return None
     return manifest
 
 

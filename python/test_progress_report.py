@@ -657,6 +657,18 @@ def test_design_stale_root_manifest_from_prior_round_rejected(tmp_path: Path) ->
     assert progress_report._render_design_plan_review(design, 200) == ""
 
 
+def test_design_stale_root_manifest_before_round2_dispatch_rejected(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-2"
+    round_dir.mkdir(parents=True)
+    stale = _write_output(design / "slot-output.txt", 150)
+    _write_slot_manifest(design / "plan-review-slots.ndjson", [stale])
+    _set_mtime(design / "plan-review-slots.ndjson", 180)
+    _set_mtime(round_dir, 200)
+
+    assert progress_report._render_design_plan_review(design, 100) == ""
+
+
 def test_design_round_start_contents_used_instead_of_file_mtime(
     tmp_path: Path,
     monkeypatch,
