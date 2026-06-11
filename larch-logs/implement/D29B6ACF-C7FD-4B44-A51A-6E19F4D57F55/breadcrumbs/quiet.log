@@ -1,4 +1,58 @@
+=== larch-quiet-check-contains-pins.sh-10548.log ===
+
+=== larch-quiet-check-contains-pins.sh-12395.log ===
+
+=== larch-quiet-check-contains-pins.sh-56730.log ===
+
+=== larch-quiet-check-contains-pins.sh-63740.log ===
+
+=== larch-quiet-check-review-changes.sh-30045.log ===
+
+=== larch-quiet-cli.py-13017.log ===
+
+=== larch-quiet-cli.py-14994.log ===
+
+=== larch-quiet-cli.py-29074.log ===
+
+=== larch-quiet-cli.py-55745.log ===
+
+=== larch-quiet-cli.py-61039.log ===
+
+=== larch-quiet-cli.py-61525.log ===
+
+=== larch-quiet-cli.py-73793.log ===
+
+=== larch-quiet-cli.py-76454.log ===
+
+=== larch-quiet-cli.py-7704.log ===
+
+=== larch-quiet-cli.py-8470.log ===
+
+=== larch-quiet-cli.py-88527.log ===
+
 === larch-quiet-degraded-tools-gate.sh-36134.log ===
+
+=== larch-quiet-git-current-branch.sh-40855.log ===
+
+=== larch-quiet-git-stage.sh-45904.log ===
+
+=== larch-quiet-git-stage.sh-47817.log ===
+
+=== larch-quiet-lint-fix-loop.sh-20212.log ===
+[sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 cf166eb55] Apply relevant-checks fixes (Step 3)
+ 1 file changed, 24 insertions(+), 24 deletions(-)
+
+=== larch-quiet-read-session-env-key.sh-29921.log ===
+
+=== larch-quiet-read-session-env-key.sh-29961.log ===
+
+=== larch-quiet-read-session-env-key.sh-30007.log ===
+
+=== larch-quiet-read-session-env-key.sh-32892.log ===
+
+=== larch-quiet-read-session-env-key.sh-32920.log ===
+
+=== larch-quiet-read-session-env-key.sh-32952.log ===
 
 === larch-quiet-read-session-env-key.sh-35957.log ===
 
@@ -18,7 +72,46 @@
 
 === larch-quiet-read-session-env-key.sh-44633.log ===
 
+=== larch-quiet-read-session-env-key.sh-45057.log ===
+
+=== larch-quiet-read-session-env-key.sh-45093.log ===
+
+=== larch-quiet-read-session-env-key.sh-45142.log ===
+
+=== larch-quiet-read-session-env-key.sh-99747.log ===
+
+=== larch-quiet-read-session-env-key.sh-99786.log ===
+
+=== larch-quiet-read-session-env-key.sh-99824.log ===
+
+=== larch-quiet-rebase-push.sh-50173.log ===
+
+=== larch-quiet-rebase-push.sh-50867.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-32979.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-45185.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-99860.log ===
+
+=== larch-quiet-step-7a.sh-59117.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.XZLyBc
+
 === larch-quiet-step2-implement.sh-46975.log ===
+
+=== larch-quiet-tally-code-votes.sh-31779.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.WRWx1Y/case_parser_failure_warn/missing-vote-output.txt
+
+=== larch-quiet-tally-code-votes.sh-34536.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.ACSETg/case_parser_failure_warn/missing-vote-output.txt
+
+=== larch-quiet-tally-code-votes.sh-82468.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.axxCLv/case_parser_failure_warn/missing-vote-output.txt
+
+=== larch-quiet-tally-code-votes.sh-87503.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.K7bscm/case_parser_failure_warn/missing-vote-output.txt
 
 === larch-quiet-timing-ledger.sh-44672.log ===
 

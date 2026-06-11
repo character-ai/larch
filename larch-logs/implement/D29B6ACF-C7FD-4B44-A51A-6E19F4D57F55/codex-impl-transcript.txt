@@ -1,0 +1,3 @@
+Implemented the plan and wrote `manifest.json` with `status=complete`.
+
+Note: full `make lint-only` reached `lint-mermaid-fences` and failed because Mermaid CLI is missing in this environment. Other targeted checks passed, including `make py-lint`, `make py-test`, retired-script lint, Bash lint, agent lint, and dispatch retry harnesses.
