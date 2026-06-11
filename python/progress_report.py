@@ -446,7 +446,7 @@ def _render_implement(run: LiveRun) -> str:
 def _is_design_plan_review_step(step_label: str) -> bool:
     return (
         re.match(
-            r"^(?:design\s+)?Step\s+3\s+(?:—|--)\s+plan review(?:\b|(?:\s|—|-).*)$",
+            r"^(?:design\s+)?Step\s+3\s+(?:—|--)\s+(?:plan review|auto-continuation entry)(?:\b|(?:\s|—|-).*)$",
             step_label,
         )
         is not None
@@ -643,14 +643,22 @@ def _design_returned_reviewers(
     return min(total, _count_fresh_nonempty_paths(paths, freshness_floor))
 
 
-def _fresh_design_voter_manifest(design_tmpdir: Path, step_start_s: int | None) -> Path | None:
-    """Return plan-voter-slots.ndjson when non-empty and fresh relative to step_start_s."""
+def _fresh_design_voter_manifest(
+    design_tmpdir: Path, step_start_s: int | None, round_dir: Path | None = None
+) -> Path | None:
+    """Return plan-voter-slots.ndjson when non-empty and fresh relative to round/step start."""
     manifest = design_tmpdir / "plan-voter-slots.ndjson"
     if _count_lines(manifest) == 0:
         return None
-    if step_start_s is not None:
+    if round_dir is not None:
+        floor: float | None = _design_manifest_freshness_floor(round_dir, step_start_s)
+    elif step_start_s is not None:
+        floor = float(step_start_s)
+    else:
+        floor = None
+    if floor is not None:
         manifest_mtime = _path_mtime_s(manifest)
-        if manifest_mtime is not None and manifest_mtime < float(step_start_s):
+        if manifest_mtime is not None and manifest_mtime < floor:
             return None
     return manifest
 
@@ -697,7 +705,7 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
     round_num = _round_number(round_dir) or 0
     total = _count_lines(manifest)
     returned = _design_returned_reviewers(design_tmpdir, round_dir, manifest, start_s)
-    voter_manifest = _fresh_design_voter_manifest(design_tmpdir, start_s)
+    voter_manifest = _fresh_design_voter_manifest(design_tmpdir, start_s, round_dir)
     if voter_manifest is not None:
         voter_floor = _path_mtime_s(voter_manifest) or 0.0
         claude_voter_floor = voter_floor
@@ -714,16 +722,36 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
             claude_done = 0
         voter_total = voter_external_total + 1
         voter_returned = voter_external_returned + claude_done
+        review_state = "complete" if returned >= total else "in progress"
         header = (
-            f"Step 3 plan review — round {round_num} complete; plan vote in progress\n"
+            f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
             f"  reviewers: {returned}/{total} | voters: {voter_returned}/{voter_total} returned"
             f" | elapsed: {_design_elapsed(round_dir, start_s)}"
         )
     else:
-        header = (
-            f"Step 3 plan review — round {round_num} in progress\n"
-            f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
-        )
+        claude_vote_path = design_tmpdir / "claude-vote-output.txt"
+        claude_vote_floor = float(start_s) if start_s is not None else 0.0
+        claude_is_active = False
+        claude_done = 0
+        try:
+            claude_stat = claude_vote_path.stat()
+            if claude_stat.st_mtime >= claude_vote_floor:
+                claude_is_active = True
+                claude_done = 1 if claude_stat.st_size > 0 else 0
+        except OSError:
+            pass
+        if claude_is_active:
+            review_state = "complete" if returned >= total else "in progress"
+            header = (
+                f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
+                f"  reviewers: {returned}/{total} | voters: {claude_done}/1 returned"
+                f" | elapsed: {_design_elapsed(round_dir, start_s)}"
+            )
+        else:
+            header = (
+                f"Step 3 plan review — round {round_num} in progress\n"
+                f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
+            )
     detail = _render_design_review_detail(design_tmpdir)
     return f"{header}\n\n{detail}" if detail else header
 
