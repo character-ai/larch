@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
     local _repo_root="$REPO_ROOT"
-    SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
+    CLAUDE_PLUGIN_ROOT="$_repo_root" SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
       "$_repo_root/skills/design/scripts/design-step3-gate-b-bypass.sh" \
       --session-env-path /dev/null >/dev/null
 }

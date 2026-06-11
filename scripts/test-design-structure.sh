@@ -347,8 +347,8 @@ assert_wrapper_pause_before_work() {
       || fail "$wrapper missing pause-check before work"
     grep -Fq "$label" "$SCRIPT_DIR/$wrapper" \
       || fail "$wrapper missing expected work marker: $label"
-    _pause_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-    _work_line=$(grep -nF "$label" "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+    _pause_line=$(grep -m 1 -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | cut -d: -f1)
+    _work_line=$(grep -m 1 -nF "$label" "$SCRIPT_DIR/$wrapper" | cut -d: -f1)
     [ -n "$_pause_line" ] && [ -n "$_work_line" ] || fail "$wrapper missing pause/work lines for ordering check"
     [ "$_pause_line" -lt "$_work_line" ] \
       || fail "$wrapper must pause-check before $label"
