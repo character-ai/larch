@@ -340,6 +340,62 @@ def test_waterfall_exhaustion_without_handoff_enabled_stalls_without_flag(
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
 
+def test_partial_success_waterfall_triggers_handoff(tmp_path: Path) -> None:
+    """Winning tier + residual unmerged paths raises PrePushConflictHandoff when enabled."""
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "README.md\n",
+            )),
+        ],
+    )
+    with pytest.raises(PrePushConflictHandoff) as exc_info:
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
+        )
+    assert exc_info.value.conflict_files == ("README.md",)
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
+
+
+def test_partial_success_waterfall_without_handoff_stalls(tmp_path: Path) -> None:
+    """Winning tier + residual unmerged paths raises Stalled when handoff is disabled."""
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "README.md\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="conflicts remain"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=str(tmp_path),
+        )
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
 def test_handoff_uses_implement_tmpdir_env_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
