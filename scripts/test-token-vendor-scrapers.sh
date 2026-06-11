@@ -248,7 +248,7 @@ JSONL
         fail "codex per-bucket BUCKETS regression failed: $pb_json"
     fi
     set +e
-    "$REPO_ROOT/python/report_tokens_cost.py" --codex-input-tokens 100 --codex-cached-input-tokens 900 --codex-output-tokens 50 >"$TMP/cost.out" 2>"$TMP/cost.err"
+    python3 "$REPO_ROOT/python/cli.py" token cost --codex-input-tokens 100 --codex-cached-input-tokens 900 --codex-output-tokens 50 >"$TMP/cost.out" 2>"$TMP/cost.err"
     cost_rc=$?
     set -e
     eq "codex per-bucket cost rc" "0" "$cost_rc"
@@ -271,7 +271,7 @@ JSONL
         pass
     fi
     set +e
-    "$REPO_ROOT/python/report_tokens_cost.py" --codex-tokens 1050 >"$TMP/cost-aggregate.out" 2>"$TMP/cost-aggregate.err"
+    python3 "$REPO_ROOT/python/cli.py" token cost --codex-tokens 1050 >"$TMP/cost-aggregate.out" 2>"$TMP/cost-aggregate.err"
     aggregate_cost_rc=$?
     set -e
     eq "codex aggregate cost rc" "0" "$aggregate_cost_rc"

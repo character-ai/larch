@@ -253,7 +253,7 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
-    with suppress(OSError, ValueError):
+    with suppress(Exception):
         rendered = tokens.token_report(mode="full", fmt="json", env=env)
         if isinstance(rendered, dict):
             _write_report_json(token_path, rendered)
@@ -277,7 +277,7 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
             cwd=str(_REPO_ROOT),
             env=env,
         )
-    with suppress(OSError, ValueError):
+    with suppress(Exception):
         ledger = timing.resolve_timing_ledger_path(env=env)
         if ledger is not None:
             data = timing.TimingReport(ledger).render_json(env=env)

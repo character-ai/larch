@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl as fcntl_mod
 import os
 import stat
 from pathlib import Path
@@ -85,3 +86,86 @@ def test_timing_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> N
     assert "See <!-- timing-report-begin --> in docs" in text
     assert "BLOCK" in text
     assert "old" not in text
+
+
+def test_timing_ledger_record_round_clamps_negative_duration(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger).record_round(
+        skill="design",
+        step="design Step 3 — plan review",
+        round_n=2,
+        start_s=50,
+        end_s=45,
+        accepted=0,
+        rejected=1,
+        oos=4,
+    )
+    row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tround\t" in line)
+    parts = row.split("\t")
+    assert parts[8] == "0"
+    assert parts[11] == "4"
+
+
+def test_timing_report_unknown_format_raises(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text("v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="unknown format"):
+        _ = timing.TimingReport(ledger).render(mode="full", fmt="yaml")
+
+
+def test_timing_report_implement_hides_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t0\timplement\tStep 1 — design plan\t-\t-\t-\t-\t-\t-\t-\t-\n"
+        "v1\tmark\t10\timplement\tStep 2 — implementation\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
+    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "100")
+    markdown = timing.TimingReport(ledger).render(mode="full", fmt="markdown")
+    assert "**Workflow path**:" not in markdown
+    data = timing.TimingReport(ledger).render_json()
+    assert data["workflow_path"] == "unknown"
+
+
+def test_timing_harness_mark_runs_command(tmp_path: Path) -> None:
+    script = tmp_path / "ok.sh"
+    _ = script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    script.chmod(0o755)
+    rc = timing.harness_mark(label="fixture", argv=["bash", str(script)])
+    assert rc == 0
+
+
+def test_timing_telemetry_mark_writes_ledgers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    implement_tmpdir = Path("/tmp") / f"larch-telemetry-{tmp_path.name}"
+    implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    timing_ledger = implement_tmpdir / "timing-ledger.tsv"
+    _ = (implement_tmpdir / "session-env.sh").write_text(
+        f"LARCH_TIMING_LEDGER={timing_ledger}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TMPDIR", "/tmp")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(implement_tmpdir))
+    rc = timing.step_telemetry_mark(implement_tmpdir=implement_tmpdir, label="telemetry-fixture")
+    assert rc == 0
+    token_ledgers = list(implement_tmpdir.glob("larch-tokens-*.jsonl"))
+    assert token_ledgers
+    token_dump = token_ledgers[0].read_text(encoding="utf-8")
+    timing_dump = timing_ledger.read_text(encoding="utf-8")
+    assert "telemetry-fixture" in token_dump
+    assert "telemetry-fixture" in timing_dump
+
+
+def test_timing_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")
+    times = iter([0.0, 10.0])
+    monkeypatch.setattr(timing.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(timing.time, "sleep", lambda _x=0.0: None)
+
+    def _blocked_flock(*_: object, **__: object) -> None:
+        raise BlockingIOError
+
+    monkeypatch.setattr(fcntl_mod, "flock", _blocked_flock)
+    timing.TimingLedger(ledger).mark("blocked")
+    assert ledger.read_text(encoding="utf-8") == ""

@@ -733,6 +733,7 @@ def token_report(
         if vendor == "codex":
             return f"INPUT={bucket.get('input', 0)} CACHED_INPUT={bucket.get('cached_input', 0)} OUTPUT={bucket.get('output', 0)}"
         return f"INPUT={bucket.get('input', 0)} CACHE_READ={bucket.get('cache_read', 0)} OUTPUT={bucket.get('output', 0)}"
+    _validate_report_format(fmt)
     if mode == "summary":
         data = _summary_json(marks, claude, vendor_rows)
         if fmt == "json":
@@ -752,7 +753,8 @@ def token_report(
     data = _full_json(marks, claude, vendor_rows)
     rendered: str | dict[str, Any] = data if fmt == "json" else _markdown(marks, claude, vendor_rows)
     if append_token_report is not None:
-        block = "<!-- token-report-begin -->\n## Token Report\n\n" + str(rendered) + "\n<!-- token-report-end -->\n"
+        body = json.dumps(rendered, sort_keys=True) if fmt == "json" else str(rendered)
+        block = f"<!-- token-report-begin -->\n## Token Report\n\n{body}\n<!-- token-report-end -->\n"
         _replace_block(append_token_report, block, begin="token-report-begin", end="token-report-end")
     return rendered
 
@@ -979,6 +981,123 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+_REPORT_FORMATS = frozenset({"json", "markdown"})
+_CACHE_READ_PATH_RE = re.compile(r"/larch/[^/]+/(.+)$")
+
+
+def _validate_report_format(fmt: str) -> None:
+    if fmt not in _REPORT_FORMATS:
+        msg = f"unknown format: {fmt}"
+        raise ValueError(msg)
+
+
+def _claude_root_imports(repo: Path) -> set[str]:
+    imports: set[str] = set()
+    claude = repo / "CLAUDE.md"
+    if not claude.is_file():
+        return imports
+    for line in claude.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("@"):
+            target = stripped[1:].split()[0]
+            if target.endswith(".md") and not target.startswith("/"):
+                imports.add(target)
+    return imports
+
+
+def _classify_md_tier(rel: str, tier1_imports: set[str]) -> str:
+    if rel == "CLAUDE.md":
+        return "tier-1a-claude-root"
+    if rel in tier1_imports:
+        return "tier-1a-claude-import"
+    if rel.startswith("skills/") and rel.endswith("/SKILL.md"):
+        return "tier-1b-runtime-skill"
+    if rel.startswith(".claude/skills/") and rel.endswith("/SKILL.md"):
+        return "tier-1b-dev-skill"
+    if rel.startswith(".claude/rules/") and rel.endswith(".md"):
+        return "tier-1c-claude-rule"
+    if rel.startswith("skills/shared/"):
+        return "tier-2-shared-reference"
+    if "/references/" in rel:
+        return "tier-2-skill-reference"
+    if rel.startswith("scripts/"):
+        return "tier-2-script-doc"
+    if rel.startswith("docs/"):
+        return "tier-3-doc"
+    if rel.startswith("larch-logs/"):
+        return "tier-4-run-log"
+    return "tier-3-other"
+
+
+def _normalize_read_path(raw: object, repo: Path) -> str | None:
+    if not isinstance(raw, str) or not raw.endswith(".md"):
+        return None
+    path = raw
+    if path.startswith("<"):
+        return None
+    repo_prefix = f"{repo}/"
+    if path.startswith(repo_prefix):
+        path = path[len(repo_prefix) :]
+    else:
+        match = _CACHE_READ_PATH_RE.search(path)
+        if match:
+            path = match.group(1)
+    if path.startswith(("/", "../")) or "/../" in path:
+        return None
+    return path
+
+
+def _normalize_realized_skill(raw: object) -> str:
+    if not raw:
+        return ""
+    skill = str(raw)
+    if skill.startswith("larch:"):
+        skill = skill.split(":", 1)[1]
+    if skill.startswith("inferred:"):
+        return ""
+    return skill
+
+
+def _manifest_issue(path: Path) -> str | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    data_d = cast("dict[str, Any]", data) if isinstance(data, dict) else None
+    issue = data_d.get("issue_number") if data_d is not None else None
+    if isinstance(issue, int):
+        return str(issue)
+    if isinstance(issue, str) and issue:
+        return issue
+    return None
+
+
+def _skill_md_path(repo: Path, skill: str) -> Path | None:
+    for candidate in (repo / "skills" / skill / "SKILL.md", repo / ".claude" / "skills" / skill / "SKILL.md"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _ngram_source_files(repo: Path) -> list[str]:
+    files: list[str] = []
+    seen: set[str] = set()
+    for rel in ("CLAUDE.md", *_claude_root_imports(repo)):
+        if rel not in seen and (repo / rel).is_file():
+            seen.add(rel)
+            files.append(rel)
+    for pattern in ("skills/*/SKILL.md", ".claude/skills/*/SKILL.md"):
+        tracked = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z", pattern]).split(b"\0")
+        for raw in tracked:
+            if not raw:
+                continue
+            rel = raw.decode()
+            if rel not in seen and (repo / rel).is_file():
+                seen.add(rel)
+                files.append(rel)
+    return files
+
+
 def _measure_stamp() -> str:
     return os.environ.get("LARCH_MEASURE_DATE", datetime.now().strftime("%Y-%m-%d"))
 
@@ -1011,6 +1130,7 @@ def measure_md_cost() -> Path:
     out_path = repo / "larch-logs" / "measure-md-cost" / f"{_measure_stamp()}.tsv"
     files = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z", "*.md"], stderr=subprocess.DEVNULL).split(b"\0")
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    tier1_imports = _claude_root_imports(repo)
     entries: list[tuple[str, str, int, str, int, int]] = []
     texts: list[str] = []
     for raw in files:
@@ -1022,11 +1142,12 @@ def measure_md_cost() -> Path:
             continue
         data = path.read_bytes()
         text = data.decode("utf-8", errors="replace")
-        tier = "tier-1b-runtime-skill" if rel.startswith("skills/") and rel.endswith("/SKILL.md") else ("tier-3-doc" if rel.startswith("docs/") else "tier-3-other")
+        tier = _classify_md_tier(rel, tier1_imports)
         line_count = text.count(chr(10)) + (0 if text.endswith(chr(10)) or text == "" else 1)
         h2_count = sum(1 for line in text.splitlines() if line.startswith("## "))
         entries.append((rel, tier, len(data), text, line_count, h2_count))
         texts.append(text)
+    entries.sort(key=lambda row: (row[1], row[0]))
     token_counts = _tiktoken_count_texts(texts)
     rows = ["path\ttier\tbytes\ttokens\tlines\th2_count\n"]
     for (rel, tier, byte_count, _text, line_count, h2_count), tok in zip(entries, token_counts, strict=False):
@@ -1041,17 +1162,11 @@ def measure_ngram_duplication() -> Path:
     size = int(os.environ.get("LARCH_MEASURE_NGRAM_SIZE", "6"))
     min_files = int(os.environ.get("LARCH_MEASURE_NGRAM_MIN_FILES", "3"))
     limit = int(os.environ.get("LARCH_MEASURE_NGRAM_LIMIT", "50"))
-    tracked = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z", "CLAUDE.md", "skills/*/SKILL.md", ".claude/skills/*/SKILL.md"]).split(b"\0")
     word_re = re.compile(r"[A-Za-z0-9_./$:-]+")
     occurrences: collections.Counter[str] = collections.Counter()
     file_hits: dict[str, set[str]] = collections.defaultdict(set)
-    for raw in tracked:
-        if not raw:
-            continue
-        rel = raw.decode()
+    for rel in _ngram_source_files(repo):
         path = repo / rel
-        if not path.is_file():
-            continue
         words = word_re.findall(path.read_text(encoding="utf-8", errors="replace").lower())
         for idx in range(max(0, len(words) - size + 1)):
             shingle = " ".join(words[idx : idx + size])
@@ -1084,9 +1199,9 @@ def measure_references_heatmap() -> Path:
                 if item is not None and item.get("type") == "tool_use" and item.get("name") == "Read":
                     tool_input_raw = item.get("input")
                     tool_input = cast("dict[str, Any]", tool_input_raw) if isinstance(tool_input_raw, dict) else None
-                    raw = tool_input.get("file_path") if tool_input is not None else None
-                    if isinstance(raw, str) and raw.endswith(".md") and not raw.startswith("/") and ".." not in Path(raw).parts:
-                        counts[raw] += 1
+                    rel = _normalize_read_path(tool_input.get("file_path") if tool_input is not None else None, repo)
+                    if rel:
+                        counts[rel] += 1
     rows = [(rel, count, (repo / rel).stat().st_size if (repo / rel).is_file() else 0) for rel, count in counts.items()]
     rows.sort(key=lambda row: (-row[1], -row[2], row[0]))
     _atomic_text(out_path, "references_path\treads_observed\tbytes\n" + "".join(f"{rel}\t{count}\t{size}\n" for rel, count, size in rows))
@@ -1096,25 +1211,67 @@ def measure_references_heatmap() -> Path:
 def measure_realized_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-realized-cost" / f"{_measure_stamp()}.tsv"
-    counts: collections.Counter[str] = collections.Counter()
-    for timing_json in (repo / "larch-logs").glob("*/*/timing-report.json"):
-        try:
-            data = json.loads(timing_json.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+    invocations: collections.Counter[str] = collections.Counter()
+    issues_by_skill: dict[str, set[str]] = collections.defaultdict(set)
+    for run_dir in sorted((repo / "larch-logs").glob("*/*")):
+        if not run_dir.is_dir():
             continue
-        for row in data.get("per_step", []):
-            skill = str(row.get("skill") or "")
-            if skill and not skill.startswith("inferred:"):
-                counts[skill] += 1
-    skill_texts: list[tuple[str, int, str]] = []
-    for skill, count in counts.items():
-        path = repo / "skills" / skill / "SKILL.md"
-        if path.is_file():
-            skill_texts.append((skill, count, path.read_text(encoding="utf-8", errors="replace")))
-    token_counts = _tiktoken_count_texts([t for _, _, t in skill_texts])
-    rows = [(skill, count, tok, count * tok) for (skill, count, _), tok in zip(skill_texts, token_counts, strict=False)]
-    rows.sort(key=lambda row: (-row[3], row[0]))
-    _atomic_text(out_path, "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n" + "".join(f"{skill}\t{count}\t0\t{tokens_count}\t{realized}\n" for skill, count, tokens_count, realized in rows))
+        issue = _manifest_issue(run_dir / "manifest.json")
+        skills_in_run: set[str] = set()
+        timing_json = run_dir / "timing-report.json"
+        timing_md = run_dir / "timing-report.md"
+        if timing_json.is_file():
+            try:
+                data = json.loads(timing_json.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                data = {}
+            if isinstance(data, dict):
+                data_typed = cast("dict[str, Any]", data)
+                for row in cast("list[Any]", data_typed.get("per_step", [])):
+                    if isinstance(row, dict):
+                        row_d = cast("dict[str, Any]", row)
+                        skill = _normalize_realized_skill(str(row_d.get("skill") or ""))
+                        if skill:
+                            skills_in_run.add(skill)
+        if timing_md.is_file():
+            for line in timing_md.read_text(encoding="utf-8", errors="replace").splitlines():
+                match = re.match(r"^\|\s*([^|*][^|]*?)\s*\|\s*Step\b", line)
+                if match:
+                    skill = _normalize_realized_skill(match.group(1).strip())
+                    if skill and skill.lower() not in {"skill", "---"}:
+                        skills_in_run.add(skill)
+        if not skills_in_run:
+            manifest_path = run_dir / "manifest.json"
+            if manifest_path.is_file():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    manifest = {}
+                if isinstance(manifest, dict):
+                    manifest_d = cast("dict[str, Any]", manifest)
+                    skill = _normalize_realized_skill(str(manifest_d.get("skill") or ""))
+                    if skill:
+                        skills_in_run.add(skill)
+        for skill in skills_in_run:
+            invocations[skill] += 1
+            if issue:
+                issues_by_skill[skill].add(issue)
+    skill_texts: list[tuple[str, int, int, str]] = []
+    for skill, count in invocations.items():
+        path = _skill_md_path(repo, skill)
+        if path is not None:
+            skill_texts.append((skill, count, len(issues_by_skill[skill]), path.read_text(encoding="utf-8", errors="replace")))
+    token_counts = _tiktoken_count_texts([text for _, _, _, text in skill_texts])
+    rows = [
+        (skill, count, issue_count, tok, count * tok)
+        for (skill, count, issue_count, _), tok in zip(skill_texts, token_counts, strict=False)
+    ]
+    rows.sort(key=lambda row: (-row[4], row[0]))
+    _atomic_text(
+        out_path,
+        "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n"
+        + "".join(f"{skill}\t{count}\t{issue_count}\t{tokens_count}\t{realized}\n" for skill, count, issue_count, tokens_count, realized in rows),
+    )
     return out_path
 
 
@@ -1248,6 +1405,7 @@ def token_report_main(argv: list[str] | None = None) -> int:
             return 0
         if not mode:
             raise ValueError("missing report mode")
+        _validate_report_format(fmt)
         rendered = token_report(ledger_path=ledger, transcript_path=transcript, session_dir=session_dir, mode=mode, fmt=fmt, append_token_report=append)
         text = json.dumps(rendered, sort_keys=True) + "\n" if isinstance(rendered, dict) else str(rendered) + "\n"
         if mode == "full" and output is not None:

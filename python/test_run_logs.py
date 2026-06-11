@@ -1170,13 +1170,20 @@ def test_render_ledger_reports_uses_direct_renderers(
     monkeypatch.setattr(tokens, "token_report", fake_token_report)
     monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
     monkeypatch.setattr(timing, "resolve_timing_ledger_path", fake_resolve_timing_ledger_path)
+    larch_log = tmp_path / "larch-log.sh"
+    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
     ctx = _ctx(tmp_path, str(state))
-    run_logs._render_ledger_reports(RecordingRunner(), ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
+    runner = RecordingRunner()
+    run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
 
     assert (tmp_path / "token-report-refresh.json").is_file()
     assert (tmp_path / "timing-report-refresh.json").is_file()
     assert captured.get("LARCH_TIMING_SKILL") == "implement"
     assert "DESIGN_TMPDIR" not in captured
+    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
+    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
+    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
 
 
 def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

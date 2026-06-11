@@ -182,6 +182,9 @@ class TimingReport:
             now = int((env or os.environ).get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
             counts = _vendor_counts_since(self.ledger_path, last.ts, use_end=True)
             return f"{last.step}: elapsed={_hms(now - last.ts)} vendor-tasks={sum(counts.values())} (codex={counts['codex']}, cursor={counts['cursor']}, claude={counts['claude']})"
+        if fmt not in {"json", "markdown"}:
+            msg = f"unknown format: {fmt}"
+            raise ValueError(msg)
         if fmt == "json":
             rendered = json.dumps(data, sort_keys=True)
         else:
@@ -733,6 +736,8 @@ def timing_report_main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"unknown flag: {arg}")
         if not mode:
             raise ValueError("missing report mode")
+        if fmt not in {"json", "markdown"}:
+            raise ValueError(f"unknown format: {fmt}")
         ledger = resolve_timing_ledger_path(ledger=raw_ledger)
         if ledger is None:
             raise ValueError("ledger path unavailable")
