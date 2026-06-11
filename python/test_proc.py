@@ -28,7 +28,7 @@ def test_run_false_nonzero() -> None:
 def test_run_timeout_returns_configured_rc() -> None:
     result = proc.run(
         [sys.executable, "-c", "import time; time.sleep(5)"],
-        timeout=0.1,
+        timeout=1.0,
     )
     assert result.returncode == config.PROC_TIMEOUT_EXIT_CODE
 
