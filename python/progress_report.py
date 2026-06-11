@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -11,6 +12,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 TIMING_MARK_MIN_COLS = 5
 SECONDS_PER_MINUTE = 60
@@ -346,18 +348,28 @@ def _review_rounds_root(implement_tmpdir: Path, run_id: str) -> Path:
     return implement_tmpdir
 
 
-def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+def _latest_token_ledger(tmpdir: Path) -> Path | None:
+    try:
+        token_ledgers = sorted(tmpdir.glob("larch-tokens-*.jsonl"), key=_path_mtime)
+    except OSError:
+        return None
+    return token_ledgers[-1] if token_ledgers else None
+
+
+def _call_render_phase_detail_script(
+    rounds_root: Path,
+    skill: str,
+    timing_ledger: Path | None,
+    token_ledger: Path | None,
+) -> str:
     script = Path(__file__).resolve().parent.parent / "scripts" / "render-review-phase-detail.sh"
     if not script.is_file():
         return ""
-    rounds_root = _review_rounds_root(implement_tmpdir, run_id)
-    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", "implement"]
-    timing = implement_tmpdir / "timing-ledger.tsv"
-    if timing.is_file():
-        argv.extend(["--timing-ledger", str(timing)])
-    token_ledgers = sorted(implement_tmpdir.glob("larch-tokens-*.jsonl"), key=_path_mtime)
-    if token_ledgers:
-        argv.extend(["--token-ledger", str(token_ledgers[-1])])
+    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill]
+    if timing_ledger is not None and timing_ledger.is_file():
+        argv.extend(["--timing-ledger", str(timing_ledger)])
+    if token_ledger is not None and token_ledger.is_file():
+        argv.extend(["--token-ledger", str(token_ledger)])
     try:
         result = subprocess.run(argv, text=True, capture_output=True, timeout=6, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -365,6 +377,17 @@ def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     if result.returncode != 0:
         return ""
     return _strip_md_for_terminal(result.stdout.strip())
+
+
+def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
+    rounds_root = _review_rounds_root(implement_tmpdir, run_id)
+    timing = implement_tmpdir / "timing-ledger.tsv"
+    return _call_render_phase_detail_script(
+        rounds_root,
+        "implement",
+        timing if timing.is_file() else None,
+        _latest_token_ledger(implement_tmpdir),
+    )
 
 
 def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
@@ -396,8 +419,250 @@ def _render_implement(run: LiveRun) -> str:
     return _render_generic("implement", step_label, start_s, tmpdir)
 
 
+def _is_design_plan_review_step(step_label: str) -> bool:
+    return (
+        re.match(
+            r"^(?:design\s+)?Step\s+3\s+(?:—|--)\s+plan review(?:\b|(?:\s|—|-).*)$",
+            step_label,
+        )
+        is not None
+    )
+
+
+def _read_epoch_file(path: Path) -> int | None:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _path_mtime_s(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _manifest_output_paths(manifest: Path) -> list[Path]:
+    paths: list[Path] = []
+    try:
+        lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return paths
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            parsed: object = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        row = cast("dict[str, object]", parsed)
+        output = row.get("output")
+        if isinstance(output, str) and output:
+            paths.append(Path(output))
+    return paths
+
+
+def _paths_file_output_paths(paths_file: Path) -> list[Path]:
+    try:
+        lines = paths_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    return [Path(line.strip()) for line in lines if line.strip()]
+
+
+def _count_fresh_nonempty_paths(paths: list[Path], freshness_floor: float) -> int:
+    seen: set[str] = set()
+    count = 0
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if stat.st_size <= 0 or stat.st_mtime < freshness_floor:
+            continue
+        count += 1
+    return count
+
+
+def _fresh_output_sidecar(manifest: Path) -> Path | None:
+    sidecar = Path(f"{manifest}.output-files")
+    manifest_mtime = _path_mtime_s(manifest)
+    sidecar_mtime = _path_mtime_s(sidecar)
+    if manifest_mtime is None or sidecar_mtime is None:
+        return None
+    if sidecar_mtime < manifest_mtime:
+        return None
+    try:
+        if sidecar.stat().st_size <= 0:
+            return None
+    except OSError:
+        return None
+    return sidecar
+
+
+def _design_round_start_s(round_dir: Path) -> int | None:
+    return _read_epoch_file(round_dir / "round-start-s")
+
+
+def _design_manifest_freshness_floor(round_dir: Path, step_start_s: int | None) -> float | None:
+    anchors: list[float] = []
+    if step_start_s is not None:
+        anchors.append(float(step_start_s))
+    round_start_s = _design_round_start_s(round_dir)
+    if round_start_s is not None:
+        anchors.append(float(round_start_s))
+    if anchors:
+        return max(anchors)
+    return _path_mtime_s(round_dir)
+
+
+def _fresh_design_round_manifest(round_dir: Path, step_start_s: int | None) -> Path | None:
+    manifest = round_dir / "panel-manifest.ndjson"
+    if _count_lines(manifest) == 0:
+        return None
+    floor = _design_manifest_freshness_floor(round_dir, step_start_s)
+    manifest_mtime = _path_mtime_s(manifest)
+    if floor is None or manifest_mtime is None or manifest_mtime < floor:
+        return None
+    return manifest
+
+
+def _has_nonempty_output_at_least_as_new_as(manifest: Path, threshold: float) -> bool:
+    sidecar = _fresh_output_sidecar(manifest)
+    paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(manifest)
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if stat.st_size > 0 and stat.st_mtime >= threshold:
+            return True
+    return False
+
+
+def _fresh_design_root_manifest(
+    design_tmpdir: Path,
+    round_dir: Path,
+    step_start_s: int | None,
+) -> Path | None:
+    manifest = design_tmpdir / "plan-review-slots.ndjson"
+    if _count_lines(manifest) == 0:
+        return None
+    floor = _design_manifest_freshness_floor(round_dir, step_start_s)
+    manifest_mtime = _path_mtime_s(manifest)
+    if floor is None or manifest_mtime is None or manifest_mtime < floor:
+        return None
+    if _design_round_start_s(round_dir) is None:
+        round_dir_mtime = _path_mtime_s(round_dir)
+        if (
+            round_dir_mtime is not None
+            and manifest_mtime < round_dir_mtime
+            and not _has_nonempty_output_at_least_as_new_as(manifest, round_dir_mtime)
+        ):
+            return None
+    return manifest
+
+
+def _design_panel_manifest(
+    design_tmpdir: Path,
+    round_dir: Path,
+    step_start_s: int | None,
+) -> Path | None:
+    round_manifest = _fresh_design_round_manifest(round_dir, step_start_s)
+    if round_manifest is not None:
+        return round_manifest
+    return _fresh_design_root_manifest(design_tmpdir, round_dir, step_start_s)
+
+
+def _design_output_freshness_floor(
+    design_tmpdir: Path,
+    round_dir: Path,
+    manifest: Path,
+    step_start_s: int | None,
+) -> float:
+    anchors: list[float] = []
+    if step_start_s is not None:
+        anchors.append(float(step_start_s))
+    round_start_s = _design_round_start_s(round_dir)
+    if round_start_s is not None:
+        anchors.append(float(round_start_s))
+    manifest_mtime = _path_mtime_s(manifest) or 0.0
+    if manifest == design_tmpdir / "plan-review-slots.ndjson":
+        anchors.append(manifest_mtime)
+        return max(anchors) if anchors else manifest_mtime
+    return max(anchors) if anchors else manifest_mtime
+
+
+def _design_returned_reviewers(
+    design_tmpdir: Path,
+    round_dir: Path,
+    manifest: Path,
+    step_start_s: int | None,
+) -> int:
+    total = _count_lines(manifest)
+    if total <= 0:
+        return 0
+    sidecar = _fresh_output_sidecar(manifest)
+    paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(manifest)
+    freshness_floor = _design_output_freshness_floor(design_tmpdir, round_dir, manifest, step_start_s)
+    return min(total, _count_fresh_nonempty_paths(paths, freshness_floor))
+
+
+def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
+    round_start_s = _design_round_start_s(round_dir)
+    if round_start_s is not None:
+        return _human_elapsed(round_start_s)
+    round_mtime = _path_mtime_s(round_dir)
+    if round_mtime is not None:
+        return _human_elapsed(int(round_mtime))
+    return _human_elapsed(step_start_s)
+
+
+def _render_design_review_detail(design_tmpdir: Path) -> str:
+    timing = design_tmpdir / "timing-ledger.tsv"
+    return _call_render_phase_detail_script(
+        design_tmpdir / "plan-review",
+        "design",
+        timing if timing.is_file() else None,
+        _latest_token_ledger(design_tmpdir),
+    )
+
+
+def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
+    round_dir = _current_round_dir(design_tmpdir / "plan-review")
+    if round_dir is None:
+        return ""
+    manifest = _design_panel_manifest(design_tmpdir, round_dir, start_s)
+    if manifest is None:
+        return ""
+    round_num = _round_number(round_dir) or 0
+    total = _count_lines(manifest)
+    returned = _design_returned_reviewers(design_tmpdir, round_dir, manifest, start_s)
+    header = (
+        f"Step 3 plan review — round {round_num} in progress\n"
+        f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
+    )
+    detail = _render_design_review_detail(design_tmpdir)
+    return f"{header}\n\n{detail}" if detail else header
+
+
 def _render_design(run: LiveRun) -> str:
     step_label, start_s = _latest_timing_mark(run.tmpdir / "timing-ledger.tsv")
+    if _is_design_plan_review_step(step_label):
+        report = _render_design_plan_review(run.tmpdir, start_s)
+        if report:
+            return report
     return _render_generic("design", step_label, start_s, run.tmpdir)
 
 
