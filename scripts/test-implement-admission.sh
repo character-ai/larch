@@ -19,6 +19,32 @@ fail() { echo "FAIL: $1" >&2; FAIL=$((FAIL + 1)); }
 
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-impl-adm-XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
+REAL_PYTHON3=$(command -v python3)
+export REAL_PYTHON3
+
+make_python3_stub() {
+    local d="$1"
+    mkdir -p "$d"
+    cat > "$d/python3" <<'STUB'
+#!/usr/bin/env bash
+set +e
+script="${1:-}"
+if [[ "$script" == */cli.py || "$script" == "cli.py" ]]; then
+  shift
+  if [[ "${1:-}" == "blocker" && "${2:-}" == "all-open" ]]; then
+    [[ -n "${STUB_LOG:-}" ]] && printf 'python3 cli.py blocker all-open\n' >>"$STUB_LOG"
+    if [[ "${STUB_BLOCKER_FAIL:-0}" == "1" ]]; then
+      echo "blocker failure" >&2
+      exit 2
+    fi
+    printf 'BLOCKERS=%s\n' "${STUB_BLOCKERS:-}"
+    exit 0
+  fi
+fi
+exec "${REAL_PYTHON3:?}" "$script" "$@"
+STUB
+    chmod +x "$d/python3"
+}
 
 make_gh_stub() {
     local d="$1"
@@ -73,7 +99,7 @@ if [[ "$1" == "issue" && "$2" == "view" ]]; then
   esac
 fi
 
-# Native dependencies API (blocker-helpers native_open_blockers)
+# Historical native dependencies API path; blocker CLI is stubbed separately.
 if [[ "$1" == "api" ]]; then
   url=""
   for a in "$@"; do
@@ -100,6 +126,7 @@ echo "stub: unhandled argv: $*" >&2
 exit 99
 STUB
     chmod +x "$d/gh"
+    make_python3_stub "$d"
 }
 
 run_case() {
@@ -114,7 +141,7 @@ run_case() {
         fail "$name: expected exit $expect_rc got $rc; output=$out"
         unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
           STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-          STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+          STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
         return
     fi
     case "$expect_rc" in
@@ -123,7 +150,7 @@ run_case() {
                 fail "$name: missing ADMISSION_RESULT=pass in stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             ;;
@@ -132,7 +159,7 @@ run_case() {
                 fail "$name: exit 2 missing ADMISSION_ERROR= on stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             ;;
@@ -141,14 +168,14 @@ run_case() {
                 fail "$name: exit 4 missing ADMISSION_RESULT=has-blockers; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             if ! printf '%s' "$out" | grep -Fq 'BLOCKERS='; then
                 fail "$name: exit 4 missing BLOCKERS= on stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             ;;
@@ -163,14 +190,14 @@ run_case() {
                 fail "$name: exit $expect_rc missing $exp_result in stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             if ! printf '%s' "$out" | grep -Fq 'TITLE='; then
                 fail "$name: exit $expect_rc missing TITLE= on stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             ;;
@@ -179,7 +206,7 @@ run_case() {
                 fail "$name: exit 6 missing ADMISSION_RESULT=audit-report-label; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
                   STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
                 return
             fi
             ;;
@@ -188,20 +215,20 @@ run_case() {
     echo "PASS: $name"
     unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
       STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-      STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+      STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY STUB_BLOCKERS STUB_BLOCKER_FAIL || true
 }
 
 # --- pass (no blockers) ---
 sd="$TMPROOT/s1"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[DESIGNED] Plain feature","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 run_case "pass-open-no-blockers" 0 "$sd" --issue 42 --repo o/r
 
 sd="$TMPROOT/s1z"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[DESIGNED] Plain feature","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 run_case "pass-leading-zeros-normalized" 0 "$sd" --issue 042 --repo o/r
 
 # --- closed ---
@@ -245,14 +272,14 @@ run_case "managed-prefix-legacy-planned-exit-5" 5 "$sd" --issue 3 --repo o/r
 sd="$TMPROOT/s3-designed"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[DESIGNED] ready to implement","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 run_case "designed-prefix-pass" 0 "$sd" --issue 3 --repo o/r
 
 # --- no-prefix fails missing-designed-prefix gate ---
 sd="$TMPROOT/s3-no-prefix"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"Plain feature without design","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 (
   export PATH="$sd:$PATH"
   out=$(env -u IMPLEMENT_TMPDIR -u RUN_ID "$SCRIPT" --issue 3 --repo o/r 2>&1) || rc=$?
@@ -285,20 +312,18 @@ run_case "audit-report-label-exit-6" 6 "$sd" --issue 3 --repo o/r
 sd="$TMPROOT/s6"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"blocked","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[{"number":77,"state":"open"}]'
+export STUB_BLOCKERS=77
 run_case "native-blocker-exit-4" 4 "$sd" --issue 10 --repo o/r
 
 # --- prose-only open blockers (native API empty) ---
 sd="$TMPROOT/s6b"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"prose deps","state":"OPEN","labels":[],"body":"Blocked by #88"}'
-export STUB_ISSUE_BODY_ONLY='{"body":"Blocked by #88"}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=88
 run_case "prose-blocker-exit-4" 4 "$sd" --issue 10 --repo o/r
 out_pb=$(PATH="$sd:$PATH" env -u IMPLEMENT_TMPDIR -u RUN_ID \
   STUB_VIEW_JSON='{"title":"prose deps","state":"OPEN","labels":[],"body":"Blocked by #88"}' \
-  STUB_ISSUE_BODY_ONLY='{"body":"Blocked by #88"}' \
-  STUB_API_BLOCKED_BY_JSON='[]' \
+  STUB_BLOCKERS=88 \
   "$SCRIPT" --issue 10 --repo o/r 2>&1) || true
 if ! printf '%s' "$out_pb" | grep -Fq 'BLOCKERS=88'; then
   fail "prose-blocker: expected BLOCKERS=88 on stdout, got: $out_pb"
@@ -341,7 +366,7 @@ sent_nr="$TMPROOT/s7a/tmp"
 mkdir -p "$sent_nr"
 printf 'ISSUE_NUMBER=5\nADOPTED=true\n' > "$sent_nr/parent-issue.md"
 export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] no-runid-sentinel","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 (
   export IMPLEMENT_TMPDIR="$sent_nr"
   export PATH="$sd:$PATH"
@@ -367,7 +392,7 @@ sent_bl="$TMPROOT/s7block/tmp"
 mkdir -p "$sent_bl"
 printf 'ISSUE_NUMBER=5\nRUN_ID=rid2\nADOPTED=true\n' > "$sent_bl/parent-issue.md"
 export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] resume-blocked","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[{"number":99,"state":"open"}]'
+export STUB_BLOCKERS=99
 (
   export IMPLEMENT_TMPDIR="$sent_bl"
   export RUN_ID=rid2
@@ -411,11 +436,25 @@ export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] stale","state":"OPEN","labels":[
   fi
 )
 
-# --- fail-open: native deps API errors -> still pass ---
+# --- blocker command failures are admission errors ---
+sd="$TMPROOT/s6fail"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[DESIGNED] ok","state":"OPEN","labels":[]}'
+export STUB_BLOCKER_FAIL=1
+run_case "blocker-cli-failure-exit-2" 2 "$sd" --issue 1 --repo o/r
+
+# --- explicit no blockers still passes ---
+sd="$TMPROOT/s6pass"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[DESIGNED] ok","state":"OPEN","labels":[]}'
+export STUB_BLOCKERS=
+run_case "blocker-cli-no-blockers-pass" 0 "$sd" --issue 1 --repo o/r
+
+# --- fail-open: blocker lookup returns empty -> still pass ---
 sd="$TMPROOT/s8"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[DESIGNED] ok","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_EXIT=1
+export STUB_BLOCKERS=
 run_case "fail-open-api-blocked-by" 0 "$sd" --issue 1 --repo o/r
 
 # --- fork-mode explicit repo (no gh repo view in admission when --repo set) ---
@@ -444,6 +483,12 @@ else
   PASS=$((PASS + 1))
   echo "PASS: fork-mode-no-repo-view"
 fi
+if ! grep -Fq 'python3 cli.py blocker all-open' "$STUB_LOG" 2>/dev/null; then
+  fail "fork-mode: expected python blocker intercept"
+else
+  PASS=$((PASS + 1))
+  echo "PASS: fork-mode-blocker-cli-intercepted"
+fi
 unset STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT STUB_LOG || true
 
 # --- default repo: gh repo view when --repo omitted ---
@@ -453,7 +498,7 @@ export STUB_LOG="$TMPROOT/s-repo-default/gh.log"
 : > "$STUB_LOG"
 export STUB_REPO_VIEW_OUT='owner/name'
 export STUB_VIEW_JSON='{"title":"[DESIGNED] Default REPO path","state":"OPEN","labels":[]}'
-export STUB_API_BLOCKED_BY_JSON='[]'
+export STUB_BLOCKERS=
 (
   export PATH="$sd:$PATH"
   out=$("$SCRIPT" --issue 55 2>&1) || rc=$?

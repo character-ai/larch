@@ -217,7 +217,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 
 7. **Preflight pass gate**: retain `PREFLIGHT_TMPDIR` and `plan-from-issue.txt`; proceed to Step 0.
 
-**Preflight — admission gate known limitation (D3)**: Blocker detection inside `implement-admission.sh` inherits `blocker-helpers.sh`'s historical **fail-open** posture on `gh` / API failures. A dependency-API outage can degrade to zero detected blockers (`ADMISSION_RESULT=pass`) even when unknown blockers may exist. Operators requiring strict fail-closed blocker reads must pause runs during outages; see `scripts/implement-admission.md`. **Native-first short-circuit**: when the native dependency API returns any open blockers, `all_open_blockers` skips the prose scan — faster, but operator-visible lists may omit prose-only blockers until the native set clears (same intentional trade-off as `scripts/blocker-helpers.md`).
+**Preflight — admission gate known limitation (D3)**: Blocker detection inside `implement-admission.sh` inherits `python/blocker.py`'s historical **fail-open** posture on `gh` / API failures. A dependency-API outage can degrade to zero detected blockers (`ADMISSION_RESULT=pass`) even when unknown blockers may exist. Operators requiring strict fail-closed blocker reads must pause runs during outages; see `scripts/implement-admission.md`. **Native-first short-circuit**: when the native dependency API returns any open blockers, `all_open_blockers` skips the prose scan — faster, but operator-visible lists may omit prose-only blockers until the native set clears (same intentional trade-off as `python/blocker.py`).
 
 ### `/implement` orchestrator exit codes (Preflight + argv)
 

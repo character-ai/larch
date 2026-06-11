@@ -24,13 +24,12 @@
 #   6 — audit-report label
 #   7 — [... Report] title pattern
 #
-# Caller MUST export REPO before sourcing blocker-helpers.sh; this script
-# assigns REPO when --repo is omitted (via gh repo view) before sourcing.
+# Blocker reads are delegated to python/cli.py blocker all-open.
 
 set -euo pipefail
 
 # Machine-readable gh JSON must reach stdout for command substitution; disable
-# lib-quiet FD redirection for this entrypoint (mirrors parse-prose-blockers.sh).
+# lib-quiet FD redirection for this entrypoint (mirrors Python blocker CLI capture needs).
 LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
 
@@ -179,13 +178,12 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "${IMPLEMENT_TMPDIR}/parent-issue.md" ]];
             fi
         fi
         if [[ "$resume_ok" == 1 ]]; then
-            # shellcheck disable=SC1091
-            # shellcheck source=blocker-helpers.sh
-            if ! source "$SCRIPT_DIR/blocker-helpers.sh" 2>/dev/null; then
-                emit_kv ADMISSION_ERROR "failed to source blocker-helpers.sh"
+            _blocker_out=$(python3 "${SCRIPT_DIR}/../python/cli.py" blocker all-open \
+                --issue "$ISSUE" --repo "$REPO" 2>/dev/null) || {
+                emit_kv ADMISSION_ERROR "blocker all-open failed"
                 exit 2
-            fi
-            BLOCKERS=$(all_open_blockers "$ISSUE" || true)
+            }
+            BLOCKERS=$(printf '%s\n' "$_blocker_out" | awk -F= '$1=="BLOCKERS"{print substr($0,index($0,"=")+1); exit}')
             BLOCKERS=$(printf '%s' "$BLOCKERS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             if [[ -n "$BLOCKERS" ]]; then
                 emit_kv ADMISSION_RESULT has-blockers
@@ -221,14 +219,12 @@ if printf '%s' "$JSON" | jq -e '.labels // [] | map(.name) | index("audit-report
     exit 6
 fi
 
-# shellcheck disable=SC1091
-# shellcheck source=blocker-helpers.sh
-if ! source "$SCRIPT_DIR/blocker-helpers.sh" 2>/dev/null; then
-    emit_kv ADMISSION_ERROR "failed to source blocker-helpers.sh"
+_blocker_out=$(python3 "${SCRIPT_DIR}/../python/cli.py" blocker all-open \
+    --issue "$ISSUE" --repo "$REPO" 2>/dev/null) || {
+    emit_kv ADMISSION_ERROR "blocker all-open failed"
     exit 2
-fi
-
-BLOCKERS=$(all_open_blockers "$ISSUE" || true)
+}
+BLOCKERS=$(printf '%s\n' "$_blocker_out" | awk -F= '$1=="BLOCKERS"{print substr($0,index($0,"=")+1); exit}')
 BLOCKERS=$(printf '%s' "$BLOCKERS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 if [[ -n "$BLOCKERS" ]]; then
     emit_kv ADMISSION_RESULT has-blockers

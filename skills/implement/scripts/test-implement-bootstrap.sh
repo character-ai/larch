@@ -178,8 +178,53 @@ def _run_log_stub(root: Path) -> int:
     print("UNCHANGED=false")
     return 0
 
+def _issue_context_stub(root: Path) -> int:
+    raw_args = " ".join(sys.argv[3:])
+    tmpdir = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--tmpdir" and i + 1 < len(args):
+            tmpdir = args[i + 1]
+            i += 2
+        elif args[i] in {"--issue", "--repo"}:
+            i += 2
+        else:
+            i += 1
+    with (root.parent / "invoke-log.txt").open("a", encoding="utf-8") as handle:
+        handle.write(f"cli.py issue context {raw_args}\n")
+    rc = int(os.environ.get("GET_ISSUE_CONTEXT_EXIT", "0"))
+    if rc:
+        print("simulated upstream context failure", file=sys.stderr)
+        return rc
+    path = Path(tmpdir)
+    path.mkdir(parents=True, exist_ok=True)
+    title = path / "upstream-issue-title.txt"
+    body = path / "upstream-issue-body.txt"
+    title.write_text("title\n", encoding="utf-8")
+    body.write_text("body\n", encoding="utf-8")
+    print(f"TITLE_FILE={title}")
+    print(f"BODY_FILE={body}")
+    return 0
+
+def _issue_state_stub(root: Path) -> int:
+    with (root.parent / "invoke-log.txt").open("a", encoding="utf-8") as handle:
+        handle.write("cli.py issue state " + " ".join(sys.argv[3:]) + "\n")
+    if os.environ.get("LARCH_TEST_GET_ISSUE_FAILED", "false") == "true":
+        print("FAILED=true")
+        print("ERROR=failed=value")
+        return 1
+    print(f"STATE={os.environ.get('LARCH_TEST_ISSUE_STATE', 'OPEN')}")
+    print(f"URL=https://example.test/{os.environ.get('LARCH_TEST_URL_KIND', 'issues')}/123")
+    print(f"IS_PR={os.environ.get('LARCH_TEST_IS_PR', 'false')}")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["issue", "context"]:
+        raise SystemExit(_issue_context_stub(root))
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["issue", "state"]:
+        raise SystemExit(_issue_state_stub(root))
     if len(sys.argv) >= 3:
         stub = root / "stubs" / sys.argv[1] / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -296,20 +341,6 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/tracking-issue-read.sh"
 
-    cat >"$SANDBOX/scripts/get-issue-state.sh" <<'STUB'
-#!/usr/bin/env bash
-if [ "${LARCH_TEST_GET_ISSUE_FAILED:-false}" = "true" ]; then
-  echo FAILED=true
-  echo "ERROR=failed=value"
-  exit 1
-fi
-echo "STATE=${LARCH_TEST_ISSUE_STATE:-OPEN}"
-echo "URL=https://example.test/${LARCH_TEST_URL_KIND:-issues}/123"
-echo "IS_PR=${LARCH_TEST_IS_PR:-false}"
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/get-issue-state.sh"
-
     cat >"$SANDBOX/skills/implement/scripts/post-tracking-issue.sh" <<'STUB'
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -357,32 +388,6 @@ echo "NEW_TITLE=[IMPLEMENTING] test"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/tracking-issue-write.sh"
-
-    cat >"$SANDBOX/scripts/get-issue-context.sh" <<'STUB'
-#!/usr/bin/env bash
-tmpdir=""
-raw_args="$*"
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --tmpdir) tmpdir=$2; shift 2 ;;
-    --issue|--repo) shift 2 ;;
-    *) shift ;;
-  esac
-done
-if [ "${GET_ISSUE_CONTEXT_EXIT:-0}" -ne 0 ]; then
-  printf 'simulated upstream context failure\n' >&2
-  exit "$GET_ISSUE_CONTEXT_EXIT"
-fi
-mkdir -p "$tmpdir"
-printf 'title\n' > "$tmpdir/upstream-issue-title.txt"
-printf 'body\n' > "$tmpdir/upstream-issue-body.txt"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'get-issue-context %s\n' "$raw_args" >>"$script_dir/../invoke-log.txt"
-echo "TITLE_FILE=$tmpdir/upstream-issue-title.txt"
-echo "BODY_FILE=$tmpdir/upstream-issue-body.txt"
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/get-issue-context.sh"
 
     cat >"$SANDBOX/scripts/snapshot-untracked.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -746,7 +751,7 @@ assert_contains "DEFERRED=true" "$out" "GP3 deferred"
 assert_contains "FORKED_TARGET=true" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP3 session-env fork true"
 assert_contains "TITLE_FILE=$SANDBOX_TMP/upstream-issue-title.txt" "$(cat "$SANDBOX_TMP/upstream-context.out")" "GP3 upstream title artifact"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains 'get-issue-context --issue 123 --repo upstream/repo' "$invoke" "GP3 upstream context invoked"
+assert_contains 'cli.py issue context --issue 123 --repo upstream/repo' "$invoke" "GP3 upstream context invoked"
 assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP3 bootstrap token mark once"
 assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP3 bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"

@@ -124,7 +124,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Resume-tail `plugin-root.env` sync on legacy tmpdirs | `phase_infra` (`--resume-plan-tail`): when `$IMPLEMENT_TMPDIR/plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty, sources `write-session-env.sh` (guard-scoped; no errexit leak) and calls `emit_plugin_root_env` idempotently; skip/invalid values return `0` inside the helper |
 | Three-key `read-session-env-key.sh` rehydrate | `phase_infra` (re-read for parity) |
 | Sentinel read / resume (`tracking-issue-read.sh --sentinel`) | `phase_tracking` Branch 1 |
-| Issue state probe (`get-issue-state.sh`) | `phase_tracking` Branch 2 |
+| Issue state probe (`python3 "$PY_CLI" issue state`) | `phase_tracking` Branch 2 |
 | Manifest init (`larch-log.sh init`) | `phase_tracking` Branch 1 and Branch 2 |
 | Metadata summary (`post-tracking-issue.sh`) | `phase_tracking` Branch 2 |
 | Rename to `[IMPLEMENTING]` (`tracking-issue-write.sh rename`) | Best-effort inside `phase_tracking` Branch 1 and Branch 2 |
