@@ -1057,10 +1057,8 @@ exclude = [
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   "scripts/test-tracking-issue-write.sh",
-  # False-positive marker helpers (close-time title marking for issue workflows).
-  # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
-  # /design Step 0b and python/cli.py issue list-issues. The harness
-  # not follow sibling `source` directives or Makefile targets.
+  # False-positive marker coverage now lives in python/test_issue_wire.py and
+  # scripts/test-tracking-issue-write.sh. Agent-lint does not follow Makefile targets.
   # scripts/lib-design-tmpdir.sh is a sourced-only validator for
   # --design-tmpdir consumers. scripts/test-lib-design-tmpdir.sh is its
   # Makefile-only regression harness (test-lib-design-tmpdir target) and
