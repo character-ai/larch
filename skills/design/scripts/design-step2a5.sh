@@ -95,12 +95,12 @@ case "${MODE:-}" in
       mkdir -p "$DESIGN_TMPDIR/.completed"
       : > "$DESIGN_TMPDIR/.completed/step-2a"
     fi
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
     ;;
   repair)
     design_source_env_optional
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
       printf '%s\n' '**⚠ Step 2a.5: run-params.json is not readable; cannot resolve design_classification for SIMPLE repair fence. Repair run params before continuing.**' >&2
       exit 1

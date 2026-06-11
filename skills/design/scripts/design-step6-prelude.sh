@@ -89,24 +89,28 @@ design_source_env_optional() {
 
 design_source_env_optional
 if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" ]]; then
-  printf '%s\n' "**⚠ Step 6 prelude: missing Step 5c status sidecar; skipping step-5d write.**" >&2
-  exit 1
+  printf '%s\n' "**ℹ Step 6 prelude: missing Step 5c status sidecar; skipping step-5d write.**"
+  printf 'STEP6_PRELUDE_STATUS=skipped\n'
+  exit 0
 fi
 # shellcheck source=/dev/null
 . "$DESIGN_TMPDIR/.design-step5c-status.env"
 if [[ "${PLAN_WRITE_OK:-}" != true ]]; then
-  printf '%s\n' "**⚠ Step 6 prelude: plan write did not succeed; skipping step-5d write.**" >&2
-  exit 1
+  printf '%s\n' "**ℹ Step 6 prelude: plan write did not succeed; skipping step-5d write.**"
+  printf 'STEP6_PRELUDE_STATUS=skipped\n'
+  exit 0
 fi
 if [[ -n "${SESSION_ID:-}" && "${PUBLISH_OK:-}" != true ]]; then
-  printf '%s\n' "**⚠ Step 6 prelude: publish did not complete; skipping step-5d write.**" >&2
-  exit 1
+  printf '%s\n' "**ℹ Step 6 prelude: publish did not complete; skipping step-5d write.**"
+  printf 'STEP6_PRELUDE_STATUS=skipped\n'
+  exit 0
 fi
 if [[ "${CLEANUP_ELIGIBLE:-}" == false ]]; then
-  printf '%s\n' "**⚠ Step 6 prelude: cleanup not eligible per Step 5c status; skipping step-5d write.**" >&2
-  exit 1
+  printf '%s\n' "**ℹ Step 6 prelude: cleanup not eligible per Step 5c status; skipping step-5d write.**"
+  printf 'STEP6_PRELUDE_STATUS=skipped\n'
+  exit 0
 fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-5d"
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true

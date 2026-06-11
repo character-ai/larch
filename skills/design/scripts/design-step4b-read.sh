@@ -88,7 +88,7 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Contract pin for CI (scripts/test-design-structure.sh): Step 4b read-is-its-own-fence pin
 _skip_approve_requested_gatec=false
 if command -v jq >/dev/null 2>&1; then

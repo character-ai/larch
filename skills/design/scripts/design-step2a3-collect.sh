@@ -88,28 +88,24 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 _collect_paths=()
 if ((${#PUBLIC_ARGV_WORDS[@]} > 0)); then
   _collect_paths=("${PUBLIC_ARGV_WORDS[@]}")
-else
-  case "${MODE:-}" in
-    regular)
-      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-arch-output.txt")
-      if [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]]; then
-        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-innovation-output.txt")
-        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt")
-      fi
-      ;;
-    quick)
-      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-generic-output.txt")
-      [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-generic-output.txt")
-      ;;
-    *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
-  esac
+elif [[ -f "$DESIGN_TMPDIR/sketch-launched-paths.txt" ]]; then
+  while IFS= read -r _launch_path || [[ -n "$_launch_path" ]]; do
+    _launch_path="${_launch_path#"${_launch_path%%[![:space:]]*}"}"
+    _launch_path="${_launch_path%"${_launch_path##*[![:space:]]}"}"
+    [[ -n "$_launch_path" ]] && _collect_paths+=("$_launch_path")
+  done <"$DESIGN_TMPDIR/sketch-launched-paths.txt"
 fi
 if ((${#_collect_paths[@]} == 0)); then
+  _design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s' HARD)"
   printf '%s\n' "COLLECT_STATUS=skipped-no-launched-slots"
+  if [[ "$_design_classification" == HARD ]]; then
+    printf '%s\n' "COLLECT_STATUS=zero-launched-slots-hard" >&2
+    exit 1
+  fi
   exit 0
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1260 "${_collect_paths[@]}"

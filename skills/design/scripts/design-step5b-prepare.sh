@@ -93,7 +93,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   printf '%s\n' "/design Step 5b prepare: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set +e
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" prepare --design-tmpdir "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/oos-filing-prepare.env" 2>"$DESIGN_TMPDIR/oos-filing-prepare.stderr.log"
 _oos_prep_rc=$?

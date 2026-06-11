@@ -90,8 +90,12 @@ design_source_env_optional() {
 design_source_env_optional
 _design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = HARD ]; then
+  printf '%s\n' 'NO_SKETCHES_DEGRADED_HARD' >"$DESIGN_TMPDIR/approach-synthesis.txt"
+  printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_TMPDIR/contested-decisions.md"
+  : >"$DESIGN_TMPDIR/dialectic-resolutions.md"
+  printf '%s\n' '- Step 2a — both external tools unavailable; ran 0 sketches (degraded)' >>"$DESIGN_TMPDIR/execution-issues.md"
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2a"
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}

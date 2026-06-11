@@ -246,3 +246,13 @@ design_source_env_optional() {
      printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
+   printf 'ROUTE=%s\n' "${ROUTE:-}"
+   [[ -n "${RESUME_STEP:-}" ]] && printf 'RESUME_STEP=%s\n' "$RESUME_STEP"
+   [[ -n "${MARKER_CLEARED:-}" ]] && printf 'MARKER_CLEARED=%s\n' "$MARKER_CLEARED"
+   [[ -n "${TITLE_FILTER_REASON:-}" ]] && printf 'TITLE_FILTER_REASON=%s\n' "$TITLE_FILTER_REASON"
+   [[ -n "${TITLE_FILTER_MARKER:-}" ]] && printf 'TITLE_FILTER_MARKER=%s\n' "$TITLE_FILTER_MARKER"
+   [[ -n "${DESIGN_REENTRY_MARKER_PATH:-}" ]] && printf 'DESIGN_REENTRY_MARKER_PATH=%s\n' "$DESIGN_REENTRY_MARKER_PATH"
+   printf 'HAS_CLARIFY_LABEL=%s\n' "${HAS_CLARIFY_LABEL:-false}"
+   printf 'ISSUE_NUMBER=%s\n' "${ISSUE_NUMBER:-}"
+   printf 'ISSUE_TITLE=%s\n' "${ISSUE_TITLE:-}"
+   [[ -n "${REPO:-}" ]] && printf 'REPO=%s\n' "$REPO"

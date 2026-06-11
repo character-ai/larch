@@ -97,7 +97,7 @@ if [[ ! -f "$DESIGN_TMPDIR/.completed/step-5b" ]]; then
   printf '%s\n' "**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1

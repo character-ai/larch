@@ -10,6 +10,13 @@ PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
+RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
+DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
+DIALPROTO_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
+# shellcheck source=lib-p3119-fence-absence.sh
+. "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -222,7 +229,6 @@ boundary_markers = (
     '4. **Already-planned branch**',
     '3. **Clarify loop**',
     'Before every Gate-B-bypass jump',
-    'Print:',
     '**If the sanitizer returns',
     'At the Step 3b completion boundary',
     '**Legacy heuristic multi-round continuation check',
@@ -258,13 +264,19 @@ boundary_markers = (
     '#### Step 2b drafter',
     '#### Step 2b postplan',
     'terminal postplan fence',
+    '> **🔶 /design 2a.5: dialectic**',
+    '> **🔶 /design 3b: arch diagram**',
+    'branch-local skip fence below',
+    'architectural entry cleanup fence below',
+    '--mode skip',
+    '--mode architectural',
 )
 
 for (_start_a, end_a), (start_b, _end_b) in zip(fences, fences[1:]):
     between = '\n'.join(lines[end_a:start_b - 1])
     if any(marker in between for marker in boundary_markers):
         continue
-    if re.search(r'^(#{1,6}\s|<!-- step:|\*\*[^*].*\*\*)', between, re.MULTILINE):
+    if '<!-- step:' in between:
         continue
     print(
         f"adjacent executable bash fences ending near line {end_a} and starting at line {start_b} lack a pinned real boundary",
@@ -280,6 +292,12 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'degraded-tools-gate.sh' 'Step 0 degraded wrapper missing gate call'
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'STEP0_STATUS=' 'Step 0 degraded wrapper missing STEP0_STATUS emit'
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'needs-degraded-decision' 'Step 0 degraded wrapper missing needs-degraded-decision branch'
+  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'degraded-both-down-auto' 'Step 0 degraded wrapper missing non-interactive both-down branch'
+  contains "$SCRIPT_DIR/design-step0-degraded.sh" '.degraded-tools-gate-prompted' 'Step 0 degraded wrapper missing prompted sentinel write'
+  contains "$SCRIPT_DIR/design-step0-init.sh" 'feature-description.txt' 'Step 0 init wrapper missing feature-description write'
+  contains "$SCRIPT_DIR/design-step0-route.sh" "printf 'ROUTE=%s" 'Step 0 route wrapper missing ROUTE stdout emit'
+  contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'sketch-launched-paths.txt' 'Step 2a.3 collector missing launched-path sidecar read'
+  contains "$SCRIPT_DIR/design-step2a-zero-sketch.sh" 'NO_SKETCHES_DEGRADED_HARD' 'Step 2a zero-sketch wrapper missing degraded synthesis sentinel'
 }
 
 assert_gate_b_bypass_branch_sentinels() {
@@ -325,6 +343,100 @@ assert_reference_updates() {
   contains "$FILE_OOS_MD" 'oos-issue.stdout.txt' 'file-design-oos.md missing issue stdout handoff contract'
 }
 
+assert_no_direct_step3b_step4_routes() {
+  local label="$1" subject_file="$2" start_marker="${3:-}" end_marker="${4:-}" tmp scoped=false bad
+  tmp="$subject_file"
+  if [[ -n "$start_marker" || -n "$end_marker" ]]; then
+    [[ -n "$start_marker" && -n "$end_marker" ]] || fail "$label route guard markers must be paired"
+    local start_line end_line
+    start_line=$(grep -nF -- "$start_marker" "$subject_file" | head -1 | cut -d: -f1 || true)
+    end_line=$(grep -nF -- "$end_marker" "$subject_file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+    [[ -n "$start_line" && -n "$end_line" ]] || fail "$label route guard missing marker"
+    tmp=$(mktemp "${TMPDIR:-/tmp}/step3b-route.XXXXXX")
+    sed -n "${start_line},$((end_line - 1))p" "$subject_file" >"$tmp"
+    scoped=true
+  fi
+  bad=$(awk '
+    {
+      line = $0
+      lower = tolower($0)
+    }
+    lower ~ /step 3b completion boundary/ { next }
+    lower ~ /step 3b[[:space:]]*(->|→|⇒|, then|,|\/)[[:space:]]*step 4/ { print line; next }
+    lower ~ /step 3b\/4/ { print line; next }
+    lower ~ /step 3b[[:space:]]+\/[[:space:]]+step 4/ { print line; next }
+    lower ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && lower ~ /step 3b/ && lower ~ /step 4/ { print line; next }
+  ' "$tmp")
+  [[ -z "$bad" ]] || fail "$label has direct Step 3b-to-Step 4 route without completion boundary: $bad"
+  [[ "$scoped" == false ]] || rm -f "$tmp"
+}
+
+assert_postplan_thin_fence() {
+  local file="$1" label="$2"
+  local emit_sh="$SCRIPT_DIR/design-postplan-emit.sh"
+  grep -Fq 'set +e' "$file" || fail "$label missing set +e child capture"
+  grep -Fq '$?' "$file" || fail "$label missing explicit rc capture"
+  grep -Fq -- '--with-plan-size' "$file" || fail "$label missing --with-plan-size"
+  grep -Fq -- 'env LARCH_QUIET_DISABLE=1' "$file" || fail "$label missing LARCH_QUIET_DISABLE display capture"
+  # shellcheck disable=SC2016
+  grep -Fq '${_postplan_out:-}' "$file" || fail "$label missing postplan out display variable"
+  # shellcheck disable=SC2016
+  grep -Fq 'case "${_postplan_rc:-1}" in' "$file" || fail "$label missing postplan rc case"
+  for arm in 0 10 11 12 13 2 1; do
+    grep -Fq "  ${arm})" "$file" || fail "$label missing case arm ${arm}"
+  done
+  grep -Fq '  *)' "$file" || fail "$label missing default-abort *) arm"
+  grep -Fq '${REPO:+--repo "$REPO"}' "$file" || fail "$label pause-save must thread REPO"
+  grep -Fq 'design-postplan-emit.sh' "$file" || fail "$label missing postplan driver delegation"
+  grep -Fq 'DRIFT_TRIGGER_FIRED' "$emit_sh" || fail 'design-postplan-emit.sh missing drift trigger parse'
+  grep -Fq 'BASELINE_PLAN_LINES' "$emit_sh" || fail 'design-postplan-emit.sh missing drift baseline parse'
+}
+
+assert_publish_fence_guards() {
+  local wrapper="$SCRIPT_DIR/design-step5c.sh"
+  contains "$wrapper" 'design-publish.sh' 'Step 5c wrapper missing design-publish call'
+  contains "$wrapper" 'read-result-env.sh' 'Step 5c wrapper missing read-result-env handoff'
+  contains "$wrapper" '.design-publish-result.env.rc3-primary-missing' 'Step 5c wrapper missing rc 3 stdout fallback path'
+  contains "$wrapper" 'STEP5C_STATUS=validator-defects' 'Step 5c wrapper missing rc 4 validator handoff'
+  contains "$wrapper" 'PLAN_WRITE_OK:-}" == true' 'Step 5c wrapper missing PLAN_WRITE_OK gate'
+  contains "$wrapper" '.design-step5c-status.env' 'Step 5c wrapper missing status sidecar write'
+  contains "$wrapper" 'CLEANUP_ELIGIBLE=' 'Step 5c wrapper missing cleanup eligibility emit'
+  contains "$wrapper" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate flag'
+  ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$wrapper" \
+    || fail 'Step 5c wrapper must not synthesize step-5b sentinel'
+}
+
+assert_step6_cleanup_wrappers() {
+  contains "$SCRIPT_DIR/design-step6-cleanup.sh" 'CLEANUP_STATUS=preserved' 'Step 6 cleanup wrapper missing preserve exit status'
+  contains "$SCRIPT_DIR/design-step6-prelude.sh" 'STEP6_PRELUDE_STATUS=skipped' 'Step 6 prelude wrapper missing skip exit status'
+  contains "$SCRIPT_DIR/design-step6-cleanup.sh" 'session cleanup-tmpdir' 'Step 6 cleanup wrapper missing cleanup call'
+  contains "$SCRIPT_DIR/design-step6-prelude.sh" '.design-step5c-status.env' 'Step 6 prelude wrapper missing Step 5c status read'
+}
+
+assert_wrapper_fence_ordering() {
+  local wrapper first_line second_line
+  wrapper='design-step2a3-collect.sh'
+  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'collect-agent-results.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must pause-check before collect"
+  wrapper='design-step2a-zero-sketch.sh'
+  first_line=$(grep -nF 'NO_SKETCHES_DEGRADED_HARD' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF '.completed/step-2a' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must write degraded artifacts before step-2a sentinel"
+  wrapper='design-step4b.sh'
+  first_line=$(grep -nF 'step-4' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'design-step4b-preview.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must write step-4 before Gate C preview"
+  wrapper='design-step5c.sh'
+  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'design-publish.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must pause-check before publish"
+  wrapper='design-step6-cleanup.sh'
+  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'session cleanup-tmpdir' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must pause-check before cleanup"
+}
+
 assert_design_skill_bash_fences_are_wrappers
 assert_no_consecutive_executable_script_call_fences
 assert_no_inline_bash_tokens_in_skill_fences
@@ -335,5 +447,20 @@ assert_gate_b_bypass_branch_sentinels
 assert_wrapper_pause_before_work
 assert_wrapper_contract_pins
 assert_reference_updates
+assert_postplan_thin_fence "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-step2b-postplan.sh'
+assert_publish_fence_guards
+assert_step6_cleanup_wrappers
+assert_wrapper_fence_ordering
+assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
+assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
+assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
+assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
+assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
+assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
+assert_p3119_family_b_fence_absent "$BRAINSTORM_MD" "brainstorm.md"
+assert_p3119_family_b_fence_absent "$DIALEXEC_MD" "dialectic-execution.md"
+assert_p3119_family_b_fence_absent "$PLAN_REVIEW_MD" "plan-review.md"
+assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 
 printf 'ok - design SKILL uses wrapper-only Bash fences\n'

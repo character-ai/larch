@@ -92,6 +92,20 @@ design_source_env_optional() {
      # shellcheck source=/dev/null
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
    fi
+   _init_route=""
+   if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
+     _init_route=$(grep -m1 '^ROUTE=' "$DESIGN_TMPDIR/.design-route-result.env" | cut -d= -f2- || true)
+   fi
+   if [[ "${_init_route:-}" == proceed ]]; then
+     if [[ -f "$DESIGN_TMPDIR/issue-body.txt" ]]; then
+       {
+         [[ -n "${ISSUE_TITLE:-}" ]] && printf '# %s\n\n' "$ISSUE_TITLE"
+         cat "$DESIGN_TMPDIR/issue-body.txt"
+       } >"$DESIGN_TMPDIR/feature-description.txt"
+     elif [[ "${POSITIONAL_KIND:-}" == verbal && -n "${POSITIONAL_VALUE:-}" ]]; then
+       printf '%s\n' "$POSITIONAL_VALUE" >"$DESIGN_TMPDIR/feature-description.txt"
+     fi
+   fi
    if [[ "${hard_requested:-false}" == true ]]; then
      design_classification=HARD
    else

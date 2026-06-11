@@ -204,28 +204,14 @@ else
     fail "wrapper postplan-failed expected exit 1 with KVs (rc=$_wrapper_fail_rc)"
 fi
 
-echo "=== rc=0 sources result env ==="
+echo "=== rc=0 sources result env via wrapper ==="
 D1="$TMP/rc0-file"
 mkdir -p "$D1"
-cat >"$D1/.step3-review-result.env" <<'EOF'
-LOOP_STATUS=complete
-TALLY_PLAN_REVIEW_STATUS=ok
-STEP3_REVIEW_CAP_REACHED=false
-STEP3_REVIEW_ROUND_NUM=1
-ROUND_NUM=1
-ACCEPTED_COUNT=0
-IMPORTANT_ACCEPTED_COUNT=0
-DEGRADED_PANEL=0
-ROUNDS_COMPLETED=1
-AGGREGATOR_STATUS=ok
-VOTING_TALLY_FILE=
-REVIEW_ROUND_COUNT=1
-EOF
-apply_step3_handoff "$D1" 'LOOP_STATUS=panel-failed' 0
-if [[ "${LOOP_STATUS:-}" == complete ]]; then
-    pass 'rc=0 file-first LOOP_STATUS'
+_wrapper_rc0_out=$(invoke_step3_review_wrapper "$D1" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
+if printf '%s\n' "$_wrapper_rc0_out" | grep -Fq 'LOOP_STATUS=complete'; then
+    pass 'rc=0 file-first LOOP_STATUS via wrapper'
 else
-    fail "rc=0 expected complete got ${LOOP_STATUS:-}"
+    fail "rc=0 wrapper expected complete got $_wrapper_rc0_out"
 fi
 
 echo "=== rc=1 still sources non-symlink result env ==="
