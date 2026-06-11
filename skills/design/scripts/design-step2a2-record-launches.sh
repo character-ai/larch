@@ -4,13 +4,13 @@
 set -euo pipefail
 
 SESSION_ENV_PATH=""
-CLAUDE_PID=""
+_CLAUDE_PID=""
 MODE="regular"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --session-env-path) SESSION_ENV_PATH="$2"; shift 2 ;;
-    --claude-pid) CLAUDE_PID="$2"; shift 2 ;;
+    --claude-pid) _CLAUDE_PID="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
