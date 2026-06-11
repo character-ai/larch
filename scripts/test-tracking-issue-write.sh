@@ -310,16 +310,23 @@ set -e
 [[ "$out_missing" != *"$secret_missing"* ]] || fail "missing-redactor: raw secret leaked in output: $out_missing"
 
 echo "=== redact_gh_error: redactor exits non-zero ==="
-# Fake tree: passthrough redact-tmpdir-paths.sh; redact-secrets.sh exits 1.
+# Fake tree: passthrough tmpdir redaction; secret redaction exits 1.
 FAKE_FAILING="$TMP/fake-failing-redact"
-mkdir -p "$FAKE_FAILING/scripts"
+mkdir -p "$FAKE_FAILING/scripts" "$FAKE_FAILING/python"
 cp "$WRITE" "$FAKE_FAILING/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_FAILING/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_FAILING/scripts/lib-net.sh"
-printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
-chmod +x "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
-printf '#!/usr/bin/env bash\nexit 1\n' > "$FAKE_FAILING/scripts/redact-secrets.sh"
-chmod +x "$FAKE_FAILING/scripts/redact-secrets.sh"
+cat > "$FAKE_FAILING/python/cli.py" <<'PYCLI_FAILING'
+#!/usr/bin/env python3
+import sys
+
+if sys.argv[1:] == ["redact", "tmpdir-paths"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if sys.argv[1:] == ["redact", "secrets"]:
+    raise SystemExit(1)
+raise SystemExit(2)
+PYCLI_FAILING
 STUB_FAILING="$TMP/stubs-failing-redact"
 mkdir -p "$STUB_FAILING"
 secret_failing='sk-ant-FAKESECRET-NONZERO-5678'
@@ -344,20 +351,25 @@ set -e
 
 echo "=== redact_gh_error: truncation marker on stdout with exit 0 plus fake token ==="
 FAKE_TRUNC_TOKEN="$TMP/fake-trunc-token-redact"
-mkdir -p "$FAKE_TRUNC_TOKEN/scripts"
+mkdir -p "$FAKE_TRUNC_TOKEN/scripts" "$FAKE_TRUNC_TOKEN/python"
 cp "$WRITE" "$FAKE_TRUNC_TOKEN/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_TOKEN/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_TRUNC_TOKEN/scripts/lib-net.sh"
-printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
-chmod +x "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
 trunc_marker='[content truncated — unterminated PEM block; tail of body dropped for safety]'
 token_trunc='sk-ant-FAKETRUNC-TOKEN-1234567890123456789AB'
-cat > "$FAKE_TRUNC_TOKEN/scripts/redact-secrets.sh" <<SECRETS_TRUNC_TOKEN
-#!/usr/bin/env bash
-cat >/dev/null
-printf '%s%s' "${trunc_marker}" "${token_trunc}"
-SECRETS_TRUNC_TOKEN
-chmod +x "$FAKE_TRUNC_TOKEN/scripts/redact-secrets.sh"
+cat > "$FAKE_TRUNC_TOKEN/python/cli.py" <<PYCLI_TRUNC_TOKEN
+#!/usr/bin/env python3
+import sys
+
+if sys.argv[1:] == ["redact", "tmpdir-paths"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if sys.argv[1:] == ["redact", "secrets"]:
+    sys.stdin.read()
+    sys.stdout.write("""$trunc_marker""" + """$token_trunc""")
+    raise SystemExit(0)
+raise SystemExit(2)
+PYCLI_TRUNC_TOKEN
 STUB_TRUNC_TOKEN="$TMP/stubs-trunc-token-redact"
 mkdir -p "$STUB_TRUNC_TOKEN"
 cat > "$STUB_TRUNC_TOKEN/gh" <<GHSTUB_TRUNC_TOKEN
@@ -383,20 +395,24 @@ set -e
 
 echo "=== redact_gh_error: truncation marker with exit 0 scrubs gh stderr ==="
 FAKE_TRUNC_OK="$TMP/fake-trunc-ok-redact"
-mkdir -p "$FAKE_TRUNC_OK/scripts"
+mkdir -p "$FAKE_TRUNC_OK/scripts" "$FAKE_TRUNC_OK/python"
 cp "$WRITE" "$FAKE_TRUNC_OK/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_OK/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_TRUNC_OK/scripts/lib-net.sh"
-printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
-chmod +x "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
 secret_trunc_ok='sk-ant-FAKETRUNC-OK-1234567890123456789AB'
-cat > "$FAKE_TRUNC_OK/scripts/redact-secrets.sh" <<SECRETS_TRUNC_OK
-#!/usr/bin/env bash
-# Consume stdin (would contain API error + secret); emit only documented marker.
-cat >/dev/null
-printf '%s' "${trunc_marker}"
-SECRETS_TRUNC_OK
-chmod +x "$FAKE_TRUNC_OK/scripts/redact-secrets.sh"
+cat > "$FAKE_TRUNC_OK/python/cli.py" <<PYCLI_TRUNC_OK
+#!/usr/bin/env python3
+import sys
+
+if sys.argv[1:] == ["redact", "tmpdir-paths"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if sys.argv[1:] == ["redact", "secrets"]:
+    sys.stdin.read()
+    sys.stdout.write("""$trunc_marker""")
+    raise SystemExit(0)
+raise SystemExit(2)
+PYCLI_TRUNC_OK
 STUB_TRUNC_OK="$TMP/stubs-trunc-ok-redact"
 mkdir -p "$STUB_TRUNC_OK"
 cat > "$STUB_TRUNC_OK/gh" <<GHSTUB_TRUNC_OK

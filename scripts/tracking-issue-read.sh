@@ -114,7 +114,7 @@ fail_usage() {
 }
 
 # redact_gh_error <captured-stderr> — pipe captured gh error text through
-# scripts/redact-secrets.sh, flatten to one line, cap at 500 bytes, and
+# python3 python/cli.py redact secrets, flatten to one line, cap at 500 bytes, and
 # print the result. Fails closed: if the scrubber is unavailable, exits
 # non-zero, or emits the truncation marker, a generic token-free string is
 # returned so no original stderr bytes reach ERROR=.

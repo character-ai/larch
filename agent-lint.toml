@@ -344,7 +344,6 @@ exclude = [
   "python/test_run_logs.py",
   # runtime-referenced from /implement and Mermaid publication paths; the
   # harness is covered by the test-append-execution-issue target.
-  "scripts/test-append-execution-issue.md",
   # scripts/test-degraded-tools-gate.sh is the Makefile-only regression harness
   # for scripts/degraded-tools-gate.sh (issue #3207). The detector itself is
   # runtime-referenced from /design, /implement, /review, /research Step 0; the

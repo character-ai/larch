@@ -516,16 +516,12 @@ for _gate_dep in \
     lib-validate-meta-path.sh \
     lib-failed-agent-stderr-tail.sh \
     lib-external-launcher-common.sh \
-    lib-quiet.sh \
-    redact-tmpdir-paths.sh \
-    redact-secrets.sh
+    lib-quiet.sh
 do
     cp "$REPO_ROOT/scripts/$_gate_dep" "$GATE_WRAPPER_DIR/scripts/$_gate_dep"
 done
 cp "$REPO_ROOT/python/cli.py" "$GATE_WRAPPER_DIR/python/cli.py"
-chmod +x "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh" \
-    "$GATE_WRAPPER_DIR/scripts/redact-tmpdir-paths.sh" \
-    "$GATE_WRAPPER_DIR/scripts/redact-secrets.sh"
+chmod +x "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh"
 cat > "$GATE_WRAPPER_DIR/scripts/check-reviewers.sh" <<'GATE_CHECK_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
