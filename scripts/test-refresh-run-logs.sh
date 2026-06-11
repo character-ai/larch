@@ -30,8 +30,7 @@ setup_plugin_stub() {
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
-    cp python3 "$SCRIPT_DIR/../python/cli.py" token cost "$root/python/report_tokens_cost.py"
-    cp "$SCRIPT_DIR/scripts/render-run-summary.sh inline cost formatter" "$root/scripts/render-run-summary.sh inline cost formatter"
+    cp "$SCRIPT_DIR/../python/report_tokens_cost.py" "$root/python/report_tokens_cost.py"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
@@ -154,25 +153,9 @@ EOF
     plugin_root="$tmp/plugin"
     setup_plugin_stub "$plugin_root"
 
-    # Stub python3 python/cli.py token report, python3 python/cli.py timing report, larch-log.sh, read-session-env-key.sh in PATH.
+    # Stub larch-log.sh and read-session-env-key.sh in PATH.
     stub_dir="$tmp/stubs"
     mkdir -p "$stub_dir"
-    cat > "$stub_dir/python3 python/cli.py token report"  << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"vendors":[]}\n' > "$out"
-STUB
-    cat > "$stub_dir/python3 python/cli.py timing report" << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"workflow_path":"unknown","per_step":[],"total_seconds":0,"total_hms":"00:00:00","vendor_task_averages":[]}\n' > "$out"
-STUB
     cat > "$stub_dir/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"
@@ -319,22 +302,6 @@ EOF
 
     stub_dir="$tmp/stubs"
     mkdir -p "$stub_dir"
-    cat > "$stub_dir/python3 python/cli.py token report"  << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"vendors":[]}\n' > "$out"
-STUB
-    cat > "$stub_dir/python3 python/cli.py timing report" << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"workflow_path":"unknown","per_step":[],"total_seconds":0,"total_hms":"00:00:00","vendor_task_averages":[]}\n' > "$out"
-STUB
     cat > "$stub_dir/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"

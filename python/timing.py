@@ -171,7 +171,7 @@ class TimingReport:
                 return "Timing report unavailable: no step marks in ledger"
             now = int((env or os.environ).get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
             first = marks[0]
-            counts = _vendor_counts_since(self.ledger_path, first.ts)
+            counts = _vendor_counts_since(self.ledger_path, first.ts, use_end=True)
             return f"Total: elapsed={_hms(now - first.ts)} vendor-tasks={sum(counts.values())} (codex={counts['codex']}, cursor={counts['cursor']}, claude={counts['claude']})"
         if mode == "terse":
             skill = (env or os.environ).get("LARCH_TIMING_SKILL", "implement")
@@ -559,15 +559,63 @@ def _render_markdown(data: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _marker_line_re(marker: str) -> re.Pattern[str]:
+    return re.compile(rf"^\s*<!-- {re.escape(marker)} -->\s*$")
+
+
 def _replace_block(target: Path, block: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     existing = target.read_text(encoding="utf-8") if target.is_file() else ""
-    begin = "<!-- timing-report-begin -->"
-    end = "<!-- timing-report-end -->"
-    if begin in existing and end in existing:
-        pre, rest = existing.split(begin, 1)
-        _, post = rest.split(end, 1)
-        text = pre + block + post
+    begin_re = _marker_line_re("timing-report-begin")
+    end_re = _marker_line_re("timing-report-end")
+    lines = existing.splitlines(keepends=True)
+    begin_idx: int | None = None
+    end_idx: int | None = None
+    has_begin = False
+    has_end = False
+    for idx, line in enumerate(lines):
+        stripped = line.rstrip("\r\n")
+        if begin_re.match(stripped):
+            has_begin = True
+            if begin_idx is None:
+                begin_idx = idx
+        if end_re.match(stripped):
+            has_end = True
+            if begin_idx is not None and end_idx is None:
+                end_idx = idx
+    if has_begin and has_end and begin_idx is not None and end_idx is not None:
+        text = "".join(lines[:begin_idx]) + block + "".join(lines[end_idx + 1 :])
+    elif has_begin and not has_end:
+        print(
+            f"timing report: warning: {target} has lone <!-- timing-report-begin --> marker; truncating from marker and rewriting block",
+            file=sys.stderr,
+        )
+        kept: list[str] = []
+        for line in lines:
+            if begin_re.match(line.rstrip("\r\n")):
+                break
+            kept.append(line)
+        text = "".join(kept)
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += block
+    elif has_end and not has_begin:
+        print(
+            f"timing report: warning: {target} has lone <!-- timing-report-end --> marker; dropping head through marker and rewriting block",
+            file=sys.stderr,
+        )
+        kept_tail: list[str] = []
+        past = False
+        for line in lines:
+            if end_re.match(line.rstrip("\r\n")):
+                past = True
+                continue
+            if past:
+                kept_tail.append(line)
+        text = "".join(kept_tail)
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += block
     else:
         text = existing + ("\n" if existing else "") + block
     tmp = target.with_name(target.name + ".tmp")

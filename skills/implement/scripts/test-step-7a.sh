@@ -164,8 +164,24 @@ def _diagrams_upsert_stub() -> int:
     print("UPDATED=true")
     return 0
 
+def _token_timing_stub() -> int:
+    calls_log = os.environ.get("STEP7A_CALLS_LOG", "")
+    if calls_log:
+        with open(calls_log, "a", encoding="utf-8") as handle:
+            handle.write(f"python3 python/cli.py {' '.join(sys.argv[1:])}\n")
+    if len(sys.argv) >= 4 and sys.argv[2] == "report":
+        idx = 3
+        while idx < len(sys.argv):
+            if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+                Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+                break
+            idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_token_timing_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -308,24 +324,6 @@ done
     printf '\n'
 } >> "$log"
 STUB
-
-    for stub in python3 python/cli.py token python3 python/cli.py timing python3 python/cli.py token report python3 python/cli.py timing report; do
-        cat > "$root/scripts/$stub" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s %s\n' "$(basename "$0")" "$*" >> "$STEP7A_CALLS_LOG"
-if [ "$(basename "$0")" = "python3 python/cli.py token report" ] || [ "$(basename "$0")" = "python3 python/cli.py timing report" ]; then
-    out=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --output) out=$2; shift 2 ;;
-            *) shift ;;
-        esac
-    done
-    [ -n "$out" ] && printf '{}\n' > "$out"
-fi
-STUB
-    done
 
     chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
 }

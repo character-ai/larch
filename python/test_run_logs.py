@@ -10,6 +10,8 @@ import pytest
 
 import config
 import run_logs
+import timing
+import tokens
 from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
@@ -1132,6 +1134,41 @@ def test_larch_log_commit_rejects_cwd_outside_repo_root(
             tmp_path / "larch-logs",
             cwd=str(subdir),
         )
+
+
+def test_render_ledger_reports_uses_direct_renderers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "timing-ledger.tsv").write_text(
+        "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, str] = {}
+
+    def fake_token_report(**kwargs: object) -> dict[str, object]:
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            captured.update(env)
+        return {"claude": {}}
+
+    def fake_render_json(self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
+        if isinstance(env, dict):
+            captured.update(env)
+        return {"per_step": []}
+
+    monkeypatch.setattr(tokens, "token_report", fake_token_report)
+    monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
+    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_: tmp_path / "timing-ledger.tsv")
+    ctx = _ctx(tmp_path, str(state))
+    run_logs._render_ledger_reports(RecordingRunner(), ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
+
+    assert (tmp_path / "token-report-refresh.json").is_file()
+    assert (tmp_path / "timing-report-refresh.json").is_file()
+    assert captured.get("LARCH_TIMING_SKILL") == "implement"
+    assert "DESIGN_TMPDIR" not in captured
 
 
 def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

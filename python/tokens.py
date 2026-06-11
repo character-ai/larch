@@ -477,7 +477,11 @@ def _claude_rows(transcript_rows: list[dict[str, Any]], marks: list[dict[str, An
         }
         rid = str(out["rid"] or "")
         mid = str(out["mid"] or "")
-        fingerprint = "" if rid or mid else f"{out['input']}/{out['cache_read']}/{out['cache_create']}/{out['output']}"
+        fingerprint = (
+            ""
+            if rid or mid
+            else f"{out['input']}/{out['cache_read']}/{out['cache_create_5m']}/{out['cache_create_1h']}/{out['output']}"
+        )
         dedup[f"{rid}|{mid}|{fingerprint}"] = out
     return list(dedup.values())
 
@@ -609,15 +613,63 @@ def _markdown(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor:
     return "\n".join(parts)
 
 
+def _marker_line_re(marker: str) -> re.Pattern[str]:
+    return re.compile(rf"^\s*<!-- {re.escape(marker)} -->\s*$")
+
+
 def _replace_block(target: Path, block: str, *, begin: str, end: str) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     existing = target.read_text(encoding="utf-8") if target.is_file() else ""
-    begin_line = f"<!-- {begin} -->"
-    end_line = f"<!-- {end} -->"
-    if begin_line in existing and end_line in existing:
-        pre, rest = existing.split(begin_line, 1)
-        _, post = rest.split(end_line, 1)
-        text = pre + block + post
+    begin_re = _marker_line_re(begin)
+    end_re = _marker_line_re(end)
+    lines = existing.splitlines(keepends=True)
+    begin_idx: int | None = None
+    end_idx: int | None = None
+    has_begin = False
+    has_end = False
+    for idx, line in enumerate(lines):
+        stripped = line.rstrip("\r\n")
+        if begin_re.match(stripped):
+            has_begin = True
+            if begin_idx is None:
+                begin_idx = idx
+        if end_re.match(stripped):
+            has_end = True
+            if begin_idx is not None and end_idx is None:
+                end_idx = idx
+    if has_begin and has_end and begin_idx is not None and end_idx is not None:
+        text = "".join(lines[:begin_idx]) + block + "".join(lines[end_idx + 1 :])
+    elif has_begin and not has_end:
+        print(
+            f"token report: warning: {target} has lone <!-- {begin} --> marker; truncating from marker and rewriting block",
+            file=sys.stderr,
+        )
+        kept: list[str] = []
+        for line in lines:
+            if begin_re.match(line.rstrip("\r\n")):
+                break
+            kept.append(line)
+        text = "".join(kept)
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += block
+    elif has_end and not has_begin:
+        print(
+            f"token report: warning: {target} has lone <!-- {end} --> marker; dropping head through marker and rewriting block",
+            file=sys.stderr,
+        )
+        kept_tail: list[str] = []
+        past = False
+        for line in lines:
+            if end_re.match(line.rstrip("\r\n")):
+                past = True
+                continue
+            if past:
+                kept_tail.append(line)
+        text = "".join(kept_tail)
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += block
     else:
         text = existing + ("\n" if existing else "") + block
     tmp = target.with_name(target.name + ".tmp")
@@ -732,7 +784,12 @@ def token_claude_source(
             key, sep, value = line.partition("=")
             if sep and key in {"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"}:
                 data[key] = value
-        if data.get("TRANSCRIPT_PATH") and Path(data["TRANSCRIPT_PATH"]).is_file():
+        if (
+            data.get("TRANSCRIPT_PATH")
+            and data.get("SESSION_DIR")
+            and data.get("SESSION_UUID")
+            and Path(data["TRANSCRIPT_PATH"]).is_file()
+        ):
             return data
     try:
         repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()

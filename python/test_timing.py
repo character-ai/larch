@@ -58,3 +58,30 @@ def test_timing_rejects_non_regular_ledger(tmp_path: Path) -> None:
         os.mkfifo(fifo)
         with pytest.raises(ValueError, match="not a regular file"):
             timing.TimingLedger(fifo).mark("bad")
+
+
+def test_timing_summary_counts_vendors_by_end_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t20\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n"
+        "v1\tvendor\t30\timplement\t-\tcodex\tcodex-review\t5\t15\t10\tout.log\t0\tcomplete\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
+    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "100")
+    summary = timing.TimingReport(ledger).render(mode="summary")
+    assert "vendor-tasks=0" in summary
+
+
+def test_timing_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> None:
+    target = tmp_path / "body.md"
+    _ = target.write_text(
+        "See <!-- timing-report-begin --> in docs\n\n"
+        "<!-- timing-report-begin -->\nold\n<!-- timing-report-end -->\n",
+        encoding="utf-8",
+    )
+    timing._replace_block(target, "BLOCK\n")  # pyright: ignore[reportPrivateUsage]
+    text = target.read_text(encoding="utf-8")
+    assert "See <!-- timing-report-begin --> in docs" in text
+    assert "BLOCK" in text
+    assert "old" not in text

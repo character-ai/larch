@@ -17,6 +17,7 @@ import config
 import git
 import logging_util
 import redact
+import timing
 import tokens
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -237,6 +238,12 @@ def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
     return env
 
 
+def _write_report_json(path: Path, data: dict[str, object]) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    _ = tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
+    _ = tmp.replace(path)
+
+
 def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> None:
     """Re-render token/timing JSON from ledgers (refresh-run-logs.sh parity)."""
     run_id = effective_run_id(ctx)
@@ -246,21 +253,10 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
-    _ = runner.run(
-        [
-            "python3",
-            str(_PY_CLI),
-            "token",
-            "report",
-            "--full",
-            "--format",
-            "json",
-            "--output",
-            str(token_path),
-        ],
-        cwd=str(_REPO_ROOT),
-        env=env,
-    )
+    with suppress(OSError, ValueError):
+        rendered = tokens.token_report(mode="full", fmt="json", env=env)
+        if isinstance(rendered, dict):
+            _write_report_json(token_path, rendered)
     if _LARCH_LOG.is_file() and token_path.is_file():
         _ = runner.run(
             [
@@ -281,21 +277,12 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
             cwd=str(_REPO_ROOT),
             env=env,
         )
-    _ = runner.run(
-        [
-            "python3",
-            str(_PY_CLI),
-            "timing",
-            "report",
-            "--full",
-            "--format",
-            "json",
-            "--output",
-            str(timing_path),
-        ],
-        cwd=str(_REPO_ROOT),
-        env=env,
-    )
+    with suppress(OSError, ValueError):
+        ledger = timing.resolve_timing_ledger_path(env=env)
+        if ledger is not None:
+            data = timing.TimingReport(ledger).render_json(env=env)
+            if data:
+                _write_report_json(timing_path, cast("dict[str, object]", data))
     if _LARCH_LOG.is_file() and timing_path.is_file():
         _ = runner.run(
             [

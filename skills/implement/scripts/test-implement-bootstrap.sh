@@ -109,8 +109,21 @@ import os
 import sys
 from pathlib import Path
 
+def _ledger_stub(root: Path) -> int:
+    log = root.parent / "invoke-log.txt"
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        prefix = "token-ledger" if sys.argv[1] == "token" else "timing-ledger"
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(f"{prefix} {' '.join(sys.argv[2:])}\n")
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "claude-source":
+        return 0
+    return 1
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_ledger_stub(root))
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -192,12 +205,6 @@ exit 0
 STUB
     chmod +x "$SANDBOX/python/stubs/session/write-id"
 
-    cat >"$SANDBOX/python3 python/cli.py token claude-source" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-    chmod +x "$SANDBOX/python3 python/cli.py token claude-source"
-
     cat >"$SANDBOX/scripts/append-tool-failure.sh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${SANDBOX_APPEND_TOOL_FAILURE_EXIT:-0}" -ne 0 ]; then
@@ -223,22 +230,6 @@ fi
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/append-tool-failure.sh"
-
-    cat >"$SANDBOX/python3 python/cli.py token" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'token-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-exit 0
-STUB
-    chmod +x "$SANDBOX/python3 python/cli.py token"
-
-    cat >"$SANDBOX/python3 python/cli.py timing" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'timing-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-exit 0
-STUB
-    chmod +x "$SANDBOX/python3 python/cli.py timing"
 
     cat >"$SANDBOX/scripts/tracking-issue-read.sh" <<'STUB'
 #!/usr/bin/env bash
