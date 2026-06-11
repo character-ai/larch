@@ -453,8 +453,9 @@ def is_harness_review_path(path: str | Path) -> bool:
 
 
 def should_suppress_parse_rate_issue_append(voter_path: str | Path, base_tmp: str | Path) -> bool:
-    voter = str(voter_path)
-    base = str(base_tmp).rstrip("/")
+    # Normalize via Path to collapse repeated slashes (e.g. $TMPDIR ending in /)
+    voter = str(Path(voter_path))
+    base = str(Path(base_tmp))
     return voter.startswith(base + "/") and (is_harness_review_path(base) or is_harness_review_path(voter))
 
 
