@@ -51,7 +51,7 @@ def logical_commands(body):
     return commands
 
 script_call = re.compile(r'^(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*"?\$\{?CLAUDE_PLUGIN_ROOT\}?/[^\s]+\.(?:sh|py)"?\b')
-telemetry_only = re.compile(r'/(?:step-telemetry-mark|token-ledger|timing-ledger|token-report|timing-report)\.sh\b')
+telemetry_only = re.compile(r'/(?:token-ledger|timing-ledger|token-report|timing-report)\.sh\b')
 for start, end, body in fences:
     cmds = logical_commands(body)
     if len(cmds) != 1:
