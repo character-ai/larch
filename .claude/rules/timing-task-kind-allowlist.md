@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "python/timing.py TIMING_TASK_KINDS_ALLOWED", "python/timing.py task-kind docs", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-design-structure.sh", "scripts/test-design-structure.md"]
+paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "python/timing.py", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-design-structure.sh", "scripts/test-design-structure.md"]
 ---
 
 # Timing Task Kind Allow-List

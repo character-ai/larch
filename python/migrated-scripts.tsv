@@ -328,3 +328,15 @@ scripts/test-step-telemetry-mark.md	#3671
 scripts/test-compute-pr-line-counts.sh	#3671
 scripts/test-compute-pr-line-counts.md	#3671
 scripts/read-workflow-path.sh	#3671
+skills/shared/scripts/ballot-parse.sh	#3974
+skills/shared/scripts/ballot-parse.md	#3974
+skills/shared/scripts/tally-vote.sh	#3974
+skills/shared/scripts/tally-vote.md	#3974
+skills/shared/scripts/scoreboard.sh	#3974
+skills/shared/scripts/scoreboard.md	#3974
+skills/shared/scripts/test-ballot-parse.sh	#3974
+skills/shared/scripts/test-ballot-parse.md	#3974
+skills/shared/scripts/test-tally-vote.sh	#3974
+skills/shared/scripts/test-tally-vote.md	#3974
+skills/shared/scripts/test-scoreboard.sh	#3974
+skills/shared/scripts/test-scoreboard.md	#3974

@@ -281,8 +281,7 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
         ledger = timing.resolve_timing_ledger_path(env=env)
         if ledger is not None:
             data = timing.TimingReport(ledger).render_json(env=env)
-            if isinstance(data, dict):
-                _write_report_json(timing_path, data)
+            _write_report_json(timing_path, data)  # data is always dict from render_json
     if _LARCH_LOG.is_file() and timing_path.is_file():
         _ = runner.run(
             [

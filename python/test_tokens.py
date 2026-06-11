@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 import tokens
@@ -392,3 +396,117 @@ def test_ngram_source_files_include_claude_imports() -> None:
     files = tokens._ngram_source_files(tokens._repo_root())  # pyright: ignore[reportPrivateUsage]
     assert "CLAUDE.md" in files
     assert "AGENTS.md" in files
+
+
+def test_token_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ledger, transcript = _token_report_fixtures(tmp_path)
+    rc = tokens.token_report_main(
+        ["--terse", "--ledger", str(ledger), "--transcript", str(transcript)],
+    )
+    assert rc == 0
+    out = capsys.readouterr()
+    assert "Step 2 - implement: claude=100 tokens" in out.out
+
+
+def test_token_cli_rejects_invalid_ledger(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = tokens.token_dump_main(["--ledger", "/etc/passwd"])
+    assert rc == 1
+    assert "token dump:" in capsys.readouterr().err
+
+
+def test_validate_under_tmp_empty_tmpdir_uses_system_tmp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TMPDIR", "")
+    monkeypatch.chdir(tmp_path)
+    resolved = tokens._validate_under_tmp("ledger.jsonl")  # pyright: ignore[reportPrivateUsage]
+    assert tmp_path not in resolved.parents
+    assert resolved == Path("/tmp/ledger.jsonl") or resolved == Path("/private/tmp/ledger.jsonl")
+
+
+def test_tiktoken_count_texts_uses_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=json.dumps([3, 5]).encode(), stderr=b"")
+
+    monkeypatch.setattr(tokens.subprocess, "run", fake_run)
+    assert tokens._tiktoken_count_texts(["a", "bb"]) == [3, 5]  # pyright: ignore[reportPrivateUsage]
+    assert calls
+    assert calls[0][0] == "python3"
+
+
+def test_tiktoken_absent_exits_with_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout=b"", stderr=b"No module named 'tiktoken'")
+
+    monkeypatch.setattr(tokens.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit, match="tiktoken required"):
+        _ = tokens._tiktoken_count_texts(["x"])  # pyright: ignore[reportPrivateUsage]
+
+
+def test_measure_md_cost_writes_schema(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path
+    _ = (repo / "docs").mkdir()
+    _ = (repo / "docs" / "sample.md").write_text("# Title\n\nBody\n", encoding="utf-8")
+    _ = (repo / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+    _ = (repo / "AGENTS.md").write_text("agents\n", encoding="utf-8")
+    monkeypatch.setattr(tokens, "_repo_root", lambda: repo)
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "fixture-day")
+    monkeypatch.setattr(
+        tokens.subprocess,
+        "check_output",
+        lambda cmd, **_kw: b"docs/sample.md\x00" if "ls-files" in cmd else b"",  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [len(t) for t in texts])  # type: ignore[arg-type]
+    out = tokens.measure_md_cost()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("path\ttier\tbytes\ttokens\tlines\th2_count\n")
+    row = text.strip().splitlines()[1].split("\t")
+    assert row[0] == "docs/sample.md"
+    assert row[1] == "tier-3-doc"
+    assert int(row[3]) > 0
+
+
+def test_measure_realized_cost_writes_schema(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path
+    skill_dir = repo / "skills" / "review"
+    skill_dir.mkdir(parents=True)
+    _ = (skill_dir / "SKILL.md").write_text("review skill body\n", encoding="utf-8")
+    run_dir = repo / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text('{"issue_number": 42, "skill": "review"}', encoding="utf-8")
+    _ = (run_dir / "timing-report.md").write_text(
+        "| Skill | Step | Duration |\n| review | Step 1 | 00:00:01 |\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tokens, "_repo_root", lambda: repo)
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "fixture-day")
+    monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [11 for _ in texts])  # type: ignore[arg-type]
+    out = tokens.measure_realized_cost()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n")
+    row = text.strip().splitlines()[1].split("\t")
+    assert row[0] == "review"
+    assert row[1] == "1"
+    assert row[2] == "1"
+    assert row[3] == "11"
+    assert row[4] == "11"
+
+
+def test_measure_md_cost_main_prints_relative_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "larch-logs" / "measure-md-cost" / "fixture-day.tsv"
+    out.parent.mkdir(parents=True)
+    _ = out.write_text("path\ttier\tbytes\ttokens\tlines\th2_count\n", encoding="utf-8")
+    monkeypatch.setattr(tokens, "measure_md_cost", lambda: out)
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)
+    rc = tokens.measure_md_cost_main([])
+    assert rc == 0
+
+
+def test_tokens_imports_without_tiktoken() -> None:
+    code = "import importlib; importlib.import_module('tokens')"
+    proc = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parent, capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr

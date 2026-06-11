@@ -1199,7 +1199,8 @@ def _ledger_report_fixture(
     larch_log = tmp_path / "larch-log.sh"
     _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
-    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kwargs: tmp_path / "timing-ledger.tsv")
+    _ledger_path = tmp_path / "timing-ledger.tsv"
+    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kw: _ledger_path)  # type: ignore[arg-type]
     return RecordingRunner(), _ctx(tmp_path, str(state))
 
 
@@ -1232,10 +1233,8 @@ def test_render_ledger_reports_token_succeeds_when_timing_raises(
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}
 
-    def raise_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
-        _ = env
-        msg = "timing renderer failed"
-        raise RuntimeError(msg)
+    def raise_render_json(_self: timing.TimingReport, **_: object) -> dict[str, object]:  # type: ignore[misc]
+        raise RuntimeError("timing renderer failed")
 
     monkeypatch.setattr(tokens, "token_report", fake_token_report)
     monkeypatch.setattr(timing.TimingReport, "render_json", raise_render_json)
@@ -1257,8 +1256,7 @@ def test_render_ledger_reports_writes_empty_timing_json(
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}
 
-    def empty_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
-        _ = env
+    def empty_render_json(_self: timing.TimingReport, **_: object) -> dict[str, object]:  # type: ignore[misc]
         return {}
 
     monkeypatch.setattr(tokens, "token_report", fake_token_report)

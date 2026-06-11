@@ -263,6 +263,46 @@ def test_timing_telemetry_mark_writes_ledgers(tmp_path: Path, monkeypatch: pytes
     assert "telemetry-fixture" in timing_dump
 
 
+def test_timing_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t10\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    rc = timing.timing_report_main(["--terse", "--ledger", str(ledger)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Step 0:" in out
+    assert "elapsed=" in out
+
+
+def test_timing_report_full_without_marks(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")
+    rendered = timing.TimingReport(ledger).render(mode="full", fmt="markdown")
+    assert rendered == "Timing report unavailable: no step marks in ledger"
+
+
+def test_timing_dump_main_rejects_invalid_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fifo = tmp_path / "fifo.tsv"
+    if hasattr(stat, "S_IFIFO"):
+        os.mkfifo(fifo)
+        rc = timing.timing_dump_main(["--ledger", str(fifo)])
+        assert rc == 1
+        assert "timing dump:" in capsys.readouterr().err
+
+
+def test_validate_ledger_path_empty_tmpdir_uses_system_tmp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TMPDIR", "")
+    monkeypatch.chdir(tmp_path)
+    resolved = timing.validate_ledger_path("ledger.tsv", env={"TMPDIR": ""})
+    assert tmp_path not in resolved.parents
+    assert resolved == Path("/tmp/ledger.tsv") or resolved == Path("/private/tmp/ledger.tsv")
+
+
 def test_timing_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text("", encoding="utf-8")

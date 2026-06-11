@@ -183,6 +183,8 @@ class TimingReport:
             now = int((env or os.environ).get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
             counts = _vendor_counts_since(self.ledger_path, last.ts, use_end=True)
             return f"{last.step}: elapsed={_hms(now - last.ts)} vendor-tasks={sum(counts.values())} (codex={counts['codex']}, cursor={counts['cursor']}, claude={counts['claude']})"
+        if mode == "full" and not _parse_rows(self.ledger_path)[0]:
+            return "Timing report unavailable: no step marks in ledger"
         if fmt not in {"json", "markdown"}:
             msg = f"unknown format: {fmt}"
             raise ValueError(msg)
@@ -397,7 +399,7 @@ def _read_session_key(path: Path, key: str) -> str:
 
 def _allowed_roots(*, env: Mapping[str, str]) -> list[Path]:
     roots: list[Path] = []
-    for raw in (env.get("TMPDIR", "/tmp"), "/private/tmp"):
+    for raw in (env.get("TMPDIR") or "/tmp", "/private/tmp"):
         path = Path(raw)
         if path.is_dir():
             roots.append(path.resolve())
@@ -683,7 +685,11 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
 def timing_record_vendor_task_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
     opts = _flag_map(args)
-    ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    try:
+        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    except ValueError as exc:
+        print(f"timing record-vendor-task: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     try:
@@ -705,7 +711,11 @@ def timing_record_vendor_task_main(argv: list[str] | None = None) -> int:
 def timing_record_round_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
     opts = _flag_map(args)
-    ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    try:
+        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    except ValueError as exc:
+        print(f"timing record-round: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     try:
@@ -722,7 +732,11 @@ def timing_record_round_main(argv: list[str] | None = None) -> int:
 
 def timing_dump_main(argv: list[str] | None = None) -> int:
     _, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
-    ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    try:
+        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    except ValueError as exc:
+        print(f"timing dump: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     print(ledger)
@@ -742,10 +756,8 @@ def timing_report_main(argv: list[str] | None = None) -> int:
     try:
         while idx < len(args):
             arg = args[idx]
-            if arg == "--since-last-mark":
+            if arg in ("--since-last-mark", "--terse"):
                 mode = "terse"; idx += 1
-            elif arg == "--terse":
-                idx += 1
             elif arg == "--summary":
                 mode = "summary"; idx += 1
             elif arg == "--full":

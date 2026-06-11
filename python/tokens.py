@@ -271,7 +271,7 @@ def _sha256_hex(value: str) -> str:
 
 
 def _tmp_root(env: Mapping[str, str] | None = None) -> Path | None:
-    raw = (env or os.environ).get("TMPDIR", "/tmp")
+    raw = (env or os.environ).get("TMPDIR") or "/tmp"
     try:
         return Path(raw).resolve(strict=True)
     except OSError:
@@ -840,7 +840,7 @@ def token_claude_source(
 
 def _path_is_under(child: Path, parent: Path) -> bool:
     try:
-        child.resolve().relative_to(parent.resolve())
+        _ = child.resolve().relative_to(parent.resolve())
     except ValueError:
         return False
     return True
@@ -1367,7 +1367,11 @@ def token_mark_main(argv: list[str] | None = None) -> int:
     if not args:
         print("token mark requires <step>", file=sys.stderr)
         return 1
-    ledger = resolve_token_ledger_path(ledger=ledger_override)
+    try:
+        ledger = resolve_token_ledger_path(ledger=ledger_override)
+    except ValueError as exc:
+        print(f"token mark: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     try:
@@ -1399,7 +1403,11 @@ def token_record_vendor_main(argv: list[str] | None = None) -> int:
         else:
             print(f"token record-vendor: {key} must be a non-negative integer", file=sys.stderr)
             return 1
-    ledger = resolve_token_ledger_path(ledger=ledger_override)
+    try:
+        ledger = resolve_token_ledger_path(ledger=ledger_override)
+    except ValueError as exc:
+        print(f"token record-vendor: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     try:
@@ -1414,7 +1422,11 @@ def token_record_vendor_main(argv: list[str] | None = None) -> int:
 
 def token_dump_main(argv: list[str] | None = None) -> int:
     _, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
-    ledger = resolve_token_ledger_path(ledger=ledger_override)
+    try:
+        ledger = resolve_token_ledger_path(ledger=ledger_override)
+    except ValueError as exc:
+        print(f"token dump: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
     print(ledger)
@@ -1438,10 +1450,8 @@ def token_report_main(argv: list[str] | None = None) -> int:
     try:
         while idx < len(args):
             arg = args[idx]
-            if arg == "--since-last-mark":
+            if arg in ("--since-last-mark", "--terse"):
                 mode = "terse"; idx += 1
-            elif arg == "--terse":
-                idx += 1
             elif arg == "--summary":
                 mode = "summary"; idx += 1
             elif arg == "--full":
