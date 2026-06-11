@@ -182,7 +182,7 @@ The model used by the always-on Claude voter when `scripts/launch-claude-review.
 - `/design` plan voting and `/review` / `/implement` code voting use this model for Claude Voter 1 unless the caller passes `--model` explicitly.
 
 **When not set:**
-- Defaults to `claude-fable-5`.
+- Defaults to `claude-sonnet-4-6`.
 
 ### `LARCH_DESIGN_DRAFTER`
 

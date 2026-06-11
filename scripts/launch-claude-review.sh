@@ -65,7 +65,7 @@ done
 
 [[ "$ROLE" == "reviewer" || "$ROLE" == "voter" ]] || { larch_err "launch-claude-review.sh: --role must be reviewer or voter"; exit 2; }
 if [[ "$ROLE" == "voter" && -z "$MODEL" ]]; then
-    MODEL="${LARCH_VOTER_MODEL:-claude-fable-5}"
+    MODEL="${LARCH_VOTER_MODEL:-claude-sonnet-4-6}"
 fi
 
 [[ -n "$OUTPUT" ]] || { larch_err "launch-claude-review.sh: --output is required"; exit 2; }
