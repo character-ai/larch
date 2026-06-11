@@ -119,6 +119,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-validator-autofix.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-abort-cleanup.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-degraded.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-degraded.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-init.sh`
@@ -153,6 +154,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-prelude.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b5.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b5.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-continuation-entry.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-preview.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-preview.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.sh`
@@ -161,6 +163,7 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-complete.sh`
