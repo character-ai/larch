@@ -1792,16 +1792,16 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 193,
-          "output": 50928,
-          "total": 8133880
+          "input": 292,
+          "output": 82036,
+          "total": 15303432
         }
       }
     ],
     "totals": {
-      "input": 8527,
-      "output": 95024,
-      "total": 8762223
+      "input": 8626,
+      "output": 126132,
+      "total": 15931775
     }
   },
   "BUCKETS_claude": {
@@ -1825,11 +1825,11 @@
     "total": 20517766
   },
   "BUCKETS_claude_sub": {
-    "input": 8527,
-    "cache_read": 8221618,
-    "cache_create_5m": 437054,
+    "input": 8626,
+    "cache_read": 15210949,
+    "cache_create_5m": 586068,
     "cache_create_1h": 0,
-    "output": 95024,
-    "total": 8762223
+    "output": 126132,
+    "total": 15931775
   }
 }

@@ -59,6 +59,19 @@ UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:179: c
 UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:180: could not resolve $out
 UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:181: could not resolve $out
 
+=== larch-quiet-check-contains-pins.sh-82626.log ===
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:50: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:51: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:52: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:53: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:95: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:119: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:155: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:178: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:179: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:180: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:181: could not resolve $out
+
 === larch-quiet-check-contains-pins.sh-92651.log ===
 UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:50: could not resolve $out
 UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:51: could not resolve $out
@@ -181,6 +194,8 @@ skills/review-and-fix/scripts/review-and-fix.md:115: references retired path 'sc
 skills/review/scripts/test-findings-classification.sh:12: references retired path 'scripts/larch-log.sh'
 
 === larch-quiet-cli.py-57048.log ===
+
+=== larch-quiet-cli.py-58416.log ===
 
 === larch-quiet-cli.py-60493.log ===
 
@@ -397,6 +412,8 @@ skills/review-and-fix/SKILL.md:26: references retired path 'scripts/test-scrub-s
 
 === larch-quiet-cli.py-97170.log ===
 
+=== larch-quiet-cli.py-97825.log ===
+
 === larch-quiet-cli.py-99129.log ===
 
 === larch-quiet-commit-implementation.sh-55349.log ===
@@ -411,6 +428,10 @@ fatal: pathspec 'scripts/test-design-structure.sh' did not match any files
 === larch-quiet-git-commit.sh-64671.log ===
 [sergey-zhupanov/implementing-sh-to-py-b3-run-log-machine-3672 445f26187] Fix CI failure (main-agent)
  15 files changed, 146 insertions(+), 153 deletions(-)
+
+=== larch-quiet-git-commit.sh-91221.log ===
+[sergey-zhupanov/implementing-sh-to-py-b3-run-log-machine-3672 3bbfeea02] Fix CI failure (main-agent)
+ 11 files changed, 203 insertions(+), 99 deletions(-)
 
 === larch-quiet-git-current-branch.sh-6149.log ===
 
@@ -438,7 +459,13 @@ fatal: pathspec 'scripts/test-design-structure.sh' did not match any files
 
 === larch-quiet-git-stage.sh-91905.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-10047.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-10257.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-10285.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-10469.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-10662.log ===
 
@@ -720,11 +747,27 @@ ERROR: unknown subcommand 'redact' 'secrets'. Known: ci behind-count, ci decide,
 
 === larch-quiet-launch-claude-subprocess.sh-46798.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-46848.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47184.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-47227.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47405.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-47549.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-47645.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-47901.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-47965.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-48032.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-48216.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-48233.log ===
 launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
@@ -732,27 +775,55 @@ launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
 === larch-quiet-launch-claude-subprocess.sh-48304.log ===
 launch-claude-subprocess.sh: --read-tools-add-dir outside session root
 
+=== larch-quiet-launch-claude-subprocess.sh-48435.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.8qXgYs/extra-context.txt
+
 === larch-quiet-launch-claude-subprocess.sh-48497.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-48565.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-48764.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-48774.log ===
 launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.FxAvDY/extra-context.txt
 
 === larch-quiet-launch-claude-subprocess.sh-48899.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-49018.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.DqhRKH/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-49147.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-49156.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-49347.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-49448.log ===
 launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.DeaAri/ctx-over-1MB.txt
 
 === larch-quiet-launch-claude-subprocess.sh-49575.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-49585.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-49826.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-49843.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-50073.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-50191.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-50286.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-50490.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-50537.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-50698.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-50907.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-50915.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-51288.log ===
 
@@ -897,6 +968,8 @@ launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw
 
 === larch-quiet-launch-claude-subprocess.sh-63071.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-6312.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-63207.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-63515.log ===
@@ -930,6 +1003,8 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 === larch-quiet-launch-claude-subprocess.sh-66297.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-66615.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-6674.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-66741.log ===
 
@@ -989,6 +1064,8 @@ launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw
 
 === larch-quiet-launch-claude-subprocess.sh-69039.log ===
 launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-6909.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-69106.log ===
 launch-claude-subprocess.sh: --read-tools-add-dir outside session root
@@ -1062,6 +1139,8 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 
 === larch-quiet-launch-claude-subprocess.sh-71546.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-7157.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-71756.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-71788.log ===
@@ -1079,7 +1158,22 @@ ERROR: unknown subcommand 'redact' 'secrets'. Known: ci behind-count, ci decide,
 
 === larch-quiet-launch-claude-subprocess.sh-73179.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-7501.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-7572.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-7773.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-7997.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.ud5XWY/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-8122.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-82929.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-8318.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-83263.log ===
 
@@ -1111,6 +1205,9 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 
 === larch-quiet-launch-claude-subprocess.sh-85666.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-8581.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.AFBWVM/ctx-over-1MB.txt
+
 === larch-quiet-launch-claude-subprocess.sh-85926.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-86174.log ===
@@ -1123,9 +1220,13 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 
 === larch-quiet-launch-claude-subprocess.sh-87021.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-8708.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-88522.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-89098.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-8910.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-89474.log ===
 
@@ -1138,6 +1239,8 @@ launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
 launch-claude-subprocess.sh: --read-tools-add-dir outside session root
 
 === larch-quiet-launch-claude-subprocess.sh-90896.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-9141.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-91479.log ===
 launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.By8m4G/extra-context.txt
@@ -1157,6 +1260,8 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 
 === larch-quiet-launch-claude-subprocess.sh-93740.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-9392.log ===
+
 === larch-quiet-launch-claude-subprocess.sh-94133.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-94477.log ===
@@ -1174,6 +1279,8 @@ launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc9
 === larch-quiet-launch-claude-subprocess.sh-95782.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-95963.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-9631.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-96511.log ===
 launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
@@ -1197,6 +1304,8 @@ ERROR: unknown subcommand 'redact' 'secrets'. Known: ci behind-count, ci decide,
 
 === larch-quiet-launch-claude-subprocess.sh-98327.log ===
 launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.9rOuM7/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-9839.log ===
 
 === larch-quiet-launch-claude-subprocess.sh-98523.log ===
 
@@ -1264,6 +1373,8 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 === larch-quiet-plan-review-loop.sh-31641.log ===
 
 === larch-quiet-plan-review-loop.sh-32110.log ===
+
+=== larch-quiet-plan-review-loop.sh-33710.log ===
 
 === larch-quiet-plan-review-loop.sh-38462.log ===
 
@@ -1377,6 +1488,17 @@ plan-review-loop.sh: unknown option: --convergence-threshold
 Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
 
 === larch-quiet-plan-review-loop.sh-70354.log ===
+
+=== larch-quiet-plan-review-loop.sh-72686.log ===
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-72774.log ===
+plan-review-loop.sh: unknown option: --round-cap
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
+
+=== larch-quiet-plan-review-loop.sh-72886.log ===
+plan-review-loop.sh: unknown option: --convergence-threshold
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]
 
 === larch-quiet-plan-review-loop.sh-77758.log ===
 
@@ -1700,6 +1822,8 @@ Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file 
 
 === larch-quiet-refresh-run-logs.sh-68761.log ===
 
+=== larch-quiet-refresh-run-logs.sh-91311.log ===
+
 === larch-quiet-render-final-summary.sh-21246.log ===
 
 === larch-quiet-render-final-summary.sh-36738.log ===
@@ -1711,6 +1835,8 @@ Timing report unavailable: ledger not found
 
 === larch-quiet-render-final-summary.sh-82915.log ===
 Timing report unavailable: ledger not found
+
+=== larch-quiet-render-final-summary.sh-84688.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-11191.log ===
 
@@ -1729,6 +1855,8 @@ Timing report unavailable: ledger not found
 === larch-quiet-run-relevant-checks-captured.sh-28054.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-32857.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-34289.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-37515.log ===
 
@@ -1805,6 +1933,9 @@ POSTPLAN_EMIT_STATUS=ok
 === larch-quiet-run-step3-review.sh-67468.log ===
 POSTPLAN_EMIT_STATUS=ok
 
+=== larch-quiet-run-step3-review.sh-71238.log ===
+POSTPLAN_EMIT_STATUS=ok
+
 === larch-quiet-run-step3-review.sh-7293.log ===
 POSTPLAN_EMIT_STATUS=ok
 
@@ -1822,6 +1953,9 @@ POSTPLAN_EMIT_STATUS=ok
 
 === larch-quiet-run-step3-review.sh-98630.log ===
 POSTPLAN_EMIT_STATUS=ok
+
+=== larch-quiet-ship.py-24183.log ===
+**⚠ Reviewer cursor-specialist-correctness-output.txt: non-substantive output produced no prose or TSV findings**
 
 === larch-quiet-ship.py-27058.log ===
 
