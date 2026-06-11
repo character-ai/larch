@@ -303,6 +303,8 @@ cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" "$STUB_ROOT/scripts/lib-quiet.sh"
 cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" "$STUB_ROOT/scripts/lib-design-tmpdir.sh"
 mkdir -p "$STUB_ROOT/python"
 cat > "$STUB_ROOT/python/cli.py" <<'EOF'
+#!/usr/bin/env python3
+import os
 import sys
 if sys.argv[1:3] == ["voting", "parse-judge-vote"]:
     print("PARSED_CORRECTNESS=true")
@@ -312,6 +314,9 @@ if sys.argv[1:3] == ["voting", "parse-judge-vote"]:
     print("extra")
     print("line")
     raise SystemExit(0)
+real_cli = os.environ.get("LARCH_REAL_CLI")
+if real_cli:
+    os.execv(sys.executable, [sys.executable, real_cli, *sys.argv[1:]])
 print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
 raise SystemExit(2)
 EOF
@@ -320,7 +325,7 @@ W4S="$TMPROOT/case4-sanitize"
 mkdir -p "$W4S/design"
 write_ballot "$W4S/ballot.md"
 cp "$CLAUDE" "$W4S/claude-vote-output.txt"
-CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
+LARCH_REAL_CLI="$CLI" CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
 assert_cell "$W4S/out.tsv" FINDING_1 v1_quality "good with tab"
 assert_all_rows_21_fields "$W4S/out.tsv"
 
