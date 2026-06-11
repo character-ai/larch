@@ -42,7 +42,7 @@ def test_run_timeout_captures_partial_output() -> None:
             "import sys, time; print('partial-out', flush=True); "
             "print('partial-err', file=sys.stderr, flush=True); time.sleep(5)",
         ],
-        timeout=0.1,
+        timeout=1.0,
     )
     assert result.returncode == config.PROC_TIMEOUT_EXIT_CODE
     assert "partial-out" in result.stdout

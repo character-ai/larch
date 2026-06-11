@@ -1556,9 +1556,27 @@ def token_cost_main(argv: list[str] | None = None) -> int:
     return main(argv)
 
 
+def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
+    from report_tokens_cost import token_cost_from_args as main
+    return main(argv, env=env)
+
+
 def token_render_cost_line_main(argv: list[str] | None = None) -> int:
     from report_tokens_cost import render_cost_line_main as main
     return main(argv)
+
+
+def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
+    from report_tokens_cost import render_cost_line_from_args as main
+    return main(argv, env=env)
+
+
+def _cost_breakdown_type() -> type[Any]:
+    from report_tokens_cost import CostBreakdown as cost_breakdown
+    return cost_breakdown
+
+
+CostBreakdown = _cost_breakdown_type()
 
 
 def compute_pr_lines_main(argv: list[str] | None = None) -> int:
