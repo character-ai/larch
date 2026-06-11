@@ -225,10 +225,17 @@ def _marketplace_sparse_cone_matches() -> bool:
 
 
 def _get_stable_releases() -> list[str]:
+    if shutil.which("gh") is None:
+        err("Warning: gh is not available; upgrading without stable verification.")
+        return []
     result = proc.run(["gh", "api", "--paginate", "repos/character-ai/larch/releases", "--jq", ".[] | select(.prerelease == false and .draft == false) | .tag_name"])
     if result.returncode != 0:
+        err(f"Warning: failed to query GitHub stable releases via gh (exit {result.returncode}); upgrading without stable verification.")
         return []
-    return [line.removeprefix("v") for line in result.stdout.splitlines() if is_safe_version(line.removeprefix("v"))]
+    releases = [line.removeprefix("v") for line in result.stdout.splitlines() if is_safe_version(line.removeprefix("v"))]
+    if not releases:
+        err("Warning: gh returned no valid stable larch release tags; upgrading without stable verification.")
+    return releases
 
 
 def _recover_diagnostics() -> None:
@@ -256,7 +263,11 @@ def _refresh_marketplace() -> bool:
         err("Adding larch marketplace (sparse checkout; excludes larch-logs)...")
     proc.run(["claude", "plugin", "marketplace", "remove", "larch-local"])
     if clone is not None and clone.exists():
-        shutil.rmtree(clone)
+        try:
+            shutil.rmtree(clone)
+        except OSError as exc:
+            err(f"Warning: failed to remove marketplace clone '{clone}': {exc}")
+            return False
     add = proc.run(["claude", "plugin", "marketplace", "add", "character-ai/larch", "--sparse", *LARCH_SPARSE_DIRS.split()])
     return add.returncode == 0
 

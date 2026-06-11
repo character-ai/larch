@@ -219,12 +219,31 @@ def remote_main_sha(url: str) -> str:
     return ""
 
 
-def all_worktrees_clean() -> bool:
+def _live_worktree_paths() -> list[str]:
     worktrees = proc.run(["git", "worktree", "list", "--porcelain"])
-    paths = [line.removeprefix("worktree ") for line in worktrees.stdout.splitlines() if line.startswith("worktree ")]
+    paths: list[str] = []
+    current_path = ""
+    prunable = False
+    for line in worktrees.stdout.splitlines():
+        if not line:
+            if current_path and not prunable:
+                paths.append(current_path)
+            current_path = ""
+            prunable = False
+            continue
+        if line.startswith("worktree "):
+            current_path = line.removeprefix("worktree ")
+        elif line.startswith("prunable"):
+            prunable = True
+    if current_path and not prunable:
+        paths.append(current_path)
     if not paths:
         paths = [git_stdout(["rev-parse", "--show-toplevel"])]
-    for path in paths:
+    return paths
+
+
+def all_worktrees_clean() -> bool:
+    for path in _live_worktree_paths():
         status = proc.run(["git", "-C", path, "status", "--porcelain"])
         if status.stdout.strip():
             err(f"ERROR: working tree '{path}' is dirty; commit or stash before running")
@@ -233,12 +252,8 @@ def all_worktrees_clean() -> bool:
 
 
 def no_op_in_progress() -> bool:
-    worktrees = proc.run(["git", "worktree", "list", "--porcelain"])
-    paths = [line.removeprefix("worktree ") for line in worktrees.stdout.splitlines() if line.startswith("worktree ")]
-    if not paths:
-        paths = [git_stdout(["rev-parse", "--show-toplevel"])]
     sentinels = ("MERGE_HEAD", "REBASE_HEAD", "rebase-apply", "rebase-merge", "CHERRY_PICK_HEAD", "REVERT_HEAD")
-    for path in paths:
+    for path in _live_worktree_paths():
         git_dir = proc.run(["git", "-C", path, "rev-parse", "--absolute-git-dir"])
         if git_dir.returncode != 0:
             return False
@@ -358,7 +373,12 @@ def phase_github(ctx: SetupContext) -> None:
         return
     err(f"Fork main differs from upstream main: upstream={upstream_sha} fork={fork_sha}. Confirming will overwrite fork branches/tags to match upstream.")
     if not ctx.mirror_confirmed:
-        die("mirror divergence detected; rerun with --mirror-confirmed")
+        if not sys.stdin.isatty():
+            die("mirror divergence detected; rerun with --mirror-confirmed")
+        err("Mirror-sync fork now? [y/N] ")
+        reply = sys.stdin.readline().strip()
+        if reply.lower() not in {"y", "yes"}:
+            die("mirror sync declined")
     if remote_main_sha(upstream_https) != upstream_sha or remote_main_sha(fork_https) != fork_sha:
         die("remote moved during confirmation; rerun")
     if not all_worktrees_clean() or not no_op_in_progress():

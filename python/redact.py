@@ -328,6 +328,16 @@ def redact_outbound(text: str) -> str:
     return out.rstrip("\n")
 
 
+def redact_secrets_outbound(text: str) -> str:
+    """Redact secret families only; preserve tmpdir and operator repo paths."""
+    if not text:
+        return text
+    out, _ = scrub_log_secrets(text)
+    if text.endswith("\n"):
+        return out
+    return out.rstrip("\n")
+
+
 def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
     """Scrub secret-shaped values from run-log text before a flush commit
     (parity with scripts/scrub-log-secrets.sh).

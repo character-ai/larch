@@ -15,7 +15,7 @@ from pathlib import Path
 from collections.abc import Callable
 
 import proc
-from redact import redact_outbound
+from redact import redact_secrets_outbound
 
 CAP = 30
 CONF_RANK = {"high": 3, "medium": 2, "low": 1}
@@ -41,12 +41,12 @@ def warn(message: str) -> None:
 
 
 def _flat_error(text: str, limit: int = 500) -> str:
-    return " ".join(redact_outbound(text).split())[:limit]
+    return " ".join(redact_secrets_outbound(text).split())[:limit]
 
 
 def _redact_checked(text: str) -> tuple[str | None, int]:
     try:
-        return redact_outbound(text), 0
+        return redact_secrets_outbound(text), 0
     except Exception as exc:  # pragma: no cover - defensive seam for tests
         emit_kv("ISSUE_FAILED", "true")
         emit_kv("ISSUE_ERROR", f"redaction:{exc}")
@@ -426,8 +426,11 @@ def create_one_main(argv: list[str]) -> int:
             emit_kv("ISSUE_TITLE", final_title)
             return 0
         unknown_json = bool(re.search(r"unknown flag|unknown option|flag provided but not defined", result.stderr, re.IGNORECASE)) and "--json" in result.stderr
-        if result.returncode == 0 or unknown_json:
+        if unknown_json:
             return _create_fallback(repo, gh_args, final_title)
+        if result.returncode == 0:
+            redacted_output = _flat_error(result.stdout)
+            return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
         return _emit_issue_failed(_flat_error(result.stderr))
     finally:
         Path(body_tmp_path).unlink(missing_ok=True)
@@ -660,7 +663,7 @@ def list_issues_main(argv: list[str]) -> int:
         emit_kv("LIST_STATUS", "failed")
         warn("WARN: jq failed to parse gh api output")
         return 0
-    cutoff = _dt.datetime.now(_dt.UTC).date() - _dt.timedelta(days=int(closed_window))
+    cutoff = _dt.date.today() - _dt.timedelta(days=int(closed_window))
     rows: list[str] = []
     for doc in docs:
         if not isinstance(doc, list):

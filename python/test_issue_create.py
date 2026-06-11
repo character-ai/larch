@@ -17,6 +17,108 @@ def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str 
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
 
 
+def _parse_input_fixture(tmp_path: Path, capsys: Any, input_text: str) -> tuple[int, str, Path]:
+    input_file = tmp_path / "input.md"
+    input_file.write_text(input_text, encoding="utf-8")
+    out_dir = tmp_path / "bodies"
+    rc = issue_create.parse_input_main(["--input-file", str(input_file), "--output-dir", str(out_dir)])
+    out = capsys.readouterr().out
+    return rc, out, out_dir
+
+
+def _kv_value(output: str, key: str) -> str:
+    prefix = f"{key}="
+    for line in output.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix) :]
+    return ""
+
+
+def _body_file_contents(output: str, index: int) -> str:
+    return Path(_kv_value(output, f"ITEM_{index}_BODY_FILE")).read_text(encoding="utf-8")
+
+
+def test_parse_input_issue_129_oos_subheading_absorption(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: Example bug\n"
+        "- **Description**: First description paragraph.\n"
+        "### Notes\n"
+        "Second paragraph after the subheading.\n"
+        "- **Reviewer**: Codex\n"
+        "- **Vote tally**: YES=3, NO=0\n"
+        "- **Phase**: review\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert _kv_value(out, "ITEM_1_TITLE") == "Example bug"
+    expected = "First description paragraph.\n### Notes\nSecond paragraph after the subheading."
+    assert _body_file_contents(out, 1) == expected
+
+
+def test_parse_input_issue_129_generic_body_preserves_oos_bullets(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### Regular issue title\n"
+        "This is preceding body text that must survive.\n"
+        "- **Description**: stray description bullet that should stay in body\n"
+        "- **Reviewer**: stray reviewer bullet\n"
+        "- **Vote tally**: stray tally bullet\n"
+        "- **Phase**: stray phase bullet\n"
+        "Trailing body text after bullets.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    expected = (
+        "This is preceding body text that must survive.\n"
+        "- **Description**: stray description bullet that should stay in body\n"
+        "- **Reviewer**: stray reviewer bullet\n"
+        "- **Vote tally**: stray tally bullet\n"
+        "- **Phase**: stray phase bullet\n"
+        "Trailing body text after bullets."
+    )
+    assert _body_file_contents(out, 1) == expected
+    assert "ITEM_1_REVIEWER=" not in out
+
+
+def test_parse_input_issue_131_empty_inline_description(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: Description body from continuations only\n"
+        "- **Description**:\n"
+        "  First continuation line.\n"
+        "\n"
+        "  Third line after blank.\n"
+        "- **Reviewer**: Code\n"
+        "- **Vote tally**: YES=3, NO=0\n"
+        "- **Phase**: design\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    expected = "  First continuation line.\n\n  Third line after blank."
+    assert _body_file_contents(out, 1) == expected
+    assert "ITEM_1_MALFORMED=" not in out
+
+
+def test_parse_input_issue_132_generic_body_absorbs_nested_oos_heading(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### Regular issue with nested OOS-shaped heading\n"
+        "Preceding body text.\n"
+        "### OOS_42: nested example\n"
+        "Trailing body text after the nested heading.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    expected = "Preceding body text.\n### OOS_42: nested example\nTrailing body text after the nested heading."
+    assert _body_file_contents(out, 1) == expected
+    assert "ITEM_2_TITLE=" not in out
+
+
 def test_parse_input_oos_and_malformed_body_file(tmp_path: Path, capsys: Any) -> None:
     input_file = tmp_path / "items.md"
     input_file.write_text(
@@ -226,6 +328,68 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
     assert len(calls) == 2
 
 
+def test_create_one_dry_run_preserves_operator_paths(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    operator_path = "/Users/alice/myproject/docs/guide.md"
+    body.write_text(f"see {operator_path}", encoding="utf-8")
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "label", "list"]:
+            return _result(argv, stdout="bug\n")
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.create_one_main(
+        [
+            "--title",
+            f"Path in {operator_path}",
+            "--body-file",
+            str(body),
+            "--repo",
+            "owner/repo",
+            "--dry-run",
+        ],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert operator_path in out
+    assert "<OPERATOR_REPO_PATH>" not in out
+
+
+def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "issue", "create"]:
+            return _result(argv, stdout=json.dumps({"id": "", "number": "", "url": ""}))
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "ISSUE_FAILED=true" in out
+    assert "empty field" in out
+    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]
+    assert len(create_calls) == 1
+    assert "--json" in create_calls[0]
+
+
+def test_list_issues_missing_gh_emits_failed(monkeypatch: Any, capsys: Any) -> None:
+    def missing_gh(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv and argv[0] == "gh":
+            return proc.CommandResult(tuple(argv), 127, "", "gh: command not found\n", 0.0)
+        return _result(argv)
+
+    monkeypatch.setattr(issue_create.proc, "run", missing_gh)
+    assert issue_create.list_issues_main(["--repo", "o/r"]) == 0
+    out = capsys.readouterr().out
+    assert "LIST_STATUS=failed" in out
+
+
 def test_create_one_redaction_failure_exits_three(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
@@ -233,7 +397,7 @@ def test_create_one_redaction_failure_exits_three(monkeypatch: Any, tmp_path: Pa
     def boom(_text: str) -> str:
         raise RuntimeError("redact failed")
 
-    monkeypatch.setattr(issue_create, "redact_outbound", boom)
+    monkeypatch.setattr(issue_create, "redact_secrets_outbound", boom)
     rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "o/r"])
     out = capsys.readouterr().out
     assert rc == 3

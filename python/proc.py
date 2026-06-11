@@ -68,6 +68,52 @@ def run(
     if popen_text:
         popen_kwargs["text"] = True
         popen_kwargs["errors"] = "replace"
+    try:
+        return _run_subprocess(
+            argv_tuple,
+            start=start,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stream_stdout=stream_stdout,
+            stream_stderr=stream_stderr,
+            popen_text=popen_text,
+            popen_kwargs=popen_kwargs,
+        )
+    except FileNotFoundError:
+        duration = time.monotonic() - start
+        missing = argv_tuple[0] if argv_tuple else "<unknown>"
+        result = CommandResult(
+            argv=argv_tuple,
+            returncode=127,
+            stdout="",
+            stderr=f"{missing}: command not found\n",
+            duration=duration,
+        )
+        if check:
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                list(argv_tuple),
+                output=result.stdout,
+                stderr=result.stderr,
+            ) from None
+        return result
+
+
+def _run_subprocess(
+    argv_tuple: tuple[str, ...],
+    *,
+    start: float,
+    timeout: float | None,
+    cwd: str | None,
+    env: Mapping[str, str] | None,
+    check: bool,
+    stream_stdout: int | None,
+    stream_stderr: int | None,
+    popen_text: bool,
+    popen_kwargs: dict[str, Any],
+) -> CommandResult:
     if timeout is not None:
         with subprocess.Popen(
             argv_tuple,
@@ -142,3 +188,4 @@ def run(
             stderr=result.stderr,
         )
     return result
+
