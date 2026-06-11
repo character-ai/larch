@@ -272,6 +272,10 @@ assert_eq none "$(kv RESUME_HINT "$out")" "7: step12d stays non-resumable"
 classify_fixture case7f bump-branch-guard bump "network timeout while validating bump branch"
 out=$CLASSIFY_OUT
 assert_eq none "$(kv RESUME_HINT "$out")" "7: bump-branch-guard stays non-resumable"
+classify_fixture case7n merge-loop-iteration-cap merge "merge loop iteration cap reached"
+out=$CLASSIFY_OUT
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$out")" "7: merge-loop-iteration-cap is unrecoverable"
+assert_eq none "$(kv RESUME_HINT "$out")" "7: merge-loop-iteration-cap stays non-resumable"
 
 dir=$(make_tmp case8a)
 run_capture "$SANDBOX/case8a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
@@ -747,6 +751,7 @@ done <<'EOF'
 12-max-retries
 10-detached-head
 bump-branch-guard
+merge-loop-iteration-cap
 EOF
 
 dir=$(make_tmp case20-unsafe-step)

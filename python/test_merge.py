@@ -82,7 +82,7 @@ def test_redact_merge_diagnostic_truncates() -> None:
 
 
 def test_merge_results_table_is_exhaustive() -> None:
-    assert len(config.MERGE_RESULTS) == 8
+    assert len(config.MERGE_RESULTS) == 9
     assert "already_merged" not in config.MERGE_RESULTS
 
 
@@ -393,6 +393,85 @@ def test_merge_pr_emits_ci_not_ready(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_CI_NOT_READY
+
+
+def test_merge_pr_ci_not_ready_even_when_review_required(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(responses=_open_pr_responses())
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_fail)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "pr_review_decision",
+        lambda *_a, **_k: "REVIEW_REQUIRED",
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_CI_NOT_READY
+    assert not any(call[1:3] == ("pr", "merge") for call in runner.calls)
+
+
+def test_merge_pr_review_required_no_admin_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "denied", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "pr_review_decision",
+        lambda *_a, **_k: "REVIEW_REQUIRED",
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(
+        tmpdir=str(tmp_path),
+        state_file=str(state),
+        no_admin_fallback=True,
+    )
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_REVIEW_REQUIRED
+    assert "--no-admin-fallback" in out.error
+
+
+def test_merge_pr_review_required_after_admin_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "admin fail", 0.01),
+            CommandResult(("gh", "pr", "merge"), 1, "", "plain fail", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(
+        merge_module.gh,
+        "pr_review_decision",
+        lambda *_a, **_k: "REVIEW_REQUIRED",
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_REVIEW_REQUIRED
+    assert "requires approving review" in out.error
 
 
 def test_merge_pr_runs_version_race_gate_before_admin_merge(

@@ -176,6 +176,7 @@ def _step_result_to_ship(
             config.NEEDS_USER_CI_FIX_EXHAUSTED,
             config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
             config.NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
+            config.NEEDS_USER_REVIEW_REQUIRED,
             "local-unfixable",
         ):
             if reason == token or reason.startswith((f"{token}:", f"{token}\n")):
@@ -1560,16 +1561,54 @@ def run_ship(
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
-                iteration += 1
-                _write_ship_state(
-                    working,
-                    phase="ci-initial",
+                if merged.result == config.MERGE_RESULT_CI_NOT_READY:
+                    review_decision = gh.pr_review_decision(
+                        runner,
+                        working.pr_number or 0,
+                        repo=working.repo,
+                        cwd=repo_root,
+                    )
+                    if review_decision == "REVIEW_REQUIRED":
+                        merged = merge.MergeResult(
+                            result=config.MERGE_RESULT_REVIEW_REQUIRED,
+                            error=(
+                                f"PR requires approving review (mergeStateStatus=BLOCKED): "
+                                f"approve the PR or merge manually with --admin. "
+                                f"Original: {merged.error}"
+                            ),
+                        )
+                if merged.result != config.MERGE_RESULT_REVIEW_REQUIRED:
+                    iteration += 1
+                    _write_ship_state(
+                        working,
+                        phase="ci-initial",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
+                    continue
+            if merged.result == config.MERGE_RESULT_REVIEW_REQUIRED:
+                _write_terminal_state(
+                    working.with_(
+                        stall_tracking=True,
+                        stall_step="merge",
+                        final_bail_reason=config.NEEDS_USER_REVIEW_REQUIRED,
+                    ),
+                    Outcome.NEEDS_USER_INPUT,
+                    "merge",
                     iteration=iteration,
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
                 )
-                continue
+                return ShipResult(
+                    Outcome.NEEDS_USER_INPUT,
+                    needs_user_reason=config.NEEDS_USER_REVIEW_REQUIRED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail=merged.error or "PR requires approving review",
+                )
             pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
             working = working.with_(
                 merge_result=merged.result,

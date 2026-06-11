@@ -155,6 +155,55 @@ def test_happy_path_stage_order(
     assert "ship.py: post-merge" in captured.err
 
 
+def test_merge_review_required_exits_as_needs_user_input(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    merge_calls = {"count": 0}
+
+    def fake_merge(*_a: object, **_k: object) -> object:
+        merge_calls["count"] += 1
+        return type(
+            "MR",
+            (),
+            {"result": config.MERGE_RESULT_REVIEW_REQUIRED, "error": "needs review"},
+        )()
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_REVIEW_REQUIRED
+    assert merge_calls["count"] == 1
+
+
 def test_merge_loop_iteration_cap_stalls(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

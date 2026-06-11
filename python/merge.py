@@ -473,6 +473,33 @@ def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
     return str(value or "")
 
 
+def _maybe_review_required(
+    runner: Runner,
+    ctx: RunContext,
+    pr_num: int,
+    outcome: MergeResult,
+    *,
+    cwd: str | None,
+) -> MergeResult:
+    if outcome.result not in {
+        config.MERGE_RESULT_ADMIN_FAILED,
+        config.MERGE_RESULT_POLICY_DENIED,
+    }:
+        return outcome
+    review_decision = gh.pr_review_decision(runner, pr_num, repo=ctx.repo, cwd=cwd)
+    if review_decision != "REVIEW_REQUIRED":
+        return outcome
+    if ctx.no_admin_fallback:
+        return MergeResult(
+            result=config.MERGE_RESULT_REVIEW_REQUIRED,
+            error="PR requires approving review; --no-admin-fallback is set",
+        )
+    return MergeResult(
+        result=config.MERGE_RESULT_REVIEW_REQUIRED,
+        error=f"PR requires approving review; admin merge failed: {outcome.error}",
+    )
+
+
 def _attempt_merge(
     runner: Runner,
     ctx: RunContext,
@@ -492,9 +519,15 @@ def _attempt_merge(
         if result.returncode == 0:
             return MergeResult(result=config.MERGE_RESULT_MERGED, error="")
         diag = redact_merge_diagnostic(result.stderr + result.stdout)
-        return MergeResult(
-            result=config.MERGE_RESULT_POLICY_DENIED,
-            error=f"branch protection denied merge; --no-admin-fallback set: {diag}",
+        return _maybe_review_required(
+            runner,
+            ctx,
+            pr_num,
+            MergeResult(
+                result=config.MERGE_RESULT_POLICY_DENIED,
+                error=f"branch protection denied merge; --no-admin-fallback set: {diag}",
+            ),
+            cwd=cwd,
         )
 
     admin = gh.pr_merge(
@@ -520,9 +553,15 @@ def _attempt_merge(
     if plain.returncode == 0:
         return MergeResult(result=config.MERGE_RESULT_MERGED, error="")
     plain_diag = redact_merge_diagnostic(plain.stderr + plain.stdout)
-    return MergeResult(
-        result=config.MERGE_RESULT_ADMIN_FAILED,
-        error=f"Admin merge failed: {admin_diag}; fallback merge failed: {plain_diag}",
+    return _maybe_review_required(
+        runner,
+        ctx,
+        pr_num,
+        MergeResult(
+            result=config.MERGE_RESULT_ADMIN_FAILED,
+            error=f"Admin merge failed: {admin_diag}; fallback merge failed: {plain_diag}",
+        ),
+        cwd=cwd,
     )
 
 
