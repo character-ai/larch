@@ -33,8 +33,9 @@ fi
 # leading-zero forms. The divergence from lax peers is intentional:
 # tracking-issue-read.sh (--issue and sentinel ISSUE_NUMBER) and
 # get-issue-state.sh accept bare all-digits; a future hardening pass
-# should tighten them, not loosen this. clarify-comment-post.sh and
-# clarify-state.sh reach the same >=1 semantics with all-digits + zero checks.
+# should tighten them, not loosen this. python/cli.py clarify comment-post
+# and python/cli.py clarify state reach the same >=1 semantics with
+# all-digits + zero checks.
 if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
     larch_err "ERROR: --issue must be a positive integer (>= 1; #0 is not a valid GitHub issue number)"
     exit 2

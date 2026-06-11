@@ -1175,6 +1175,112 @@ def issue_comment(
         )
 
 
+def issue_comment_with_retry(
+    runner: Runner,
+    issue: str,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = issue_comment(runner, issue, body, repo=repo, cwd=cwd)
+        return result, result.returncode, _combined(result)
+
+    return with_transient_retry(attempt).value
+
+
+def issue_labels_list(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> list[str]:
+    result = _retry_read(
+        runner,
+        [
+            "issue",
+            "view",
+            issue,
+            "--repo",
+            repo,
+            "--json",
+            "labels",
+            "--jq",
+            ".labels[].name",
+        ],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        raise ShipError(_combined(result) or f"gh issue labels failed ({result.returncode})")
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def issue_label_add(
+    runner: Runner,
+    issue: str,
+    label: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _gh(
+            runner,
+            ["issue", "edit", issue, "--repo", repo, "--add-label", label],
+            cwd=cwd,
+        )
+        return result, result.returncode, _combined(result)
+
+    return with_transient_retry(attempt).value
+
+
+def issue_label_remove(
+    runner: Runner,
+    issue: str,
+    label: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = _gh(
+            runner,
+            ["issue", "edit", issue, "--repo", repo, "--remove-label", label],
+            cwd=cwd,
+        )
+        return result, result.returncode, _combined(result)
+
+    return with_transient_retry(attempt).value
+
+
+def label_create(
+    runner: Runner,
+    label: str,
+    *,
+    repo: str,
+    color: str = "D73A4A",
+    description: str = "",
+    cwd: str | None = None,
+) -> CommandResult:
+    return _gh(
+        runner,
+        [
+            "label",
+            "create",
+            label,
+            "--repo",
+            repo,
+            "--color",
+            color,
+            "--description",
+            description,
+        ],
+        cwd=cwd,
+    )
+
+
 def issue_edit(
     runner: Runner,
     issue: str,
