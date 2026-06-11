@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # tally-code-votes.sh — Tally /review code-review votes from a round-aware panel.
-# Renamed from tally-votes.sh and rewritten to source scripts/lib-vote-tally.sh
-# and apply the active threshold rules per voting-protocol.md.
+# Tallies votes through python/cli.py voting verbs and applies the active threshold rules per voting-protocol.md.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -15,10 +15,17 @@ larch_quiet_init
 if ! (: >&3) 2>/dev/null; then
     exec 3>&1
 fi
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
-# shellcheck source=scripts/lib-voter-parse-rate.sh
-source "$PLUGIN_ROOT/scripts/lib-voter-parse-rate.sh"
+
+
+voter_parse_rate_diag_path() {
+    local voter_path="$1"
+    case "$voter_path" in
+        *.txt) printf '%s
+' "${voter_path%.txt}-parse-rate-diag.txt" ;;
+        *) printf '%s-parse-rate-diag.txt
+' "$voter_path" ;;
+    esac
+}
 
 usage() {
     larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--round-num N] [--both-down true|false]"
@@ -134,7 +141,7 @@ cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
-if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
+if ! python3 "$CLI" voting split-ballot "$BALLOT_FILE" "$BLOCK_DIR"; then
     larch_err "tally-code-votes.sh: duplicate or malformed FINDING/OOS headings in ballot"
     exit 2
 fi
@@ -227,7 +234,7 @@ sanitize_result_cell() {
 parse_vote_rating_for() {
     local voter_file="$1" ballot_id="$2" parsed rc
     set +e
-    parsed=$("$PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh" "$voter_file" "$ballot_id" 2>/dev/null)
+    parsed=$(python3 "$CLI" voting parse-judge-vote "$voter_file" "$ballot_id" 2>/dev/null)
     rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
@@ -420,8 +427,7 @@ fi
 VOTER_PARSE_FAILED_COUNT=0
 EFFECTIVE_VOTER_FILES=()
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
-    diag_file="$(voter_parse_rate_diag_path "$voter_file")"
-    if voter_parse_rate_diag_matches_output "$diag_file" "$voter_file"; then
+    if python3 "$CLI" voting parse-rate-diag-matches --voter-file "$voter_file"; then
         VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
     else
         EFFECTIVE_VOTER_FILES+=("$voter_file")
@@ -433,7 +439,7 @@ EFFECTIVE_VOTERS=$((ELIGIBLE_VOTERS - VOTER_PARSE_FAILED_COUNT))
 if (( EFFECTIVE_VOTERS == 0 )); then
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
-        reviewer=$(reviewer_for_block "$block")
+        reviewer=$(python3 "$CLI" voting reviewer-for-block "$block")
         # Placeholder row for a 0-judge degraded round; main-agent
         # adjudication, not this TSV, determines the final accepted/rejected
         # artifacts.
@@ -480,7 +486,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     printf '# Code Review Voting Tally\n\n'
     EXPECTED_VOTERS=$(expected_voters_for_round "$ROUND_NUM")
     if (( EFFECTIVE_VOTERS < EXPECTED_VOTERS )); then
-        tier_label="$(panel_tier "$EFFECTIVE_VOTERS")"
+        tier_label="$(python3 "$CLI" voting panel-tier "$EFFECTIVE_VOTERS")"
         printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$EFFECTIVE_VOTERS" "$tier_label"
     fi
     if [[ "$NOT_SUBSTANTIVE_COUNT" -gt 0 ]]; then
@@ -514,7 +520,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
             esac
         done
 
-        result=$(classify_result "$yes" "$no" "$exonerate" "$EFFECTIVE_VOTERS")
+        result=$(python3 "$CLI" voting classify-result "$yes" "$no" "$exonerate" "$EFFECTIVE_VOTERS")
         case "$result" in
             accepted|rejected|neutral) ;;
             *)
@@ -524,7 +530,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         esac
         printf '| %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$judge_error" "$result"
 
-        reviewer=$(reviewer_for_block "$block")
+        reviewer=$(python3 "$CLI" voting reviewer-for-block "$block")
         write_classification_tsv_row "$id" "$reviewer" "$result" "${classification_cells[@]+"${classification_cells[@]}"}"
 
         # Code review supports OOS_N headings and legacy FINDING_N headings
@@ -555,7 +561,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
         security=false
         sec_rc=0
-        is_security_block "$block" || sec_rc=$?
+        python3 "$CLI" voting is-security-block "$block" || sec_rc=$?
         if [[ "$sec_rc" -eq 0 ]]; then
             security=true
         elif [[ "$sec_rc" -eq 1 ]]; then

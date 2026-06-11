@@ -150,11 +150,24 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-# shellcheck source=scripts/file-line-regex-lib.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/file-line-regex-lib.sh"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+fetch_file_line_regex() {
+    local name="$1" out
+    if ! out=$(python3 "$CLI" voting file-line-regex --name "$name" 2>/dev/null); then
+        larch_err "validate-research-output.sh: failed to load file-line regex: $name"
+        exit 2
+    fi
+    if [[ -z "$out" ]]; then
+        larch_err "validate-research-output.sh: empty file-line regex: $name"
+        exit 2
+    fi
+    printf '%s' "$out"
+}
+__filelinelib_any_re="$(fetch_file_line_regex any-re)"
+__filelinelib_extensionless_re="$(fetch_file_line_regex extensionless-re)"
 # Print help before quiet init so --help output reaches the terminal.
 for _arg in "$@"; do
   if [[ "$_arg" == "--help" ]]; then
@@ -520,7 +533,7 @@ if [[ "$REQUIRE_CITATIONS" == "true" ]]; then
     # The first stem character `[A-Za-z_]` may be `_`, but the strict-mode
     # `[/_-]` requires a signal AFTER the start char, so a bare-underscore
     # start does not by itself satisfy the rule.
-    # Tier-split regex now sourced from scripts/file-line-regex-lib.sh
+    # Tier-split regex now loaded from python/cli.py voting file-line-regex
     # (`__filelinelib_long_re`, `__filelinelib_short_path_re`,
     # `__filelinelib_short_line_re`, `__filelinelib_any_re`).
     if grep -Eq "$__filelinelib_any_re" "$INPUT"; then

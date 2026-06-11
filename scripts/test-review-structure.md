@@ -4,6 +4,6 @@ Assertion 1 now expects nine `/review` scripts, including `review-core`, and ver
 
 Assertions 1c/1d verify the hand-maintained orchestration aggregator is named `agents/orchestrator-aggregator.md`, carries the `HAND-MAINTAINED` annotation, and does not regress to the generated-reviewer `reviewer-*` namespace. They also assert that `agents/reviewer-aggregator.md`, `agents/orchestrator-judge.md`, and `skills/review/references/voting.md` do not exist.
 
-Assertion 20 pins both halves of the security OOS boundary in `skills/shared/voting-protocol.md` and `scripts/lib-vote-tally.md`: shared voting prose says security-tagged findings are held locally and never filed publicly, and the tally library contract documents the canonical `focus-area\s*=\s*security` token match.
+Assertion 20 pins both halves of the security OOS boundary in `skills/shared/voting-protocol.md` and `python/voting.py`: shared voting prose says security-tagged findings are held locally and never filed publicly, and the voting module documents the canonical `focus-area\s*=\s*security` token match.
 
 Wired into `make lint` via the `test-review-structure` target. Update this contract with the harness whenever adding or renumbering assertions.

@@ -47,7 +47,7 @@ contract.
 ## Tally record schema
 
 `plan-review-tally.json` and `code-review-tally.json` each contain one JSON
-object composed by `scripts/compose-tally-record.sh`:
+object composed by `python/cli.py voting compose-tally-record`:
 
 ```json
 {"schema_version":2,"phase":"plan-review","batch":"plan-review-tally","mode":"simple","rounds":0,"accepted_count":0,"rejected_count":0,"exonerated_count":0,"body":"..."}

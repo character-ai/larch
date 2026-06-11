@@ -9,7 +9,7 @@ relevant, and verifies failure atomicity.
 The harness intentionally covers behavior, not structural grep pins: same-file
 serialization, disjoint and overlapping range handling, whole-file fallback,
 malformed item index preservation, root-level file forms from
-`scripts/file-line-regex-lib.sh`, cluster chain degradation, global-cap failure,
+`python/cli.py voting file-line-regex`, cluster chain degradation, global-cap failure,
 and parse-input edge cases involving pending headings and generic fallback
 items.
 

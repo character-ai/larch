@@ -54,7 +54,7 @@ Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter ou
 
 Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` code review the expected size is Claude plus the **available** externals (shrink-not-backfill), so a panel that shrank solely because a vendor was unavailable is the designed state and raises **no** warning — only a genuine failure of an *available* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
 
-After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; 0 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `scripts/lib-vote-tally.sh::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
+After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; 0 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
 
 ## Voter Panel Composition
 
@@ -263,7 +263,7 @@ The scoreboard includes additional columns for OOS items:
 
 ### OOS Security Tag
 
-Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`tally-plan-review.sh`) and `/review` code review (`tally-code-votes.sh`) via `scripts/lib-vote-tally.sh::is_security_block`:
+Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`tally-plan-review.sh`) and `/review` code review (`tally-code-votes.sh`) via `python/voting.py::is_security_block`:
 
 - **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
 - **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.

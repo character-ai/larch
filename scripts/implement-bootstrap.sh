@@ -1199,7 +1199,7 @@ phase_plan_materialize() {
             cp "$tally_body_raw" "$tally_body" 2>/dev/null || true
         fi
         tally_err="$IMPLEMENT_TMPDIR/write-tally.stderr.log"
-        "$SCRIPT_DIR/write-tally.sh" \
+        python3 "$PY_CLI" voting write-tally \
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --skill implement \
             --run-id "$RUN_ID" \
@@ -1216,7 +1216,7 @@ phase_plan_materialize() {
             "$SCRIPT_DIR/append-tool-failure.sh" \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — plan-review tally" \
-                --tool "write-tally.sh" \
+                --tool "python3 python/cli.py voting write-tally" \
                 --exit-code "$tally_rc" \
                 --category Warnings \
                 --output-file "$tally_err" \

@@ -4,7 +4,7 @@
 
 **Purpose**: Tally `/review` code-review votes from the judge panel (Claude plus each available external — 1 to 3 judges under shrink-not-backfill) and emit accepted/rejected/OOS findings plus a per-finding scoreboard. Replaces the older `tally-votes.sh` which presumed 2 voter files that no script ever wrote — hence every finding silently auto-accepted (the bug this PR closes).
 
-Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `reviewer_for_block`, `is_security_block`, `accept_finding`, `classify_result`, and `split_ballot_to_blocks`. The same library backs `skills/design/scripts/tally-plan-review.sh`, so the threshold rules and security-tag detection cannot drift between code review and plan review.
+Sources `${CLAUDE_PLUGIN_ROOT}/python/voting.py` for `vote_for_id`, `reviewer_for_block`, `is_security_block`, `accept_finding`, `classify_result`, and `split_ballot_to_blocks`. The same library backs `skills/design/scripts/tally-plan-review.sh`, so the threshold rules and security-tag detection cannot drift between code review and plan review.
 
 ## Args
 
@@ -74,7 +74,7 @@ export has a stable enum. The actual adjudication outcome is deferred to the
 main-agent path and is reflected in the accepted/rejected/OOS artifact files
 rather than this degraded-round TSV.
 
-Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `scripts/parse-judge-vote-and-rating.sh`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
+Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `python/cli.py voting parse-judge-vote`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
 
 ## Threshold (delegated to lib-vote-tally.sh)
 

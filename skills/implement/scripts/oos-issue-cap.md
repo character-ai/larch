@@ -45,7 +45,7 @@ the file-conflict pre-pass that consumes that same path.
   collapse to one space and truncated excerpts receive a trailing `…`.
 - **File-reference preservation**. Each aggregate bullet appends a
   `[Files: <paths>]` suffix when the full rolled-up body contains repo-relative
-  file or file:line references matched by `scripts/file-line-regex-lib.sh`.
+  file or file:line references matched by `python/cli.py voting file-line-regex`.
   The file list is extracted from the full body, not the truncated excerpt, so
   the downstream file-conflict pre-pass can still serialize aggregate entries
   with path hints.
@@ -91,6 +91,6 @@ When behavior changes, update these files together:
 - `skills/implement/references/oos-pipeline.md` Step 9a.1 procedure.
 - `docs/configuration-and-permissions.md` environment variable entries.
 - `python/cli.py issue parse-input` if parser stdout changes.
-- `scripts/file-line-regex-lib.sh` if path grammar changes.
+- `python/cli.py voting file-line-regex` if path grammar changes.
 - `scripts/test-implement-structure.sh` assertion 9g.
 - `skills/implement/scripts/test-oos-issue-cap.sh` fixtures.

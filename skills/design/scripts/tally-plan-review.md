@@ -34,7 +34,7 @@
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
 - `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path except `-h|--help`. Success paths emit `ok` or `main-agent-vote-required`. Every non-zero exit, including argv, ballot, and voter-validation paths, emits `tally-error`. Callers must parse `TALLY_PLAN_REVIEW_STATUS` from stdout to disambiguate; the script's exit code remains the primary signal.
 - Whenever a validated `--design-tmpdir` path allows the tally to materialize `voting-tally.md` before a non-zero exit, stdout also emits `VOTING_TALLY_FILE=<path>` so callers do not have to guess whether a stub tally artifact exists.
-- Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
+- Acceptance threshold comes from `python/voting.py::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
 - Non-accepted in-scope findings are written to `rejected-findings.md`, except
@@ -75,13 +75,13 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
   `tr '\t\n' '  '` before TSV write; tabs/newlines become spaces rather than
   being deleted.
 - Severity is parsed from voter output by
-  `scripts/parse-judge-vote-and-rating.sh` and written verbatim to the v1/v2/v3
+  `python/cli.py voting parse-judge-vote` and written verbatim to the v1/v2/v3
   severity columns of the 21-field forensic TSV. No transform other than the
   documented `tr '\t\n' '  '` whitespace normalization is permitted between
   parser and TSV.
-- `scripts/parse-judge-vote-and-rating.sh` parses the extended rating axes for
+- `python/cli.py voting parse-judge-vote` parses the extended rating axes for
   each voter and ballot id. `vN_vote` is sourced from
-  `scripts/lib-vote-tally.sh::vote_for_id` so the forensic TSV and
+  `python/voting.py::vote_for_id` so the forensic TSV and
   `voting_result` share one vote parser.
 
 ## Per-round `--design-tmpdir` Routing

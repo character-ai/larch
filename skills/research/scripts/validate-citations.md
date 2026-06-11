@@ -222,7 +222,7 @@ real-time budget-exhaustion scenarios so CI can assign them to a different
 shard. Verified scenarios:
 
 - Provenance extraction (URL, DOI, file:line; LONG-tier and SHORT-tier
-  per `scripts/file-line-regex-lib.sh`).
+  per `python/cli.py voting file-line-regex`).
 - SSRF rejections: `file://` URL, RFC1918 host literal, IPv6 link-local
   literal, RFC6598 host literal, hostname → private-range DNS,
   multi-answer DNS rebinding (one public + one private answer).
