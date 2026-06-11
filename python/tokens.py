@@ -1572,8 +1572,8 @@ def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None
 
 
 def _cost_breakdown_type() -> type[Any]:
-    from report_tokens_cost import CostBreakdown as cost_breakdown
-    return cost_breakdown
+    from report_tokens_cost import CostBreakdown as CostBreakdownType
+    return CostBreakdownType
 
 
 CostBreakdown = _cost_breakdown_type()
