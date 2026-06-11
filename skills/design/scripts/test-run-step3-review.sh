@@ -117,6 +117,18 @@ else
 fi
 assert_contains "$out" 'unknown option: --bogus' 'unknown option error'
 
+echo "=== --mode single is rejected ==="
+set +e
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --mode single 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass '--mode single exits 2'
+else
+    fail "--mode single rc=$rc"
+fi
+assert_contains "$out" '--mode single is no longer accepted' '--mode single error message'
+
 echo "=== mutually exclusive mode flags exit 2 ==="
 set +e
 out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --preview-only --no-preview 2>&1)"

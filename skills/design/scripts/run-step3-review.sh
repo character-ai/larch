@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run-step3-review.sh - /design Step 3 plan-review phase driver.
 # --preview-only: render plan-candidate preview live; driver owns .step3-entry-plan-printed sentinel.
-# --mode single (default): cap guard, round-cursor advance, plan-review-loop launch, result normalization.
 # --mode loop: run the Step 3 multi-round controller until terminal or bail-out.
+# --no-preview: single-round mode (internal; backward-compat; --mode single is no longer accepted).
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview | --mode single|loop] [--starting-round N]'
+    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview | --mode loop] [--starting-round N]'
 }
 
 DESIGN_TMPDIR_ARG=""
@@ -47,6 +47,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mode)
             [[ $# -ge 2 ]] || fail '--mode requires a value'
+            [[ "$2" != single ]] || fail '--mode single is no longer accepted; invoke design-step3-review.sh instead (which drives --mode loop internally)'
             STEP3_MODE="$2"
             shift 2
             ;;
@@ -87,7 +88,7 @@ fi
 
 case "${STEP3_MODE:-single}" in
     single|loop) ;;
-    *) fail "--mode must be single or loop (got: $STEP3_MODE)" ;;
+    *) fail "--mode must be loop (got: $STEP3_MODE)" ;;
 esac
 case "$STARTING_ROUND" in
     ''|*[!0-9]*) fail '--starting-round must be a positive integer' ;;
