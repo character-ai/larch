@@ -224,6 +224,28 @@ def test_comment_post_redacts_body_and_parses_stripped_url(tmp_path: Path) -> No
     assert secret not in runner.bodies[0]
 
 
+def test_comment_post_redacts_cursor_key(tmp_path: Path) -> None:
+    content = tmp_path / "content.md"
+    secret = "crsr_" + "0123456789abcdefghijklmnopqrstuvwxyzABCDEF"
+    content.write_text(f"hello {secret}", encoding="utf-8")
+    runner = CapturingRunner(
+        responses=[_result(stdout="https://github.com/o/r/issues/7#issuecomment-123\n")]
+    )
+    result = clarify.clarify_comment_post(
+        runner, "7", "request", "1", str(content), repo="o/r"
+    )
+    marker = "<!-- larch:clarify-request id=1 -->"
+    assert result == clarify.ClarifyCommentResult(
+        posted=True,
+        comment_id="123",
+        comment_url="https://github.com/o/r/issues/7#issuecomment-123",
+        marker=marker,
+    )
+    assert runner.bodies == [redact.redact(f"{marker}\nhello {secret}")]
+    assert secret not in runner.bodies[0]
+    assert "<REDACTED-TOKEN>" in runner.bodies[0]
+
+
 def test_comment_post_response_kind_and_parse_miss(tmp_path: Path) -> None:
     content = tmp_path / "content.md"
     content.write_text("body", encoding="utf-8")
