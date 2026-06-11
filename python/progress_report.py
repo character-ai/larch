@@ -405,6 +405,23 @@ def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
     return f"{header}\n\n{detail}" if detail else header
 
 
+def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
+    if (round_dir / "round-start-s").is_file():
+        return True
+    if mark_ts is None:
+        return round_dir.is_dir()
+    try:
+        for child in round_dir.iterdir():
+            try:
+                if child.is_file() and child.stat().st_mtime > mark_ts:
+                    return True
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return False
+
+
 def _render_implement(run: LiveRun) -> str:
     tmpdir = run.tmpdir
     step_label, start_s = _latest_timing_mark(tmpdir / "timing-ledger.tsv")
@@ -412,10 +429,17 @@ def _render_implement(run: LiveRun) -> str:
     if (tmpdir / "ship-pr-state.sh").is_file() and phase in SHIP_PR_PHASES:
         return _render_ship_pr(tmpdir)
     done_marker = tmpdir / "progress" / "done"
-    if not done_marker.exists() and ("Step 5" in step_label or (not step_label and not phase)):
-        report = _render_step5(tmpdir, _resolve_run_id(tmpdir))
-        if report:
-            return report
+    if not done_marker.exists():
+        if "Step 5" in step_label or (not step_label and not phase):
+            report = _render_step5(tmpdir, _resolve_run_id(tmpdir))
+            if report:
+                return report
+        else:
+            round_dir = _current_round_dir(tmpdir)
+            if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
+                report = _render_step5(tmpdir, _resolve_run_id(tmpdir))
+                if report:
+                    return report + "\nnote: step marks stale; phase inferred from round artifacts"
     return _render_generic("implement", step_label, start_s, tmpdir)
 
 
@@ -710,6 +734,12 @@ def _render_design(run: LiveRun) -> str:
         report = _render_design_plan_review(run.tmpdir, start_s)
         if report:
             return report
+    else:
+        round_dir = _current_round_dir(run.tmpdir / "plan-review")
+        if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
+            report = _render_design_plan_review(run.tmpdir, start_s)
+            if report:
+                return report + "\nnote: step marks stale; phase inferred from round artifacts"
     return _render_generic("design", step_label, start_s, run.tmpdir)
 
 

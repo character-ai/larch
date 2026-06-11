@@ -166,6 +166,7 @@ if [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
     PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark --if-latest-differs "design Step 3 — plan review" || true
 # shellcheck source=scripts/lib-scope-anchor-handoff.sh
 source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 

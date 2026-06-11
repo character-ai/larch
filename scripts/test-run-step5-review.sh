@@ -202,6 +202,36 @@ else
     fail "loop resume mark appears in timing-report"
 fi
 
+echo "=== skipped-entry round-1: launcher writes missing Step 5 mark ==="
+case_dir="$TMP/skipped-entry-round1"
+make_tmpdir "$case_dir" default true false
+# Pre-seed ledger with Step 4 mark only (simulates skipped step-5-entry.sh)
+printf 'v1\tmark\t100\timplement\tStep 4 — commit implementation\t-\t-\t-\t-\t-\t-\t-\t-\n' \
+    > "$case_dir/timing-ledger.tsv"
+argv_file="$TMP/skipped-entry-round1.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --mode loop --starting-round 1 >/dev/null
+mark_count="$(awk -F '\t' '$2 == "mark" && $4 == "implement" && $5 == "Step 5 — code review" { n++ } END { print n+0 }' "$case_dir/timing-ledger.tsv")"
+if [[ "$mark_count" -eq 1 ]]; then
+    pass "skipped-entry round-1: launcher writes Step 5 mark"
+else
+    fail "skipped-entry round-1: expected 1 Step 5 mark, got $mark_count"
+fi
+
+echo "=== no-duplicate: prior Step 5 mark present, launcher skips re-mark ==="
+case_dir="$TMP/no-duplicate-mark"
+make_tmpdir "$case_dir" default true false
+# Pre-seed ledger with existing Step 5 mark (simulates normal round-1 entry path)
+printf 'v1\tmark\t100\timplement\tStep 5 — code review\t-\t-\t-\t-\t-\t-\t-\t-\n' \
+    > "$case_dir/timing-ledger.tsv"
+argv_file="$TMP/no-duplicate-mark.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --mode loop --starting-round 1 >/dev/null
+mark_count="$(awk -F '\t' '$2 == "mark" && $4 == "implement" && $5 == "Step 5 — code review" { n++ } END { print n+0 }' "$case_dir/timing-ledger.tsv")"
+if [[ "$mark_count" -eq 1 ]]; then
+    pass "no-duplicate: prior Step 5 mark not duplicated"
+else
+    fail "no-duplicate: expected 1 Step 5 mark, got $mark_count"
+fi
+
 echo "=== conventional plan.txt empty: fail closed ==="
 case_dir="$TMP/plan-file-empty"
 make_tmpdir "$case_dir" default true false

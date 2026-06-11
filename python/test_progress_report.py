@@ -901,3 +901,94 @@ def test_design_step3_stale_voter_manifest_shows_reviewer_header(
     assert "plan vote in progress" not in report
     assert "round 1 in progress" in report
     assert "reviewers:" in report
+
+
+def test_implement_stale_label_with_fresh_round_dir_triggers_step5(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """Stale step label (Step 4) but fresh round-1 dir → _render_step5 fires with staleness note."""
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    _write_mark(impl, "Step 4 — commit implementation", ts=100)
+    (round_dir / "round-start-s").write_text("110\n", encoding="utf-8")
+
+    reported: list[str] = []
+
+    def fake_step5(implement_tmpdir: Path, _run_id: str) -> str:
+        reported.append(str(implement_tmpdir))
+        return "step5 detail"
+
+    monkeypatch.setattr(progress_report, "_render_step5", fake_step5)
+
+    report = progress_report._render_implement(
+        progress_report.LiveRun("implement", impl, str(impl), impl / "pointer", 0)
+    )
+
+    assert reported, "staleness fallback should have called _render_step5"
+    assert "step5 detail" in report
+    assert "note: step marks stale; phase inferred from round artifacts" in report
+
+
+def test_implement_stale_label_no_fresh_round_dir_falls_through(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """Stale label (Step 4) and no round dir → generic report, no staleness note."""
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _write_mark(impl, "Step 4 — commit implementation", ts=100)
+
+    def fail_step5(_tmpdir: Path, _run_id: str) -> str:
+        raise AssertionError("_render_step5 should not run without a round dir")
+
+    monkeypatch.setattr(progress_report, "_render_step5", fail_step5)
+
+    report = progress_report._render_implement(
+        progress_report.LiveRun("implement", impl, str(impl), impl / "pointer", 0)
+    )
+
+    assert report.startswith("implement: Step 4 — commit implementation")
+    assert "stale" not in report
+
+
+def test_design_stale_label_with_fresh_round_dir_triggers_plan_review(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """Stale design label (Step 2b) but fresh plan-review/round-1 → rich view fires with staleness note."""
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _write_design_mark(design, "design Step 2b — plan", ts=100)
+    (round_dir / "round-start-s").write_text("110\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        progress_report, "_render_design_plan_review", lambda _tmpdir, _start_s: "rich plan review"
+    )
+
+    report = progress_report._render_design(_design_run(design))
+
+    assert "rich plan review" in report
+    assert "note: step marks stale; phase inferred from round artifacts" in report
+
+
+def test_design_stale_label_no_fresh_round_dir_falls_through(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """Stale design label and no round dir → generic report, no staleness note."""
+    design = tmp_path / "design"
+    design.mkdir()
+    _write_design_mark(design, "design Step 2b — plan", ts=100)
+
+    def fail_rich(_tmpdir: Path, _start_s: int | None) -> str:
+        raise AssertionError("rich renderer should not run without a round dir")
+
+    monkeypatch.setattr(progress_report, "_render_design_plan_review", fail_rich)
+
+    report = progress_report._render_design(_design_run(design))
+
+    assert report.startswith("design: design Step 2b — plan")
+    assert "stale" not in report
