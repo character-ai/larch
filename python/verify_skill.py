@@ -1,4 +1,4 @@
-"""Python replacement for scripts/verify-skill-called.sh."""
+"""Python replacement for python3 python/cli.py verify skill-called."""
 
 from __future__ import annotations
 

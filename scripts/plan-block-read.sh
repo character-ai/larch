@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+PY_CLI="$REPO_ROOT/python/cli.py"
 
 MARK_START='^[[:space:]]*<!--[[:space:]]+larch:plan:start[[:space:]]+-->[[:space:]]*$'
 MARK_END='^[[:space:]]*<!--[[:space:]]+larch:plan:end[[:space:]]+-->[[:space:]]*$'
@@ -43,11 +43,11 @@ resolve_repo() {
 
 redact_gh_error() {
     local err_text="$1" redacted status=0
-    if [ ! -x "$REDACT_HELPER" ]; then
+    if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$PY_CLI" ]; then
         printf '%s' 'gh stderr redaction unavailable'
         return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || status=$?
+    redacted=$(printf '%s' "$err_text" | python3 "$PY_CLI" redact secrets) || status=$?
     if [ "$status" -ne 0 ]; then
         printf '%s' 'gh stderr redaction failed'
         return 0

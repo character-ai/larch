@@ -636,13 +636,13 @@ append_tool_failure_local() {
         larch_err "ship-pr.sh: refusing state-supplied IMPLEMENT_TMPDIR outside allowed roots: $log_tmpdir"
         log_tmpdir="$IMPLEMENT_TMPDIR"
     fi
-    if [ -z "$log_tmpdir" ] || [ ! -x python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure ]; then
+    if [ -z "$log_tmpdir" ] || ! command -v python3 >/dev/null 2>&1 || [ ! -f "$SCRIPT_DIR/../python/cli.py" ]; then
         larch_err "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable"
-        # Pipe the capture through redact-secrets.sh before stderr replay so
+        # Pipe the capture through python3 python/cli.py redact secrets before stderr replay so
         # the fallback path mirrors the success-path --redact behavior and
         # never leaks tokens to operator transcripts.
         if [ -n "$output_file" ] && [ -f "$output_file" ]; then
-            if [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]; then
+            if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../python/cli.py" ]; then
                 python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$output_file" | sanitize_diagnostic_line | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
                     sanitize_diagnostic_line < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
             else
@@ -663,7 +663,7 @@ append_tool_failure_local() {
         --category "$category" \
         --output-file "$output_file" \
         --redact >>"$append_diag" 2>&1; then
-        larch_err "ship-pr.sh: append-tool-failure.sh failed for $tool (site=$site); see $append_diag"
+        larch_err "ship-pr.sh: python3 python/cli.py run-log append-failure failed for $tool (site=$site); see $append_diag"
     fi
     return 0
 }
@@ -1175,7 +1175,7 @@ run_pr_create_phase() {
                 --run-id "$flush_run_id" \
                 > "$fail_file" 2>&1
             rc=$?
-            [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (pre-pr-create)" "$rc" "$fail_file" Warnings
+            [ "$rc" -eq 0 ] || record_failure pr-create "python3 python/cli.py run-log commit (pre-pr-create)" "$rc" "$fail_file" Warnings
         fi
     fi
     fail_file=$(failure_capture_path pr-create)
@@ -2606,7 +2606,7 @@ run_rebase_rebump() {
     fi
 
     # 0. Pre-flush any pending larch-log writes before rebase (issue #2952 Bug B).
-    # Failure is non-fatal: refresh-run-logs.sh short-circuits cleanly on post-merge
+    # Failure is non-fatal: python3 python/cli.py run-log refresh short-circuits cleanly on post-merge
     # or missing-state.
     fail_file=$(failure_capture_path rebase)
     python3 "$SCRIPT_DIR/../python/cli.py" run-log refresh \
@@ -2981,7 +2981,7 @@ run_postmerge_phase() {
             fi
             rc=$?
             if [ "$rc" -ne 0 ]; then
-                record_failure postmerge "larch-log.sh init (manifest-recovery)" "$rc" "$fail_file" Warnings
+                record_failure postmerge "python3 python/cli.py run-log init (manifest-recovery)" "$rc" "$fail_file" Warnings
                 recovery_ok=false
             else
                 fail_file=$(failure_capture_path postmerge)
@@ -2992,7 +2992,7 @@ run_postmerge_phase() {
                     --field "recovery_reason=manifest_lost_mid_run" \
                     > "$fail_file" 2>&1
                 rc=$?
-                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest (partial-tag)" "$rc" "$fail_file" Warnings
+                [ "$rc" -eq 0 ] || record_failure postmerge "python3 python/cli.py run-log manifest (partial-tag)" "$rc" "$fail_file" Warnings
             fi
         fi
         if [ "$recovery_ok" = "false" ]; then
@@ -3012,7 +3012,7 @@ run_postmerge_phase() {
             if [ "$rc" -eq 0 ]; then
                 manifest_ok=true
             else
-                record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
+                record_failure postmerge "python3 python/cli.py run-log manifest" "$rc" "$fail_file" Warnings
             fi
             final_report_rc=1
             final_report_output=""

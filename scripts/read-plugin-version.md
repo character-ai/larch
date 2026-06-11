@@ -32,10 +32,10 @@ The helper always exits 0. Callers must treat the value as display metadata only
 
 | File | Relationship |
 |---|---|
-| `scripts/larch-log.sh` | Records the plugin version in run manifests. |
-| `scripts/test-larch-log.sh` | Regression harness for manifest and batch writes. |
-| `scripts/larch-log.md` | Human-readable log contract. |
+| `python3 python/cli.py run-log` | Records the plugin version in run manifests. |
+| `python/test_run_logs.py` | Regression harness for manifest and batch writes. |
+| `docs/run-logs.md` | Human-readable log contract. |
 
 ## Test harness
 
-Covered by `scripts/test-larch-log.sh`, which is wired into `make test-harnesses`.
+Covered by `python/test_run_logs.py`, which is wired into `make py-test`.

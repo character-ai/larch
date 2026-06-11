@@ -179,7 +179,7 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
         _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
     fi
     [[ -z "$_issues_log" ]] && _issues_log="$DESIGN_TMPDIR/execution-issues.md"
-    if [[ -x python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure ]]; then
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$PLUGIN_ROOT/python/cli.py" ]]; then
         _status_label="failed"
         [[ "$voter1_rc" -eq 0 ]] && _status_label="warning"
         python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \

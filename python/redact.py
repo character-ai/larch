@@ -9,7 +9,7 @@ from pathlib import Path
 
 import config
 
-# Line-local secret families (byte-for-byte ports of redact-secrets.sh sed -E)
+# Line-local secret families (byte-for-byte ports of python3 python/cli.py redact secrets sed -E)
 _SK_RE = re.compile(r"sk-(ant-)?[A-Za-z0-9_-]{20,}")
 _GH_RE = re.compile(
     r"(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}",
@@ -29,7 +29,7 @@ _UNTERMINATED_MARKER = (
     "[content truncated — unterminated PEM block; tail of body dropped for safety]"
 )
 
-# --- Pre-flush log-gate secret families (parity with scrub-log-secrets.sh) ---
+# --- Pre-flush log-gate secret families (parity with python3 python/cli.py redact scrub-log-secrets) ---
 # High-precision prefixed patterns NOT covered by the base families above.
 # `crsr_` is the confirmed Cursor key prefix; `key_{32,}` is the hedge for
 # Cursor admin keys that avoids matching ordinary `key_` identifiers (which
@@ -327,7 +327,7 @@ def redact(text: str) -> str:
     """Redact secrets and session tmpdir literals; idempotent."""
     paths_out = _redact_tmpdir_paths(text)
     paths_out, _ = _redact_secrets_pem(paths_out)
-    # Parity with redact-secrets.sh awk: line-oriented output ends with newline.
+    # Parity with python3 python/cli.py redact secrets awk: line-oriented output ends with newline.
     if paths_out and not paths_out.endswith("\n"):
         paths_out += "\n"
     return paths_out
@@ -355,11 +355,11 @@ def redact_secrets_outbound(text: str) -> str:
 
 def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
     """Scrub secret-shaped values from run-log text before a flush commit
-    (parity with scripts/scrub-log-secrets.sh).
+    (parity with python3 python/cli.py redact scrub-log-secrets).
 
     Returns ``(scrubbed_text, findings)`` where ``findings`` maps a family name
     to its occurrence count in the ORIGINAL text. Base families
-    (sk-/GitHub/AWS/JWT/PEM) are scrubbed by the redact-secrets.sh-equivalent
+    (sk-/GitHub/AWS/JWT/PEM) are scrubbed by the python3 python/cli.py redact secrets-equivalent
     PEM-aware pass; the extra prefixed families (Cursor et al.) by additional
     substitutions. Unlike :func:`redact`, this does NOT rewrite session tmpdir
     paths — it is a secret gate, not a path normaliser.
@@ -407,7 +407,7 @@ def _streaming_redact(stdin_text: str, state_file: Path) -> str:
     state_file.write_text(f"in_pem={1 if in_pem else 0}\n", encoding="utf-8")
     if in_pem:
         print(
-            "WARN: redact-secrets.sh: unterminated PEM block (streaming)",
+            "WARN: python3 python/cli.py redact secrets: unterminated PEM block (streaming)",
             file=sys.stderr,
         )
     return "".join(out)
@@ -482,22 +482,22 @@ def main_scrub_log_secrets(argv: list[str]) -> int:
         arg = argv[idx]
         if arg in {"--dir", "--log-root", "--path"}:
             if idx + 1 >= len(argv):
-                print(f"scrub-log-secrets.sh: {arg} requires a value", file=sys.stderr)
+                print(f"python3 python/cli.py redact scrub-log-secrets: {arg} requires a value", file=sys.stderr)
                 return 2
             directory = argv[idx + 1]
             idx += 2
         else:
             if directory:
-                print(f"scrub-log-secrets.sh: unknown option: {arg}", file=sys.stderr)
+                print(f"python3 python/cli.py redact scrub-log-secrets: unknown option: {arg}", file=sys.stderr)
                 return 2
             directory = arg
             idx += 1
     if not directory:
-        print("scrub-log-secrets.sh: directory is required", file=sys.stderr)
+        print("python3 python/cli.py redact scrub-log-secrets: directory is required", file=sys.stderr)
         return 2
     root = Path(directory)
     if not root.exists():
-        print(f"scrub-log-secrets.sh: directory not found: {root}", file=sys.stderr)
+        print(f"python3 python/cli.py redact scrub-log-secrets: directory not found: {root}", file=sys.stderr)
         return 2
     try:
         violations, files = scrub_log_directory(root)

@@ -57,8 +57,8 @@ The renderer walks the raw JSONL twice. The first pass builds `tool_use_id → t
 
 ## Failure mode in the flush pipeline
 
-`scripts/capture-session-transcript.sh` runs this renderer before `larch-log.sh write`. If the renderer exits non-zero or produces an empty file, the wrapper emits `SESSION_TRANSCRIPT_STATUS=render-failed` or `render-empty`, appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`, and skips the flush entirely. The parent `/implement` run continues; no raw `.jsonl` is committed in either form.
+`python3 python/cli.py run-log capture-transcript` runs this renderer before `python3 python/cli.py run-log write`. If the renderer exits non-zero or produces an empty file, the wrapper emits `SESSION_TRANSCRIPT_STATUS=render-failed` or `render-empty`, appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`, and skips the flush entirely. The parent `/implement` run continues; no raw `.jsonl` is committed in either form.
 
 ## Edit-in-sync
 
-Update `scripts/capture-session-transcript.sh`, `scripts/capture-session-transcript.md`, and `scripts/larch-log-batches.sh` (`session-transcript` row) when changing the renderer's output shape or filter rules. Bump `v` in the header when changing the schema in a way that breaks downstream parsers.
+Update `python3 python/cli.py run-log capture-transcript`, `docs/run-logs.md`, and `docs/run-log-batches.md` (`session-transcript` row) when changing the renderer's output shape or filter rules. Bump `v` in the header when changing the schema in a way that breaks downstream parsers.

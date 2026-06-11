@@ -227,7 +227,7 @@ fi
 
 LOG_BYTES=$(wc -c < "$LOG_FILE" | tr -d '[:space:]')
 REDACTED_LOG_FILE="$LOG_DIR/$SITE-$attempt.redacted.log"
-if [[ ! -x python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths || ! -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]]; then
+if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$SCRIPT_DIR/../python/cli.py" ]]; then
     emit "STATUS=fail FAILURE_REASON=redaction-failed"
     exit 1
 fi

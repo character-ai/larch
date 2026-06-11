@@ -1610,16 +1610,16 @@ unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CR
 mkdir -p "$TMPBCFAIL/design/breadcrumbs"
 printf 'body\n' >"$TMPBCFAIL/design/plan.txt"
 printf 'will fail redaction\n' >"$TMPBCFAIL/design/larch-quiet-fail.sh-1.log"
-orig_redact="$REPO_ROOT/scripts/redact-secrets.sh"
-saved_redact="$TMPBCFAIL/redact-secrets.original.sh"
+orig_redact="$REPO_ROOT/python/redact.py"
+saved_redact="$TMPBCFAIL/redact.original.py"
 cp "$orig_redact" "$saved_redact"
-cat >"$TMPBCFAIL/redact-secrets.fail.sh" <<'EOF'
+cat >"$TMPBCFAIL/redact.fail.py" <<'EOF'
 #!/usr/bin/env bash
 cat >/dev/null
 exit 1
 EOF
-chmod +x "$TMPBCFAIL/redact-secrets.fail.sh"
-cp "$TMPBCFAIL/redact-secrets.fail.sh" "$orig_redact"
+chmod +x "$TMPBCFAIL/redact.fail.py"
+cp "$TMPBCFAIL/redact.fail.py" "$orig_redact"
 out_bcfail=$(
     (cd "$clone_bcfail" && bash "$PUBLISH" --design-tmpdir "$TMPBCFAIL/design" --run-id "RUNBFAIL1" --issue 15 --repo owner/repo) 2>/dev/null || true
 )

@@ -4,12 +4,12 @@
 (`$DESIGN_TMPDIR`) into `larch-logs/design/<RUN_ID>/` on the repository default
 branch by:
 
-1. Validating `--run-id` with the same slug rules as `scripts/larch-log.sh`
+1. Validating `--run-id` with the same slug rules as `python3 python/cli.py run-log`
    (`larch_log_slug_is_valid` / `larch_log_validate_slug` family: ASCII letters,
    digits, `.`, `_`, `-`; reject empty, `..`, `/`, `\`, leading `.`).
 2. Resolving `REPO_ROOT` via `git rev-parse --show-toplevel` and the default
    base branch via `git symbolic-ref refs/remotes/origin/HEAD` (same family as
-   `larch-log.sh commit`'s default-branch guard — not a `main`-only string
+   `python3 python/cli.py run-log commit`'s default-branch guard — not a `main`-only string
    compare).
 3. Creating a disposable git worktree on branch `larch-log-design-<RUN_ID>`
    from `origin/<default>`. Before `git worktree add`, the script refuses to
@@ -18,7 +18,7 @@ branch by:
    the same name. Unlike `/implement` and `/fix-issue`, `/design` does not
    globally serialize publishers: two concurrent runs must not share the same
    `RUN_ID` slug on one clone, or they will collide on this branch/worktree slot.
-4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
+4. Running `python3 python/cli.py run-log init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
 5. Copying design artifacts: top-level regular files (maxdepth 1), the strict
    `plan-review/` round-artifact allowlist documented below, plus all
@@ -77,8 +77,8 @@ branch by:
    lines (`larch_redact_strip_meta_cmd_json`); files whose names match
    `*-output*.json` delete a top-level `.result` object when valid JSON
    (`larch_redact_strip_json_result`, fail-closed on trim error); other paths
-   copy through without that JSON trim; then `redact-tmpdir-paths.sh` and
-   `redact-secrets.sh` (in-process pipeline, same redactors as
+   copy through without that JSON trim; then `python3 python/cli.py redact tmpdir-paths` and
+   `python3 python/cli.py redact secrets` (in-process pipeline, same redactors as
    `larch_log_redact_file` without the larch-log stdout contract).
 6. Committing `larch-logs/design/<RUN_ID>/`. The commit subject carries no
    `[skip ci]` marker, so CI runs on the publish PR. `--reason pause` uses

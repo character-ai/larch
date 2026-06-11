@@ -519,7 +519,7 @@ def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
 
 
 def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> None:
-    """Re-render token/timing JSON from ledgers (refresh-run-logs.sh parity)."""
+    """Re-render token/timing JSON from ledgers (python3 python/cli.py run-log refresh parity)."""
     run_id = effective_run_id(ctx)
     if not run_id:
         return
@@ -1225,7 +1225,7 @@ def _publish_run_tree_to_repo(
     *,
     cwd: str | None,
 ) -> str:
-    """Copy tmpdir run tree into repo larch-logs (larch-log.sh commit parity)."""
+    """Copy tmpdir run tree into repo larch-logs (python3 python/cli.py run-log commit parity)."""
     run_id = effective_run_id(ctx)
     if not validate_run_id_slug(run_id):
         return ""
@@ -1398,7 +1398,7 @@ def _cleanup_volatile_run_tree(
 
 def _scrub_run_tree(directory: Path) -> tuple[int, int]:
     """Scrub secret-shaped values from every file under ``directory`` in place
-    before commit (parity with scripts/scrub-log-secrets.sh).
+    before commit (parity with python3 python/cli.py redact scrub-log-secrets).
 
     Returns ``(total_violations, files_scrubbed)``. Files with no secret are
     left byte-for-byte untouched. Fail-closed: raises :class:`ShipError` if a
@@ -1477,7 +1477,7 @@ def _larch_log_commit(
     if not rel:
         return CommandResult(("true",), 0, "", "", 0.0)
     # Pre-flush secret gate: scrub Cursor keys et al. from the staged run tree
-    # before commit (parity with scripts/scrub-log-secrets.sh). Fail-closed via
+    # before commit (parity with python3 python/cli.py redact scrub-log-secrets). Fail-closed via
     # ShipError if a detected secret survives.
     violations = 0
     if cwd is not None:
@@ -1806,7 +1806,7 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
 
 def larch_log_flush_main(argv: list[str]) -> int:
     if argv:
-        print(f"larch-log-flush.sh: unknown argument: {argv[0]}", file=sys.stderr)
+        print(f"python3 python/cli.py run-log flush: unknown argument: {argv[0]}", file=sys.stderr)
         return 0
     tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not tmpdir or os.environ.get("LARCH_NO_LOGS_COMMIT") == "true":
@@ -2023,8 +2023,8 @@ def append_entry_main(argv: list[str]) -> int:
 
 
 def append_failure_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="append-tool-failure.sh")
-    parser = argparse.ArgumentParser(prog="append-tool-failure.sh", add_help=False)
+    logging_util.quiet_init(argv0="python3 python/cli.py run-log append-failure")
+    parser = argparse.ArgumentParser(prog="python3 python/cli.py run-log append-failure", add_help=False)
     parser.add_argument("--log", required=True)
     parser.add_argument("--site", required=True)
     parser.add_argument("--tool", required=True)

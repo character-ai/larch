@@ -65,7 +65,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
 - When Codex or Cursor review launches finish their auth-retry loops with a
   non-zero exit, the launcher best-effort appends captured sidecar diagnostics
-  to an `execution-issues.md` through `scripts/append-tool-failure.sh --redact`
+  to an `execution-issues.md` through `python3 python/cli.py run-log append-failure --redact`
   under `External Reviewer Issues`, including a failure verdict and the final
   auth-loop attempt count. The log path resolves to
   `$IMPLEMENT_TMPDIR/execution-issues.md` when `IMPLEMENT_TMPDIR` is set, else
@@ -207,6 +207,6 @@ content to `${OUTPUT}.sidecar.history` before truncating, so multi-attempt stder
 survives. The codex/cursor give-up computes the failure verdict first
 (verdict-before-reset), then `write_failure_diag` composes `${OUTPUT}.failure-diag`
 and `resolve_failure_diagnostic_source` selects the richest non-empty source to
-pass to `append-tool-failure.sh`; `append_launch_failure` also appends that source
+pass to `python3 python/cli.py run-log append-failure`; `append_launch_failure` also appends that source
 to the durable `vendor-failure-diagnostics` batch. This is the fix for the #3713
 incident, where a truncated sidecar produced an empty `execution-issues.md` block.

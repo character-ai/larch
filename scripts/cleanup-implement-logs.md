@@ -54,7 +54,7 @@ python3 scripts/cleanup-implement-logs.py --run-dir larch-logs/implement/<UUID> 
 
 ## Edit-in-sync
 
-Changes to the Phase 1 publish rules in `scripts/lib-larch-log.sh` or
+Changes to the Phase 1 publish rules in `python run_logs.py` or
 `python/run_logs.py` that add new file-type denials should be mirrored here
 as a new action so the retroactive cleanup stays aligned.
 

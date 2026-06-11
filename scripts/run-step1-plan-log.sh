@@ -117,9 +117,15 @@ PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 
 COMPOSE_SH="${RUN_STEP1_COMPOSE_SH:-$PLUGIN_ROOT/scripts/compose-plan-goals-test.sh}"
-LARCH_LOG_SH="${RUN_STEP1_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
 [[ -x "$COMPOSE_SH" ]] || fail "compose-plan-goals-test.sh not executable: $COMPOSE_SH"
-[[ -x "$LARCH_LOG_SH" ]] || fail "larch-log.sh not executable: $LARCH_LOG_SH"
+if [[ -n "${RUN_STEP1_LARCH_LOG_SH:-}" ]]; then
+    LARCH_LOG_CMD=("$RUN_STEP1_LARCH_LOG_SH")
+    [[ -x "${LARCH_LOG_CMD[0]}" ]] || fail "run-log override not executable: ${LARCH_LOG_CMD[0]}"
+else
+    LARCH_LOG_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" run-log)
+    command -v python3 >/dev/null 2>&1 || fail "python3 not found"
+    [[ -f "$PLUGIN_ROOT/python/cli.py" ]] || fail "python CLI missing: $PLUGIN_ROOT/python/cli.py"
+fi
 
 OUTPUT_FILE="$IMPLEMENT_TMPDIR/plan-goals-test.md"
 OUTPUT_TMP="$(mktemp "$IMPLEMENT_TMPDIR/plan-goals-test.md.tmp.XXXXXX")"
@@ -132,7 +138,7 @@ trap cleanup EXIT
 mv "$OUTPUT_TMP" "$OUTPUT_FILE"
 trap - EXIT
 
-"$LARCH_LOG_SH" write \
+"${LARCH_LOG_CMD[@]}" write \
     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
     --skill implement \
     --run-id "$RUN_ID" \
@@ -141,12 +147,12 @@ trap - EXIT
 
 if [[ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ]]; then
     parent_issue_fail_log="$IMPLEMENT_TMPDIR/parent-issue-write.failure.log"
-    if ! "$LARCH_LOG_SH" write \
+    if ! "${LARCH_LOG_CMD[@]}" write \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
         --batch parent-issue \
         --input-file "$IMPLEMENT_TMPDIR/parent-issue.md" >"$parent_issue_fail_log" 2>&1; then
-        append_log_write_failure "1" "larch-log.sh write parent-issue" "$parent_issue_fail_log"
+        append_log_write_failure "1" "python3 python/cli.py run-log write parent-issue" "$parent_issue_fail_log"
     fi
 fi

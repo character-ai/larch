@@ -37,7 +37,7 @@ body back with `MODE=absent-noop`.
 
 The helper performs single-shot `gh issue view` and `gh issue edit` calls. It
 does not retry. The full edited body is piped through
-`scripts/redact-secrets.sh` before `gh issue edit --body-file`.
+`python3 python/cli.py redact secrets` before `gh issue edit --body-file`.
 
 ## Callers
 

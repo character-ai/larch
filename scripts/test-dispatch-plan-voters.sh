@@ -96,13 +96,10 @@ os.execv(sys.executable, [sys.executable, "$REPO_ROOT/python/cli.py", *sys.argv[
 STUB_CLI
 # python/cli.py render voter reads review-acceptance-rubric.md at $REPO_ROOT/skills/shared/
 cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_ROOT_STUB/skills/shared/review-acceptance-rubric.md"
-cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_ROOT_STUB/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-untrusted-block.sh" "$PLUGIN_ROOT_STUB/scripts/lib-untrusted-block.sh"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_ROOT_STUB/scripts/lib-scope-anchor-handoff.sh"
-cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
 chmod +x "$PLUGIN_ROOT_STUB/python/cli.py"
-chmod +x "$PLUGIN_ROOT_STUB/scripts/redact-secrets.sh"
 
 cat > "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh" <<'STUB'
 #!/usr/bin/env bash

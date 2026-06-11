@@ -66,7 +66,7 @@ materialized from the file-backed design export instead of being summarized as a
 pointer. Add a composer script, wire the sanitizer, and update the harnesses.
 
 ## Test plan
-Run scripts/test-compose-plan-goals-test.sh and scripts/test-larch-logs-batches.sh.
+Run scripts/test-compose-plan-goals-test.sh and python/test_run_logs.py.
 EOF
 out="$("$COMPOSER" --plan-file "$plan" --goal-text "Prevent pointer-only plans")"
 assert_contains "$out" "## Goal" "goal heading present"

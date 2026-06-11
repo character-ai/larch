@@ -33,8 +33,7 @@ larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
-REDACT_SECRETS_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+PY_CLI="$REPO_ROOT/python/cli.py"
 
 GIT_STATUS_STDERR=""
 PR_STDERR_FILE=""
@@ -53,11 +52,11 @@ redact_diagnostic() {
     local text="$1"
     local redacted
     local status=0
-    if [[ ! -x "$REDACT_TMPDIR_HELPER" ]] || [[ ! -x "$REDACT_SECRETS_HELPER" ]]; then
+    if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$PY_CLI" ]]; then
         printf '%s' 'diagnostic redaction unavailable'
         return 0
     fi
-    redacted=$(printf '%s' "$text" | "$REDACT_TMPDIR_HELPER" | "$REDACT_SECRETS_HELPER") || status=$?
+    redacted=$(printf '%s' "$text" | python3 "$PY_CLI" redact tmpdir-paths | python3 "$PY_CLI" redact secrets) || status=$?
     if [[ "$status" -ne 0 ]]; then
         printf '%s' 'diagnostic redaction unavailable'
         return 0
@@ -110,22 +109,18 @@ if [[ -n "$TARGET_REPO" ]]; then
     GH_REPO_ARGS=(--repo "$TARGET_REPO")
 fi
 
-if [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
-    larch_err "ERROR: Redaction helper missing or not executable: redact-tmpdir-paths.sh"
+if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$PY_CLI" ]]; then
+    larch_err "ERROR: Redaction helper missing: python3 python/cli.py"
     exit 2
 fi
 REDACTED_BODY_FILE=$(mktemp)
-if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
+if ! python3 "$PY_CLI" redact tmpdir-paths < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
     larch_err "ERROR: Failed to redact PR body tmpdir paths"
-    exit 2
-fi
-if [[ ! -x "$REDACT_SECRETS_HELPER" ]]; then
-    larch_err "ERROR: Redaction helper missing or not executable: redact-secrets.sh"
     exit 2
 fi
 secrets_redacted=$(mktemp)
 SECRETS_REDACTED_FILE="$secrets_redacted"
-if ! "$REDACT_SECRETS_HELPER" < "$REDACTED_BODY_FILE" > "$secrets_redacted"; then
+if ! python3 "$PY_CLI" redact secrets < "$REDACTED_BODY_FILE" > "$secrets_redacted"; then
     larch_err "ERROR: Failed to redact secrets from PR body"
     SECRETS_REDACTED_FILE=""
     rm -f "$secrets_redacted"
@@ -276,7 +271,7 @@ fi
 # Build the argv for diagnostic purposes (redact title/body values, keep flags),
 # then pass it through the shared tmpdir redactor before logging it.
 GH_CREATE_ARGV="gh pr create ${GH_REPO_ARGS[*]+${GH_REPO_ARGS[*]}} --assignee @me --head $BRANCH --base $BASE_REF --title <redacted> --body-file <redacted> ${GH_DRAFT_ARGS[*]+${GH_DRAFT_ARGS[*]}}"
-GH_CREATE_ARGV=$(printf '%s\n' "$GH_CREATE_ARGV" | "$REDACT_TMPDIR_HELPER")
+GH_CREATE_ARGV=$(printf '%s\n' "$GH_CREATE_ARGV" | python3 "$PY_CLI" redact tmpdir-paths)
 
 create_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-gh-create.XXXXXX")
 NET_FAIL_FILES+=("$create_fail_file")

@@ -17,7 +17,7 @@
 # success envelope. Post-push failures (git push, gh pr create after push,
 # gh pr merge) exit 1 while preserving PUBLISH_OK=false.
 # Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
-# published only under breadcrumbs/ via larch_log_publish_breadcrumbs_shared.
+# published only under breadcrumbs/ via python3 python/cli.py run-log publish-breadcrumbs.
 
 set -euo pipefail
 
@@ -25,9 +25,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-larch-log.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-larch-log.sh"
 # shellcheck source=scripts/lib-redact.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-redact.sh"
@@ -106,9 +103,13 @@ validate_repo() {
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
 }
 
+larch_log_slug_is_valid() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
 redact_diagnostic() {
     local text=$1 redacted=""
-    if [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths ] && [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]; then
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/../python/cli.py" ]]; then
         redacted=$(printf '%s' "$text" | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets 2>/dev/null || true)
         case "$redacted" in
             *'[content truncated'*) redacted="" ;;
@@ -286,7 +287,7 @@ mkdir -p "$LOG_ROOT_ABS"
 
 if ! (cd "$WT_DIR" && python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
     --log-root "$LOG_ROOT_ABS" --skill design --run-id "$RUN_ID" --issue "$ISSUE" >/dev/null); then
-    larch_err "design-log-publish: larch-log.sh init failed"
+    larch_err "design-log-publish: python3 python/cli.py run-log init failed"
     emit_publish_result false
     exit 0
 fi
@@ -486,10 +487,15 @@ design_publish_remove_stale_excluded() {
 
 design_publish_breadcrumbs() {
     local source_dir="$1" dest_dir="$2"
-    larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" run-log publish-breadcrumbs --source-dir "$source_dir" --dest-dir "$dest_dir"; then
+        design_publish_breadcrumbs_error "breadcrumb publish failed"
+        return 1
+    fi
 }
 
-# shellcheck disable=SC2317 # invoked indirectly via larch_log_publish_breadcrumbs_shared callback name
 design_publish_breadcrumbs_error() {
     larch_err "design-log-publish: $1"
 }

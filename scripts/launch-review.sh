@@ -67,7 +67,8 @@ fi
 
 append_launch_failure() {
     local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}" transient_retry_count="${7:-}"
-    [[ -x python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    [[ -f "$PLUGIN_ROOT/python/cli.py" ]] || return 0
     # Resolve the execution-issues log. IMPLEMENT_TMPDIR (Step 5 code review)
     # keeps its existing first precedence; DESIGN_TMPDIR is the /design voter
     # fallback so usage-limit/quota voter failures are no longer silently
@@ -1283,11 +1284,11 @@ if [[ -s "$OUTPUT" ]]; then
             if [[ -s "$_diag_tmp" ]]; then
                 _diag_redact_in="$_diag_tmp"
                 _diag_redact_out="${_diag_tmp}.out"
-                if [[ -x python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths ]] \
+                if command -v python3 >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/../python/cli.py" ]] \
                     && python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths < "$_diag_redact_in" > "$_diag_redact_out" 2>/dev/null; then
                     _diag_redact_in="$_diag_redact_out"
                 fi
-                if [[ -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]] \
+                if command -v python3 >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/../python/cli.py" ]] \
                     && python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$_diag_redact_in" > "${OUTPUT}.diag" 2>/dev/null; then
                     :
                 else

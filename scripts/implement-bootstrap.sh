@@ -262,7 +262,7 @@ redact_file_best_effort() {
     local input_file=$1 output_file=$2 redact_tmp rc
     [ -f "$input_file" ] || return 1
     redact_tmp="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-redact.XXXXXX")" || return 1
-    if [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]; then
+    if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../python/cli.py" ]; then
         if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets <"$input_file" >"$redact_tmp" 2>/dev/null; then
             rc=$?
             rm -f "$redact_tmp"
@@ -271,7 +271,7 @@ redact_file_best_effort() {
     else
         cat "$input_file" >"$redact_tmp"
     fi
-    if [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths ]; then
+    if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../python/cli.py" ]; then
         if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$redact_tmp" >"$output_file" 2>/dev/null; then
             rc=$?
             rm -f "$redact_tmp"
@@ -1155,7 +1155,7 @@ phase_plan_materialize() {
         python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "Step 0 plan materialization — goal text redaction" \
-            --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+            --tool "python3 python/cli.py redact secrets | python3 python/cli.py redact tmpdir-paths" \
             --exit-code "$goal_redact_rc" \
             --category Warnings \
             --output-file "$goal_redact_err" \
@@ -1239,7 +1239,7 @@ phase_plan_materialize() {
             python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — larch:plan summary redaction" \
-                --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+                --tool "python3 python/cli.py redact secrets | python3 python/cli.py redact tmpdir-paths" \
                 --exit-code 1 \
                 --category Warnings \
                 --output-file "$summary_redact_err" \
