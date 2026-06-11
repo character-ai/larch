@@ -112,7 +112,7 @@ OOS_ISSUE_STDOUT_PATH="$DESIGN_TMPDIR/oos-issue.stdout.txt"
 
 if [[ "${_oos_prep_rc:-0}" -ne 0 ]]; then
   if [[ -s "$DESIGN_TMPDIR/oos-filing-prepare.stderr.log" ]]; then
-    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
       --log "$DESIGN_TMPDIR/execution-issues.md" \
       --site "design Step 5b" \
       --tool "file-design-oos.sh prepare" \

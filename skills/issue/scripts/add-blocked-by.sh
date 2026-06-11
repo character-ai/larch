@@ -72,7 +72,8 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-REDACT_HELPER="$REPO_ROOT/python/cli.py redact secrets"
+REDACT_CLI=(python3 "$REPO_ROOT/python/cli.py" redact secrets)
+REDACT_HELPER="python3 $REPO_ROOT/python/cli.py redact secrets"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -132,7 +133,7 @@ if [[ -z "$REPO" ]]; then
 fi
 
 redact() {
-    printf '%s' "$1" | "$REDACT_HELPER"
+    printf '%s' "$1" | "${REDACT_CLI[@]}"
 }
 
 emit_failure() {

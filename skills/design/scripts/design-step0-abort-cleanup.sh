@@ -94,7 +94,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ]; then
   exit 1
 fi
 printf '%s\n' "**⚠ /design: aborted by operator — external tool unhealthy; re-run once it recovers.**"
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
   --log "$DESIGN_TMPDIR/execution-issues.md" \
   --site "design Step 0" \
   --tool "degraded-tools-gate" \

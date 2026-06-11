@@ -190,7 +190,7 @@ def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) ->
     }
     manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "1"
+    assert manifest["schema_version"] == 2
     assert manifest["run_id"] == "lost-run"
     assert manifest["steps_ran"] == {}
     assert manifest["issue_number"] == 123
@@ -1279,3 +1279,91 @@ def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypat
     env = run_logs._report_subprocess_env(_ctx(tmp_path, str(state)))  # pyright: ignore[reportPrivateUsage]
     assert env["LARCH_TIMING_SKILL"] == "implement"
     assert "DESIGN_TMPDIR" not in env
+
+
+def test_verify_completeness_reports_missing_required_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step7a": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nfinal-summary.md\talways\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 1
+
+
+def test_verify_completeness_ok_when_required_file_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step8": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("# done\n", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nfinal-summary.md\tstep8\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 0
+
+
+def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
+    import contextlib
+    from io import StringIO
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.refresh_run_logs_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_STATE_FILE_MISSING}" in buf.getvalue()
+
+
+def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
+    import contextlib
+    from io import StringIO
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(tmp_path / "missing.txt"),
+                "--log-root",
+                str(tmp_path / "larch-logs"),
+                "--skill",
+                "implement",
+                "--run-id",
+                "RUN1",
+                "--no-logs-commit",
+                "true",
+            ],
+        )
+    assert rc == 0
+    assert "SESSION_TRANSCRIPT_STATUS=source-file-missing" in buf.getvalue()
+
+
+def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx, run_id="run-abc")
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == 2
+    assert data["skill"] == "implement"

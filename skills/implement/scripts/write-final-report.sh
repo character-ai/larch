@@ -659,7 +659,7 @@ if [ "$COMMENT_ONLY" != "true" ]; then
             mf_fields+=(--field "steps_ran.step7a=false")
         fi
         if [ "${#mf_fields[@]}" -gt 0 ]; then
-            if ! "$PLUGIN_ROOT/python/cli.py run-log" manifest \
+            if ! python3 "$PLUGIN_ROOT/python/cli.py" run-log manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement \
                 --run-id "$RUN_ID" \

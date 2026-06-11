@@ -9,6 +9,16 @@ fi
 LARCH_LIB_PHANTOM_PROBE_LOADED=1
 
 _phantom_probe_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_phantom_plugin_root="$(cd "$_phantom_probe_script_dir/.." && pwd)"
+
+_phantom_append_execution_issue() {
+    local log_file="$1" category="$2" entry="$3"
+    command -v python3 >/dev/null 2>&1 || return 1
+    LARCH_QUIET_DISABLE=1 python3 "$_phantom_plugin_root/python/cli.py" run-log append-entry \
+        --log "$log_file" \
+        --category "$category" \
+        --entry "$entry"
+}
 
 _phantom_newline_fold() {
     tr '\n' ' ' | sed 's/[[:space:]]\{1,\}/ /g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
@@ -26,10 +36,10 @@ _phantom_append_warn_failure() {
     fi
     folded=$(printf '%s' "$folded" | _phantom_newline_fold)
     emit_kv PHANTOM_APPEND_WARN_ERROR "$folded"
-    LARCH_QUIET_DISABLE=1 "${_phantom_probe_script_dir}/append-execution-issue.sh" \
-        --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
-        --category Warnings \
-        --entry "- **Step ${step_token} — phantom warning append failed: ${folded}**" \
+    _phantom_append_execution_issue \
+        "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+        Warnings \
+        "- **Step ${step_token} — phantom warning append failed: ${folded}**" \
         >/dev/null 2>&1 || true
 }
 
@@ -77,10 +87,10 @@ phantom_probe_with_warn() {
         phantom)
             append_combined=$(mktemp)
             set +e
-            LARCH_QUIET_DISABLE=1 "${_phantom_probe_script_dir}/append-execution-issue.sh" \
-                --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
-                --category Warnings \
-                --entry "- **Step ${step_token} — phantom untracked files:** ${ph_count:-?} file(s) appeared since session baseline (inspect ${IMPLEMENT_TMPDIR}/phantom-paths-${step_token}.z locally)" \
+            _phantom_append_execution_issue \
+                "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+                Warnings \
+                "- **Step ${step_token} — phantom untracked files:** ${ph_count:-?} file(s) appeared since session baseline (inspect ${IMPLEMENT_TMPDIR}/phantom-paths-${step_token}.z locally)" \
                 >"$append_combined" 2>&1
             append_rc=$?
             set -e
@@ -95,10 +105,10 @@ phantom_probe_with_warn() {
         unknown)
             append_combined=$(mktemp)
             set +e
-            LARCH_QUIET_DISABLE=1 "${_phantom_probe_script_dir}/append-execution-issue.sh" \
-                --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
-                --category Warnings \
-                --entry "- **Step ${step_token} — phantom detection inconclusive:** STATUS=unknown REASON=${ph_reason:-unknown}" \
+            _phantom_append_execution_issue \
+                "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+                Warnings \
+                "- **Step ${step_token} — phantom detection inconclusive:** STATUS=unknown REASON=${ph_reason:-unknown}" \
                 >"$append_combined" 2>&1
             append_rc=$?
             set -e

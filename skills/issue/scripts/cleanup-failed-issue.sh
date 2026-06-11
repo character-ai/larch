@@ -25,7 +25,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-REDACT_HELPER="$REPO_ROOT/python/cli.py redact secrets"
+REDACT_CLI=(python3 "$REPO_ROOT/python/cli.py" redact secrets)
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -87,7 +87,7 @@ fi
 
 ERR_CONTENT=$(cat "$close_fail_file" 2>/dev/null || true)
 rm -f "$close_fail_file"
-REDACTED_ERR=$(printf '%s' "$ERR_CONTENT" | "$REDACT_HELPER" 2>/dev/null) || REDACTED_ERR="(redaction-helper failed; original suppressed)"
+REDACTED_ERR=$(printf '%s' "$ERR_CONTENT" | "${REDACT_CLI[@]}" 2>/dev/null) || REDACTED_ERR="(redaction-helper failed; original suppressed)"
 ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
 emit_kv CLOSED "false"
 emit_kv ISSUE "$ISSUE"

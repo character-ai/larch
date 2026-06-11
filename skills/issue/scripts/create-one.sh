@@ -65,7 +65,8 @@ set -euo pipefail
 # skills/issue/scripts/create-one.sh, so the repo root is three levels up.
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-REDACT_HELPER="$REPO_ROOT/python/cli.py redact secrets"
+REDACT_CLI=(python3 "$REPO_ROOT/python/cli.py" redact secrets)
+REDACT_HELPER="python3 $REPO_ROOT/python/cli.py redact secrets"
 # Keep lib-quiet on the same resolved tree as redact secrets (REPO_ROOT),
 # not ${CLAUDE_PLUGIN_ROOT:-…}, so harnesses that copy this script into an
 # isolated fake repo layout still source the adjacent scripts/lib-quiet.sh.
@@ -89,7 +90,7 @@ redact() {
     # Do NOT swallow stderr: redact secrets emits a WARN on stderr when
     # an unterminated PEM block forces fail-closed truncation, and that
     # signal is the only log-visibility mechanism for that condition.
-    printf '%s' "$1" | "$REDACT_HELPER"
+    printf '%s' "$1" | "${REDACT_CLI[@]}"
 }
 
 # emit_redaction_failure — runs outside command substitution (via `|| ...`)

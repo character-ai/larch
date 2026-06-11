@@ -114,7 +114,7 @@ run_larch_log_write() {
     local batch=$1 input_file=$2 out_file rc
     out_file="$IMPLEMENT_TMPDIR/larch-log-write-${batch}.log"
     set +e
-    "$PLUGIN_ROOT/python/cli.py run-log" write \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log write \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
@@ -217,7 +217,7 @@ run_log_flush() {
     if [ "${no_logs_commit:-false}" != "true" ]; then
         out_file="$IMPLEMENT_TMPDIR/pre-bump-larch-log-commit.log"
         set +e
-        "$PLUGIN_ROOT/python/cli.py run-log" commit \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log commit \
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --skill implement \
             --run-id "$RUN_ID" >"$out_file" 2>&1

@@ -382,8 +382,8 @@ while IFS=$'\t' read -r typ a b c _d; do
             {
                 printf 'TIER3_CAPTURE script=%s exit=%s\n' "$sp" "$dry_rc"
                 if [[ -s "$tier3_cap" ]]; then
-                    if [[ -x "$REPO_ROOT/python/cli.py redact secrets" ]]; then
-                        head -c 65536 "$tier3_cap" | "$REPO_ROOT/python/cli.py redact secrets" 2>/dev/null || head -c 65536 "$tier3_cap"
+                    if command -v python3 >/dev/null 2>&1; then
+                        head -c 65536 "$tier3_cap" | python3 "$REPO_ROOT/python/cli.py" redact secrets 2>/dev/null || head -c 65536 "$tier3_cap"
                     else
                         head -c 65536 "$tier3_cap"
                     fi

@@ -88,8 +88,39 @@ EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
 DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
-LARCH_LOG_SH="${REVIEW_CORE_LARCH_LOG_SH:-$PLUGIN_ROOT/python/cli.py run-log}"
-APPEND_TOOL_FAILURE_SH="${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-$PLUGIN_ROOT/python/cli.py run-log append-failure}"
+review_core_can_larch_log() {
+    if [[ -n "${REVIEW_CORE_LARCH_LOG_SH:-}" ]]; then
+        [[ -x "$REVIEW_CORE_LARCH_LOG_SH" ]]
+        return
+    fi
+    command -v python3 >/dev/null 2>&1
+}
+
+review_core_larch_log() {
+    if [[ -n "${REVIEW_CORE_LARCH_LOG_SH:-}" ]]; then
+        "$REVIEW_CORE_LARCH_LOG_SH" "$@"
+        return
+    fi
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log "$@"
+}
+
+review_core_can_append_failure() {
+    if [[ -n "${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-}" ]]; then
+        [[ -x "$REVIEW_CORE_APPEND_TOOL_FAILURE_SH" ]]
+        return
+    fi
+    command -v python3 >/dev/null 2>&1
+}
+
+review_core_append_failure() {
+    local issues_log="$1"
+    shift
+    if [[ -n "${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-}" ]]; then
+        "$REVIEW_CORE_APPEND_TOOL_FAILURE_SH" --log "$issues_log" "$@"
+        return
+    fi
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure --log "$issues_log" "$@"
+}
 
 kv_get() {
     local file="$1" key="$2"
@@ -228,10 +259,9 @@ execution_issues_log() {
 append_round_log_write_failure() {
     local site="$1" round_num="$2" rc="$3" output_file="$4"
     local issues_log
-    [[ -x "$APPEND_TOOL_FAILURE_SH" ]] || return 0
+    review_core_can_append_failure || return 0
     issues_log="$(execution_issues_log)"
-    "$APPEND_TOOL_FAILURE_SH" \
-        --log "$issues_log" \
+    review_core_append_failure "$issues_log" \
         --site "$site" \
         --tool "run-log write-round" \
         --exit-code "$rc" \
@@ -251,10 +281,9 @@ emit_tally_with_failure_isolation() {
     set -e
     if [[ "$rc" -ne 0 ]]; then
         larch_err "⚠ review-core: emit-tally failed ($context, round $ROUND_NUM, rc=$rc)"
-        if [[ -x "$APPEND_TOOL_FAILURE_SH" ]]; then
+        if review_core_can_append_failure; then
             issues_log="$(execution_issues_log)"
-            "$APPEND_TOOL_FAILURE_SH" \
-                --log "$issues_log" \
+            review_core_append_failure "$issues_log" \
                 --site "$site" \
                 --tool "emit-tally.sh ($context)" \
                 --exit-code "$rc" \
@@ -301,12 +330,12 @@ flush_round_log() {
     local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR:-}" ]] || return 0
-    [[ -x "$LARCH_LOG_SH" ]] || return 0
+    review_core_can_larch_log || return 0
     ensure_prune_decision_env
     ensure_prune_nit_env
     flush_err="$REVIEW_TMPDIR/review-core-write-round.log"
     set +e
-    "$LARCH_LOG_SH" write-round \
+    review_core_larch_log write-round \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
@@ -460,7 +489,7 @@ log_dropped_slots() {
     if [[ -n "$REVIEW_TMPDIR" ]]; then
         cp "$dropped_file" "$REVIEW_TMPDIR/round-${ROUND_NUM}-dropped-slots.tsv" 2>/dev/null || true
     fi
-    [[ -x "$APPEND_TOOL_FAILURE_SH" ]] || return 0
+    review_core_can_append_failure || return 0
     issues_log="$(execution_issues_log)"
     drop_dir="$REVIEW_TMPDIR/dropped-slot-diags"
     mkdir -p "$drop_dir" 2>/dev/null || return 0
@@ -474,8 +503,7 @@ log_dropped_slots() {
             printf 'reason=%s\n' "$reason"
             [[ -n "$snippet" ]] && printf 'snippet=%s\n' "$snippet"
         } > "$entry_file"
-        "$APPEND_TOOL_FAILURE_SH" \
-            --log "$issues_log" \
+        review_core_append_failure "$issues_log" \
             --site "5" \
             --tool "reviewer slot $slot/$tool" \
             --exit-code 1 \

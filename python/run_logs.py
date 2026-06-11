@@ -21,6 +21,7 @@ from typing import Any, cast
 import config
 import git
 import logging_util
+import proc
 import redact
 import tokens
 from errors import ShipError
@@ -33,6 +34,11 @@ _WRITE_FINAL_REPORT = (
 )
 _TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
 _TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
+_RENDER_TRANSCRIPT = _REPO_ROOT / "scripts" / "render-session-transcript.py"
+_REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
+_TERMINAL_OUTCOME_SUFFIX = re.compile(
+    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$",
+)
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _QUIET_LOG_RE = re.compile(r"^larch-quiet-[A-Za-z0-9._-]+-[0-9]+\.log$")
@@ -593,6 +599,40 @@ def _issue_number_from_context(ctx: RunContext) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
+def _synthesize_manifest_v2(
+    *,
+    skill: str,
+    run_id: str,
+    steps_ran: dict[str, Any] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ts = _now_utc()
+    data: dict[str, Any] = {
+        "schema_version": 2,
+        "skill": skill,
+        "run_id": run_id,
+        "operator_cwd": "<OPERATOR_CWD>",
+        "operator_repo_root": "<REPO_ROOT>",
+        "parent_skill": None,
+        "issue_number": None,
+        "larch_version": "unknown",
+        "model_roster": {
+            "main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown"),
+        },
+        "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
+        "started_at": ts,
+        "updated_at": ts,
+        "attempt": 1,
+        "superseded_by": None,
+        "stalled_at_step": None,
+        "steps_ran": steps_ran or {},
+        "flags": {},
+    }
+    if extra:
+        data.update(extra)
+    return data
+
+
 def init_run(
     ctx: RunContext,
     *,
@@ -600,21 +640,15 @@ def init_run(
     recovery_reason: str = "",
 ) -> Manifest:
     rid = run_id or effective_run_id(ctx)
-    extra: dict[str, Any] = {}
+    extra: dict[str, Any] = {"status": config.MANIFEST_STATUS_PARTIAL}
     if recovery_reason:
         extra["recovery_reason"] = recovery_reason
         issue_number = _issue_number_from_context(ctx)
         if issue_number is not None:
             extra["issue_number"] = issue_number
-    manifest = Manifest(
-        status=config.MANIFEST_STATUS_PARTIAL,
-        version="1",
-        run_id=rid,
-        steps_ran={},
-        extra=extra or None,
-    )
-    _write_manifest(ctx, manifest)
-    return manifest
+    data = _synthesize_manifest_v2(skill="implement", run_id=rid, extra=extra)
+    _write_manifest_v2(_manifest_path(ctx), data)
+    return _dict_to_manifest(data)
 
 
 def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
@@ -633,6 +667,36 @@ def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
 def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
     steps_raw = data.get("steps_ran", {})
     steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
+    if data.get("schema_version") == 2:
+        v2_exclude = {
+            "status",
+            "schema_version",
+            "skill",
+            "run_id",
+            "steps_ran",
+            "started_at",
+            "updated_at",
+            "operator_cwd",
+            "operator_repo_root",
+            "parent_skill",
+            "larch_version",
+            "model_roster",
+            "effort",
+            "attempt",
+            "superseded_by",
+            "stalled_at_step",
+            "flags",
+        }
+        extra = {key: value for key, value in data.items() if key not in v2_exclude}
+        return Manifest(
+            status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
+            version="2",
+            run_id=str(data.get("run_id", "")),
+            steps_ran=steps,
+            created_at=str(data.get("started_at", "")),
+            updated_at=str(data.get("updated_at", "")),
+            extra=extra or None,
+        )
     return Manifest(
         status=str(data.get("status", config.MANIFEST_STATUS_PARTIAL)),
         version=str(data.get("version", "1")),
@@ -709,13 +773,13 @@ def _recover_manifest_from_run_dir(ctx: RunContext, run_id: str, run_dir: Path) 
     issue_number = _issue_number_from_context(ctx)
     if issue_number is not None:
         extra["issue_number"] = issue_number
-    return Manifest(
-        status=config.MANIFEST_STATUS_PARTIAL,
-        version="1",
+    data = _synthesize_manifest_v2(
+        skill="implement",
         run_id=run_id,
         steps_ran=steps,
-        extra=extra,
+        extra={**extra, "status": config.MANIFEST_STATUS_PARTIAL},
     )
+    return _dict_to_manifest(data)
 
 
 def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
@@ -732,7 +796,13 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
                 recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
                 if recovered is not None:
                     try:
-                        _write_manifest(ctx, recovered)
+                        data = _synthesize_manifest_v2(
+                            skill="implement",
+                            run_id=rid,
+                            steps_ran=recovered.steps_ran,
+                            extra={**(recovered.extra or {}), "status": recovered.status},
+                        )
+                        _write_manifest_v2(primary, data)
                     except OSError:
                         return ManifestRecovery(recovered, recovery_ok=False)
                     return ManifestRecovery(recovered, recovery_ok=True)
@@ -740,7 +810,13 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
             recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
             if recovered is not None:
                 try:
-                    _write_manifest(ctx, recovered)
+                    data = _synthesize_manifest_v2(
+                        skill="implement",
+                        run_id=rid,
+                        steps_ran=recovered.steps_ran,
+                        extra={**(recovered.extra or {}), "status": recovered.status},
+                    )
+                    _write_manifest_v2(primary, data)
                 except OSError:
                     return ManifestRecovery(recovered, recovery_ok=False)
                 return ManifestRecovery(recovered, recovery_ok=True)
@@ -1529,10 +1605,16 @@ def _copy_tree_to_repo(log_root: Path, repo_root: Path, skill: str, run_id: str)
     shared_dest = repo_root / "larch-logs" / "shared"
     if shared_src.is_dir():
         if shared_src.resolve() != shared_dest.resolve():
-            shared_dest.parent.mkdir(parents=True, exist_ok=True)
-            if shared_dest.exists():
-                shutil.rmtree(shared_dest)
-            _safe_copy_run_tree(shared_src, shared_dest)
+            shared_dest.mkdir(parents=True, exist_ok=True)
+            for item in sorted(shared_src.iterdir()):
+                if not item.exists() or item.is_symlink():
+                    continue
+                dest_item = shared_dest / item.name
+                if item.is_dir():
+                    _safe_copy_run_tree(item, dest_item)
+                elif item.is_file():
+                    dest_item.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(item, dest_item)
         rels.append("larch-logs/shared")
     return rels, dest
 
@@ -1573,6 +1655,12 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
     rels, dest = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
     if not rels:
         return CommandResult(("true",), 0, "", "", 0.0)
+    bread_src = log_root.parent / "breadcrumbs"
+    if bread_src.is_dir() and log_root.name == "larch-logs":
+        with suppress(Exception):
+            _ = publish_breadcrumbs_main(
+                ["--source-dir", str(bread_src), "--dest-dir", str(dest / "breadcrumbs")],
+            )
     violations = 0
     for rel in rels:
         directory = repo_root / rel
@@ -1584,12 +1672,16 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
         return CommandResult(tuple(status.args), status.returncode, status.stdout, status.stderr, 0.0)
     if not status.stdout.strip():
         return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
-    volatile_paths = _volatile_only_under_run_tree(f"larch-logs/{skill}/{run_id}", str(repo_root), status.stdout)
+    run_rel = f"larch-logs/{skill}/{run_id}"
+    volatile_paths = _volatile_only_under_run_tree(run_rel, str(repo_root), status.stdout)
     if volatile_paths is not None:
-        # Runtime cleanup intentionally mirrors the retired shell helper. This
-        # branch is not used by the implementer itself.
-        for path in volatile_paths:
-            Path(repo_root, path).unlink(missing_ok=True)
+        _cleanup_volatile_run_tree(
+            proc,
+            run_rel,
+            volatile_paths,
+            status.stdout,
+            cwd=str(repo_root),
+        )
         return CommandResult(("larch-log-volatile-only",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     add = _git_stdout(["git", "add", "--", *rels], cwd=repo_root)
     if add.returncode != 0:
@@ -1854,6 +1946,37 @@ def larch_log_flush_main(argv: list[str]) -> int:
     return 0
 
 
+def _load_refresh_session_env(tmpdir: Path) -> None:
+    session_env = tmpdir / "session-env.sh"
+    if not session_env.is_file():
+        return
+    for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
+        value = _read_kv_file(session_env, key)
+        if value:
+            os.environ[key] = value
+    os.environ["IMPLEMENT_TMPDIR"] = str(tmpdir)
+
+
+def _refresh_context(tmpdir: Path, state_file: Path, run_id: str) -> RunContext:
+    return RunContext(
+        branch="",
+        issue=_read_kv_file(state_file, "ISSUE_NUMBER") or "",
+        repo="",
+        run_id=run_id,
+        tmpdir=str(tmpdir),
+        merge=False,
+        draft=False,
+        forked=_read_kv_file(state_file, "FORKED_TARGET") == "true",
+        manifest_path=str(tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"),
+        tool_label="",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        state_file=str(state_file),
+        no_logs_commit=_read_kv_file(state_file, "NO_LOGS_COMMIT") == "true",
+        merge_result=_read_kv_file(state_file, "MERGE_RESULT"),
+    )
+
+
 def refresh_run_logs_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py run-log refresh", add_help=False)
     parser.add_argument("--state-file", default="")
@@ -1881,23 +2004,57 @@ def refresh_run_logs_main(argv: list[str]) -> int:
     if (tmpdir / "post-merge-sentinel").is_file() or _read_kv_file(state_file, "MERGE_RESULT") in config.POST_MERGE_MERGE_RESULTS:
         print(f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_POST_MERGE}")
         return 0
-    with suppress(Exception):
-        manifest = tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
-        if manifest.is_file():
-            _update_manifest_v2(manifest, {"steps_ran.step9a1": True})
-    try:
-        result = _commit_run(tmpdir / "larch-logs", "implement", run_id, cwd=str(Path.cwd()))
-    except ShipError as exc:
-        print(f"REFRESH_COMMITTED=false REASON=commit-failed ERROR={exc}")
-        return 0
-    if result.returncode != 0:
-        err = result.stderr.strip().replace("\n", " ")
-        print(f"REFRESH_COMMITTED=false REASON=commit-failed ERROR={err}")
-    elif result.argv in {("true",), ("larch-log-volatile-only",)}:
-        print("REFRESH_COMMITTED=false REASON=no-changes")
+    _load_refresh_session_env(tmpdir)
+    ctx = _refresh_context(tmpdir, state_file, run_id)
+    skip = flush_logs_pre(proc, ctx, cwd=str(Path.cwd()))
+    if skip.skipped:
+        if skip.reason in {
+            config.REFRESH_SKIP_COMMIT_FAILED,
+            REFRESH_SKIP_RECOVERY_FAILED,
+        }:
+            print(f"REFRESH_COMMITTED=false REASON={skip.reason}")
+        elif skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY:
+            print("REFRESH_COMMITTED=false REASON=no-changes")
+        else:
+            print(f"REFRESH_SKIPPED=true REASON={skip.reason}")
     else:
         print("REFRESH_COMMITTED=true")
     return 0
+
+
+def _capture_transcript_append_warning(
+    issues_log: Path | None,
+    step_label: str,
+    status: str,
+    message: str,
+) -> None:
+    if issues_log is None:
+        return
+    entry = f"- **Step {step_label} — session-transcript status={status}:** {message}"
+    with suppress(OSError):
+        _append_execution_issue(issues_log, "Warnings", entry)
+
+
+def _capture_transcript_emit(
+    issues_log: Path | None,
+    step_label: str,
+    status: str,
+    message: str,
+) -> int:
+    _capture_transcript_append_warning(issues_log, step_label, status, message)
+    print(f"SESSION_TRANSCRIPT_STATUS={status}")
+    return 0
+
+
+def _capture_transcript_redact_stderr(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    snippet = " ".join(path.read_text(encoding="utf-8", errors="replace").split())
+    try:
+        snippet = redact.redact_secrets_only(snippet)
+    except Exception:
+        snippet = "<REDACTION_FAILED>"
+    return snippet[:300]
 
 
 def capture_transcript_main(argv: list[str]) -> int:
@@ -1908,7 +2065,7 @@ def capture_transcript_main(argv: list[str]) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--no-logs-commit", default="false")
     parser.add_argument("--execution-issues-log", default="")
-    parser.add_argument("--warning-step-label", default="capture-transcript")
+    parser.add_argument("--warning-step-label", default="7a")
     parser.add_argument("--refresh-mode", default="false")
     parser.add_argument("--defer-commit", default="false")
     try:
@@ -1916,43 +2073,349 @@ def capture_transcript_main(argv: list[str]) -> int:
     except SystemExit:
         print("SESSION_TRANSCRIPT_STATUS=usage-error")
         return 0
-    source = Path(args.source_file) if args.source_file else None
-    if source is None or not source.is_file():
-        print("SESSION_TRANSCRIPT_STATUS=missing-source")
+    if args.no_logs_commit not in {"true", "false"} or args.refresh_mode not in {"true", "false"} or args.defer_commit not in {"true", "false"}:
+        print("SESSION_TRANSCRIPT_STATUS=usage-error")
         return 0
-    tmp = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1])
+    issues_log = Path(args.execution_issues_log) if args.execution_issues_log else None
+    log_root = Path(args.log_root)
+    existing_transcript = log_root / args.skill / args.run_id / "session-transcript.jsonl"
+    source = Path(args.source_file) if args.source_file else None
+    transcript_path: Path | None = None
+    if source is None or not source.is_file() or source.stat().st_size == 0:
+        if args.refresh_mode == "true" and existing_transcript.is_file():
+            return _capture_transcript_emit(
+                issues_log,
+                args.warning_step_label,
+                "source-file-missing",
+                "Claude source file was empty or not a regular file; refresh skipped and prior transcript retained.",
+            )
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "source-file-missing",
+            "Claude source file was empty or not a regular file; transcript capture skipped.",
+        )
+    for line in source.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("TRANSCRIPT_PATH="):
+            transcript_path = Path(line.removeprefix("TRANSCRIPT_PATH=").strip())
+            break
+    if transcript_path is None or not transcript_path.is_file():
+        if args.refresh_mode == "true" and existing_transcript.is_file():
+            return _capture_transcript_emit(
+                issues_log,
+                args.warning_step_label,
+                "transcript-path-missing",
+                "Claude source file did not contain a TRANSCRIPT_PATH entry; refresh skipped and prior transcript retained.",
+            )
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "transcript-path-missing",
+            "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped.",
+        )
+    rendered = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1])
+    render_err = Path(tempfile.mkstemp(prefix="render-stderr.", suffix=".log")[1])
     try:
-        text = redact.redact(source.read_text(encoding="utf-8", errors="replace"))
-        tmp.write_text(text, encoding="utf-8")
-        _write_batch(Path(args.log_root), args.skill, args.run_id, "session-transcript", tmp)
+        if not _RENDER_TRANSCRIPT.is_file():
+            return _capture_transcript_emit(
+                issues_log,
+                args.warning_step_label,
+                "render-failed",
+                "render-session-transcript.py is unavailable; transcript was not committed.",
+            )
+        result = subprocess.run(
+            [
+                "python3",
+                str(_RENDER_TRANSCRIPT),
+                "--input",
+                str(transcript_path),
+                "--output",
+                str(rendered),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            if result.stderr:
+                render_err.write_text(result.stderr, encoding="utf-8")
+            msg = _capture_transcript_redact_stderr(render_err) or "render-session-transcript.py exited non-zero with no stderr"
+            return _capture_transcript_emit(
+                issues_log,
+                args.warning_step_label,
+                "render-failed",
+                f"session-transcript render failed; transcript was not committed: {msg}",
+            )
+        if not rendered.is_file() or rendered.stat().st_size == 0:
+            return _capture_transcript_emit(
+                issues_log,
+                args.warning_step_label,
+                "render-empty",
+                "session-transcript renderer produced an empty file; transcript was not committed.",
+            )
+        _write_batch(log_root, args.skill, args.run_id, "session-transcript", rendered)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "write-failed",
+            f"larch-log write failed; transcript was not captured: {exc}",
+        )
     finally:
-        tmp.unlink(missing_ok=True)
-    if args.no_logs_commit != "true" and args.defer_commit != "true":
-        with suppress(Exception):
-            _commit_run(Path(args.log_root), args.skill, args.run_id, cwd=str(Path.cwd()))
+        rendered.unlink(missing_ok=True)
+        render_err.unlink(missing_ok=True)
+    if args.no_logs_commit == "true":
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "suppressed-no-logs-commit",
+            "--no-logs-commit was set; transcript was written under the staging log root but not committed.",
+        )
+    if args.defer_commit == "true":
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "captured",
+            "session transcript was written; commit deferred to caller.",
+        )
+    commit = _commit_run(log_root, args.skill, args.run_id, cwd=str(Path.cwd()))
+    if commit.returncode != 0:
+        err = (commit.stderr or "larch-log commit failed").strip().replace("\n", " ")
+        return _capture_transcript_emit(
+            issues_log,
+            args.warning_step_label,
+            "commit-failed",
+            err,
+        )
     print("SESSION_TRANSCRIPT_STATUS=captured")
     return 0
 
 
+def _resolve_required_files_manifest(raw: str) -> Path:
+    if not raw:
+        return _REQUIRED_FILES_TSV
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = (_REPO_ROOT / raw.removeprefix("./")).resolve()
+    if not str(candidate).startswith(str(_REPO_ROOT.resolve())):
+        msg = "LARCH_VERIFY_MANIFEST resolves outside repository root"
+        raise ValueError(msg)
+    return candidate
+
+
+def _manifest_field(data: dict[str, Any], key: str) -> str:
+    value = data.get(key)
+    if key == "pr_number":
+        if isinstance(value, bool):
+            return ""
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return ""
+    if key == "status" and isinstance(value, str):
+        return value
+    return ""
+
+
+def _manifest_step9a1_explicitly_skipped(data: dict[str, Any]) -> bool:
+    steps = data.get("steps_ran") or {}
+    return isinstance(steps, dict) and steps.get("step9a1") is False
+
+
+def _manifest_steps_ran_empty(data: dict[str, Any]) -> bool:
+    steps = data.get("steps_ran")
+    if steps is None:
+        return True
+    return isinstance(steps, dict) and len(steps) == 0
+
+
+def _manifest_steps_ran_nonempty_without_step9a1(data: dict[str, Any]) -> bool:
+    steps = data.get("steps_ran")
+    if not isinstance(steps, dict) or not steps:
+        return False
+    return "step9a1" not in steps
+
+
+def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return False
+    for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip():
+            return bool(_TERMINAL_OUTCOME_SUFFIX.search(line.rstrip("\r\n")))
+    return False
+
+
+def _verify_has_file(run_dir: Path, relative_path: str) -> bool:
+    return (run_dir / relative_path).is_file()
+
+
+def _verify_condition_reached(
+    condition: str,
+    run_dir: Path,
+    manifest_data: dict[str, Any],
+    *,
+    manifest_status: str,
+    manifest_pr_number: str,
+) -> bool:
+    if condition == "always":
+        return True
+    if condition == "step5":
+        return (
+            _verify_has_file(run_dir, "code-review-tally.json")
+            or _verify_has_file(run_dir, "review-findings-full.jsonl")
+            or _verify_condition_reached(
+                "step7a",
+                run_dir,
+                manifest_data,
+                manifest_status=manifest_status,
+                manifest_pr_number=manifest_pr_number,
+            )
+        )
+    if condition == "step7a":
+        if (
+            _manifest_steps_ran_empty(manifest_data)
+            and _final_summary_heading_bail_signal(run_dir)
+            and not (
+                _verify_has_file(run_dir, "token-report.json")
+                or _verify_has_file(run_dir, "timing-report.json")
+                or _verify_has_file(run_dir, "execution-issues.ndjson")
+                or _verify_has_file(run_dir, "session-transcript.jsonl")
+            )
+        ):
+            return False
+        return (
+            _verify_has_file(run_dir, "token-report.json")
+            or _verify_has_file(run_dir, "timing-report.json")
+            or _verify_has_file(run_dir, "execution-issues.ndjson")
+            or _verify_has_file(run_dir, "session-transcript.jsonl")
+            or _verify_condition_reached(
+                "step8",
+                run_dir,
+                manifest_data,
+                manifest_status=manifest_status,
+                manifest_pr_number=manifest_pr_number,
+            )
+        )
+    if condition == "step8":
+        if (
+            _manifest_steps_ran_empty(manifest_data)
+            and _final_summary_heading_bail_signal(run_dir)
+            and not _verify_has_file(run_dir, "version-bump-reasoning.md")
+        ):
+            return False
+        return (
+            _verify_has_file(run_dir, "version-bump-reasoning.md")
+            or _verify_has_file(run_dir, "final-summary.md")
+            or bool(manifest_pr_number)
+            or _verify_condition_reached(
+                "step9a1",
+                run_dir,
+                manifest_data,
+                manifest_status=manifest_status,
+                manifest_pr_number=manifest_pr_number,
+            )
+        )
+    if condition == "step9a1":
+        if _manifest_step9a1_explicitly_skipped(manifest_data):
+            return False
+        if (
+            _manifest_steps_ran_empty(manifest_data)
+            and _final_summary_heading_bail_signal(run_dir)
+            and not (
+                _verify_has_file(run_dir, "run-statistics.md")
+                or _verify_has_file(run_dir, "oos-issues.ndjson")
+            )
+        ):
+            return False
+        if (
+            _final_summary_heading_bail_signal(run_dir)
+            and not _verify_has_file(run_dir, "run-statistics.md")
+            and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
+        ):
+            return False
+        return (
+            _verify_has_file(run_dir, "run-statistics.md")
+            or _verify_has_file(run_dir, "oos-issues.ndjson")
+            or bool(manifest_pr_number)
+            or manifest_status == config.MANIFEST_STATUS_DONE
+            or _verify_has_file(run_dir, "final-summary.md")
+        )
+    if condition == "exn-agg-validate-fail":
+        path = run_dir / "execution-issues.ndjson"
+        return path.is_file() and "merged output failed validation" in path.read_text(encoding="utf-8", errors="replace")
+    if condition == "exn-agg-dispatch-fail":
+        path = run_dir / "execution-issues.ndjson"
+        if not path.is_file():
+            return False
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return "dispatch-with-waterfall exited non-zero" in text or "DISPATCH_OK=false" in text
+    msg = f"unsupported manifest condition: {condition}"
+    raise ValueError(msg)
+
+
 def verify_completeness_main(argv: list[str]) -> int:
-    if argv:
-        manifest_path = Path(argv[0])
-    else:
-        manifest_path = Path(os.environ.get("LARCH_VERIFY_MANIFEST", ""))
+    if not argv:
+        print("MISSING=manifest", file=sys.stderr)
+        return 1
+    run_dir = Path(argv[0])
+    if not run_dir.is_dir():
+        print(f"verify-completeness: run dir not found: {run_dir}", file=sys.stderr)
+        return 1
+    try:
+        manifest_tsv = _resolve_required_files_manifest(os.environ.get("LARCH_VERIFY_MANIFEST", ""))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if not manifest_tsv.is_file():
+        print(f"verify-completeness: manifest not found: {manifest_tsv}", file=sys.stderr)
+        return 1
+    manifest_path = run_dir / "manifest.json"
     if not manifest_path.is_file():
         print("MISSING=manifest")
         return 1
     try:
-        data = _read_manifest_v2(manifest_path)
+        manifest_data = _read_manifest_v2(manifest_path)
     except (OSError, json.JSONDecodeError, TypeError):
         print("MISSING=manifest")
         return 1
+    manifest_status = _manifest_field(manifest_data, "status")
+    manifest_pr_number = _manifest_field(manifest_data, "pr_number")
     missing: list[str] = []
-    steps = data.get("steps_ran", {})
-    if not isinstance(steps, dict) or not steps:
-        missing.append("steps_ran")
-    if data.get("status") == config.MANIFEST_STATUS_DONE and not data.get("pr_number"):
-        missing.append("pr_number")
+    for line in manifest_tsv.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if not parts or parts[0] == "relative_path":
+            continue
+        relative_path, condition = parts[0], parts[1] if len(parts) > 1 else "always"
+        if ".." in relative_path.split("/"):
+            print(f"verify-completeness: invalid relative_path (..): {relative_path}", file=sys.stderr)
+            return 1
+        if not re.fullmatch(r"[A-Za-z0-9_./*-]+", relative_path):
+            print(f"verify-completeness: invalid characters in relative_path: {relative_path}", file=sys.stderr)
+            return 1
+        if not _verify_condition_reached(
+            condition,
+            run_dir,
+            manifest_data,
+            manifest_status=manifest_status,
+            manifest_pr_number=manifest_pr_number,
+        ):
+            continue
+        if "*" in relative_path:
+            if relative_path.count("*") > 1:
+                print(
+                    f"verify-completeness: relative_path must contain at most one * wildcard: {relative_path}",
+                    file=sys.stderr,
+                )
+                return 1
+            glob_hits = list(run_dir.glob(relative_path))
+            if not any(hit.is_file() for hit in glob_hits):
+                missing.append(relative_path)
+        elif not _verify_has_file(run_dir, relative_path):
+            missing.append(relative_path)
     if missing:
         print("MISSING=" + ",".join(missing))
         return 1
@@ -2124,6 +2587,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
     dest = _run_dir(args.log_root_path, args.skill, args.run_id) / f"round-{args.round}"
     dest.mkdir(parents=True, exist_ok=True)
     written = False
+    archetype_refs: dict[str, str] = {}
     for item in sorted(source.rglob("*")):
         if item.parent != source and item.parent.name != "dynamic-archetypes":
             continue
@@ -2132,18 +2596,47 @@ def larch_log_write_round_main(argv: list[str]) -> int:
         name = item.name
         if name.endswith((".done", ".prompt", ".history")) or name.startswith("."):
             continue
-        if name.startswith("reviewer-dyn-"):
+        if name.startswith("reviewer-dyn-") and name.endswith(".md"):
             shared = args.log_root_path / "shared" / "archetypes"
             shared.mkdir(parents=True, exist_ok=True)
             redacted = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
-            digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()
-            _atomic_write(shared / f"{digest}.md", redacted)
+            digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()[:12]
+            pool_path = shared / f"{digest}.md"
+            if not pool_path.is_file():
+                _atomic_write(pool_path, redacted)
+            slot = "dyn-" + name.removeprefix("reviewer-dyn-").removesuffix(".md")
+            archetype_refs[slot] = digest
             written = True
             continue
         out = dest / name
         content = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
         if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
             _atomic_write(out, content)
+            written = True
+    panel_manifest = dest / "panel-manifest.ndjson"
+    if archetype_refs and panel_manifest.is_file():
+        lines: list[str] = []
+        changed = False
+        for line in panel_manifest.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                lines.append(line)
+                continue
+            try:
+                row = json.loads(stripped)
+            except json.JSONDecodeError:
+                lines.append(line)
+                continue
+            if not isinstance(row, dict):
+                lines.append(line)
+                continue
+            slot = str(row.get("slot", ""))
+            if slot in archetype_refs and "archetype_ref" not in row:
+                row["archetype_ref"] = archetype_refs[slot]
+                changed = True
+            lines.append(json.dumps(row, ensure_ascii=False))
+        if changed:
+            _atomic_write(panel_manifest, "\n".join(lines) + "\n")
             written = True
     _emit_larch_log_envelope(path=dest, written=written, unchanged=not written)
     return 0
