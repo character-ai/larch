@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from proc import CommandResult
-from report_tokens_cost import price_run, token_cost_argv
+from report_tokens_cost import price_run, render_cost_line_main, token_cost_argv, token_cost_main
 from report_tokens_models import RunRecord, VendorTotals
 
 if TYPE_CHECKING:
@@ -242,8 +242,6 @@ def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> None:
-    from report_tokens_cost import token_cost_main
-
     rc = token_cost_main(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
     assert rc == 0
     out = capsys.readouterr().out
@@ -257,8 +255,6 @@ def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> 
 
 
 def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixture[str]) -> None:
-    from report_tokens_cost import render_cost_line_main
-
     rc = render_cost_line_main(["--codex-input-tokens", "1000", "--codex-output-tokens", "500"])
     assert rc == 0
     out = capsys.readouterr().out

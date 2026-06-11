@@ -202,7 +202,7 @@ def test_timing_record_vendor_task_warns_unknown_task_kind(
 
 def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
-    for status, expected in (("OK", "complete"), ("ERROR", "signal"), ("TIMEOUT", "signal")):
+    for status, _expected in (("OK", "complete"), ("ERROR", "signal"), ("TIMEOUT", "signal")):
         timing.TimingLedger(ledger).record_vendor_task(
             vendor="codex",
             task_kind="codex-review",
