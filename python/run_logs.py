@@ -27,8 +27,7 @@ _WRITE_FINAL_REPORT = (
     _REPO_ROOT / "skills" / "implement" / "scripts" / "write-final-report.sh"
 )
 _CAPTURE_SESSION_TRANSCRIPT = _REPO_ROOT / "scripts" / "capture-session-transcript.sh"
-_TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
-_TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
+_PY_CLI = _REPO_ROOT / "python" / "cli.py"
 _LARCH_LOG = _REPO_ROOT / "scripts" / "larch-log.sh"
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -247,20 +246,21 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
-    if _TOKEN_REPORT.is_file():
-        _ = runner.run(
-            [
-                "bash",
-                str(_TOKEN_REPORT),
-                "--full",
-                "--format",
-                "json",
-                "--output",
-                str(token_path),
-            ],
-            cwd=str(_REPO_ROOT),
-            env=env,
-        )
+    _ = runner.run(
+        [
+            "python3",
+            str(_PY_CLI),
+            "token",
+            "report",
+            "--full",
+            "--format",
+            "json",
+            "--output",
+            str(token_path),
+        ],
+        cwd=str(_REPO_ROOT),
+        env=env,
+    )
     if _LARCH_LOG.is_file() and token_path.is_file():
         _ = runner.run(
             [
@@ -281,20 +281,21 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
             cwd=str(_REPO_ROOT),
             env=env,
         )
-    if _TIMING_REPORT.is_file():
-        _ = runner.run(
-            [
-                "bash",
-                str(_TIMING_REPORT),
-                "--full",
-                "--format",
-                "json",
-                "--output",
-                str(timing_path),
-            ],
-            cwd=str(_REPO_ROOT),
-            env=env,
-        )
+    _ = runner.run(
+        [
+            "python3",
+            str(_PY_CLI),
+            "timing",
+            "report",
+            "--full",
+            "--format",
+            "json",
+            "--output",
+            str(timing_path),
+        ],
+        cwd=str(_REPO_ROOT),
+        env=env,
+    )
     if _LARCH_LOG.is_file() and timing_path.is_file():
         _ = runner.run(
             [

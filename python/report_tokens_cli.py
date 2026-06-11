@@ -13,9 +13,9 @@ import config
 import proc
 import redact
 from errors import ShipError
-from report_tokens_cost import price_run
+from report_tokens_cost import display_rates, price_run
 from report_tokens_issue import post_issue
-from report_tokens_models import Skill, display_rates
+from report_tokens_models import Skill
 from report_tokens_plot import plot
 from report_tokens_render import render, title_for_skill
 from report_tokens_scan import ScanResult, scan

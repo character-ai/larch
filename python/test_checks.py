@@ -86,13 +86,8 @@ def _with_ledger_stubs(
 ) -> list[CommandResult]:
     if site not in {"step3", "step6"}:
         return list(responses)
-    scripts = Path(__file__).resolve().parents[1] / "scripts"
-    leading: list[CommandResult] = []
-    for name in ("token-ledger.sh", "timing-ledger.sh"):
-        script = scripts / name
-        if script.is_file() and os.access(script, os.X_OK):
-            leading.append(_ok(""))
-    return [*leading, *responses]
+    # _mark_step_ledger always makes 2 runner.run calls: token mark + timing mark
+    return [_ok(""), _ok(""), *responses]
 
 
 @pytest.mark.parametrize(
@@ -1973,10 +1968,6 @@ def test_run_checks_phase_dispatch_first_wiring(
     assert result.payload == ("fixed.py",)
 
 
-@pytest.mark.skipif(
-    not (Path(__file__).resolve().parents[1] / "scripts" / "token-ledger.sh").is_file(),
-    reason="token-ledger.sh missing",
-)
 def test_run_relevant_checks_marks_step6_ledger(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2000,7 +1991,7 @@ def test_run_relevant_checks_marks_step6_ledger(
     )
     ledger_calls = [
         call for call, _kw in runner.calls
-        if any(name.endswith(("token-ledger.sh", "timing-ledger.sh")) for name in call)
+        if any("cli.py" in name or name.endswith(("python3 python/cli.py token", "python3 python/cli.py timing")) for name in call)
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)

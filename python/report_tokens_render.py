@@ -9,8 +9,8 @@ from pathlib import Path
 from collections import defaultdict
 
 import config
-from report_tokens_cost import aggregate_vendor_tokens
-from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, Skill, display_rates, workflow_groups
+from report_tokens_cost import DisplayRates, aggregate_vendor_tokens, display_rates
+from report_tokens_models import ReportSection, RunRecord, SectionPriority, Skill, workflow_groups
 
 DATE_LEN = 10
 
@@ -108,7 +108,7 @@ def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ]
     for record in sorted(records, key=lambda item: item.total_cost, reverse=True)[:10]:
         issue = f"[#{record.number}]({record.url})" if record.url else f"#{record.number}"
-        pricing = "token-cost" if record.priced_by_token_cost else "fallback"
+        pricing = "python-pricing" if record.priced_by_token_cost else "fallback"
         if skill == "implement":
             lines.append(
                 f"| {issue} | {_md_cell(_date(record.started_at) or 'unknown')} | "
@@ -206,9 +206,9 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
 def _suggestions(records: tuple[RunRecord, ...]) -> str:
     total_cache_read = sum(record.claude.cache_read + record.cursor.cache_read for record in records)
     if any(not record.priced_by_token_cost for record in records):
-        pricing_line = "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `scripts/token-cost.sh` was unavailable or incomplete."
+        pricing_line = "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/report_tokens_cost.py` used blended fallback pricing."
     else:
-        pricing_line = "- Treat dollar values as estimates; `scripts/token-cost.sh` remains the pricing authority used for headline totals."
+        pricing_line = "- Treat dollar values as estimates; `python/report_tokens_cost.py` remains the pricing authority used for headline totals."
     return "\n".join([
         "## Cost-reduction suggestions",
         "",
@@ -249,7 +249,7 @@ def _write_cache(path: Path, skill: Skill, records: tuple[RunRecord, ...]) -> No
                 "cursor_cost": record.cursor_cost,
                 "claude_sub_cost": record.claude_sub_cost,
                 "total_cost": record.total_cost,
-                "pricing_source": "token-cost.sh" if record.priced_by_token_cost else "python-blended-fallback",
+                "pricing_source": "python-pricing" if record.priced_by_token_cost else "python-blended-fallback",
             }
             if skill == "design":
                 row["workflow"] = record.workflow
