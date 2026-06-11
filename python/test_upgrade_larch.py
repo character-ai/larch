@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
+import config
 import upgrade_larch
 import proc
 
@@ -84,6 +86,66 @@ def test_run_marketplace_failure_returns_nonzero(monkeypatch: Any, tmp_path: Pat
     err = capsys.readouterr().err
     assert "Recovery: run these commands manually to reinstall:" in err
     assert "LARCH_RESTART_REQUIRED=true" in err
+
+
+def test_marketplace_sparse_cone_matches(monkeypatch: Any, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    clone = home / ".claude/plugins/marketplaces/larch-local"
+    clone.mkdir(parents=True)
+    (clone / ".git").mkdir()
+    sparse_dirs = upgrade_larch.normalize_sparse_dirs()
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:5] == ["git", "-C", str(clone), "sparse-checkout", "list"]:
+            return _result(argv, stdout=sparse_dirs + "\n")
+        return _result(argv)
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(upgrade_larch.proc, "run", fake_run)
+    assert upgrade_larch._marketplace_sparse_cone_matches() is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_backfill_install_stamps(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    version_dir = cache / "1.0.0"
+    version_dir.mkdir(parents=True)
+    old_time = 12345
+    os.utime(version_dir, (old_time, old_time))
+    upgrade_larch.backfill_install_stamps(cache)
+    assert (version_dir / ".larch-installed-at").read_text(encoding="utf-8").strip() == str(old_time)
+
+
+def test_run_main_initializes_quiet_mode(monkeypatch: Any, tmp_path: Path) -> None:
+    plugin_root = tmp_path / "cache/1.0.0"
+    plugin_root.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("LARCH_EXPECTED_STABLE_VERSION", "1.0.0")
+    quiet_calls: list[str] = []
+
+    def fake_quiet_init(**kwargs: object) -> None:
+        quiet_calls.append(str(kwargs.get("argv0")))
+
+    monkeypatch.setattr(upgrade_larch.logging_util, "quiet_init", fake_quiet_init)
+    monkeypatch.setattr(
+        upgrade_larch.proc,
+        "run",
+        lambda argv, **_: _result(argv, stdout="larch@larch-local\n  Version: 1.0.0\n"),
+    )
+    assert upgrade_larch.run_main([]) == 0
+    assert quiet_calls == ["upgrade-larch.sh"]
+
+
+def test_restore_operator_stdout_when_quiet(monkeypatch: Any) -> None:
+    calls: list[tuple[int, int]] = []
+
+    def fake_dup2(src: int, dst: int) -> None:
+        calls.append((src, dst))
+
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, str(os.getpid()))
+    monkeypatch.setattr(upgrade_larch.os, "dup2", fake_dup2)
+    upgrade_larch._restore_operator_stdout()  # pyright: ignore[reportPrivateUsage]
+    assert calls == [(3, 1)]
 
 
 def test_run_same_version_cone_reconciles(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

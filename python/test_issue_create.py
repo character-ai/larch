@@ -325,8 +325,6 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
         if argv[:3] == ["gh", "issue", "create"]:
-            if "--json" in argv:
-                return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
             return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:
             return _result(argv, stdout="4242\n")
@@ -338,9 +336,142 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
     assert "ISSUE_NUMBER=42" in out
     assert "ISSUE_ID=4242" in out
     create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]
-    assert len(create_calls) == 2
+    assert len(create_calls) == 1
     assert "--json" in create_calls[0]
-    assert "--json" not in create_calls[1]
+
+
+def test_create_one_rejects_graphql_node_id(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "issue", "create"]:
+            return _result(
+                argv,
+                stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
+            )
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "ISSUE_FAILED=true" in out
+
+
+def test_create_one_id_lookup_failure_emits_rollback_failed(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "issue", "create"]:
+            return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:
+            return _result(argv, returncode=1, stderr="lookup failed")
+        if argv[:3] == ["gh", "issue", "close"]:
+            return _result(argv, returncode=1, stderr="close failed")
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "ISSUE_FAILED=true" in captured.out
+    assert "ROLLBACK_FAILED" in captured.err
+
+
+def test_skill_pins_body_file_title_semantics() -> None:
+    text = SKILL_PATH.read_text(encoding="utf-8")
+    needles = (
+        "trailing arg is the explicit title",
+        "EXPLICIT_TITLE",
+        "if `EXPLICIT_TITLE` is set",
+        "derived from `DESCRIPTION`",
+        "body-file content is empty",
+    )
+    for needle in needles:
+        assert needle in text, needle
+
+
+def test_write_sentinel_dry_run_and_failures(tmp_path: Path, capsys: Any) -> None:
+    target = tmp_path / "sentinel.env"
+    args = ["--path", str(target), "--issues-created", "1", "--issues-deduplicated", "0", "--issues-failed", "0"]
+    assert issue_create.write_sentinel_main([*args, "--dry-run"]) == 0
+    assert capsys.readouterr().err == "WROTE=false REASON=dry_run\n"
+    assert not target.exists()
+    failure_args = [
+        "--path",
+        str(target),
+        "--issues-created",
+        "1",
+        "--issues-deduplicated",
+        "0",
+        "--issues-failed",
+        "1",
+    ]
+    assert issue_create.write_sentinel_main(failure_args) == 0
+    assert capsys.readouterr().err == "WROTE=false REASON=failures\n"
+
+
+def test_fetch_issue_details_partial_failure(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    payload = {
+        "number": 9,
+        "title": "T",
+        "body": "body",
+        "state": "open",
+        "url": "https://x/issues/9",
+        "comments": [],
+    }
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "9":
+            return _result(argv, stdout=json.dumps(payload))
+        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "10":
+            return _result(argv, returncode=1, stderr="not found")
+        return _result(argv, stdout="o/r\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    out_path = tmp_path / "corpus.md"
+    assert issue_create.fetch_issue_details_main(["--numbers", "9,10", "--output", str(out_path), "--repo", "o/r"]) == 0
+    out = capsys.readouterr().out
+    assert "FETCH_STATUS_9=ok" in out
+    assert "FETCH_STATUS_10=failed" in out
+    text = out_path.read_text(encoding="utf-8")
+    assert "<external_issue_9>" in text
+    assert "<external_issue_10>" not in text
+
+
+def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
+    calls: list[list[str]] = []
+    api_calls = 0
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+            return _result(argv, stdout="200\n")
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/1/dependencies/blocked_by"]:
+            nonlocal api_calls
+            api_calls += 1
+            if api_calls < 3:
+                return _result(argv, returncode=1, stderr="HTTP 503")
+            return _result(argv)
+        return _result(argv)
+
+    sleeps: list[float] = []
+
+    def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.add_blocked_by_main(
+        ["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"],
+        sleep_fn=record_sleep,
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "BLOCKED_BY_ADDED=true" in out
+    assert sleeps == [10.0, 30.0]
+    assert api_calls == 3
 
 
 def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:

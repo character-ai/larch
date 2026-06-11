@@ -7,7 +7,6 @@ import fnmatch
 import os
 import shutil
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -35,6 +34,7 @@ TMP_PATTERNS = (
     "issue-*-design-comment.md",
 )
 SECONDS_PER_DAY = 86400
+TMP_FALLBACK = "/tmp"  # noqa: S108 - parity with cleanup.sh preserved /tmp root
 
 
 def _emit(key: str, value: object) -> None:
@@ -113,7 +113,7 @@ def run_main(argv: list[str]) -> int:
                 cache_removed += 1
     _emit("CACHE_REMOVED", cache_removed)
     tmp_removed = 0
-    tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or tempfile.gettempdir())
+    tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or TMP_FALLBACK)
     if tmp_root.is_dir():
         try:
             tmp_entries = list(tmp_root.iterdir())

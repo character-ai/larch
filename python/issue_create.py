@@ -341,6 +341,8 @@ def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
     issue_id = str(data.get("id") or "")
     if not number or not url or not issue_id:
         return None
+    if not number.isdigit() or not _positive_int(issue_id):
+        return None
     return number, url, issue_id
 
 
@@ -356,25 +358,51 @@ def _issue_create_json_status(output: str) -> str:
     return "empty_fields"
 
 
+def _parse_created_url(output: str) -> tuple[str, str] | None:
+    match = URL_RE.search(output)
+    if not match:
+        return None
+    url = match.group(0)
+    number = url.rsplit("/", 1)[-1]
+    if not number.isdigit():
+        return None
+    return number, url
+
+
+def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "") -> None:
+    close = proc.run(["gh", "issue", "close", "--repo", repo, number, "--reason", "not planned"])
+    if close.returncode == 0:
+        warn(f"ROLLBACK: closed orphan issue #{number} after id-lookup failure")
+        return
+    detail = _flat_error(close_error or close.stderr or close.stdout)
+    warn(f"ROLLBACK_FAILED: could not close orphan issue #{number} ({url}): {detail}. Manually close.")
+
+
+def _resolve_created_from_output(repo: str, output: str, final_title: str) -> int:
+    parsed = _parse_created_url(output)
+    if not parsed:
+        return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(output)})")
+    number, url = parsed
+    lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    issue_id = lookup.stdout.strip()
+    if lookup.returncode == 0 and _positive_int(issue_id):
+        emit_kv("ISSUE_NUMBER", number)
+        emit_kv("ISSUE_URL", url)
+        emit_kv("ISSUE_ID", issue_id)
+        emit_kv("ISSUE_TITLE", final_title)
+        return 0
+    if lookup.returncode == 0 and issue_id and not _positive_int(issue_id):
+        _rollback_orphan(repo, number, url, close_error=lookup.stderr)
+        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
+    _rollback_orphan(repo, number, url, close_error=lookup.stderr)
+    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(lookup.stderr)}")
+
+
 def _create_fallback(repo: str, gh_args: list[str], final_title: str) -> int:
     created = proc.run(["gh", *gh_args])
     if created.returncode != 0:
         return _emit_issue_failed(_flat_error(created.stderr))
-    match = URL_RE.search(created.stdout)
-    if not match:
-        return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(created.stdout)})")
-    url = match.group(0)
-    number = url.rsplit("/", 1)[-1]
-    lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
-    issue_id = lookup.stdout.strip()
-    if lookup.returncode != 0 or not issue_id.isdigit():
-        proc.run(["gh", "issue", "close", "--repo", repo, number, "--reason", "not planned"])
-        return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(lookup.stderr)}")
-    emit_kv("ISSUE_NUMBER", number)
-    emit_kv("ISSUE_URL", url)
-    emit_kv("ISSUE_ID", issue_id)
-    emit_kv("ISSUE_TITLE", final_title)
-    return 0
+    return _resolve_created_from_output(repo, created.stdout, final_title)
 
 
 def create_one_main(argv: list[str]) -> int:
@@ -442,7 +470,7 @@ def create_one_main(argv: list[str]) -> int:
             if json_status == "empty_fields":
                 redacted_output = _flat_error(result.stdout)
                 return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
-            return _create_fallback(repo, gh_args, final_title)
+            return _resolve_created_from_output(repo, result.stdout, final_title)
         if unknown_json:
             return _create_fallback(repo, gh_args, final_title)
         return _emit_issue_failed(_flat_error(result.stderr))
@@ -682,7 +710,7 @@ def list_issues_main(argv: list[str]) -> int:
         emit_kv("LIST_STATUS", "failed")
         warn("WARN: jq failed to parse gh api output")
         return 0
-    cutoff = _dt.datetime.now(tz=_dt.UTC).date() - _dt.timedelta(days=int(closed_window))
+    cutoff = _dt.datetime.now().astimezone().date() - _dt.timedelta(days=int(closed_window))
     rows: list[str] = []
     for doc in docs:
         if not isinstance(doc, list):

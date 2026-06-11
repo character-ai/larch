@@ -36,6 +36,19 @@ def test_parse_args_requires_owner_repo() -> None:
         raise AssertionError("expected SetupError")
 
 
+def test_restore_remote_state_reports_git_config_failure(monkeypatch: Any, capsys: Any) -> None:
+    snapshot = forked_repo.RemoteSnapshot([("remote.origin.url", "https://github.com/acme/project.git")])
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:4] == ["git", "config", "--add", "remote.origin.url"]:
+            return _result(argv, returncode=1, stderr="config failed")
+        return _result(argv)
+
+    monkeypatch.setattr(forked_repo.proc, "run", fake_run)
+    assert forked_repo.restore_remote_state(snapshot) is False
+    assert "RECOVERY_REPORT rollback_failed=true reason=git-config-restore-failed" in capsys.readouterr().err
+
+
 def test_rollback_remotes_if_active_restores_snapshot(monkeypatch: Any) -> None:
     snapshot = forked_repo.RemoteSnapshot([("remote.origin.url", "https://github.com/acme/project.git")])
     ctx = forked_repo.SetupContext(snapshot=snapshot, remote_phase_active=True)

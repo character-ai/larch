@@ -412,23 +412,32 @@ def snapshot_remote_state() -> RemoteSnapshot:
     return RemoteSnapshot(entries)
 
 
-def restore_remote_state(snapshot: RemoteSnapshot) -> None:
+def restore_remote_state(snapshot: RemoteSnapshot) -> bool:
+    if os.environ.get("LARCH_FORKED_REPO_INJECT_FAILURE") == "rollback":
+        err("RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure")
+        return False
+    ok = True
     keys = proc.run(["git", "config", "--name-only", "--get-regexp", "^(remote|branch)\\."])
     if keys.returncode == 0:
         for key in keys.stdout.splitlines():
-            proc.run(["git", "config", "--unset-all", key])
+            if not key:
+                continue
+            if proc.run(["git", "config", "--unset-all", key]).returncode != 0:
+                ok = False
     for key, value in snapshot.entries:
-        proc.run(["git", "config", "--add", key, value])
+        if proc.run(["git", "config", "--add", key, value]).returncode != 0:
+            ok = False
+    if not ok:
+        err("RECOVERY_REPORT rollback_failed=true reason=git-config-restore-failed")
+    return ok
 
 
 def rollback_remotes_if_active(ctx: SetupContext) -> None:
     if not ctx.remote_phase_active or ctx.snapshot is None:
         return
     err("ERROR: remote rewrite failed; attempting rollback")
-    if os.environ.get("LARCH_FORKED_REPO_INJECT_FAILURE") == "rollback":
-        err("RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure")
-    else:
-        restore_remote_state(ctx.snapshot)
+    if not restore_remote_state(ctx.snapshot):
+        err("RECOVERY_REPORT rollback_failed=true reason=restore-remote-state-failed")
 
 
 def phase_remotes(ctx: SetupContext) -> None:
@@ -482,12 +491,12 @@ def phase_verify(ctx: SetupContext) -> None:
     err("Final remotes:")
     remotes = proc.run(["git", "remote", "-v"])
     if remotes.stdout:
-        print(remotes.stdout, end="")
+        err(remotes.stdout.rstrip())
     err("")
     err("Disabled upstream push sentinel:")
     sentinel = proc.run(["git", "config", "--get-regexp", "^remote\\.upstream\\.pushurl$"])
     if sentinel.stdout:
-        print(sentinel.stdout, end="")
+        err(sentinel.stdout.rstrip())
     if git_stdout(["config", "--get", "branch.main.remote"]) != "origin":
         die("branch.main.remote is not origin")
     if git_stdout(["config", "--get", "branch.main.merge"]) != "refs/heads/main":

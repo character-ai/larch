@@ -27,6 +27,26 @@ def test_resolve_target_plugin_and_private(monkeypatch: Any, tmp_path: Path, cap
     assert f"TARGET_DIR={tmp_path}/.claude/skills/my-alias" in capsys.readouterr().out
 
 
+def test_resolve_target_requires_git_repo(monkeypatch: Any, capsys: Any) -> None:
+    monkeypatch.setattr(
+        alias_skill.proc,
+        "run",
+        lambda argv, **_: _result(argv, returncode=128, stderr="fatal: not a git repository\n"),
+    )
+    assert alias_skill.resolve_target_main(["--alias-name", "my-alias"]) == 1
+    assert "ERROR: not in a git repository" in capsys.readouterr().err
+
+
+def test_resolve_target_non_plugin_repo_routes_private(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    monkeypatch.setattr(alias_skill.proc, "run", lambda argv, **_: _result(argv, stdout=f"{repo}\n"))
+    assert alias_skill.resolve_target_main(["--alias-name", "my-alias"]) == 0
+    out = capsys.readouterr().out
+    assert "PLUGIN_REPO=false" in out
+    assert f"TARGET_DIR={repo}/.claude/skills/my-alias" in out
+
+
 def test_generate_yaml_escapes(capsys: Any) -> None:
     assert alias_skill.generate_main(["--name", "q", "--target", "implement", "--flags", '--foo "bar"', "--version", "1.2.3"]) == 0
     out = capsys.readouterr().out
