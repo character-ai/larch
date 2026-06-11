@@ -128,12 +128,91 @@ def test_timing_report_implement_hides_workflow_path(tmp_path: Path, monkeypatch
     assert data["workflow_path"] == "unknown"
 
 
-def test_timing_harness_mark_runs_command(tmp_path: Path) -> None:
+def test_timing_harness_mark_runs_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     script = tmp_path / "ok.sh"
     _ = script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
     rc = timing.harness_mark(label="fixture", argv=["bash", str(script)])
     assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("LARCH_HARNESS_TIMING\tfixture\t")
+    assert out.endswith("s")
+
+    fail_script = tmp_path / "fail.sh"
+    _ = fail_script.write_text("#!/usr/bin/env bash\nexit 42\n", encoding="utf-8")
+    fail_script.chmod(0o755)
+    rc_fail = timing.harness_mark(label="fail-fixture", argv=["bash", str(fail_script)])
+    assert rc_fail == 42
+    fail_out = capsys.readouterr().out.strip()
+    assert fail_out.startswith("LARCH_HARNESS_TIMING\tfail-fixture\t")
+    assert fail_out.endswith("s")
+
+
+def test_timing_mark_main_catches_invalid_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fifo = tmp_path / "fifo.tsv"
+    if hasattr(stat, "S_IFIFO"):
+        os.mkfifo(fifo)
+        rc = timing.timing_mark_main(["--ledger", str(fifo), "Step 0"])
+        assert rc == 1
+        assert "not a regular file" in capsys.readouterr().err
+
+
+def test_validate_ledger_path_rejects_symlink_escape_before_mkdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    link = allowed / "link"
+    link.symlink_to(outside)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    with pytest.raises(ValueError, match="not under an allowed root"):
+        timing.validate_ledger_path(str(link / "nested" / "timing-ledger.tsv"), env={"TMPDIR": str(allowed)})
+    assert not (outside / "nested").exists()
+
+
+def test_timing_record_vendor_task_rejects_invalid_vendor(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    with pytest.raises(ValueError, match="vendor must be codex"):
+        timing.TimingLedger(ledger).record_vendor_task(
+            vendor="gemini",
+            task_kind="vendor-misc",
+            start_s=1,
+            end_s=2,
+            output="x.log",
+        )
+
+
+def test_timing_record_vendor_task_warns_unknown_task_kind(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger).record_vendor_task(
+        vendor="codex",
+        task_kind="totally-unknown-kind",
+        start_s=1,
+        end_s=2,
+        output="x.log",
+    )
+    assert "unknown task-kind" in capsys.readouterr().err
+
+
+def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    for status, expected in (("OK", "complete"), ("ERROR", "signal"), ("TIMEOUT", "signal")):
+        timing.TimingLedger(ledger).record_vendor_task(
+            vendor="codex",
+            task_kind="codex-review",
+            start_s=1,
+            end_s=2,
+            output="x.log",
+            status=status,
+        )
+    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tvendor\t" in line]
+    assert [row.split("\t")[-1] for row in rows] == ["complete", "signal", "signal"]
 
 
 def test_timing_telemetry_mark_writes_ledgers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

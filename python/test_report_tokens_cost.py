@@ -239,3 +239,29 @@ def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> N
     priced = price_run(runner, record=record, plugin_root=Path.cwd().parent)
     assert priced.codex_cost == 2.0
     assert priced.cursor_cost == 3.0
+
+
+def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> None:
+    from report_tokens_cost import token_cost_main
+
+    rc = token_cost_main(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
+    assert parsed["CLAUDE_COST"] == "0.00"
+    assert parsed["CODEX_COST"] == "3.94"
+    assert parsed["TOTAL_COST"] == "3.94"
+    assert parsed["TOTAL_TOKENS"] == "2000000"
+    assert out.strip().splitlines()[0].startswith("CLAUDE_COST=")
+    assert out.strip().splitlines()[4].startswith("TOTAL_COST=")
+
+
+def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixture[str]) -> None:
+    from report_tokens_cost import render_cost_line_main
+
+    rc = render_cost_line_main(["--codex-input-tokens", "1000", "--codex-output-tokens", "500"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("💰 Cost: TOTAL ~$")
+    assert "Codex $" in out
+    assert "Tokens:" in out

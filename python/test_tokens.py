@@ -276,6 +276,45 @@ def test_token_ledger_mark_record_dump(tmp_path: Path) -> None:
     assert oct(ledger.stat().st_mode & 0o777) == oct(0o600)
 
 
+def test_token_ledger_rejects_claude_vendor(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    with pytest.raises(ValueError, match="claude"):
+        tokens.TokenLedger(ledger).record_vendor("claude", total=1)
+
+
+def test_token_report_json_includes_custom_vendor_sibling(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    transcript = tmp_path / "transcript.jsonl"
+    _ = ledger.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 1 - design", "ts": "2026-05-06T00:00:00Z"},
+                {"type": "vendor", "vendor": "gemini", "total": 42, "ts": "2026-05-06T00:00:05Z"},
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = transcript.write_text(
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": "2026-05-06T00:00:03.100Z",
+                "message": {"usage": {"input_tokens": 1, "output_tokens": 1}},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    payload = tokens.token_report(ledger_path=ledger, transcript_path=transcript, mode="full", fmt="json")
+    assert isinstance(payload, dict)
+    assert "gemini" in payload["vendors"]
+    gemini = payload["gemini"]
+    assert isinstance(gemini, dict)
+    assert gemini["totals"]["total"] == 42
+
+
 def test_token_lane_tally_write_and_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     research_dir = Path("/tmp") / f"larch-research-tally-{tmp_path.name}"
     research_dir.mkdir(parents=True, exist_ok=True)

@@ -277,6 +277,14 @@ class _Round:
     oos: int | None
 
 
+def _under_allowed_root(path: Path, roots: list[Path]) -> bool:
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return False
+    return any(resolved == base or base in resolved.parents for base in roots)
+
+
 def validate_ledger_path(raw: str, *, must_exist: bool = False, env: Mapping[str, str] | None = None) -> Path:
     env_map = os.environ if env is None else env
     if not raw or ".." in Path(raw).parts:
@@ -287,10 +295,13 @@ def validate_ledger_path(raw: str, *, must_exist: bool = False, env: Mapping[str
     root = roots[0] if roots else Path("/tmp").resolve()
     if not candidate.is_absolute():
         candidate = root / candidate
+    if not _under_allowed_root(candidate, roots):
+        msg = f"ledger path not under an allowed root: {raw}"
+        raise ValueError(msg)
     candidate.parent.mkdir(parents=True, exist_ok=True)
     parent = candidate.parent.resolve(strict=True)
     resolved = parent / candidate.name
-    if not any(resolved == base or base in resolved.parents for base in roots):
+    if not _under_allowed_root(resolved, roots):
         msg = f"ledger path not under an allowed root: {raw}"
         raise ValueError(msg)
     if must_exist and not resolved.is_file():
@@ -645,10 +656,18 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
     if not args:
         print("timing mark requires <step>", file=sys.stderr)
         return 1
-    ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    try:
+        ledger = resolve_timing_ledger_path(ledger=raw_ledger)
+    except ValueError as exc:
+        print(f"timing mark: {exc}", file=sys.stderr)
+        return 1
     if ledger is None:
         return 0
-    TimingLedger(ledger, skill=os.environ.get("LARCH_TIMING_SKILL", "implement")).mark(args[0])
+    try:
+        TimingLedger(ledger, skill=os.environ.get("LARCH_TIMING_SKILL", "implement")).mark(args[0])
+    except ValueError as exc:
+        print(f"timing mark: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
