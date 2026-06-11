@@ -1,4 +1,202 @@
+=== larch-quiet-check-contains-pins.sh-22316.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-contains-pins.sh-33273.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-contains-pins.sh-43210.log ===
+
+=== larch-quiet-check-contains-pins.sh-59335.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-contains-pins.sh-8679.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-contains-pins.sh-91658.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-contains-pins.sh-99029.log ===
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:112: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:125: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:136: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:137: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:138: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:164: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:165: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:195: could not resolve $out
+SKIPPED_NON_CANONICAL: skills/design/scripts/test-review-design-step3-loop.sh:196: assertion shape not in v1 grammar
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:222: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:223: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:257: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:277: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:278: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:299: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:323: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:324: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:359: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:385: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:411: could not resolve $out
+UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: could not resolve $out
+
+=== larch-quiet-check-review-changes.sh-30304.log ===
+
+=== larch-quiet-cli.py-14896.log ===
+
+=== larch-quiet-cli.py-20379.log ===
+
+=== larch-quiet-cli.py-2533.log ===
+
+=== larch-quiet-cli.py-26477.log ===
+
+=== larch-quiet-cli.py-30391.log ===
+
+=== larch-quiet-cli.py-35318.log ===
+
+=== larch-quiet-cli.py-42764.log ===
+
+=== larch-quiet-cli.py-44617.log ===
+
+=== larch-quiet-cli.py-47768.log ===
+
+=== larch-quiet-cli.py-47999.log ===
+
+=== larch-quiet-cli.py-5550.log ===
+
+=== larch-quiet-cli.py-61102.log ===
+
+=== larch-quiet-cli.py-76103.log ===
+
+=== larch-quiet-cli.py-82659.log ===
+
+=== larch-quiet-cli.py-87128.log ===
+
+=== larch-quiet-cli.py-93746.log ===
+
+=== larch-quiet-cli.py-95775.log ===
+
+=== larch-quiet-cli.py-98746.log ===
+
 === larch-quiet-degraded-tools-gate.sh-89509.log ===
+
+=== larch-quiet-git-current-branch.sh-68666.log ===
+
+=== larch-quiet-read-session-env-key.sh-30204.log ===
+
+=== larch-quiet-read-session-env-key.sh-30234.log ===
+
+=== larch-quiet-read-session-env-key.sh-30267.log ===
+
+=== larch-quiet-read-session-env-key.sh-34542.log ===
+
+=== larch-quiet-read-session-env-key.sh-34572.log ===
+
+=== larch-quiet-read-session-env-key.sh-34603.log ===
+
+=== larch-quiet-read-session-env-key.sh-73512.log ===
+
+=== larch-quiet-read-session-env-key.sh-73568.log ===
+
+=== larch-quiet-read-session-env-key.sh-73623.log ===
 
 === larch-quiet-read-session-env-key.sh-87851.log ===
 
@@ -17,6 +215,17 @@
 === larch-quiet-read-session-env-key.sh-99592.log ===
 
 === larch-quiet-read-session-env-key.sh-99761.log ===
+
+=== larch-quiet-rebase-push.sh-10337.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-34633.log ===
+
+=== larch-quiet-run-relevant-checks-captured.sh-73675.log ===
+
+=== larch-quiet-step-7a.sh-17226.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.2TF7zF
 
 === larch-quiet-step2-implement.sh-3087.log ===
 
