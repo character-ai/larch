@@ -1568,7 +1568,7 @@ _stage_and_push_ci_fixes() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-} start_attempt=${6:-0}
+    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-}
     local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc stage_rc
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
@@ -1605,10 +1605,10 @@ run_ci_fix_vendor() {
     wrapper_rc=1
     launcher_exit=1
 
-    offset=$(( start_attempt % 3 ))
+    offset=0
     first_tier=${tiers[$offset]}
     for tier_idx in 0 1 2; do
-        tier=${tiers[$(((tier_idx + offset) % 3))]}
+        tier=${tiers[$(( tier_idx ))]}
         if [ "$tier" = "claude" ] && [ ! -x "$SCRIPT_DIR/launch-claude-ci.sh" ]; then
             fail_file=$(failure_capture_path "$phase")
             printf 'launch-claude-ci.sh unavailable (missing or not executable)\n' > "$fail_file"

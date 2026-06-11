@@ -279,17 +279,16 @@ compose_coder_prompt() {
 
 run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
-    # #3704: the review-fix coder waterfall is Cursor → Codex (the Claude tier
-    # lives in the caller via CODER_STATUS=main-agent-required). Cursor's
-    # stronger edit-following behavior suits surgical fix application; Codex
-    # remains the initial-implementation default in /implement Step 2.
-    if run_coder_dispatch_cursor "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
-        return 0
-    fi
+    # #3994: the review-fix coder waterfall is Codex → Cursor (consistent with
+    # all other fixer roles; the Claude tier lives in the caller via
+    # CODER_STATUS=main-agent-required).
     if run_coder_dispatch_codex "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
         return 0
     fi
-    larch_err "⚠ review-and-fix: coder dispatch failed (both cursor and codex)"
+    if run_coder_dispatch_cursor "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
+        return 0
+    fi
+    larch_err "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
     return 1
 }
 
@@ -743,8 +742,8 @@ apply_findings_with_coder() {
     tool_log="$round_dir/coder-output.log"
     larch_err "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
     if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
-        # #3207: no external coder could apply (cursor -> codex both exhausted;
-        # order flipped Cursor-first by #3704). Waterfall to the Claude/main-agent
+        # #3207: no external coder could apply (codex -> cursor both exhausted;
+        # order set to Codex-first by #3994). Waterfall to the Claude/main-agent
         # tier instead of hard-failing: CODER_STATUS=main-agent-required, return 4.
         # The orchestrator (/implement Step 5, /review Step 3) then applies the
         # accepted findings via main-agent Edit/Write, completing the review-fix
@@ -1642,7 +1641,7 @@ _implement_round_body() {
             ;;
         fix-required|cap-reached)
             if [[ "$coder_rc" -eq 4 || "$coder_status" == "main-agent-required" ]]; then
-                # #3207: cursor -> codex both exhausted; hand off to the main agent.
+                # #3207: codex -> cursor both exhausted; hand off to the main agent.
                 status="coder-main-agent-required"
                 exit_code=0
             elif [[ "$coder_rc" -eq 2 ]]; then

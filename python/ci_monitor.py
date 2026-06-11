@@ -1198,7 +1198,6 @@ def run_ci_fix(
     classified: ClassifiedJobs,
     logs: LogCollectResult,
     plan_file: str | None,
-    start_attempt: int,
     cwd: str | None,
     launch_fn: LaunchFn | None = None,
     output_dir: str | None = None,
@@ -1274,7 +1273,7 @@ def run_ci_fix(
         tiers = _available_tiers()
         if not tiers:
             return FixResult(status="waterfall-failed", detail="no launcher tiers available")
-        first_tier = tiers[start_attempt % len(tiers)]
+        first_tier = tiers[0]
         waterfall = agents.run_waterfall(
             tiers,
             _tier_launch,
@@ -1483,7 +1482,6 @@ def evaluate_failure(
                 classified=pending_classified or ClassifiedJobs(0, (), (), ()),
                 logs=pending_logs or LogCollectResult(text="", state="ready"),
                 plan_file=plan_file,
-                start_attempt=0,
                 cwd=cwd,
                 launch_fn=launch_fn,
                 base_remote=base_remote,
@@ -1528,7 +1526,6 @@ def evaluate_failure(
             classified=classified,
             logs=logs,
             plan_file=plan_file,
-            start_attempt=attempt - 1,
             cwd=cwd,
             launch_fn=launch_fn,
             base_remote=base_remote,
