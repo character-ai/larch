@@ -56,7 +56,7 @@ grep -Fq $'FINDING_1\tcursor-a-output.txt|codex-b-output.txt\taccepted\tYES\ttru
     || fail "nested compact 2-voter row missing"
 grep -Fq $'OOS_1\tcursor-oos-output.txt\tneutral' "$class_file" || fail "OOS_N classification row missing"
 log_root="$A/logs"
-"$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A/impl-parent/round-1" >/dev/null
+python3 "$CLI" run-log write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A/impl-parent/round-1" >/dev/null
 [[ -f "$log_root/implement/run-a/round-1/findings-classification.tsv" ]] || fail "write-round did not publish findings-classification.tsv"
 
 echo "# Fixture B: standalone lenient missing rating handling does not change vote result"

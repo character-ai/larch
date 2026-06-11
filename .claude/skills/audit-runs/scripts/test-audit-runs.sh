@@ -2434,13 +2434,13 @@ assert_equal "$ph65" "See round-1/aggregator-validate.stderr in the committed ru
 rm -rf "$T65_BASE"
 
 echo "Test 66: append-tool-failure cursor-ci style embeds body (no output path leak)"
-APP_TF="$REPO_ROOT/python/cli.py run-log append-failure"
-if [ -x "$APP_TF" ]; then
+APP_TF="$REPO_ROOT/python/cli.py"
+if [ -f "$APP_TF" ]; then
     T66=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t66-XXXXXX")
     LOG66="$T66/execution-issues.md"
     OUT66="$T66/cursor-ci-failure.stderr"
     printf 'simulated cursor-ci stderr\n' > "$OUT66"
-    if bash "$APP_TF" --log "$LOG66" --site "5" --tool "cursor-ci" --exit-code 1 \
+    if python3 "$APP_TF" run-log append-failure --log "$LOG66" --site "5" --tool "cursor-ci" --exit-code 1 \
         --category "CI Issues" --output-file "$OUT66" >/dev/null 2>&1; then
         if grep -Fq "$OUT66" "$LOG66" 2>/dev/null; then
             FAIL=$((FAIL + 1))
