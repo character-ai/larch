@@ -25,8 +25,6 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
-# shellcheck source=scripts/lib-p3119-fence-absence.sh
-source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/research/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/research/references"
 RESEARCH_MD="$REFS_DIR/research-phase.md"
@@ -161,9 +159,9 @@ fi
 
 # ---------- Check 9: Stage 4 (#3119) Family-B fence absence ----------
 
-assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
-assert_p3119_family_b_fence_absent "$RESEARCH_MD" "research-phase.md"
-assert_p3119_family_b_fence_absent "$VALIDATION_MD" "validation-phase.md"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$SKILL_MD" "SKILL.md" || fail "(3119) SKILL.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$RESEARCH_MD" "research-phase.md" || fail "(3119) research-phase.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$VALIDATION_MD" "validation-phase.md" || fail "(3119) validation-phase.md still has removed Family-B fence tokens"
 PASS=$((PASS + 3))
 
 # ---------- Check 10: Codex auth-wired launcher pins ----------

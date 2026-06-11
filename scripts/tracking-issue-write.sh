@@ -95,7 +95,6 @@ larch_quiet_init
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 PY_CLI="$REPO_ROOT/python/cli.py"
 
-TITLE_MARKERS_HELPER="$SCRIPT_DIR/lib-title-markers.sh"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -161,7 +160,7 @@ truncate_title_with_prefixes_to_256() {
 # truncate_title_to_256 <title> — character-oriented truncation to 256
 # chars using bash string semantics. Used by `mark-false-positive`, where
 # the marker is inserted into the leading bracket-block sequence by
-# insert_signal_marker (lib-title-markers.sh) and the resulting title is
+# python3 python/cli.py issue insert-signal-marker and the resulting title is
 # truncated as a whole; rename uses truncate_title_with_prefixes_to_256
 # instead because it composes the lifecycle prefix and user tail explicitly.
 truncate_title_to_256() {
@@ -522,14 +521,6 @@ case "$cmd" in
             usage
             exit 1
         fi
-        if [[ ! -f "$TITLE_MARKERS_HELPER" ]]; then
-            emit_kv FAILED "true"
-            emit_kv ERROR "missing helper: $TITLE_MARKERS_HELPER"
-            exit 1
-        fi
-        # shellcheck source=scripts/lib-title-markers.sh
-        # shellcheck disable=SC1091
-        source "$TITLE_MARKERS_HELPER"
         if [[ -z "$REPO" ]]; then
             REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
             if [[ -z "$REPO" ]]; then
@@ -545,7 +536,13 @@ case "$cmd" in
             emit_gh_failure "gh issue view failed: $ERR_CONTENT"
         fi
         CUR_TITLE_REDACTED=$(redact "$CUR_TITLE") || emit_redaction_failure
-        NEW_TITLE=$(insert_signal_marker "$CUR_TITLE_REDACTED" "FALSE-POSITIVE")
+        MARKER_ERR_TMP=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-marker.XXXXXX")
+        if ! NEW_TITLE=$(python3 "$SCRIPT_DIR/../python/cli.py" issue insert-signal-marker --title="$CUR_TITLE_REDACTED" --marker "FALSE-POSITIVE" 2>"$MARKER_ERR_TMP"); then
+            ERR_CONTENT=$(cat "$MARKER_ERR_TMP" 2>/dev/null || true)
+            rm -f "$MARKER_ERR_TMP"
+            emit_gh_failure "issue insert-signal-marker failed: $ERR_CONTENT"
+        fi
+        rm -f "$MARKER_ERR_TMP"
         if [[ "$NEW_TITLE" == "$CUR_TITLE_REDACTED" ]]; then
             emit_kv MARKED "false"
             emit_kv NEW_TITLE "$CUR_TITLE_REDACTED"

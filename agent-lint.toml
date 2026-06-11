@@ -495,8 +495,6 @@ exclude = [
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.
-  "scripts/test-extract-plan-scope-paths.sh",
-  "scripts/test-extract-plan-scope-paths.md",
   "scripts/test-git-commit-only.sh",
   "scripts/test-git-commit-only.md",
   # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
@@ -575,10 +573,8 @@ exclude = [
   # launch-review.sh --tool cursor (issue #1502 dedup). Referenced via source
   # directives only.
   "scripts/lib-dirty-tree-sidecar.sh",
-  # scripts/lib-p3119-fence-absence.sh is a sourced-only shell library shared
   # by the four *-structure.sh Stage-4 (#3119) harnesses via source directives
   # only; agent-lint does not follow source directives.
-  "scripts/lib-p3119-fence-absence.sh",
   # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
   # not invokable directly) shared by rebase-checkpoint-probe.sh and
   # phantom-probe-with-warn.sh; agent-lint does not follow source directives.
@@ -1052,10 +1048,8 @@ exclude = [
   # scripts/test-design-log-publish.sh exercises design-log-publish.sh
   # (Makefile test-design-log-publish target + sibling .md). Same
   # Makefile-only harness pattern as test-tracking-issue-write.sh.
-  # scripts/named-block-write.sh is reached only through sibling shell wrappers,
   # and skills/design/scripts/test-design-pause-resume.sh is its Makefile-only
   # pause/resume harness.
-  "scripts/named-block-write.sh",
   "scripts/test-design-log-publish.sh",
   "scripts/test-design-log-publish.md",
   "skills/design/scripts/test-design-pause-resume.sh",
@@ -1064,17 +1058,9 @@ exclude = [
   # first consumer via skills/implement/SKILL.md (not in this phase).
   "scripts/test-tracking-issue-write.sh",
   # False-positive marker helpers (close-time title marking for issue workflows).
-  "scripts/lib-title-markers.sh",
-  # scripts/test-lib-title-markers.sh — regression for insert_signal_marker
-  # ([DESIGNED]/[DESIGNING] titles); lib-title-markers.sh is sourced from
   # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
-  "scripts/test-lib-title-markers.sh",
-  # scripts/lib-title-eligibility.sh is a sourced-only grammar library for
   # /design Step 0b and python/cli.py issue list-issues. The harness
-  # scripts/test-lib-title-eligibility.sh is Makefile-only. Agent-lint does
   # not follow sibling `source` directives or Makefile targets.
-  "scripts/lib-title-eligibility.sh",
-  "scripts/test-lib-title-eligibility.sh",
   # scripts/lib-design-tmpdir.sh is a sourced-only validator for
   # --design-tmpdir consumers. scripts/test-lib-design-tmpdir.sh is its
   # Makefile-only regression harness (test-lib-design-tmpdir target) and

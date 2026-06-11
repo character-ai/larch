@@ -440,21 +440,32 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
 fi
 
 # 2. Title-eligibility
-# shellcheck source=scripts/lib-title-eligibility.sh
-source "$PLUGIN_ROOT/scripts/lib-title-eligibility.sh"
-_lifecycle_marker=""
-if _lifecycle_marker=$(title_has_lifecycle_reject_prefix "$ISSUE_TITLE" 2>/dev/null); then
+_te_kv=""
+if ! _te_kv=$(python3 "$PLUGIN_ROOT/python/cli.py" issue title-eligibility --title="$ISSUE_TITLE"); then
+    ROUTE=cancel-title-filter
+    TITLE_FILTER_REASON=error
+    emit_cancel_route_result
+fi
+_lifecycle_reject=$(printf '%s
+' "$_te_kv" | awk -F= '$1 == "LIFECYCLE_REJECT" { print $2; exit }')
+_lifecycle_marker=$(printf '%s
+' "$_te_kv" | awk -F= '$1 == "LIFECYCLE_MARKER" { print $2; exit }')
+_archival_report=$(printf '%s
+' "$_te_kv" | awk -F= '$1 == "ARCHIVAL_REPORT" { print $2; exit }')
+_brainstorm=$(printf '%s
+' "$_te_kv" | awk -F= '$1 == "BRAINSTORM" { print $2; exit }')
+if [[ "$_lifecycle_reject" == true ]]; then
     ROUTE=cancel-title-filter
     TITLE_FILTER_REASON=lifecycle
     TITLE_FILTER_MARKER="$_lifecycle_marker"
     emit_cancel_route_result
 fi
-if title_has_archival_report_prefix "$ISSUE_TITLE"; then
+if [[ "$_archival_report" == true ]]; then
     ROUTE=cancel-title-filter
     TITLE_FILTER_REASON=archival
     emit_cancel_route_result
 fi
-if title_starts_with_brainstorm "$ISSUE_TITLE"; then
+if [[ "$_brainstorm" == true ]]; then
     BRAINSTORM_PREFIX=true
 fi
 

@@ -15,8 +15,6 @@ FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 DIALPROTO_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
-# shellcheck source=scripts/lib-p3119-fence-absence.sh
-. "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -569,10 +567,10 @@ assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
 assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
-assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
-assert_p3119_family_b_fence_absent "$BRAINSTORM_MD" "brainstorm.md"
-assert_p3119_family_b_fence_absent "$DIALEXEC_MD" "dialectic-execution.md"
-assert_p3119_family_b_fence_absent "$PLAN_REVIEW_MD" "plan-review.md"
-assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$SKILL_MD" "SKILL.md" || fail "(3119) SKILL.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$BRAINSTORM_MD" "brainstorm.md" || fail "(3119) brainstorm.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$DIALEXEC_MD" "dialectic-execution.md" || fail "(3119) dialectic-execution.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$PLAN_REVIEW_MD" "plan-review.md" || fail "(3119) plan-review.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$DIALPROTO_MD" "dialectic-protocol.md" || fail "(3119) dialectic-protocol.md still has removed Family-B fence tokens"
 
 printf 'ok - design SKILL uses wrapper-only Bash fences\n'

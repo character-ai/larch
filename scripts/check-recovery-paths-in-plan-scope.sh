@@ -35,7 +35,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLAN_SCOPE_FILE=$(mktemp)
 trap 'rm -f "$PLAN_SCOPE_FILE"' EXIT
-"$SCRIPT_DIR/extract-plan-scope-paths.sh" --plan-file "$PLAN_FILE" -z > "$PLAN_SCOPE_FILE"
+python3 "$SCRIPT_DIR/../python/cli.py" plan scope-paths --plan-file "$PLAN_FILE" -z > "$PLAN_SCOPE_FILE"
 
 python3 - "$PLAN_SCOPE_FILE" "$PATHS_FILE" <<'PY'
 import sys

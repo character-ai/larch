@@ -26,8 +26,8 @@ The driver does not fetch the issue body or resolve `REPO` itself. The module `S
 ## Derived / session inputs
 
 - `$PLUGIN_ROOT/scripts/design-pause-load.sh` when the body matches the same `larch:design-pause:start` line regex as `design-pause-load.sh` (optional `${REPO:+--repo}`), followed by `write-design-current-env.sh` on valid `resume@*`.
-- `scripts/lib-title-eligibility.sh`, `scripts/lib-design-reentry-guard.sh`.
-- Plan markers `MARK_START` / `MARK_END` copied verbatim from `scripts/plan-block-read.sh` lines 20–21.
+- `python/cli.py issue title-eligibility`, `scripts/lib-design-reentry-guard.sh`.
+- Plan markers `MARK_START` / `MARK_END` copied verbatim from `python/cli.py plan-block read` lines 20–21.
 - `render-final-summary.sh --post-publish-only` on `cancel-title-filter` and `cancel-reentry-guard` after the result env has already been written.
 
 ## Responsibilities

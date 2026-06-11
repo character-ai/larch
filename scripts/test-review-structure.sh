@@ -37,8 +37,6 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
-# shellcheck source=scripts/lib-p3119-fence-absence.sh
-source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/review/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/review/references"
 REVIEW_SCRIPTS_DIR="$REPO_ROOT/skills/review/scripts"
@@ -422,9 +420,9 @@ grep -Fq 'focus-area\s*=\s*security' "$VOTING_PY" \
 # ---------------------------------------------------------------------------
 HEAVY_WORKER_MD="$REFS_DIR/heavy-worker.md"
 EXTERNAL_REVIEWERS_MD="$REPO_ROOT/skills/shared/external-reviewers.md"
-assert_p3119_family_b_fence_absent "$HEAVY_WORKER_MD" "heavy-worker.md"
-assert_p3119_family_b_fence_absent "$EXTERNAL_REVIEWERS_MD" "external-reviewers.md"
-assert_p3119_family_b_fence_absent "$PROTOCOL_MD" "voting-protocol.md"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$HEAVY_WORKER_MD" "heavy-worker.md" || fail "(3119) heavy-worker.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$EXTERNAL_REVIEWERS_MD" "external-reviewers.md" || fail "(3119) external-reviewers.md still has removed Family-B fence tokens"
+python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$PROTOCOL_MD" "voting-protocol.md" || fail "(3119) voting-protocol.md still has removed Family-B fence tokens"
 
 echo "PASS: test-review-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

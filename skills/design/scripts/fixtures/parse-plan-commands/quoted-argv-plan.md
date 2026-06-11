@@ -1,7 +1,7 @@
 # Plan
 
 ```bash
-scripts/plan-block-read.sh --issue "99"
+python3 python/cli.py plan-block read --issue "99"
 ```
 
 diff_lines: 1

@@ -21,12 +21,13 @@ usage() {
 
 clear_pause_marker() {
     local clear_args=(
-        "$SCRIPT_DIR/named-block-write.sh"
+        python3 "$SCRIPT_DIR/../python/cli.py"
+        named-block write
         --marker design-pause
         --delete
         --issue "$ISSUE"
     )
-    [[ -n "$REPO" ]] && clear_args+=(--repo "$REPO")
+    [[ -n "${ISSUE_WIRE_REPO:-}" ]] && clear_args+=(--repo "$ISSUE_WIRE_REPO")
     "${clear_args[@]}" >/dev/null 2>&1
 }
 
@@ -104,6 +105,7 @@ mkdir -p "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-create-failed"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_load_fail "invalid-issue"
 jq --null-input 'null' >/dev/null 2>&1 || emit_load_fail "jq-missing"
 [[ -z "$REPO" ]] || validate_repo_value "$REPO"
+ISSUE_WIRE_REPO="$REPO"
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")

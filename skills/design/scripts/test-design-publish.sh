@@ -79,12 +79,6 @@ setup_design_tmp() {
 }
 
 write_stubs() {
-    cat >"$STUB/plan-block-write.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "plan-block-write $*" >>"${PLAN_BLOCK_LOG:?}"
-[[ -n "${CALL_LOG:-}" ]] && echo "plan-block-write $*" >>"$CALL_LOG"
-exit "${PLAN_BLOCK_RC:-0}"
-STUB
     cat >"$STUB/design-log-publish.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
@@ -128,6 +122,14 @@ def _parse_args(args):
         else:
             i += 1
     return d
+if cmd == ["named-block", "write"]:
+    args = " ".join(sys.argv[3:])
+    with open(os.environ["PLAN_BLOCK_LOG"], "a", encoding="utf-8") as handle:
+        handle.write(f"plan-block-write {args}\n")
+    if os.environ.get("CALL_LOG"):
+        with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+            handle.write(f"plan-block-write {args}\n")
+    raise SystemExit(int(os.environ.get("PLAN_BLOCK_RC", "0")))
 if cmd == ["diagrams", "upsert"]:
     args = " ".join(sys.argv[3:])
     with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
@@ -574,8 +576,11 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
-grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG" \
-  || fail "plan-block-write missing resolved --repo"
+if grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG"; then
+  fail "origin-fallback repo must not be passed to issue-wire plan writer"
+else
+  pass "origin-fallback repo not passed to issue-wire plan writer"
+fi
 awk '/timing-report/ {t=NR} /design-log-publish/ {p=NR} END { exit (t && p && t < p) ? 0 : 1 }' "$PUBLISH_ORDER_LOG" \
   || fail "timing-report must run before design-log-publish on happy path"
 pass "pre-publish timing render runs before design-log-publish"
@@ -666,8 +671,8 @@ bash "$SUBJECT" --design-tmpdir "$D_PLAN_REPO" --issue 42 --session-id sid-1 --c
 rc=$?
 set -e
 assert_rc "plan-block-write receives explicit repo" 0 "$rc"
-grep -Fq -- 'plan-block-write --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
-  || fail "plan-block-write call missing"
+grep -Fq -- 'plan-block-write --marker plan --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
+  || fail "issue-wire plan writer call missing"
 grep -Fq -- '--repo explicit/repo' "$PLAN_BLOCK_LOG" \
   || fail "plan-block-write missing explicit --repo"
 
@@ -875,8 +880,8 @@ grep -q 'tracking-issue-write' "$RENAME_LOG"   || fail "exit 3 should still comp
 
 # --- if ! plan-block-write guard ---
 # shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.
-grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$SUBJECT" \
-  || fail "design-publish.sh must use if ! around plan-block-write.sh"
+grep -Fq 'if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"' "$SUBJECT" \
+  || fail "design-publish.sh must use if ! around issue-wire plan writer"
 
 # --- clear-architecture sentinel path ---
 D_CLR="$TMP/clear-arch"

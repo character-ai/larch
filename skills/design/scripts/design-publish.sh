@@ -363,23 +363,26 @@ fi
 [[ -s "$DESIGN_TMPDIR/composed-plan.redacted.md" ]] \
     || fail 'composed-plan.redacted.md missing or empty after redaction'
 
+ISSUE_WIRE_REPO="$REPO"
 if [[ -z "$REPO" ]]; then
     if _resolved=$("$PLUGIN_ROOT/scripts/resolve-repo.sh" 2>/dev/null); then
         REPO="$_resolved"
     elif command -v gh >/dev/null 2>&1; then
         REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+        ISSUE_WIRE_REPO="$REPO"
     fi
 fi
 [[ -n "$REPO" ]] && validate_repo "$REPO"
+[[ -n "$ISSUE_WIRE_REPO" ]] && validate_repo "$ISSUE_WIRE_REPO"
 
 MODE="N/A"
 if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
     MODE=$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)
 fi
 
-_plan_block_args=(--issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md")
-[[ -n "$REPO" ]] && _plan_block_args+=(--repo "$REPO")
-if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" "${_plan_block_args[@]}"; then
+_plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md")
+[[ -n "$ISSUE_WIRE_REPO" ]] && _plan_block_args+=(--repo "$ISSUE_WIRE_REPO")
+if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \

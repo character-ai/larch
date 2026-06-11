@@ -137,6 +137,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_ARG="${REPO:-}"
+ISSUE_WIRE_REPO="$REPO_ARG"
 if [[ -n "$REPO_ARG" ]] && ! validate_repo "$REPO_ARG"; then
     emit_fail "invalid-repo"
 fi
@@ -159,6 +160,7 @@ if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
 fi
 if [[ -n "$REPO_ARG" ]]; then
     REPO="$REPO_ARG"
+    ISSUE_WIRE_REPO="$REPO_ARG"
 fi
 
 RUN_ID="${SESSION_ID:-}"
@@ -200,6 +202,9 @@ if resolved_repo=$(resolve_repo "$REPO"); then
     REPO="$resolved_repo"
 fi
 if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    emit_fail "invalid-repo"
+fi
+if [[ -n "$ISSUE_WIRE_REPO" ]] && ! validate_repo "$ISSUE_WIRE_REPO"; then
     emit_fail "invalid-repo"
 fi
 
@@ -305,19 +310,20 @@ fi
 cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
 
 marker_args=(
-    "$SCRIPT_DIR/named-block-write.sh"
+    python3 "$SCRIPT_DIR/../python/cli.py"
+    named-block write
     --marker design-pause
     --content-file "$redacted_state_tmp"
     --issue "$ISSUE"
 )
-[[ -n "$REPO" ]] && marker_args+=(--repo "$REPO")
+[[ -n "$ISSUE_WIRE_REPO" ]] && marker_args+=(--repo "$ISSUE_WIRE_REPO")
 
 set +e
 "${marker_args[@]}" > "$marker_out" 2> "$marker_err"
 marker_rc=$?
 set -e
 if [[ "$marker_rc" -ne 0 ]]; then
-    log_failure "named-block-write.sh" "$marker_err"
+    log_failure "python3 python/cli.py named-block write" "$marker_err"
     emit_fail "marker-write-failed"
 fi
 

@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 source "$REPO_ROOT/skills/design/scripts/test-step3-orchestrator-fence.sh"
 SAVE="$REPO_ROOT/scripts/design-pause-save.sh"
 LOAD="$REPO_ROOT/scripts/design-pause-load.sh"
-NBW="$REPO_ROOT/scripts/named-block-write.sh"
+NBW_CLI=(python3 "$REPO_ROOT/python/cli.py" named-block write)
 WDCE=(python3 "$REPO_ROOT/python/cli.py" session write-design-env)
 
 fail() {
@@ -18,7 +18,7 @@ fail() {
   exit 1
 }
 
-[[ -x "$SAVE" && -x "$LOAD" && -x "$NBW" && -f "$REPO_ROOT/python/cli.py" ]] || fail "pause scripts are not executable"
+[[ -x "$SAVE" && -x "$LOAD" && -f "$REPO_ROOT/python/cli.py" ]] || fail "pause scripts are not executable"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-pause.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -639,13 +639,13 @@ grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "failed marker
 
 echo "=== named block delete + empty content semantics ==="
 printf 'x\n<!-- larch:design-pause:start -->\nA\n<!-- larch:design-pause:end -->\ny\n' >"$BODY_FILE"
-out_del=$(bash "$NBW" --marker design-pause --delete --issue 9 --repo owner/repo)
+out_del=$("${NBW_CLI[@]}" --marker design-pause --delete --issue 9 --repo owner/repo)
 [[ "$out_del" == *"MODE=removed"* ]] || fail "delete mode mismatch: $out_del"
-out_del_absent=$(bash "$NBW" --marker design-pause --delete --issue 9 --repo owner/repo)
+out_del_absent=$("${NBW_CLI[@]}" --marker design-pause --delete --issue 9 --repo owner/repo)
 [[ "$out_del_absent" == *"MODE=absent-noop"* ]] || fail "absent delete mode mismatch: $out_del_absent"
 empty="$TMP/empty"
 : >"$empty"
-out_empty=$(bash "$NBW" --marker plan --content-file "$empty" --issue 9 --repo owner/repo)
+out_empty=$("${NBW_CLI[@]}" --marker plan --content-file "$empty" --issue 9 --repo owner/repo)
 [[ "$out_empty" == *"MODE=appended"* ]] || fail "empty content should append markers: $out_empty"
 grep -Fq '<!-- larch:plan:start -->' "$BODY_FILE" || fail "empty plan markers missing"
 
@@ -673,7 +673,7 @@ for token_body in multiple-start multiple-end start-without-end end-without-star
     end-before-start) printf '<!-- larch:design-pause:end -->\n<!-- larch:design-pause:start -->\n' >"$BODY_FILE" ;;
   esac
   set +e
-  bad_out=$(bash "$NBW" --marker design-pause --delete --issue 9 --repo owner/repo)
+  bad_out=$("${NBW_CLI[@]}" --marker design-pause --delete --issue 9 --repo owner/repo)
   rc=$?
   set -e
   [[ "$rc" == "1" && "$bad_out" == *"MALFORMED=$token_body"* ]] || fail "malformed $token_body mismatch: rc=$rc out=$bad_out"
@@ -995,7 +995,7 @@ out_bad_manifest=$(bash "$LOAD" --design-tmpdir "$BAD_MANIFEST_RESTORE" --issue 
 
 echo "=== marker name validation ==="
 set +e
-bad_marker=$(bash "$NBW" --marker BAD/NAME --delete --issue 9 --repo owner/repo 2>/dev/null)
+bad_marker=$("${NBW_CLI[@]}" --marker BAD/NAME --delete --issue 9 --repo owner/repo 2>/dev/null)
 bad_marker_rc=$?
 set -e
 [[ "$bad_marker_rc" == "1" ]] || fail "bad marker should exit 1: $bad_marker"

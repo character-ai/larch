@@ -25,10 +25,6 @@ SCOPE_MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
 if [[ ! -x "$SCOPE_MARKER_HELPER" ]]; then
     SCOPE_MARKER_HELPER="$REPO_ROOT/scripts/check-scope-reduction-marker.sh"
 fi
-PLAN_BLOCK_STRIP_BODY_SH="$PLUGIN_ROOT/scripts/plan-block-strip-body.sh"
-if [[ ! -x "$PLAN_BLOCK_STRIP_BODY_SH" ]]; then
-    PLAN_BLOCK_STRIP_BODY_SH="$REPO_ROOT/scripts/plan-block-strip-body.sh"
-fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 # shellcheck source=scripts/lib-prune-decision.sh
@@ -141,7 +137,7 @@ _materialize_scope_anchor() {
     trap 'rm -f "$stripped_tmp" "$anchor_tmp" "$strip_kv"' RETURN
     malformed=""
     set +e
-    LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>"$strip_err"
+    LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan-block strip-body --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>"$strip_err"
     strip_rc=$?
     set -e
     if [[ "$strip_rc" -ne 0 ]]; then
@@ -152,7 +148,7 @@ _materialize_scope_anchor() {
             larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing scope anchor"
         fi
         if [[ -s "$strip_err" ]]; then
-            sed 's/^/plan-block-strip-body.sh: /' "$strip_err" >&2 || true
+            sed 's/^/plan-block strip-body: /' "$strip_err" >&2 || true
         fi
         rm -f "$strip_err"
         return 2
@@ -192,7 +188,7 @@ _brainstorm_file="$DESIGN_TMPDIR/brainstorm.md"
 if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
     _merged_feature="$DESIGN_TMPDIR/plan-review-feature-context.txt"
     _feature_context_base="$DESIGN_TMPDIR/.plan-review-feature-context-base.txt"
-    if ! LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$_feature_context_base" >/dev/null; then
+    if ! LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan-block strip-body --file "$ORIGINAL_FEATURE_FILE" --output "$_feature_context_base" >/dev/null; then
         rm -f "$_feature_context_base"
         larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing brainstorm feature context"
         exit 2

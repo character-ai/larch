@@ -6,7 +6,7 @@ round-trip runs without network access.
 
 Primary contracts live in:
 
-- `scripts/named-block-write.md`
+- `python/cli.py named-block write`
 - `scripts/design-pause-save.md`
 - `scripts/design-pause-load.md`
 

@@ -16,11 +16,11 @@ ALLOW=(
   docs/linting.md
   scripts/implement-admission.md
   scripts/implement-admission.sh
-  scripts/lib-title-markers.sh
+  python/issue_wire.py
   scripts/test-fetch-combinable-issues-filter.sh
   scripts/test-implement-admission.sh
   scripts/test-legacy-title-prefix-literals-scope.sh
-  scripts/test-lib-title-eligibility.sh
+  python/test_issue_wire.py
   scripts/test-tracking-issue-write.sh
   scripts/tracking-issue-write.md
   scripts/tracking-issue-write.sh
