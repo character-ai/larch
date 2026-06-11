@@ -26,6 +26,8 @@ for idx, line in enumerate(lines, 1):
 
 errors = []
 
+CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
+
 def logical_commands(body):
     commands = []
     cur = []
@@ -34,7 +36,7 @@ def logical_commands(body):
         if not stripped or stripped.startswith('#'):
             continue
         # Canonical plugin-root guards and pre-bootstrap awk fallback/export are prelude.
-        if stripped == '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"':
+        if stripped == CANONICAL_GUARD:
             continue
         if stripped.startswith('[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '):
             continue
@@ -64,6 +66,9 @@ for start, end, body in fences:
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {cmd}')
     if telemetry_only.search(cmd):
         errors.append(f'fence {start}-{end}: telemetry-only script invocation is not allowed: {cmd}')
+    if script_call.search(cmd):
+        if not any(raw.strip() == CANONICAL_GUARD for _, raw in body):
+            errors.append(f'fence {start}-{end}: missing canonical plugin-root.env guard before CLAUDE_PLUGIN_ROOT script call')
     for _, raw in body:
         if 'session read-key' in raw:
             errors.append(f'fence {start}-{end}: inline session read-key is not allowed')
