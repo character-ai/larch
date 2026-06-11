@@ -336,7 +336,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 
 **Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 600000`.**
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-final-summary.sh" \
@@ -792,11 +792,11 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ### Plan review driver (`run-step3-review.sh`)
 
-Step 3 invokes exactly one foreground `run-step3-review.sh --mode loop` call. The script-internal controller `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh` (`${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.md`) runs every review round, applies accepted findings through `revise-plan-with-waterfall.sh --patch-format file-replacement`, runs the mechanical Gate B post-apply pipeline, and returns to the main agent only through the `STEP3_REVIEW_LOOP_STATUS` envelope. Harness coverage lives at `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-review-design-step3-loop.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-review-design-step3-loop.md`. Every mid-loop return resumes with `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "$N"` at the recorded `.step3-round-N.phase`; do not re-run the already completed review pass for that round.
+Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediate-background mode) and relies on `<task-notification>` for one-shot completion; the wrapper internally runs `run-step3-review.sh --mode loop`. The script-internal controller `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh` (`${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.md`) runs every review round, applies accepted findings through `revise-plan-with-waterfall.sh --patch-format file-replacement`, runs the mechanical Gate B post-apply pipeline, and returns to the main agent only through the `STEP3_REVIEW_LOOP_STATUS` envelope. Harness coverage lives at `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-review-design-step3-loop.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-review-design-step3-loop.md`. Every mid-loop return resumes with `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "$N"` at the recorded `.step3-round-N.phase`; do not re-run the already completed review pass for that round.
 
 **Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `run-step3-review.md`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `test-run-step3-review.sh` / `test-run-step3-review.md`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `test-design-step3-state.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh` (`${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.md`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh" \
@@ -1072,7 +1072,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. Invoke `design-publish.sh` below. It validates `composed-plan.md` unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 600000`.**
 
 3. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including **Migration limit** for legacy `runid=` diagram comments) for the deterministic publish tail (composed-plan validation, redaction, plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
 
