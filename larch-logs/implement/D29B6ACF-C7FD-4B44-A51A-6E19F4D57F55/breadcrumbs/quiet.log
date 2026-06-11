@@ -42,6 +42,10 @@
 
 === larch-quiet-degraded-tools-gate.sh-36134.log ===
 
+=== larch-quiet-git-commit.sh-12470.log ===
+[sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 77fc5040e] Fix CI failure (main-agent)
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
 === larch-quiet-git-current-branch.sh-40855.log ===
 
 === larch-quiet-git-stage.sh-19267.log ===
@@ -289,6 +293,10 @@ read-session-env-key.sh: --file is required
 
 === larch-quiet-rebase-push.sh-50867.log ===
 
+=== larch-quiet-refresh-run-logs.sh-16067.log ===
+FLUSH_STATUS=already-flushed
+RECORDS=0
+
 === larch-quiet-refresh-run-logs.sh-42363.log ===
 FLUSH_STATUS=ok
 RECORDS=1
@@ -307,6 +315,8 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.qCvir6
 
 === larch-quiet-run-relevant-checks-captured.sh-99860.log ===
 
+=== larch-quiet-ship.py-14969.log ===
+
 === larch-quiet-ship.py-26368.log ===
 LAUNCHER_FAILURE_CLASS=none
 LAUNCHER_FAILURE_REASON=
@@ -316,6 +326,8 @@ LAUNCHER_FAILURE_REASON=
 === larch-quiet-ship.py-68226.log ===
 LAUNCHER_FAILURE_CLASS=none
 LAUNCHER_FAILURE_REASON=
+
+=== larch-quiet-ship.py-98604.log ===
 
 === larch-quiet-step-7a.sh-59117.log ===
 FLUSH_STATUS=ok

@@ -1,9 +1,9 @@
-## /implement run D29B6ACF-C7FD-4B44-A51A-6E19F4D57F55 — bailed
+## /implement run D29B6ACF-C7FD-4B44-A51A-6E19F4D57F55 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 02:21:02
-- **Cost**: 💰 TOTAL ~$43.33 — Claude $18.18, Codex $5.29, Cursor $13.29, Claude (subprocess) $6.57  |  Tokens: 144817k
+- **Cost**: 💰 TOTAL ~$48.16 — Claude $23.01, Codex $5.29, Cursor $13.29, Claude (subprocess) $6.57  |  Tokens: 151034k
 - **Issue**: #3674 — https://github.com/character-ai/larch/issues/3674
 - **PR**: #3985 — https://github.com/character-ai/larch/pull/3985
 - **Plan review**: N/A
