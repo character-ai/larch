@@ -8,8 +8,6 @@ PY_CLI="$SCRIPT_DIR/../python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$SCRIPT_DIR/lib-vote-tally.sh"
 
 DESIGN_DIR=""
 IMPLEMENT_TMPDIR=""
