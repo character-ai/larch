@@ -5,15 +5,19 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 
 import pytest
 
+import config
 import gh
 import issue_wire
+import logging_util
 import retry
+from errors import ShipError
 from proc import CommandResult
 
 
@@ -203,6 +207,25 @@ class FailingRepoRunner(IssueRunner):
         raise AssertionError(f"unexpected call: {args}")
 
 
+class FailingIssueViewRunner(IssueRunner):
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+        check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
+    ) -> CommandResult:
+        args = list(argv)
+        self.calls.append(args)
+        if args[:4] == ["gh", "issue", "view", "9"]:
+            return CommandResult(tuple(args), 2, "", "GraphQL: could not resolve to an Issue", 0.01)
+        raise AssertionError(f"unexpected call: {args}")
+
+
 def test_write_cli_no_repo_failure_has_no_origin_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     content = tmp_path / "content.md"
     _ = content.write_text("body", encoding="utf-8")
@@ -211,6 +234,165 @@ def test_write_cli_no_repo_failure_has_no_origin_fallback(monkeypatch: pytest.Mo
     assert issue_wire.named_block_write_main(["--marker", "plan", "--issue", "9", "--content-file", str(content)]) == 2
     assert capsys.readouterr().out == "FAILED=true\nERROR=could not determine repo\n"
     assert all(call[:2] != ["git", "remote"] for call in runner.calls)
+
+
+def test_plan_block_read_gh_failure_does_not_emit_invalid_repo(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = FailingIssueViewRunner("")
+    _ = monkeypatch.setattr(issue_wire, "proc", runner)
+    out = tmp_path / "plan.md"
+    assert issue_wire.plan_block_read_main(["--issue", "9", "--output", str(out), "--repo", "owner/repo"]) == 2
+    stdout = capsys.readouterr().out
+    assert "FAILED=true" in stdout
+    assert "ERROR=invalid-repo" not in stdout
+    assert out.read_text(encoding="utf-8") == ""
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "argv_prefix"),
+    [
+        (issue_wire.named_block_write_main, ["--marker", "plan"]),
+        (issue_wire.plan_block_write_main, []),
+    ],
+)
+def test_write_cli_redaction_failure_exits_3(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    entrypoint: Callable[[list[str]], int],
+    argv_prefix: list[str],
+) -> None:
+    content = tmp_path / "content.md"
+    _ = content.write_text("body", encoding="utf-8")
+    runner = IssueRunner("")
+    _ = monkeypatch.setattr(issue_wire, "proc", runner)
+
+    def fail_redaction(_text: str) -> str:
+        raise ShipError("redaction:fixture")
+
+    _ = monkeypatch.setattr(issue_wire.redact, "redact_secrets_only", fail_redaction)
+    rc = entrypoint([*argv_prefix, "--issue", "9", "--content-file", str(content), "--repo", "owner/repo"])
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "FAILED=true" in out
+    assert "ERROR=redaction:" in out
+    assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)
+
+
+def _capture_contract_from_self_quiet(call: Callable[[], int], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[int, str]:
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    saved_fd3: int | None = None
+    saved_fd4: int | None = None
+    with contextlib.suppress(OSError):
+        saved_fd3 = os.dup(3)
+    with contextlib.suppress(OSError):
+        saved_fd4 = os.dup(4)
+    try:
+        _ = os.dup2(write_fd, 1)
+        os.close(write_fd)
+        rc = call()
+        _ = os.dup2(saved_stdout, 1)
+        _ = os.dup2(saved_stderr, 2)
+        contract = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+        if saved_fd3 is not None:
+            _ = os.dup2(saved_fd3, 3)
+            os.close(saved_fd3)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(3)
+        if saved_fd4 is not None:
+            _ = os.dup2(saved_fd4, 4)
+            os.close(saved_fd4)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(4)
+        logging_util.reset_quiet_state()
+    return rc, contract
+
+
+def test_plan_block_read_emits_kv_on_fd3_under_quiet_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = IssueRunner("<!-- larch:plan:start -->\ninner\n<!-- larch:plan:end -->\n")
+    _ = monkeypatch.setattr(issue_wire, "proc", runner)
+    out = tmp_path / "plan.md"
+    rc, contract = _capture_contract_from_self_quiet(
+        lambda: issue_wire.plan_block_read_main(["--issue", "9", "--output", str(out), "--repo", "owner/repo"]),
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    assert "BLOCK_PRESENT=true\n" in contract
+    assert f"OUTPUT={out}\n" in contract
+
+
+def test_plan_block_strip_body_malformed_emits_kv_on_fd3_under_quiet_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    body = tmp_path / "body.md"
+    out = tmp_path / "out.md"
+    _ = body.write_text("<!-- larch:plan:start -->\n", encoding="utf-8")
+    rc, contract = _capture_contract_from_self_quiet(
+        lambda: issue_wire.plan_block_strip_body_main(["--file", str(body), "--output", str(out)]),
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 1
+    assert contract == "MALFORMED=start-without-end\n"
+    assert out.read_text(encoding="utf-8") == ""
+
+
+def test_plan_block_strip_body_quiet_subprocess_routes_kv_to_stdout(tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    out = tmp_path / "out.md"
+    _ = body.write_text("<!-- larch:plan:start -->\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
+    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    result = subprocess.run(
+        [sys.executable, "python/cli.py", "plan-block", "strip-body", "--file", str(body), "--output", str(out)],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert result.stdout == "MALFORMED=start-without-end\n"
+
+
+def test_plan_block_read_quiet_subprocess_routes_usage_to_stderr(tmp_path: Path) -> None:
+    out = tmp_path / "plan.md"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
+    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    result = subprocess.run(
+        [sys.executable, "python/cli.py", "plan-block", "read", "--issue", "0", "--output", str(out)],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "plan-block-read.sh: --issue must be a positive integer" in result.stderr
 
 
 def test_plan_block_strip_body_file_stdin_stdout_and_malformed(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:

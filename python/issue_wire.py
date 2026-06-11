@@ -43,6 +43,13 @@ _LIFECYCLE_INSERT_PREFIXES = (
 )
 
 
+class _DiagnosticArgumentParser(argparse.ArgumentParser):
+    def _print_message(self, message: str, file: object | None = None) -> None:
+        _ = file
+        if message:
+            logging_util.diagnostic(message)
+
+
 def _marker_re(marker: str, kind: str) -> re.Pattern[str]:
     return re.compile(rf"^\s*<!--\s+larch:{re.escape(marker)}:{kind}\s+-->\s*$")
 
@@ -136,7 +143,7 @@ def _resolve_issue_wire_repo(runner: Runner, explicit: str | None) -> tuple[str 
 
 def _validate_positive_issue(prog: str, issue: str) -> bool:
     if not issue.isdecimal() or issue == "0":
-        print(f"{prog}: --issue must be a positive integer", file=sys.stderr)
+        logging_util.diagnostic(f"{prog}: --issue must be a positive integer")
         return False
     return True
 
@@ -215,7 +222,7 @@ def _content_file_text(path: str) -> tuple[str | None, str]:
 
 
 def _named_block_arg_parser(prog: str, *, include_marker: bool) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, add_help=True)
+    parser = _DiagnosticArgumentParser(prog=prog, add_help=True)
     if include_marker:
         parser.add_argument("--marker", required=True)
     parser.add_argument("--issue", required=True)
@@ -232,17 +239,17 @@ def _run_named_block_cli(argv: list[str], *, prog: str, marker_default: str | No
     marker = marker_default or args.marker
     if marker not in _ALLOWED_MARKERS:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", marker or ""):
-            print(f"{prog}: --marker must match ^[a-z0-9][a-z0-9-]*$", file=sys.stderr)
+            logging_util.diagnostic(f"{prog}: --marker must match ^[a-z0-9][a-z0-9-]*$")
             return 1
-        print(f"{prog}: unsupported marker: {marker}", file=sys.stderr)
+        logging_util.diagnostic(f"{prog}: unsupported marker: {marker}")
         return 1
     if not _validate_positive_issue(prog, args.issue):
         return 1
     if args.delete and args.content_file:
-        print(f"{prog}: --delete and --content-file are mutually exclusive", file=sys.stderr)
+        logging_util.diagnostic(f"{prog}: --delete and --content-file are mutually exclusive")
         return 1
     if not args.delete and not args.content_file:
-        parser.print_usage(sys.stderr)
+        parser.print_usage()
         return 1
     content = None
     if args.content_file:
@@ -291,7 +298,7 @@ def plan_block_write_main(argv: list[str]) -> int:
 
 def plan_block_read_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="plan-block-read.sh")
-    parser = argparse.ArgumentParser(prog="plan-block-read.sh", add_help=True)
+    parser = _DiagnosticArgumentParser(prog="plan-block-read.sh", add_help=True)
     parser.add_argument("--issue", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--repo")
@@ -327,14 +334,14 @@ def plan_block_read_main(argv: list[str]) -> int:
 
 
 def plan_block_strip_body_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="plan-block-strip-body.sh", add_help=True)
+    parser = _DiagnosticArgumentParser(prog="plan-block-strip-body.sh", add_help=True)
     parser.add_argument("--file")
     parser.add_argument("--output")
     args = parser.parse_args(argv)
     try:
         body = Path(args.file).read_text(encoding="utf-8", errors="replace") if args.file else sys.stdin.read()
     except OSError as exc:
-        print(f"plan-block-strip-body.sh: {exc}", file=sys.stderr)
+        logging_util.diagnostic(f"plan-block-strip-body.sh: {exc}")
         return 1
     stripped, malformed = strip_named_block(body, "plan")
     if malformed:

@@ -229,6 +229,14 @@ STUB
 #!/usr/bin/env bash
 echo "${RESOLVE_REPO_VALUE:-owner/repo}"
 STUB
+    cat >"$STUB/gh" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "repo" && "$2" == "view" && -n "${GH_REPO_VIEW_VALUE:-}" ]]; then
+  printf '%s\n' "$GH_REPO_VIEW_VALUE"
+  exit 0
+fi
+exit 1
+STUB
     cat >"$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" <<'STUB'
 #!/usr/bin/env bash
 [[ -n "${CALL_LOG:-}" ]] && echo "validator $*" >>"$CALL_LOG"
@@ -254,12 +262,13 @@ STUB
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
-    chmod +x "$STUB"/*.sh "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
+    chmod +x "$STUB"/*.sh "$STUB/gh" "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 }
 
 write_stubs
 
 export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
+export PATH="$STUB:$PATH"
 
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
@@ -270,6 +279,7 @@ reset_publish_stub_env() {
         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE \
         REDACT_STUB_RC REDACT_EMPTY_OUTPUT TIMING_REPORT_NO_ROUNDS_JSON || true
+    unset GH_REPO_VIEW_VALUE || true
 }
 
 init_publish_logs() {
@@ -675,6 +685,23 @@ grep -Fq -- 'plan-block-write --marker plan --issue 42 --content-file' "$PLAN_BL
   || fail "issue-wire plan writer call missing"
 grep -Fq -- '--repo explicit/repo' "$PLAN_BLOCK_LOG" \
   || fail "plan-block-write missing explicit --repo"
+
+D_PLAN_GH_REPO="$TMP/plan-gh-repo"
+setup_design_tmp "$D_PLAN_GH_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export GH_REPO_VIEW_VALUE=gh/repo
+export RESOLVE_REPO_VALUE=fallback/repo
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PLAN_GH_REPO" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "plan-block-write receives gh-only repo" 0 "$rc"
+grep -Fq -- '--repo gh/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing gh-only --repo"
+! grep -Fq -- '--repo fallback/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write must not use origin fallback repo when gh-only resolution succeeds"
 
 # --- publish envelope fields persisted ---
 D_ENV="$TMP/publish-env"

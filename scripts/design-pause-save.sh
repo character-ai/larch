@@ -162,6 +162,16 @@ if [[ -n "$REPO_ARG" ]]; then
     REPO="$REPO_ARG"
     ISSUE_WIRE_REPO="$REPO_ARG"
 fi
+if [[ -z "$REPO_ARG" ]] && command -v gh >/dev/null 2>&1; then
+    _gh_only_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+    if [[ -n "$_gh_only_repo" ]]; then
+        validate_repo "$_gh_only_repo" || emit_fail "invalid-repo"
+        if [[ -z "$REPO" || "$REPO" == "$_gh_only_repo" ]]; then
+            REPO="${REPO:-$_gh_only_repo}"
+            ISSUE_WIRE_REPO="$_gh_only_repo"
+        fi
+    fi
+fi
 
 RUN_ID="${SESSION_ID:-}"
 [[ -n "$RUN_ID" ]] || emit_fail "run-id-unset"
@@ -221,7 +231,7 @@ marker_out=$(mktemp "${TMPDIR:-/tmp}/design-pause-marker-out.XXXXXX")
 marker_err=$(mktemp "${TMPDIR:-/tmp}/design-pause-marker-err.XXXXXX")
 trap 'rm -f "$body_tmp" "$stripped_body_tmp" "$state_tmp" "$redacted_state_tmp" "$publish_out" "$publish_err" "$marker_out" "$marker_err"' EXIT
 
-if ! gh issue view "$ISSUE" "${gh_repo_args[@]}" --json body | jq -r '.body // ""' > "$body_tmp"; then
+if ! gh issue view "$ISSUE" ${gh_repo_args[@]+"${gh_repo_args[@]}"} --json body | jq -r '.body // ""' > "$body_tmp"; then
     log_failure "gh issue view" "$body_tmp"
     emit_fail "issue-body-read-failed"
 fi

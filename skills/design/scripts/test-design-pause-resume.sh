@@ -21,6 +21,7 @@ fail() {
 [[ -x "$SAVE" && -x "$LOAD" && -f "$REPO_ROOT/python/cli.py" ]] || fail "pause scripts are not executable"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-pause.XXXXXX")
+TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
 
 BODY_FILE="$TMP/issue-body.md"
@@ -28,7 +29,8 @@ EDIT_CAPTURE="$TMP/edit-body.md"
 SNAPSHOT_ROOT="$TMP/snapshot"
 FETCH_LOG="$TMP/fetch.log"
 REV_PARSE_LOG="$TMP/rev-parse.log"
-export BODY_FILE EDIT_CAPTURE SNAPSHOT_ROOT FETCH_LOG REV_PARSE_LOG
+GH_LOG="$TMP/gh.log"
+export BODY_FILE EDIT_CAPTURE SNAPSHOT_ROOT FETCH_LOG REV_PARSE_LOG GH_LOG
 
 STUB="$TMP/stub"
 mkdir -p "$STUB"
@@ -38,7 +40,12 @@ ORIGINAL_PATH="$PATH"
 cat >"$STUB/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >>"$GH_LOG"
 if [[ "$1" == "repo" && "$2" == "view" ]]; then
+  if [[ "${GH_REPO_VIEW_FAIL:-0}" == "1" ]]; then
+    echo "stub gh repo view forced failure" >&2
+    exit 97
+  fi
   printf '%s\n' 'owner/repo'
   exit 0
 fi
@@ -85,6 +92,10 @@ if [[ "\${1:-}" == "rev-parse" ]]; then
 fi
 if [[ "\${1:-}" == "symbolic-ref" ]]; then
   printf '%s\n' 'refs/remotes/origin/main'
+  exit 0
+fi
+if [[ "\${1:-}" == "remote" && "\${2:-}" == "get-url" && "\${3:-}" == "origin" ]]; then
+  printf '%s\n' 'https://github.com/fallback/repo.git'
   exit 0
 fi
 if [[ "\${1:-}" == "check-ref-format" ]]; then
@@ -709,6 +720,25 @@ out_bad_session_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
 [[ "$out_bad_session_source" == *"PAUSE_OK=false"* && "$out_bad_session_source" == *"ERROR=invalid-run-id"* ]] || fail "bad source-env SESSION_ID should fail before pause save: $out_bad_session_source"
 [[ ! -e "$DESIGN/.pause-requested" ]] || fail "pause-save terminal failure must clear .pause-requested sentinel"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env SESSION_ID must not write marker"
+
+echo "=== origin-fallback repo is not passed to issue-wire pause writes ==="
+make_design_tmpdir "$DESIGN"
+: >"$DESIGN/.pause-requested"
+printf 'body origin fallback save\n' >"$BODY_FILE"
+: >"$GH_LOG"
+out_origin_fallback_save=$(GH_REPO_VIEW_FAIL=1 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
+[[ "$out_origin_fallback_save" == *"PAUSE_OK=false"* && "$out_origin_fallback_save" == *"ERROR=marker-write-failed"* ]] \
+  || fail "origin fallback save should fail at safe issue-wire marker write: $out_origin_fallback_save"
+! grep -Fq -- 'issue edit 9 --repo fallback/repo' "$GH_LOG" || fail "origin fallback repo must not be passed to pause save marker write"
+
+make_design_tmpdir "$DESIGN"
+printf 'body origin fallback load\n' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+: >"$GH_LOG"
+out_origin_fallback_load=$(GH_REPO_VIEW_FAIL=1 bash "$LOAD" --design-tmpdir "$TMP/restore-origin-fallback" --issue 9)
+[[ "$out_origin_fallback_load" == *"LOAD_OK=false"* && "$out_origin_fallback_load" == *"ERROR=repo-mismatch"* ]] \
+  || fail "origin fallback load should reject marker repo mismatch: $out_origin_fallback_load"
+! grep -Fq -- '--repo fallback/repo' "$GH_LOG" || fail "origin fallback repo must not be passed to pause load marker clear"
 
 echo "=== step-5b complete with withheld step-5c resumes at 5c ==="
 DESIGN_5C="$TMP/design-5c-withheld"

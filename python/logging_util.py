@@ -134,6 +134,17 @@ def emit_kv(key: str, value: str) -> None:
     emit(f"{key}={value}")
 
 
+def diagnostic(message: str) -> None:
+    """Write an operator-visible diagnostic after quiet routing may be active."""
+    line = redact.redact_outbound(sanitize_diagnostic_line(message)).rstrip("\n") + "\n"
+    if _quiet_active():
+        with suppress(OSError):
+            _ = os.write(4, line.encode("utf-8"))
+            return
+    _ = sys.stderr.write(line)
+    _ = sys.stderr.flush()
+
+
 @dataclass
 class BreadcrumbWriter:
     """Progress breadcrumbs; honor lib-quiet routing when LARCH_QUIET_ACTIVE is set."""

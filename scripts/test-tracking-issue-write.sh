@@ -279,6 +279,76 @@ set -e
 [ "$rc" = "1" ] || fail "find-anchor exit $rc"
 [[ "$removed" == *"Unknown subcommand: find-anchor"* ]] || fail "find-anchor rejection missing"
 
+echo "=== mark-false-positive handles leading-hyphen title ==="
+cat > "$stub/gh" <<'GHSTUB_MARK_HYPHEN'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "-leading-hyphen"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then
+    for ((i=1; i<=$#; i++)); do
+        if [ "${!i}" = "--title" ]; then
+            next=$((i + 1))
+            printf '%s' "${!next}" > "$TITLE_CAPTURE"
+        fi
+    done
+    exit 0
+fi
+exit 1
+GHSTUB_MARK_HYPHEN
+chmod +x "$stub/gh"
+out="$("$WRITE" mark-false-positive --issue 42 --repo owner/repo)"
+[[ "$out" == *"MARKED=true"* ]] || fail "mark-false-positive MARKED missing: $out"
+[ "$(cat "$TITLE_CAPTURE")" = "[FALSE-POSITIVE] -leading-hyphen" ] || fail "mark-false-positive title was $(cat "$TITLE_CAPTURE")"
+
+echo "=== mark-false-positive insert marker failure envelope ==="
+FAKE_MARKER_FAIL="$TMP/fake-marker-fail"
+mkdir -p "$FAKE_MARKER_FAIL/scripts" "$FAKE_MARKER_FAIL/python"
+cp "$WRITE" "$FAKE_MARKER_FAIL/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_MARKER_FAIL/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_MARKER_FAIL/scripts/lib-net.sh"
+cat > "$FAKE_MARKER_FAIL/python/cli.py" <<'PYCLI_MARKER_FAIL'
+#!/usr/bin/env python3
+import sys
+
+if sys.argv[1:] == ["redact", "tmpdir-paths"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if sys.argv[1:] == ["redact", "secrets"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+if sys.argv[1:3] == ["issue", "insert-signal-marker"]:
+    print("insert marker forced failure", file=sys.stderr)
+    raise SystemExit(23)
+raise SystemExit(2)
+PYCLI_MARKER_FAIL
+chmod +x "$FAKE_MARKER_FAIL/python/cli.py"
+STUB_MARKER_FAIL="$TMP/stubs-marker-fail"
+mkdir -p "$STUB_MARKER_FAIL"
+cat > "$STUB_MARKER_FAIL/gh" <<'GHSTUB_MARKER_FAIL'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "Feature title"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then exit 1; fi
+exit 1
+GHSTUB_MARKER_FAIL
+chmod +x "$STUB_MARKER_FAIL/gh"
+set +e
+out_marker_fail=$(PATH="$STUB_MARKER_FAIL:$ORIG_PATH" \
+  bash "$FAKE_MARKER_FAIL/scripts/tracking-issue-write.sh" mark-false-positive \
+  --issue 42 --repo owner/repo 2>&1)
+rc_marker_fail=$?
+set -e
+[ "$rc_marker_fail" = "2" ] || fail "marker-fail: expected exit 2, got $rc_marker_fail"
+[[ "$out_marker_fail" == *"FAILED=true"* ]] || fail "marker-fail: FAILED=true missing: $out_marker_fail"
+[[ "$out_marker_fail" == *"ERROR=issue insert-signal-marker failed: insert marker forced failure"* ]] || fail "marker-fail: ERROR missing: $out_marker_fail"
+[[ "$out_marker_fail" != *"MARKED=true"* ]] || fail "marker-fail: should not mark after CLI failure"
+
 echo "=== redact_gh_error: redactor binary missing ==="
 # Fake tree: tracking-issue-write.sh + lib-quiet.sh; redact helpers intentionally absent.
 # rename subcommand reaches emit_gh_failure before any body/title redact calls.

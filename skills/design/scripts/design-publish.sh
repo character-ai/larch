@@ -365,11 +365,12 @@ fi
 
 ISSUE_WIRE_REPO="$REPO"
 if [[ -z "$REPO" ]]; then
-    if _resolved=$("$PLUGIN_ROOT/scripts/resolve-repo.sh" 2>/dev/null); then
-        REPO="$_resolved"
-    elif command -v gh >/dev/null 2>&1; then
+    if command -v gh >/dev/null 2>&1; then
         REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
         ISSUE_WIRE_REPO="$REPO"
+    fi
+    if [[ -z "$REPO" ]] && _resolved=$("$PLUGIN_ROOT/scripts/resolve-repo.sh" 2>/dev/null); then
+        REPO="$_resolved"
     fi
 fi
 [[ -n "$REPO" ]] && validate_repo "$REPO"
