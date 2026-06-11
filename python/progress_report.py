@@ -619,6 +619,30 @@ def _design_returned_reviewers(
     return min(total, _count_fresh_nonempty_paths(paths, freshness_floor))
 
 
+def _fresh_design_voter_manifest(design_tmpdir: Path, step_start_s: int | None) -> Path | None:
+    """Return plan-voter-slots.ndjson when non-empty and fresh relative to step_start_s."""
+    manifest = design_tmpdir / "plan-voter-slots.ndjson"
+    if _count_lines(manifest) == 0:
+        return None
+    if step_start_s is not None:
+        manifest_mtime = _path_mtime_s(manifest)
+        if manifest_mtime is not None and manifest_mtime < float(step_start_s):
+            return None
+    return manifest
+
+
+def _design_returned_voters(voter_manifest: Path, step_start_s: int | None) -> int:
+    """Count returned external voter outputs (Voters 2 and 3) from voter_manifest."""
+    total = _count_lines(voter_manifest)
+    if total <= 0:
+        return 0
+    sidecar = _fresh_output_sidecar(voter_manifest)
+    paths = _paths_file_output_paths(sidecar) if sidecar is not None else _manifest_output_paths(voter_manifest)
+    manifest_mtime = _path_mtime_s(voter_manifest) or 0.0
+    floor = max(float(step_start_s), manifest_mtime) if step_start_s is not None else manifest_mtime
+    return min(total, _count_fresh_nonempty_paths(paths, floor))
+
+
 def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
     round_start_s = _design_round_start_s(round_dir)
     if round_start_s is not None:
@@ -649,10 +673,33 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
     round_num = _round_number(round_dir) or 0
     total = _count_lines(manifest)
     returned = _design_returned_reviewers(design_tmpdir, round_dir, manifest, start_s)
-    header = (
-        f"Step 3 plan review — round {round_num} in progress\n"
-        f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
-    )
+    voter_manifest = _fresh_design_voter_manifest(design_tmpdir, start_s)
+    if voter_manifest is not None:
+        voter_floor = _path_mtime_s(voter_manifest) or 0.0
+        claude_voter_floor = voter_floor
+        if start_s is not None:
+            voter_floor = max(float(start_s), voter_floor)
+            claude_voter_floor = float(start_s)
+        voter_external_total = _count_lines(voter_manifest)
+        voter_external_returned = _design_returned_voters(voter_manifest, start_s)
+        claude_vote_path = design_tmpdir / "claude-vote-output.txt"
+        try:
+            claude_stat = claude_vote_path.stat()
+            claude_done = 1 if claude_stat.st_size > 0 and claude_stat.st_mtime >= claude_voter_floor else 0
+        except OSError:
+            claude_done = 0
+        voter_total = voter_external_total + 1
+        voter_returned = voter_external_returned + claude_done
+        header = (
+            f"Step 3 plan review — round {round_num} complete; plan vote in progress\n"
+            f"  reviewers: {returned}/{total} | voters: {voter_returned}/{voter_total} returned"
+            f" | elapsed: {_design_elapsed(round_dir, start_s)}"
+        )
+    else:
+        header = (
+            f"Step 3 plan review — round {round_num} in progress\n"
+            f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
+        )
     detail = _render_design_review_detail(design_tmpdir)
     return f"{header}\n\n{detail}" if detail else header
 
