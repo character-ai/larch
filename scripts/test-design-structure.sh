@@ -393,16 +393,15 @@ assert_postplan_thin_fence() {
 }
 
 assert_publish_fence_guards() {
-  local wrapper="$SCRIPT_DIR/design-step5c.sh"
-  contains "$wrapper" 'design-publish.sh' 'Step 5c wrapper missing design-publish call'
-  contains "$wrapper" 'read-result-env.sh' 'Step 5c wrapper missing read-result-env handoff'
-  contains "$wrapper" '.design-publish-result.env.rc3-primary-missing' 'Step 5c wrapper missing rc 3 stdout fallback path'
-  contains "$wrapper" 'STEP5C_STATUS=validator-defects' 'Step 5c wrapper missing rc 4 validator handoff'
-  contains "$wrapper" 'PLAN_WRITE_OK:-}" == true' 'Step 5c wrapper missing PLAN_WRITE_OK gate'
-  contains "$wrapper" '.design-step5c-status.env' 'Step 5c wrapper missing status sidecar write'
-  contains "$wrapper" 'CLEANUP_ELIGIBLE=' 'Step 5c wrapper missing cleanup eligibility emit'
-  contains "$wrapper" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate flag'
-  ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$wrapper" \
+  contains "$SCRIPT_DIR/design-step5c.sh" 'design-publish.sh' 'Step 5c wrapper missing design-publish call'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'read-result-env.sh' 'Step 5c wrapper missing read-result-env handoff'
+  contains "$SCRIPT_DIR/design-step5c.sh" '.design-publish-result.env.rc3-primary-missing' 'Step 5c wrapper missing rc 3 stdout fallback path'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'STEP5C_STATUS=validator-defects' 'Step 5c wrapper missing rc 4 validator handoff'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'PLAN_WRITE_OK:-}" == true' 'Step 5c wrapper missing PLAN_WRITE_OK gate'
+  contains "$SCRIPT_DIR/design-step5c.sh" '.design-step5c-status.env' 'Step 5c wrapper missing status sidecar write'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'CLEANUP_ELIGIBLE=' 'Step 5c wrapper missing cleanup eligibility emit'
+  contains "$SCRIPT_DIR/design-step5c.sh" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate flag'
+  ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$SCRIPT_DIR/design-step5c.sh" \
     || fail 'Step 5c wrapper must not synthesize step-5b sentinel'
 }
 
