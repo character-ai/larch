@@ -290,9 +290,9 @@ assert_gate_b_bypass_branch_sentinels() {
   [ -n "$end_line" ] || fail 'SKILL missing Step 3.5 marker after branch matrix'
   subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-gate-b-bypass.XXXXXX")
   sed -n "${start_line},$((end_line - 1))p" "$SKILL_MD" >"$subject"
-  contains "$subject" 'design-step3-gate-b-bypass.sh' 'branch matrix missing gate-b-bypass wrapper'
-  contains "$subject" 'refused-partial-gate-b-bypass' 'branch matrix missing refused partial state handling'
-  contains "$subject" 'STEP3_STATE=' 'branch matrix missing STEP3_STATE parse'
+  grep -Fq -- 'design-step3-gate-b-bypass.sh' "$subject" || fail 'branch matrix missing gate-b-bypass wrapper'
+  grep -Fq -- 'refused-partial-gate-b-bypass' "$subject" || fail 'branch matrix missing refused partial state handling'
+  grep -Fq -- 'STEP3_STATE=' "$subject" || fail 'branch matrix missing STEP3_STATE parse'
   rm -f "$subject"
 }
 
