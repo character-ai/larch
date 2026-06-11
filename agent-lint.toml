@@ -1477,6 +1477,12 @@ exclude = [
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
   "scripts/write-design-round-meta.sh",
   "scripts/write-design-round-meta.md",
+  # scripts/write-implement-round-meta.sh synthesizes per-round round-meta.json
+  # for /implement code-review rounds. It is invoked at runtime only from
+  # skills/review-and-fix/scripts/review-and-fix.sh via variable-expanded
+  # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover (issue #4038).
+  "scripts/write-implement-round-meta.sh",
+  "scripts/write-implement-round-meta.md",
   # scripts/test-render-review-phase-detail.sh is the regression harness for the
   # review-phase detail renderer. It is referenced from Makefile and from the
   # primary script's sibling contract, not from SKILL.md runtime prose — same
