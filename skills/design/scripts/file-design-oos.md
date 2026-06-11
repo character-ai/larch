@@ -25,3 +25,5 @@ file-design-oos.sh annotate --design-tmpdir DIR --issue-stdout-file FILE [--issu
 ## Edit-in-sync
 
 Update together with `skills/design/SKILL.md` Step 5b, `skills/implement/scripts/oos-issue-cap.sh` / `oos-file-conflict-deps.sh` flag contracts, and `skills/issue/SKILL.md` stdout KV grammar.
+
+Step 5b writes `/larch:issue` stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt` before running `file-design-oos.sh annotate --issue-stdout-file "$DESIGN_TMPDIR/oos-issue.stdout.txt"`. Recovery paths such as `skip-already-filed-sentinel` still require annotate when stdout or sentinel metadata is present. Public OOS bodies must not include sensitive local paths, private diagnostics, or unnecessary line-level details.
