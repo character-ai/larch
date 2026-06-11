@@ -1545,41 +1545,41 @@ _implement_round_body() {
             OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk" "$oos_markdown" 2>/dev/null || printf '0')
             case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
         fi
-        while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
-            [[ -n "$skip_id" ]] || continue
-            block_file="$round_dir/${skip_id}.skipped.md"
-            awk -v id="$skip_id" '
-              /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
-              in_block { print }
-            ' "$in_scope_file" > "$block_file" || true
-            if [[ ! -s "$block_file" ]]; then
-                rm -f "$block_file"
-                continue
-            fi
-            if python3 "$PY_CLI" voting is-security-block "$block_file"; then
-                cat "$block_file" >> "$skipped_security_file"
-                printf '\n' >> "$skipped_security_file"
-            else
+        if ! python3 "$PY_CLI" --help >/dev/null 2>&1; then
+            larch_err "review-and-fix.sh: security classifier failed for skipped findings"
+            classifier_loop_abort=1
+        fi
+        if [[ "$classifier_loop_abort" -eq 0 ]]; then
+            while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
+                [[ -n "$skip_id" ]] || continue
+                block_file="$round_dir/${skip_id}.skipped.md"
+                awk -v id="$skip_id" '
+                  /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
+                  in_block { print }
+                ' "$in_scope_file" > "$block_file" || true
+                if [[ ! -s "$block_file" ]]; then
+                    rm -f "$block_file"
+                    continue
+                fi
                 local sec_rc=0
                 python3 "$PY_CLI" voting is-security-block "$block_file" || sec_rc=$?
-                if [[ "$sec_rc" -eq 1 ]]; then
+                if [[ "$sec_rc" -eq 0 ]]; then
+                    cat "$block_file" >> "$skipped_security_file"
+                    printf '\n' >> "$skipped_security_file"
+                elif [[ "$sec_rc" -eq 1 ]]; then
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
                     python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
                         --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
-                elif [[ "$sec_rc" -eq 2 ]]; then
-                    larch_err "review-and-fix.sh: security classifier failed for $skip_id"
-                    classifier_loop_abort=1
-                    break
                 else
                     larch_err "review-and-fix.sh: security classifier failed for $skip_id"
                     classifier_loop_abort=1
                     break
                 fi
-            fi
-            skipped_finding_count=$((skipped_finding_count + 1))
-            rm -f "$block_file"
-        done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+                skipped_finding_count=$((skipped_finding_count + 1))
+                rm -f "$block_file"
+            done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+        fi
 
         if [[ "$classifier_loop_abort" -eq 0 && -s "$skipped_file" ]]; then
             jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \
