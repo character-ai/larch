@@ -1159,10 +1159,11 @@ def lint_focus_area_enum_main(argv: list[str]) -> int:
     if argv:
         return _error("usage: lint focus-area-enum")
     exit_code = 0
+    root = _plugin_root()
     hits_re = re.compile(r"`code-quality`.*`risk-integration`.*`correctness`.*`architecture`")
     unquoted_re = re.compile(r"code-quality / risk-integration / correctness / architecture")
     for rel in BACKTICKED_FOCUS_FILES:
-        path = Path(rel)
+        path = root / rel
         if not path.is_file():
             print(f"::error file={rel}::expected file is missing")
             exit_code = 1
@@ -1176,7 +1177,7 @@ def lint_focus_area_enum_main(argv: list[str]) -> int:
                 print(f"::error file={rel},line={line_no}::backticked focus-area enumeration does not include 'security': {line_text}")
                 exit_code = 1
     for rel in UNQUOTED_FOCUS_FILES:
-        path = Path(rel)
+        path = root / rel
         if not path.is_file():
             print(f"::error file={rel}::expected file is missing")
             exit_code = 1
