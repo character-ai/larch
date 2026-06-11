@@ -918,7 +918,7 @@ run_teardown() {
         if [ "$stall_tracking" = "true" ]; then
             rename_branch=A
             set +e
-            out=$("$SCRIPT_DIR/get-issue-info.sh" --issue "$issue_number" --field state)
+            out=$(python3 "$PY_CLI" issue info --issue "$issue_number" --field state)
             rc=$?
             set +e
             value=$(kv_value VALUE "$out")
@@ -944,7 +944,7 @@ run_teardown() {
 
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
         set +e
-        out=$("$SCRIPT_DIR/get-issue-info.sh" --issue "$issue_number" --field url)
+        out=$(python3 "$PY_CLI" issue info --issue "$issue_number" --field url)
         rc=$?
         set +e
         value=$(kv_value VALUE "$out")

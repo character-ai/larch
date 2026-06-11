@@ -877,7 +877,7 @@ phase_tracking() {
         DEFERRED=true
         local upstream_context_rc
         if [ -n "$UPSTREAM_REPO_OPT" ] && [ -n "$ISSUE_NUMBER_OPT" ]; then
-            if "$SCRIPT_DIR/get-issue-context.sh" \
+            if python3 "$PY_CLI" issue context \
                 --issue "$ISSUE_NUMBER_OPT" \
                 --repo "$UPSTREAM_REPO_OPT" \
                 --tmpdir "$IMPLEMENT_TMPDIR" \
@@ -889,7 +889,7 @@ phase_tracking() {
                 python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                     --site "Step 0 tracking adoption — forked target upstream context" \
-                    --tool "get-issue-context.sh" \
+                    --tool "issue context" \
                     --exit-code "$upstream_context_rc" \
                     --category "Warnings" \
                     --output-file "$IMPLEMENT_TMPDIR/upstream-context.log" \
@@ -997,7 +997,8 @@ phase_tracking() {
 
     [ -n "$ISSUE_NUMBER_OPT" ] || return 0
 
-    state_out=$("$SCRIPT_DIR/get-issue-state.sh" --issue "$ISSUE_NUMBER_OPT" 2>"$IMPLEMENT_TMPDIR/get-issue-state.stderr.log")
+    state_out=$(python3 "$PY_CLI" issue state \
+        --issue "$ISSUE_NUMBER_OPT" 2>"$IMPLEMENT_TMPDIR/get-issue-state.stderr.log")
     state_rc=$?
     state_failed=$(kv_value_from_block FAILED "$state_out")
     if [ "$state_rc" -ne 0 ] || [ "$state_failed" = "true" ]; then

@@ -123,6 +123,11 @@ def _loads_json(text: str, *, context: str) -> object:
         raise ShipError(msg) from exc
 
 
+def loads_json_paginated_list(text: str) -> list[object]:
+    """Parse one or more concatenated gh paginated JSON arrays."""
+    return _loads_json_paginated_list(text, context="paginated list")
+
+
 def _loads_json_paginated_list(text: str, *, context: str) -> list[object]:
     stripped = (text or "").strip()
     if not stripped:
@@ -1055,6 +1060,65 @@ def issue_comments_list_read(
         ["api", f"/repos/{repo}/issues/{issue}/comments", "--paginate"],
         cwd=cwd,
     )
+
+
+def issue_blocked_by_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["api", f"repos/{repo}/issues/{issue}/dependencies/blocked_by", "--paginate"],
+        cwd=cwd,
+    )
+
+
+def _issue_view_read(
+    runner: Runner,
+    issue: str,
+    fields: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["issue", "view", str(issue), "--json", fields]
+    if repo:
+        argv.extend(["--repo", repo])
+    return _retry_read(runner, argv, cwd=cwd)
+
+
+def issue_view_state_url_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _issue_view_read(runner, issue, "state,url", repo=repo, cwd=cwd)
+
+
+def issue_view_field_read(
+    runner: Runner,
+    issue: str,
+    field: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _issue_view_read(runner, issue, field, repo=repo, cwd=cwd)
+
+
+def issue_view_title_body_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _issue_view_read(runner, issue, "title,body", repo=repo, cwd=cwd)
 
 
 def find_issue_comment_id_by_marker(

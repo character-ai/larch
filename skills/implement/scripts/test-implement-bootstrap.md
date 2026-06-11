@@ -5,7 +5,7 @@
 ## Layout
 
 - Builds a `/tmp` sandbox, copies `implement-bootstrap.sh` plus `lib-quiet.sh`, `lib-execution-issues.sh`, and the real `write-session-env.sh` / `read-session-env-key.sh` beside PATH-resolved `${SCRIPT_DIR}` peers. `$SANDBOX/bin` is prepended to `PATH` for the `gh` stub.
-- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `run-log append-failure`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `get-issue-state.sh`, `run-log`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
+- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `run-log append-failure`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `run-log`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `cli.py issue state`, `cli.py issue context`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
 
 ## Cases
 
@@ -15,7 +15,7 @@
 | GP-adopt | Branch 2 fresh adoption emits issue/run ids, `BRANCH_SELECTED=branch-2-adopt`, `DEFERRED=false`, `STALL_TRACKING=false`, writes the sentinel with the selected `RUN_ID`, and emits the `Step 0 — tracking issue` token/timing marks once. |
 | GP2 | Branch 1 sentinel resume emits `BRANCH_SELECTED=branch-1-resume` and reuses sentinel `ISSUE_NUMBER` / `RUN_ID`. |
 | GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, writes `FORKED_TARGET=true` to session-env, and still emits the `Step 0 — tracking issue` token/timing marks once. |
-| GP3-upstream-context-fail | Fork mode still continues when `get-issue-context.sh` fails and appends a redacted Warning entry to `execution-issues.md`. |
+| GP3-upstream-context-fail | Fork mode still continues when `cli.py issue context` fails and appends a redacted Warning entry to `execution-issues.md`. |
 | GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and still emits the `Step 0 — tracking issue` token/timing marks once. |
 | GP-repo-unavail-plan | Repo-unavailable `--up-to-phase plan` still snapshots the untracked baseline, but skips `gh issue view`, run-flags persist, dirty-tree checkpoint, branch creation/capture, plan logging, and summary upsert; `PLAN_FILE` stays empty. |
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
@@ -49,7 +49,7 @@
 | B15-resume-plan-tail-sentinel-mismatch | `--resume-plan-tail` with a sentinel that targets a different issue exits 2 with `STEP_FAILED=resume-plan-tail-sentinel` before any Phase 3 tail helper runs. |
 | B16-resume-plan-tail-sentinel-malformed | `--resume-plan-tail` with a malformed or invalid adopted sentinel exits 2 with `STEP_FAILED=resume-plan-tail-sentinel` before any Phase 3 tail helper runs. |
 | B17-resume-plan-tail-sentinel-missing | `--resume-plan-tail` without a sentinel and without existing plan artifacts exits 2 with `STEP_FAILED=resume-plan-tail-sentinel`. |
-| B6 | `get-issue-state.sh` failure exits 2 with `STEP_FAILED=get-issue-state`. |
+| B6 | `cli.py issue state` failure exits 2 with `STEP_FAILED=get-issue-state`. |
 | B7-non-open-state | Unexpected non-`OPEN`/`CLOSED` issue state exits 2 with `STEP_FAILED=get-issue-state`. |
 | B-sentinel-malformed | Malformed sentinel is cleared and replaced via Branch 2 fresh adoption. |
 | B-sentinel-invalid-run-id | Sentinel with invalid `RUN_ID` is cleared and replaced via Branch 2 fresh adoption. |

@@ -155,8 +155,29 @@ def _ledger_stub() -> int:
             idx += 1
     return 0
 
+def _issue_info_stub() -> int:
+    field = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--field" and i + 1 < len(args):
+            field = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    if os.environ.get("STUB_GET_ISSUE_FAIL", "false") == "true":
+        print("VALUE=")
+        return 0
+    if field == "state":
+        print(f"VALUE={os.environ.get('STUB_ISSUE_STATE', 'OPEN')}")
+    else:
+        print(f"VALUE={os.environ.get('STUB_ISSUE_URL', 'https://github.example/owner/repo/issues/456')}")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["issue", "info"]:
+        raise SystemExit(_issue_info_stub())
     if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
         raise SystemExit(_ledger_stub())
     argv_log = os.environ.get("LARCH_RUNLOG_ARGV_LOG", "")
@@ -191,22 +212,6 @@ echo "VERIFIED=${STUB_VERIFIED:-true}"
 echo "COMMIT_HASH=${STUB_COMMIT_HASH:-abc1234}"
 echo "COMMIT_MESSAGE=${STUB_COMMIT_MESSAGE:-Implement finalizer (#123)}"
 exit "${STUB_VERIFY_RC:-0}"
-STUB
-    cat > "$SANDBOX/scripts/get-issue-info.sh" <<'STUB'
-#!/usr/bin/env bash
-field=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --field) field=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-if [ "$field" = "state" ]; then
-  echo "VALUE=${STUB_ISSUE_STATE:-OPEN}"
-else
-  echo "VALUE=${STUB_ISSUE_URL:-https://github.example/owner/repo/issues/456}"
-fi
-exit "${STUB_GET_ISSUE_RC:-0}"
 STUB
     cat > "$SANDBOX/scripts/tracking-issue-write.sh" <<STUB
 #!/usr/bin/env bash

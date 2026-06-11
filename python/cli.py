@@ -12,6 +12,10 @@ import importlib
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("blocker", "all-open"): ("blocker", "all_open_blockers_main"),
+    ("issue", "state"): ("issue_query", "issue_state_main"),
+    ("issue", "info"): ("issue_query", "issue_info_main"),
+    ("issue", "context"): ("issue_query", "issue_context_main"),
     ("issue", "parse-input"): ("issue_create", "parse_input_main"),
     ("issue", "create-one"): ("issue_create", "create_one_main"),
     ("issue", "allocate-candidates"): ("issue_create", "allocate_candidates_main"),
