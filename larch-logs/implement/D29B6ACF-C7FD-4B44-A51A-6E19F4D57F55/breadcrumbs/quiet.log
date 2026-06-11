@@ -1,6 +1,12 @@
+=== larch-quiet-append-execution-issue.sh-14645.log ===
+
+=== larch-quiet-append-execution-issue.sh-17480.log ===
+
 === larch-quiet-check-contains-pins.sh-10548.log ===
 
 === larch-quiet-check-contains-pins.sh-12395.log ===
+
+=== larch-quiet-check-contains-pins.sh-26256.log ===
 
 === larch-quiet-check-contains-pins.sh-56730.log ===
 
@@ -14,6 +20,8 @@
 
 === larch-quiet-cli.py-29074.log ===
 
+=== larch-quiet-cli.py-37144.log ===
+
 === larch-quiet-cli.py-55745.log ===
 
 === larch-quiet-cli.py-61039.log ===
@@ -25,6 +33,8 @@
 === larch-quiet-cli.py-76454.log ===
 
 === larch-quiet-cli.py-7704.log ===
+
+=== larch-quiet-cli.py-81162.log ===
 
 === larch-quiet-cli.py-8470.log ===
 
@@ -38,9 +48,193 @@
 
 === larch-quiet-git-stage.sh-47817.log ===
 
+=== larch-quiet-launch-claude-subprocess.sh-13105.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-13386.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-13620.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-13879.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-14157.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-14220.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-14375.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-14620.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.ei1Aci/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-14748.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-15015.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-15365.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.9NxamY/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-15503.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-15763.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-16083.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-16399.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-16673.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-16934.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-17214.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-17458.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-17703.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-28648.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-29174.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-29552.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-2980.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-29952.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-30509.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-30574.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-30846.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-31209.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.ExklDx/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-31410.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-31742.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-32250.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.BWt5Hi/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-32443.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-32781.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-33223.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-33637.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-3387.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-34062.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-34470.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-34852.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-35242.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-35647.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-3679.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-4003.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-4391.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-4464.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-4675.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-4969.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.fgGL2p/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-5121.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-5371.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-5783.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.L4vMb9/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-5932.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-6205.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-6488.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-6747.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-6996.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-7235.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-7482.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-7723.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-7967.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-85483.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-85841.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-86162.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-86454.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-86807.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir requires --read-tools
+
+=== larch-quiet-launch-claude-subprocess.sh-86889.log ===
+launch-claude-subprocess.sh: --read-tools-add-dir outside session root
+
+=== larch-quiet-launch-claude-subprocess.sh-87077.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-87322.log ===
+launch-claude-subprocess.sh: context file outside allowed roots: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-allow-root.gEb9Bw/extra-context.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-87440.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-87641.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-88018.log ===
+launch-claude-subprocess.sh: context file exceeds 1 MB: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-launch-claude-subprocess.UpN9U9/ctx-over-1MB.txt
+
+=== larch-quiet-launch-claude-subprocess.sh-88196.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-88438.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-88752.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-89031.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-89302.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-89659.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-89985.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-90254.log ===
+
+=== larch-quiet-launch-claude-subprocess.sh-90527.log ===
+
 === larch-quiet-lint-fix-loop.sh-20212.log ===
 [sergey-zhupanov/implementing-sh-to-py-b5-voting-tally-mo-3674 cf166eb55] Apply relevant-checks fixes (Step 3)
  1 file changed, 24 insertions(+), 24 deletions(-)
+
+=== larch-quiet-oos-file-conflict-deps.sh-55242.log ===
+▶ parse-input: 1 items parsed (mode=oos): 1=Aggregated rollup of 2 capped OOS items
+▶ parse-input: 1 items parsed (mode=oos): 1=Aggregated rollup of 2 capped OOS items
+
+=== larch-quiet-oos-issue-cap.sh-52367.log ===
+▶ parse-input: 2 items parsed (mode=oos): 1=`docs/linting.md` advertises removed targets and retired scr…, 2=Deleted step-telemetry scripts leave stale Makefile and lint…
+▶ parse-input: 2 items parsed (mode=oos): 1=`docs/linting.md` advertises removed targets and retired scr…, 2=Deleted step-telemetry scripts leave stale Makefile and lint…
 
 === larch-quiet-read-session-env-key.sh-29921.log ===
 
@@ -53,6 +247,9 @@
 === larch-quiet-read-session-env-key.sh-32920.log ===
 
 === larch-quiet-read-session-env-key.sh-32952.log ===
+
+=== larch-quiet-read-session-env-key.sh-34081.log ===
+read-session-env-key.sh: --file is required
 
 === larch-quiet-read-session-env-key.sh-35957.log ===
 
@@ -88,11 +285,24 @@
 
 === larch-quiet-rebase-push.sh-50867.log ===
 
+=== larch-quiet-refresh-run-logs.sh-42363.log ===
+FLUSH_STATUS=ok
+RECORDS=1
+APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.SHvUFC
+
+=== larch-quiet-run-relevant-checks-captured.sh-1766.log ===
+
 === larch-quiet-run-relevant-checks-captured.sh-32979.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-45185.log ===
 
 === larch-quiet-run-relevant-checks-captured.sh-99860.log ===
+
+=== larch-quiet-ship.py-26368.log ===
+LAUNCHER_FAILURE_CLASS=none
+LAUNCHER_FAILURE_REASON=
+
+=== larch-quiet-ship.py-48027.log ===
 
 === larch-quiet-step-7a.sh-59117.log ===
 FLUSH_STATUS=ok
@@ -112,6 +322,9 @@ parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91
 
 === larch-quiet-tally-code-votes.sh-87503.log ===
 parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.K7bscm/case_parser_failure_warn/missing-vote-output.txt
+
+=== larch-quiet-tally-code-votes.sh-99486.log ===
+parse-judge-vote: voter file is missing or unreadable: /var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T//test-tally-code-votes.034FjN/case_parser_failure_warn/missing-vote-output.txt
 
 === larch-quiet-timing-ledger.sh-44672.log ===
 
