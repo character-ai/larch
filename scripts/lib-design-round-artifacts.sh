@@ -39,7 +39,7 @@ design_round_revise_artifact_excluded() {
         *.done|*.dirty-tree|*.meta|*.prompt|*.sidecar|*.sidecar.history|*.events.jsonl|*.events.history)
             return 0
             ;;
-        *.untracked-baseline|*.diag|*.failure-diag|*.json)
+        *.untracked-baseline|*.diag|*.failure-diag|*.json|*.stderr)
             return 0
             ;;
         *)
