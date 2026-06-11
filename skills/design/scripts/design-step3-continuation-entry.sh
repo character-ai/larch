@@ -97,4 +97,4 @@ fi
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --auto-continuation-entry
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — auto-continuation entry" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3 — auto-continuation entry" || true

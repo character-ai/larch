@@ -89,7 +89,7 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4 — rejected findings" || true
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e
   printf '%s\n' 'ACTION=FINALIZE' \

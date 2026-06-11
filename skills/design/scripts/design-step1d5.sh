@@ -94,7 +94,7 @@ case "${MODE:-}" in
     : > "$DESIGN_TMPDIR/.completed/step-1c"
     : > "$DESIGN_TMPDIR/.completed/step-1d"
     [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-    LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.5 — brainstorm" || true
+    LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 1d.5 — brainstorm" || true
     ;;
   complete)
     design_source_env_optional

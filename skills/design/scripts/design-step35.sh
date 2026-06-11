@@ -107,7 +107,7 @@ case "${STEP3_REVIEW_LOOP_STATUS:-}" in
     ;;
 esac
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 3.5 — gate B" || true
 _approve_requested=false
 if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
