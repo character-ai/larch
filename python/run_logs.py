@@ -922,7 +922,6 @@ def _manifest_v2_merge(data: dict[str, Any], manifest: Manifest) -> dict[str, An
         "effort",
         "attempt",
         "superseded_by",
-        "stalled_at_step",
         "flags",
     }
     if manifest.extra:
