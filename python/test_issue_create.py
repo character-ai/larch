@@ -340,7 +340,7 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
     assert "--json" in create_calls[0]
 
 
-def test_create_one_rejects_graphql_node_id(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+def test_create_one_resolves_rest_id_for_graphql_node_id(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")
 
@@ -350,13 +350,40 @@ def test_create_one_rejects_graphql_node_id(monkeypatch: Any, tmp_path: Path, ca
                 argv,
                 stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
             )
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:
+            return _result(argv, stdout="12345\n")
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
     rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
     out = capsys.readouterr().out
+    assert rc == 0
+    assert "ISSUE_ID=12345" in out
+    assert "ISSUE_NUMBER=5" in out
+
+
+def test_create_one_graphql_node_id_lookup_failure_rolls_back(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "issue", "create"]:
+            return _result(
+                argv,
+                stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
+            )
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:
+            return _result(argv, returncode=1, stderr="lookup failed")
+        if argv[:3] == ["gh", "issue", "close"]:
+            return _result(argv)
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    captured = capsys.readouterr()
     assert rc == 2
-    assert "ISSUE_FAILED=true" in out
+    assert "ISSUE_FAILED=true" in captured.out
+    assert "ROLLBACK: closed orphan issue #5" in captured.err
 
 
 def test_create_one_id_lookup_failure_emits_rollback_failed(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

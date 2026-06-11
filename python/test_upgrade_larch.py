@@ -11,6 +11,13 @@ import config
 import upgrade_larch
 import proc
 
+# Intentional literal guard: keep in sync with scripts/lib-sparse-dirs.sh LARCH_SPARSE_DIRS.
+EXPECTED_LARCH_SPARSE_DIRS = ".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
+
+
+def _expected_normalized_sparse_dirs() -> str:
+    return "\n".join(sorted(part for part in EXPECTED_LARCH_SPARSE_DIRS.split() if part))
+
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:
     return proc.CommandResult(tuple(argv), returncode, stdout, stderr, 0.0)
@@ -88,12 +95,16 @@ def test_run_marketplace_failure_returns_nonzero(monkeypatch: Any, tmp_path: Pat
     assert "LARCH_RESTART_REQUIRED=true" in err
 
 
+def test_larch_sparse_dirs_matches_bash_literal() -> None:
+    assert upgrade_larch.LARCH_SPARSE_DIRS == EXPECTED_LARCH_SPARSE_DIRS
+
+
 def test_marketplace_sparse_cone_matches(monkeypatch: Any, tmp_path: Path) -> None:
     home = tmp_path / "home"
     clone = home / ".claude/plugins/marketplaces/larch-local"
     clone.mkdir(parents=True)
     (clone / ".git").mkdir()
-    sparse_dirs = upgrade_larch.normalize_sparse_dirs()
+    sparse_dirs = _expected_normalized_sparse_dirs()
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         if argv[:5] == ["git", "-C", str(clone), "sparse-checkout", "list"]:

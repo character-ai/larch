@@ -14,6 +14,7 @@ from pathlib import Path
 
 import proc
 from redact import redact_outbound
+from retry import with_transient_retry
 
 OWNER_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 OWNER_REPO_PARTS = 2
@@ -208,8 +209,17 @@ def ssh_url(ctx: SetupContext, kind: str, owner_repo: str) -> str:
     return f"git@{ctx.gh_host}:{owner_repo}.git"
 
 
+def _transient_proc_run(argv: list[str]) -> proc.CommandResult:
+    def attempt() -> tuple[proc.CommandResult, int, str]:
+        result = proc.run(argv)
+        content = (result.stdout or "") + (result.stderr or "")
+        return result, result.returncode, content
+
+    return with_transient_retry(attempt).value
+
+
 def remote_main_sha(url: str) -> str:
-    result = proc.run(["git", "ls-remote", url, "refs/heads/main"])
+    result = _transient_proc_run(["git", "ls-remote", url, "refs/heads/main"])
     if result.returncode != 0:
         return ""
     for line in result.stdout.splitlines():
@@ -390,7 +400,18 @@ def phase_github(ctx: SetupContext) -> None:
         pushed_sha = proc.run(["git", "-C", str(clone_dir), "rev-parse", "refs/heads/main"]).stdout.strip()
         if not pushed_sha:
             die("mirror clone has no refs/heads/main")
-        push = proc.run(["git", "-C", str(clone_dir), "push", "--prune", ssh_url(ctx, "FORK", ctx.fork), "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"])
+        push = _transient_proc_run(
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "push",
+                "--prune",
+                ssh_url(ctx, "FORK", ctx.fork),
+                "+refs/heads/*:refs/heads/*",
+                "+refs/tags/*:refs/tags/*",
+            ],
+        )
         if push.returncode != 0:
             die("mirror push to fork failed")
         post_sha = remote_main_sha(fork_https)
@@ -479,7 +500,7 @@ def phase_remotes(ctx: SetupContext) -> None:
 
 def phase_submodules(ctx: SetupContext) -> None:
     if ctx.init_submodules and Path(".gitmodules").is_file():
-        result = proc.run(["git", "submodule", "update", "--init", "--recursive"])
+        result = _transient_proc_run(["git", "submodule", "update", "--init", "--recursive"])
         if result.returncode != 0:
             die("git submodule update --init --recursive failed")
 

@@ -355,6 +355,13 @@ def _issue_create_json_status(output: str) -> str:
         return "fallback"
     if _parse_issue_json(output) is not None:
         return "ok"
+    number = str(data.get("number") or "")
+    url = str(data.get("url") or "")
+    issue_id = str(data.get("id") or "")
+    if not number or not url or not issue_id:
+        return "empty_fields"
+    if number.isdigit() and url:
+        return "resolve_id"
     return "empty_fields"
 
 
@@ -376,6 +383,22 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
         return
     detail = _flat_error(close_error or close.stderr or close.stdout)
     warn(f"ROLLBACK_FAILED: could not close orphan issue #{number} ({url}): {detail}. Manually close.")
+
+
+def _resolve_created_issue_id(repo: str, number: str, url: str, final_title: str) -> int:
+    lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    issue_id = lookup.stdout.strip()
+    if lookup.returncode == 0 and _positive_int(issue_id):
+        emit_kv("ISSUE_NUMBER", number)
+        emit_kv("ISSUE_URL", url)
+        emit_kv("ISSUE_ID", issue_id)
+        emit_kv("ISSUE_TITLE", final_title)
+        return 0
+    if lookup.returncode == 0 and issue_id and not _positive_int(issue_id):
+        _rollback_orphan(repo, number, url, close_error=lookup.stderr)
+        return _emit_issue_failed(f"id-lookup returned non-numeric id for #{number} (output: {_flat_error(lookup.stderr or issue_id)})")
+    _rollback_orphan(repo, number, url, close_error=lookup.stderr)
+    return _emit_issue_failed(f"id-lookup failed for #{number} after create: {_flat_error(lookup.stderr)}")
 
 
 def _resolve_created_from_output(repo: str, output: str, final_title: str) -> int:
@@ -467,6 +490,14 @@ def create_one_main(argv: list[str]) -> int:
                 emit_kv("ISSUE_ID", issue_id)
                 emit_kv("ISSUE_TITLE", final_title)
                 return 0
+            if json_status == "resolve_id":
+                data = json.loads(result.stdout)
+                return _resolve_created_issue_id(
+                    repo,
+                    str(data.get("number") or ""),
+                    str(data.get("url") or ""),
+                    final_title,
+                )
             if json_status == "empty_fields":
                 redacted_output = _flat_error(result.stdout)
                 return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
