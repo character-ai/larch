@@ -92,6 +92,60 @@ design_source_env_optional() {
      # shellcheck source=/dev/null
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
    fi
+   case "${POSITIONAL_KIND:-}" in
+     issue)
+       if [[ "${POSITIONAL_VALUE:-}" =~ ^[0-9]+$ ]]; then
+         ISSUE_NUMBER="${POSITIONAL_VALUE}"
+       else
+         printf '%s\n' "**⚠ Step 0b: POSITIONAL_KIND=issue requires numeric POSITIONAL_VALUE; aborting /design**" >&2
+         exit 1
+       fi
+       ;;
+     verbal)
+       if [[ -z "${ISSUE_NUMBER:-}" ]]; then
+         printf '%s\n' "**⚠ Step 0b: POSITIONAL_KIND=verbal requires ISSUE_NUMBER from /larch:issue before routing; aborting /design**" >&2
+         exit 1
+       fi
+       ;;
+     none) ;;
+     *)
+       printf '%s\n' "**⚠ Step 0b: invalid POSITIONAL_KIND=${POSITIONAL_KIND:-<empty>}; aborting /design**" >&2
+       exit 1
+       ;;
+   esac
+   if [[ -n "${ISSUE_NUMBER:-}" ]]; then
+     if [ -z "${REPO:-}" ]; then
+       if _resolved_repo=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh" 2>/dev/null); then
+         REPO="$_resolved_repo"
+       elif _resolved_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null); then
+         REPO="$_resolved_repo"
+       fi
+     fi
+     _issue_fetch_rc=1
+     for _issue_fetch_try in 1 2; do
+       set +e
+       if [ -n "${REPO:-}" ]; then
+         _issue_json=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body,labels,number,title 2>/dev/null)
+       else
+         _issue_json=$(gh issue view "$ISSUE_NUMBER" --json body,labels,number,title 2>/dev/null)
+       fi
+       _issue_fetch_rc=$?
+       set -e
+       [ "$_issue_fetch_rc" -eq 0 ] && break
+       [ "$_issue_fetch_try" -lt 2 ] && sleep 1
+     done
+     if [ "$_issue_fetch_rc" -ne 0 ]; then
+       printf '%s\n' "**⚠ Step 0b: gh issue view failed for issue ${ISSUE_NUMBER}; aborting /design**" >&2
+       exit 1
+     fi
+     ISSUE_TITLE=$(printf '%s' "$_issue_json" | jq -r '.title // empty')
+     printf '%s' "$_issue_json" | jq -r '.body // ""' >"$DESIGN_TMPDIR/issue-body.txt"
+     if printf '%s' "$_issue_json" | jq -e '.labels[]? | select(.name == "needs-design-clarification")' >/dev/null 2>&1; then
+       HAS_CLARIFY_LABEL=true
+     else
+       HAS_CLARIFY_LABEL=false
+     fi
+   fi
    _route_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-route-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 0b: could not allocate design-route stdout capture; aborting /design**" >&2
      exit 1
@@ -192,7 +246,3 @@ design_source_env_optional() {
      printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
-   case "${ROUTE:-}" in
-     cancel-title-filter|cancel-reentry-guard)
-       exit 1 ;;
-   esac

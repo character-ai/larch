@@ -170,17 +170,17 @@ esac
 _step0_parsed_cache_dir="${HOME}/.cache/larch/sessions"
 mkdir -p "$_step0_parsed_cache_dir"
 _step0_parsed_cache="$_step0_parsed_cache_dir/step0-parsed-${CLAUDE_PID}.env"
-cat > "$_step0_parsed_cache" <<EOF_PARSED
-hard_requested=${hard_requested}
-partition_requested=${partition_requested}
-brainstorm_requested=${brainstorm_requested}
-approve_requested=${approve_requested}
-skip_approve_requested=${skip_approve_requested}
-no_dedup_requested=${no_dedup_requested}
-run_id=${run_id}
-POSITIONAL_KIND=${POSITIONAL_KIND}
-POSITIONAL_VALUE=${POSITIONAL_VALUE}
-EOF_PARSED
+{
+  printf '%s=%q\n' hard_requested "$hard_requested"
+  printf '%s=%q\n' partition_requested "$partition_requested"
+  printf '%s=%q\n' brainstorm_requested "$brainstorm_requested"
+  printf '%s=%q\n' approve_requested "$approve_requested"
+  printf '%s=%q\n' skip_approve_requested "$skip_approve_requested"
+  printf '%s=%q\n' no_dedup_requested "$no_dedup_requested"
+  printf '%s=%q\n' run_id "$run_id"
+  printf '%s=%q\n' POSITIONAL_KIND "$POSITIONAL_KIND"
+  printf '%s=%q\n' POSITIONAL_VALUE "$POSITIONAL_VALUE"
+} >"$_step0_parsed_cache"
 printf 'STEP0_PARSED_ENV_PATH=%s\n' "$_step0_parsed_cache"
 printf 'HARD_REQUESTED=%s\nPARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n' \
   "$hard_requested" \

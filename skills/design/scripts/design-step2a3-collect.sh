@@ -87,6 +87,7 @@ design_source_env_optional() {
   fi
 }
 
+design_source_env_optional
 _collect_paths=()
 if ((${#PUBLIC_ARGV_WORDS[@]} > 0)); then
   _collect_paths=("${PUBLIC_ARGV_WORDS[@]}")
@@ -110,6 +111,5 @@ if ((${#_collect_paths[@]} == 0)); then
   printf '%s\n' "COLLECT_STATUS=skipped-no-launched-slots"
   exit 0
 fi
-design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1260 "${_collect_paths[@]}"

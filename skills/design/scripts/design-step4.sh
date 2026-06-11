@@ -101,5 +101,3 @@ if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
     exit "$_finalize_rc"
   fi
 fi
-mkdir -p "$DESIGN_TMPDIR/.completed"
-: > "$DESIGN_TMPDIR/.completed/step-4"

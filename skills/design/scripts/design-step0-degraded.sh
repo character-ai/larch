@@ -98,8 +98,44 @@ if [ -f "$DESIGN_TMPDIR/source-env.sh" ]; then
 fi
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
+_gate_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-degraded-gate-stdout.XXXXXX")" || {
+  printf '%s\n' "/design Step 0 degraded: could not allocate gate stdout capture" >&2
+  exit 1
+}
+"${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh" --skill design \
   --codex-present "${CODEX_PRESENT:-false}" \
   --cursor-present "${CURSOR_PRESENT:-false}" \
   --codex-binary-found "${CODEX_BINARY_FOUND:-false}" \
-  --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"
+  --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}" \
+  >"$_gate_stdout_file"
+DEGRADED=false
+BOTH_DOWN=false
+PRESENCE_INPUT_EMPTY=false
+_in_explanation=false
+while IFS= read -r _gate_line || [[ -n "$_gate_line" ]]; do
+  case "$_gate_line" in
+    DEGRADED_EXPLANATION_BEGIN) _in_explanation=true; printf '%s\n' "$_gate_line" ;;
+    DEGRADED_EXPLANATION_END) _in_explanation=false; printf '%s\n' "$_gate_line" ;;
+    DEGRADED=*) DEGRADED="${_gate_line#DEGRADED=}"; printf '%s\n' "$_gate_line" ;;
+    BOTH_DOWN=*) BOTH_DOWN="${_gate_line#BOTH_DOWN=}"; printf '%s\n' "$_gate_line" ;;
+    PRESENCE_INPUT_EMPTY=*) PRESENCE_INPUT_EMPTY="${_gate_line#PRESENCE_INPUT_EMPTY=}"; printf '%s\n' "$_gate_line" ;;
+    CODEX_STATE=*|CURSOR_STATE=*)
+      printf '%s\n' "$_gate_line"
+      ;;
+    *)
+      if [[ "$_in_explanation" == true ]]; then
+        printf '%s\n' "$_gate_line"
+      fi
+      ;;
+  esac
+done <"$_gate_stdout_file"
+rm -f "$_gate_stdout_file"
+STEP0_STATUS=ok
+if [[ "${DEGRADED:-false}" == true ]]; then
+  if [[ "${BOTH_DOWN:-}" == false ]]; then
+    STEP0_STATUS=degraded-one-down
+  else
+    STEP0_STATUS=needs-degraded-decision
+  fi
+fi
+printf 'STEP0_STATUS=%s\n' "$STEP0_STATUS"

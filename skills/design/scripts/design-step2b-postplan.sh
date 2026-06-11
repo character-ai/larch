@@ -109,6 +109,7 @@ case "${_postplan_rc:-1}" in
     fi
     ;;
   10)
+    printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
     VALIDATE_STATUS=""
     VALIDATE_DEFECT_COUNT=""
     VALIDATE_SKIPPED_COUNT=""
@@ -154,10 +155,12 @@ case "${_postplan_rc:-1}" in
     exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     ;;
   12)
+    printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;
   13)
+    printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;

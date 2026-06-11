@@ -98,6 +98,14 @@ if [[ "${PLAN_WRITE_OK:-}" != true ]]; then
   printf '%s\n' "**⚠ Step 6 prelude: plan write did not succeed; skipping step-5d write.**" >&2
   exit 1
 fi
+if [[ -n "${SESSION_ID:-}" && "${PUBLISH_OK:-}" != true ]]; then
+  printf '%s\n' "**⚠ Step 6 prelude: publish did not complete; skipping step-5d write.**" >&2
+  exit 1
+fi
+if [[ "${CLEANUP_ELIGIBLE:-}" == false ]]; then
+  printf '%s\n' "**⚠ Step 6 prelude: cleanup not eligible per Step 5c status; skipping step-5d write.**" >&2
+  exit 1
+fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-5d"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"

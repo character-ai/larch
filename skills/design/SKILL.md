@@ -829,6 +829,16 @@ If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`
 
 `.completed/step-3` is written by the Step 3 loop before any terminal Step 3b transition. Legacy `--mode single` Gate-B-bypass paths still use `design-step3-gate-b-bypass.sh` to write `step-3` and `step-3.5` before entering Step 3b.
 
+Before every Gate-B-bypass jump to Step 3b, run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.sh" \
+  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+  --claude-pid "$PPID"
+```
+
+Parse `STEP3_STATE=` from the wrapper output and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
+
 > **Step 3.5 (Gate B) runs only for loop bail-outs that need prompt-side apply/postplan handling** (`STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required`, `per-round-approval-required`, or `postplan-operator-required`) or for legacy `--mode single` harness callers. Terminal loop envelopes (`complete`, `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, `postplan-failed`) and `main-agent-vote-required` skip Step 3.5 and route per the post-loop branch matrix. The script-internal loop already applied findings, ran postplan, snapshots, and continuation on the happy path — do not re-enter Gate B or the retired orchestrator continuation loop.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
@@ -856,7 +866,15 @@ Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence 
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
-**Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` (contract: `skills/design/scripts/plan-review-continuation.md`) and parse only its `PLAN_REVIEW_CONTINUE*` KVs. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, run `design-step3-continuation-entry.sh`, and loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, then re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop` (never `--no-preview`). Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
+**Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` (contract: `skills/design/scripts/plan-review-continuation.md`) and parse only its `PLAN_REVIEW_CONTINUE*` KVs. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, then run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-continuation-entry.sh" \
+  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+  --claude-pid "$PPID"
+```
+
+Loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, then re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop` (never `--no-preview`). Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
 
 <!-- step:3b — Architecture Diagram -->
 
@@ -952,7 +970,7 @@ Print any rejected plan review findings:
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 
 > **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal — Gate C + issue plan write + cleanup still must run.
-`.completed/step-4` is written by the Step 4 entry fence before Step 4b.
+`.completed/step-4` is written by the Step 4b wrapper (`design-step4b.sh`) after Gate C preview/read and before Step 5.
 
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
