@@ -281,6 +281,8 @@ def _tmp_root(env: Mapping[str, str] | None = None) -> Path | None:
 def _canonical_dir(path: str | Path) -> Path | None:
     try:
         p = Path(path)
+        if not p.parts:  # empty path ("") resolves to cwd — reject it
+            return None
         if p.is_dir():
             return p.resolve(strict=True)
     except OSError:
