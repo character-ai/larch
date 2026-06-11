@@ -533,6 +533,18 @@ Failed with exit code 7 after 0s. Output size: 0 bytes.
 ===== diag =====
 Failed with exit code 7 after 0s. Output size: 0 bytes.
 
+===== CI fix cursor-ci =====
+exit-code: 143
+Stall detected: channel=stdout time_since_last_progress=181s
+--- stall ps snapshot (target pid=66097) ---
+  PID  %CPU ELAPSED STAT
+66097   0.0   03:01 S   
+--- stall ps snapshot (direct children of target; no argv) ---
+  PID  %CPU ELAPSED STAT
+72796   0.0   02:47 S   
+  PID  %CPU ELAPSED STAT
+79070   0.0   00:07 S   
+
 ===== review Step 2 codex-review =====
 exit-code: 7
 ===== sidecar.history =====
