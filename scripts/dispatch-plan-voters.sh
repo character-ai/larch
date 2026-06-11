@@ -9,6 +9,7 @@ CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+[[ -f "$CLI" ]] || { larch_err "dispatch-plan-voters.sh: missing python/cli.py at $CLI"; exit 2; }
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-external-launcher-common.sh

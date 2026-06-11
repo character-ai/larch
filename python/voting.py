@@ -105,7 +105,11 @@ def _truthy(name: str) -> bool:
 
 def _plain_diagnostic(message: str) -> None:
     line = redact.redact_outbound(logging_util.sanitize_diagnostic_line(message)).rstrip("\n") + "\n"
-    if _truthy("LARCH_QUIET_ACTIVE") and os.environ.get("LARCH_QUIET_PID"):
+    if (
+        _truthy("LARCH_QUIET_ACTIVE")
+        and os.environ.get("LARCH_QUIET_PID")
+        and not _truthy("LARCH_QUIET_DISABLE")
+    ):
         try:
             os.write(4, line.encode("utf-8"))
             return

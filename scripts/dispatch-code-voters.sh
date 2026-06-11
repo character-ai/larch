@@ -13,6 +13,7 @@ CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+[[ -f "$CLI" ]] || { larch_err "dispatch-code-voters.sh: missing python/cli.py at $CLI"; exit 2; }
 
 usage() {
     larch_err "Usage: dispatch-code-voters.sh --ballot-file FILE --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--diff-file FILE] [--plan-file FILE] [--round-num N]"

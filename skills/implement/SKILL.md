@@ -633,7 +633,7 @@ On resume, the loop evaluates substantiality and bulk-skip against the round-`FI
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`mav-resume-past-cap`**: follow the `mav-resume-past-cap` branch body in the Step 5 review-branches reference, then follow the same post-Step-5 chain as `complete`.
 
-Note: `review-and-fix.sh` runs `flush_review_batches` at the end of every successful `_implement_round_body` round (and best-effort once on many stall paths inside the loop), writing both `code-review-tally` and `review-findings-full` batches. `compose_review_findings_output` passes `--issue 0` as the authoritative contract; downstream log consumers join records by `RUN_ID`. No additional main-agent `write-tally.sh` / `compose-review-findings.sh` composition is required in Step 5.
+Note: `review-and-fix.sh` runs `flush_review_batches` at the end of every successful `_implement_round_body` round (and best-effort once on many stall paths inside the loop), writing both `code-review-tally` and `review-findings-full` batches. `compose_review_findings_output` passes `--issue 0` as the authoritative contract; downstream log consumers join records by `RUN_ID`. No additional main-agent `python/cli.py voting write-tally` / `compose-review-findings.sh` composition is required in Step 5.
 
 ### Track Rejected Code Review Findings
 

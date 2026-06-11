@@ -10,6 +10,7 @@ CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+[[ -f "$CLI" ]] || { larch_err "tally-code-votes.sh: missing python/cli.py at $CLI"; exit 2; }
 # Preserve a visible stream for WARN breadcrumbs even when quiet mode is
 # disabled and parse_vote_rating_for is called under command substitution.
 if ! (: >&3) 2>/dev/null; then

@@ -138,7 +138,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Dirty-tree checkpoint (`check-mid-run-dirty-tree.sh --mode checkpoint`) | `phase_plan_materialize` |
 | Slug derivation + `create-branch.sh --branch` | `phase_plan_materialize` |
 | Branch capture (`git-current-branch.sh`) | `phase_plan_materialize` |
-| Plan-goals batch (`run-step1-plan-log.sh`) and plan-review tally (`write-tally.sh`) | `phase_plan_materialize` |
+| Plan-goals batch (`run-step1-plan-log.sh`) and plan-review tally (`python/cli.py voting write-tally`) | `phase_plan_materialize` |
 | `larch:plan` summary upsert (`tracking-issue-summary.sh upsert-summary`) | `phase_plan_materialize` |
 | Prompt-side implementer waterfall | `phase_coder_select` |
 
@@ -160,7 +160,7 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 | `git-current-branch.sh` (~780) | Read-only; idempotent. |
 | `redact-secrets.sh` \| `redact-tmpdir-paths.sh` pipelines (~800, ~847, ~887) | Read-only filters; stable output from stable input. Safe to re-run. |
 | `run-step1-plan-log.sh` write (~814) | Writes under `$IMPLEMENT_TMPDIR/larch-logs/` (session-scoped tmpdir). Idempotent within the same tmpdir. |
-| `write-tally.sh --phase plan-review` (~851) | Same session tmpdir; atomic compose+write of a tally batch. Idempotent within the same tmpdir. |
+| `python/cli.py voting write-tally --phase plan-review` (~851) | Same session tmpdir; atomic compose+write of a tally batch. Idempotent within the same tmpdir. |
 | `tracking-issue-summary.sh upsert-summary --marker "<!-- larch:plan v1 runid=$RUN_ID -->"` (~898) | Marker-based upsert; idempotent by construction (finds existing marker and replaces the comment). |
 | `append-tool-failure.sh` (~804, ~817, ~831, ~865, ~888, ~902) | Failure-only paths gated on the helper above returning non-zero. NOT independently idempotent if forced to re-run (each call appends to `execution-issues.md`). On the canonical flow each fires at most once because gating helpers are idempotent and the first-pass bail prevents the surrounding block from running twice. Revisit the audit if a future change makes failure paths reachable on resume. |
 | `emit_plan_materialize_breadcrumbs` (~915) | Breadcrumb emitter at function tail; reads env state and emits the applicable Step 0 progress lines. Safe to re-run. |

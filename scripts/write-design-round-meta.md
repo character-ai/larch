@@ -59,7 +59,7 @@ The helper subtracts security-tagged OOS items from `OOS_ACCEPTED_COUNT` and
 `voting-tally.md` and `findings-classification.tsv` paths via
 `_adjust_security_oos_counts`. The results are floored at zero (negative counts
 are clamped). Failure modes: `is_security_block` is sourced from
-`lib-vote-tally.sh`; if that function fails, the OOS item is silently excluded
+`python/cli.py voting is-security-block`; if that probe fails, the OOS item is silently excluded
 from the subtraction (fail-open). Missing or unreadable OOS finding blocks
 (`_extract_oos_block` exit 1) are silently skipped — the count is not decremented
 for a block that cannot be classified. The `.tmp` sentinel files used during

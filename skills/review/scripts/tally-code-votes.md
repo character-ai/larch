@@ -76,7 +76,7 @@ rather than this degraded-round TSV.
 
 Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `python/cli.py voting parse-judge-vote`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
 
-## Threshold (delegated to lib-vote-tally.sh)
+## Threshold (delegated to `python/cli.py voting classify-result`)
 
 - `effective >= 3` → `yes >= 2` accepts.
 - `effective == 2` → unanimous `yes == 2` accepts.

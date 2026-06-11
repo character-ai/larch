@@ -31,7 +31,7 @@
 | B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
 | B5-plan-emergency | Emergency plan materialization persists `EMERGENCY_REQUESTED=true`, refreshes tracking metadata with the same flag, and appends the bypass log once. |
 | B5-plan-emergency-invalid-format | Invalid bypass logs downgrade to a redacted invalid-format Warning entry instead of failing the run. |
-| B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
+| B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `python/cli.py voting write-tally`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
 | B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |

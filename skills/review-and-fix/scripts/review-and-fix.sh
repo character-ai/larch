@@ -42,9 +42,18 @@ SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
-WRITE_TALLY_CMD=(python3 "$PY_CLI" voting write-tally)
 if [[ -n "${REVIEW_AND_FIX_WRITE_TALLY_SH:-}" ]]; then
+    [[ -x "$REVIEW_AND_FIX_WRITE_TALLY_SH" ]] || {
+        larch_err "review-and-fix.sh: REVIEW_AND_FIX_WRITE_TALLY_SH is not executable: $REVIEW_AND_FIX_WRITE_TALLY_SH"
+        exit 2
+    }
     WRITE_TALLY_CMD=("$REVIEW_AND_FIX_WRITE_TALLY_SH")
+else
+    [[ -f "$PY_CLI" ]] || {
+        larch_err "review-and-fix.sh: missing python/cli.py at $PY_CLI"
+        exit 2
+    }
+    WRITE_TALLY_CMD=(python3 "$PY_CLI" voting write-tally)
 fi
 COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
 LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
