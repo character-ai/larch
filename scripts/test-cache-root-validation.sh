@@ -96,7 +96,7 @@ rc=0
 assert_rc "$rc" 1 "cleanup-tmpdir rejects unrelated path"
 
 rc=0
-"$TOKEN_TALLY" report --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
+"${TOKEN_CLI[@]}" lane-report --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 1 "token-tally rejects unrelated path"
 
 echo

@@ -204,11 +204,13 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh:
         fh.write('{"total_hms":"12s"}\n')
 elif cmd == ["token", "cost"]:
-    pass  # render-run-summary.sh handles absence gracefully
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
 EOF
+export TRFS_REAL_CLI="$ROOT/python/cli.py"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh" \
     "$PLUGIN_STUB/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh" \
     "$PLUGIN_STUB/scripts/redact-secrets.sh"

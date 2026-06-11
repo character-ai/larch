@@ -12,7 +12,7 @@ PYTHON ?= python3
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-step-18b-final-report
@@ -89,7 +89,7 @@ test-harnesses-3: test-launch-review-cursor-core test-decompose-panel-dispatch t
 
 test-harnesses-4: test-review-and-fix-dispatch test-larch-log-write-round test-dispatch-code-voters-regressions-r3-codex test-implement-structure test-token-ledger test-check-review-changes test-scout-plan-archetypes-wrapper test-lint-bash32 test-compose-plan-goals-test test-emit-plan test-ci-rerun-failed test-rebase-push-force-lease test-token-report-dedup test-implement-cleanup-roundtrip
 
-test-harnesses-5: test-dispatch-panel-core-dynamic test-codex-implementer test-harness-timer test-lint-skill-invocations test-timing-report test-parse-codex-usage test-check-phantom-dirty test-design-driver test-implement-fork-env test-plan-review-scope-anchor test-persist-retally-step3-env test-commit-implementation test-alias-structure test-parse-bootstrap-routing-envelope
+test-harnesses-5: test-dispatch-panel-core-dynamic test-codex-implementer test-harness-timer test-lint-skill-invocations test-timing-report test-step-telemetry-mark test-parse-codex-usage test-check-phantom-dirty test-design-driver test-implement-fork-env test-plan-review-scope-anchor test-persist-retally-step3-env test-commit-implementation test-alias-structure test-parse-bootstrap-routing-envelope
 
 test-harnesses-6: test-plan-review-loop test-tracking-issue-write test-check-contains-pins test-dispatch-code-voters-retry-codex-success test-relevant-checks test-gate-b-apply-mode test-tracking-issue-read-sentinel test-redact test-ci-failed-jobs test-gate-b-dedup-plan test-agent-model-args test-review-structure test-pause-skill test-promote-release test-implement-step8-exit3-first-fixer test-brainstorm-prompts
 

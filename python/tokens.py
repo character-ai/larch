@@ -620,7 +620,7 @@ def _markdown(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor:
         totals = _totals(rows)
         parts.append(f"| {_md_cell(mark['step'])} | **step total** | {totals['input']} | {totals['cache_read']} | {totals['cache_create']} | {totals['output']} |")
     gt = _totals(_slice(claude, cast("float", marks[0]["ts"]), None))
-    parts.append(f"| **Grand total** | | {gt['input']} | {gt['cache_read']} | {gt['cache_create']} | {gt['output']} |")
+    parts.append(f"| **Grand total** |  | {gt['input']} | {gt['cache_read']} | {gt['cache_create']} | {gt['output']} |")
     label = {"codex": "Codex", "cursor": "Cursor", "claude_sub": "Claude (subprocess)"}
     for name in _vendor_names(marks, vendor):
         rows = [row for row in vendor if row.get("vendor") == name]
@@ -631,7 +631,7 @@ def _markdown(marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor:
             totals = _totals(_slice(rows, start, end))
             parts.append(f"| {_md_cell(mark['step'])} | **step total** | {totals['input']} | {totals['output']} | {totals['total']} |")
         totals = _totals(_slice(rows, cast("float", marks[0]["ts"]), None))
-        parts.append(f"| **Grand total** | | {totals['input']} | {totals['output']} | {totals['total']} |")
+        parts.append(f"| **Grand total** |  | {totals['input']} | {totals['output']} | {totals['total']} |")
     return "\n".join(parts)
 
 
