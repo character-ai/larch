@@ -140,7 +140,7 @@ def test_issue_context_cli_emit_kv(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert emitted == [("TITLE_FILE", str(tmp_path / "t")), ("BODY_FILE", str(tmp_path / "b"))]
 
 
-def test_issue_context_cli_runtime_shiperror_no_success_kv(
+def test_issue_context_cli_runtime_shiperror_emits_failure_kv(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -153,7 +153,7 @@ def test_issue_context_cli_runtime_shiperror_no_success_kv(
     monkeypatch.setattr(issue_query.logging_util, "emit_kv", lambda key, value: emitted.append((key, value)))
     monkeypatch.setattr(issue_query, "issue_context", raise_context)
     assert issue_query.issue_context_main(["--issue", "1", "--repo", "o/r", "--tmpdir", str(tmp_path)]) == 1
-    assert not emitted
+    assert emitted == [("FAILED", "true"), ("ERROR", "boom")]
 
 
 @pytest.mark.parametrize(

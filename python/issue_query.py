@@ -230,7 +230,8 @@ def issue_context_main(argv: list[str]) -> int:
             repo=values["repo"],
             tmpdir=values["tmpdir"],
         )
-    except ShipError:
+    except ShipError as exc:
+        _emit_failed(_flat(str(exc)))
         return 1
     logging_util.emit_kv("TITLE_FILE", str(title_file))
     logging_util.emit_kv("BODY_FILE", str(body_file))
