@@ -374,9 +374,9 @@ redact_output_file_in_place() {
     local redacted_tmp
     [ -n "$output_file" ] || return 0
     [ -f "$output_file" ] || return 0
-    [ -x "$PLUGIN_ROOT/python/cli.py redact secrets" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
     redacted_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-redacted.XXXXXX")" || return 0
-    if "$PLUGIN_ROOT/python/cli.py redact secrets" <"$output_file" >"$redacted_tmp"; then
+    if python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$output_file" >"$redacted_tmp"; then
         mv "$redacted_tmp" "$output_file"
     else
         rm -f "$redacted_tmp"
@@ -385,9 +385,9 @@ redact_output_file_in_place() {
 
 append_render_warning() {
     local site=$1 tool=$2 rc=$3 output_file=$4
-    [ -x "$PLUGIN_ROOT/python/cli.py run-log append-failure" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
     [ -f "$output_file" ] || : >"$output_file"
-    "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \

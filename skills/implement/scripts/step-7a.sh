@@ -41,7 +41,7 @@ read_session_key() {
 append_failure() {
     local category=$1 site=$2 tool=$3 exit_code=$4 output_file=$5
     [ -f "$output_file" ] || : > "$output_file" 2>/dev/null || true
-    "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \
@@ -177,7 +177,7 @@ run_log_flush() {
     out_file="$IMPLEMENT_TMPDIR/capture-session-transcript.log"
     status_file="$IMPLEMENT_TMPDIR/capture-session-transcript.stdout"
     set +e
-    LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/python/cli.py run-log capture-transcript" \
+    LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" run-log capture-transcript \
         --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \

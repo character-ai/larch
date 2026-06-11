@@ -315,7 +315,7 @@ render_fix_prompt() {
         if [[ -f "$validate_log" ]]; then
             printf '%s\n' "VALIDATOR REPORT (untrusted tool output):"
             printf '%s\n' "<<<VALIDATOR_LOG"
-            if ! "$PLUGIN_ROOT/python/cli.py redact secrets" <"$validate_log" 2>/dev/null; then
+            if ! python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$validate_log" 2>/dev/null; then
                 printf '%s\n' "[validator log redaction failed; raw log intentionally withheld]"
             fi
             printf '%s\n\n' "VALIDATOR_LOG"

@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
-APPEND_FAIL_SH="$PLUGIN_ROOT/python/cli.py run-log append-failure"
+append_fail_sh() { python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure "$@"; }
 
 usage() {
     larch_err "usage: decompose-file-issues.sh prepare --design-tmpdir DIR --partition-file PATH [--issue-number N]"
@@ -313,9 +313,9 @@ cmd_close_original() {
     local redact_sh="${DECOMPOSE_REDACT_SH:-$PLUGIN_ROOT/python/cli.py redact secrets}"
     local redacted="$dec/close-comment.redacted.md"
     if ! "$redact_sh" <"$body" >"$redacted"; then
-        if [[ -x "$APPEND_FAIL_SH" ]]; then
+        if true; then
             set +e
-            bash "$APPEND_FAIL_SH" \
+            append_fail_sh \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
                 --tool "redact secrets" \
@@ -339,9 +339,9 @@ cmd_close_original() {
         fi
         rm -f "$comment_fail_file"
         if [[ "$_c_rc" != 0 ]]; then
-            if [[ -x "$APPEND_FAIL_SH" ]]; then
+            if true; then
                 set +e
-                bash "$APPEND_FAIL_SH" \
+                append_fail_sh \
                     --log "$DESIGN_TMPDIR/execution-issues.md" \
                     --site "design decompose close-original" \
                     --tool "gh issue comment" \
@@ -366,9 +366,9 @@ cmd_close_original() {
     fi
     rm -f "$close_fail_file"
     if [[ "$_cl_rc" != 0 ]]; then
-        if [[ -x "$APPEND_FAIL_SH" ]]; then
+        if true; then
             set +e
-            bash "$APPEND_FAIL_SH" \
+            append_fail_sh \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
                 --tool "gh issue close" \

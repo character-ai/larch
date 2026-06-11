@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Secret and tmpdir-path redaction (parity with scripts/redact-*.sh)."""
 
 from __future__ import annotations

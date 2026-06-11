@@ -181,9 +181,9 @@ cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_STUB/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_STUB/python/cli.py run-log append-failure"
-cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_STUB/python/cli.py run-log append-entry"
-cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_STUB/python/cli.py redact secrets"
+mkdir -p "$PLUGIN_STUB/python"
+cp "$ROOT/python/cli.py" "$PLUGIN_STUB/python/cli.py"
+cp -r "$ROOT/python" "$PLUGIN_STUB/"
 cat >"$PLUGIN_STUB/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -220,9 +220,7 @@ done
 printf '%s\n' '{"total_hms":"12s"}' >"$out"
 EOF
 chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-report.sh" \
-    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh" \
-    "$PLUGIN_STUB/python/cli.py run-log append-failure" "$PLUGIN_STUB/python/cli.py run-log append-entry" \
-    "$PLUGIN_STUB/python/cli.py redact secrets"
+    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
 
 printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
 rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
@@ -405,7 +403,7 @@ fb_co_cancel_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/
 [[ -n "$fb_co_fallback_line" && -n "$fb_co_cancel_line" && "$fb_co_cancel_line" -gt "$fb_co_fallback_line" ]] \
     || fail 'renderer-fail cancelled-outline Cancel site bullet must follow fallback marker'
 pass 'renderer-fail cancelled-outline fallback preserves marker ordering before Cancel site'
-rm -f "$PLUGIN_STUB/python/cli.py run-log append-failure"
+rm -f "$PLUGIN_STUB/python/cli.py"
 : >"$D/execution-issues.md"
 std_fb_nowarn="$TMP/std-fallback-no-warning.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-NOWARN" \
@@ -424,9 +422,8 @@ cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_FAILTOK/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_FAILTOK/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAILTOK/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAILTOK/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_FAILTOK/python/cli.py run-log append-failure"
-cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_FAILTOK/python/cli.py run-log append-entry"
-cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_FAILTOK/python/cli.py redact secrets"
+mkdir -p "$PLUGIN_FAILTOK/python"
+cp -r "$ROOT/python" "$PLUGIN_FAILTOK/"
 cat >"$PLUGIN_FAILTOK/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'token report unavailable\n' >&2
@@ -485,9 +482,8 @@ cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_BADJSON/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_BADJSON/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_BADJSON/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BADJSON/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_BADJSON/python/cli.py run-log append-failure"
-cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_BADJSON/python/cli.py run-log append-entry"
-cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_BADJSON/python/cli.py redact secrets"
+mkdir -p "$PLUGIN_BADJSON/python"
+cp -r "$ROOT/python" "$PLUGIN_BADJSON/"
 cat >"$PLUGIN_BADJSON/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -551,9 +547,8 @@ cp "$ROOT/scripts/token-cost.sh" "$NOTEARG_PLUGIN/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$NOTEARG_PLUGIN/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$NOTEARG_PLUGIN/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$NOTEARG_PLUGIN/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/python/cli.py run-log append-failure" "$NOTEARG_PLUGIN/python/cli.py run-log append-failure"
-cp "$ROOT/python/cli.py run-log append-entry" "$NOTEARG_PLUGIN/python/cli.py run-log append-entry"
-cp "$ROOT/python/cli.py redact secrets" "$NOTEARG_PLUGIN/python/cli.py redact secrets"
+mkdir -p "$NOTEARG_PLUGIN/python"
+cp -r "$ROOT/python" "$NOTEARG_PLUGIN/"
 cat >"$NOTEARG_PLUGIN/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

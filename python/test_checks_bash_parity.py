@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Bash-vs-Python parity harness for checks.py (temp fixtures only)."""
 
 from __future__ import annotations
@@ -31,16 +32,16 @@ _STUB_SCRIPTS = (
     "lib-net.sh",
     "lib-finalize-state-keys.sh",
     "oos-disposition-shared.inc.bash",
-    "redact-secrets.sh",
-    "redact-tmpdir-paths.sh",
     "lib-failed-agent-stderr-tail.sh",
     "ci-failed-jobs.sh",
 )
 _STUB_EXECUTABLES = (
-    "redact-secrets.sh",
-    "redact-tmpdir-paths.sh",
     "ci-failed-jobs.sh",
     "ship-pr.sh",
+)
+_STUB_PASSTHROUGH_SCRIPTS = (
+    "redact-secrets.sh",
+    "redact-tmpdir-paths.sh",
 )
 
 
@@ -62,6 +63,25 @@ def _prepare_stub_repo(tmp_path: Path) -> Path:
         _ = shutil.copy(REPO_ROOT / "scripts" / name, scripts / name)
     for name in _STUB_EXECUTABLES:
         (scripts / name).chmod(0o755)
+    for name in _STUB_PASSTHROUGH_SCRIPTS:
+        stub = scripts / name
+        stub.write_text("#!/usr/bin/env bash\ncat\n", encoding="utf-8")
+        stub.chmod(0o755)
+    python_dir = root / "python"
+    python_dir.mkdir(parents=True)
+    cli_stub = python_dir / "cli.py"
+    cli_stub.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env python3
+            import sys
+            if len(sys.argv) >= 3 and sys.argv[1] == "redact":
+                sys.stdout.write(sys.stdin.read())
+            """
+        ),
+        encoding="utf-8",
+    )
+    cli_stub.chmod(0o755)
     stub_lint = scripts / "lint-fix-loop.sh"
     _ = stub_lint.write_text(
         textwrap.dedent(

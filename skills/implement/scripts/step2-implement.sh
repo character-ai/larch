@@ -762,8 +762,8 @@ fi
 if [[ "$LAUNCHER_EXIT" != "0" ]]; then
     if [[ "$CODER" == "codex" ]] && manifest_on_disk_is_salvageable_complete; then
         WARN_NONZERO_EXIT_SALVAGE=true
-        if [[ -x "$PLUGIN_ROOT/python/cli.py run-log append-entry" && -d "$TMPDIR_ARG" ]]; then
-            "$PLUGIN_ROOT/python/cli.py run-log append-entry" \
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry \
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --category Warnings \
                 --entry "Step 4 — $TOOL_TAG exited non-zero (LAUNCHER_EXIT=$LAUNCHER_EXIT) after atomically writing a complete manifest; not discarding it — continuing to validation/commit ($NONZERO_EXIT_WARN_TOKEN=true). A self-verification step likely failed after the implementation work completed." >/dev/null 2>&1 || true
@@ -920,7 +920,7 @@ if [[ "$STATUS" == "complete" ]]; then
     # Note: this check compares declared manifest paths against working-tree
     # paths; it does NOT cross-reference the plan's "Files to modify" section.
     # May include pre-existing dirty paths if the tree was not clean at launch.
-    APPEND_TOOL="$PLUGIN_ROOT/python/cli.py run-log append-entry"
+    APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry
     if [[ -x "$APPEND_TOOL" && -d "$TMPDIR_ARG" ]]; then
         {
             WT_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-working-tree.XXXXXX")
@@ -974,7 +974,7 @@ if [[ "$STATUS" == "complete" ]]; then
     # advisory, and operator / `/review` / pre-commit hooks are the
     # downstream backstops.
     COMMIT_MSG_FILE="$TMPDIR_ARG/${TOOL_TAG}-commit-message.txt"
-    REDACT_FOR_COMMIT="$PLUGIN_ROOT/python/cli.py redact secrets"
+    REDACT_FOR_COMMIT=python3 "$PLUGIN_ROOT/python/cli.py" redact secrets
     if [[ -x "$REDACT_FOR_COMMIT" ]]; then
         jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "$REDACT_FOR_COMMIT" > "$COMMIT_MSG_FILE.tmp"
     else
@@ -1001,23 +1001,17 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "commit-failed"
     fi
     rm -f "$COMMIT_STDERR_FILE"
-    "$PLUGIN_ROOT/python/cli.py run-log flush" || true
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log flush || true
 fi
 
 # Step 8: sanitization. Apply python/cli.py redact secrets to text fields, then
 # write the canonical manifest.json (replacing the raw copy).
-REDACT="$PLUGIN_ROOT/python/cli.py redact secrets"
-# Fail closed if the redactor file exists but is not executable — a sparse
-# checkout or broken perms must NOT silently emit raw manifest text into
-# downstream public surfaces (release notes, PR body, GitHub issues).
-if [[ -e "$REDACT" && ! -x "$REDACT" ]]; then
-    emit_bailed "redactor-not-executable"
-fi
-if [[ -x "$REDACT" ]]; then
+_redact_secrets() { python3 "$PLUGIN_ROOT/python/cli.py" redact secrets; }
+if command -v python3 >/dev/null 2>&1; then
     # Build a sanitized version of the manifest by piping each text field through
     # redact secrets. We use jq to extract, redact in shell, then re-inject.
     sanitize_string() {
-        if [[ -z "$1" ]]; then printf '%s' ""; else printf '%s' "$1" | "$REDACT"; fi
+        if [[ -z "$1" ]]; then printf '%s' ""; else printf '%s' "$1" | _redact_secrets; fi
     }
 
     # Extract fields, sanitize, and write a sanitized manifest.
@@ -1109,7 +1103,7 @@ if [[ "$STATUS" == "complete" ]]; then
         MAT_RC=0
         bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
         if [[ "$MAT_RC" -ne 0 ]]; then
-            APPEND_TOOL="$PLUGIN_ROOT/python/cli.py run-log append-failure"
+            APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure
             if [[ -x "$APPEND_TOOL" ]]; then
                 "$APPEND_TOOL" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
@@ -1126,7 +1120,7 @@ if [[ "$STATUS" == "complete" ]]; then
         fi
     else
         printf 'materialize helper missing or not executable: %s\n' "$MATERIALIZE_OOS" >"$MAT_OOS_LOG"
-        APPEND_TOOL="$PLUGIN_ROOT/python/cli.py run-log append-failure"
+        APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure
         if [[ -x "$APPEND_TOOL" ]]; then
             "$APPEND_TOOL" \
                 --log "$TMPDIR_ARG/execution-issues.md" \

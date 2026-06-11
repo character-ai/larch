@@ -188,7 +188,7 @@ if [ "$rc" -eq 0 ]; then
     exit 0
 fi
 
-"$PLUGIN_ROOT/python/cli.py run-log append-failure" \
+python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
     --log "$ISSUE_LOG" \
     --site flush-execution-issues \
     --tool run-log \

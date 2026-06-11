@@ -14,7 +14,7 @@ larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
-APPEND_FAIL_SH="$PLUGIN_ROOT/python/cli.py run-log append-failure"
+append_fail_sh() { python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure "$@"; }
 
 usage() {
     larch_err "Usage: decompose-panel-dispatch.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false --mode plan|feature-only [--plan-file PATH] [--feature-file PATH] [--discussion-round1-file PATH] [--timeout SEC]"
@@ -248,9 +248,9 @@ set -e
 if [[ "$_wf_rc" != 0 ]]; then
     _cap="$DECOMP_DIR/decompose-waterfall-failure.log"
     printf '%s\n' "$_dispatch_out" >"$_cap"
-    if [[ -x "$APPEND_FAIL_SH" ]]; then
+    if true; then
         set +e
-        bash "$APPEND_FAIL_SH" \
+        append_fail_sh \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 2b.5 decompose panel" \
             --tool "dispatch-with-waterfall.sh" \

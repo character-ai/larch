@@ -269,8 +269,8 @@ emit_tally_with_failure_isolation() {
 
 append_review_execution_issue() {
     local entry="$1"
-    [[ -x "$PLUGIN_ROOT/python/cli.py run-log append-entry" ]] || return 0
-    "$PLUGIN_ROOT/python/cli.py run-log append-entry" \
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry \
         --log "$(execution_issues_log)" \
         --category "External Reviewer Issues" \
         --entry "$entry" 2>/dev/null || true

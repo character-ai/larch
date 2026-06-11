@@ -16,7 +16,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
-REDACTOR="$PLUGIN_ROOT/python/cli.py redact secrets"
+REDACTOR=python3 "$PLUGIN_ROOT/python/cli.py" redact secrets
 
 UPSTREAM=""
 FORK=""

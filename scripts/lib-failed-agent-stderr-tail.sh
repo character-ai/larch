@@ -92,7 +92,7 @@ select_failed_agent_stderr_source() {
 
 render_failed_agent_stderr_tail() {
     local source_file="$1"
-    local lines cap redact spool
+    local lines cap spool
 
     lines=$(failed_agent_stderr_tail_lines)
     if [[ "$lines" == "0" ]]; then
@@ -101,14 +101,15 @@ render_failed_agent_stderr_tail() {
     [[ -n "$source_file" && -s "$source_file" ]] || return 1
 
     cap=$(failed_agent_stderr_byte_cap)
-    redact_tmpdir="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-tmpdir-paths.sh"
-    redact="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-secrets.sh"
-    [[ -x "$redact_tmpdir" && -x "$redact" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
 
     spool=$(mktemp "${TMPDIR:-/tmp}/larch-stderr-tail-spool.XXXXXX") || return 1
     local _pipe_rc=0
     set +o pipefail 2>/dev/null || true
-    tail -n "$lines" "$source_file" | "$redact_tmpdir" | "$redact" >"$spool" || _pipe_rc=$?
+    tail -n "$lines" "$source_file" \
+        | python3 "$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/../python/cli.py" redact tmpdir-paths \
+        | python3 "$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/../python/cli.py" redact secrets \
+        >"$spool" || _pipe_rc=$?
     set -o pipefail 2>/dev/null || true
     if [[ "$_pipe_rc" -ne 0 ]] || [[ ! -s "$spool" ]]; then
         rm -f "$spool"
@@ -486,8 +487,6 @@ append_vendor_failure_diagnostics() {
     local parts_dir="$tmpdir/vendor-failure-diagnostics.parts"
     mkdir -p "$parts_dir" 2>/dev/null || return 0
     local cap; cap=$(vendor_failure_diag_byte_cap)
-    local redact_tmpdir="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-tmpdir-paths.sh"
-    local redact="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-secrets.sh"
     local raw red part
     raw=$(mktemp "${TMPDIR:-/tmp}/larch-vendor-failure-raw.XXXXXX" 2>/dev/null) || return 0
     {
@@ -501,10 +500,12 @@ append_vendor_failure_diagnostics() {
         fi
     } > "$raw" 2>/dev/null || { rm -f "$raw"; return 0; }
     red=$(mktemp "${TMPDIR:-/tmp}/larch-vendor-failure-red.XXXXXX" 2>/dev/null) || { rm -f "$raw"; return 0; }
-    if [[ -x "$redact_tmpdir" && -x "$redact" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
         # Run the redaction pipe in a subshell so `set +o pipefail` cannot leak
         # the disabled state back to callers that run under `set -euo pipefail`.
-        if ! ( set +o pipefail; "$redact_tmpdir" < "$raw" | "$redact" > "$red" ) 2>/dev/null; then
+        if ! ( set +o pipefail
+               python3 "$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/../python/cli.py" redact tmpdir-paths < "$raw" \
+                   | python3 "$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/../python/cli.py" redact secrets > "$red" ) 2>/dev/null; then
             cp "$raw" "$red" 2>/dev/null || true
         fi
     else

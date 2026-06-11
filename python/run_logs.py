@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
 """larch-log manifest lifecycle and split flush entrypoints."""
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ _TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
 _TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_QUIET_LOG_RE = re.compile(r"^larch-quiet-[A-Za-z0-9._-]+-[0-9]+\.log$")
 
 
 @dataclass(frozen=True)
@@ -1788,15 +1790,39 @@ def publish_breadcrumbs_main(argv: list[str]) -> int:
     if not src.is_dir():
         print(f"publish-breadcrumbs: source directory not found: {src}", file=sys.stderr)
         return 1
+    source_root = src.parent
+    quiet_logs = sorted(
+        item for item in source_root.iterdir() if _QUIET_LOG_RE.fullmatch(item.name)
+    )
+    if not quiet_logs:
+        return 0
     with tempfile.TemporaryDirectory(dir=dest.parent if dest.parent.exists() else None, prefix=".breadcrumbs.") as tmp:
         staged = Path(tmp) / dest.name
-        for item in sorted(src.rglob("*")):
-            if item.is_dir() or item.is_symlink():
+        quiet_log = staged / "quiet.log"
+        redacted_parts: list[str] = []
+        for item in quiet_logs:
+            if item.is_symlink():
+                print(f"publish-breadcrumbs: refusing symlink quiet log: {item}", file=sys.stderr)
+                return 1
+            try:
+                stat_result = item.stat()
+            except OSError as exc:
+                print(f"publish-breadcrumbs: cannot stat quiet log {item}: {exc}", file=sys.stderr)
+                return 1
+            if not item.is_file():
                 continue
-            rel = item.relative_to(src)
-            out = staged / rel
+            if stat_result.st_nlink > 1:
+                print(f"publish-breadcrumbs: refusing hardlinked quiet log: {item}", file=sys.stderr)
+                return 1
+            out = Path(tmp) / f"{item.name}.redacted"
             state = Path(tmp) / ".redact-state"
             redact.redact_breadcrumb_file(item, out, state)
+            redacted_parts.append(f"=== {item.name} ===\n")
+            redacted_parts.append(out.read_text(encoding="utf-8", errors="replace"))
+        if not redacted_parts:
+            return 0
+        quiet_log.parent.mkdir(parents=True, exist_ok=True)
+        quiet_log.write_text("".join(redacted_parts), encoding="utf-8")
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             shutil.rmtree(dest)

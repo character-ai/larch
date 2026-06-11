@@ -185,10 +185,13 @@ while (( attempt <= 100 )); do
 done
 [[ -n "$LOG_FILE" ]] || fail "log-allocation-attempt-cap" 1
 
-# Scrub LARCH_QUIET_* so test harnesses inside the checks pipeline run
+# Scrub LARCH_QUIET_* and CLAUDE_PLUGIN_ROOT so test harnesses inside the checks pipeline run
 # hermetically regardless of the invoking skill session's quiet state.
+# Unsetting CLAUDE_PLUGIN_ROOT ensures lib-quiet.sh uses the repo's own python/cli.py
+# rather than the plugin cache's (which may not yet have the new CLI verbs).
 if (
-    unset LARCH_QUIET_DISABLE LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG
+    unset LARCH_QUIET_DISABLE LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+        CLAUDE_PLUGIN_ROOT LARCH_CLAUDE_PLUGIN_ROOT
     cd "$REPO_ROOT" && "$CHECK_SCRIPT"
 ) >"$LOG_FILE" 2>&1; then
     rc=0
