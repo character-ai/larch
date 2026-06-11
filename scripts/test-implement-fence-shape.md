@@ -6,7 +6,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 
 - Every Bash fence has exactly one plugin-rooted `.sh` / `.py` invocation after allowed source guards, comments, and pre-bootstrap awk fallback lines.
 - No adjacent Bash fences are separated only by blank lines.
-- Telemetry-only fences (`step-telemetry-mark.sh`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
+- Telemetry-only fences (token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
 - Inline `session read-key` calls are banned from SKILL.md fences.
 
 ## Caller

@@ -51,7 +51,8 @@ main() {
     fi
 
     "$SCRIPT_DIR/cleanup.sh" --help >/dev/null 2>&1 || true
-    "$PLUGIN_ROOT/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 18 — cleanup" || true
+    "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
 
     local session_env="$tmpdir/session-env.sh"
     if [ -f "$session_env" ]; then

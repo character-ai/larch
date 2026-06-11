@@ -39,7 +39,8 @@ rehydrate_larch_triplet() {
 }
 
 rehydrate_plugin_root
-"$CLAUDE_PLUGIN_ROOT/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 17 — final report" || true
+"$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 17 — final report" || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 17 — final report" || true
 _step17_wfr_log="$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log"
 : >"$_step17_wfr_log" 2>/dev/null || true
 if "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then

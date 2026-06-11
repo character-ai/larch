@@ -25,7 +25,7 @@ python3 <<'PY'
 from pathlib import Path
 import sys
 lines=Path('skills/implement/SKILL.md').read_text().splitlines()
-blocked=('session read-key','token-ledger.sh','timing-ledger.sh','token-report.sh','timing-report.sh','step-telemetry-mark.sh')
+blocked=('session read-key','token-ledger.sh','timing-ledger.sh','token-report.sh','timing-report.sh')
 in_fence=False; start=0; errors=[]
 for i,line in enumerate(lines,1):
     if line.lstrip().startswith('```bash'):
