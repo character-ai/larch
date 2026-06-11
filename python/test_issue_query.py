@@ -140,6 +140,22 @@ def test_issue_context_cli_emit_kv(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert emitted == [("TITLE_FILE", str(tmp_path / "t")), ("BODY_FILE", str(tmp_path / "b"))]
 
 
+def test_issue_context_cli_runtime_shiperror_no_success_kv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emitted: list[tuple[str, str]] = []
+
+    def raise_context(*_args: object, **_kwargs: object) -> tuple[Path, Path]:
+        raise ShipError("boom")
+
+    monkeypatch.setattr(issue_query.logging_util, "quiet_init", lambda **_: None)
+    monkeypatch.setattr(issue_query.logging_util, "emit_kv", lambda key, value: emitted.append((key, value)))
+    monkeypatch.setattr(issue_query, "issue_context", raise_context)
+    assert issue_query.issue_context_main(["--issue", "1", "--repo", "o/r", "--tmpdir", str(tmp_path)]) == 1
+    assert not emitted
+
+
 @pytest.mark.parametrize(
     ("argv", "rc"),
     [
@@ -177,6 +193,20 @@ def _run_cli(args: list[str], env: dict[str, str]) -> subprocess.CompletedProces
     )
 
 
+def test_issue_context_cli_help_and_usage_visible_under_quiet(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["TMPDIR"] = str(tmp_path)
+    usage = "Usage: get-issue-context.sh --issue N --repo OWNER/REPO --tmpdir PATH\n"
+    help_result = _run_cli(["issue", "context", "--help"], env)
+    assert help_result.returncode == 0
+    assert help_result.stdout == usage
+    assert help_result.stderr == ""
+    usage_result = _run_cli(["issue", "context", "--unknown"], env)
+    assert usage_result.returncode == 2
+    assert usage_result.stdout == ""
+    assert usage_result.stderr == usage
+
+
 def test_issue_state_cli_subprocess_repo_paths(tmp_path: Path) -> None:
     log = tmp_path / "argv.log"
     env = _write_gh_stub(
@@ -193,6 +223,25 @@ def test_issue_state_cli_subprocess_repo_paths(tmp_path: Path) -> None:
     omitted = _run_cli(["issue", "state", "--issue", "1"], env)
     assert omitted.returncode == 0
     assert "--repo resolved/repo" in log.read_text(encoding="utf-8")
+
+
+def test_issue_state_empty_resolution_omits_repo(tmp_path: Path) -> None:
+    log = tmp_path / "argv.log"
+    env = _write_gh_stub(
+        tmp_path,
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$*\" >> {log}\n"
+        "if [[ $1 == repo ]]; then exit 1; fi\n"
+        "if [[ $1 == issue ]]; then printf '{\"state\":\"OPEN\",\"url\":\"https://github.com/o/r/issues/1\"}'; exit 0; fi\n"
+        "exit 99\n",
+    )
+    git_stub = tmp_path / "git"
+    git_stub.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    git_stub.chmod(0o755)
+    result = _run_cli(["issue", "state", "--issue", "1"], env)
+    assert result.returncode == 0
+    assert "STATE=OPEN" in result.stdout
+    assert "--repo" not in log.read_text(encoding="utf-8").splitlines()[-1]
 
 
 def test_issue_info_empty_resolution_omits_repo(tmp_path: Path) -> None:

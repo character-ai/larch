@@ -74,6 +74,39 @@ def test_prose_open_blockers_parses_body_and_comment_bodies() -> None:
     assert runner.calls[1] == ["gh", "api", "/repos/o/r/issues/7/comments", "--paginate"]
 
 
+def test_prose_open_blockers_keeps_comment_refs_when_body_fails() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(rc=1),
+            _result(stdout=json.dumps([{"body": "Needs #9"}])),
+            _result(stdout=json.dumps({"state": "OPEN", "url": "u"})),
+        ]
+    )
+    assert blocker.prose_open_blockers(runner, "7", repo="o/r") == [9]
+
+
+def test_prose_open_blockers_keeps_body_refs_when_comments_fail() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(stdout=json.dumps({"title": "t", "body": "Depends on #8"})),
+            _result(rc=1),
+            _result(stdout=json.dumps({"state": "OPEN", "url": "u"})),
+        ]
+    )
+    assert blocker.prose_open_blockers(runner, "7", repo="o/r") == [8]
+
+
+def test_prose_open_blockers_body_json_failure_does_not_drop_comments() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(stdout="not json"),
+            _result(stdout=json.dumps([{"body": "Blocked by #10"}])),
+            _result(stdout=json.dumps({"state": "OPEN", "url": "u"})),
+        ]
+    )
+    assert blocker.prose_open_blockers(runner, "7", repo="o/r") == [10]
+
+
 def test_all_open_blockers_short_circuits_native(monkeypatch: pytest.MonkeyPatch) -> None:
     called = False
 

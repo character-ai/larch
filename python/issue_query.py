@@ -213,7 +213,6 @@ def _parse_context_args(argv: list[str]) -> tuple[dict[str, str], int, bool]:
 
 
 def issue_context_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="get-issue-context.sh")
     values, status, help_requested = _parse_context_args(argv)
     if help_requested:
         print(_usage())
@@ -223,6 +222,7 @@ def issue_context_main(argv: list[str]) -> int:
     if status == _CONTEXT_USAGE_RC:
         print(_usage(), file=sys.stderr)
         return _CONTEXT_USAGE_RC
+    logging_util.quiet_init(argv0="get-issue-context.sh")
     try:
         title_file, body_file = issue_context(
             proc,

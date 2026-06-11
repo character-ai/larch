@@ -77,32 +77,38 @@ def _comment_bodies(text: str) -> list[str]:
 
 def prose_open_blockers(runner: Runner, issue: str, *, repo: str) -> list[int]:
     """Return open prose blockers from issue body and comments, failing open."""
+    refs: set[int] = set()
+    body_text = ""
     try:
         body_result = gh.issue_view_title_body_read(runner, str(issue), repo=repo)
-        if body_result.returncode != 0:
-            return []
-        comments_result = gh.issue_comments_list_read(runner, str(issue), repo=repo)
-        if comments_result.returncode != 0:
-            return []
-        refs: set[int] = set(parse_prose_blockers(_body_from_issue_json(body_result.stdout)))
-        for body in _comment_bodies(comments_result.stdout):
-            refs.update(parse_prose_blockers(body))
-        if str(issue).isdigit():
-            refs.discard(int(issue))
-        open_refs: set[int] = set()
-        for ref in sorted(refs):
-            try:
-                state_result = gh.issue_view_state_url_read(runner, str(ref), repo=repo)
-                if state_result.returncode != 0:
-                    continue
-                state_data = json.loads(state_result.stdout or "{}")
-                if isinstance(state_data, dict) and str(state_data.get("state", "")).lower() == "open":
-                    open_refs.add(ref)
-            except Exception:  # noqa: S112 - per-ref state lookup is fail-open.
-                continue
-        return sorted(open_refs)
+        if body_result.returncode == 0:
+            body_text = _body_from_issue_json(body_result.stdout)
     except Exception:
-        return []
+        body_text = ""
+    refs.update(parse_prose_blockers(body_text))
+    comment_bodies: list[str] = []
+    try:
+        comments_result = gh.issue_comments_list_read(runner, str(issue), repo=repo)
+        if comments_result.returncode == 0:
+            comment_bodies = _comment_bodies(comments_result.stdout)
+    except Exception:
+        comment_bodies = []
+    for body in comment_bodies:
+        refs.update(parse_prose_blockers(body))
+    if str(issue).isdigit():
+        refs.discard(int(issue))
+    open_refs: set[int] = set()
+    for ref in sorted(refs):
+        try:
+            state_result = gh.issue_view_state_url_read(runner, str(ref), repo=repo)
+            if state_result.returncode != 0:
+                continue
+            state_data = json.loads(state_result.stdout or "{}")
+            if isinstance(state_data, dict) and str(state_data.get("state", "")).lower() == "open":
+                open_refs.add(ref)
+        except Exception:  # noqa: S112 - per-ref state lookup is fail-open.
+            continue
+    return sorted(open_refs)
 
 
 def all_open_blockers(runner: Runner, issue: str, *, repo: str) -> list[int]:
