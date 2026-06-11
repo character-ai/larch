@@ -4,7 +4,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-READ_RESULT_ENV_SH="$REPO_ROOT/scripts/read-result-env.sh"
 
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
