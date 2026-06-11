@@ -53,7 +53,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 12. **NEVER write, append to, or recreate `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** **Why**: `session-env.sh` is the persistence layer that child scripts (`run-step1-plan-log.sh`, `run-step5-review.sh`, `review-and-fix.sh`, and every `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` caller) read on each invocation; orchestrator-side `>>` appends, `cat > … <<EOF` rewrites, or `printf` snippets that "fix up" a missing key bypass the writer's anchored filter and post-condition assertion. The exact symptom that motivated this rule (issue #2326) was an `/implement` run whose Step 1 post-plan materialization was incomplete while the orchestrator papered over missing keys via prompt-side `session-env.sh` edits, producing a file whose ordering and idempotency guarantees were unverified. **How to apply**: the sanctioned writers are `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-env` (Step 0 initial write), `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` (which delegates to `session write-env`), `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session persist-run-flags` (Step 1 run-flag persistence), and `_persist_larch_run_id()` in `scripts/implement-bootstrap.sh` (post-tracking re-write that adds `LARCH_RUN_ID` via a second `session write-env` call). The plan file is always at the conventional path `$IMPLEMENT_TMPDIR/plan.txt` — child scripts do not read `PLAN_FILE` from `session-env.sh`. If `run-step1-plan-log.sh` or `run-step5-review.sh` fails because that path is missing, repair Step 1 plan materialization — do NOT compose `session-env.sh` lines from prompt-side shell to silence the error. The orchestrator's only sanctioned interaction with `session-env.sh` is READING via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` and INVOKING the writers above.
 
-13. **(removed — see issue #3111 Stage 4; Family-B background+monitor pairs are deleted.)** Long-running scripts (>= 30 s) are now spawned with `run_in_background: true` (immediate-background mode); see NEVER #8. If an unexpected turn end occurs on the bash opt-in path, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the fenced bash contract **only when `LARCH_SHIP_PR_IMPL=bash`** and without `--resume-phase`; on the default path, re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` per the selector (no `--resume-phase`) so the immediate-background wrapper contract remains intact.
+13. **(removed — see issue #3111 Stage 4; Family-B background+monitor pairs are deleted.)**
 
 14. **NEVER silently drop a voted-in OOS finding.** **Why**: accepted OOS blocks are the durable contract between reviewers, the implementer manifest, and Step 9a.1 filing — losing them between acceptance and GitHub/inline disposition breaks auditability and leaves follow-up work untracked. **How to apply**: honor the Terminal disposition invariant in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`; run `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh` before clearing `OOS_PENDING`; if the checkpoint fails, rely on its `Tool Failures` logging and do not clear `OOS_PENDING` or write the `run-statistics` batch until the gap or validation/setup failure is resolved.
 
@@ -140,7 +140,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
-**MANDATORY — READ ENTIRE FILE before routing any rebase checkpoint result**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md` (exit/KV routing, STALL_TRACKING ownership, authorized call-site registry, and the Step 7a relay note).
+**Conditional routing reference**: after each checkpoint wrapper returns, parse the probe process rc and `ROUTE=continue|conflict|bail` from the captured stdout. Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md` when the process rc is non-zero, when rc is `0` with `ROUTE=conflict` or `ROUTE=bail`, or when `ROUTE` is missing or malformed. Skip that reference only when the process rc is `0` and `ROUTE=continue`. Do not use `REBASE_OUTCOME` as a substitute for the process rc plus `ROUTE=continue` skip predicate.
 
 ## Flags
 
@@ -213,7 +213,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
    - Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted; needs-design-clarification label add attempted. Run /design <N> to clarify.`
    - Exit **3** (do not run Step 0).
 
-6. **On `AUDIT=pass` or emergency-bypassed `AUDIT=refuse` — semantic materiality (comment-only)** — read the codebase plus `CLAUDE.md` / `AGENTS.md` as needed. If the issue's problem statement is clearly **not** actual anymore (superseded design, removed feature surface, plan targets files that no longer exist with no migration path), compose a short explanation, pipe through `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets` into `$PREFLIGHT_TMPDIR/stale-notice.md`, post **one** `gh issue comment <N> --body-file "$PREFLIGHT_TMPDIR/stale-notice.md"` (when `forked_target=true`, include `--repo "$UPSTREAM_REPO"`), and exit **2**. **`gh issue comment` failure contract**: on non-zero exit, retry the same command once; if both attempts fail, print an operator-visible error stating the stale-notice comment was **not** posted (do not imply it was) and exit **2**. Do **not** autonomously close or rename the issue. If still actual or judgment is uncertain after reasonable inspection, continue.
+6. **On `AUDIT=pass` or emergency-bypassed `AUDIT=refuse` — semantic materiality (comment-only)** — run one batched Bash probe block over plan-cited paths and symbols: include existence checks such as `test -f` / `test -e` for named files, plus targeted `rg` checks for named functions, flags, markers, or step anchors. If that bounded probe clearly shows the issue's problem statement is **not** actual anymore (superseded design, removed feature surface, plan targets files that no longer exist with no migration path), compose a short explanation, pipe through `${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets` into `$PREFLIGHT_TMPDIR/stale-notice.md`, post **one** `gh issue comment <N> --body-file "$PREFLIGHT_TMPDIR/stale-notice.md"` (when `forked_target=true`, include `--repo "$UPSTREAM_REPO"`), and exit **2**. **`gh issue comment` failure contract**: on non-zero exit, retry the same command once; if both attempts fail, print an operator-visible error stating the stale-notice comment was **not** posted (do not imply it was) and exit **2**. Do **not** autonomously close or rename the issue. If the probe does not show clear staleness, continue to Step 0 without further codebase or doc reads.
 
 7. **Preflight pass gate**: retain `PREFLIGHT_TMPDIR` and `plan-from-issue.txt`; proceed to Step 0.
 
@@ -258,7 +258,7 @@ Parse the routing envelope from wrapper stdout and `$IMPLEMENT_TMPDIR/bootstrap-
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
 | `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
-**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` rehydrated from durable `$IMPLEMENT_TMPDIR/session-env.sh` in the same Bash block as the gate call, and `--skill implement`.
+**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** wrapper. The wrapper rehydrates `CODEX_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_BINARY_FOUND`, and `CURSOR_PRESENT` from durable `$IMPLEMENT_TMPDIR/session-env.sh`, then invokes `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with those explicit presence flags and `--skill implement`.
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
@@ -266,7 +266,13 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh"
 ```
 
-Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**); on **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. On an **autonomous / non-interactive** run (the common `/implement` mode — cron, `claude -p`, `<<autonomous-loop>>`), do NOT prompt: log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded — the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role. Guard with a `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel so dirty-tree / resume-plan-tail re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+Apply this inline procedure to the gate stdout:
+
+- If `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage.
+- Interactive runs may prompt only in operator-facing mode. Subagents, `claude -p`, cron, eval, autonomous runs, and `<<autonomous-loop>>` runs do not prompt.
+- If `DEGRADED=true` on an interactive run and the `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel is absent: when `BOTH_DOWN` is exactly `false` (one tool unavailable), print the explanation block as a notice, write the sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**). On **Continue**, write the sentinel and proceed with reduced-panel dispatch. On **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup.
+- If `DEGRADED=true` on a non-interactive run, do not prompt. Log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded; the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role.
+- The sentinel guards dirty-tree and resume-plan-tail re-entry from re-prompting. The gate does not flip `codex_available` or `cursor_available`.
 
 Step 0 dirty-tree recovery gate:
 
@@ -289,9 +295,11 @@ The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-en
 
 ### Cross-Skill Presence Propagation
 
+No cross-skill presence propagation action is required; this anchor preserves the post-review boundary chain.
+
 ## Phantom Untracked Probe
 
-**MANDATORY — READ ENTIRE FILE before parsing `PHANTOM_*` keys or changing probe call sites**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` (advisory contract, combined/standalone entrypoints, registry, and no-post-Step-6 rationale).
+Reference `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/phantom-probe.md` when changing probe call sites. Trailing `PHANTOM_*` KVs are advisory telemetry; do not act on them.
 
 ## Execution Issues Tracking
 
@@ -319,7 +327,7 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization' --forked-target "${forked_target:-false}"
 ```
 
-Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=1.r` and `<short-name>=plan materialization` (parse `REBASE_OUTCOME` / phantom tail KVs from the captured stdout; set `STALL_TRACKING` only on bail branches).
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=1.r` and `<short-name>=plan materialization` (parse the process rc, `ROUTE=continue|conflict|bail`, `REBASE_OUTCOME`, and phantom tail KVs from the captured stdout; set `STALL_TRACKING` only on bail branches).
 
 <!-- step:2 — Implement the Feature -->
 
@@ -476,8 +484,6 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step3
 ```
 
-After the helper returns clean (or after failure triage has made it clean), close Step 3 telemetry:
-
 <!-- step:4 — First Commit (implementation) -->
 
 Print: `> **🔶 /implement 4: commit (impl)**`
@@ -518,7 +524,7 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 4.r 'commit (impl)' --forked-target "${forked_target:-false}"
 ```
 
-Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (phantom probe for `4.r-post-rebase` is already inside the wrapper — parse `PHANTOM_*` from the same stdout capture).
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (parse the process rc and `ROUTE=continue|conflict|bail`; phantom probe for `4.r-post-rebase` is already inside the wrapper, so parse `PHANTOM_*` from the same stdout capture).
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, and PR still must run.
 
@@ -686,8 +692,6 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step6
 ```
 
-After the helper returns clean (or after failure triage has made it clean), close Step 6 telemetry:
-
 <!-- step:7 — Second Commit (review fixes) -->
 
 Print: `> **🔶 /implement 7: commit (review)**`
@@ -715,7 +719,7 @@ export IMPLEMENT_TMPDIR
 "${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7.r 'commit (review)' --forked-target "${forked_target:-false}"
 ```
 
-Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path; if Steps 6–7 were skipped, skip this entire subsection — including the Bash fence above).
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (parse the process rc and `ROUTE=continue|conflict|bail`; phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path. If Steps 6–7 were skipped, skip this entire subsection, including the Bash fence above).
 
 <!-- step:7a — Code Flow Diagram -->
 
@@ -723,10 +727,10 @@ Print: `> **🔶 /implement 7a: diagrams**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
-**MANDATORY — READ ENTIRE FILE** before writing `larch:diagrams` summary comments: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`.
+Step 7a composes no prompt-side public summary; the helper owns the `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`.
 
 `skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch.
-The helper invokes `${CLAUDE_PLUGIN_ROOT}/python/cli.py diagrams upsert` for the stable issue-scoped `<!-- larch:diagrams v1 -->` comment, and only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
+The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
 
@@ -741,7 +745,7 @@ export IMPLEMENT_TMPDIR
   --forked-target "${forked_target:-false}"
 ```
 
-Parse the combined stdout for `REBASE_OUTCOME` first, then read the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns; `step-7a.sh` preserves the probe exit code and only runs the pre-ship flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
+Treat `step-7a.sh` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `ROUTE=continue|conflict|bail` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed; this scan ordering does not bypass the process rc plus `ROUTE=continue` skip predicate. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns; `step-7a.sh` preserves the probe exit code and only runs the pre-ship flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
 
 > **Continue to Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — PR creation, CI monitoring, and merge still must run.
 
@@ -792,7 +796,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 
 > **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 0 materialization complete but Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** The active Step 8+ driver hard-fails through its normal JSON/exit contract if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
 
-> **Long-running active driver call.** Set `run_in_background: true` and `timeout: 21600000` on the Bash tool call (immediate-background mode); the harness notifies on completion via `<task-notification>`. **Recovery after unexpected turn end**: on the default Python path, re-invoke the Python selector argv without `--resume-phase`; when `LARCH_SHIP_PR_IMPL=bash`, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke the bash contract below **without** `--resume-phase` so the persisted state machine continues — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. The seven argv-init per-key flags are ignored on resume unless `--force-init-state true`; omitting them on resume is fine. Use `--resume-phase <token>` only for tokens `ship-pr.sh` accepts or paths already spelled out in the exit-code matrix (including `RESUME_PHASE=ship-pr-rrr-phase14` on Exit 4's `ship_pr_pre_push` conflict handoff), not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
+> **Long-running active driver call.** Set `run_in_background: true` and `timeout: 21600000` on the Bash tool call (immediate-background mode); the harness notifies on completion via `<task-notification>`. **Recovery after unexpected turn end**: on the default Python path, re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` per the selector without `--resume-phase`; when `LARCH_SHIP_PR_IMPL=bash`, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke the bash contract below **without** `--resume-phase` so the persisted state machine continues, noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Do not call `ship-pr.sh` or `python/cli.py ship pr` directly from a separate foreground shell. The seven argv-init per-key flags are ignored on resume unless `--force-init-state true`; omitting them on resume is fine. Use `--resume-phase <token>` only for paths already spelled out in the exit-code matrix, not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 

@@ -114,6 +114,7 @@ if [ "$rc" -eq 0 ]; then
     else
         emit_kv REBASE_OUTCOME "ok"
     fi
+    emit_kv ROUTE "continue"
     phantom_probe_with_warn "${step_prefix}-post-rebase"
     exit 0
 fi
@@ -122,6 +123,7 @@ if [ "$rc" -eq 1 ]; then
     cf=$(_parse_conflict_files)
     emit_kv REBASE_OUTCOME "conflict"
     emit_kv CONFLICT_FILES "$cf"
+    emit_kv ROUTE "conflict"
     exit 1
 fi
 
@@ -133,9 +135,11 @@ if [ "$rc" -eq 3 ]; then
     fi
     emit_kv REBASE_OUTCOME "failed"
     emit_kv REBASE_ERROR "$(_rebase_sanitize "${raw_err:-rebase-failed}")"
+    emit_kv ROUTE "bail"
     exit 3
 fi
 
 emit_kv REBASE_OUTCOME "failed"
 emit_kv REBASE_ERROR "unexpected-rc-${rc}"
+emit_kv ROUTE "bail"
 exit "$rc"

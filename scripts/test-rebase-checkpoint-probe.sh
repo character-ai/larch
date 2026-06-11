@@ -52,6 +52,7 @@ EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" 1.r 'plan materialization' 2>&1) || fail "case1 rc"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=ok' || fail "case1 outcome"
+echo "$out" | grep -Fq 'ROUTE=continue' || fail "case1 route"
 echo "$out" | grep -Fq 'PHANTOM_STATUS=clean' || fail "case1 phantom"
 echo "$out" | grep -Fq '→ rebase-probe: 1.r plan materialization' || fail "case1 breadcrumb"
 
@@ -81,6 +82,7 @@ chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "case2 rc"
 echo "$out" | grep -Fq 'SKIPPED_ALREADY_PUSHED=true' || fail "case2 pushed"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=skipped' || fail "case2 skipped"
+echo "$out" | grep -Fq 'ROUTE=continue' || fail "case2 route"
 if echo "$out" | grep -Fq 'SKIPPED_ALREADY_FRESH=true'; then
     fail "case2 fresh must not emit when pushed wins"
 fi
@@ -110,6 +112,7 @@ chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "case3 rc"
 echo "$out" | grep -Fq 'SKIPPED_ALREADY_FRESH=true' || fail "case3 fresh"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=skipped' || fail "case3 skipped"
+echo "$out" | grep -Fq 'ROUTE=continue' || fail "case3 route"
 
 # --- Case 4: conflict + CONFLICT_FILES, no phantom ---
 d="$TMPROOT/c4"
@@ -139,6 +142,7 @@ rc=$?
 set -e
 [ "$rc" = "1" ] || fail "case4 rc=$rc"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=conflict' || fail "case4 outcome"
+echo "$out" | grep -Fq 'ROUTE=conflict' || fail "case4 route"
 echo "$out" | grep -Fq 'CONFLICT_FILES=a.txt,b.txt' || fail "case4 files"
 if echo "$out" | grep -Fq 'PHANTOM_STATUS'; then
     fail "case4 phantom must not run"
@@ -170,6 +174,7 @@ rc=$?
 set -e
 [ "$rc" = "1" ] || fail "case5 rc=$rc"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=conflict' || fail "case5 outcome"
+echo "$out" | grep -Fq 'ROUTE=conflict' || fail "case5 route"
 
 # --- Case 6: rc=3 stdout REBASE_ERROR ---
 d="$TMPROOT/c6"
@@ -198,6 +203,7 @@ rc=$?
 set -e
 [ "$rc" = "3" ] || fail "case6 rc=$rc"
 echo "$out" | grep -Fq 'REBASE_ERROR=fetch-failed' || fail "case6 err"
+echo "$out" | grep -Fq 'ROUTE=bail' || fail "case6 route"
 
 # --- Case 7: rc=3 stderr REBASE_ERROR ---
 d="$TMPROOT/c7"
@@ -226,6 +232,7 @@ rc=$?
 set -e
 [ "$rc" = "3" ] || fail "case7 rc=$rc"
 echo "$out" | grep -Fq 'REBASE_ERROR=stderr-err' || fail "case7 err"
+echo "$out" | grep -Fq 'ROUTE=bail' || fail "case7 route"
 
 # --- Case 8: unexpected rc ---
 d="$TMPROOT/c8"
@@ -253,6 +260,7 @@ rc=$?
 set -e
 [ "$rc" = "7" ] || fail "case8 rc=$rc"
 echo "$out" | grep -Fq 'REBASE_ERROR=unexpected-rc-7' || fail "case8 unexpected"
+echo "$out" | grep -Fq 'ROUTE=bail' || fail "case8 route"
 
 # --- Case 9 (phantom clean) ---
 d="$TMPROOT/c9x"
@@ -448,6 +456,7 @@ rc=$?
 set -e
 [ "$rc" = "3" ] || fail "case14 rc=$rc got $out"
 echo "$out" | grep -Fq 'REBASE_OUTCOME=failed' || fail "case14 failed"
+echo "$out" | grep -Fq 'ROUTE=bail' || fail "case14 route"
 echo "$out" | grep -Fq 'REBASE_ERROR=' || fail "case14 err"
 
 # --- Case 15: breadcrumb count ---
