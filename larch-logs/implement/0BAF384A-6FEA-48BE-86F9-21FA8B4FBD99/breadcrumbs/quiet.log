@@ -140,6 +140,8 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: coul
 
 === larch-quiet-check-review-changes.sh-30304.log ===
 
+=== larch-quiet-clear-implement-current-env.sh-8804.log ===
+
 === larch-quiet-clear-implement-current-env.sh-88942.log ===
 
 === larch-quiet-cli.py-14896.log ===
@@ -182,6 +184,14 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: coul
 
 === larch-quiet-git-current-branch.sh-68666.log ===
 
+=== larch-quiet-implement-finalize.sh-8837.log ===
+LOG_WRITTEN=true
+LOG_PATH=<TMPDIR>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99/manifest.json
+BYTES=619
+SHA256=11d0e599ae04ba6336289246f7acb3ffe1ac5d24d881a494951e8e9b2f6fcbd1
+COMMIT_SHA=
+UNCHANGED=false
+
 === larch-quiet-implement-finalize.sh-88991.log ===
 LOG_WRITTEN=true
 LOG_PATH=<TMPDIR>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99/manifest.json
@@ -189,6 +199,15 @@ BYTES=619
 SHA256=7341bb1ccc5926956300c93331318cff5f4e06c137d40c39de4a6a621dd46851
 COMMIT_SHA=
 UNCHANGED=false
+LOG_WRITTEN=true
+LOG_PATH=<OPERATOR_REPO_PATH>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99
+BYTES=0
+SHA256=
+COMMIT_SHA=0fb8ab949dca11ba252c8594586582079bb1f7b2
+UNCHANGED=false
+ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at <TMPDIR>
+📎 Tracking issue: https://github.com/character-ai/larch/issues/3688
+✅ 18: cleanup status=complete elapsed=17s
 
 === larch-quiet-read-session-env-key.sh-30204.log ===
 
@@ -221,6 +240,20 @@ UNCHANGED=false
 === larch-quiet-read-session-env-key.sh-79196.log ===
 
 === larch-quiet-read-session-env-key.sh-79248.log ===
+
+=== larch-quiet-read-session-env-key.sh-8193.log ===
+
+=== larch-quiet-read-session-env-key.sh-8231.log ===
+
+=== larch-quiet-read-session-env-key.sh-8265.log ===
+
+=== larch-quiet-read-session-env-key.sh-8649.log ===
+
+=== larch-quiet-read-session-env-key.sh-8676.log ===
+
+=== larch-quiet-read-session-env-key.sh-8705.log ===
+
+=== larch-quiet-read-session-env-key.sh-8738.log ===
 
 === larch-quiet-read-session-env-key.sh-87620.log ===
 
@@ -301,9 +334,13 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.2TF7zF
 
 === larch-quiet-timing-ledger.sh-79381.log ===
 
+=== larch-quiet-timing-ledger.sh-8588.log ===
+
 === larch-quiet-timing-ledger.sh-88142.log ===
 
 === larch-quiet-timing-ledger.sh-99780.log ===
+
+=== larch-quiet-timing-report.sh-8445.log ===
 
 === larch-quiet-timing-report.sh-87930.log ===
 
@@ -311,7 +348,11 @@ APPEND_LOG_FILE=<TMPDIR>/flush-execution-issues-append.2TF7zF
 
 === larch-quiet-token-ledger.sh-79298.log ===
 
+=== larch-quiet-token-ledger.sh-8524.log ===
+
 === larch-quiet-token-ledger.sh-88048.log ===
+
+=== larch-quiet-token-report.sh-8302.log ===
 
 === larch-quiet-token-report.sh-87769.log ===
 
