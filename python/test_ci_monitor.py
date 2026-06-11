@@ -769,7 +769,7 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
         classified=classified,
         logs=logs,
         plan_file=None,
-        start_attempt=0,
+
         cwd=str(tmp_path),
         launch_fn=launch_fn,
     )
@@ -977,7 +977,7 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
         classified=classified,
         logs=logs,
         plan_file=None,
-        start_attempt=0,
+
         cwd=str(tmp_path),
         launch_fn=launch_fn,
     )
@@ -1006,7 +1006,7 @@ def test_run_ci_fix_verify_failed_no_push() -> None:
         classified=classified,
         logs=ci_monitor.LogCollectResult(text="x", state="ready"),
         plan_file=None,
-        start_attempt=0,
+
         cwd=None,
         launch_fn=launch_fn,
     )
@@ -1027,7 +1027,7 @@ def test_run_ci_fix_local_unfixable() -> None:
         classified=classified,
         logs=ci_monitor.LogCollectResult(text="", state="ready"),
         plan_file=None,
-        start_attempt=0,
+
         cwd=None,
         launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
     )
@@ -1824,7 +1824,7 @@ def test_run_ci_fix_head_changed_no_push() -> None:
         classified=classified,
         logs=ci_monitor.LogCollectResult(text="", state="ready"),
         plan_file=None,
-        start_attempt=0,
+
         cwd=None,
         launch_fn=launch_fn,
     )
@@ -1855,7 +1855,7 @@ def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
         classified=classified,
         logs=ci_monitor.LogCollectResult(text="", state="ready"),
         plan_file=None,
-        start_attempt=0,
+
         cwd=None,
         launch_fn=launch_fn,
     )
@@ -1894,9 +1894,8 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
         ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
         ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
-        # attempt 1 uses codex (start_attempt=0), attempt 2 uses cursor (start_attempt=1)
+        # both attempts use codex (always first tier, #3994)
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)"): _cr((commit_script,), 0),
     }
     responses.update(_python_toolchain_stubs())
 
