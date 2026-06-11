@@ -13,7 +13,7 @@ Create an alias skill that forwards to an existing larch skill with preset flags
 
 **Target directory** is resolved automatically:
 
-- A **git repository is required** — the helper (`skills/alias/scripts/resolve-target.sh`) anchors all paths at `git rev-parse --show-toplevel` and fail-closes outside a git working tree. Run `git init` first if you want to use `/alias` in a fresh project.
+- A **git repository is required** — the helper (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target`) anchors all paths at `git rev-parse --show-toplevel` and fail-closes outside a git working tree. Run `git init` first if you want to use `/alias` in a fresh project.
 - Inside a Claude plugin source repo (detected via the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root, matching `validate-args.sh`), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin).
 - In any other git repository (consumer repos with their own larch installation), the alias is generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private skill).
 - `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch when the operator wants a private alias in plugin source). In non-plugin repos `--private` is a no-op.
@@ -31,8 +31,8 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 3. **NEVER auto-remediate when `VERIFIED=false` in Step 4** — do NOT retry `/implement`, roll back, or delete the PR. **Why:** under `--merge` the PR may already be merged; retry would create a divergent PR. Human judgment required.
 4. **NEVER assume success on `VERIFIED=false` just because `/implement` returned.** **Why:** `/implement` can return cleanly while writing the file to the wrong path, skipping the generator, or failing silently — the sentinel-file gate is the only authoritative signal.
 5. **NEVER parse `--merge` or `--private` tokens after the first positional argument as flags for `/alias`.** **Why:** both flags have a dual role (consumed by `/alias` when before the first positional; passed through to the alias's preset flags otherwise); conflating the two is a silent footgun.
-6. **NEVER hardcode `.claude/skills/<alias-name>` or `skills/<alias-name>` paths anywhere in Steps 2/3/4 — always thread `$TARGET_DIR`.** **Why:** the resolved target directory is the single source of truth (computed once at Step 2 by `resolve-target.sh`); a partial edit that re-introduces a hardcoded path in one site (e.g., the `/implement` recipe) but not another (e.g., the verify sentinel) creates a silent path split where `/implement` writes one tree and Step 4 verifies a different tree. Enforced by `scripts/test-alias-structure.sh` (CI).
-7. **NEVER use `eval "$(resolve-target.sh ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the script's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block. See `skills/alias/scripts/resolve-target.md` "Caller parsing requirement" for the required pattern.
+6. **NEVER hardcode `.claude/skills/<alias-name>` or `skills/<alias-name>` paths anywhere in Steps 2/3/4 — always thread `$TARGET_DIR`.** **Why:** the resolved target directory is the single source of truth (computed once at Step 2 by `alias resolve-target`); a partial edit that re-introduces a hardcoded path in one site (e.g., the `/implement` recipe) but not another (e.g., the verify sentinel) creates a silent path split where `/implement` writes one tree and Step 4 verifies a different tree. Enforced by `scripts/test-alias-structure.sh` (CI).
+7. **NEVER use `eval "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the command's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/implement`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `run-relevant-checks-captured.sh` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt; do not load for routine invocations — load only when debugging or adding a child-Skill invocation.
 
@@ -69,25 +69,25 @@ if [[ "$alias_private" == "true" ]]; then
 fi
 
 # Non-eval line-by-line parse with explicit allowlist (per NEVER #7).
-# Do NOT use `eval "$(resolve-target.sh ...)"` — paths containing spaces / $(...) /
+# Do NOT use `eval "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target ...)"` — paths containing spaces / $(...) /
 # backticks would be re-interpreted by the shell.
 REPO_ROOT=""; PLUGIN_REPO=""; TARGET_DIR=""
 while IFS='=' read -r key val; do
   case "$key" in
     REPO_ROOT|PLUGIN_REPO|TARGET_DIR) declare "$key=$val" ;;
   esac
-done < <("${CLAUDE_PLUGIN_ROOT}/skills/alias/scripts/resolve-target.sh" \
+done < <(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias resolve-target \
            --alias-name "<alias-name>" "${PRIVATE_FLAG[@]}")
 
 # Fail-closed if the helper exited with empty values (e.g., not in a git repo).
-# resolve-target.sh writes its diagnostic to stderr; surface a usable error to the operator.
+# `alias resolve-target` writes its diagnostic to stderr; surface a usable error to the operator.
 if [[ -z "$TARGET_DIR" || -z "$REPO_ROOT" || -z "$PLUGIN_REPO" ]]; then
-  echo "**ERROR: resolve-target.sh failed (likely not in a git repository, or git binary missing). Cannot determine target directory for alias '<alias-name>'.**"
+  echo "**ERROR: alias resolve-target failed (likely not in a git repository, or git binary missing). Cannot determine target directory for alias '<alias-name>'.**"
   exit 1
 fi
 ```
 
-The helper's stdout schema and the two-file plugin-detect predicate (`.claude-plugin/plugin.json` AND `skills/implement/SKILL.md`, matching `validate-args.sh:133`) are documented in `skills/alias/scripts/resolve-target.md`. Operators wanting a private alias inside a plugin repo use `--private`.
+The helper's stdout schema and the two-file plugin-detect predicate (`.claude-plugin/plugin.json` AND `skills/implement/SKILL.md`) live in `python/alias_skill.py`. Operators wanting a private alias inside a plugin repo use `--private`.
 
 ### Validation table
 
@@ -136,7 +136,7 @@ One conceptual rule — "alias cannot shadow any larch skill" — replacing the 
 ### Before delegating, ask
 
 - **What does `/implement` need to build this deterministically?** `/implement` has no codebase context about `/alias` — it will research and guess unless the feature description cites the generator script path, its required flags, the version source, and the write target. The explicit recipe below supplies all four.
-- **What could make the Step 4 verification silently pass when it shouldn't?** Nothing — the `verify skill-called --sentinel-file` gate reads a child-produced artifact at `$TARGET_DIR/SKILL.md` (resolved at Step 2 from the `resolve-target.sh` helper) that the outer orchestrator cannot synthesize. A parent-writable gate would not be load-bearing.
+- **What could make the Step 4 verification silently pass when it shouldn't?** Nothing — the `verify skill-called --sentinel-file` gate reads a child-produced artifact at `$TARGET_DIR/SKILL.md` (resolved at Step 2 from the `alias resolve-target` helper) that the outer orchestrator cannot synthesize. A parent-writable gate would not be load-bearing.
 - **Why no retry on `VERIFIED=false`?** Under `--merge` the PR may already be merged by the time control returns; any automated retry would create a divergent PR. Step 4 surfaces branch-specific diagnostic messages instead, leaving recovery to human judgment.
 
 Construct an explicit feature description for `/implement`. The description MUST cite the generator script path, its required flags, the version source, and the write target so `/implement` has a complete, deterministic build recipe — no codebase research required. The write target uses the `$TARGET_DIR` resolved at the top of Step 2 (NOT a hardcoded `.claude/skills/<alias-name>` path — see NEVER #6):
@@ -146,7 +146,7 @@ Add /<alias-name> alias for /<target-skill> <preset-flags>.
 
 Generate the alias skill by running:
   mkdir -p "$TARGET_DIR"
-  "${CLAUDE_PLUGIN_ROOT}/skills/alias/scripts/generate-alias.sh" \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias generate \
     --name "<alias-name>" \
     --target "<target-skill>" \
     --flags "<preset-flags>" \
