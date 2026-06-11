@@ -179,12 +179,13 @@ emit_timing_record() {
 
 append_launch_failure() {
     local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}"
-    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    [[ -f "$PLUGIN_ROOT/python/cli.py" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
     local _args=()
     [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
     [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "Tool Failures" --output-file "$diag_file" \

@@ -24,7 +24,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
-REDACT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+REDACT=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
@@ -71,11 +71,11 @@ fi
 
 redact_gh_error() {
   local err_text="$1" redacted status=0
-  if [[ ! -x "$REDACT" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
     printf '%s' 'gh failure: redaction unavailable'
     return 0
   fi
-  redacted=$(printf '%s' "$err_text" | "$REDACT") || status=$?
+  redacted=$(printf '%s' "$err_text" | "${REDACT[@]}") || status=$?
   if [[ "$status" -ne 0 ]]; then
     printf '%s' 'gh failure: redaction unavailable'
     return 0
@@ -100,10 +100,10 @@ fi
 
 REDACTED_TITLE="$TITLE"
 REDACTED_BODY_FILE="$BODY_FILE"
-if [[ -x "$REDACT" ]]; then
-  REDACTED_TITLE=$("$REDACT" <<< "$TITLE")
+if command -v python3 >/dev/null 2>&1; then
+  REDACTED_TITLE=$("${REDACT[@]}" <<< "$TITLE")
   REDACTED_BODY_FILE=$(mktemp /tmp/combine-redacted-XXXXXX)
-  "$REDACT" < "$BODY_FILE" > "$REDACTED_BODY_FILE"
+  "${REDACT[@]}" < "$BODY_FILE" > "$REDACTED_BODY_FILE"
 fi
 
 CREATE_OUT=$(gh issue create --repo "$REPO" \

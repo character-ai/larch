@@ -65,7 +65,7 @@ cat >"$dots_plan" <<'EOF'
 ## Plan
 
 ```bash
-scripts/../scripts/redact-secrets.sh
+scripts/../python/cli.py redact secrets
 ```
 
 diff_lines: 1
@@ -116,7 +116,7 @@ cat >"$dotslash_plan" <<'EOF'
 ## Plan
 
 ```bash
-./scripts/redact-secrets.sh
+./python/cli.py redact secrets
 ```
 
 diff_lines: 1

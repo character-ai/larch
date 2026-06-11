@@ -28,7 +28,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
-REDACT_HELPER="$SCRIPT_DIR/redact-secrets.sh"
+PY_CLI="$SCRIPT_DIR/../python/cli.py"
 
 BRANCH=""
 REMOTE="origin"
@@ -61,8 +61,8 @@ else
 fi
 FAIL_CAPTURE=$(cat "$fail_file" 2>/dev/null || true)
 rm -f "$fail_file"
-if [ -x "$REDACT_HELPER" ]; then
-    FAIL_CAPTURE=$(printf '%s' "$FAIL_CAPTURE" | "$REDACT_HELPER" 2>/dev/null || printf '%s' 'git ls-remote failure redaction failed')
+if [ -f "$PY_CLI" ]; then
+    FAIL_CAPTURE=$(printf '%s' "$FAIL_CAPTURE" | python3 "$PY_CLI" redact secrets 2>/dev/null || printf '%s' 'git ls-remote failure redaction failed')
 fi
 
 case "$RC" in

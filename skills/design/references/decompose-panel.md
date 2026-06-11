@@ -178,11 +178,11 @@ Only when **§7 succeeded with `ISSUES_FAILED=0`** (all pieces filed and URLs re
   --repo "$GITHUB_REPOSITORY"
 ```
 
-The helper composes a **#2644-shaped** prose comment (partition rationale + per-piece bullets + blocked-by narrative), pipes the body through `scripts/redact-secrets.sh` into `$DESIGN_TMPDIR/decompose/close-comment.redacted.md`, posts with `gh issue comment --body-file` (never inline `--body`), then `gh issue close`. Success writes `$DESIGN_TMPDIR/.decompose-original-closed`.
+The helper composes a **#2644-shaped** prose comment (partition rationale + per-piece bullets + blocked-by narrative), pipes the body through `python/cli.py redact secrets` into `$DESIGN_TMPDIR/decompose/close-comment.redacted.md`, posts with `gh issue comment --body-file` (never inline `--body`), then `gh issue close`. Success writes `$DESIGN_TMPDIR/.decompose-original-closed`.
 
 **Harness override**: `DECOMPOSE_REDACT_SH` substitutes the redactor (`skills/design/scripts/test-decompose-file-issues.sh` asserts the redacted path is what `gh` receives).
 
-On `gh` or redactor failure, the helper appends via `scripts/append-tool-failure.sh` under **External Reviewer Issues** in `execution-issues.md` and exits non-zero **without** writing the close sentinel so the operator can retry.
+On `gh` or redactor failure, the helper appends via `python/cli.py run-log append-failure` under **External Reviewer Issues** in `execution-issues.md` and exits non-zero **without** writing the close sentinel so the operator can retry.
 
 ---
 

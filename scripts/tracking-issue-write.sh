@@ -37,7 +37,7 @@
 #   prepends the target-state prefix. Legacy prefixes [IN PROGRESS] and [PLANNED]
 #   are stripped for migration. No-op when the composed title matches the current
 #   canonical title (RENAMED=false). The new title is piped through
-#   scripts/redact-secrets.sh before the gh call, matching the security
+#   python3 python/cli.py redact secrets before the gh call, matching the security
 #   posture of create-issue. Stacked-prefix corruption (e.g., "[IN PROGRESS]
 #   [DONE] Foo") is NOT healed — only one lifecycle prefix is stripped.
 #   Title length: truncated to 256 chars by preserving the managed prefixes
@@ -62,14 +62,14 @@
 #
 # Security posture (see SECURITY.md "tracking-issue-write.sh outbound path"):
 #   * Structural choke point — compose full logical body in memory, pipe
-#     through scripts/redact-secrets.sh, THEN apply truncation. Never the
+#     through python3 python/cli.py redact secrets, THEN apply truncation. Never the
 #     reverse. Token-shaped byte sequences must not be sliced before
 #     redaction. Placement mirrors issue create-one's single-choke-point
 #     comment.
 #   * gh-failure redaction (fail-closed) — every gh invocation captures
 #     stderr separately. On non-success paths, captured stderr is passed
-#     through redact_gh_error, which runs the full redact-tmpdir-paths.sh |
-#     redact-secrets.sh pipeline. If that pipeline is unavailable, exits
+#     through redact_gh_error, which runs the full redact tmpdir-paths |
+#     redact secrets pipeline. If that pipeline is unavailable, exits
 #     non-zero, or emits the truncation marker ([content truncated —
 #     unterminated PEM block…]), a generic token-free string is emitted in
 #     ERROR= and no original stderr bytes are included; the caller still exits
@@ -93,8 +93,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 source "$SCRIPT_DIR/lib-net.sh"
 larch_quiet_init
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
-REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+PY_CLI="$REPO_ROOT/python/cli.py"
 
 TITLE_MARKERS_HELPER="$SCRIPT_DIR/lib-title-markers.sh"
 
@@ -183,9 +182,9 @@ emit_redaction_failure() {
     local rc=$?
     emit_kv FAILED "true"
     if [ "$rc" -eq 10 ]; then
-        emit_kv ERROR "redaction: helper redact-tmpdir-paths.sh failed or missing"
+        emit_kv ERROR "redaction: helper python3 python/cli.py redact tmpdir-paths failed or missing"
     else
-        emit_kv ERROR "redaction: helper $REDACT_HELPER failed or missing"
+        emit_kv ERROR "redaction: helper python3 python/cli.py redact secrets failed or missing"
     fi
     exit 3
 }
@@ -194,13 +193,13 @@ emit_redaction_failure() {
 # exit code. Callers MUST invoke this via command substitution combined
 # with `|| emit_redaction_failure`, because inside command substitution any
 # stdout emission is captured into the assigning variable rather than the
-# parent's stdout. Do NOT swallow stderr: redact-secrets.sh emits a WARN on
+# parent's stdout. Do NOT swallow stderr: the redactor emits a WARN on
 # stderr when an unterminated PEM block forces fail-closed truncation, and
 # that signal is the only log-visibility mechanism for that condition.
 redact() {
-    [ -x "$REDACT_TMPDIR_HELPER" ] || return 10
-    [ -x "$REDACT_HELPER" ] || return 11
-    printf '%s' "$1" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER"
+    command -v python3 >/dev/null 2>&1 || return 10
+    [ -f "$PY_CLI" ] || return 10
+    printf '%s' "$1" | python3 "$PY_CLI" redact tmpdir-paths | python3 "$PY_CLI" redact secrets
 }
 
 # redact_gh_error <captured-stderr-text> — scrubs 4xx API responses /

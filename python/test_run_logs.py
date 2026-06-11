@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Mapping, Sequence
+from io import StringIO
 from pathlib import Path
 from typing import cast
 
@@ -94,7 +96,7 @@ def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
         runner.git_commits += 1
         return CommandResult(("git", "commit"), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
     assert runner.git_commits == 1
@@ -190,7 +192,7 @@ def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) ->
     }
     manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["version"] == "1"
+    assert manifest["schema_version"] == 2
     assert manifest["run_id"] == "lost-run"
     assert manifest["steps_ran"] == {}
     assert manifest["issue_number"] == 123
@@ -480,7 +482,13 @@ def test_flush_logs_pre_happy_path_commits(
     ) -> CommandResult:
         _ = cwd
         commits.append(True)
-        return CommandResult(("true",), 0, "", "", 0.0)
+        return CommandResult(
+            ("git", "commit"),
+            0,
+            "a" * 40 + "\n",
+            "",
+            0.0,
+        )
 
     def noop_write_final_report(_runner: object, _ctx: object) -> None:
         _ = _runner, _ctx
@@ -490,7 +498,7 @@ def test_flush_logs_pre_happy_path_commits(
 
     monkeypatch.setattr(run_logs, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop_capture)
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     runner = RecordingRunner()
     skip = run_logs.flush_logs_pre(runner, ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
@@ -536,7 +544,7 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
     monkeypatch.setattr(run_logs, "_write_final_report", noop)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
@@ -630,7 +638,7 @@ def test_flush_logs_pre_skips_commit_without_repo_cwd(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
     monkeypatch.setattr(run_logs, "_write_final_report", noop)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
@@ -787,7 +795,7 @@ def test_flush_logs_pre_reports_volatile_only_skip_reason(
     def fake_commit(*_a: object, **_k: object) -> CommandResult:
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     skip = run_logs.flush_logs_pre(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
     assert skip.skipped
     assert skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY
@@ -1170,9 +1178,15 @@ def test_render_ledger_reports_uses_direct_renderers(
     monkeypatch.setattr(tokens, "token_report", fake_token_report)
     monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
     monkeypatch.setattr(timing, "resolve_timing_ledger_path", fake_resolve_timing_ledger_path)
-    larch_log = tmp_path / "larch-log.sh"
-    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
+    write_batches: list[str] = []
+
+    def fake_write_batch(
+        _log_root: Path, _skill: str, _run_id: str, batch: str, input_file: Path
+    ) -> tuple[Path, bool, bool]:
+        write_batches.append(batch)
+        return (input_file, True, False)
+
+    monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
     ctx = _ctx(tmp_path, str(state))
     runner = RecordingRunner()
     run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
@@ -1181,34 +1195,39 @@ def test_render_ledger_reports_uses_direct_renderers(
     assert (tmp_path / "timing-report-refresh.json").is_file()
     assert captured.get("LARCH_TIMING_SKILL") == "implement"
     assert "DESIGN_TMPDIR" not in captured
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" in write_batches
+    assert "timing-report" in write_batches
 
 
 def _ledger_report_fixture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[RecordingRunner, RunContext]:
+) -> tuple[RecordingRunner, RunContext, list[str]]:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "timing-ledger.tsv").write_text(
         "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
         encoding="utf-8",
     )
-    larch_log = tmp_path / "larch-log.sh"
-    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
     _ledger_path = tmp_path / "timing-ledger.tsv"
     monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kw: _ledger_path)  # type: ignore[arg-type]
-    return RecordingRunner(), _ctx(tmp_path, str(state))
+    write_batches: list[str] = []
+
+    def fake_write_batch(
+        _log_root: Path, _skill: str, _run_id: str, batch: str, input_file: Path
+    ) -> tuple[Path, bool, bool]:
+        write_batches.append(batch)
+        return (input_file, True, False)
+
+    monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
+    return RecordingRunner(), _ctx(tmp_path, str(state)), write_batches
 
 
 def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def raise_token_report(**_kwargs: object) -> dict[str, object]:
         msg = "token renderer failed"
@@ -1219,16 +1238,15 @@ def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
 
     assert not (tmp_path / "token-report-refresh.json").exists()
     assert (tmp_path / "timing-report-refresh.json").is_file()
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert not any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" not in write_batches
+    assert "timing-report" in write_batches
 
 
 def test_render_ledger_reports_token_succeeds_when_timing_raises(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}
@@ -1242,16 +1260,15 @@ def test_render_ledger_reports_token_succeeds_when_timing_raises(
 
     assert (tmp_path / "token-report-refresh.json").is_file()
     assert not (tmp_path / "timing-report-refresh.json").exists()
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert not any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" in write_batches
+    assert "timing-report" not in write_batches
 
 
 def test_render_ledger_reports_writes_empty_timing_json(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, _write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}
@@ -1279,3 +1296,85 @@ def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypat
     env = run_logs._report_subprocess_env(_ctx(tmp_path, str(state)))  # pyright: ignore[reportPrivateUsage]
     assert env["LARCH_TIMING_SKILL"] == "implement"
     assert "DESIGN_TMPDIR" not in env
+
+
+def test_verify_completeness_reports_missing_required_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step7a": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "token-report.json").write_text("{}", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nfinal-summary.md\talways\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 1
+
+
+def test_verify_completeness_ok_when_required_file_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(run_logs, "_REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "RUN1",
+        "steps_ran": {"step8": True},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("# done\n", encoding="utf-8")
+    tsv = tmp_path / "required.tsv"
+    _ = tsv.write_text("relative_path\tcondition\nfinal-summary.md\tstep8\n", encoding="utf-8")
+    monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
+    assert run_logs.verify_completeness_main([str(run_dir)]) == 0
+
+
+def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.refresh_run_logs_main(["--implement-tmpdir", str(tmp_path)])
+    assert rc == 0
+    assert f"REFRESH_SKIPPED=true REASON={config.REFRESH_SKIP_STATE_FILE_MISSING}" in buf.getvalue()
+
+
+def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(tmp_path / "missing.txt"),
+                "--log-root",
+                str(tmp_path / "larch-logs"),
+                "--skill",
+                "implement",
+                "--run-id",
+                "RUN1",
+                "--no-logs-commit",
+                "true",
+            ],
+        )
+    assert rc == 0
+    assert "SESSION_TRANSCRIPT_STATUS=source-file-missing" in buf.getvalue()
+
+
+def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx, run_id="run-abc")
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == 2
+    assert data["skill"] == "implement"

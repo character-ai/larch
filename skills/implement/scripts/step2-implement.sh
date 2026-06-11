@@ -762,8 +762,8 @@ fi
 if [[ "$LAUNCHER_EXIT" != "0" ]]; then
     if [[ "$CODER" == "codex" ]] && manifest_on_disk_is_salvageable_complete; then
         WARN_NONZERO_EXIT_SALVAGE=true
-        if [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" && -d "$TMPDIR_ARG" ]]; then
-            "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry \
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --category Warnings \
                 --entry "Step 4 — $TOOL_TAG exited non-zero (LAUNCHER_EXIT=$LAUNCHER_EXIT) after atomically writing a complete manifest; not discarding it — continuing to validation/commit ($NONZERO_EXIT_WARN_TOKEN=true). A self-verification step likely failed after the implementation work completed." >/dev/null 2>&1 || true
@@ -920,8 +920,8 @@ if [[ "$STATUS" == "complete" ]]; then
     # Note: this check compares declared manifest paths against working-tree
     # paths; it does NOT cross-reference the plan's "Files to modify" section.
     # May include pre-existing dirty paths if the tree was not clean at launch.
-    APPEND_TOOL="$PLUGIN_ROOT/scripts/append-execution-issue.sh"
-    if [[ -x "$APPEND_TOOL" && -d "$TMPDIR_ARG" ]]; then
+    APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry)
+    if command -v python3 >/dev/null 2>&1 && [[ -d "$TMPDIR_ARG" ]]; then
         {
             WT_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-working-tree.XXXXXX")
             MANIFEST_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-manifest.XXXXXX")
@@ -947,7 +947,7 @@ if [[ "$STATUS" == "complete" ]]; then
             if [[ "${OOS_COUNT:-0}" != "0" ]]; then
                 OOS_LIST=$(sed -n '1,5s/^/- /p' "$OOS_PATHS_FILE")
                 OOS_ENTRY=$(printf 'Step 7a.1 — %s working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n%s' "$OOS_COUNT" "$OOS_LIST")
-                "$APPEND_TOOL" \
+                "${APPEND_TOOL[@]}" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --category Warnings \
                     --entry "$OOS_ENTRY" >/dev/null 2>&1 || true
@@ -961,7 +961,7 @@ if [[ "$STATUS" == "complete" ]]; then
     # .git/ writes); Cursor runs unsandboxed re .git/ but its
     # prompts forbid commits and their HEAD is asserted unchanged before
     # we commit. The dispatcher runs outside that sandbox in the Claude
-    # shell. The commit message is piped through scripts/redact-secrets.sh
+    # shell. The commit message is piped through python/cli.py redact secrets
     # BEFORE git commit so any secret accidentally embedded in commit_message
     # by the implementer never lands in git history (the same redactor runs over the
     # canonical manifest in Step 8 — applying it here closes the prior
@@ -974,9 +974,9 @@ if [[ "$STATUS" == "complete" ]]; then
     # advisory, and operator / `/review` / pre-commit hooks are the
     # downstream backstops.
     COMMIT_MSG_FILE="$TMPDIR_ARG/${TOOL_TAG}-commit-message.txt"
-    REDACT_FOR_COMMIT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
-    if [[ -x "$REDACT_FOR_COMMIT" ]]; then
-        jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "$REDACT_FOR_COMMIT" > "$COMMIT_MSG_FILE.tmp"
+    REDACT_FOR_COMMIT=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
+    if command -v python3 >/dev/null 2>&1; then
+        jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "${REDACT_FOR_COMMIT[@]}" > "$COMMIT_MSG_FILE.tmp"
     else
         # The earlier redactor-not-executable check (top of Step 8 below)
         # would also fail closed, but we have not reached it yet — guard
@@ -1001,23 +1001,17 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "commit-failed"
     fi
     rm -f "$COMMIT_STDERR_FILE"
-    "$PLUGIN_ROOT/scripts/larch-log-flush.sh" || true
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log flush || true
 fi
 
-# Step 8: sanitization. Apply scripts/redact-secrets.sh to text fields, then
+# Step 8: sanitization. Apply python/cli.py redact secrets to text fields, then
 # write the canonical manifest.json (replacing the raw copy).
-REDACT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
-# Fail closed if the redactor file exists but is not executable — a sparse
-# checkout or broken perms must NOT silently emit raw manifest text into
-# downstream public surfaces (release notes, PR body, GitHub issues).
-if [[ -e "$REDACT" && ! -x "$REDACT" ]]; then
-    emit_bailed "redactor-not-executable"
-fi
-if [[ -x "$REDACT" ]]; then
+_redact_secrets() { python3 "$PLUGIN_ROOT/python/cli.py" redact secrets; }
+if command -v python3 >/dev/null 2>&1; then
     # Build a sanitized version of the manifest by piping each text field through
-    # redact-secrets.sh. We use jq to extract, redact in shell, then re-inject.
+    # redact secrets. We use jq to extract, redact in shell, then re-inject.
     sanitize_string() {
-        if [[ -z "$1" ]]; then printf '%s' ""; else printf '%s' "$1" | "$REDACT"; fi
+        if [[ -z "$1" ]]; then printf '%s' ""; else printf '%s' "$1" | _redact_secrets; fi
     }
 
     # Extract fields, sanitize, and write a sanitized manifest.
@@ -1109,9 +1103,9 @@ if [[ "$STATUS" == "complete" ]]; then
         MAT_RC=0
         bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
         if [[ "$MAT_RC" -ne 0 ]]; then
-            APPEND_TOOL="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
-            if [[ -x "$APPEND_TOOL" ]]; then
-                "$APPEND_TOOL" \
+            APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
+            if command -v python3 >/dev/null 2>&1; then
+                "${APPEND_TOOL[@]}" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --site "step2-materialize-manifest-oos" \
                     --tool "materialize-manifest-oos.sh" \
@@ -1126,9 +1120,9 @@ if [[ "$STATUS" == "complete" ]]; then
         fi
     else
         printf 'materialize helper missing or not executable: %s\n' "$MATERIALIZE_OOS" >"$MAT_OOS_LOG"
-        APPEND_TOOL="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
-        if [[ -x "$APPEND_TOOL" ]]; then
-            "$APPEND_TOOL" \
+        APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
+        if command -v python3 >/dev/null 2>&1; then
+            "${APPEND_TOOL[@]}" \
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --site "step2-materialize-manifest-oos" \
                 --tool "materialize-manifest-oos.sh" \

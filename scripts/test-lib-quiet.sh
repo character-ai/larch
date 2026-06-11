@@ -13,6 +13,9 @@ trap 'rm -rf "$SCRATCH"' EXIT
 unset IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR \
     LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
     LARCH_QUIET_DISABLE || true
+# Redaction resolves the helper from CLAUDE_PLUGIN_ROOT first; an inherited
+# plugin-cache pin would bypass the per-test LARCH_LIB_QUIET_DIR layouts.
+unset CLAUDE_PLUGIN_ROOT || true
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -139,7 +142,7 @@ assert_eq "$(cat "$SCRATCH/larch_errf.err")" $'prefix:value\nsecond line' "larch
 assert_file_contains "$log" "prefix:value" "larch_errf mirrored first line"
 assert_file_contains "$log" "second line" "larch_errf mirrored second line"
 
-# 10c. larch_err redacts token families via redact-secrets.sh --streaming.
+# 10c. larch_err redacts token families via redact secrets --streaming.
 helper="$SCRATCH/larch_err_redact.sh"
 log="$SCRATCH/larch_err_redact.log"
 write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; larch_err "token ghp_abcdefghijklmnopqrstuvwxyz123456 secret"; emit_kv STATUS ok'
@@ -164,13 +167,9 @@ assert_file_contains "$log" "plain diagnostic" "missing redactor original messag
 # 10e. Redactor failure emits a warning and preserves the original message.
 helper="$SCRATCH/larch_err_redact_fail.sh"
 log="$SCRATCH/larch_err_redact_fail.log"
-redactor_dir="$SCRATCH/redactor-fail"
-mkdir -p "$redactor_dir"
-{
-    printf '#!/usr/bin/env bash\n'
-    printf 'exit 9\n'
-} > "$redactor_dir/redact-secrets.sh"
-chmod +x "$redactor_dir/redact-secrets.sh"
+redactor_dir="$SCRATCH/redactor-fail/scripts"
+mkdir -p "$redactor_dir" "$SCRATCH/redactor-fail/python"
+printf 'raise SystemExit(9)\n' > "$SCRATCH/redactor-fail/python/cli.py"
 write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; LARCH_LIB_QUIET_DIR=$2; export LARCH_LIB_QUIET_DIR; larch_quiet_init; larch_err "plain diagnostic"; emit_kv STATUS ok'
 "$helper" "$log" "$redactor_dir" >"$SCRATCH/larch_err_redact_fail.out" 2>"$SCRATCH/larch_err_redact_fail.err"
 assert_eq "$(cat "$SCRATCH/larch_err_redact_fail.out")" "STATUS=ok" "larch_err failed redactor stdout"

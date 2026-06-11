@@ -333,7 +333,6 @@ run_review_and_fix() {
         CURSOR_API_KEY=test-cursor-key \
         REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stub.sh" \
         REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-        REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
         "$SCRIPT" "$@" 3>&1
     )
 }
@@ -926,7 +925,6 @@ out=$(
     TEST_AGENT_BEHAVIOR=codex-success \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-telemetry-unset-root-run
 )
 rc=$?
@@ -975,7 +973,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-capture-dynamic-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id empty-env-run
 )
 rc=$?
@@ -1420,7 +1417,7 @@ out=$(TEST_CORE_STATUS=zero REVIEW_AND_FIX_LARCH_LOG_SH="$TMP/larch-log-ledger-f
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "ledger batch fail expected exit 0 got $rc"; }
-grep -Fq 'larch-log.sh write reviewer-prune-ledger' "$implement_tmp/execution-issues.md" || fail "ledger batch failure should append execution issue"
+grep -Fq 'run-log write reviewer-prune-ledger' "$implement_tmp/execution-issues.md" || fail "ledger batch failure should append execution issue"
 
 work_sorted="$TMP/sorted-summaries"
 make_work_repo "$work_sorted"
@@ -1769,7 +1766,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "late flush warning expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out" || fail "late flush warning status"
-grep -Fq 'larch-log.sh write-round failed (exit 9' "$implement_tmp/execution-issues.md" || fail "late flush warning execution issue missing"
+grep -Fq 'run-log write-round failed (exit 9' "$implement_tmp/execution-issues.md" || fail "late flush warning execution issue missing"
 grep -Fq 'post-coder round 1' "$implement_tmp/execution-issues.md" || fail "late flush warning verdict missing"
 if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$implement_tmp/execution-issues.md"; then
     fail "late flush warning should redact stderr"
@@ -1826,7 +1823,7 @@ mkdir -p "$scout_impl_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_impl_tmp/session-env.sh"
 scout_run_id="scout-run-test-ok"
 scout_log_root="$scout_impl_tmp/larch-logs"
-(cd "$work_scout" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+(cd "$work_scout" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" run-log init \
     --log-root "$scout_log_root" --skill implement --run-id "$scout_run_id" --issue 2356) >/dev/null
 
 set +e
@@ -1836,7 +1833,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=ok \
     "$SCRIPT" --implement-tmpdir "$scout_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_impl_tmp/session-env.sh" \
@@ -1865,7 +1861,7 @@ mkdir -p "$scout_panel_failed_impl_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_panel_failed_impl_tmp/session-env.sh"
 scout_panel_failed_run_id="scout-run-test-panel-failed"
 scout_panel_failed_log_root="$scout_panel_failed_impl_tmp/larch-logs"
-(cd "$work_scout_panel_failed" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+(cd "$work_scout_panel_failed" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" run-log init \
     --log-root "$scout_panel_failed_log_root" --skill implement --run-id "$scout_panel_failed_run_id" --issue 2356) >/dev/null
 
 set +e
@@ -1875,7 +1871,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=panel-failed \
     "$SCRIPT" --implement-tmpdir "$scout_panel_failed_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_panel_failed_impl_tmp/session-env.sh" \
@@ -1899,7 +1894,7 @@ mkdir -p "$scout_na_impl_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_na_impl_tmp/session-env.sh"
 scout_na_run_id="scout-run-test-na"
 scout_na_log_root="$scout_na_impl_tmp/larch-logs"
-(cd "$work_scout_na" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+(cd "$work_scout_na" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" run-log init \
     --log-root "$scout_na_log_root" --skill implement --run-id "$scout_na_run_id" --issue 2356) >/dev/null
 
 set +e
@@ -1909,7 +1904,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=na \
     "$SCRIPT" --implement-tmpdir "$scout_na_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_na_impl_tmp/session-env.sh" \
@@ -1933,7 +1927,7 @@ mkdir -p "$scout_invalid_impl_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_invalid_impl_tmp/session-env.sh"
 scout_invalid_run_id="scout-run-test-invalid"
 scout_invalid_log_root="$scout_invalid_impl_tmp/larch-logs"
-(cd "$work_scout_invalid" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+(cd "$work_scout_invalid" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" run-log init \
     --log-root "$scout_invalid_log_root" --skill implement --run-id "$scout_invalid_run_id" --issue 2356) >/dev/null
 mkdir -p "$scout_invalid_impl_tmp/round-1"
 printf '{"status":"stale","dynamic_slots":99,"manifest_basename":"stale.json","yield_tsv_basename":"stale.tsv"}\n' \
@@ -1946,7 +1940,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=ok \
     TEST_DYNAMIC_SLOTS=bogus \
     "$SCRIPT" --implement-tmpdir "$scout_invalid_impl_tmp" --mode diff \
@@ -1976,7 +1969,7 @@ mkdir -p "$scout_missing_files_impl_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_missing_files_impl_tmp/session-env.sh"
 scout_missing_files_run_id="scout-run-test-missing-files"
 scout_missing_files_log_root="$scout_missing_files_impl_tmp/larch-logs"
-(cd "$work_scout_missing_files" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+(cd "$work_scout_missing_files" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" run-log init \
     --log-root "$scout_missing_files_log_root" --skill implement --run-id "$scout_missing_files_run_id" --issue 2356) >/dev/null
 
 set +e
@@ -1986,7 +1979,6 @@ out=$(
     CURSOR_API_KEY=test-cursor-key \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=ok \
     TEST_SCOUT_MANIFEST_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-round1-manifest.json" \
     TEST_YIELD_TSV_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-archetype-yield.tsv" \

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Atomically replaces the plan marker block in an issue body, or appends a new block when markers are absent. Full composed body is piped through `scripts/redact-secrets.sh` before `gh issue edit --body-file`.
+Atomically replaces the plan marker block in an issue body, or appends a new block when markers are absent. Full composed body is piped through `python3 python/cli.py redact secrets` before `gh issue edit --body-file`.
 
 This script is now a thin wrapper over `scripts/named-block-write.sh --marker plan`.
 The full generalized contract, including explicit `--delete`, marker-name

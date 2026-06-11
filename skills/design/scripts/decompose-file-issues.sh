@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
-APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+append_fail_sh() { python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure "$@"; }
 
 usage() {
     larch_err "usage: decompose-file-issues.sh prepare --design-tmpdir DIR --partition-file PATH [--issue-number N]"
@@ -310,15 +310,19 @@ cmd_close_original() {
         printf 'See intra-batch dependency edges filed via /larch:issue (partition-deps.tsv).\n'
     } >"$body"
 
-    local redact_sh="${DECOMPOSE_REDACT_SH:-$PLUGIN_ROOT/scripts/redact-secrets.sh}"
+    local redact_cmd=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
+    if [[ -n "${DECOMPOSE_REDACT_SH:-}" ]]; then
+        # shellcheck disable=SC2206
+        redact_cmd=($DECOMPOSE_REDACT_SH)
+    fi
     local redacted="$dec/close-comment.redacted.md"
-    if ! "$redact_sh" <"$body" >"$redacted"; then
-        if [[ -x "$APPEND_FAIL_SH" ]]; then
+    if ! "${redact_cmd[@]}" <"$body" >"$redacted"; then
+        if true; then
             set +e
-            bash "$APPEND_FAIL_SH" \
+            append_fail_sh \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
-                --tool "redact-secrets.sh" \
+                --tool "redact secrets" \
                 --exit-code 1 \
                 --category "External Reviewer Issues" \
                 --output-file "$body" \
@@ -339,9 +343,9 @@ cmd_close_original() {
         fi
         rm -f "$comment_fail_file"
         if [[ "$_c_rc" != 0 ]]; then
-            if [[ -x "$APPEND_FAIL_SH" ]]; then
+            if true; then
                 set +e
-                bash "$APPEND_FAIL_SH" \
+                append_fail_sh \
                     --log "$DESIGN_TMPDIR/execution-issues.md" \
                     --site "design decompose close-original" \
                     --tool "gh issue comment" \
@@ -366,9 +370,9 @@ cmd_close_original() {
     fi
     rm -f "$close_fail_file"
     if [[ "$_cl_rc" != 0 ]]; then
-        if [[ -x "$APPEND_FAIL_SH" ]]; then
+        if true; then
             set +e
-            bash "$APPEND_FAIL_SH" \
+            append_fail_sh \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
                 --tool "gh issue close" \

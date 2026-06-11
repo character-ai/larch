@@ -152,4 +152,4 @@ Failure signatures are always SHA-256 digests. The helper uses `shasum -a 256`, 
 
 ## Security
 
-All public surfaces are composed from the allowlists above using classifier enums, hashes, integers or `unknown`, and fixed prose templates. Raw stdout, stderr, failure-detail logs, local paths, branch names, issue bodies, and plan text are excluded. Every body/comment surface is still piped through `scripts/redact-secrets.sh` as a secrets-family backstop. See `SECURITY.md` "Stall recovery sanitization".
+All public surfaces are composed from the allowlists above using classifier enums, hashes, integers or `unknown`, and fixed prose templates. Raw stdout, stderr, failure-detail logs, local paths, branch names, issue bodies, and plan text are excluded. Every body/comment surface is still piped through `python/cli.py redact secrets` as a secrets-family backstop. See `SECURITY.md` "Stall recovery sanitization".

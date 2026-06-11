@@ -5,7 +5,7 @@
 ## Layout
 
 - Builds a `/tmp` sandbox, copies `implement-bootstrap.sh` plus `lib-quiet.sh`, `lib-execution-issues.sh`, and the real `write-session-env.sh` / `read-session-env-key.sh` beside PATH-resolved `${SCRIPT_DIR}` peers. `$SANDBOX/bin` is prepended to `PATH` for the `gh` stub.
-- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `python3 python/cli.py token claude-source`, `append-tool-failure.sh`, `python3 python/cli.py token`, `python3 python/cli.py timing`, `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
+- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `run-log append-failure`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `get-issue-state.sh`, `run-log`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
 
 ## Cases
 
@@ -24,10 +24,10 @@
 | B2-plan | CLOSED target issue on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=adopted-issue-closed` and does not overwrite it with Phase 3 bail reasons. |
 | B3 | PR target emits `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`. |
 | B4 | Rename fires before `post-tracking-issue.sh`; `POSTED=false` then emits `DEFERRED=true`, exits 0, and removes any stale sentinel. |
-| B5 | `larch-log.sh init` failure emits `IMPLEMENT_BAIL_REASON=tracking-init-failed` and `STALL_TRACKING=true`. |
-| B5-all | `larch-log.sh init` failure on `--up-to-phase all` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips later placeholder bail reasons. |
-| B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
-| B5-branch1 | Branch 1 sentinel resume with `larch-log.sh init` failure preserves the sentinel issue/run id while stalling tracking. |
+| B5 | `run-log init` failure emits `IMPLEMENT_BAIL_REASON=tracking-init-failed` and `STALL_TRACKING=true`. |
+| B5-all | `run-log init` failure on `--up-to-phase all` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips later placeholder bail reasons. |
+| B5-plan | `run-log init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
+| B5-branch1 | Branch 1 sentinel resume with `run-log init` failure preserves the sentinel issue/run id while stalling tracking. |
 | B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
 | B5-plan-emergency | Emergency plan materialization persists `EMERGENCY_REQUESTED=true`, refreshes tracking metadata with the same flag, and appends the bypass log once. |
 | B5-plan-emergency-invalid-format | Invalid bypass logs downgrade to a redacted invalid-format Warning entry instead of failing the run. |

@@ -61,7 +61,7 @@ External review **Agent** fallbacks return **text only** to the parent session. 
 
 ## External launches (representative)
 
-Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals (same family as sketch launches). Capture failures under `$DESIGN_TMPDIR/*-brainstorm-launch.failure.log` and append via `append-tool-failure.sh` like Step 2a.
+Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals (same family as sketch launches). Capture failures under `$DESIGN_TMPDIR/*-brainstorm-launch.failure.log` and append via `run-log append-failure` like Step 2a.
 
 **Cursor framing** (when `cursor_available`):
 

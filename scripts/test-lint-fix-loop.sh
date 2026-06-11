@@ -102,8 +102,6 @@ make_fixture_scripts() {
     chmod +x "$(dirname "$dir")/python/cli.py"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
     cp "$SOURCE_SCRIPTS/lib-failed-agent-stderr-tail.sh" "$dir/lib-failed-agent-stderr-tail.sh"
-    cp "$SOURCE_SCRIPTS/redact-tmpdir-paths.sh" "$dir/redact-tmpdir-paths.sh"
-    cp "$SOURCE_SCRIPTS/redact-secrets.sh" "$dir/redact-secrets.sh"
     cp "$SOURCE_SCRIPTS/agent-model-args.sh" "$dir/agent-model-args.sh"
     cp "$SOURCE_SCRIPTS/external-tool-registry.sh" "$dir/external-tool-registry.sh"
     cp "$SOURCE_SCRIPTS/lib-cursor-auth.sh" "$dir/lib-cursor-auth.sh"

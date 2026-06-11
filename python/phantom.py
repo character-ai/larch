@@ -132,7 +132,10 @@ def _append_execution_warn(
     log_file = f"{implement_tmpdir}/execution-issues.md"
     append = runner.run(
         [
-            str(_REPO_ROOT / "scripts" / "append-execution-issue.sh"),
+            "python3",
+            str(_REPO_ROOT / "python" / "cli.py"),
+            "run-log",
+            "append-entry",
             "--log",
             log_file,
             "--category",
@@ -150,7 +153,7 @@ def _append_execution_warn(
     if err_line:
         return _newline_fold(err_line)
     tail = "\n".join(combined.splitlines()[-5:])
-    return _newline_fold(tail) or f"append-execution-issue.sh failed (exit {append.returncode})"
+    return _newline_fold(tail) or f"run-log append-entry failed (exit {append.returncode})"
 
 
 def probe_with_warn(

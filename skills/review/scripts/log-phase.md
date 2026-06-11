@@ -1,6 +1,6 @@
 # log-phase.sh Contract
 
-`skills/review/scripts/log-phase.sh` wraps `scripts/larch-log.sh` for review batches.
+`skills/review/scripts/log-phase.sh` wraps `python/cli.py run-log` for review batches.
 
 Review uses flat batch slugs under `larch-logs/review/<RUN_ID>/`; phase names are encoded in slugs such as `review-context` and `review-panel-manifest`, not in subdirectories.
 

@@ -44,7 +44,7 @@ These rules are non-negotiable. Violating any of them MUST cause you to abort wi
 When you have completed the plan and are ready to declare `status=complete`:
 
 1. Leave your edits in the working tree (staged or unstaged — both are fine; the dispatcher runs `git add -A` before `git commit`).
-2. Set `manifest.commit_message` to the content the dispatcher should pass to `git commit -F`. The first line is the subject; subsequent lines (separated by a blank line) are the body. The dispatcher consumes this with NO diff inspection and NO subject cross-check, but DOES pipe it through `scripts/redact-secrets.sh` immediately before `git commit -F` (the same scrubber used on the canonical manifest), so any secret-shaped substring you emit will land in git history as `<REDACTED-TOKEN>`. Phrase it as a finished commit message and avoid embedding raw secrets.
+2. Set `manifest.commit_message` to the content the dispatcher should pass to `git commit -F`. The first line is the subject; subsequent lines (separated by a blank line) are the body. The dispatcher consumes this with NO diff inspection and NO subject cross-check, but DOES pipe it through `python/cli.py redact secrets` immediately before `git commit -F` (the same scrubber used on the canonical manifest), so any secret-shaped substring you emit will land in git history as `<REDACTED-TOKEN>`. Phrase it as a finished commit message and avoid embedding raw secrets.
 3. Set `manifest.files_touched` to describe the work. The dispatcher does NOT cross-check this against the actual diff (that check was removed when the trust boundary collapsed); operators read it as documentation, so list the files you actually edited.
 4. Write the manifest atomically and exit. The dispatcher will `git add -A && git commit -F <commit-message-file>` after you exit.
 
@@ -130,7 +130,7 @@ The `questions` key is **required** — a non-empty array with `id` and `text` p
 
 Then write the manifest with `status=needs_qa`, mirror the same questions array under `manifest.needs_qa.questions`, and exit cleanly. Do NOT print the questions to stdout — the orchestrator reads them from `qa-pending.json`, not from your transcript.
 
-**Question-text sanitization**: the dispatcher does NOT pipe `needs_qa.questions[*].text` through `redact-secrets.sh` — the orchestrator surfaces questions verbatim via `AskUserQuestion` (and they may flow into session logs). Phrase questions WITHOUT secrets, internal hostnames/URLs, PII, or any sensitive content. If you need to ask about a specific value, refer to it indirectly (e.g., "the API token at line N of file F" rather than the token's literal value).
+**Question-text sanitization**: the dispatcher does NOT pipe `needs_qa.questions[*].text` through `redact secrets` — the orchestrator surfaces questions verbatim via `AskUserQuestion` (and they may flow into session logs). Phrase questions WITHOUT secrets, internal hostnames/URLs, PII, or any sensitive content. If you need to ask about a specific value, refer to it indirectly (e.g., "the API token at line N of file F" rather than the token's literal value).
 
 Question IDs (`q1`, `q2`, …) are stable handles you assign. The operator's answer file echoes them back; see "Resume protocol" below.
 
@@ -160,7 +160,7 @@ Before populating `oos_observations[]`, apply `skills/implement/SKILL.md` § "OO
 - Rule 2: A bug whose fix is < ~30 lines of code: do NOT file an OOS issue. Fold the fix into this commit.
 - Rule 3: Multiple medium-sized bug fixes (each individually >= ~30 LOC): combine them all into ONE filed OOS issue. A singleton bug fix that is not rule 2 is a filed-OOS candidate; combine semantics apply if multiple.
 - Rule 4: Multiple moderate-sized documentation changes (each individually ~30-100 lines, NOT drift): combine them all into ONE filed OOS issue.
-- For each folded item, add one sanitized body line to `manifest.commit_message` in the form `Inline-triage rule N: <short sanitized reason>`. Do not include raw repro tokens, security-sensitive detail, internal URLs, PII, or secrets; the dispatcher's `redact-secrets.sh` pass is a secrets-only safety net, not a substitute for prompt-level sanitization.
+- For each folded item, add one sanitized body line to `manifest.commit_message` in the form `Inline-triage rule N: <short sanitized reason>`. Do not include raw repro tokens, security-sensitive detail, internal URLs, PII, or secrets; the dispatcher's `redact secrets` pass is a secrets-only safety net, not a substitute for prompt-level sanitization.
 
 `oos_observations[]` contains only filed-OOS candidates after this triage. Do NOT both fold a finding inline and emit an `oos_observations[]` entry for it. `oos_observations[]` may be empty when every applicable item was folded inline by rules 1-2 or routed to SECURITY.md.
 
@@ -180,7 +180,7 @@ Before you write `<MANIFEST_PATH>`, verify:
 - [ ] Ran the jq -e self-validation block from the "Self-validate before atomic rename" section against <MANIFEST_PATH>.tmp; jq exited 0.
 - [ ] For `status=needs_qa` only: ran the qa-pending self-validation jq -e block against <QA_PENDING_PATH>.tmp; jq exited 0.
 
-Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (manifest schema check, path normalization, branch unchanged check, `.claude-plugin/plugin.json` unchanged check, submodule clean check), runs `git add -A && git commit -F <commit-message-file>` on `status=complete` with `commit_message` piped through `scripts/redact-secrets.sh`, and emits the final KV envelope. There is no diff cross-check or commit-subject cross-check — the manifest's `commit_message` is what the dispatcher uses, modulo the secrets-family redaction.
+Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (manifest schema check, path normalization, branch unchanged check, `.claude-plugin/plugin.json` unchanged check, submodule clean check), runs `git add -A && git commit -F <commit-message-file>` on `status=complete` with `commit_message` piped through `python/cli.py redact secrets`, and emits the final KV envelope. There is no diff cross-check or commit-subject cross-check — the manifest's `commit_message` is what the dispatcher uses, modulo the secrets-family redaction.
 
 ## What you do NOT do
 

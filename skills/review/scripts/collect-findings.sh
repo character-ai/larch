@@ -63,8 +63,8 @@ execution_issue_log() {
 
 append_review_failure() {
     local site="$1" tool="$2" rc="$3" output_file="$4" status_label="${5:-failed}"
-    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$(execution_issue_log)" \
         --site "$site" \
         --tool "$tool" \
@@ -299,8 +299,8 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
         append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
-        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$PLUGIN_ROOT/python/cli.py" redact secrets < "$collector_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
                 while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$collector_log"
         else
             while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$collector_log"
@@ -322,8 +322,8 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
         append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$wait_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
-        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
+        if command -v python3 >/dev/null 2>&1; then
+            python3 "$PLUGIN_ROOT/python/cli.py" redact secrets < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
                 while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$wait_log"
         else
             while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$wait_log"
@@ -470,7 +470,7 @@ while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
     # would be a prose fragment — skip the row and log a Warning.
     if [[ ! "$label" =~ -output\.txt$ ]]; then
         _bad_label="${label:0:100}"
-        "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry \
             --log "$(execution_issue_log)" \
             --category Warnings \
             --entry "- **Step 3a — invalid reviewer column**: expected '*-output.txt', got '${_bad_label}' (finding title: '${title:0:80}'). Row skipped." 2>/dev/null || true

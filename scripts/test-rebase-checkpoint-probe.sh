@@ -40,10 +40,14 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-echo APPENDED=true
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("APPENDED=true")
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" 1.r 'plan materialization' 2>&1) || fail "case1 rc"
@@ -64,10 +68,14 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-echo APPENDED=true
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("APPENDED=true")
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "case2 rc"
@@ -90,9 +98,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "case3 rc"
@@ -112,9 +124,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo SHOULD_NOT_RUN=1
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 set +e
@@ -139,9 +155,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 set +e
@@ -163,9 +183,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 set +e
@@ -187,9 +211,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 set +e
@@ -210,9 +238,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 set +e
@@ -234,9 +266,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "c9x"
@@ -254,9 +290,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=tracked-only
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "c10x"
@@ -276,11 +316,15 @@ echo PHANTOM_COUNT=1
 echo PHANTOM_PATHS_FILE=/tmp/x.z
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-echo FAILED=true
-echo ERROR=cap-test
-exit 2
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("FAILED=true")
+print("ERROR=cap-test")
+raise SystemExit(2)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "c11x rc"
@@ -299,10 +343,14 @@ echo STATUS=unknown
 echo REASON=probe-ambiguous
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' 'some stderr' >&2
-exit 2
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("some stderr", file=sys.stderr)
+raise SystemExit(2)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" x y 2>&1) || fail "c12x rc"
@@ -321,9 +369,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" p s --base-remote upstream --base-ref main >/dev/null 2>&1 || fail "c13 rc"
@@ -345,9 +397,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" p s --forked-target true >/dev/null 2>&1 || fail "c13b rc"
@@ -376,9 +432,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 chmod +x "$d/rebase-push.sh"
@@ -402,9 +462,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP_BASE" "$d/rebase-checkpoint-probe.sh" a b 2>&1) || fail "c15"
@@ -423,9 +487,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 bash -c "set -euo pipefail; source \"$d/lib-phantom-probe.sh\"; source \"$d/lib-phantom-probe.sh\"; IMPLEMENT_TMPDIR=\"$IMP_BASE\" \"$d/rebase-checkpoint-probe.sh\" z z" >/dev/null || fail "c16"

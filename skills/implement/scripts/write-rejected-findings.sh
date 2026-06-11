@@ -9,8 +9,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
-REDACT_TMP="$PLUGIN_ROOT/scripts/redact-tmpdir-paths.sh"
-REDACT_SECRETS="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+REDACT_TMP=(python3 "$PLUGIN_ROOT/python/cli.py" redact tmpdir-paths)
+REDACT_SECRETS=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
 
 usage() {
     larch_err "Usage: write-rejected-findings.sh --implement-tmpdir PATH [--run-id ID --log-root PATH]"
@@ -82,8 +82,8 @@ persist_detail_copy() {
     dest_file="$dest_dir/rejected-findings.md"
     mkdir -p "$dest_dir"
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/rejected-findings-copy.XXXXXX")"
-    if [ -x "$REDACT_TMP" ] && [ -x "$REDACT_SECRETS" ]; then
-        if ! "$REDACT_TMP" < "$detail_file" | "$REDACT_SECRETS" > "$tmp_file"; then
+    if command -v python3 >/dev/null 2>&1; then
+        if ! "${REDACT_TMP[@]}" < "$detail_file" | "${REDACT_SECRETS[@]}" > "$tmp_file"; then
             rm -f "$tmp_file"
             return 1
         fi

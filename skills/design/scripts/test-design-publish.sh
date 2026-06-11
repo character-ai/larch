@@ -50,17 +50,6 @@ STUB="$FAKE_PLUGIN/scripts"
 mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
-ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
-ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$STUB/append-execution-issue.sh"
-# timing report is now handled by $FAKE_PLUGIN/python/cli.py (created in write_stubs)
-cat >"$STUB/redact-secrets.sh" <<'REDACT_STUB'
-#!/usr/bin/env bash
-# Controllable stub: REDACT_STUB_RC=N exits with that code; REDACT_EMPTY_OUTPUT=true emits nothing; else passes stdin through.
-if [[ "${REDACT_STUB_RC:-0}" -ne 0 ]]; then exit "${REDACT_STUB_RC}"; fi
-if [[ "${REDACT_EMPTY_OUTPUT:-false}" == true ]]; then exit 0; fi
-exec cat
-REDACT_STUB
-chmod +x "$STUB/redact-secrets.sh"
 write_reentry_guard_wrapper() {
     cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
 # shellcheck shell=bash
@@ -129,6 +118,16 @@ STUB
     cat >"$FAKE_PLUGIN/python/cli.py" <<'STUB'
 import json, os, sys
 cmd = sys.argv[1:3]
+def _parse_args(args):
+    d = {}
+    i = 0
+    while i < len(args):
+        if args[i].startswith("--") and i + 1 < len(args):
+            d[args[i][2:]] = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    return d
 if cmd == ["diagrams", "upsert"]:
     args = " ".join(sys.argv[3:])
     with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
@@ -170,6 +169,43 @@ elif cmd == ["timing", "report"]:
         step["rounds"] = [{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]
     data = {"workflow_path":"SIMPLE","per_step":[step],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}
     with open(out, "w") as fh: fh.write(json.dumps(data) + "\n")
+elif cmd == ["redact", "secrets"]:
+    rc = int(os.environ.get("REDACT_STUB_RC", "0"))
+    if rc:
+        raise SystemExit(rc)
+    if os.environ.get("REDACT_EMPTY_OUTPUT", "false").lower() == "true":
+        raise SystemExit(0)
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+elif sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+elif cmd == ["run-log", "append-failure"]:
+    p = _parse_args(sys.argv[3:])
+    log_file = p.get("log", "")
+    site = p.get("site", "unknown")
+    tool = p.get("tool", "unknown")
+    exit_code = p.get("exit-code", "?")
+    output_file = p.get("output-file", "")
+    status_label = p.get("status-label", "failed")
+    if log_file:
+        body = "no diagnostics\n"
+        if output_file and os.path.isfile(output_file):
+            with open(output_file, encoding="utf-8", errors="replace") as fh:
+                body = fh.read() or body
+        entry = (f"- **Step {site} — {tool} {status_label} (exit {exit_code})**:\n"
+                 f"  ```\n{body.rstrip()}\n  ```\n")
+        with open(log_file, "a", encoding="utf-8") as fh:
+            fh.write(entry)
+    raise SystemExit(0)
+elif cmd == ["run-log", "append-entry"]:
+    p = _parse_args(sys.argv[3:])
+    log_file = p.get("log", "")
+    entry_text = p.get("entry", "")
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as fh:
+            fh.write(entry_text + "\n")
+    raise SystemExit(0)
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)

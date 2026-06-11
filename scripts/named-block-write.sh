@@ -11,7 +11,7 @@ larch_quiet_init
 source "$SCRIPT_DIR/lib-net.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+PY_CLI="$REPO_ROOT/python/cli.py"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -55,11 +55,11 @@ emit_invalid_repo() {
 
 redact_gh_error() {
     local err_text="$1" redacted status=0
-    if [ ! -x "$REDACT_HELPER" ]; then
+    if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$PY_CLI" ]; then
         printf '%s' 'gh stderr redaction unavailable'
         return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || status=$?
+    redacted=$(printf '%s' "$err_text" | python3 "$PY_CLI" redact secrets) || status=$?
     if [ "$status" -ne 0 ]; then
         printf '%s' 'gh stderr redaction failed'
         return 0
@@ -242,12 +242,12 @@ else
     fi
 fi
 
-if [ ! -x "$REDACT_HELPER" ]; then
+if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$PY_CLI" ]; then
     emit_kv FAILED "true"
-    emit_kv ERROR "redact-secrets.sh not executable"
+    emit_kv ERROR "python3 python/cli.py missing"
     exit 3
 fi
-if ! "$REDACT_HELPER" < "$COMPOSED" > "$REDACTED_OUT"; then
+if ! python3 "$PY_CLI" redact secrets < "$COMPOSED" > "$REDACTED_OUT"; then
     emit_redaction_failure
 fi
 

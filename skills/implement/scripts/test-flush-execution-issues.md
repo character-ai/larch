@@ -3,7 +3,7 @@
 Offline harness for `skills/implement/scripts/flush-execution-issues.sh`.
 
 It runs the helper in a temporary plugin/repo sandbox with stubbed
-`larch-log.sh` and `append-tool-failure.sh`, then verifies empty-input skip,
+`run-log` and `run-log append-failure`, then verifies empty-input skip,
 single-section and multi-section NDJSON composition, idempotent rerun behavior,
-and the append-failure path that records `larch-log.sh` output back into
+and the append-failure path that records `run-log` output back into
 `execution-issues.md`.

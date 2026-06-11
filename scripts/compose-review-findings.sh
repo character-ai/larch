@@ -4,10 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
-CLI="$PLUGIN_ROOT/python/cli.py"
-REDACT_TMP="$SCRIPT_DIR/redact-tmpdir-paths.sh"
-REDACT_SECRETS="$SCRIPT_DIR/redact-secrets.sh"
+PY_CLI="$SCRIPT_DIR/../python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
@@ -49,11 +46,10 @@ done
 [ -n "$ISSUE" ] || { usage; fail "--issue is required"; }
 [ -n "$OUTPUT" ] || { usage; fail "--output is required"; }
 case "$ISSUE" in *[!0-9]*|"") fail "invalid value for --issue: '$ISSUE' (expected non-negative integer)" ;; esac
-[ -x "$REDACT_TMP" ] || fail "redaction helper not executable: $REDACT_TMP"
-[ -x "$REDACT_SECRETS" ] || fail "redaction helper not executable: $REDACT_SECRETS"
+[ -f "$PY_CLI" ] || fail "redaction helper not found: $PY_CLI"
 
 redact_field() {
-    printf '%s' "$1" | "$REDACT_TMP" | "$REDACT_SECRETS"
+    printf '%s' "$1" | python3 "$PY_CLI" redact tmpdir-paths | python3 "$PY_CLI" redact secrets
 }
 
 # Extract the category from a finding body. Bodies typically open with a
@@ -381,7 +377,7 @@ parse_artifact() {
             _sec_tmp="$(mktemp)"
             printf '%s\n' "$body" > "$_sec_tmp"
             local _sec_match=false
-            if python3 "$CLI" voting is-security-block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
+            if python3 "$PY_CLI" voting is-security-block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
             rm -f "$_sec_tmp"
             if [[ "$_sec_match" == "true" ]]; then
                 pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""

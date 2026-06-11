@@ -89,8 +89,10 @@ REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
   || fail "(1b) missing skills/review-and-fix/SKILL.md"
 [[ -f "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" ]] \
   || fail "(1b) missing skills/review-and-fix/scripts/review-and-fix.sh"
-[[ -x "$REPO_ROOT/scripts/scrub-submodule-paths.sh" ]] \
-  || fail "(1b) missing executable scripts/scrub-submodule-paths.sh"
+[[ -f "$REPO_ROOT/python/cli.py" ]] \
+  || fail "(1b) missing python/cli.py"
+grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/cli.py" \
+  || fail "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"
 grep -Fq -- '--tool codex' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
   || fail "(1b) review-and-fix.sh must dispatch Codex coder"
 grep -Fq -- '--tool cursor' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \

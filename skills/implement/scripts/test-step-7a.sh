@@ -178,10 +178,48 @@ def _token_timing_stub() -> int:
             idx += 1
     return 0
 
+def _runlog_stub() -> int:
+    calls_log = os.environ.get("STEP7A_CALLS_LOG", "")
+    verb = sys.argv[2] if len(sys.argv) >= 3 else ""
+    rest = " ".join(sys.argv[3:])
+    if verb == "capture-transcript":
+        if calls_log:
+            with open(calls_log, "a", encoding="utf-8") as handle:
+                handle.write(f"run-log capture-transcript {rest}\n")
+        print("SESSION_TRANSCRIPT_STATUS=ok")
+        return 0
+    if verb == "append-failure":
+        args = sys.argv[3:]
+        vals = {"--log": "", "--site": "", "--tool": "", "--exit-code": "", "--category": "", "--output-file": ""}
+        i = 0
+        while i < len(args):
+            if args[i] in vals and i + 1 < len(args):
+                vals[args[i]] = args[i + 1]; i += 2
+            else:
+                i += 1
+        if vals["--log"]:
+            body = ""
+            out = Path(vals["--output-file"]) if vals["--output-file"] else None
+            if out is not None and out.is_file():
+                body = out.read_text(encoding="utf-8", errors="replace")
+            with open(vals["--log"], "a", encoding="utf-8") as handle:
+                handle.write(f"\n### {vals['--category']}\n\n")
+                handle.write(f"- **Step {vals['--site']} — {vals['--tool']} failed (exit {vals['--exit-code']})**:\n")
+                handle.write(body)
+                handle.write("\n")
+        return 0
+    if calls_log:
+        with open(calls_log, "a", encoding="utf-8") as handle:
+            handle.write(f"run-log {verb} {rest}\n")
+    print("LOG_STATUS=ok")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
         raise SystemExit(_token_timing_stub())
+    if len(sys.argv) >= 2 and sys.argv[1] == "run-log":
+        raise SystemExit(_runlog_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -269,22 +307,6 @@ fi
 printf 'FLUSH_STATUS=ok\nRECORDS=0\n'
 STUB
 
-    cat > "$root/scripts/capture-session-transcript.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'capture-session-transcript.sh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
-printf 'SESSION_TRANSCRIPT_STATUS=ok\n'
-STUB
-
-    cat > "$root/scripts/larch-log.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-cmd=${1:-}
-shift || true
-printf 'larch-log.sh %s %s\n' "$cmd" "$*" >> "$STEP7A_CALLS_LOG"
-printf 'LOG_STATUS=ok\n'
-STUB
-
     cat > "$root/python/stubs/session/read-key" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -301,30 +323,6 @@ awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, 
 STUB
     chmod +x "$root/python/stubs/session/read-key"
 
-    cat > "$root/scripts/append-tool-failure.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-log=""; site=""; tool=""; exit_code=""; category=""; output_file=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --log) log=$2; shift 2 ;;
-        --site) site=$2; shift 2 ;;
-        --tool) tool=$2; shift 2 ;;
-        --exit-code) exit_code=$2; shift 2 ;;
-        --category) category=$2; shift 2 ;;
-        --output-file) output_file=$2; shift 2 ;;
-        --redact) shift ;;
-        *) shift ;;
-    esac
-done
-{
-    printf '\n### %s\n\n' "$category"
-    printf -- '- **Step %s — %s failed (exit %s)**:\n' "$site" "$tool" "$exit_code"
-    cat "$output_file" 2>/dev/null || true
-    printf '\n'
-} >> "$log"
-STUB
-
     chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
 }
 
@@ -332,16 +330,11 @@ install_real_diagrams_helper() {
     local root=$1
     cp "$REPO_ROOT/python/cli.py" "$root/python/cli.py"
     cp "$REPO_ROOT/scripts/tracking-issue-summary.sh" "$root/scripts/tracking-issue-summary.sh"
-    cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
-    cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
-    : # mermaid sanitize is handled by the copied Python CLI
+    : # redact + mermaid sanitize are handled by the copied Python CLI
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
         "$root/python/cli.py" \
-        "$root/scripts/tracking-issue-summary.sh" \
-        "$root/scripts/redact-secrets.sh" \
-        "$root/scripts/redact-tmpdir-paths.sh" \
-        "$root/python/cli.py"
+        "$root/scripts/tracking-issue-summary.sh"
 }
 
 install_diagrams_gh_stub() {
@@ -723,7 +716,7 @@ assert_equals 0 "$rc" "flush-failure exits 0"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure emits degraded"
 assert_file_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "flush-failure appends tool failure"
 assert_equals 2 "$(cat "$CASE_DIR/flush-count")" "flush-failure still runs post-transcript flush"
-assert_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
+assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
 
 new_case flush-failure-no-logs-commit
 set +e
@@ -732,7 +725,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "flush-failure-no-logs-commit exits 0"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure-no-logs-commit preserves degraded"
-assert_not_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
 
 new_case no-logs-commit
 set +e
@@ -740,7 +733,7 @@ out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 4
 rc=$?
 set -e
 assert_equals 0 "$rc" "no-logs-commit exits 0"
-assert_not_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "no-logs-commit skips commit"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "no-logs-commit skips commit"
 assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "no-logs-commit emits skipped"
 
 new_case forked-target

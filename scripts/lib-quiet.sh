@@ -96,22 +96,26 @@ larch_quiet_redaction_state_file() {
 }
 
 larch_quiet_redact_diagnostic_stream() {
-    local helper state_file _out _rc
+    local helper state_file _out _rc _lq_root
     local _buf="" _lqrd_line
-    helper="$LARCH_LIB_QUIET_DIR/redact-secrets.sh"
+    _lq_root="${CLAUDE_PLUGIN_ROOT:-}"
+    if [ -z "$_lq_root" ]; then
+        _lq_root="$(cd "$LARCH_LIB_QUIET_DIR/.." && pwd -P 2>/dev/null)" || _lq_root=""
+    fi
+    helper="$_lq_root/python/cli.py"
     # Buffer stdin with bash built-ins (no external cat dependency).
     while IFS= read -r _lqrd_line || [ -n "$_lqrd_line" ]; do
         _buf="$_buf$_lqrd_line"$'\n'
     done
     _buf="${_buf%$'\n'}"
-    if [ ! -x "$helper" ]; then
+    if [ -z "$_lq_root" ] || [ ! -f "$helper" ]; then
         printf 'WARN larch_err-redaction-unavailable\n'
         printf '%s\n' "$_buf"
         return 0
     fi
     state_file="$(larch_quiet_redaction_state_file)"
     set +e
-    _out=$(printf '%s\n' "$_buf" | "$helper" --streaming --state-file "$state_file" 2>/dev/null)
+    _out=$(printf '%s\n' "$_buf" | python3 "$helper" redact secrets --streaming --state-file "$state_file" 2>/dev/null)
     _rc=$?
     set -e
     if [ "$_rc" -ne 0 ]; then

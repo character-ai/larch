@@ -102,7 +102,10 @@ cursor_launcher_cursor_ci_stall_sidecar_dir() {
 # Redact a bounded UTF-8-ish blob for stall JSON git_state fields using the same
 # wall-clock envelope as ps/lsof/transcript captures.
 _cursor_launcher_redact_stall_blob() {
-    local _blob="$1" _rf="$2" _tb
+    local _blob="$1" _tb _cli _scr
+    _scr="${SCRIPT_DIR:-}"
+    [[ -z "$_scr" ]] && _scr="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+    _cli="$_scr/../python/cli.py"
     _tb=$(mktemp "${TMPDIR:-/tmp}/larch-stall-gitblob.XXXXXX") || {
         printf '%s' '[omitted: redact-secrets temp failed]'
         return 0
@@ -112,20 +115,20 @@ _cursor_launcher_redact_stall_blob() {
         printf '%s' '[omitted: redact-secrets temp failed]'
         return 0
     }
-    if [[ ! -x "$_rf" ]]; then
+    if [[ ! -f "$_cli" ]] || ! command -v python3 >/dev/null 2>&1; then
         rm -f "$_tb"
         printf '%s' '[omitted: redact-secrets unavailable or not executable]'
         return 0
     fi
     if command -v timeout >/dev/null 2>&1; then
-        if timeout 8 "$_rf" <"$_tb" >"${_tb}.r" 2>/dev/null; then
+        if timeout 8 python3 "$_cli" redact secrets <"$_tb" >"${_tb}.r" 2>/dev/null; then
             cat "${_tb}.r"
         else
             printf '%s' '[omitted: redact-secrets failed or timed out]'
         fi
         rm -f "$_tb" "${_tb}.r"
     elif command -v gtimeout >/dev/null 2>&1; then
-        if gtimeout 8 "$_rf" <"$_tb" >"${_tb}.r" 2>/dev/null; then
+        if gtimeout 8 python3 "$_cli" redact secrets <"$_tb" >"${_tb}.r" 2>/dev/null; then
             cat "${_tb}.r"
         else
             printf '%s' '[omitted: redact-secrets failed or timed out]'
@@ -240,12 +243,12 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
 
     _scr="${SCRIPT_DIR:-}"
     [[ -z "$_scr" ]] && _scr="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
-    _rf="$_scr/redact-secrets.sh"
-    if [[ -x "$_rf" ]]; then
+    _rf="$_scr/../python/cli.py"
+    if [[ -f "$_rf" ]] && command -v python3 >/dev/null 2>&1; then
         if command -v timeout >/dev/null 2>&1; then
             for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
                 rm -f "${_p}.r"
-                if timeout 8 "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
+                if timeout 8 python3 "$_rf" redact secrets <"$_p" >"${_p}.r" 2>/dev/null; then
                     mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
                 else
                     rm -f "${_p}.r"
@@ -255,7 +258,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         elif command -v gtimeout >/dev/null 2>&1; then
             for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
                 rm -f "${_p}.r"
-                if gtimeout 8 "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
+                if gtimeout 8 python3 "$_rf" redact secrets <"$_p" >"${_p}.r" 2>/dev/null; then
                     mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
                 else
                     rm -f "${_p}.r"

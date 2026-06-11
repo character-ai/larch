@@ -38,11 +38,11 @@ The helper always exits 0. Callers must treat the value as display metadata only
 
 | File | Relationship |
 |---|---|
-| `scripts/larch-log.sh` | Runtime log writer; manifests may carry model metadata. |
+| `python3 python/cli.py run-log` | Runtime log writer; manifests may carry model metadata. |
 | `python3 python/cli.py token claude-source` | Transcript resolver used by this helper. |
-| `scripts/test-larch-log.sh` | Regression harness for runtime log writes. |
-| `scripts/larch-log.md` | Human-readable log contract. |
+| `python/test_run_logs.py` | Regression harness for runtime log writes. |
+| `docs/run-logs.md` | Human-readable log contract. |
 
 ## Test harness
 
-Covered by `scripts/test-larch-log.sh`, which is wired into `make test-harnesses`.
+Covered by `python/test_run_logs.py`, which is wired into `make py-test`.

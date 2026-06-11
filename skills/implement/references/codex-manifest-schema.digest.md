@@ -24,7 +24,7 @@
 
 ## Key validation rules
 
-1. `schema_version == "1"`. 2. `status` in enum. 3. Per-status required keys per table; failure → `manifest-schema-invalid`. 4. Paths repo-relative (no `..`, no leading `/`); `.claude-plugin/plugin.json` and submodule paths rejected. 5. On `complete`: dispatcher runs `git add -A && git commit -F <redacted-msg>`. 6. Selected string fields (`summary_bullets`, `commit_message`, `todos_left`, `oos_observations[*].title/description`) are redacted via `scripts/redact-secrets.sh`; `bail_reason` and `needs_qa.questions[*].text` are NOT run through the redactor — see full doc §Sanitization.
+1. `schema_version == "1"`. 2. `status` in enum. 3. Per-status required keys per table; failure → `manifest-schema-invalid`. 4. Paths repo-relative (no `..`, no leading `/`); `.claude-plugin/plugin.json` and submodule paths rejected. 5. On `complete`: dispatcher runs `git add -A && git commit -F <redacted-msg>`. 6. Selected string fields (`summary_bullets`, `commit_message`, `todos_left`, `oos_observations[*].title/description`) are redacted via `python/cli.py redact secrets`; `bail_reason` and `needs_qa.questions[*].text` are NOT run through the redactor — see full doc §Sanitization.
 
 ## Bail-reason tokens
 

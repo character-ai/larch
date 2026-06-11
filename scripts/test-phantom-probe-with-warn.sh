@@ -34,9 +34,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s1 2>&1) || fail "w1"
@@ -50,9 +54,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=tracked-only
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s2 2>&1) || fail "w2"
@@ -67,10 +75,14 @@ echo STATUS=phantom
 echo PHANTOM_COUNT=3
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-echo APPENDED=true
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("APPENDED=true")
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s3 2>&1) || fail "w3"
@@ -86,9 +98,13 @@ echo STATUS=unknown
 echo REASON=r1
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s4 2>&1) || fail "w4"
@@ -103,11 +119,15 @@ echo STATUS=phantom
 echo PHANTOM_COUNT=1
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-echo FAILED=true
-echo ERROR=stdout-err
-exit 2
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("FAILED=true")
+print("ERROR=stdout-err")
+raise SystemExit(2)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s5 2>&1) || fail "w5"
@@ -122,10 +142,14 @@ echo STATUS=unknown
 echo REASON=u1
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' 'tail-err' >&2
-exit 2
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+print("tail-err", file=sys.stderr)
+raise SystemExit(2)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step s6 2>&1) || fail "w6"
@@ -139,9 +163,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step bc-step 2>&1) || fail "w7"
@@ -154,9 +182,13 @@ stage "$d"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$d/"
 cp "$REPO_ROOT/scripts/check-phantom-dirty.sh" "$d/"
 chmod +x "$d/check-phantom-dirty.sh"
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 out=$(IMPLEMENT_TMPDIR="$IMP" "$d/phantom-probe-with-warn.sh" --step 'bad!step' 2>&1) || fail "w8"
@@ -171,9 +203,13 @@ cat >"$d/check-phantom-dirty.sh" <<'EOF'
 echo STATUS=clean
 exit 0
 EOF
-cat >"$d/append-execution-issue.sh" <<'EOF'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$TMPROOT/python"
+cat >"$TMPROOT/python/cli.py" <<'EOF'
+import sys
+if sys.argv[1:2] == ["redact"]:
+    sys.stdout.write(sys.stdin.read())
+    raise SystemExit(0)
+raise SystemExit(0)
 EOF
 chmod +x "$d"/*.sh
 bash -c "set -euo pipefail; source \"$d/lib-phantom-probe.sh\"; source \"$d/lib-phantom-probe.sh\"; IMPLEMENT_TMPDIR=\"$IMP\" \"$d/phantom-probe-with-warn.sh\" --step z99" >/dev/null || fail "w10"

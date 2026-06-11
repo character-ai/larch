@@ -10,8 +10,6 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
-# shellcheck source=scripts/lib-larch-log.sh
-source "$SCRIPT_DIR/lib-larch-log.sh"
 
 DESIGN_TMPDIR=""
 ISSUE=""
@@ -23,6 +21,10 @@ validate_repo() {
         '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+larch_log_slug_is_valid() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
 source_env_get() {
@@ -75,7 +77,7 @@ emit_fail() {
 log_failure() {
     local reason="$1" output_file="$2"
     if [[ -n "$DESIGN_TMPDIR" && -d "$DESIGN_TMPDIR" && -f "$output_file" ]]; then
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design pause save" \
             --tool "$reason" \
@@ -242,8 +244,8 @@ fi
     printf 'PAUSED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 } > "$state_tmp"
 
-if ! "$SCRIPT_DIR/redact-secrets.sh" < "$state_tmp" > "$redacted_state_tmp"; then
-    log_failure "redact-secrets.sh" "$state_tmp"
+if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$state_tmp" > "$redacted_state_tmp"; then
+    log_failure "python3 python/cli.py redact secrets" "$state_tmp"
     emit_fail "pause-state-redaction-failed"
 fi
 cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
@@ -296,8 +298,8 @@ if [[ "$PUBLISH_OK" != "true" ]]; then
     fi
 fi
 
-if ! "$SCRIPT_DIR/redact-secrets.sh" < "$state_tmp" > "$redacted_state_tmp"; then
-    log_failure "redact-secrets.sh" "$state_tmp"
+if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$state_tmp" > "$redacted_state_tmp"; then
+    log_failure "python3 python/cli.py redact secrets" "$state_tmp"
     emit_fail "pause-state-redaction-failed"
 fi
 cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"

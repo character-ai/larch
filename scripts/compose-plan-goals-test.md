@@ -31,6 +31,6 @@ named `Test plan`, `Tests`, `Testing`, `Verification`, `Test strategy`, or
 
 The script fails closed for missing, empty, too-short, or pointer-only plan
 files. It is called by `skills/implement/SKILL.md` before writing the
-`plan-goals-test` batch through `scripts/larch-log.sh`.
+`plan-goals-test` batch through `python3 python/cli.py run-log`.
 
 Harness: `scripts/test-compose-plan-goals-test.sh`.

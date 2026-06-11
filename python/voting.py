@@ -95,6 +95,15 @@ _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain
 _UNCERTAIN_VALUES = {"true", "false"}
 
 
+def _python_cli(plugin_root: str = "") -> Path:
+    root = Path(plugin_root) if plugin_root else _plugin_root()
+    return root / "python" / "cli.py"
+
+
+def _run_log_cli_argv(*subcommand: str, plugin_root: str = "") -> list[str]:
+    return ["python3", str(_python_cli(plugin_root)), "run-log", *subcommand]
+
+
 def _plugin_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -525,12 +534,10 @@ def check_voter_parse_rate(
             _plain_diagnostic(
                 f"**⚠ Voter {voter_tool}: {judge_error_count}/{len(ids)} ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {voter_path}.**"
             )
-            root = Path(plugin_root) if plugin_root else _plugin_root()
-            append_tool = root / "scripts" / "append-tool-failure.sh"
-            if not should_suppress_parse_rate_issue_append(voter_path, review_tmpdir) and os.access(append_tool, os.X_OK):
+            if not should_suppress_parse_rate_issue_append(voter_path, review_tmpdir):
                 proc.run(
                     [
-                        str(append_tool),
+                        *_run_log_cli_argv("append-failure", plugin_root=plugin_root),
                         "--log",
                         _issues_log(review_tmpdir),
                         "--site",
@@ -974,17 +981,13 @@ def write_tally_main(argv: list[str]) -> int:
             if rc != 0:
                 _die("code-review body header validation failed")
         record = compose_tally_record(args)
-        logger = Path(os.environ.get("LARCH_WRITE_TALLY_LOGGER", str(_plugin_root() / "scripts" / "larch-log.sh")))
-        if not os.access(logger, os.X_OK):
-            _die(f"larch-log.sh not executable: {logger}")
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, prefix="write-tally-record.") as handle:
             handle.write(record + "\n")
             record_file = handle.name
         try:
             result = proc.run(
                 [
-                    str(logger),
-                    "write",
+                    *_run_log_cli_argv("write"),
                     "--log-root",
                     args.log_root,
                     "--skill",

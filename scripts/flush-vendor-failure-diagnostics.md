@@ -23,7 +23,7 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 
 - `--tmpdir` (required): the run tmpdir holding `vendor-failure-diagnostics.parts/`.
 - `--run-id` / `--log-root`: when both are set, the derived batch file is staged
-  via `larch-log.sh write --batch vendor-failure-diagnostics`.
+  via `python3 python/cli.py run-log write --batch vendor-failure-diagnostics`.
 - `--skill` (default `implement`): larch-log skill namespace.
 
 ## Behavior
@@ -34,10 +34,10 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 2. **Idempotent derive**: the canonical `$tmpdir/vendor-failure-diagnostics.txt`
    is overwritten from the full sorted parts set on every flush, so repeated
    pre-commit flushes converge. The batch slug is `replace` mode
-   (`scripts/larch-log-batches.sh`) for the same reason.
-3. **Stage only — never commit**: `larch-log.sh write` stages the batch under the
+   (`docs/run-log-batches.md`) for the same reason.
+3. **Stage only — never commit**: `python3 python/cli.py run-log write` stages the batch under the
    log root; the surrounding flush/refresh sites own the commit, and
-   `larch-log.sh commit` enforces the post-merge sentinel guard (NEVER #16). This
+   `python3 python/cli.py run-log commit` enforces the post-merge sentinel guard (NEVER #16). This
    helper makes no git commit, so it is safe to call post-merge (it becomes a
    no-op stage).
 
@@ -50,8 +50,8 @@ flush-vendor-failure-diagnostics.sh --tmpdir DIR [--run-id ID --log-root DIR] [-
 
 Called best-effort before each log commit / push:
 - `skills/implement/scripts/step-7a.sh` (pre-ship flush)
-- `scripts/larch-log-flush.sh` (commit-tail flush)
-- `scripts/refresh-run-logs.sh` (CI-retry / rebase pre-push refresh)
+- `python3 python/cli.py run-log flush` (commit-tail flush)
+- `python3 python/cli.py run-log refresh` (CI-retry / rebase pre-push refresh)
 - `scripts/implement-finalize.sh` teardown (safety net, mirrors
   `flush_execution_issues_safety_net`, F13)
 
@@ -59,7 +59,7 @@ Called best-effort before each log commit / push:
 
 - Bash 3.2 portable (no associative arrays / `mapfile`).
 - Never makes a git commit.
-- Best-effort: a `larch-log.sh write` failure is reported via
+- Best-effort: a `python3 python/cli.py run-log write` failure is reported via
   `BATCH_WRITTEN=false`, not a non-zero exit.
 
 ## Harness
@@ -71,5 +71,5 @@ Called best-effort before each log commit / push:
 
 Keep aligned with `scripts/lib-failed-agent-stderr-tail.sh`
 (`append_vendor_failure_diagnostics` part-file layout),
-`scripts/larch-log-batches.sh` (the `vendor-failure-diagnostics` slug), and
+`docs/run-log-batches.md` (the `vendor-failure-diagnostics` slug), and
 `docs/vendor-agent-diagnostics-audit.md`.

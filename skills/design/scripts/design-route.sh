@@ -293,7 +293,7 @@ merge_router_flags() {
             mv -f "$_rp_merge" "$run_params"
             rm -f "$_rp_err"
         else
-            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b route flag merge" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b route flag merge" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
             rm -f "$_rp_merge" "$_rp_err"
         fi
     elif [[ ! -f "$run_params" || -L "$run_params" ]]; then

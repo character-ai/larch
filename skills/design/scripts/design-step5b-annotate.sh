@@ -118,7 +118,7 @@ if [[ "${_oos_ann_rc:-0}" -ne 0 ]]; then
     _issues_failed=1
   fi
   if [[ -s "$DESIGN_TMPDIR/oos-filing-annotate.stderr.log" ]]; then
-    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
       --log "$DESIGN_TMPDIR/execution-issues.md" \
       --site "design Step 5b" \
       --tool "file-design-oos.sh annotate" \
@@ -131,7 +131,7 @@ if [[ "${_oos_ann_rc:-0}" -ne 0 ]]; then
     printf '%s\n' "**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**"
   fi
 elif [[ "${FILE_DESIGN_OOS_STATUS:-}" == annotate-skipped-empty-stdout && -n "${WARN:-}" ]]; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure \
     --log "$DESIGN_TMPDIR/execution-issues.md" \
     --site "design Step 5b annotate-skip" \
     --tool "file-design-oos.sh annotate" \

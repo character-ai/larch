@@ -169,7 +169,7 @@ _materialize_scope_anchor() {
         larch_err "plan-review-loop.sh: scope anchor is empty after stripping embedded larch:plan block"
         return 2
     fi
-    "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
+    python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
     if ! grep -q '[^[:space:]]' "$SCOPE_ANCHOR_FILE"; then
         larch_err "plan-review-loop.sh: scope anchor is empty after redaction"
         return 2
@@ -860,7 +860,7 @@ _log_dropped_slots() {
                 printf 'First ~200 chars of the offending output:\n%s\n' "$_detail"
             fi
         } >"$_tmp"
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 3" \
             --tool "${_tool:-unknown} plan-review slot ${_slot}" \
@@ -1120,7 +1120,7 @@ while IFS= read -r _rec || [[ -n "$_rec" ]]; do
             --reviewer-file "$_rf" \
             --structured-record "$_srec" \
             --output "$_fail_log" || true
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 3" \
             --tool "collect-agent-results.sh ${_tool} ${_st}" \

@@ -41,7 +41,7 @@ REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
-SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
+SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-}"
 if [[ -n "${REVIEW_AND_FIX_WRITE_TALLY_SH:-}" ]]; then
     [[ -x "$REVIEW_AND_FIX_WRITE_TALLY_SH" ]] || {
         larch_err "review-and-fix.sh: REVIEW_AND_FIX_WRITE_TALLY_SH is not executable: $REVIEW_AND_FIX_WRITE_TALLY_SH"
@@ -56,7 +56,23 @@ else
     WRITE_TALLY_CMD=(python3 "$PY_CLI" voting write-tally)
 fi
 COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
-LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
+LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-}"
+
+_scrub_submodule_paths() {
+    if [[ -n "$SCRUB_SUBMODULE_PATHS_SH" && -x "$SCRUB_SUBMODULE_PATHS_SH" ]]; then
+        "$SCRUB_SUBMODULE_PATHS_SH" "$@"
+    else
+        python3 "$PLUGIN_ROOT/python/cli.py" redact scrub-submodule-paths "$@"
+    fi
+}
+
+_larch_log() {
+    if [[ -n "$LARCH_LOG_SH" && -x "$LARCH_LOG_SH" ]]; then
+        "$LARCH_LOG_SH" "$@"
+    else
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log "$@"
+    fi
+}
 IMPLEMENT_TMPDIR=""
 MODE=""
 DIFF_FILE=""
@@ -700,10 +716,10 @@ apply_findings_with_coder() {
         return 0
     fi
 
-    [[ -x "$SCRUB_SUBMODULE_PATHS_SH" ]] || { larch_err "review-and-fix.sh: scrub-submodule-paths.sh not executable: $SCRUB_SUBMODULE_PATHS_SH"; return 2; }
+    command -v python3 >/dev/null 2>&1 || { larch_err "review-and-fix.sh: redact scrub-submodule-paths not executable: $SCRUB_SUBMODULE_PATHS_SH"; return 2; }
     scrubbed_file="$round_dir/accepted-findings.scrubbed.md"
     scrub_rc=0
-    scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log" 2>/dev/null) || scrub_rc=$?
+    scrub_out=$(_scrub_submodule_paths --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log" 2>/dev/null) || scrub_rc=$?
     scrub_ok=$(awk -F= '$1 == "SCRUB_OK" { print $2; exit }' <<< "$scrub_out")
     scrub_count=$(awk -F= '$1 == "SCRUB_COUNT" { print $2; exit }' <<< "$scrub_out")
     scrub_count="${scrub_count:-0}"
@@ -959,7 +975,7 @@ flush_review_batches() {
     [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
     [[ "$neutral" =~ ^[0-9]+$ ]] || neutral=0
     [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
-    [[ -x "$LARCH_LOG_SH" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
     mkdir -p "$batch_input_dir" || {
@@ -1078,25 +1094,25 @@ flush_review_batches() {
     fi
 
     local findings_err="$impl_tmpdir/review-findings-full.flush.err"
-    if ! "$LARCH_LOG_SH" write \
+    if ! _larch_log write \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
         --batch review-findings-full \
         --input-file "$findings_file" >"$findings_err" 2>&1; then
-        append_log_write_failure "5" "larch-log.sh write review-findings-full" "$findings_err" "Warnings" "$?" "review-findings-full batch"
+        append_log_write_failure "5" "run-log write review-findings-full" "$findings_err" "Warnings" "$?" "review-findings-full batch"
     else
         rm -f "$findings_err"
     fi
     if [[ -f "$impl_tmpdir/reviewer-prune-ledger.tsv" ]]; then
         local ledger_err="$impl_tmpdir/reviewer-prune-ledger.flush.err"
-        if ! "$LARCH_LOG_SH" write \
+        if ! _larch_log write \
             --log-root "$impl_tmpdir/larch-logs" \
             --skill implement \
             --run-id "$run_id" \
             --batch reviewer-prune-ledger \
             --input-file "$impl_tmpdir/reviewer-prune-ledger.tsv" >"$ledger_err" 2>&1; then
-            append_log_write_failure "5" "larch-log.sh write reviewer-prune-ledger" "$ledger_err" "Warnings" "$?" "reviewer-prune-ledger batch"
+            append_log_write_failure "5" "run-log write reviewer-prune-ledger" "$ledger_err" "Warnings" "$?" "reviewer-prune-ledger batch"
         else
             rm -f "$ledger_err"
         fi
@@ -1110,11 +1126,11 @@ flush_round_log_after_coder() {
     [[ -n "$run_id" ]] || return 0
     [[ "$round_num" =~ ^[0-9]+$ ]] || return 0
     [[ -d "$round_dir" ]] || return 0
-    [[ -x "$LARCH_LOG_SH" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
 
     flush_err="$round_dir/review-and-fix-write-round.log"
     set +e
-    "$LARCH_LOG_SH" write-round \
+    _larch_log write-round \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -1124,7 +1140,7 @@ flush_round_log_after_coder() {
     set -e
     if [[ "$rc" -ne 0 ]]; then
         larch_err "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
-        append_log_write_failure "5" "larch-log.sh write-round" "$flush_err" "Warnings" "$rc" "post-coder round $round_num"
+        append_log_write_failure "5" "run-log write-round" "$flush_err" "Warnings" "$rc" "post-coder round $round_num"
     else
         rm -f "$flush_err"
     fi
@@ -1249,9 +1265,8 @@ write_rejected_findings_aggregate() {
 
 append_log_write_failure() {
     local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}" exit_code="${5:-1}" verdict="${6:-}"
-    local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
     local -a helper_args
-    if [[ -x "$helper" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
         helper_args=(
             --log "$IMPLEMENT_TMPDIR/execution-issues.md"
             --site "$site"
@@ -1262,7 +1277,7 @@ append_log_write_failure() {
             --redact
         )
         [[ -n "$verdict" ]] && helper_args+=(--verdict "$verdict")
-        "$helper" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             "${helper_args[@]}" >/dev/null 2>&1 || true
     else
         larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
@@ -1367,27 +1382,27 @@ _implement_round_body() {
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
         "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" --output "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
         git rev-parse HEAD > "$IMPLEMENT_TMPDIR/pre-review-head.txt" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/pre-review-head.txt"
-        if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" ]]; then
+        if [[ -n "$RUN_ID" ]]; then
             if [[ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ]]; then
                 pre_review_untracked_fail_log="$IMPLEMENT_TMPDIR/pre-review-untracked-write.failure.log"
-                if ! "$LARCH_LOG_SH" write \
+                if ! _larch_log write \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement \
                     --run-id "$RUN_ID" \
                     --batch pre-review-untracked \
                     --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" >"$pre_review_untracked_fail_log" 2>&1; then
-                    append_log_write_failure "7a" "larch-log.sh write pre-review-untracked" "$pre_review_untracked_fail_log"
+                    append_log_write_failure "7a" "run-log write pre-review-untracked" "$pre_review_untracked_fail_log"
                 fi
             fi
             if [[ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ]]; then
                 pre_review_head_fail_log="$IMPLEMENT_TMPDIR/pre-review-head-write.failure.log"
-                if ! "$LARCH_LOG_SH" write \
+                if ! _larch_log write \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement \
                     --run-id "$RUN_ID" \
                     --batch pre-review-head \
                     --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" >"$pre_review_head_fail_log" 2>&1; then
-                    append_log_write_failure "7a" "larch-log.sh write pre-review-head" "$pre_review_head_fail_log"
+                    append_log_write_failure "7a" "run-log write pre-review-head" "$pre_review_head_fail_log"
                 fi
             fi
         fi
@@ -1775,7 +1790,7 @@ _implement_round_body() {
     } >> "$round_dir/review-and-fix.env"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
-    if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
+    if [[ -n "$RUN_ID" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
         local scout_status_val scout_dynamic_slots_raw scout_dynamic_slots scout_manifest_path yield_tsv_path scout_payload manifest_basename yield_tsv_basename scout_flush_err scout_rc
         scout_status_val=$(kv_get "$core_out" SCOUT_STATUS)
         scout_status_val="${scout_status_val:-na}"
@@ -1805,7 +1820,7 @@ _implement_round_body() {
             fi
             if [[ -s "$scout_payload" ]]; then
                 set +e
-                "$LARCH_LOG_SH" write \
+                _larch_log write \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement \
                     --run-id "$RUN_ID" \
@@ -1814,7 +1829,7 @@ _implement_round_body() {
                 scout_rc=$?
                 set -e
                 if [[ "$scout_rc" -ne 0 ]]; then
-                    append_log_write_failure "5" "larch-log.sh write review-scout-manifest" "$scout_flush_err" "Warnings" "$scout_rc" "scout flush round $round_num_dec"
+                    append_log_write_failure "5" "run-log write review-scout-manifest" "$scout_flush_err" "Warnings" "$scout_rc" "scout flush round $round_num_dec"
                 else
                     rm -f "$scout_flush_err"
                 fi

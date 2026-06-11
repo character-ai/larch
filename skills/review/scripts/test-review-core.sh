@@ -909,7 +909,7 @@ issues_parent="$TMP/issues-parent"
 mkdir -p "$issues_parent"
 out=$(TEST_FINDINGS=0 run_core_with_log_stub "$TMP/log-fail" "$issues_parent/session.env")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-grep -Fq 'larch-log.sh write-round failed (exit 7' "$issues_parent/execution-issues.md" || {
+grep -Fq 'run-log write-round failed (exit 7' "$issues_parent/execution-issues.md" || {
     echo "FAIL: missing review-core write-round execution issue" >&2
     exit 1
 }

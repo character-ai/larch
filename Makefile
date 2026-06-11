@@ -123,13 +123,13 @@ test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-redact-secrets.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py
 
 test-scrub-log-secrets:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scrub-log-secrets.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py
 
 test-redact-tmpdir-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-redact-tmpdir-paths.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py
 
 test-reviewer-prune:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-reviewer-prune.sh
@@ -138,10 +138,10 @@ test-lib-prune-decision:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-prune-decision.sh
 
 test-append-tool-failure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-append-tool-failure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-append-execution-issue.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-validate-research-output:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-validate-research-output.sh
@@ -317,7 +317,7 @@ test-token-claude-source:
 	cd python && $(PYTHON) -m pytest test_tokens.py -q
 
 test-verify-skill-called:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-verify-skill-called.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_verify_skill.py
 
 
 test-relevant-checks:
@@ -662,7 +662,7 @@ test-git-commit-only:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-commit-only.sh
 
 test-refresh-run-logs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-refresh-run-logs.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-gh-run-logs:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gh-run-logs.sh
@@ -872,7 +872,7 @@ test-run-step5-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step5-review.sh
 
 test-scrub-submodule-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scrub-submodule-paths.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py
 
 
 test-run-research-planner:
@@ -897,22 +897,22 @@ test-tracking-issue-write:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-tracking-issue-write.sh
 
 test-larch-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-log.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-larch-log-write-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-log-write-round.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-capture-session-transcript:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-capture-session-transcript.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-verify-run-log-completeness:
-	env -u LARCH_VERIFY_MANIFEST python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-verify-run-log-completeness.sh
+	env -u LARCH_VERIFY_MANIFEST python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-larch-logs-manifest:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-logs-manifest.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-larch-logs-batches:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-logs-batches.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_run_logs.py
 
 test-compose-plan-goals-test:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-plan-goals-test.sh

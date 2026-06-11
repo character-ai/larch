@@ -9,7 +9,6 @@ CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-code-votes.sh"
 LOG_PHASE="$SCRIPT_DIR/log-phase.sh"
-LARCH_LOG="$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh"
 CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/review-findings-classification.XXXXXX")
@@ -57,7 +56,7 @@ grep -Fq $'FINDING_1\tcursor-a-output.txt|codex-b-output.txt\taccepted\tYES\ttru
     || fail "nested compact 2-voter row missing"
 grep -Fq $'OOS_1\tcursor-oos-output.txt\tneutral' "$class_file" || fail "OOS_N classification row missing"
 log_root="$A/logs"
-"$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A/impl-parent/round-1" >/dev/null
+python3 "$CLI" run-log write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A/impl-parent/round-1" >/dev/null
 [[ -f "$log_root/implement/run-a/round-1/findings-classification.tsv" ]] || fail "write-round did not publish findings-classification.tsv"
 
 echo "# Fixture B: standalone lenient missing rating handling does not change vote result"

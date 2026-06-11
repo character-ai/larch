@@ -88,7 +88,7 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 4. **Mechanical sentinel verification** (defense in depth):
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/verify-skill-called.sh --sentinel-file "$RESEARCH_TMPDIR/issue-completed.sentinel"
+   ${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called --sentinel-file "$RESEARCH_TMPDIR/issue-completed.sentinel"
    ```
 
    Parse `VERIFIED=true|false` and `REASON=<token>` from stdout. On `VERIFIED=true`, continue. On `VERIFIED=false`, print the fail-closed warning citing `REASON` and abort:
@@ -364,7 +364,7 @@ Derive from `RESEARCH_QUESTION`: `[Research Report] <RESEARCH_QUESTION>`, trunca
 4. Sentinel verification (defense in depth):
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/verify-skill-called.sh --sentinel-file "$RESEARCH_TMPDIR/research-issue.sentinel"
+   ${CLAUDE_PLUGIN_ROOT}/python/cli.py verify skill-called --sentinel-file "$RESEARCH_TMPDIR/research-issue.sentinel"
    ```
 
    Parse `VERIFIED` and `REASON`.

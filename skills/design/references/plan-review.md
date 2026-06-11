@@ -6,7 +6,7 @@
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2a.5, 2b, 3.5, 3b, 4, or 5 — the reviewer archetype, ballot handling, voting panel launch, finalize procedure, and rejected-findings template defined here are all Step-3-internal concerns.
 
-**Failure logging**: All external reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures must append verbatim captured output to `$DESIGN_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues`.
+**Failure logging**: All external reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures must append verbatim captured output to `$DESIGN_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/python/cli.py run-log append-failure` under `External Reviewer Issues`.
 
 For each non-`OK` collector status, compose the failure log via the dedicated helper (do NOT improvise the composition; the helper guarantees the structured record is always present so the resulting `execution-issues.md` entry is never empty):
 
@@ -17,9 +17,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/compose-collector-failure-log.sh \
   --output "$DESIGN_TMPDIR/<slot>-collector.failure.log"
 ```
 
-Then invoke `append-tool-failure.sh` with `--output-file "$DESIGN_TMPDIR/<slot>-collector.failure.log"` and the documented `--site / --tool / --exit-code / --category / --redact` flags.
+Then invoke `run-log append-failure` with `--output-file "$DESIGN_TMPDIR/<slot>-collector.failure.log"` and the documented `--site / --tool / --exit-code / --category / --redact` flags.
 
-Launch failures (non-zero `launch-review.sh` exit before the collector runs) continue to capture launcher stdout+stderr directly to `$DESIGN_TMPDIR/<slot>-launch.failure.log` and append via `append-tool-failure.sh` as today; that path does not use the new helper because there is no collector record yet.
+Launch failures (non-zero `launch-review.sh` exit before the collector runs) continue to capture launcher stdout+stderr directly to `$DESIGN_TMPDIR/<slot>-launch.failure.log` and append via `run-log append-failure` as today; that path does not use the new helper because there is no collector record yet.
 
 ---
 

@@ -17,7 +17,7 @@
 # success envelope. Post-push failures (git push, gh pr create after push,
 # gh pr merge) exit 1 while preserving PUBLISH_OK=false.
 # Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
-# published only under breadcrumbs/ via larch_log_publish_breadcrumbs_shared.
+# published only under breadcrumbs/ via python3 python/cli.py run-log publish-breadcrumbs.
 
 set -euo pipefail
 
@@ -25,9 +25,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-larch-log.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-larch-log.sh"
 # shellcheck source=scripts/lib-redact.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-redact.sh"
@@ -106,10 +103,14 @@ validate_repo() {
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
 }
 
+larch_log_slug_is_valid() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
 redact_diagnostic() {
     local text=$1 redacted=""
-    if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ] && [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
-        redacted=$(printf '%s' "$text" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || true)
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$SCRIPT_DIR/../python/cli.py" ]]; then
+        redacted=$(printf '%s' "$text" | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets 2>/dev/null || true)
         case "$redacted" in
             *'[content truncated'*) redacted="" ;;
         esac
@@ -284,9 +285,9 @@ fi
 LOG_ROOT_ABS=$(cd "$WT_DIR" && pwd)/larch-logs
 mkdir -p "$LOG_ROOT_ABS"
 
-if ! (cd "$WT_DIR" && "$SCRIPT_DIR/larch-log.sh" init \
+if ! (cd "$WT_DIR" && python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
     --log-root "$LOG_ROOT_ABS" --skill design --run-id "$RUN_ID" --issue "$ISSUE" >/dev/null); then
-    larch_err "design-log-publish: larch-log.sh init failed"
+    larch_err "design-log-publish: python3 python/cli.py run-log init failed"
     emit_publish_result false
     exit 0
 fi
@@ -403,7 +404,7 @@ design_publish_stage_file() {
     local src="$1"
     local dest="$2"
     local include_excluded="${3:-false}"
-    local name trim_tmp redact_tmp redact_secrets
+    local name trim_tmp py_cli
     name=$(basename "$src")
     if [[ -L "$src" ]]; then
         return 0
@@ -450,13 +451,12 @@ design_publish_stage_file() {
             ;;
     esac
     mkdir -p "$(dirname "$dest")"
-    redact_tmp="$SCRIPT_DIR/redact-tmpdir-paths.sh"
-    redact_secrets="$SCRIPT_DIR/redact-secrets.sh"
-    if [[ ! -x "$redact_tmp" || ! -x "$redact_secrets" ]]; then
+    py_cli="$SCRIPT_DIR/../python/cli.py"
+    if [[ ! -f "$py_cli" ]]; then
         rm -f "$trim_tmp"
         return 1
     fi
-    if ! "$redact_tmp" <"$trim_tmp" | "$redact_secrets" >"$dest"; then
+    if ! python3 "$py_cli" redact tmpdir-paths <"$trim_tmp" | python3 "$py_cli" redact secrets >"$dest"; then
         rm -f "$trim_tmp"
         return 1
     fi
@@ -487,10 +487,15 @@ design_publish_remove_stale_excluded() {
 
 design_publish_breadcrumbs() {
     local source_dir="$1" dest_dir="$2"
-    larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
+    if [[ ! -d "$source_dir" ]]; then
+        return 0
+    fi
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" run-log publish-breadcrumbs --source-dir "$source_dir" --dest-dir "$dest_dir"; then
+        design_publish_breadcrumbs_error "breadcrumb publish failed"
+        return 1
+    fi
 }
 
-# shellcheck disable=SC2317 # invoked indirectly via larch_log_publish_breadcrumbs_shared callback name
 design_publish_breadcrumbs_error() {
     larch_err "design-log-publish: $1"
 }
@@ -564,7 +569,7 @@ _plan_ref="$DESIGN_TMPDIR/plan.txt"
 if [[ "${LARCH_FLUSH_DEBUG:-}" == "1" && -f "$_composed_src" && -f "$_plan_ref" ]]; then
     _cdiff_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-composeddiff.XXXXXX")
     diff -u "$_plan_ref" "$_composed_src" >"$_cdiff_tmp" || true  # diff exits 1 on differences
-    if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_cdiff_tmp" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/composed-plan.diff"; then
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$_cdiff_tmp" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets >"$RUN_DEST/composed-plan.diff"; then
         rm -f "$_cdiff_tmp"
         larch_err "design-log-publish: composed-plan.diff staging failed"
         emit_publish_result false
@@ -682,7 +687,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
         _diff_out_f=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-plandiff.XXXXXX")
         diff -u "$_prev_plan_src" "$_curr_plan_src" >"$_diff_out_f" || true
         mkdir -p "$RUN_DEST/plan-review/round-$_diff_rn"
-        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$_diff_out_f" | "$SCRIPT_DIR/redact-secrets.sh" >"$RUN_DEST/plan-review/round-$_diff_rn/plan.diff"; then
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$_diff_out_f" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets >"$RUN_DEST/plan-review/round-$_diff_rn/plan.diff"; then
             rm -f "$_diff_out_f"
             larch_err "design-log-publish: plan.diff staging failed for round $_diff_rn"
             emit_publish_result false
@@ -829,14 +834,14 @@ design_publish_remove_stale_excluded "$RUN_DEST"
 # the staged run tree before commit. Fail-closed on scrub failure. On a real
 # redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
 # /design report can warn the operator to rotate the exposed credential.
-scrub_gate="$SCRIPT_DIR/scrub-log-secrets.sh"
-if [[ ! -x "$scrub_gate" ]]; then
+scrub_gate="$SCRIPT_DIR/../python/cli.py"
+if [[ ! -f "$scrub_gate" ]]; then
     larch_err "design-log-publish: secret scrub gate missing: $scrub_gate"
     emit_publish_result false
     exit 0
 fi
 set +e
-scrub_out="$("$scrub_gate" "$RUN_DEST")"
+scrub_out="$(python3 "$scrub_gate" redact scrub-log-secrets "$RUN_DEST")"
 scrub_rc=$?
 set -e
 if [[ "$scrub_rc" -ne 0 ]]; then

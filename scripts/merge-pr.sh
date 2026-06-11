@@ -49,8 +49,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
-REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
-REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+PY_CLI="$REPO_ROOT/python/cli.py"
 
 usage() { larch_err "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]"; }
 
@@ -58,11 +57,11 @@ redact_merge_diagnostic() {
     local err_text="$1"
     local redacted
     local status=0
-    if [[ ! -x "$REDACT_HELPER" ]] || [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
+    if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$PY_CLI" ]]; then
         printf '%s' 'merge diagnostic redaction unavailable'
         return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER") || status=$?
+    redacted=$(printf '%s' "$err_text" | python3 "$PY_CLI" redact tmpdir-paths | python3 "$PY_CLI" redact secrets) || status=$?
     if [ "$status" -ne 0 ]; then
         printf '%s' 'merge diagnostic redaction unavailable'
         return 0
@@ -264,7 +263,7 @@ flush_recovery_is_logs_only() {
 LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
 if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
     # Check whether local HEAD is ahead of the PR head exclusively by
-    # larch-log flush commits. That pattern arises when larch-log-flush.sh
+    # larch-log flush commits. That pattern arises when python3 python/cli.py run-log flush
     # tail calls fire after gh pr create, advancing local HEAD beyond the
     # OID GitHub recorded for the PR.
     _flush_recoverable=false

@@ -8,9 +8,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-larch-log.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-larch-log.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 
@@ -76,6 +73,10 @@ validate_repo_value() {
             ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || emit_load_fail "invalid-repo"
+}
+
+larch_log_slug_is_valid() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
 resolve_repo() {

@@ -374,9 +374,9 @@ redact_output_file_in_place() {
     local redacted_tmp
     [ -n "$output_file" ] || return 0
     [ -f "$output_file" ] || return 0
-    [ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
     redacted_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-redacted.XXXXXX")" || return 0
-    if "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$output_file" >"$redacted_tmp"; then
+    if python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$output_file" >"$redacted_tmp"; then
         mv "$redacted_tmp" "$output_file"
     else
         rm -f "$redacted_tmp"
@@ -385,9 +385,9 @@ redact_output_file_in_place() {
 
 append_render_warning() {
     local site=$1 tool=$2 rc=$3 output_file=$4
-    [ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
     [ -f "$output_file" ] || : >"$output_file"
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \
@@ -659,14 +659,14 @@ if [ "$COMMENT_ONLY" != "true" ]; then
             mf_fields+=(--field "steps_ran.step7a=false")
         fi
         if [ "${#mf_fields[@]}" -gt 0 ]; then
-            if ! "$PLUGIN_ROOT/scripts/larch-log.sh" manifest \
+            if ! python3 "$PLUGIN_ROOT/python/cli.py" run-log manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement \
                 --run-id "$RUN_ID" \
                 "${mf_fields[@]}"; then
                 emit_kv_out COMMENT_URL ""
                 emit_kv_out STATUS failed
-                emit_kv_out ERROR "larch-log.sh manifest steps_ran update failed"
+                emit_kv_out ERROR "run-log manifest steps_ran update failed"
                 exit 1
             fi
         fi

@@ -52,7 +52,7 @@
 6. **Append the `oos-issues` larch-log batch**.
    - Accepted entries include created and deduplicated disposition URLs; sanitize NDJSON `body` per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` before `jq -nc` compose.
    - On non-zero `/issue` or `ISSUES_FAILED>0`, do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch or any other gate-read surface. Log the partial failure only under `Tool Failures` or operator breadcrumbs outside gate-satisfaction paths until the batch succeeds with no failed items.
-   - Rejected/non-accepted entries remain under the Rejected sub-block per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` OOS carve-outs and the Terminal disposition invariant (`## Rejected` with structured `### OOS_` markers in the NDJSON body). Use `scripts/larch-log-batches.md` only for the compact NDJSON record schema (`jq -nc` with `-c`).
+   - Rejected/non-accepted entries remain under the Rejected sub-block per `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md` OOS carve-outs and the Terminal disposition invariant (`## Rejected` with structured `### OOS_` markers in the NDJSON body). Use `docs/run-log-batches.md` only for the compact NDJSON record schema (`jq -nc` with `-c`).
    - Sentinel-recovery and all-already-filed branches still write the required evidence rows; step 6 is not skipped on all-already-filed.
 7. **Return control to the Step 8+ checkpoint**.
    - `oos-disposition-checkpoint.sh` gates clearing `OOS_PENDING` (non-security accepted OOS requires a resolved `oos-issues.ndjson`; non-empty `security-oos-observations.md` refuses all-clear until SECURITY.md disposition).

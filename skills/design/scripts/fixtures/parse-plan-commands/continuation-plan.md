@@ -1,7 +1,7 @@
 # Plan
 
 ```bash
-scripts/redact-secrets.sh \
+python/cli.py redact secrets \
   --help
 ```
 

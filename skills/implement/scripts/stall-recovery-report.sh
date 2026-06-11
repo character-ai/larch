@@ -962,9 +962,9 @@ compose_body_content() {
 
 redact_to_file() {
     local input_file=$1 output_file=$2 redactor
-    redactor="$SCRIPTS_DIR/redact-secrets.sh"
-    [ -x "$redactor" ] || die_missing "redact-secrets.sh is required"
-    "$redactor" <"$input_file" >"$output_file"
+    redactor="$PLUGIN_ROOT/python/cli.py"
+    [ -f "$redactor" ] || die_missing "redact secrets is required"
+    python3 "$redactor" redact secrets <"$input_file" >"$output_file"
 }
 
 cmd_bug_body_like() {
@@ -1034,7 +1034,7 @@ cmd_issue_input_file() {
     failure_class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
     step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "unknown")")
     { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } \
-        | "$SCRIPTS_DIR/redact-secrets.sh" >"$out_file.tmp.$$"
+        | python3 "$PLUGIN_ROOT/python/cli.py" redact secrets >"$out_file.tmp.$$"
     mv -f "$out_file.tmp.$$" "$out_file"
     truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
     emit_kv INPUT_FILE "$out_file"

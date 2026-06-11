@@ -159,6 +159,13 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
         raise SystemExit(_ledger_stub())
+    argv_log = os.environ.get("LARCH_RUNLOG_ARGV_LOG", "")
+    if argv_log and len(sys.argv) >= 2 and sys.argv[1] == "run-log":
+        with open(argv_log, "a", encoding="utf-8") as handle:
+            handle.write("---\n")
+            for arg in sys.argv[2:]:
+                handle.write(f"{arg}\n")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -242,7 +249,8 @@ done
 printf '%s\n' "$default"
 STUB
     chmod +x "$SANDBOX/python/stubs/session/read-key"
-    cat > "$SANDBOX/scripts/larch-log.sh" <<STUB
+    local log_script="larch-log"
+    cat > "$SANDBOX/scripts/${log_script}.sh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "---" >> "$SANDBOX/larch-log-argv.txt"
 printf '%s\n' "\$@" >> "$SANDBOX/larch-log-argv.txt"
@@ -972,19 +980,20 @@ rm -f "$SANDBOX/larch-log-argv.txt"
 write_state "$STATE" PR_NUMBER=99 EXPECTED_SESSION_ID=session-123 EXPECTED_TMPDIR_BASENAME_PREFIX=tmp
 printf 'RUN_ID=test-run-export\n' >> "$STATE"
 (cd "$SANDBOX/repo" && unset IMPLEMENT_TMPDIR && PATH="$SANDBOX/bin:$PATH" \
+    LARCH_RUNLOG_ARGV_LOG="$SANDBOX/larch-log-argv.txt" \
     "$SANDBOX/scripts/implement-finalize.sh" teardown \
     --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" 2>&1) | normalize_elapsed > /dev/null || true
 if [ -f "$SANDBOX/larch-log-argv.txt" ]; then
     if grep -qF -- "--log-root" "$SANDBOX/larch-log-argv.txt" && grep -qF "$SANDBOX/tmp/larch-logs" "$SANDBOX/larch-log-argv.txt"; then
         PASS=$((PASS + 1))
-        echo "PASS: teardown: explicit --log-root passed to larch-log.sh (fresh shell)"
+        echo "PASS: teardown: explicit --log-root passed to run-log (fresh shell)"
     else
         FAIL=$((FAIL + 1))
         echo "FAIL: teardown: explicit --log-root missing; got: $(cat "$SANDBOX/larch-log-argv.txt")"
     fi
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: teardown: larch-log.sh stub not called (no argv record)"
+    echo "FAIL: teardown: run-log argv not recorded (stub dispatcher not called)"
 fi
 
 _forensics_comment='commit also stages per-script quiet logs into breadcrumbs/ for forensics.'

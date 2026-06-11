@@ -179,9 +179,6 @@ mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/python"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/redact-secrets.sh"
 cat >"$PLUGIN_STUB/python/cli.py" <<'EOF'
 import os, sys
 cmd = sys.argv[1:3]
@@ -206,14 +203,15 @@ elif cmd == ["timing", "report"]:
 elif cmd == ["token", "cost"]:
     import subprocess
     raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
+elif cmd[:1] == ["run-log"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
 EOF
 export TRFS_REAL_CLI="$ROOT/python/cli.py"
-chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh" \
-    "$PLUGIN_STUB/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh" \
-    "$PLUGIN_STUB/scripts/redact-secrets.sh"
+chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 
 printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
 rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
@@ -396,7 +394,7 @@ fb_co_cancel_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/
 [[ -n "$fb_co_fallback_line" && -n "$fb_co_cancel_line" && "$fb_co_cancel_line" -gt "$fb_co_fallback_line" ]] \
     || fail 'renderer-fail cancelled-outline Cancel site bullet must follow fallback marker'
 pass 'renderer-fail cancelled-outline fallback preserves marker ordering before Cancel site'
-rm -f "$PLUGIN_STUB/scripts/append-tool-failure.sh"
+rm -f "$PLUGIN_STUB/python/cli.py"
 : >"$D/execution-issues.md"
 std_fb_nowarn="$TMP/std-fallback-no-warning.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-NOWARN" \
@@ -413,9 +411,6 @@ mkdir -p "$PLUGIN_FAILTOK/scripts" "$PLUGIN_FAILTOK/python"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_FAILTOK/scripts/render-run-summary.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAILTOK/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAILTOK/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_FAILTOK/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_FAILTOK/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_FAILTOK/scripts/redact-secrets.sh"
 cat >"$PLUGIN_FAILTOK/python/cli.py" <<'EOF'
 import os, sys
 cmd = sys.argv[1:3]
@@ -435,6 +430,9 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh: fh.write('{"total_hms":"1s"}\n')
 elif cmd == ["token", "cost"]:
     pass
+elif cmd[:1] == ["run-log"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -481,9 +479,6 @@ mkdir -p "$PLUGIN_BADJSON/scripts" "$PLUGIN_BADJSON/python"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_BADJSON/scripts/render-run-summary.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_BADJSON/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BADJSON/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_BADJSON/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_BADJSON/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_BADJSON/scripts/redact-secrets.sh"
 cat >"$PLUGIN_BADJSON/python/cli.py" <<'EOF'
 import os, sys
 cmd = sys.argv[1:3]
@@ -504,6 +499,9 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh: fh.write('{"total_hms":"2s"}\n')
 elif cmd == ["token", "cost"]:
     pass
+elif cmd[:1] == ["run-log"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -549,9 +547,6 @@ NOTEARG_PLUGIN="$TMP/plugin-notearg"
 mkdir -p "$NOTEARG_PLUGIN/scripts" "$NOTEARG_PLUGIN/python"
 cp "$ROOT/scripts/lib-quiet.sh" "$NOTEARG_PLUGIN/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$NOTEARG_PLUGIN/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$NOTEARG_PLUGIN/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$NOTEARG_PLUGIN/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$NOTEARG_PLUGIN/scripts/redact-secrets.sh"
 cat >"$NOTEARG_PLUGIN/python/cli.py" <<'EOF'
 import os, sys
 cmd = sys.argv[1:3]
@@ -572,6 +567,9 @@ elif cmd == ["timing", "report"]:
     with open(out, "w") as fh: fh.write('{"total_hms":"4s"}\n')
 elif cmd == ["token", "cost"]:
     pass
+elif cmd[:1] == ["run-log"]:
+    import subprocess
+    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], *sys.argv[1:]]))
 else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)

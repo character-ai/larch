@@ -196,18 +196,13 @@ set -e
 # stderr — used by dispatch-code-voters.sh to surface the specific failing
 # check in execution-issues.md Warnings.
 _larch_emit_redacted_subprocess_stderr() {
-    local src="$1" redact redact_tmpdir pipeline
+    local src="$1" py_cli
     [[ -s "$src" ]] || return 1
-    redact="$SCRIPT_DIR/redact-secrets.sh"
-    redact_tmpdir="$SCRIPT_DIR/redact-tmpdir-paths.sh"
-    [[ -x "$redact" ]] || return 1
-    if [[ -x "$redact_tmpdir" ]]; then
-        pipeline="$redact_tmpdir | $redact"
-    else
-        pipeline="$redact"
-    fi
-    # shellcheck disable=SC2090
-    eval "cat \"\$src\" | $pipeline" 2>/dev/null | while IFS= read -r _line || [[ -n "$_line" ]]; do
+    py_cli="$SCRIPT_DIR/../python/cli.py"
+    [[ -f "$py_cli" ]] || return 1
+    python3 "$py_cli" redact tmpdir-paths <"$src" 2>/dev/null \
+        | python3 "$py_cli" redact secrets 2>/dev/null \
+        | while IFS= read -r _line || [[ -n "$_line" ]]; do
         larch_err "$_line"
     done
     unset _line

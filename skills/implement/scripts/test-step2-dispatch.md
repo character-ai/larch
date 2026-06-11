@@ -46,7 +46,7 @@ M19. `schema_version` values other than `1` hard-bail with `manifest-schema-inva
 **Out of scope**:
 - Manifest schema validation for real implementer output.
 - Path normalization (`..` / leading `/` / `.claude-plugin/plugin.json` / submodule paths).
-- Sanitization via `scripts/redact-secrets.sh`.
+- Sanitization via `python/cli.py redact secrets`.
 - Single-retry on transient launcher failure with clean-state guard.
 - `branch-changed` / `submodule-dirty` / `cursor-modified-history` post-implementer checks. (This harness now pins malformed-manifest recovery, resume-baseline persistence, and rename pathspec semantics; the remaining Step 6 / Step 7a post-implementer rejections still need separate coverage.)
 - `commit-failed` recovery on the dispatcher-side commit. (Tests 13 and 18 exercise the happy path of `git add -A && git commit -F …` end-to-end via stub Codex; failure-recovery branches remain out of scope.)

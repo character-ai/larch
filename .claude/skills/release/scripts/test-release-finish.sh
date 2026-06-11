@@ -153,16 +153,16 @@ PROMO
 
 write_fake_redact() {
   local bin_dir=$1
-  cat > "$bin_dir/redact-tmpdir-paths.sh" <<'RTMP'
+  cat > "$bin_dir/redact tmpdir-paths" <<'RTMP'
 #!/usr/bin/env bash
 cat
 RTMP
-  chmod +x "$bin_dir/redact-tmpdir-paths.sh"
-  cat > "$bin_dir/redact-secrets.sh" <<'RED'
+  chmod +x "$bin_dir/redact tmpdir-paths"
+  cat > "$bin_dir/redact secrets" <<'RED'
 #!/usr/bin/env bash
 cat
 RED
-  chmod +x "$bin_dir/redact-secrets.sh"
+  chmod +x "$bin_dir/redact secrets"
 }
 
 run_finish() {

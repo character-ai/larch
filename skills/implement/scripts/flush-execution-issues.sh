@@ -168,7 +168,7 @@ fi
 
 records=$(wc -l < "$record_file" | tr -d '[:space:]')
 set +e
-"$PLUGIN_ROOT/scripts/larch-log.sh" append \
+python3 "$PLUGIN_ROOT/python/cli.py" run-log append \
     --log-root "$LOG_ROOT" \
     --skill implement \
     --run-id "$RUN_ID" \
@@ -188,10 +188,10 @@ if [ "$rc" -eq 0 ]; then
     exit 0
 fi
 
-"$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
     --log "$ISSUE_LOG" \
     --site flush-execution-issues \
-    --tool larch-log.sh \
+    --tool run-log \
     --exit-code "$rc" \
     --category "Tool Failures" \
     --output-file "$append_log_tmp" \

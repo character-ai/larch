@@ -52,7 +52,7 @@ if ! grep -q 'MODE=baseline REASON=claude-subprocess' "$REPO_ROOT/scripts/launch
 if grep -q 'claude-ci-fix' "$REPO_ROOT/python/timing.py"; then ok "timing allow-list includes claude-ci-fix"; else fail "timing allow-list includes claude-ci-fix"; fi
 
 printf 'sk-ant-api03-secretkey\n' >"$TMPDIR_BASE/fl.log"
-if grep -q 'redact-secrets' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "failure_log_content_redacted_via_redact_secrets_sh_in_prompt"; else fail "redact pipeline referenced"; fi
+if grep -q 'redact secrets' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "failure_log_content_redacted_via_redact_secrets_in_prompt"; else fail "redact pipeline referenced"; fi
 
 stub_bin="$TMPDIR_BASE/ci-fix-stub-bin"
 mkdir -p "$stub_bin"

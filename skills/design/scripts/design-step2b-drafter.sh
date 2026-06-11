@@ -265,7 +265,7 @@ else
   printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor=$_step2b_drafter_vendor)**"
   if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
     printf '%s\n' "Step 2b drafter fallback: ${_step2b_drafter_skip_reason:-rc-${_drafter_rc}}" > "$DESIGN_TMPDIR/step2b-drafter-fallback.log"
-    "$CLAUDE_PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
       --log "$DESIGN_TMPDIR/execution-issues.md" \
       --site "design Step 2b drafter" \
       --tool "launch-${_step2b_drafter_vendor}-drafter.sh" \

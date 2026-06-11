@@ -49,7 +49,6 @@ setup_stub_plugin() {
   local plugin=$1
   mkdir -p "$plugin/scripts" "$plugin/python/stubs/session"
   cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-  cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
   cp "$REPO_ROOT"/python/*.py "$plugin/python/"
   mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
   cat >"$plugin/python/cli.py" <<'DISPATCHER'
@@ -97,7 +96,7 @@ while [ $# -gt 0 ]; do
 done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
-  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$plugin/scripts/append-tool-failure.sh"
+  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key"
   cat >"$plugin/skills/implement/scripts/write-final-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -291,24 +290,17 @@ while [ $# -gt 0 ]; do
 done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
-cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$int_plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/python/report_tokens_cost.py" "$int_plugin/python/report_tokens_cost.py"
-cp "$REPO_ROOT/scripts/redact-secrets.sh" "$int_plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
-chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" "$int_plugin/scripts/append-tool-failure.sh" \
-  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/python/report_tokens_cost.py" \
-  "$int_plugin/scripts/redact-secrets.sh"
+chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" \
+  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/python/report_tokens_cost.py"
 cat >"$int_plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
 printf 'COMMENT_URL=https://example.test/comment/int\n'
 STUB
-cat >"$int_plugin/scripts/larch-log.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$int_plugin/scripts/tracking-issue-summary.sh" "$int_plugin/scripts/larch-log.sh"
+chmod +x "$int_plugin/scripts/tracking-issue-summary.sh"
 cp "$SOURCE_HELPER" "$int_impl/step-18b-final-report.sh"
 cp "$REPO_ROOT/skills/implement/scripts/write-final-report.sh" "$int_impl/write-final-report.sh"
 chmod +x "$int_impl/step-18b-final-report.sh" "$int_impl/write-final-report.sh"

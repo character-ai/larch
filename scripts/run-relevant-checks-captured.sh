@@ -185,10 +185,13 @@ while (( attempt <= 100 )); do
 done
 [[ -n "$LOG_FILE" ]] || fail "log-allocation-attempt-cap" 1
 
-# Scrub LARCH_QUIET_* so test harnesses inside the checks pipeline run
+# Scrub LARCH_QUIET_* and CLAUDE_PLUGIN_ROOT so test harnesses inside the checks pipeline run
 # hermetically regardless of the invoking skill session's quiet state.
+# Unsetting CLAUDE_PLUGIN_ROOT ensures lib-quiet.sh uses the repo's own python/cli.py
+# rather than the plugin cache's (which may not yet have the new CLI verbs).
 if (
-    unset LARCH_QUIET_DISABLE LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG
+    unset LARCH_QUIET_DISABLE LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+        CLAUDE_PLUGIN_ROOT LARCH_CLAUDE_PLUGIN_ROOT
     cd "$REPO_ROOT" && "$CHECK_SCRIPT"
 ) >"$LOG_FILE" 2>&1; then
     rc=0
@@ -227,11 +230,11 @@ fi
 
 LOG_BYTES=$(wc -c < "$LOG_FILE" | tr -d '[:space:]')
 REDACTED_LOG_FILE="$LOG_DIR/$SITE-$attempt.redacted.log"
-if [[ ! -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" || ! -x "$SCRIPT_DIR/redact-secrets.sh" ]]; then
+if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$SCRIPT_DIR/../python/cli.py" ]]; then
     emit "STATUS=fail FAILURE_REASON=redaction-failed"
     exit 1
 fi
-if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" < "$LOG_FILE" | "$SCRIPT_DIR/redact-secrets.sh" > "$REDACTED_LOG_FILE"; then
+if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths < "$LOG_FILE" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets > "$REDACTED_LOG_FILE"; then
     rm -f "$REDACTED_LOG_FILE"
     emit "STATUS=fail FAILURE_REASON=redaction-failed"
     exit 1

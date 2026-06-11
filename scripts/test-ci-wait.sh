@@ -12,6 +12,9 @@ TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
 unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
     LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG || true
+# lib-quiet redaction resolves its helper from CLAUDE_PLUGIN_ROOT first; an
+# inherited plugin-cache pin would bypass the sandbox python tree staged below.
+unset CLAUDE_PLUGIN_ROOT || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMP_BASE/execution-issues.md"
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -29,8 +32,9 @@ make_env() {
     mkdir -p "$root/scripts"
     cp "$REPO_ROOT/scripts/ci-wait.sh" "$root/scripts/ci-wait.sh"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
-    chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/redact-secrets.sh"
+    mkdir -p "$root/python"
+    cp "$REPO_ROOT"/python/*.py "$root/python/"
+    chmod +x "$root/scripts/ci-wait.sh" "$root/python/cli.py"
     printf '%s\n' "$root"
 }
 

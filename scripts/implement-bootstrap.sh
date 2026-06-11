@@ -262,8 +262,8 @@ redact_file_best_effort() {
     local input_file=$1 output_file=$2 redact_tmp rc
     [ -f "$input_file" ] || return 1
     redact_tmp="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-redact.XXXXXX")" || return 1
-    if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
-        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$input_file" >"$redact_tmp" 2>/dev/null; then
+    if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../python/cli.py" ]; then
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets <"$input_file" >"$redact_tmp" 2>/dev/null; then
             rc=$?
             rm -f "$redact_tmp"
             return "$rc"
@@ -271,8 +271,8 @@ redact_file_best_effort() {
     else
         cat "$input_file" >"$redact_tmp"
     fi
-    if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ]; then
-        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$redact_tmp" >"$output_file" 2>/dev/null; then
+    if command -v python3 >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/../python/cli.py" ]; then
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths <"$redact_tmp" >"$output_file" 2>/dev/null; then
             rc=$?
             rm -f "$redact_tmp"
             return "$rc"
@@ -357,7 +357,7 @@ append_emergency_bypass_log_if_present() {
     fi
 
     if [ "$append_rc" -eq 0 ]; then
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "implement-bootstrap emergency-bypass-log" \
             --tool "/implement --emergency preflight" \
@@ -391,7 +391,7 @@ append_emergency_bypass_log_if_present() {
             fi
             printf '  ```\n'
         } >"$fallback_entry"
-        "$SCRIPT_DIR/append-execution-issue.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-entry \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --category Warnings \
             --entry-file "$fallback_entry"
@@ -438,7 +438,7 @@ post_tracking_metadata() {
                 cat "$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log"
             fi
         } >"$failure_log"
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "$site" \
             --tool "post-tracking-issue.sh" \
@@ -516,7 +516,7 @@ run_larch_log_init() {
     local issue=$1 run_id=$2 site=$3
     local init_out init_rc init_err
     init_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-log-init.XXXXXX")
-    init_out=$("$SCRIPT_DIR/larch-log.sh" init \
+    init_out=$(python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -546,7 +546,7 @@ rename_to_implementing() {
     printf '%s\n' "$rename_out" >"$rename_log" 2>/dev/null || true
     rename_failed=$(kv_value_from_block FAILED "$rename_out")
     if [ "$rename_rc" -ne 0 ] || [ "$rename_failed" = "true" ]; then
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "Step 0 tracking adoption — $site rename to implementing" \
             --tool "tracking-issue-write.sh rename" \
@@ -664,7 +664,7 @@ phase_infra() {
                     --cwd "$PWD" 2>/dev/null || _ptr_rc=$?
             fi
             if [ "$_ptr_rc" -ne 0 ] && [ -n "$_ptr_err" ] && [ -s "$_ptr_err" ]; then
-                "$SCRIPT_DIR/append-tool-failure.sh" \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                     --site "implement-bootstrap resume-pointer-refresh" \
                     --tool "session write-implement-env" \
@@ -741,7 +741,7 @@ phase_infra() {
                     --cwd "$PWD" 2>/dev/null || _ptr_rc=$?
             fi
             if [ "$_ptr_rc" -ne 0 ] && [ -n "$_ptr_err" ] && [ -s "$_ptr_err" ]; then
-                "$SCRIPT_DIR/append-tool-failure.sh" \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                     --site "implement-bootstrap phase_infra" \
                     --tool "session write-implement-env" \
@@ -764,7 +764,7 @@ phase_infra() {
             CLAUDE_SOURCE_OK=true
         else
             _source_exit=$?
-            "$SCRIPT_DIR/append-tool-failure.sh" \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0" \
                 --tool "python3 python/cli.py token claude-source" \
@@ -886,7 +886,7 @@ phase_tracking() {
                 :
             else
                 upstream_context_rc=$?
-                "$SCRIPT_DIR/append-tool-failure.sh" \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                     --site "Step 0 tracking adoption — forked target upstream context" \
                     --tool "get-issue-context.sh" \
@@ -1148,14 +1148,14 @@ phase_plan_materialize() {
     issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
     goal_text_raw="Implement issue #${gh_issue_arg}: ${issue_title:-planned change}."
     goal_redact_err="$IMPLEMENT_TMPDIR/goal-text-redact.stderr.log"
-    goal_text=$(printf '%s\n' "$goal_text_raw" | "$SCRIPT_DIR/redact-secrets.sh" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" 2>"$goal_redact_err")
+    goal_text=$(printf '%s\n' "$goal_text_raw" | python3 "$SCRIPT_DIR/../python/cli.py" redact secrets | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths 2>"$goal_redact_err")
     goal_redact_rc=$?
     if [ "$goal_redact_rc" -ne 0 ]; then
         goal_text="Implement issue #${gh_issue_arg}: <REDACTED-TITLE>."
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "Step 0 plan materialization — goal text redaction" \
-            --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+            --tool "python3 python/cli.py redact secrets | python3 python/cli.py redact tmpdir-paths" \
             --exit-code "$goal_redact_rc" \
             --category Warnings \
             --output-file "$goal_redact_err" \
@@ -1165,7 +1165,7 @@ phase_plan_materialize() {
     "$SCRIPT_DIR/run-step1-plan-log.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --goal-text "$goal_text" >"$IMPLEMENT_TMPDIR/run-step1-plan-log.out" 2>"$run_plan_err"
     run_plan_rc=$?
     if [ "$run_plan_rc" -ne 0 ]; then
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "Step 0 plan materialization — plan-goals-test" \
             --tool "run-step1-plan-log.sh" \
@@ -1179,7 +1179,7 @@ phase_plan_materialize() {
 
     if ! valid_run_id "${RUN_ID:-}"; then
         printf '%s\n' 'RUN_ID missing or invalid after resolution; skipping plan-review tally and larch:plan summary.' >"$IMPLEMENT_TMPDIR/run-id-resolution.warning.log"
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "Step 0 plan materialization — run id resolution" \
             --tool "resolve_run_id" \
@@ -1195,7 +1195,7 @@ phase_plan_materialize() {
             printf 'Plan read from issue larch:plan block for issue #%s.\n' "${gh_issue_arg:-}"
         } >"$tally_body_raw"
         tally_body="$IMPLEMENT_TMPDIR/plan-review-tally-body.md"
-        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$tally_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$tally_body" 2>/dev/null; then
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets <"$tally_body_raw" | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths >"$tally_body" 2>/dev/null; then
             cp "$tally_body_raw" "$tally_body" 2>/dev/null || true
         fi
         tally_err="$IMPLEMENT_TMPDIR/write-tally.stderr.log"
@@ -1213,7 +1213,7 @@ phase_plan_materialize() {
             2>"$tally_err"
         tally_rc=$?
         if [ "$tally_rc" -ne 0 ]; then
-            "$SCRIPT_DIR/append-tool-failure.sh" \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — plan-review tally" \
                 --tool "python3 python/cli.py voting write-tally" \
@@ -1235,11 +1235,11 @@ phase_plan_materialize() {
         summary_body="$IMPLEMENT_TMPDIR/larch-plan-summary.md"
         summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
         summary_redact_err="$IMPLEMENT_TMPDIR/larch-plan-summary.redact.stderr.log"
-        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$summary_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$summary_body" 2>"$summary_redact_err"; then
-            "$SCRIPT_DIR/append-tool-failure.sh" \
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets <"$summary_body_raw" | python3 "$SCRIPT_DIR/../python/cli.py" redact tmpdir-paths >"$summary_body" 2>"$summary_redact_err"; then
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — larch:plan summary redaction" \
-                --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+                --tool "python3 python/cli.py redact secrets | python3 python/cli.py redact tmpdir-paths" \
                 --exit-code 1 \
                 --category Warnings \
                 --output-file "$summary_redact_err" \
@@ -1250,7 +1250,7 @@ phase_plan_materialize() {
         "$SCRIPT_DIR/tracking-issue-summary.sh" "${summary_args[@]}" >"$IMPLEMENT_TMPDIR/tracking-issue-summary.out" 2>"$summary_err"
         summary_rc=$?
         if [ "$summary_rc" -ne 0 ]; then
-            "$SCRIPT_DIR/append-tool-failure.sh" \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — larch:plan summary" \
                 --tool "tracking-issue-summary.sh" \
@@ -1405,7 +1405,7 @@ _phase_coder_append_warning() {
     [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
     tmpfile=$(mktemp "${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/larch-coder-warn.XXXXXX") || return 0
     printf '%s\n' "$message" >"$tmpfile"
-    "$SCRIPT_DIR/append-tool-failure.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "Step 0 (implementer waterfall)" \
         --tool "phase_coder_select" \
@@ -1419,7 +1419,7 @@ _phase_coder_manifest_fallback() {
     if [ -z "${RUN_ID:-}" ]; then
         return 0
     fi
-    "$SCRIPT_DIR/larch-log.sh" manifest \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log manifest \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \

@@ -19,7 +19,7 @@ create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base
 Flags:
 
 - `--title TEXT` (required) — PR title. Recommended under 70 characters; not enforced.
-- `--body-file FILE` (required) — path to a markdown file containing the PR body. File must exist; checked at startup. On the new-PR path the body is copied through `scripts/redact-tmpdir-paths.sh` and the redacted temp file is forwarded to `gh pr create --body-file`; missing or failing redaction exits 2. The file is ignored on the existing-PR fast-path (existing PR body is not updated by this script — see `gh-pr-body-update.sh` for that operation).
+- `--body-file FILE` (required) — path to a markdown file containing the PR body. File must exist; checked at startup. On the new-PR path the body is copied through `python3 python/cli.py redact tmpdir-paths` and the redacted temp file is forwarded to `gh pr create --body-file`; missing or failing redaction exits 2. The file is ignored on the existing-PR fast-path (existing PR body is not updated by this script — see `gh-pr-body-update.sh` for that operation).
 - `--draft` (optional, no value) — pass `--draft` to `gh pr create` so a fresh PR is opened in draft state. Has no effect on the existing-PR fast-path (an already-open PR's draft state is not changed).
 - `--repo OWNER/REPO` (optional) — pass `--repo` to every `gh pr view` / `gh pr create` call. Used by `/implement --forked` so PR detection and creation target the fork (`origin`) even when `gh` would otherwise resolve the upstream repository. When omitted, the script tries `scripts/resolve-repo.sh` and threads the resolved repo; if resolution fails, it preserves the prior ambient-repo fallback.
 - `--base BASE_REF` (optional) — base branch for a freshly created PR. When omitted, the new-PR path asks `gh repo view [--repo OWNER/REPO] --json defaultBranchRef --jq '.defaultBranchRef.name'` and falls back to `main` if detection fails or returns empty. The existing-PR fast-path does not need a base branch and skips detection.
@@ -55,7 +55,7 @@ Before any push attempt, `create-pr.sh` runs `git status --porcelain` and aborts
 
 ## PR body redaction
 
-`create-pr.sh` removes larch session tmpdir literals from fresh PR bodies via `scripts/redact-tmpdir-paths.sh` before invoking `gh pr create`. This covers `$IMPLEMENT_TMPDIR` references that may appear in generated test output, diagrams, or execution notes. Secret-family redaction is owned by upstream compose sites and downstream helpers; this script currently adds only the tmpdir-path pass because it had no pre-existing secret-redaction pipeline.
+`create-pr.sh` removes larch session tmpdir literals from fresh PR bodies via `python3 python/cli.py redact tmpdir-paths` before invoking `gh pr create`. This covers `$IMPLEMENT_TMPDIR` references that may appear in generated test output, diagrams, or execution notes. Secret-family redaction is owned by upstream compose sites and downstream helpers; this script currently adds only the tmpdir-path pass because it had no pre-existing secret-redaction pipeline.
 
 ## Existing-PR fast-path push semantics (issue #837)
 

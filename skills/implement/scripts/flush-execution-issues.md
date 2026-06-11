@@ -46,16 +46,16 @@ Invariants:
 - On `FLUSH_STATUS=ok` or `FLUSH_STATUS=no-records`, the flushed
   `execution-issues.md` file is cleared so later flushes append only the
   unflushed tail entries.
-- `larch-log.sh append` failures are non-fatal to `/implement`: the helper logs
+- `run-log append` failures are non-fatal to `/implement`: the helper logs
   the captured append output back to `execution-issues.md` through
-  `append-tool-failure.sh` and exits 1 so the caller can record a wrapper
+  `run-log append-failure` and exits 1 so the caller can record a wrapper
   failure if desired.
 
 Makefile wiring: `make test-flush-execution-issues`, included in
 `test-harnesses-3` alongside `test-implement-finalize`.
 
 Harness coverage: empty input, single-section record composition, multi-section
-record composition, idempotent rerun, and `larch-log.sh` failure logging.
+record composition, idempotent rerun, and `run-log` failure logging.
 
 Edit In Sync:
 

@@ -1,7 +1,7 @@
 # Plan
 
 ```bash
-scripts/redact-secrets.sh $((1+1))
+python/cli.py redact secrets $((1+1))
 ```
 
 diff_lines: 1

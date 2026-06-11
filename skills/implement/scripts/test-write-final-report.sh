@@ -46,15 +46,34 @@ plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
-cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
-cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
 cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$plugin/python"
 cp "$REPO_ROOT/python/"*.py "$plugin/python/"
+mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+cat > "$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
+        if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
+            print("manifest stub failure", file=sys.stderr)
+            raise SystemExit(1)
+        log = os.environ.get("LARCH_LOG_MANIFEST_LOG", "")
+        if log:
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(sys.argv[3:]) + "\n")
+        raise SystemExit(0)
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
 chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/python/report_tokens_cost.py" \
-    "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
-    "$plugin/scripts/redact-secrets.sh" "$plugin/python/cli.py" \
+    "$plugin/python/cli.py" \
     "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
@@ -80,21 +99,6 @@ exit 0
 SHIM
 chmod +x "$TMP_ROOT/bin/gh"
 export PATH="$TMP_ROOT/bin:$PATH"
-cat > "$plugin/scripts/larch-log.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [ "$1" != manifest ]; then exit 0; fi
-shift
-if [ "${LARCH_LOG_MANIFEST_FAIL:-false}" = true ]; then
-    printf 'manifest stub failure\n' >&2
-    exit 1
-fi
-log="${LARCH_LOG_MANIFEST_LOG:-}"
-[ -n "$log" ] || exit 0
-printf '%s\n' "$*" >>"$log"
-exit 0
-STUB
-chmod +x "$plugin/scripts/larch-log.sh"
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${TRACKING_FAIL:-false}" = "true" ]; then
@@ -603,6 +607,15 @@ def _token_report_stub() -> int:
 
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
+        if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
+            print("manifest stub failure", file=sys.stderr)
+            raise SystemExit(1)
+        log = os.environ.get("LARCH_LOG_MANIFEST_LOG", "")
+        if log:
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(sys.argv[3:]) + "\n")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
         raise SystemExit(_token_report_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
@@ -722,7 +735,7 @@ rc_mf=$?
 set -e
 if [ "$rc_mf" -eq 1 ]; then pass 'manifest update failure exits non-zero'; else fail 'manifest update failure exits non-zero'; fi
 assert_contains 'STATUS=failed' "$out_mf_fail" 'manifest failure status failed'
-assert_contains 'larch-log.sh manifest steps_ran update failed' "$out_mf_fail" 'manifest failure error text'
+assert_contains 'run-log manifest steps_ran update failed' "$out_mf_fail" 'manifest failure error text'
 
 impl_badjson="$TMP_ROOT/impl-badjson"; mkdir -p "$impl_badjson/larch-logs/implement/run-badjson"
 printf 'ISSUE_NUMBER=21\nRUN_ID=run-badjson\nADOPTED=true\n' > "$impl_badjson/parent-issue.md"

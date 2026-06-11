@@ -29,7 +29,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
-REDACT_HELPER="$SCRIPT_DIR/redact-secrets.sh"
+PY_CLI="$SCRIPT_DIR/../python/cli.py"
 
 usage() { larch_err "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]"; }
 
@@ -75,11 +75,11 @@ trap 'emit_output' EXIT
 redact_text() {
     local text="$1"
     local redacted
-    if [[ ! -x "$REDACT_HELPER" ]]; then
+    if [[ ! -f "$PY_CLI" ]]; then
         printf '%s' 'gh failure: redaction unavailable'
         return 0
     fi
-    if ! redacted=$(printf '%s' "$text" | "$REDACT_HELPER" 2>/dev/null); then
+    if ! redacted=$(printf '%s' "$text" | python3 "$PY_CLI" redact secrets 2>/dev/null); then
         printf '%s' 'gh failure: redaction failed'
         return 0
     fi

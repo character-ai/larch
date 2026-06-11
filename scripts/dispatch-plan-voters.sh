@@ -179,10 +179,10 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
         _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
     fi
     [[ -z "$_issues_log" ]] && _issues_log="$DESIGN_TMPDIR/execution-issues.md"
-    if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+    if command -v python3 >/dev/null 2>&1 && [[ -f "$PLUGIN_ROOT/python/cli.py" ]]; then
         _status_label="failed"
         [[ "$voter1_rc" -eq 0 ]] && _status_label="warning"
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$_issues_log" \
             --site "dispatch-plan-voters.sh voter1" \
             --tool "launch-claude-review.sh (claude plan voter)" \

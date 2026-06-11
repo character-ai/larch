@@ -222,7 +222,7 @@ render_fresh_timing_report_for_publish() {
         add_warn '**⚠ 5c: failed to create temporary directory for timing report render.**'
         : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
         printf '%s\n' "mktemp failed while preparing timing-report-final.json" >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c timing-report" \
             --tool "mktemp" \
@@ -239,7 +239,7 @@ render_fresh_timing_report_for_publish() {
         add_warn '**⚠ 5c: jq is required to validate timing-report-final.json before publish.**'
         : >"$_tmp_stderr" 2>/dev/null || true
         printf '%s\n' "jq is required to validate timing-report-final.json before publish" >"$_tmp_stderr" 2>/dev/null || true
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c timing-report" \
             --tool "jq" \
@@ -268,7 +268,7 @@ render_fresh_timing_report_for_publish() {
         return 0
     fi
     rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 5c timing-report" \
         --tool "python3 python/cli.py timing report" \
@@ -357,8 +357,8 @@ else
     fi
 fi
 
-if ! "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$DESIGN_TMPDIR/composed-plan.md" >"$DESIGN_TMPDIR/composed-plan.redacted.md"; then
-    fail 'redact-secrets.sh failed'
+if ! python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$DESIGN_TMPDIR/composed-plan.md" >"$DESIGN_TMPDIR/composed-plan.redacted.md"; then
+    fail 'redact secrets failed'
 fi
 [[ -s "$DESIGN_TMPDIR/composed-plan.redacted.md" ]] \
     || fail 'composed-plan.redacted.md missing or empty after redaction'
@@ -417,7 +417,7 @@ if [[ "$_run_upsert" == true ]]; then
     printf '%s\n' "$_upsert_out" >"$DESIGN_TMPDIR/diagrams-architecture-upsert.stdout"
     parse_kv_from_output "$_upsert_out"
     if [[ "${UPSERT_STATUS:-}" == failed ]] || [[ "$_upsert_rc" -ne 0 ]]; then
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c.5" \
             --tool "python/cli.py diagrams upsert architecture" \
@@ -479,12 +479,12 @@ if [[ -n "$SESSION_ID" ]]; then
     _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
     case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
     if [[ "$_scrub_n" -gt 0 ]]; then
-        add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
+        add_warn "**⚠ SECURITY: redact scrub-log-secrets redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
     fi
     if [[ "$_publish_rc" -ne 0 ]]; then
         sanitize_publish_metadata
         PUBLISH_OK=false
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
             --tool "design-log-publish.sh" \
@@ -499,7 +499,7 @@ if [[ -n "$SESSION_ID" ]]; then
         if [[ "$_publish_failure_rc" -eq 0 ]]; then
             _publish_failure_rc=1
         fi
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
             --tool "design-log-publish.sh" \
@@ -511,7 +511,7 @@ if [[ -n "$SESSION_ID" ]]; then
     elif [[ -z "${PUBLISH_OK:-}" ]]; then
         PUBLISH_OK=false
         sanitize_publish_metadata
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
             --tool "design-log-publish.sh" \
@@ -556,7 +556,7 @@ if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
     _marker_rc=$?
     if [[ "$_marker_rc" -ne 0 ]]; then
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c marker write" \
             --tool "design_reentry_marker_write" \

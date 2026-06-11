@@ -10,7 +10,7 @@ tracking-issue-write.sh rename --issue N --state designing|designed|implementing
 tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 ```
 
-Durable run payloads are written through `scripts/larch-log.sh`. Slim
+Durable run payloads are written through `python3 python/cli.py run-log write`. Slim
 marker-keyed tracking comments are written through
 `scripts/tracking-issue-summary.sh`.
 
