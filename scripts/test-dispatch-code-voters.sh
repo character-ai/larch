@@ -54,8 +54,12 @@ make_wait_barrier_plugin_root() {
     mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    cat > "$root/python/cli.py" <<'STUB_RENDER'
+    cat > "$root/python/cli.py" <<STUB_RENDER
+import os
 import sys
+REAL_CLI = '$REPO_ROOT/python/cli.py'
+if sys.argv[1:2] == ["voting"]:
+    os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -126,12 +130,14 @@ make_voter1_delayed_done_plugin_root() {
     local root="$1"
     mkdir -p "$root/scripts" "$root/python" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    ln -sf "$REPO_ROOT/scripts/lib-voter-parse-rate.sh" "$root/scripts/lib-voter-parse-rate.sh"
-    ln -sf "$REPO_ROOT/scripts/parse-judge-vote-and-rating.sh" "$root/scripts/parse-judge-vote-and-rating.sh"
     ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
     ln -sf "$REPO_ROOT/scripts/dispatch-code-voters.sh" "$root/scripts/dispatch-code-voters.sh"
-    cat > "$root/python/cli.py" <<'STUB_RENDER'
+    cat > "$root/python/cli.py" <<STUB_RENDER
+import os
 import sys
+REAL_CLI = '$REPO_ROOT/python/cli.py'
+if sys.argv[1:2] == ["voting"]:
+    os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)

@@ -5,17 +5,26 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-voter-parse-rate.sh
-source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
-# shellcheck source=scripts/lib-plan-voter-coverage.sh
-source "$SCRIPT_DIR/lib-plan-voter-coverage.sh"
+[[ -f "$CLI" ]] || { larch_err "dispatch-plan-voters.sh: missing python/cli.py at $CLI"; exit 2; }
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$SCRIPT_DIR/lib-external-launcher-common.sh"
+
+_reemit_voting_stdout() {
+    local _out _line _key _value
+    _out="$("$@")"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        emit_kv "$_key" "$_value"
+    done <<< "$_out"
+}
 
 usage() {
     larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--scope-anchor-file FILE]"
@@ -53,14 +62,9 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
 
-LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
-LARCH_VPR_ID_GRAMMAR=finding-oos
-LARCH_VPR_REVIEW_TMPDIR="$DESIGN_TMPDIR"
-LARCH_VPR_RETRY_PREFIX_KIND=plan
-LARCH_VPR_LAUNCH_MODE=description
-LARCH_VPR_PLUGIN_ROOT="$PLUGIN_ROOT"
-LARCH_VPR_DISPATCH_LABEL="dispatch-plan-voters.sh"
-LARCH_VPR_CTX=()
+DISPATCH_LABEL="dispatch-plan-voters.sh"
+LAUNCH_MODE="description"
+VPR_ARGS=(--ballot-file "$BALLOT_FILE" --id-grammar finding-oos --review-tmpdir "$DESIGN_TMPDIR" --plugin-root "$PLUGIN_ROOT" --dispatch-label "$DISPATCH_LABEL" --retry-prefix-kind plan --launch-mode "$LAUNCH_MODE")
 
 make_prompt_file() {
     local tool="$1"
@@ -235,9 +239,9 @@ fi
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"
 VOTER_3_PARSE_RATE_STATUS="SKIPPED"
-[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
-[[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
-[[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
+[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 1 --voter-file "$VOTER_1_PATH" --voter-tool "$VOTER_1_TOOL" --prompt-file "$claude_prompt")
+[[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 2 --voter-file "$VOTER_2_PATH" --voter-tool "$VOTER_2_TOOL" --prompt-file "$codex_prompt")
+[[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 3 --voter-file "$VOTER_3_PATH" --voter-tool "$VOTER_3_TOOL" --prompt-file "$cursor_prompt")
 
 if [[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_PARSE_RATE_STATUS" == "NOT_SUBSTANTIVE" ]]; then
     emit_kv WARN "plan-voter slot 2 remained narrative-only after retry; excluding from external judge count"
@@ -253,7 +257,7 @@ if [[ "$VOTER_1_STATUS" != "failed" && "$VOTER_1_PARSE_RATE_STATUS" == "NOT_SUBS
 fi
 
 expected_judges=3
-effective_judges=$(plan_voter_coverage_compute_effective_judges \
+effective_judges=$(python3 "$CLI" voting effective-judges \
     "$VOTER_1_STATUS"$'\t'"$VOTER_1_PATH"$'\t'"$VOTER_1_PARSE_RATE_STATUS" \
     "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
     "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS")
@@ -282,7 +286,7 @@ if (( effective_judges < expected_judges )); then
         emit_kv WARN "plan-voter slot 3 (cursor) failed on usage-limit/quota; see execution-issues.md"
     fi
 fi
-plan_voter_coverage_emit_degraded_warning_if_needed "$effective_judges" "$expected_judges" "$_degraded_reason"
+_reemit_voting_stdout python3 "$CLI" voting degraded-warning "$effective_judges" "$expected_judges" "$_degraded_reason"
 
 plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
 pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
@@ -297,7 +301,7 @@ if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" ]]; then
 fi
 mv -f "$pv_tmp" "$plan_voter_paths_file"
 
-plan_voter_coverage_emit_status_block \
+_reemit_voting_stdout python3 "$CLI" voting voter-status-block \
     "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS" "$VOTER_1_PARSE_RATE_STATUS" \
     "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS" "$VOTER_2_PARSE_RATE_STATUS" \
     "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS" "$VOTER_3_PARSE_RATE_STATUS" \

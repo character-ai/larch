@@ -5,8 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+CLI="$PLUGIN_ROOT/python/cli.py"
 
 usage() {
     printf '%s\n' 'Usage: write-design-round-meta.sh --round-dir DIR' >&2
@@ -129,7 +128,7 @@ _adjust_security_oos_counts() {
                 block_file="$(mktemp "${round_dir}/.oos-sec.XXXXXX")"
                 if _extract_oos_block "$round_dir" "$id" >"$block_file" 2>/dev/null \
                     && [[ -s "$block_file" ]]; then
-                    if is_security_block "$block_file" 2>/dev/null; then
+                    if python3 "$CLI" voting is-security-block "$block_file" 2>/dev/null; then
                         case "$result" in
                             accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
                             *) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;
@@ -161,7 +160,7 @@ _adjust_security_oos_counts() {
                 block_file="$(mktemp "${round_dir}/.oos-sec.XXXXXX")"
                 if _extract_oos_block "$round_dir" "$id" >"$block_file" 2>/dev/null \
                     && [[ -s "$block_file" ]]; then
-                    if is_security_block "$block_file" 2>/dev/null; then
+                    if python3 "$CLI" voting is-security-block "$block_file" 2>/dev/null; then
                         case "$result" in
                             accepted) OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT - 1)) ;;
                             *) OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT - 1)) ;;

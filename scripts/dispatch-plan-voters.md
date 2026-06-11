@@ -2,7 +2,7 @@
 
 `scripts/dispatch-plan-voters.sh` launches `/design` Step 3 **plan-review** voter slots: **Voter 1 (Claude)** via `scripts/launch-claude-review.sh`, and **Voters 2–3** (Codex, Cursor) through `scripts/dispatch-with-waterfall.sh`. All three voters dispatch **in parallel** (#3704): Voter 1 is backgrounded and the external waterfall launches immediately, with no serial gate; the dispatcher reaps Voter 1 (`wait` → `voter1_rc`) after the waterfall returns.
 
-- Sources `scripts/lib-plan-voter-coverage.sh`; effective-judge coverage and the per-slot status KV block are emitted by that library.
+- Sources `python/voting.py (`voting effective-judges` / `voting voter-status-block`)`; effective-judge coverage and the per-slot status KV block are emitted by that library.
 - Validates `--design-tmpdir` via `scripts/lib-design-tmpdir.sh` (`larch_design_tmpdir_validate`) after argv parsing and before `mkdir -p`.
 
 ## Voter 1 (Claude)
@@ -26,7 +26,7 @@ was removed in breadcrumbs Stage 3.
 
 ## Parse-rate retries
 
-Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballots (`finding-oos`, `plan` retry prefix). Runs `check_and_retry_voter_parse_rate` for all three voters when a slot is not already `failed`.
+Sources `python/voting.py (`voting parse-rate-*`)` with `LARCH_VPR_*` set for plan ballots (`finding-oos`, `plan` retry prefix). Runs `check_and_retry_voter_parse_rate` for all three voters when a slot is not already `failed`.
 
 ## DISPATCH_OK
 

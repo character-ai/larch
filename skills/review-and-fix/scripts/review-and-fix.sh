@@ -9,6 +9,7 @@ unset LARCH_QUIET_PID LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+PY_CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -25,9 +26,6 @@ source "$PLUGIN_ROOT/scripts/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
-# shellcheck source=scripts/lib-vote-tally.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 # shellcheck source=scripts/lib-prune-decision.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
@@ -44,7 +42,19 @@ SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
-WRITE_TALLY_SH="${REVIEW_AND_FIX_WRITE_TALLY_SH:-$PLUGIN_ROOT/scripts/write-tally.sh}"
+if [[ -n "${REVIEW_AND_FIX_WRITE_TALLY_SH:-}" ]]; then
+    [[ -x "$REVIEW_AND_FIX_WRITE_TALLY_SH" ]] || {
+        larch_err "review-and-fix.sh: REVIEW_AND_FIX_WRITE_TALLY_SH is not executable: $REVIEW_AND_FIX_WRITE_TALLY_SH"
+        exit 2
+    }
+    WRITE_TALLY_CMD=("$REVIEW_AND_FIX_WRITE_TALLY_SH")
+else
+    [[ -f "$PY_CLI" ]] || {
+        larch_err "review-and-fix.sh: missing python/cli.py at $PY_CLI"
+        exit 2
+    }
+    WRITE_TALLY_CMD=(python3 "$PY_CLI" voting write-tally)
+fi
 COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
 LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
 IMPLEMENT_TMPDIR=""
@@ -949,7 +959,6 @@ flush_review_batches() {
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
     [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
     [[ "$neutral" =~ ^[0-9]+$ ]] || neutral=0
-    [[ -x "$WRITE_TALLY_SH" ]] || return 0
     [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
 
@@ -1051,7 +1060,7 @@ flush_review_batches() {
     fi
 
     set +e
-    tally_out="$("$WRITE_TALLY_SH" \
+    tally_out="$("${WRITE_TALLY_CMD[@]}" \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -1545,41 +1554,41 @@ _implement_round_body() {
             OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk" "$oos_markdown" 2>/dev/null || printf '0')
             case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
         fi
-        while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
-            [[ -n "$skip_id" ]] || continue
-            block_file="$round_dir/${skip_id}.skipped.md"
-            awk -v id="$skip_id" '
-              /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
-              in_block { print }
-            ' "$in_scope_file" > "$block_file" || true
-            if [[ ! -s "$block_file" ]]; then
-                rm -f "$block_file"
-                continue
-            fi
-            if is_security_block "$block_file"; then
-                cat "$block_file" >> "$skipped_security_file"
-                printf '\n' >> "$skipped_security_file"
-            else
+        if ! python3 "$PY_CLI" --help >/dev/null 2>&1; then
+            larch_err "review-and-fix.sh: security classifier failed for skipped findings"
+            classifier_loop_abort=1
+        fi
+        if [[ "$classifier_loop_abort" -eq 0 ]]; then
+            while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
+                [[ -n "$skip_id" ]] || continue
+                block_file="$round_dir/${skip_id}.skipped.md"
+                awk -v id="$skip_id" '
+                  /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
+                  in_block { print }
+                ' "$in_scope_file" > "$block_file" || true
+                if [[ ! -s "$block_file" ]]; then
+                    rm -f "$block_file"
+                    continue
+                fi
                 local sec_rc=0
-                is_security_block "$block_file" || sec_rc=$?
-                if [[ "$sec_rc" -eq 1 ]]; then
+                python3 "$PY_CLI" voting is-security-block "$block_file" || sec_rc=$?
+                if [[ "$sec_rc" -eq 0 ]]; then
+                    cat "$block_file" >> "$skipped_security_file"
+                    printf '\n' >> "$skipped_security_file"
+                elif [[ "$sec_rc" -eq 1 ]]; then
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
                     python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
                         --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
-                elif [[ "$sec_rc" -eq 2 ]]; then
-                    larch_err "review-and-fix.sh: security classifier failed for $skip_id"
-                    classifier_loop_abort=1
-                    break
                 else
                     larch_err "review-and-fix.sh: security classifier failed for $skip_id"
                     classifier_loop_abort=1
                     break
                 fi
-            fi
-            skipped_finding_count=$((skipped_finding_count + 1))
-            rm -f "$block_file"
-        done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+                skipped_finding_count=$((skipped_finding_count + 1))
+                rm -f "$block_file"
+            done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+        fi
 
         if [[ "$classifier_loop_abort" -eq 0 && -s "$skipped_file" ]]; then
             jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \

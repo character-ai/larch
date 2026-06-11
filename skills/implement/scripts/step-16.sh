@@ -51,6 +51,7 @@ rehydrate_larch_triplet() {
 }
 
 rehydrate_plugin_root
+rehydrate_larch_triplet
 run_id=$(read_session_key LARCH_RUN_ID "${RUN_ID:-}")
 if [ -z "$run_id" ]; then
     run_id=$(read_state_key "$IMPLEMENT_TMPDIR/ship-pr-state.sh" RUN_ID "")

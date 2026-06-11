@@ -101,11 +101,23 @@ trap __vc_exit_trap EXIT
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
-# shellcheck source=scripts/file-line-regex-lib.sh
-# shellcheck disable=SC1091
-. "$REPO_ROOT/scripts/file-line-regex-lib.sh"
+CLI="$REPO_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$REPO_ROOT/scripts/lib-quiet.sh"
+fetch_file_line_regex() {
+    local name="$1" out
+    if ! out=$(python3 "$CLI" voting file-line-regex --name "$name" 2>/dev/null); then
+        larch_err "validate-citations.sh: failed to load file-line regex: $name"
+        exit 2
+    fi
+    if [[ -z "$out" ]]; then
+        larch_err "validate-citations.sh: empty file-line regex: $name"
+        exit 2
+    fi
+    printf '%s' "$out"
+}
+__filelinelib_any_re="$(fetch_file_line_regex any-re)"
+__filelinelib_extensionless_re="$(fetch_file_line_regex extensionless-re)"
 # When re-execed under setsid (Linux budget-exhaustion path), FD 3 already
 # points to the original caller stdout inherited from the parent quiet session.
 # Prevent larch_quiet_init from overwriting it via "exec 3>&1" (which would

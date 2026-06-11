@@ -5,16 +5,15 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+[[ -f "$CLI" ]] || { larch_err "tally-plan-review.sh: missing python/cli.py at $CLI"; exit 2; }
 # shellcheck source=skills/design/scripts/lib-findings-classification.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-findings-classification.sh"
-# shellcheck source=scripts/lib-vote-tally.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
@@ -252,7 +251,7 @@ tally_votes_for_id() {
     TALLY_EXONERATE=0
     TALLY_JUDGE_ERROR=0
     if [[ -n "$TALLY_VOTER_FILE" ]]; then
-        TALLY_VOTE=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
+        TALLY_VOTE=$(python3 "$CLI" voting vote-for-id "$id" "$TALLY_VOTER_FILE")
         case "$TALLY_VOTE" in
             YES) TALLY_YES=1 ;;
             NO) TALLY_NO=1 ;;
@@ -262,7 +261,7 @@ tally_votes_for_id() {
         for p in 1 2 3; do
             voter_file="${SLOT_FILE[$p]}"
             [[ -n "$voter_file" ]] || continue
-            TALLY_VOTE=$(vote_for_id "$id" "$voter_file")
+            TALLY_VOTE=$(python3 "$CLI" voting vote-for-id "$id" "$voter_file")
             case "$TALLY_VOTE" in
                 YES) TALLY_YES=$((TALLY_YES + 1)) ;;
                 NO) TALLY_NO=$((TALLY_NO + 1)) ;;
@@ -270,7 +269,7 @@ tally_votes_for_id() {
             esac
         done
     fi
-    TALLY_RESULT=$(classify_result "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_ELIGIBLE_COUNT")
+    TALLY_RESULT=$(python3 "$CLI" voting classify-result "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_ELIGIBLE_COUNT")
 }
 
 if [[ "$SEEN_VOTER" == true ]]; then
@@ -349,7 +348,7 @@ done
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-plan-review.XXXXXX")
 
 BLOCK_DIR="$WORKDIR/blocks"
-if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
+if ! python3 "$CLI" voting split-ballot "$BALLOT_FILE" "$BLOCK_DIR"; then
     tally_error_exit \
         "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot" \
         "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**"
@@ -397,7 +396,7 @@ kv_value() {
 
 parse_rating_for() {
     local voter_file="$1" id="$2" parsed
-    parsed=$("$PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh" "$voter_file" "$id" || true)
+    parsed=$(python3 "$CLI" voting parse-judge-vote "$voter_file" "$id" || true)
     printf '%s\n' "$parsed"
 }
 
@@ -422,7 +421,7 @@ write_findings_classification() {
     while IFS= read -r id || [[ -n "$id" ]]; do
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"
-        reviewer=$(sanitize_tsv_cell "$(reviewer_for_block "$block")")
+        reviewer=$(sanitize_tsv_cell "$(python3 "$CLI" voting reviewer-for-block "$block")")
         body_severity=$(sanitize_tsv_cell "$(extract_body_severity_for_block "$block")")
         tally_votes_for_id "$id"
         result="$TALLY_RESULT"
@@ -437,7 +436,7 @@ write_findings_classification() {
             tool="${SLOT_TOOL[$p]}"
             if [[ -n "$voter_file" && "$TALLY_VOTER_FILE" != "$voter_file" && "$TALLY_ELIGIBLE_COUNT" -gt 0 ]]; then
                 parsed=$(parse_rating_for "$voter_file" "$id")
-                vote=$(vote_for_id "$id" "$voter_file")
+                vote=$(python3 "$CLI" voting vote-for-id "$id" "$voter_file")
                 [[ "$vote" == "JUDGE_ERROR" ]] && vote=""
                 correctness=$(printf '%s\n' "$parsed" | kv_value PARSED_CORRECTNESS)
                 severity=$(printf '%s\n' "$parsed" | kv_value PARSED_SEVERITY)
@@ -476,7 +475,7 @@ fi
     if [[ -n "$MAIN_AGENT_VOTER" ]]; then
         printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-adjudicated.**\n\n'
     elif (( TALLY_ELIGIBLE_COUNT < 3 )); then
-        tier_label="$(panel_tier "$TALLY_ELIGIBLE_COUNT")"
+        tier_label="$(python3 "$CLI" voting panel-tier "$TALLY_ELIGIBLE_COUNT")"
         printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$TALLY_ELIGIBLE_COUNT" "$tier_label"
     fi
     printf '## Findings\n\n'
@@ -490,13 +489,13 @@ fi
         result="$TALLY_RESULT"
         printf '| %s | %s | %s | %s | %s |\n' "$id" "$TALLY_YES" "$TALLY_NO" "$TALLY_JUDGE_ERROR" "$result"
 
-        reviewer=$(reviewer_for_block "$block")
+        reviewer=$(python3 "$CLI" voting reviewer-for-block "$block")
         kind="finding"
         case "$id" in OOS_*) kind="oos" ;; esac
         printf '%s\t%s\t%s\n' "$reviewer" "$kind" "$result" >> "$score_rows"
 
         security=false
-        if is_security_block "$block" 2>/dev/null; then
+        if python3 "$CLI" voting is-security-block "$block" 2>/dev/null; then
             security=true
         fi
 

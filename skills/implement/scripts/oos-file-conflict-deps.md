@@ -12,7 +12,7 @@ is the Step 9a.1 pre-pass immediately before `/issue --input-file`.
   stdout as the sole source of item order and body truth; it does not implement
   a second OOS parser.
 - **Path extraction delegation**. File mentions are extracted with
-  `scripts/file-line-regex-lib.sh`. The helper normalizes `./foo` to `foo`,
+  `python/cli.py voting file-line-regex`. The helper normalizes `./foo` to `foo`,
   splits comma- and semicolon-separated path lists onto their own lines so
   `grep -Eoh`'s consumed left/right boundaries do not swallow the neighbor's
   anchor, rejects absolute paths and `..` traversal, and otherwise stays inside
@@ -74,7 +74,7 @@ When behavior changes, update these files together:
 
 - `skills/implement/SKILL.md` Step 9a.1 narrative.
 - `skills/implement/references/oos-pipeline.md` Step 9a.1 procedure.
-- `scripts/file-line-regex-lib.sh` and its contract when the path grammar
+- `python/cli.py voting file-line-regex` and its contract when the path grammar
   changes.
 - `python/cli.py issue parse-input` and its contract when parser stdout
   changes.

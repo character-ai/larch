@@ -10,7 +10,7 @@ export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-code-votes.sh"
 LOG_PHASE="$SCRIPT_DIR/log-phase.sh"
 LARCH_LOG="$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh"
-PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
+CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/review-findings-classification.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -154,15 +154,13 @@ cat > "$F/votes.txt" <<'EOF'
 FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
 EOF
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 for id in FINDING_1 OOS_1; do
-    parsed=$("$PARSER" "$F/votes.txt" "$id")
+    parsed=$(python3 "$CLI" voting parse-judge-vote "$F/votes.txt" "$id")
     parser_vote=$(printf '%s\n' "$parsed" | awk -F= '$1=="PARSED_VOTE"{print $2}')
-    lib_vote=$(vote_for_id "$id" "$F/votes.txt")
+    lib_vote=$(python3 "$CLI" voting vote-for-id "$id" "$F/votes.txt")
     [[ "$parser_vote" == "$lib_vote" ]] || fail "parser/vote_for_id parity failed for $id"
 done
-[[ "$("$PARSER" "$F/votes.txt" FINDING_2 | awk -F= '$1=="PARSED_VOTE"{print $2}')" == "" ]] \
+[[ "$(python3 "$CLI" voting parse-judge-vote "$F/votes.txt" FINDING_2 | awk -F= '$1=="PARSED_VOTE"{print $2}')" == "" ]] \
     || fail "missing ballot ID should stay empty before tally normalization"
 
 echo "# Fixture F2: missing ballot line records JUDGE_ERROR in TSV without changing tally semantics"

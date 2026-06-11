@@ -115,6 +115,15 @@ def main() -> None:
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["voting", "write-tally"]:
+        invoke_log = root.parent / "invoke-log.txt"
+        with invoke_log.open("a", encoding="utf-8") as handle:
+            handle.write("voting write-tally " + " ".join(sys.argv[3:]) + "\n")
+        rc = int(os.environ.get("SANDBOX_WRITE_TALLY_EXIT", "0"))
+        if rc:
+            print("write tally failure", file=sys.stderr)
+            raise SystemExit(rc)
+        raise SystemExit(0)
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
@@ -555,18 +564,6 @@ done
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/run-step1-plan-log.sh"
-
-    cat >"$SANDBOX/scripts/write-tally.sh" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'write-tally %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-if [ "${SANDBOX_WRITE_TALLY_EXIT:-0}" -ne 0 ]; then
-  printf 'write tally failure\n' >&2
-  exit "$SANDBOX_WRITE_TALLY_EXIT"
-fi
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/write-tally.sh"
 
     cat >"$SANDBOX/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -1129,8 +1126,8 @@ do
     assert_order "check-mid-run-dirty-tree" "create-branch --branch testuser/$expected_slug-123" "$invoke" "B5-plan-green $expected_slug dirty before branch"
     assert_order "create-branch --branch testuser/$expected_slug-123" "git-current-branch" "$invoke" "B5-plan-green $expected_slug branch before capture"
     assert_order "git-current-branch" "run-step1-plan-log" "$invoke" "B5-plan-green $expected_slug capture before plan log"
-    assert_order "run-step1-plan-log" "write-tally" "$invoke" "B5-plan-green $expected_slug plan log before tally"
-    assert_order "write-tally" "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-green $expected_slug tally before summary"
+    assert_order "run-step1-plan-log" "voting write-tally" "$invoke" "B5-plan-green $expected_slug plan log before tally"
+    assert_order "voting write-tally" "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-green $expected_slug tally before summary"
     rm -rf "$SANDBOX" "$SANDBOX_TMP"
 done
 
@@ -2276,7 +2273,7 @@ else
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "gh issue view 123 --repo upstream/repo" "$invoke" "B8-plan-forked-target gh upstream"
-assert_contains "write-tally --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id sessstub" "$invoke" "B8-plan-forked-target tally run id"
+assert_contains "voting write-tally --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id sessstub" "$invoke" "B8-plan-forked-target tally run id"
 assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-target no branch create"
 assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B8-plan-forked-target no plan summary"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -2362,7 +2359,7 @@ assert_contains "STALL_TRACKING=true" "$out" "B13-plan-branch-create stall"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains "git-current-branch" "$invoke" "B13-plan-branch-create no branch capture"
 assert_not_contains "run-step1-plan-log" "$invoke" "B13-plan-branch-create no plan log"
-assert_not_contains "write-tally" "$invoke" "B13-plan-branch-create no tally"
+assert_not_contains "voting write-tally" "$invoke" "B13-plan-branch-create no tally"
 assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B13-plan-branch-create no plan summary"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
@@ -2383,7 +2380,7 @@ for branch_capture_mode in exit empty; do
     invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
     assert_contains "git-current-branch" "$invoke" "B14-plan-branch-capture $branch_capture_mode branch capture attempted"
     assert_not_contains "run-step1-plan-log" "$invoke" "B14-plan-branch-capture $branch_capture_mode no plan log"
-    assert_not_contains "write-tally" "$invoke" "B14-plan-branch-capture $branch_capture_mode no tally"
+    assert_not_contains "voting write-tally" "$invoke" "B14-plan-branch-capture $branch_capture_mode no tally"
     rm -rf "$SANDBOX" "$SANDBOX_TMP"
 done
 

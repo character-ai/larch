@@ -4,13 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+CLI="$PLUGIN_ROOT/python/cli.py"
 REDACT_TMP="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 REDACT_SECRETS="$SCRIPT_DIR/redact-secrets.sh"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$SCRIPT_DIR/lib-vote-tally.sh"
 
 DESIGN_DIR=""
 IMPLEMENT_TMPDIR=""
@@ -381,7 +381,7 @@ parse_artifact() {
             _sec_tmp="$(mktemp)"
             printf '%s\n' "$body" > "$_sec_tmp"
             local _sec_match=false
-            if is_security_block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
+            if python3 "$CLI" voting is-security-block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
             rm -f "$_sec_tmp"
             if [[ "$_sec_match" == "true" ]]; then
                 pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""

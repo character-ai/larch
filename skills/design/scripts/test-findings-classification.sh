@@ -9,8 +9,8 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-plan-review.sh"
-PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
-VOTE_LIB="$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
+run_parser() { python3 "$CLI" voting parse-judge-vote "$@"; }
 HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity'
 
 fail() {
@@ -103,8 +103,8 @@ parser_value() {
 
 assert_parser_vote_matches_vote_for_id() {
     local voter_file="$1" ballot_id="$2" parsed lib_vote
-    parsed=$("$PARSER" "$voter_file" "$ballot_id")
-    lib_vote=$(bash -c 'source "$1"; vote_for_id "$2" "$3"' _ "$VOTE_LIB" "$ballot_id" "$voter_file")
+    parsed=$(run_parser "$voter_file" "$ballot_id")
+    lib_vote=$(python3 "$CLI" voting vote-for-id "$ballot_id" "$voter_file")
     [[ "$(parser_value "$parsed" PARSED_VOTE)" == "${lib_vote/JUDGE_ERROR/}" ]] \
         || fail "parser/lib vote mismatch for $ballot_id in $voter_file"
 }
@@ -148,21 +148,21 @@ FINDING_5: MAYBE CORRECTNESS=true
 FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- reviewer mentioned QUALITY=weak
 FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false reviewer mentioned QUALITY=weak
 EOF
-p2=$("$PARSER" "$PV" FINDING_2)
+p2=$(run_parser "$PV" FINDING_2)
 [[ "$(parser_value "$p2" PARSED_SEVERITY)" == "major" ]] || fail "position-agnostic SEVERITY did not parse"
 [[ "$(parser_value "$p2" PARSED_QUALITY)" == "" ]] || fail "missing QUALITY should emit empty"
 [[ "$(parser_value "$p2" PARSED_UNCERTAIN)" == "true" ]] || fail "missing QUALITY should force uncertain=true"
-p3=$("$PARSER" "$PV" FINDING_3)
+p3=$(run_parser "$PV" FINDING_3)
 [[ "$(parser_value "$p3" PARSED_SEVERITY)" == "" ]] || fail "uppercase severity should be rejected"
 [[ "$(parser_value "$p3" PARSED_UNCERTAIN)" == "true" ]] || fail "bad axis should force uncertain"
-p4=$("$PARSER" "$PV" FINDING_4)
+p4=$(run_parser "$PV" FINDING_4)
 [[ "$(parser_value "$p4" PARSED_VOTE)" == "YES" ]] || fail "duplicate ID last-line-wins failed"
-p5=$("$PARSER" "$PV" FINDING_5)
+p5=$(run_parser "$PV" FINDING_5)
 [[ "$(parser_value "$p5" PARSED_VOTE)" == "" ]] || fail "unrecognized vote should emit empty vote"
 [[ "$(parser_value "$p5" PARSED_CORRECTNESS)" == "true" ]] || fail "axis should parse even with unrecognized vote"
-p6=$("$PARSER" "$PV" FINDING_6)
+p6=$(run_parser "$PV" FINDING_6)
 [[ "$(parser_value "$p6" PARSED_QUALITY)" == "good" ]] || fail "post-delimiter QUALITY should be ignored"
-p7=$("$PARSER" "$PV" FINDING_7)
+p7=$(run_parser "$PV" FINDING_7)
 [[ "$(parser_value "$p7" PARSED_QUALITY)" == "weak" ]] || fail "without delimiter last axis token should win"
 
 echo "=== explicit --voter slot overrides misleading basename markers ==="
@@ -220,7 +220,7 @@ quiet_votes="$W2Q/quiet-votes.txt"
 cat > "$quiet_votes" <<'EOF'
 FINDING_2: YES SEVERITY=major CORRECTNESS=true UNCERTAIN=false
 EOF
-quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" "$PARSER" "$quiet_votes" FINDING_2)
+quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" python3 "$CLI" voting parse-judge-vote "$quiet_votes" FINDING_2)
 [[ "$(parser_value "$quiet_out" PARSED_VOTE)" == "YES" ]] || fail "quiet parser vote capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_QUALITY)" == "" ]] || fail "quiet parser missing-quality capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_UNCERTAIN)" == "true" ]] || fail "quiet parser missing-quality uncertain fallback failed"
@@ -258,7 +258,7 @@ read -r default_header < "$W3D/design/plan-review/round-1/findings-classificatio
 [[ "$default_header" == "$HEADER" ]] || fail "default findings-classification header drifted"
 
 echo "=== anchored vote helper remains compatible ==="
-vote=$(bash -c 'source "$1"; vote_for_id FINDING_1 "$2"' _ "$VOTE_LIB" "$CLAUDE")
+vote=$(python3 "$CLI" voting vote-for-id FINDING_1 "$CLAUDE")
 [[ "$vote" == "YES" ]] || fail "vote_for_id did not parse extended vote line"
 
 echo "=== lowercased ballot ids and vote/parser parity ==="
@@ -267,7 +267,7 @@ cat > "$PV2" <<'EOF'
 finding_1: yes CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 finding_2: YES-CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 EOF
-p_lower=$("$PARSER" "$PV2" FINDING_1)
+p_lower=$(run_parser "$PV2" FINDING_1)
 [[ "$(parser_value "$p_lower" PARSED_VOTE)" == "YES" ]] || fail "lowercased ballot id did not parse"
 [[ "$(parser_value "$p_lower" PARSED_CORRECTNESS)" == "true" ]] || fail "lowercased ballot id correctness missing"
 assert_parser_vote_matches_vote_for_id "$PV" FINDING_2
@@ -281,44 +281,51 @@ assert_parser_vote_matches_vote_for_id "$PV2" FINDING_2
 
 echo "=== parser usage and unreadable-file exit matrix ==="
 set +e
-"$PARSER" >/dev/null 2>"$TMPROOT/parser-usage.err"
+run_parser >/dev/null 2>"$TMPROOT/parser-usage.err"
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "missing parser args should exit 2"
-grep -Fq 'usage: parse-judge-vote-and-rating.sh <voter_file> <ballot_id>' "$TMPROOT/parser-usage.err" \
+grep -Fq 'usage: parse-judge-vote <voter_file> <ballot_id>' "$TMPROOT/parser-usage.err" \
     || fail "parser usage diagnostic missing"
 
 set +e
-"$PARSER" "$TMPROOT/no-such-voter.txt" FINDING_1 >/dev/null 2>"$TMPROOT/parser-unreadable.err"
+run_parser "$TMPROOT/no-such-voter.txt" FINDING_1 >/dev/null 2>"$TMPROOT/parser-unreadable.err"
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "unreadable parser voter file should exit 2"
-grep -Fq 'parse-judge-vote-and-rating.sh: voter file is missing or unreadable:' "$TMPROOT/parser-unreadable.err" \
+grep -Fq 'parse-judge-vote: voter file is missing or unreadable:' "$TMPROOT/parser-unreadable.err" \
     || fail "parser unreadable-file diagnostic missing"
 
 echo "=== malicious parser output is TSV-sanitized ==="
 STUB_ROOT="$TMPROOT/stub-root"
 mkdir -p "$STUB_ROOT/scripts"
 cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" "$STUB_ROOT/scripts/lib-quiet.sh"
-cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh" "$STUB_ROOT/scripts/lib-vote-tally.sh"
 cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" "$STUB_ROOT/scripts/lib-design-tmpdir.sh"
-cat > "$STUB_ROOT/scripts/parse-judge-vote-and-rating.sh" <<'EOF'
-#!/usr/bin/env bash
-cat <<'OUT'
-PARSED_CORRECTNESS=true
-PARSED_SEVERITY=major
-PARSED_QUALITY=good	with	tab
-PARSED_UNCERTAIN=false
-extra
-line
-OUT
+mkdir -p "$STUB_ROOT/python"
+cat > "$STUB_ROOT/python/cli.py" <<'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+if sys.argv[1:3] == ["voting", "parse-judge-vote"]:
+    print("PARSED_CORRECTNESS=true")
+    print("PARSED_SEVERITY=major")
+    print("PARSED_QUALITY=good\twith\ttab")
+    print("PARSED_UNCERTAIN=false")
+    print("extra")
+    print("line")
+    raise SystemExit(0)
+real_cli = os.environ.get("LARCH_REAL_CLI")
+if real_cli:
+    os.execv(sys.executable, [sys.executable, real_cli, *sys.argv[1:]])
+print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
+raise SystemExit(2)
 EOF
-chmod +x "$STUB_ROOT/scripts/parse-judge-vote-and-rating.sh"
+chmod +x "$STUB_ROOT/python/cli.py"
 W4S="$TMPROOT/case4-sanitize"
 mkdir -p "$W4S/design"
 write_ballot "$W4S/ballot.md"
 cp "$CLAUDE" "$W4S/claude-vote-output.txt"
-CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
+LARCH_REAL_CLI="$CLI" CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
 assert_cell "$W4S/out.tsv" FINDING_1 v1_quality "good with tab"
 assert_all_rows_21_fields "$W4S/out.tsv"
 

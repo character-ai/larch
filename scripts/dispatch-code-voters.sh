@@ -9,11 +9,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+CLI="$PLUGIN_ROOT/python/cli.py"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
-# shellcheck source=scripts/lib-voter-parse-rate.sh
-source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
+[[ -f "$CLI" ]] || { larch_err "dispatch-code-voters.sh: missing python/cli.py at $CLI"; exit 2; }
 
 usage() {
     larch_err "Usage: dispatch-code-voters.sh --ballot-file FILE --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--diff-file FILE] [--plan-file FILE] [--round-num N]"
@@ -97,16 +97,11 @@ bounded_plan="$(make_bounded_context_copy plan "$PLAN_FILE" 60000)"
 [[ -n "$bounded_diff" ]] && ctx_args+=(--diff-file "$bounded_diff")
 [[ -n "$bounded_plan" ]] && ctx_args+=(--plan-file "$bounded_plan")
 
-LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
-LARCH_VPR_ID_GRAMMAR=finding-oos
-LARCH_VPR_REVIEW_TMPDIR="$REVIEW_TMPDIR"
-LARCH_VPR_RETRY_PREFIX_KIND=code
-LARCH_VPR_LAUNCH_MODE="$mode"
-LARCH_VPR_PLUGIN_ROOT="$PLUGIN_ROOT"
-LARCH_VPR_DISPATCH_LABEL="dispatch-code-voters.sh"
-LARCH_VPR_CTX=()
-[[ -n "$bounded_diff" ]] && LARCH_VPR_CTX+=(--diff-file "$bounded_diff")
-[[ -n "$bounded_plan" ]] && LARCH_VPR_CTX+=(--plan-file "$bounded_plan")
+DISPATCH_LABEL="dispatch-code-voters.sh"
+LAUNCH_MODE="$mode"
+VPR_ARGS=(--ballot-file "$BALLOT_FILE" --id-grammar finding-oos --review-tmpdir "$REVIEW_TMPDIR" --plugin-root "$PLUGIN_ROOT" --dispatch-label "$DISPATCH_LABEL" --retry-prefix-kind code --launch-mode "$LAUNCH_MODE")
+[[ -n "$bounded_diff" ]] && VPR_ARGS+=(--ctx=--diff-file --ctx "$bounded_diff")
+[[ -n "$bounded_plan" ]] && VPR_ARGS+=(--ctx=--plan-file --ctx "$bounded_plan")
 
 VOTER_1_PATH="$REVIEW_TMPDIR/claude-vote-output.txt"
 claude_prompt=$(make_voter_prompt_file claude)
@@ -329,9 +324,9 @@ voter3_done_rc=""
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"
 VOTER_3_PARSE_RATE_STATUS="SKIPPED"
-[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
-[[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_STATUS" != "skipped" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
-[[ "$VOTER_3_STATUS" != "failed" && "$VOTER_3_STATUS" != "skipped" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
+[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 1 --voter-file "$VOTER_1_PATH" --voter-tool "$VOTER_1_TOOL" --prompt-file "$claude_prompt")
+[[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_STATUS" != "skipped" ]] && VOTER_2_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 2 --voter-file "$VOTER_2_PATH" --voter-tool "$VOTER_2_TOOL" --prompt-file "$codex_prompt")
+[[ "$VOTER_3_STATUS" != "failed" && "$VOTER_3_STATUS" != "skipped" ]] && VOTER_3_PARSE_RATE_STATUS=$(python3 "$CLI" voting parse-rate-retry "${VPR_ARGS[@]}" --slot 3 --voter-file "$VOTER_3_PATH" --voter-tool "$VOTER_3_TOOL" --prompt-file "$cursor_prompt")
 
 # Shrink-not-backfill: the expected (eligible) panel is Claude (always) plus each
 # AVAILABLE external. Unavailable externals are intentionally skipped, not

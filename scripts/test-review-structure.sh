@@ -398,7 +398,7 @@ fi
 # (20) Security-tag exclusion contract for accepted OOS items. After #2207
 # voting.md is gone; the canonical security regex + invariant prose live in
 # skills/shared/voting-protocol.md, and the mechanical enforcement lives in
-# scripts/lib-vote-tally.sh::is_security_block (shared by both tally scripts).
+# python/voting.py::is_security_block (shared by both tally scripts).
 # ---------------------------------------------------------------------------
 PROTOCOL_MD="$REPO_ROOT/skills/shared/voting-protocol.md"
 [[ -f "$PROTOCOL_MD" ]] \
@@ -409,11 +409,11 @@ grep -Fq 'Match discrimination (false-positive guard)' "$PROTOCOL_MD" \
   || fail "(20b) voting-protocol.md missing Match discrimination procedure"
 grep -Fq 'Security counter-invariant' "$PROTOCOL_MD" \
   || fail "(20c) voting-protocol.md missing Security counter-invariant clause"
-LIB_MD="$REPO_ROOT/scripts/lib-vote-tally.md"
-[[ -f "$LIB_MD" ]] \
-  || fail "(20) scripts/lib-vote-tally.md missing"
-grep -Fq 'focus-area\s*=\s*security' "$LIB_MD" \
-  || fail "(20d) lib-vote-tally.md must document canonical focus-area\\s*=\\s*security token for is_security_block"
+VOTING_PY="$REPO_ROOT/python/voting.py"
+[[ -f "$VOTING_PY" ]] \
+  || fail "(20) python/voting.py missing"
+grep -Fq 'focus-area\s*=\s*security' "$VOTING_PY" \
+  || fail "(20d) voting.py must carry canonical focus-area\\s*=\\s*security token for is_security_block"
 
 # ---------------------------------------------------------------------------
 # (21) Stage 4 (#3119): Family-B fence shape must stay absent from review orchestrator docs.

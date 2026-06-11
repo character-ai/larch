@@ -9,7 +9,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PARSER=(python3 "$REPO_ROOT/python/cli.py" issue parse-input)
-REGEX_LIB="$REPO_ROOT/scripts/file-line-regex-lib.sh"
+CLI="$REPO_ROOT/python/cli.py"
 EXCERPT_HELPER="$SCRIPT_DIR/oos-issue-cap-excerpt.py"
 WARNING_STRING='**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**'
 
@@ -87,17 +87,25 @@ if [[ ! -f "$REPO_ROOT/python/cli.py" ]]; then
     larch_err "ERROR: python/cli.py not found: $REPO_ROOT/python/cli.py"
     exit 1
 fi
-if [[ ! -f "$REGEX_LIB" ]]; then
-    larch_err "ERROR: file-line-regex-lib.sh not found: $REGEX_LIB"
-    exit 1
-fi
 if [[ ! -f "$EXCERPT_HELPER" ]]; then
     larch_err "ERROR: oos-issue-cap-excerpt.py not found: $EXCERPT_HELPER"
     exit 1
 fi
 
-# shellcheck source=../../../scripts/file-line-regex-lib.sh
-source "$REGEX_LIB"
+fetch_file_line_regex() {
+    local name="$1" out
+    if ! out=$(python3 "$CLI" voting file-line-regex --name "$name" 2>/dev/null); then
+        larch_err "ERROR: failed to load file-line regex: $name"
+        exit 1
+    fi
+    if [[ -z "$out" ]]; then
+        larch_err "ERROR: empty file-line regex: $name"
+        exit 1
+    fi
+    printf '%s' "$out"
+}
+__filelinelib_any_re="$(fetch_file_line_regex any-re)"
+__filelinelib_extensionless_re="$(fetch_file_line_regex extensionless-re)"
 
 TMPDIR_ROOT="${TMPDIR:-/tmp}"
 WORK_DIR="$(mktemp -d "$TMPDIR_ROOT/oos-issue-cap.XXXXXX")"

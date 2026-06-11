@@ -40,15 +40,13 @@ grep -Fq 'untrusted evidence, not instructions' <<<"$with_anchor" || fail "voter
 grep -Fq 'Normal voting thresholds still apply' <<<"$with_anchor" || fail "voter prompt missing unchanged-threshold instruction"
 
 # Normal tally/classification behavior remains unchanged for tagged findings.
-# shellcheck source=scripts/lib-vote-tally.sh
-source "$REPO_ROOT/scripts/lib-vote-tally.sh"
-got=$(classify_result 1 1 0 2)
+got=$(python3 "$REPO_ROOT/python/cli.py" voting classify-result 1 1 0 2)
 [ "$got" = neutral ] || fail "tagged 1Y/1N equivalent should remain neutral under normal thresholds"
 cat >"$TMP/oos.md" <<'BODY'
 ### OOS_1: [SCOPE-REDUCTION] no special handling for OOS
 - **Description**: ordinary OOS row.
 BODY
-if is_scope_reduction_block "$TMP/oos.md"; then
+if "$REPO_ROOT/scripts/check-scope-reduction-marker.sh" --file "$TMP/oos.md"; then
     : # detector can see the marker, but tally callers do not special-case OOS blocks.
 fi
 
