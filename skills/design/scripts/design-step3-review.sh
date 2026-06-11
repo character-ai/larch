@@ -49,6 +49,7 @@ _validator_target_file="${_validator_target_file:-}"
 PUBLISH_OK="${PUBLISH_OK:-}"
 PLAN_WRITE_OK="${PLAN_WRITE_OK:-}"
 STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
+STARTING_ROUND=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -60,6 +61,7 @@ while [ "$#" -gt 0 ]; do
     --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
     --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
     --skip-validate) SKIP_VALIDATE=1; shift ;;
+    --starting-round) STARTING_ROUND="$2"; shift 2 ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
@@ -94,10 +96,18 @@ _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XX
   exit 1
 }
 set +e
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --mode loop \
-  >"$_plan_review_stdout_file"
+if [ -n "$STARTING_ROUND" ]; then
+  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --mode loop \
+    --starting-round "$STARTING_ROUND" \
+    >"$_plan_review_stdout_file"
+else
+  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --mode loop \
+    >"$_plan_review_stdout_file"
+fi
 _plan_review_rc=$?
 set -e
 _step3_primary_regular=false

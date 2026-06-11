@@ -100,10 +100,12 @@ grep -Fq 'LOOP_STATUS=' "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing LOOP_STATUS emit'
 grep -Fq 'read-result-env.sh' "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing read-result-env handoff'
+grep -Fq -- "--starting-round \"\$STARTING_ROUND\"" "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing starting-round forwarding'
 pass 'design-step3-review.sh handoff contract present'
 
 invoke_step3_review_wrapper() {
-    local design_tmpdir="$1" result_env_body="$2" stdout_body="$3" review_rc="${4:-0}"
+    local design_tmpdir="$1" result_env_body="$2" stdout_body="$3" review_rc="${4:-0}" starting_round="${5:-}"
     local plugin stub session_env
     plugin="$design_tmpdir/plugin"
     stub="$plugin/skills/design/scripts"
@@ -114,6 +116,7 @@ invoke_step3_review_wrapper() {
     printf '%s\n' "$result_env_body" >"$design_tmpdir/.step3-review-result.env"
     cat >"$stub/run-step3-review.sh" <<STUB
 #!/usr/bin/env bash
+printf '%s\n' "\$@" > "\$DESIGN_TMPDIR/run-step3-argv.txt"
 cat <<'OUT'
 ${stdout_body}
 OUT
@@ -124,10 +127,18 @@ STUB
     cp "$REPO_ROOT/scripts/read-result-env.sh" "$plugin/scripts/read-result-env.sh"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/skills/design/scripts/lib-phase-driver.sh" "$stub/lib-phase-driver.sh"
-    CLAUDE_PLUGIN_ROOT="$plugin" \
-      "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
-      --session-env-path "$session_env" \
-      --claude-pid test
+    if [[ -n "$starting_round" ]]; then
+      CLAUDE_PLUGIN_ROOT="$plugin" \
+        "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
+        --session-env-path "$session_env" \
+        --claude-pid test \
+        --starting-round "$starting_round"
+    else
+      CLAUDE_PLUGIN_ROOT="$plugin" \
+        "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
+        --session-env-path "$session_env" \
+        --claude-pid test
+    fi
 }
 
 echo "=== design-step3-review.sh wrapper sources result env ==="
@@ -140,6 +151,18 @@ if printf '%s\n' "$_wrapper_out" | grep -Fq 'LOOP_STATUS=complete' \
     pass 'wrapper emits file-first handoff KVs'
 else
     fail "wrapper handoff missing expected KVs: $_wrapper_out"
+fi
+
+echo "=== design-step3-review.sh wrapper forwards starting round ==="
+D_WRAPPER_START="$TMP/wrapper-starting-round"
+mkdir -p "$D_WRAPPER_START"
+_wrapper_start_out=$(invoke_step3_review_wrapper "$D_WRAPPER_START" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\n' '' 0 3)
+if grep -Fxq -- '--starting-round' "$D_WRAPPER_START/run-step3-argv.txt" \
+  && grep -Fxq -- '3' "$D_WRAPPER_START/run-step3-argv.txt" \
+  && printf '%s\n' "$_wrapper_start_out" | grep -Fq 'LOOP_STATUS=complete'; then
+    pass 'wrapper forwards --starting-round'
+else
+    fail "wrapper did not forward --starting-round (out=$_wrapper_start_out argv=$(cat "$D_WRAPPER_START/run-step3-argv.txt" 2>/dev/null || true))"
 fi
 
 echo "=== design-step3-review.sh wrapper postplan-failed exits 1 ==="

@@ -126,6 +126,10 @@ require('Makefile', 'test-implement-fence-shape:', 'Makefile fence-shape target'
 require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fence-shape target')
 
 skill_text = Path(skill).read_text()
+if skill_text.count('timeout: 10800000') < 4:
+    checks.append('SKILL.md must use the 10800000 timeout tier for all run-step-checks fences')
+if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+\[ -z [\s\S]{0,500}step-5-resume\.sh" --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):
+    checks.append('SKILL.md must background the Step 5 ready-to-commit resume fence with timeout 21600000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
 if '--auto-mode' in skill_text:

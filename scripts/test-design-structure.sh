@@ -143,6 +143,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2a3-collect.sh" '--timeout 1260' 'Step 2a.3 wrapper missing collector timeout'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-postplan-emit.sh' 'Step 2b postplan wrapper missing postplan driver'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--fallback-input "$_plan_review_stdout_file"' 'Step 3 review wrapper missing stdout fallback'
+  contains "$SCRIPT_DIR/design-step3-review.sh" '--starting-round "$STARTING_ROUND"' 'Step 3 review wrapper missing starting-round forwarding'
   contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '--input "$DESIGN_TMPDIR/architecture-diagram.candidate.md"' 'Step 3b sanitizer wrapper must use DESIGN_TMPDIR candidate path'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'architecture-diagram.skipped' 'Step 3b entry wrapper missing visible skipped sentinel'
   contains "$SCRIPT_DIR/design-step5c.sh" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate reentry flag'
@@ -180,6 +181,10 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_STATUS=' 'Step 2b postplan wrapper missing POSTPLAN_STATUS emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'SCOPE_ANCHOR_FILE=' 'Step 3 review wrapper missing scope anchor emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'TALLY_PLAN_REVIEW_STATUS=' 'Step 3 review wrapper missing tally status emit'
+  contains "$SKILL_MD" 'Step 3 resume fence (all mid-loop returns)' 'SKILL missing Step 3 background resume fence'
+  contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$N"' 'SKILL missing wrapper-owned Step 3 resume wording'
+  ! grep -Fq 'run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round' "$SKILL_MD" \
+    || fail 'SKILL must not route mid-loop resumes directly through run-step3-review.sh'
   contains "$SKILL_MD" 'design-step3-gate-b-bypass.sh' 'SKILL missing gate-b-bypass wrapper bash fence'
   contains "$SKILL_MD" 'design-step3-continuation-entry.sh' 'SKILL missing continuation-entry wrapper bash fence'
   ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$SCRIPT_DIR/design-step5c.sh" \
@@ -266,6 +271,7 @@ boundary_markers = (
     '> **🔶 /design 3b: arch diagram**',
     'branch-local skip fence below',
     'architectural entry cleanup fence below',
+    'Step 3 resume fence (all mid-loop returns)',
     '--mode skip',
     '--mode architectural',
 )
