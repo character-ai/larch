@@ -99,7 +99,6 @@ build_sandbox() {
     mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX/python/stubs/session" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
-    cp "$REPO_ROOT/python/cli.py run-log append-entry" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
     cp "$REPO_ROOT"/python/*.py "$SANDBOX/python/"
     mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
@@ -109,12 +108,89 @@ import os
 import sys
 from pathlib import Path
 
+def _ledger_stub(root: Path) -> int:
+    log = root.parent / "invoke-log.txt"
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        prefix = "token-ledger" if sys.argv[1] == "token" else "timing-ledger"
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(f"{prefix} {' '.join(sys.argv[2:])}\n")
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "claude-source":
+        return 0
+    return 1
+
+def _append_failure_stub() -> int:
+    rc = int(os.environ.get("SANDBOX_APPEND_TOOL_FAILURE_EXIT", "0"))
+    if rc:
+        print("append-tool-failure failure", file=sys.stderr)
+        return rc
+    log = site = output_file = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--log" and i + 1 < len(args):
+            log = args[i + 1]; i += 2
+        elif args[i] == "--site" and i + 1 < len(args):
+            site = args[i + 1]; i += 2
+        elif args[i] == "--output-file" and i + 1 < len(args):
+            output_file = args[i + 1]; i += 2
+        else:
+            i += 1
+    if log:
+        path = Path(log)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{site}\n")
+            out = Path(output_file) if output_file else None
+            if out is not None and out.is_file():
+                handle.write(out.read_text(encoding="utf-8"))
+    return 0
+
+def _run_log_stub(root: Path) -> int:
+    log = root.parent / "invoke-log.txt"
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write("larch-log " + " ".join(sys.argv[2:]) + "\n")
+    if os.environ.get("LARCH_TEST_LARCH_LOG_FAIL", "") == "true":
+        print("LOG_WRITTEN=false")
+        print("LOG_PATH=")
+        print("BYTES=0")
+        print("SHA256=")
+        print("COMMIT_SHA=")
+        print("UNCHANGED=false")
+        print("ERROR=init failed")
+        return 1
+    args = sys.argv[3:]
+    vals = {"--log-root": "", "--skill": "", "--run-id": ""}
+    i = 0
+    while i < len(args):
+        if args[i] in vals and i + 1 < len(args):
+            vals[args[i]] = args[i + 1]; i += 2
+        else:
+            i += 1
+    path = Path(vals["--log-root"]) / vals["--skill"] / vals["--run-id"] / "manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}\n", encoding="utf-8")
+    print("LOG_WRITTEN=true")
+    print(f"LOG_PATH={path}")
+    print("BYTES=3")
+    print("SHA256=dummy")
+    print("COMMIT_SHA=")
+    print("UNCHANGED=false")
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
-    if len(sys.argv) >= 3 and sys.argv[1] == "session":
-        stub = root / "stubs" / "session" / sys.argv[2]
+    if len(sys.argv) >= 3:
+        stub = root / "stubs" / sys.argv[1] / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_ledger_stub(root))
+    if len(sys.argv) >= 3 and sys.argv[1] == "run-log":
+        if sys.argv[2] == "append-failure":
+            raise SystemExit(_append_failure_stub())
+        if sys.argv[2] != "append-entry":
+            raise SystemExit(_run_log_stub(root))
     if len(sys.argv) >= 3 and sys.argv[1:3] == ["voting", "write-tally"]:
         invoke_log = root.parent / "invoke-log.txt"
         with invoke_log.open("a", encoding="utf-8") as handle:
@@ -129,7 +205,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 DISPATCHER
-    chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/python/cli.py run-log append-entry"
+    chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-bootstrap.sh"
 
     cat >"$SANDBOX/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -192,54 +268,6 @@ exit 0
 STUB
     chmod +x "$SANDBOX/python/stubs/session/write-id"
 
-    cat >"$SANDBOX/scripts/token-claude-source.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/token-claude-source.sh"
-
-    cat >"$SANDBOX/python/cli.py run-log append-failure" <<'STUB'
-#!/usr/bin/env bash
-if [ "${SANDBOX_APPEND_TOOL_FAILURE_EXIT:-0}" -ne 0 ]; then
-  printf 'append-tool-failure failure\n' >&2
-  exit "$SANDBOX_APPEND_TOOL_FAILURE_EXIT"
-fi
-log=""
-site=""
-output_file=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --log) log=$2; shift 2 ;;
-    --site) site=$2; shift 2 ;;
-    --output-file) output_file=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-if [ -n "$log" ]; then
-  mkdir -p "$(dirname "$log")"
-  printf '%s\n' "$site" >> "$log"
-  [ -n "$output_file" ] && [ -f "$output_file" ] && cat "$output_file" >> "$log"
-fi
-exit 0
-STUB
-    chmod +x "$SANDBOX/python/cli.py run-log append-failure"
-
-    cat >"$SANDBOX/scripts/token-ledger.sh" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'token-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/token-ledger.sh"
-
-    cat >"$SANDBOX/scripts/timing-ledger.sh" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'timing-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-exit 0
-STUB
-    chmod +x "$SANDBOX/scripts/timing-ledger.sh"
-
     cat >"$SANDBOX/scripts/tracking-issue-read.sh" <<'STUB'
 #!/usr/bin/env bash
 sentinel=""
@@ -281,44 +309,6 @@ echo "IS_PR=${LARCH_TEST_IS_PR:-false}"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/get-issue-state.sh"
-
-    cat >"$SANDBOX/python/cli.py run-log" <<'STUB'
-#!/usr/bin/env bash
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-printf 'larch-log %s\n' "$*" >>"$script_dir/../invoke-log.txt"
-if [ "${LARCH_TEST_LARCH_LOG_FAIL:-false}" = "true" ]; then
-  echo LOG_WRITTEN=false
-  echo LOG_PATH=
-  echo BYTES=0
-  echo SHA256=
-  echo COMMIT_SHA=
-  echo UNCHANGED=false
-  echo "ERROR=init failed"
-  exit 1
-fi
-run_id=""
-log_root=""
-skill=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --log-root) log_root=$2; shift 2 ;;
-    --skill) skill=$2; shift 2 ;;
-    --run-id) run_id=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-path="$log_root/$skill/$run_id/manifest.json"
-mkdir -p "$(dirname "$path")"
-printf '{}\n' > "$path"
-echo LOG_WRITTEN=true
-echo "LOG_PATH=$path"
-echo BYTES=3
-echo SHA256=dummy
-echo COMMIT_SHA=
-echo UNCHANGED=false
-exit 0
-STUB
-    chmod +x "$SANDBOX/python/cli.py run-log"
 
     cat >"$SANDBOX/skills/implement/scripts/post-tracking-issue.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -577,7 +567,8 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/tracking-issue-summary.sh"
 
-    cat >"$SANDBOX/python/cli.py redact secrets" <<'STUB'
+    mkdir -p "$SANDBOX/python/stubs/redact"
+    cat >"$SANDBOX/python/stubs/redact/secrets" <<'STUB'
 #!/usr/bin/env bash
 if [ "${SANDBOX_REDACT_SECRETS_EXIT:-0}" -ne 0 ]; then
   printf 'redact secrets failure\n' >&2
@@ -586,9 +577,9 @@ fi
 cat
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py redact secrets"
+    chmod +x "$SANDBOX/python/stubs/redact/secrets"
 
-    cat >"$SANDBOX/python/cli.py redact tmpdir-paths" <<'STUB'
+    cat >"$SANDBOX/python/stubs/redact/tmpdir-paths" <<'STUB'
 #!/usr/bin/env bash
 input=$(cat)
 if [ -n "${SANDBOX_REDACT_TMPDIR_MATCH:-}" ] && printf '%s' "$input" | grep -qF -- "$SANDBOX_REDACT_TMPDIR_MATCH"; then
@@ -602,7 +593,7 @@ fi
 printf '%s' "$input"
 exit 0
 STUB
-    chmod +x "$SANDBOX/python/cli.py redact tmpdir-paths"
+    chmod +x "$SANDBOX/python/stubs/redact/tmpdir-paths"
 
     : >"$SANDBOX/invoke-log.txt"
 }
@@ -1607,11 +1598,12 @@ build_sandbox
 write_gp1_session_setup
 write_preflight_plan
 printf 'unexpected bypass text password=secret123\n' >"$SANDBOX/preflight/emergency-bypass.log"
-cat >"$SANDBOX/python/cli.py redact secrets" <<'STUB'
+mkdir -p "$SANDBOX/python/stubs/redact"
+cat >"$SANDBOX/python/stubs/redact/secrets" <<'STUB'
 #!/usr/bin/env bash
 sed 's/secret123/<REDACTED>/g'
 STUB
-chmod +x "$SANDBOX/python/cli.py redact secrets"
+chmod +x "$SANDBOX/python/stubs/redact/secrets"
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyInvalidRedact --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-plan-emergency-invalid-format-redacts-secrets exit 0"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
@@ -1638,11 +1630,12 @@ build_sandbox
 write_gp1_session_setup
 write_preflight_plan
 printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
-cat >"$SANDBOX/python/cli.py run-log append-entry" <<'STUB'
+mkdir -p "$SANDBOX/python/stubs/run-log"
+cat >"$SANDBOX/python/stubs/run-log/append-entry" <<'STUB'
 #!/usr/bin/env bash
 exit 19
 STUB
-chmod +x "$SANDBOX/python/cli.py run-log append-entry"
+chmod +x "$SANDBOX/python/stubs/run-log/append-entry"
 out=$(SANDBOX_APPEND_TOOL_FAILURE_EXIT=17 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyDoubleFailure --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 2 "B5-plan-emergency-append-double-failure exit 2"
 assert_contains "STEP_FAILED=emergency-bypass-log" "$out" "B5-plan-emergency-append-double-failure STEP_FAILED"

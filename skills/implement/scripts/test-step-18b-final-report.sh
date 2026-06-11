@@ -49,7 +49,6 @@ setup_stub_plugin() {
   local plugin=$1
   mkdir -p "$plugin/scripts" "$plugin/python/stubs/session"
   cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-  cp "$REPO_ROOT/python/cli.py run-log append-failure" "$plugin/python/cli.py run-log append-failure"
   cp "$REPO_ROOT"/python/*.py "$plugin/python/"
   mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
   cat >"$plugin/python/cli.py" <<'DISPATCHER'
@@ -58,8 +57,22 @@ import os
 import sys
 from pathlib import Path
 
+def _token_report_stub() -> int:
+    if os.environ.get("TOKEN_MODE", "ok") == "fail":
+        print("token-report stub failure", file=sys.stderr)
+        return 1
+    idx = 2
+    while idx < len(sys.argv):
+        if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+            Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+            break
+        idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
+        raise SystemExit(_token_report_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -83,23 +96,7 @@ while [ $# -gt 0 ]; do
 done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
-  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$plugin/python/cli.py run-log append-failure"
-  cat >"$plugin/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [ "${TOKEN_MODE:-ok}" = fail ]; then
-  printf 'token-report stub failure\n' >&2
-  exit 1
-fi
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output) printf '{}\n' >"$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-exit 0
-STUB
-  chmod +x "$plugin/scripts/token-report.sh"
+  chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key"
   cat >"$plugin/skills/implement/scripts/write-final-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -257,8 +254,19 @@ import os
 import sys
 from pathlib import Path
 
+def _token_report_stub() -> int:
+    idx = 2
+    while idx < len(sys.argv):
+        if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+            Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+            break
+        idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
+        raise SystemExit(_token_report_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -282,36 +290,17 @@ while [ $# -gt 0 ]; do
 done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
-cp "$REPO_ROOT/python/cli.py run-log append-failure" "$int_plugin/python/cli.py run-log append-failure"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/token-cost.sh" "$int_plugin/scripts/token-cost.sh"
-cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$int_plugin/scripts/lib-cost-line-format.sh"
-cp "$REPO_ROOT/python/cli.py redact secrets" "$int_plugin/python/cli.py redact secrets"
+cp "$REPO_ROOT/python/report_tokens_cost.py" "$int_plugin/python/report_tokens_cost.py"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
-chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" "$int_plugin/python/cli.py run-log append-failure" \
-  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/scripts/token-cost.sh" \
-  "$int_plugin/python/cli.py redact secrets"
-cat >"$int_plugin/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output) printf '{}\n' >"$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-exit 0
-STUB
+chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" \
+  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/python/report_tokens_cost.py"
 cat >"$int_plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
 printf 'COMMENT_URL=https://example.test/comment/int\n'
 STUB
-cat >"$int_plugin/python/cli.py run-log" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$int_plugin/scripts/token-report.sh" "$int_plugin/scripts/tracking-issue-summary.sh" "$int_plugin/python/cli.py run-log"
+chmod +x "$int_plugin/scripts/tracking-issue-summary.sh"
 cp "$SOURCE_HELPER" "$int_impl/step-18b-final-report.sh"
 cp "$REPO_ROOT/skills/implement/scripts/write-final-report.sh" "$int_impl/write-final-report.sh"
 chmod +x "$int_impl/step-18b-final-report.sh" "$int_impl/write-final-report.sh"

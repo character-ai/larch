@@ -140,8 +140,32 @@ import os
 import sys
 from pathlib import Path
 
+def _ledger_stub() -> int:
+    log = os.environ.get("LEDGER_CALLS_LOG", "")
+    if log and len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        prefix = "token-ledger" if sys.argv[1] == "token" else "timing-ledger"
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(f"{prefix} {' '.join(sys.argv[2:])}\n")
+    if len(sys.argv) >= 4 and sys.argv[2] == "report":
+        idx = 3
+        while idx < len(sys.argv):
+            if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+                Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+                break
+            idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_ledger_stub())
+    argv_log = os.environ.get("LARCH_RUNLOG_ARGV_LOG", "")
+    if argv_log and len(sys.argv) >= 2 and sys.argv[1] == "run-log":
+        with open(argv_log, "a", encoding="utf-8") as handle:
+            handle.write("---\n")
+            for arg in sys.argv[2:]:
+                handle.write(f"{arg}\n")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -225,26 +249,6 @@ done
 printf '%s\n' "$default"
 STUB
     chmod +x "$SANDBOX/python/stubs/session/read-key"
-    cat > "$SANDBOX/scripts/token-ledger.sh" <<STUB
-#!/usr/bin/env bash
-echo "token-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/timing-ledger.sh" <<STUB
-#!/usr/bin/env bash
-echo "timing-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "token report"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/timing-report.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "timing report"
-exit 0
-STUB
     local log_script="larch-log"
     cat > "$SANDBOX/scripts/${log_script}.sh" <<STUB
 #!/usr/bin/env bash
@@ -410,6 +414,7 @@ exit 99
 STUB
     chmod +x "$SANDBOX/scripts/"*.sh
     chmod +x "$SANDBOX/bin/git" "$SANDBOX/bin/gh" "$SANDBOX/bin/ps"
+    export LEDGER_CALLS_LOG="$SANDBOX/ledger-calls.txt"
 }
 
 run_subject() {
@@ -975,19 +980,20 @@ rm -f "$SANDBOX/larch-log-argv.txt"
 write_state "$STATE" PR_NUMBER=99 EXPECTED_SESSION_ID=session-123 EXPECTED_TMPDIR_BASENAME_PREFIX=tmp
 printf 'RUN_ID=test-run-export\n' >> "$STATE"
 (cd "$SANDBOX/repo" && unset IMPLEMENT_TMPDIR && PATH="$SANDBOX/bin:$PATH" \
+    LARCH_RUNLOG_ARGV_LOG="$SANDBOX/larch-log-argv.txt" \
     "$SANDBOX/scripts/implement-finalize.sh" teardown \
     --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" 2>&1) | normalize_elapsed > /dev/null || true
 if [ -f "$SANDBOX/larch-log-argv.txt" ]; then
     if grep -qF -- "--log-root" "$SANDBOX/larch-log-argv.txt" && grep -qF "$SANDBOX/tmp/larch-logs" "$SANDBOX/larch-log-argv.txt"; then
         PASS=$((PASS + 1))
-        echo "PASS: teardown: explicit --log-root passed to larch-log.sh (fresh shell)"
+        echo "PASS: teardown: explicit --log-root passed to run-log (fresh shell)"
     else
         FAIL=$((FAIL + 1))
         echo "FAIL: teardown: explicit --log-root missing; got: $(cat "$SANDBOX/larch-log-argv.txt")"
     fi
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: teardown: larch-log.sh stub not called (no argv record)"
+    echo "FAIL: teardown: run-log argv not recorded (stub dispatcher not called)"
 fi
 
 _forensics_comment='commit also stages per-script quiet logs into breadcrumbs/ for forensics.'

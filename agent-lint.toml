@@ -75,11 +75,6 @@ suppress = [
 # excluded; the test script is referenced only from Makefile, matching the
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
-# via a `source` directive only — agent-lint does not follow `source`
-# directives in sibling scripts, so the library would be false-flagged as
-# matching the same Makefile-only pattern as the other test-* harnesses above.
-# Both are documented in python3 python/cli.py verify skill-called (sibling contract).
-#
 # scripts/test-lint-literal-counts.sh is the regression harness for
 # scripts/lint-literal-counts.py (the drift-prone literal item-count markdown
 # lint). The lint script itself IS structurally referenced from
@@ -282,19 +277,10 @@ exclude = [
   # invoked from skill prose at runtime, so dead-script reachability is a false
   # positive for these test entrypoints.
   "python/test_run_logs.py",
-  # Makefile (test-verify-run-log-completeness target and make lint via test-harnesses-7).
-  # invoked from SKILL.md/hooks.json/ci.yaml directly; agent-lint's G004/dead-script rule
-  # does not follow Makefile target chains. Same Makefile-only pattern as
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  "python/test_run_logs.py",
-  # design-log-publish.sh and is not flagged; the harness is referenced only from
-  # Makefile (test-scrub-log-secrets target) and its sibling contract, matching
-  # the same Makefile-only pattern as the other run-log test-* harnesses above.
+  # python/test_redact.py is the Makefile-only regression harness for the
+  # python redaction surfaces (py-test target); not invoked from runtime
+  # skill prose, matching the same Makefile-only pattern as the other
+  # run-log test-* harnesses above.
   "python/test_redact.py",
   # scripts/reviewer-prune.sh is reached through Bash-to-Bash calls from
   # review dispatchers; agent-lint does not follow those variable-expanded edges.
@@ -339,11 +325,6 @@ exclude = [
   "scripts/test-tracking-issue-summary.md",
   "scripts/test-compose-review-findings.sh",
   "scripts/test-compose-review-findings.md",
-  # runtime-referenced from /implement, /design, /review, and ship-pr.sh;
-  # the harness is covered by the test-append-tool-failure target.
-  "python/test_run_logs.py",
-  # runtime-referenced from /implement and Mermaid publication paths; the
-  # harness is covered by the test-append-execution-issue target.
   # scripts/test-degraded-tools-gate.sh is the Makefile-only regression harness
   # for scripts/degraded-tools-gate.sh (issue #3207). The detector itself is
   # runtime-referenced from /design, /implement, /review, /research Step 0; the
@@ -553,10 +534,6 @@ exclude = [
   # python/cli.py mermaid sanitize. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
   # matching the Makefile-only harness pattern above.
-  # python/test_redact.py is the Makefile-only regression harness for
-  # python/cli.py redact secrets. The issue publication path is now covered in
-  # python/test_issue_create.py and python/test_redact.py.
-  "python/test_redact.py",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",
@@ -668,10 +645,6 @@ exclude = [
   # and run-log cost analysis. They have no Skill or hook caller by design, so
   # agent-lint's G004/dead-script graph cannot discover a structured
   # invocation reference.
-  "scripts/measure-md-cost.sh",
-  "scripts/measure-ngram-duplication.sh",
-  "scripts/measure-realized-cost.sh",
-  "scripts/measure-references-heatmap.sh",
   # scripts/lib-validate-meta-path.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -831,20 +804,11 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
-  # scripts/harness-timer.sh is the per-test timing wrapper called from every
   # test-* recipe in the Makefile to emit LARCH_HARNESS_TIMING lines to CI
   # logs. It is referenced only from Makefile (test-* recipe lines) and
-  # scripts/harness-timer.md (sibling contract). Agent-lint's G004/dead-script
   # rule does not follow Makefile invocation refs, so both files are excluded.
-  "scripts/harness-timer.sh",
-  "scripts/harness-timer.md",
-  # scripts/test-harness-timer.sh is the regression harness for
-  # scripts/harness-timer.sh. It is referenced only from Makefile
-  # (test-harness-timer target) and scripts/test-harness-timer.md (sibling
   # contract), matching the same Makefile-only pattern as the other test-*
   # harnesses above.
-  "scripts/test-harness-timer.sh",
-  "scripts/test-harness-timer.md",
   # scripts/test-gather-branch-context.sh is the offline harness for
   # scripts/gather-branch-context.sh larch-logs pathspec exclusion.
   # Referenced from Makefile (test-gather-branch-context target) and
@@ -858,10 +822,6 @@ exclude = [
   "scripts/test-render-run-summary.sh",
   "scripts/test-render-run-summary.md",
   # python/cli.py session persist-run-flags. Referenced from Makefile
-  "scripts/test-token-cost.sh",
-  "scripts/test-token-cost.md",
-  "scripts/test-render-cost-line.sh",
-  "scripts/test-render-cost-line.md",
   # scripts/parse-codex-usage.sh is invoked by Codex launchers through
   # $PLUGIN_ROOT path composition, which agent-lint's dead-script graph does
   # not resolve. Its harness is Makefile-only like adjacent token tests.
@@ -1171,7 +1131,7 @@ exclude = [
   "scripts/test-python/cli.py render lane-status",
   # python/rendering.py is a sourced-only helper (no shebang,
   # not executable, defines render_lane() and sanitize_reason() consumed by
-  # python/cli.py render lane-status via `source`). Same "sourced library" shape as
+  # python/cli.py render lane-status via `source`).
   "python/rendering.py",
   # /research evaluation harness + structural test (closes #419). Both
   # scripts are referenced only from Makefile (eval-research target,
@@ -1256,38 +1216,22 @@ exclude = [
   # contract), matching the same Makefile-only harness pattern as
   # test-release-set-version.sh.
   "scripts/test-git-push.sh",
-  # scripts/test-token-tally.sh is the offline regression harness for
-  # scripts/token-tally.sh (per-run token-cost telemetry helper for
   # /research; closes #518). The token-tally helper is invoked from
   # skills/research/SKILL.md (Step 4 token-spend report) and from the phase
   # references (research-phase.md / validation-phase.md), so
   # it has plenty of structural references; the harness is referenced only
-  # from Makefile (test-token-tally target) and scripts/test-token-tally.md
   # (sibling contract), matching the same Makefile-only pattern as the other
   # test-* harnesses above.
-  "scripts/test-token-tally.sh",
-  # scripts/test-token-ledger.sh, scripts/test-token-report.sh,
-  # scripts/test-token-vendor-scrapers.sh, and scripts/test-token-claude-source.sh
   # are offline regression harnesses for the /implement token-reporting PoC.
   # They are referenced only from Makefile targets, docs/linting.md, and
   # sibling contracts.
-  "scripts/test-token-ledger.sh",
-  "scripts/test-token-report.sh",
   "scripts/test-token-vendor-scrapers.sh",
-  "scripts/test-token-claude-source.sh",
-  "scripts/test-token-report-dedup.sh",
-  "scripts/test-token-cost-per-bucket.sh",
-  "scripts/test-render-cost-line-realism.sh",
   "scripts/test-render-cost-line-callsites.sh",
   "scripts/test-render-run-summary-callsites.sh",
   "scripts/test-render-run-summary-format.sh",
-  "scripts/test-token-report-summary-format.sh",
-  # scripts/test-timing-ledger.sh and scripts/test-timing-report.sh are
   # offline regression harnesses for the /implement timing-reporting PoC
   # (parallel to the token-reporting harnesses above). They are referenced
   # only from Makefile targets, docs/linting.md, and sibling contracts.
-  "scripts/test-timing-ledger.sh",
-  "scripts/test-timing-report.sh",
   # Skill-local sibling .md files — co-located contract docs for scripts
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
@@ -1295,10 +1239,7 @@ exclude = [
   "scripts/parse-prose-blockers.md",
   "scripts/blocker-helpers.md",
   "scripts/implement-admission.md",
-  "scripts/test-token-ledger.md",
-  "scripts/test-token-report.md",
   "scripts/test-token-vendor-scrapers.md",
-  "scripts/test-token-claude-source.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/implement/scripts/check-review-changes.md",
   "skills/implement/scripts/test-check-review-changes.md",
@@ -1403,11 +1344,9 @@ exclude = [
   # the Makefile edge.
   "scripts/test-promote-release.sh",
   "scripts/test-promote-release.md",
-  # scripts/render-cost-line.sh is a deprecated standalone operator helper (PR
   # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
   # would flag it without an explicit SKILL.md literal path.
-  "scripts/render-cost-line.sh",
-  "scripts/render-cost-line.md",
+  # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
   # literal-path references and does not follow shell-to-shell references,
@@ -1416,7 +1355,6 @@ exclude = [
   # referenced only from Makefile (test-redact-tmpdir-paths,
   # test-cache-key-discipline, test-cache-key-runtime-audit,
   # test-finalize-sanity-check targets) and their sibling .md contracts.
-  "python/test_redact.py",
   # skills/implement/scripts/test-resolve-implement-tmpdir.sh — Makefile-only harness
   # (test-resolve-implement-tmpdir target); sibling contract in test-resolve-implement-tmpdir.md.
   "skills/implement/scripts/test-resolve-implement-tmpdir.sh",
@@ -1516,9 +1454,6 @@ exclude = [
   # target) and the sibling contract scripts/test-ci-behind-count.md.
   "scripts/test-ci-behind-count.sh",
   "scripts/test-ci-behind-count.md",
-  # (test-refresh-run-logs target) and python/test_run_logs.py
-  # (sibling contract); not invoked from runtime skill prose.
-  "python/test_run_logs.py",
   # scripts/test-lint-fix-loop.sh is the offline regression harness for
   # scripts/lint-fix-loop.sh dispatch safety and helper-owned commit rollback.
   # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,
@@ -1552,17 +1487,11 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.md",
-  # scripts/test-compute-pr-line-counts.sh is the regression harness for the PR
   # line-count helper. It is referenced from Makefile and from the primary
   # script's sibling contract, but NOT from SKILL.md runtime prose — same
   # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-compute-pr-line-counts.sh",
-  "scripts/test-compute-pr-line-counts.md",
-  # scripts/compute-pr-line-counts.sh is invoked at runtime only from
   # skills/implement/scripts/write-final-report.sh via a variable-expanded shell
   # edge that G004 dead-script reachability cannot discover.
-  "scripts/compute-pr-line-counts.sh",
-  "scripts/compute-pr-line-counts.md",
   # scripts/render-review-phase-detail.sh (issue #3774) renders the per-round
   # review-phase detail section. It is invoked at runtime from
   # skills/implement/scripts/write-final-report.sh and

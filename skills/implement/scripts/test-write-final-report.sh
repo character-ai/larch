@@ -46,16 +46,34 @@ plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
-cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-format.sh"
-cp "$REPO_ROOT/python/cli.py run-log append-failure" "$plugin/python/cli.py run-log append-failure"
-cp "$REPO_ROOT/python/cli.py run-log append-entry" "$plugin/python/cli.py run-log append-entry"
-cp "$REPO_ROOT/python/cli.py redact secrets" "$plugin/python/cli.py redact secrets"
-cp "$REPO_ROOT/scripts/compute-pr-line-counts.sh" "$plugin/scripts/compute-pr-line-counts.sh"
 cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
-    "$plugin/python/cli.py run-log append-failure" "$plugin/python/cli.py run-log append-entry" \
-    "$plugin/python/cli.py redact secrets" "$plugin/scripts/compute-pr-line-counts.sh" \
+mkdir -p "$plugin/python"
+cp "$REPO_ROOT/python/"*.py "$plugin/python/"
+mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
+cat > "$plugin/python/cli.py" <<'DISPATCHER'
+#!/usr/bin/env python3
+import os
+import sys
+from pathlib import Path
+
+def main() -> None:
+    root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
+        if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
+            print("manifest stub failure", file=sys.stderr)
+            raise SystemExit(1)
+        log = os.environ.get("LARCH_LOG_MANIFEST_LOG", "")
+        if log:
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(sys.argv[3:]) + "\n")
+        raise SystemExit(0)
+    os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
+
+if __name__ == "__main__":
+    main()
+DISPATCHER
+chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/python/report_tokens_cost.py" \
+    "$plugin/python/cli.py" \
     "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
@@ -81,21 +99,6 @@ exit 0
 SHIM
 chmod +x "$TMP_ROOT/bin/gh"
 export PATH="$TMP_ROOT/bin:$PATH"
-cat > "$plugin/python/cli.py run-log" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [ "$1" != manifest ]; then exit 0; fi
-shift
-if [ "${LARCH_LOG_MANIFEST_FAIL:-false}" = true ]; then
-    printf 'manifest stub failure\n' >&2
-    exit 1
-fi
-log="${LARCH_LOG_MANIFEST_LOG:-}"
-[ -n "$log" ] || exit 0
-printf '%s\n' "$*" >>"$log"
-exit 0
-STUB
-chmod +x "$plugin/python/cli.py run-log"
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${TRACKING_FAIL:-false}" = "true" ]; then
@@ -593,8 +596,28 @@ import os
 import sys
 from pathlib import Path
 
+def _token_report_stub() -> int:
+    idx = 2
+    while idx < len(sys.argv):
+        if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+            Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+            break
+        idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
+        if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
+            print("manifest stub failure", file=sys.stderr)
+            raise SystemExit(1)
+        log = os.environ.get("LARCH_LOG_MANIFEST_LOG", "")
+        if log:
+            with open(log, "a", encoding="utf-8") as handle:
+                handle.write(" ".join(sys.argv[3:]) + "\n")
+        raise SystemExit(0)
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
+        raise SystemExit(_token_report_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -619,18 +642,6 @@ done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
 chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
-cat > "$plugin/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output) printf '{}\n' >"$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-exit 0
-STUB
-chmod +x "$plugin/scripts/token-report.sh"
 kv_step18() {
   awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"
 }

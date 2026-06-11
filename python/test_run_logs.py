@@ -1178,9 +1178,15 @@ def test_render_ledger_reports_uses_direct_renderers(
     monkeypatch.setattr(tokens, "token_report", fake_token_report)
     monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
     monkeypatch.setattr(timing, "resolve_timing_ledger_path", fake_resolve_timing_ledger_path)
-    larch_log = tmp_path / "larch-log.sh"
-    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
+    write_batches: list[str] = []
+
+    def fake_write_batch(
+        _log_root: Path, _skill: str, _run_id: str, batch: str, input_file: Path
+    ) -> tuple[Path, bool, bool]:
+        write_batches.append(batch)
+        return (input_file, True, False)
+
+    monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
     ctx = _ctx(tmp_path, str(state))
     runner = RecordingRunner()
     run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
@@ -1189,34 +1195,39 @@ def test_render_ledger_reports_uses_direct_renderers(
     assert (tmp_path / "timing-report-refresh.json").is_file()
     assert captured.get("LARCH_TIMING_SKILL") == "implement"
     assert "DESIGN_TMPDIR" not in captured
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" in write_batches
+    assert "timing-report" in write_batches
 
 
 def _ledger_report_fixture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> tuple[RecordingRunner, RunContext]:
+) -> tuple[RecordingRunner, RunContext, list[str]]:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     _ = (tmp_path / "timing-ledger.tsv").write_text(
         "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
         encoding="utf-8",
     )
-    larch_log = tmp_path / "larch-log.sh"
-    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
     _ledger_path = tmp_path / "timing-ledger.tsv"
     monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kw: _ledger_path)  # type: ignore[arg-type]
-    return RecordingRunner(), _ctx(tmp_path, str(state))
+    write_batches: list[str] = []
+
+    def fake_write_batch(
+        _log_root: Path, _skill: str, _run_id: str, batch: str, input_file: Path
+    ) -> tuple[Path, bool, bool]:
+        write_batches.append(batch)
+        return (input_file, True, False)
+
+    monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
+    return RecordingRunner(), _ctx(tmp_path, str(state)), write_batches
 
 
 def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def raise_token_report(**_kwargs: object) -> dict[str, object]:
         msg = "token renderer failed"
@@ -1227,16 +1238,15 @@ def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
 
     assert not (tmp_path / "token-report-refresh.json").exists()
     assert (tmp_path / "timing-report-refresh.json").is_file()
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert not any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" not in write_batches
+    assert "timing-report" in write_batches
 
 
 def test_render_ledger_reports_token_succeeds_when_timing_raises(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}
@@ -1250,16 +1260,15 @@ def test_render_ledger_reports_token_succeeds_when_timing_raises(
 
     assert (tmp_path / "token-report-refresh.json").is_file()
     assert not (tmp_path / "timing-report-refresh.json").exists()
-    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
-    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
-    assert not any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+    assert "token-report" in write_batches
+    assert "timing-report" not in write_batches
 
 
 def test_render_ledger_reports_writes_empty_timing_json(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+    runner, ctx, _write_batches = _ledger_report_fixture(monkeypatch, tmp_path)
 
     def fake_token_report(**_kwargs: object) -> dict[str, object]:
         return {"claude": {}}

@@ -24,6 +24,7 @@ import git
 import logging_util
 import proc
 import redact
+import timing
 import tokens
 from errors import ShipError
 from proc import CommandResult, Runner
@@ -33,8 +34,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _WRITE_FINAL_REPORT = (
     _REPO_ROOT / "skills" / "implement" / "scripts" / "write-final-report.sh"
 )
-_TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
-_TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
 _RENDER_TRANSCRIPT = _REPO_ROOT / "scripts" / "render-session-transcript.py"
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
 _MANIFEST_SCHEMA_VERSION = 2
@@ -575,8 +574,15 @@ def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
     return env
 
 
+def _write_report_json(path: Path, data: dict[str, object]) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    _ = tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
+    _ = tmp.replace(path)
+
+
 def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> None:
     """Re-render token/timing JSON from ledgers (python3 python/cli.py run-log refresh parity)."""
+    _ = runner
     run_id = effective_run_id(ctx)
     if not run_id:
         return
@@ -584,40 +590,21 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
-    if _TOKEN_REPORT.is_file():
-        token_result = runner.run(
-            [
-                "bash",
-                str(_TOKEN_REPORT),
-                "--full",
-                "--format",
-                "json",
-                "--output",
-                str(token_path),
-            ],
-            cwd=str(_REPO_ROOT),
-            env=env,
-        )
-        if token_result.returncode == 0 and token_path.is_file():
-            with suppress(Exception):
-                _write_batch(log_root, "implement", run_id, "token-report", token_path)
-    if _TIMING_REPORT.is_file():
-        timing_result = runner.run(
-            [
-                "bash",
-                str(_TIMING_REPORT),
-                "--full",
-                "--format",
-                "json",
-                "--output",
-                str(timing_path),
-            ],
-            cwd=str(_REPO_ROOT),
-            env=env,
-        )
-        if timing_result.returncode == 0 and timing_path.is_file():
-            with suppress(Exception):
-                _write_batch(log_root, "implement", run_id, "timing-report", timing_path)
+    with suppress(Exception):
+        rendered = tokens.token_report(mode="full", fmt="json", env=env)
+        if isinstance(rendered, dict):
+            _write_report_json(token_path, rendered)
+    if token_path.is_file():
+        with suppress(Exception):
+            _write_batch(log_root, "implement", run_id, "token-report", token_path)
+    with suppress(Exception):
+        ledger = timing.resolve_timing_ledger_path(env=env)
+        if ledger is not None:
+            data = timing.TimingReport(ledger).render_json(env=env)
+            _write_report_json(timing_path, data)
+    if timing_path.is_file():
+        with suppress(Exception):
+            _write_batch(log_root, "implement", run_id, "timing-report", timing_path)
 
 
 def effective_run_id(ctx: RunContext) -> str:
