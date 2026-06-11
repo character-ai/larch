@@ -2763,6 +2763,7 @@ _ROUND_ARTIFACT_ALLOW = (
     "coder-prompt.md",
     "coder-tool.txt",
     "coder-cursor.log",
+    "round-meta.json",
 )
 
 _ROUND_ARTIFACT_ALLOW_GLOBS = (

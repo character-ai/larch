@@ -1788,6 +1788,7 @@ _implement_round_body() {
         printf 'FIX_COUNT=%s\n' "${coder_input_count:-0}"
         printf 'SKIPPED_FINDING_COUNT=%s\n' "${skipped_finding_count:-0}"
     } >> "$round_dir/review-and-fix.env"
+    "$PLUGIN_ROOT/scripts/write-implement-round-meta.sh" --round-dir "$round_dir" 2>/dev/null || true
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     if [[ -n "$RUN_ID" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
