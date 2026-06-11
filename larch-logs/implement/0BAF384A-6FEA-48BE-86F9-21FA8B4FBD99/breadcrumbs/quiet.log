@@ -184,6 +184,14 @@ UNRESOLVED_VAR: skills/design/scripts/test-review-design-step3-loop.sh:439: coul
 
 === larch-quiet-git-current-branch.sh-68666.log ===
 
+=== larch-quiet-implement-finalize.sh-38589.log ===
+LOG_WRITTEN=true
+LOG_PATH=<TMPDIR>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99/manifest.json
+BYTES=619
+SHA256=8ed3f585058d1a5236571b932e339e293650e90cdd8ad8bafc05b351f1c1792a
+COMMIT_SHA=
+UNCHANGED=false
+
 === larch-quiet-implement-finalize.sh-8837.log ===
 LOG_WRITTEN=true
 LOG_PATH=<TMPDIR>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99/manifest.json
@@ -191,6 +199,15 @@ BYTES=619
 SHA256=11d0e599ae04ba6336289246f7acb3ffe1ac5d24d881a494951e8e9b2f6fcbd1
 COMMIT_SHA=
 UNCHANGED=false
+LOG_WRITTEN=true
+LOG_PATH=<OPERATOR_REPO_PATH>/larch-logs/implement/0BAF384A-6FEA-48BE-86F9-21FA8B4FBD99
+BYTES=0
+SHA256=
+COMMIT_SHA=b8bbd7fbda7867ac46eec9f3e46ed760b9123116
+UNCHANGED=false
+ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at <TMPDIR>
+📎 Tracking issue: https://github.com/character-ai/larch/issues/3688
+✅ 18: cleanup status=complete elapsed=14s
 
 === larch-quiet-implement-finalize.sh-88991.log ===
 LOG_WRITTEN=true
