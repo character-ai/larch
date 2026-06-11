@@ -257,7 +257,16 @@ def _resolve_conflicts(
                     raise Stalled(
                         _redact_outbound("fixer waterfall could not resolve conflicts"),
                     )
-                if _unmerged_paths(runner, cwd=cwd):
+                unmerged_remaining = _unmerged_paths(runner, cwd=cwd)
+                if unmerged_remaining:
+                    conflict_files = tuple(unmerged_remaining)
+                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
+                        _write_handoff_flag(tmpdir)
+                        raise PrePushConflictHandoff(
+                            conflict_files=conflict_files,
+                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+                        )
                     raise Stalled(_redact_outbound("conflicts remain after fixer waterfall"))
 
         continue_result = git.rebase_continue(runner, cwd=cwd)
