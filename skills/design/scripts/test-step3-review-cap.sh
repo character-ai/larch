@@ -5,6 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
+APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
 LAUNCHER="$ROOT/skills/design/scripts/run-step3-review.sh"
 CONTINUATION="$ROOT/skills/design/scripts/plan-review-continuation.sh"
 
@@ -36,6 +37,22 @@ grep -Fq 'snapshot-plan-round.sh write-after' "$SKILL_MD" \
     || fail 'SKILL missing Gate B round snapshot handoff'
 grep -Fq 'Step 3 prelude before launching the next review' "$SKILL_MD" \
     || fail 'SKILL missing auto-continuation Step 3 prelude contract'
+# shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
+grep -Fq 'starting-round "$STEP3_RESUME_ROUND"' "$SKILL_MD" \
+    || fail 'SKILL missing shared STEP3_RESUME_ROUND resume launch'
+# shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
+if grep -Fq 'starting-round "${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-$ROUND_NUM}}"' "$SKILL_MD"; then
+    fail 'SKILL must not use inline fallback for Step 3 resume launch'
+fi
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+grep -Fq 'Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set)' "$APPROVAL_GATES" \
+    || fail 'approval-gates missing loop-mode Gate B branch'
+# shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
+grep -Fq '.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation`' "$APPROVAL_GATES" \
+    || fail 'approval-gates missing STEP3_RESUME_ROUND continuation phase marker'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+grep -Fq 'Legacy `--mode single` only' "$APPROVAL_GATES" \
+    || fail 'approval-gates missing legacy-only continuation branch'
 [[ -x "$CONTINUATION" ]] || fail 'plan-review-continuation.sh must be executable'
 
 TMP_PARENT="${TMPDIR:-/tmp}"

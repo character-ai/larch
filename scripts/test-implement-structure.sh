@@ -167,6 +167,22 @@ if conflict_ref.is_file():
     for needle in ['caller_kind=ship_pr_pre_push', 'caller_kind=early_rebase']:
         if needle not in conflict_text:
             checks.append(f'conflict-resolution.md missing {needle!r}')
+    for needle in [
+        '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh',
+        'run_in_background: true',
+        'timeout: 21600000',
+        '<task-notification>',
+    ]:
+        if needle not in conflict_text:
+            checks.append(f'conflict-resolution.md missing Step 8 wrapper re-entry contract {needle!r}')
+    for forbidden in [
+        'default Python foreground argv',
+        'Python foreground argv',
+        'foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr`',
+        're-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --resume-phase ship-pr-rrr-phase14`',
+    ]:
+        if forbidden in conflict_text:
+            checks.append(f'conflict-resolution.md must not use direct foreground ship re-entry prose {forbidden!r}')
 require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
 require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
