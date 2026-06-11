@@ -114,8 +114,14 @@ def test_token_claude_source_requires_complete_snapshot(tmp_path: Path) -> None:
     assert out.get("STATUS") == "unavailable"
 
 
-def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
-    transcript = tmp_path / "session.jsonl"
+def test_token_cost_helpers_exported_from_tokens_module() -> None:
+    assert tokens.token_cost_from_args(["--claude-input-tokens", "1"])
+    assert tokens.render_cost_line_from_args(["--claude-input-tokens", "1"])
+    assert tokens.CostBreakdown is not None
+
+
+def test_token_claude_source_rejects_transcript_outside_session_dir(tmp_path: Path) -> None:
+    transcript = tmp_path / "outside.jsonl"
     _ = transcript.write_text('{"type":"user"}\n', encoding="utf-8")
     session_dir = tmp_path / "session-uuid"
     session_dir.mkdir()
@@ -124,8 +130,22 @@ def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
         f"TRANSCRIPT_PATH={transcript}\nSESSION_DIR={session_dir}\nSESSION_UUID=session-uuid\n",
         encoding="utf-8",
     )
+    out = tokens.token_claude_source(claude_source_file=snap, env={"HOME": str(tmp_path)})
+    assert out.get("STATUS") == "unavailable"
+
+
+def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
+    session_dir = tmp_path / "session-uuid"
+    session_dir.mkdir()
+    transcript = session_dir / "session.jsonl"
+    _ = transcript.write_text('{"type":"user"}\n', encoding="utf-8")
+    snap = tmp_path / "source.env"
+    _ = snap.write_text(
+        f"TRANSCRIPT_PATH={transcript}\nSESSION_DIR={session_dir}\nSESSION_UUID=session-uuid\n",
+        encoding="utf-8",
+    )
     out = tokens.token_claude_source(claude_source_file=snap)
-    assert out["TRANSCRIPT_PATH"] == str(transcript)
+    assert out["TRANSCRIPT_PATH"] == str(transcript.resolve())
     assert out["SESSION_DIR"] == str(session_dir)
     assert out["SESSION_UUID"] == "session-uuid"
 

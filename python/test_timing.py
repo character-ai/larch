@@ -27,6 +27,19 @@ def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:
     assert "/tmp/secret" not in text
 
 
+def test_timing_report_design_classification_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t10\tdesign\tdesign Step 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "run-params.json").write_text('{"design_classification":"SIMPLE"}', encoding="utf-8")
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
+    monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "30")
+    data = timing.TimingReport(ledger).render_json()
+    assert data["workflow_path"] == "SIMPLE"
+
+
 def test_timing_report_json_and_design_workflow_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(
@@ -126,6 +139,21 @@ def test_timing_report_implement_hides_workflow_path(tmp_path: Path, monkeypatch
     assert "**Workflow path**:" not in markdown
     data = timing.TimingReport(ledger).render_json()
     assert data["workflow_path"] == "unknown"
+
+
+def test_timing_harness_mark_missing_executable_emits_sentinel(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = timing.harness_mark(label="smoke", argv=["does-not-exist"])
+    assert rc == 127
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("LARCH_HARNESS_TIMING\tsmoke\t")
+    assert out.endswith("s")
+
+
+def test_timing_telemetry_mark_rejects_missing_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert timing.timing_telemetry_mark_main(["--label", "noop"]) == 0
+    assert timing.timing_telemetry_mark_main(["--implement-tmpdir", "", "--label", "noop"]) == 0
+    assert timing.timing_telemetry_mark_main(["--implement-tmpdir", "relative", "--label", "noop"]) == 0
 
 
 def test_timing_harness_mark_runs_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

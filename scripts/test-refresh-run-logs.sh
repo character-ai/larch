@@ -25,12 +25,12 @@ git_test_repo_identity() {
 
 setup_plugin_stub() {
     local root=$1
-    mkdir -p "$root/scripts"
+    mkdir -p "$root/scripts" "$root/python"
     cp "$SCRIPT_DIR/run-log-terminal-outcomes.inc.bash" "$root/scripts/run-log-terminal-outcomes.inc.bash"
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
-    cp "$SCRIPT_DIR/../python/report_tokens_cost.py" "$root/python/report_tokens_cost.py"
+    cp "$SCRIPT_DIR/../python/"*.py "$root/python/"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
@@ -230,14 +230,18 @@ ISSUES
     printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
     printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
     transcript_source="$impl_tmpdir/claude-source.env"
-    transcript_raw="$impl_tmpdir/raw-transcript.jsonl"
+    token_session_id="refresh-ci-claude-sub"
+    session_dir="$impl_tmpdir/claude-session-$token_session_id"
+    transcript_raw="$session_dir/raw-transcript.jsonl"
+    mkdir -p "$session_dir"
     cat > "$transcript_source" <<EOF
 TRANSCRIPT_PATH=$transcript_raw
+SESSION_DIR=$session_dir
+SESSION_UUID=$token_session_id
 EOF
     cat > "$transcript_raw" <<'EOF'
 {"type":"assistant","message":{"role":"assistant","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0},"content":[{"type":"text","text":"ok"}]}}
 EOF
-    token_session_id="refresh-ci-claude-sub"
     cat > "$impl_tmpdir/session-env.sh" <<EOF
 REPO=owner/repo
 REPO_UNAVAILABLE=false

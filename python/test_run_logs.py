@@ -1186,6 +1186,90 @@ def test_render_ledger_reports_uses_direct_renderers(
     assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
 
 
+def _ledger_report_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[RecordingRunner, RunContext]:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "timing-ledger.tsv").write_text(
+        "v1\tmark\t1\timplement\tStep 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    larch_log = tmp_path / "larch-log.sh"
+    _ = larch_log.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    monkeypatch.setattr(run_logs, "_LARCH_LOG", larch_log)
+    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_kwargs: tmp_path / "timing-ledger.tsv")
+    return RecordingRunner(), _ctx(tmp_path, str(state))
+
+
+def test_render_ledger_reports_timing_succeeds_when_token_report_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+
+    def raise_token_report(**_kwargs: object) -> dict[str, object]:
+        msg = "token renderer failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(tokens, "token_report", raise_token_report)
+    run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
+
+    assert not (tmp_path / "token-report-refresh.json").exists()
+    assert (tmp_path / "timing-report-refresh.json").is_file()
+    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
+    assert not any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
+    assert any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+
+
+def test_render_ledger_reports_token_succeeds_when_timing_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+
+    def fake_token_report(**_kwargs: object) -> dict[str, object]:
+        return {"claude": {}}
+
+    def raise_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
+        _ = env
+        msg = "timing renderer failed"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(tokens, "token_report", fake_token_report)
+    monkeypatch.setattr(timing.TimingReport, "render_json", raise_render_json)
+    run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
+
+    assert (tmp_path / "token-report-refresh.json").is_file()
+    assert not (tmp_path / "timing-report-refresh.json").exists()
+    write_calls = [call for call in runner.calls if len(call) > 3 and call[2] == "write" and "--batch" in call]
+    assert any(call[call.index("--batch") + 1] == "token-report" for call in write_calls)
+    assert not any(call[call.index("--batch") + 1] == "timing-report" for call in write_calls)
+
+
+def test_render_ledger_reports_writes_empty_timing_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner, ctx = _ledger_report_fixture(monkeypatch, tmp_path)
+
+    def fake_token_report(**_kwargs: object) -> dict[str, object]:
+        return {"claude": {}}
+
+    def empty_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
+        _ = env
+        return {}
+
+    monkeypatch.setattr(tokens, "token_report", fake_token_report)
+    monkeypatch.setattr(timing.TimingReport, "render_json", empty_render_json)
+    run_logs._render_ledger_reports(runner, ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
+
+    timing_path = tmp_path / "timing-report-refresh.json"
+    assert timing_path.is_file()
+    assert json.loads(timing_path.read_text(encoding="utf-8")) == {}
+
+
 def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     design_tmp = tmp_path / "design"
     design_tmp.mkdir()

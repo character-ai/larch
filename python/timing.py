@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping
 
+import gh
 import tokens
 
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
@@ -335,14 +336,26 @@ def resolve_timing_ledger_path(*, ledger: str | None = None, env: Mapping[str, s
 
 def harness_mark(*, label: str, argv: list[str]) -> int:
     start = time.time()
-    proc = subprocess.run(argv, check=False)
-    elapsed = max(0.0, time.time() - start)
-    print(f"LARCH_HARNESS_TIMING\t{label}\t{elapsed:.2f}s")
-    return proc.returncode
+    rc = 127
+    try:
+        proc = subprocess.run(argv, check=False)
+        rc = proc.returncode
+    except OSError as exc:
+        print(f"timing harness-mark: {exc}", file=sys.stderr)
+        if isinstance(exc, PermissionError):
+            rc = 126
+        elif isinstance(exc, FileNotFoundError):
+            rc = 127
+        else:
+            rc = 1
+    finally:
+        elapsed = max(0.0, time.time() - start)
+        print(f"LARCH_HARNESS_TIMING\t{label}\t{elapsed:.2f}s")
+    return rc
 
 
 def step_telemetry_mark(*, implement_tmpdir: Path, label: str) -> int:
-    if not implement_tmpdir.is_dir() or not label:
+    if not implement_tmpdir.is_absolute() or not implement_tmpdir.is_dir() or not label:
         return 0
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
@@ -470,13 +483,9 @@ def _workflow_path(ledger: Path, *, env: Mapping[str, str]) -> str:
     for candidate in candidates:
         if not candidate.is_file():
             continue
-        try:
-            data = json.loads(candidate.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        workflow = data.get("workflow_path") or data.get("WORKFLOW_PATH")
+        workflow = gh.read_workflow_path(str(candidate))
         if workflow in {"SIMPLE", "HARD"}:
-            return str(workflow)
+            return workflow
     return "unknown"
 
 
@@ -791,7 +800,13 @@ def timing_harness_mark_main(argv: list[str] | None = None) -> int:
 
 def timing_telemetry_mark_main(argv: list[str] | None = None) -> int:
     opts = _flag_map(list(argv if argv is not None else sys.argv[1:]))
-    return step_telemetry_mark(implement_tmpdir=Path(opts.get("--implement-tmpdir", "")), label=opts.get("--label", ""))
+    raw = opts.get("--implement-tmpdir", "")
+    if not raw:
+        return 0
+    implement_tmpdir = Path(raw)
+    if not implement_tmpdir.is_absolute() or not implement_tmpdir.is_dir():
+        return 0
+    return step_telemetry_mark(implement_tmpdir=implement_tmpdir, label=opts.get("--label", ""))
 
 
 def timing_task_kinds_main(argv: list[str] | None = None) -> int:

@@ -131,7 +131,7 @@ if [ "$REPO_UNAV" = "true" ]; then
     LINES_STATUS=unavailable
 else
     set +e
-    lines_blob=$(python3 "$PLUGIN_ROOT/python/cli.py" token compute-pr-line-counts --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
+    lines_blob=$(python3 "$PLUGIN_ROOT/python/cli.py" token compute-pr-lines --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
     set -e
     if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
         if ! merge_replace_state_keys "$SHIP_PR_STATE" "$lines_blob"; then

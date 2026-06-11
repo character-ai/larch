@@ -63,6 +63,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("token", "cost"): ("tokens", "token_cost_main"),
     ("token", "render-cost-line"): ("tokens", "token_render_cost_line_main"),
     ("token", "compute-pr-line-counts"): ("tokens", "compute_pr_line_counts_main"),
+    ("token", "compute-pr-lines"): ("tokens", "compute_pr_lines_main"),
     ("token", "measure-md-cost"): ("tokens", "measure_md_cost_main"),
     ("token", "measure-ngram-duplication"): ("tokens", "measure_ngram_duplication_main"),
     ("token", "measure-references-heatmap"): ("tokens", "measure_references_heatmap_main"),

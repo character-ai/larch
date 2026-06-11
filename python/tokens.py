@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
@@ -19,8 +20,10 @@ from typing import Any, cast
 from collections.abc import Mapping
 
 import config
+from report_tokens_cost import CostBreakdown, render_cost_line_from_args, token_cost_from_args
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
+TOKEN_LOCK_TIMEOUT_S = 5.0
 _SAFE_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _UINT_RE = re.compile(r"^[0-9]+$")
 
@@ -80,7 +83,10 @@ class TokenLedger:
     session_id: str | None = None
 
     def mark(self, step: str) -> None:
-        self._append({"type": "mark", "step": step, "ts": _timestamp_utc()})
+        try:
+            self._append({"type": "mark", "step": step, "ts": _timestamp_utc()})
+        except OSError as exc:
+            print(f"token mark: write skipped: {exc}", file=sys.stderr)
 
     def record_vendor(
         self,
@@ -107,7 +113,10 @@ class TokenLedger:
             "raw": raw,
             "ts": _timestamp_utc(),
         }
-        self._append(payload)
+        try:
+            self._append(payload)
+        except OSError as exc:
+            print(f"token record-vendor: write skipped: {exc}", file=sys.stderr)
 
     def dump(self) -> str:
         return self.path.read_text(encoding="utf-8") if self.path.is_file() else ""
@@ -121,8 +130,20 @@ class TokenLedger:
             with self.path.open("a", encoding="utf-8") as handle:
                 _ = handle.write(line)
         else:
+            deadline = time.monotonic() + TOKEN_LOCK_TIMEOUT_S
             with self.path.open("a", encoding="utf-8") as handle:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                while True:
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            print(
+                                f"token: WARNING: flock lock acquisition failed; skipping append for {self.path}",
+                                file=sys.stderr,
+                            )
+                            return
+                        time.sleep(0.05)
                 try:
                     _ = handle.write(line)
                 finally:
@@ -786,13 +807,10 @@ def token_claude_source(
             key, sep, value = line.partition("=")
             if sep and key in {"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"}:
                 data[key] = value
-        if (
-            data.get("TRANSCRIPT_PATH")
-            and data.get("SESSION_DIR")
-            and data.get("SESSION_UUID")
-            and Path(data["TRANSCRIPT_PATH"]).is_file()
-        ):
-            return data
+        if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
+            replay = _validate_snapshot_replay(data, env=env_map)
+            if replay is not None:
+                return replay
     try:
         repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
@@ -819,6 +837,52 @@ def token_claude_source(
         return {"STATUS": "unavailable", "REASON": "no Claude transcript jsonl files found"}
     uuid = latest.stem
     return {"TRANSCRIPT_PATH": str(latest), "SESSION_DIR": str(project_dir / uuid), "SESSION_UUID": uuid}
+
+
+def _path_is_under(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _claude_project_dir(*, env: Mapping[str, str]) -> Path | None:
+    home = env.get("HOME", "")
+    if not home:
+        return None
+    try:
+        repo_root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        repo_root = str(Path(repo_root).resolve(strict=True))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    project_dir = Path(home) / ".claude" / "projects" / repo_root.replace("/", "-")
+    return project_dir if project_dir.is_dir() else None
+
+
+def _validate_snapshot_replay(data: Mapping[str, str], *, env: Mapping[str, str]) -> dict[str, str] | None:
+    session_uuid = data.get("SESSION_UUID", "")
+    if not _SAFE_SESSION_RE.fullmatch(session_uuid):
+        return None
+    transcript = Path(data["TRANSCRIPT_PATH"]).resolve()
+    session_dir = Path(data["SESSION_DIR"]).resolve()
+    if not transcript.is_file():
+        return None
+    allowed_roots = [session_dir]
+    project_dir = _claude_project_dir(env=env)
+    if project_dir is not None:
+        allowed_roots.append(project_dir)
+    if not any(_path_is_under(transcript, root) for root in allowed_roots):
+        return None
+    return {
+        "TRANSCRIPT_PATH": str(transcript),
+        "SESSION_DIR": str(session_dir),
+        "SESSION_UUID": session_uuid,
+    }
 
 
 def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -> None:
@@ -1309,9 +1373,11 @@ def token_mark_main(argv: list[str] | None = None) -> int:
         return 0
     try:
         TokenLedger(ledger).mark(args[0])
-    except ValueError as exc:
-        print(f"token mark: {exc}", file=sys.stderr)
-        return 1
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            print(f"token mark: {exc}", file=sys.stderr)
+            return 1
+        print(f"token mark: write skipped: {exc}", file=sys.stderr)
     return 0
 
 
@@ -1339,9 +1405,11 @@ def token_record_vendor_main(argv: list[str] | None = None) -> int:
         return 0
     try:
         TokenLedger(ledger).record_vendor(vendor, **vals)
-    except ValueError as exc:
-        print(f"token record-vendor: {exc}", file=sys.stderr)
-        return 1
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, ValueError):
+            print(f"token record-vendor: {exc}", file=sys.stderr)
+            return 1
+        print(f"token record-vendor: write skipped: {exc}", file=sys.stderr)
     return 0
 
 
@@ -1492,6 +1560,10 @@ def token_cost_main(argv: list[str] | None = None) -> int:
 def token_render_cost_line_main(argv: list[str] | None = None) -> int:
     from report_tokens_cost import render_cost_line_main as main
     return main(argv)
+
+
+def compute_pr_lines_main(argv: list[str] | None = None) -> int:
+    return compute_pr_line_counts_main(argv)
 
 
 def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
