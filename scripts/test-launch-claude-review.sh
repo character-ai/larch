@@ -385,8 +385,8 @@ PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
     --timeout 5 >/dev/null
 default_cmd_json=$(awk -F= '/^CMD_JSON=/{print substr($0,10)}' "$TMPROOT/voter-model-default-out.txt.meta")
 printf '%s
-' "$default_cmd_json" | jq -e '. | index("--model") as $i | $i != null and .[$i + 1] == "claude-fable-5"' >/dev/null \
-    || { echo "FAIL: voter default model should be claude-fable-5" >&2; exit 1; }
+' "$default_cmd_json" | jq -e '. | index("--model") as $i | $i != null and .[$i + 1] == "claude-sonnet-4-6"' >/dev/null \
+    || { echo "FAIL: voter default model should be claude-sonnet-4-6" >&2; exit 1; }
 LARCH_VOTER_MODEL=custom-voter-model PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
     --output "$TMPROOT/voter-model-env-out.txt" \
     --prompt-file "$voter_model_prompt" \

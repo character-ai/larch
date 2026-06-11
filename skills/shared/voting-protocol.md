@@ -59,12 +59,12 @@ After the acceptance threshold, each finding is classified into one of three ope
 ## Voter Panel Composition
 
 **For plan review** (`/design` Step 3):
-- **Voter 1**: Claude — via `dispatch-plan-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-fable-5`)
+- **Voter 1**: Claude — via `dispatch-plan-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
 - **Voter 2**: Codex — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 - **Voter 3**: Cursor — via `dispatch-plan-voters.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh`
 
 **For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always) plus each **available** external every round. Code review uses **shrink-not-backfill**: an unavailable external is dropped, never replaced by a duplicate judge (the alternate external or an extra Claude):
-- **Voter 1**: Claude — via `dispatch-code-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-fable-5`)
+- **Voter 1**: Claude — via `dispatch-code-voters.sh` → `launch-claude-review.sh --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
 - **Voter 2**: Codex — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `codex-available=false`, the slot is **skipped** (`VOTER_2_STATUS=skipped`, `VOTER_2_TOOL=codex`), not back-filled; the panel shrinks by one.
 - **Voter 3**: Cursor — via `dispatch-with-waterfall.sh --no-fallback` → `launch-review.sh`. When `cursor-available=false`, the slot is **skipped** (`VOTER_3_STATUS=skipped`, `VOTER_3_TOOL=cursor`), not back-filled; the panel shrinks by one.
 
