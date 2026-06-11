@@ -254,7 +254,7 @@ render_fresh_timing_report_for_publish() {
     set +e
     env -u IMPLEMENT_TMPDIR \
         LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
-        "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$_tmp_json" > /dev/null 2>"$_tmp_stderr"
+        python3 "$PLUGIN_ROOT/python/cli.py" timing report --full --format json --output "$_tmp_json" > /dev/null 2>"$_tmp_stderr"
     _render_rc=$?
     set -e
     if [[ "$_render_rc" -eq 0 && -s "$_tmp_json" ]] && jq -e '
@@ -271,7 +271,7 @@ render_fresh_timing_report_for_publish() {
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 5c timing-report" \
-        --tool "timing-report.sh" \
+        --tool "python3 python/cli.py timing report" \
         --exit-code "${_render_rc:-1}" \
         --category Warnings \
         --output-file "$_tmp_stderr" \

@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CLEANUP=(python3 "$REPO_ROOT/python/cli.py" session cleanup-tmpdir)
 FINALIZE="$REPO_ROOT/scripts/implement-finalize.sh"
-TOKEN_TALLY="$REPO_ROOT/scripts/token-tally.sh"
+TOKEN_CLI=(python3 "$REPO_ROOT/python/cli.py" token)
 
 PASS=0
 FAIL=0
@@ -67,7 +67,7 @@ assert_rc "$rc" 0 "implement-finalize accepts cache sessions root"
 
 TOKEN_DIR="$CACHE_ROOT/larch-research-token-tally"
 rc=0
-XDG_CACHE_HOME="$TMPROOT/cache" "$TOKEN_TALLY" write --phase research --lane cache --tool claude --total-tokens 10 --dir "$TOKEN_DIR" >/dev/null 2>&1 || rc=$?
+XDG_CACHE_HOME="$TMPROOT/cache" "${TOKEN_CLI[@]}" lane-write --phase research --lane cache --tool claude --total-tokens 10 --dir "$TOKEN_DIR" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 0 "token-tally accepts cache sessions root"
 
 TMP_CLEANUP=$(mktemp -d /tmp/larch-cache-root-cleanup.XXXXXX)
@@ -77,14 +77,14 @@ assert_rc "$rc" 0 "cleanup-tmpdir still accepts /tmp"
 
 TMP_TOKEN=$(mktemp -d /tmp/larch-cache-root-token.XXXXXX)
 rc=0
-"$TOKEN_TALLY" write --phase research --lane tmp --tool claude --total-tokens 10 --dir "$TMP_TOKEN" >/dev/null 2>&1 || rc=$?
+"${TOKEN_CLI[@]}" lane-write --phase research --lane tmp --tool claude --total-tokens 10 --dir "$TMP_TOKEN" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 0 "token-tally still accepts /tmp"
 rm -rf "$TMP_TOKEN"
 
 if [ -d /private/tmp ]; then
     PRIVATE_TOKEN=$(mktemp -d /private/tmp/larch-cache-root-token.XXXXXX)
     rc=0
-    "$TOKEN_TALLY" report --dir "$PRIVATE_TOKEN" >/dev/null 2>&1 || rc=$?
+    "${TOKEN_CLI[@]}" lane-report --dir "$PRIVATE_TOKEN" >/dev/null 2>&1 || rc=$?
     assert_rc "$rc" 0 "token-tally still accepts /private/tmp"
     rm -rf "$PRIVATE_TOKEN"
 fi
@@ -96,7 +96,7 @@ rc=0
 assert_rc "$rc" 1 "cleanup-tmpdir rejects unrelated path"
 
 rc=0
-"$TOKEN_TALLY" report --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
+"${TOKEN_CLI[@]}" lane-report --dir "$UNRELATED" >/dev/null 2>&1 || rc=$?
 assert_rc "$rc" 1 "token-tally rejects unrelated path"
 
 echo

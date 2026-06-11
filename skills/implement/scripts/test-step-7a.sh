@@ -164,8 +164,24 @@ def _diagrams_upsert_stub() -> int:
     print("UPDATED=true")
     return 0
 
+def _token_timing_stub() -> int:
+    calls_log = os.environ.get("STEP7A_CALLS_LOG", "")
+    if calls_log:
+        with open(calls_log, "a", encoding="utf-8") as handle:
+            handle.write(f"python3 python/cli.py {' '.join(sys.argv[1:])}\n")
+    if len(sys.argv) >= 4 and sys.argv[2] == "report":
+        idx = 3
+        while idx < len(sys.argv):
+            if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+                Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+                break
+            idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_token_timing_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -308,24 +324,6 @@ done
     printf '\n'
 } >> "$log"
 STUB
-
-    for stub in token-ledger.sh timing-ledger.sh token-report.sh timing-report.sh; do
-        cat > "$root/scripts/$stub" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s %s\n' "$(basename "$0")" "$*" >> "$STEP7A_CALLS_LOG"
-if [ "$(basename "$0")" = "token-report.sh" ] || [ "$(basename "$0")" = "timing-report.sh" ]; then
-    out=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --output) out=$2; shift 2 ;;
-            *) shift ;;
-        esac
-    done
-    [ -n "$out" ] && printf '{}\n' > "$out"
-fi
-STUB
-    done
 
     chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
 }
@@ -496,8 +494,8 @@ assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "green passes tmpdir to generator"
 assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.log")" "green passes origin base args to generator"
-assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py token mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "python3 python/cli.py timing mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "upsert-diagrams-content" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "python/cli.py diagrams upsert" "green compose before upsert"
 assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "rebase-checkpoint-probe.sh" "green upsert before rebase"

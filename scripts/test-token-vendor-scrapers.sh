@@ -231,7 +231,7 @@ STUB_EOF
 {"type":"vendor","vendor":"codex","total":192077,"raw":"codex_implement","ts":"2026-05-06T00:00:05Z"}
 JSONL
     printf '' > "$TR_TRANSCRIPT"
-    codex_md=$("$REPO_ROOT/scripts/token-report.sh" --ledger "$TR_LEDGER" --transcript "$TR_TRANSCRIPT" --full --markdown)
+    codex_md=$(python3 "$REPO_ROOT/python/cli.py" token report --ledger "$TR_LEDGER" --transcript "$TR_TRANSCRIPT" --full --markdown)
     contains "codex-only header" "| Step | Skill | Input | Output | Total |" "$codex_md"
     contains "codex-only step row" "| Step 2 - implement | **step total** | 0 | 0 | 192077 |" "$codex_md"
     contains "codex-only grand total" "| **Grand total** |  | 0 | 0 | 192077 |" "$codex_md"
@@ -241,14 +241,14 @@ JSONL
 {"type":"mark","step":"Step 2 - implement","ts":"2026-05-06T00:00:00Z"}
 {"type":"vendor","vendor":"codex","input":100,"output":50,"cache_read":900,"total":1050,"raw":"codex_implement","ts":"2026-05-06T00:00:05Z"}
 JSONL
-    pb_json=$("$REPO_ROOT/scripts/token-report.sh" --ledger "$PB_LEDGER" --transcript "$TR_TRANSCRIPT" --full --format json)
+    pb_json=$(python3 "$REPO_ROOT/python/cli.py" token report --ledger "$PB_LEDGER" --transcript "$TR_TRANSCRIPT" --full --format json)
     if printf '%s\n' "$pb_json" | jq -e '.BUCKETS_codex.input == 100 and .BUCKETS_codex.cached_input == 900 and .BUCKETS_codex.output == 50 and .BUCKETS_codex.total == 1050' >/dev/null; then
         pass
     else
         fail "codex per-bucket BUCKETS regression failed: $pb_json"
     fi
     set +e
-    "$REPO_ROOT/scripts/token-cost.sh" --codex-input-tokens 100 --codex-cached-input-tokens 900 --codex-output-tokens 50 >"$TMP/cost.out" 2>"$TMP/cost.err"
+    python3 "$REPO_ROOT/python/cli.py" token cost --codex-input-tokens 100 --codex-cached-input-tokens 900 --codex-output-tokens 50 >"$TMP/cost.out" 2>"$TMP/cost.err"
     cost_rc=$?
     set -e
     eq "codex per-bucket cost rc" "0" "$cost_rc"
@@ -258,7 +258,7 @@ JSONL
         pass
     fi
     set +e
-    "$REPO_ROOT/scripts/render-cost-line.sh" \
+    python3 "$REPO_ROOT/python/cli.py" token render-cost-line \
         --codex-input-tokens 100 \
         --codex-cached-input-tokens 900 \
         --codex-output-tokens 50 >"$TMP/render-cost.out" 2>"$TMP/render-cost.err"
@@ -271,7 +271,7 @@ JSONL
         pass
     fi
     set +e
-    "$REPO_ROOT/scripts/token-cost.sh" --codex-tokens 1050 >"$TMP/cost-aggregate.out" 2>"$TMP/cost-aggregate.err"
+    python3 "$REPO_ROOT/python/cli.py" token cost --codex-tokens 1050 >"$TMP/cost-aggregate.out" 2>"$TMP/cost-aggregate.err"
     aggregate_cost_rc=$?
     set -e
     eq "codex aggregate cost rc" "0" "$aggregate_cost_rc"

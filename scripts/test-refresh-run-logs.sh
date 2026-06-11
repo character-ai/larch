@@ -25,13 +25,12 @@ git_test_repo_identity() {
 
 setup_plugin_stub() {
     local root=$1
-    mkdir -p "$root/scripts"
+    mkdir -p "$root/scripts" "$root/python"
     cp "$SCRIPT_DIR/run-log-terminal-outcomes.inc.bash" "$root/scripts/run-log-terminal-outcomes.inc.bash"
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
-    cp "$SCRIPT_DIR/token-cost.sh" "$root/scripts/token-cost.sh"
-    cp "$SCRIPT_DIR/lib-cost-line-format.sh" "$root/scripts/lib-cost-line-format.sh"
+    cp "$SCRIPT_DIR/../python/"*.py "$root/python/"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
@@ -154,25 +153,9 @@ EOF
     plugin_root="$tmp/plugin"
     setup_plugin_stub "$plugin_root"
 
-    # Stub token-report.sh, timing-report.sh, larch-log.sh, read-session-env-key.sh in PATH.
+    # Stub larch-log.sh and read-session-env-key.sh in PATH.
     stub_dir="$tmp/stubs"
     mkdir -p "$stub_dir"
-    cat > "$stub_dir/token-report.sh"  << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"vendors":[]}\n' > "$out"
-STUB
-    cat > "$stub_dir/timing-report.sh" << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"workflow_path":"unknown","per_step":[],"total_seconds":0,"total_hms":"00:00:00","vendor_task_averages":[]}\n' > "$out"
-STUB
     cat > "$stub_dir/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"
@@ -247,22 +230,26 @@ ISSUES
     printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
     printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
     transcript_source="$impl_tmpdir/claude-source.env"
-    transcript_raw="$impl_tmpdir/raw-transcript.jsonl"
+    token_session_id="refresh-ci-claude-sub"
+    session_dir="$impl_tmpdir/claude-session-$token_session_id"
+    transcript_raw="$session_dir/raw-transcript.jsonl"
+    mkdir -p "$session_dir"
     cat > "$transcript_source" <<EOF
 TRANSCRIPT_PATH=$transcript_raw
+SESSION_DIR=$session_dir
+SESSION_UUID=$token_session_id
 EOF
     cat > "$transcript_raw" <<'EOF'
 {"type":"assistant","message":{"role":"assistant","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0},"content":[{"type":"text","text":"ok"}]}}
 EOF
-    token_session_id="refresh-ci-claude-sub"
     cat > "$impl_tmpdir/session-env.sh" <<EOF
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 LARCH_TOKEN_SESSION_ID=$token_session_id
 LARCH_CLAUDE_SOURCE_FILE=$transcript_source
 EOF
-    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" "$SCRIPT_DIR/token-ledger.sh" mark "Step 8 - ci-fix" >/dev/null
-    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" "$SCRIPT_DIR/token-ledger.sh" record-vendor claude_sub \
+    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" python3 "$SCRIPT_DIR/../python/cli.py" token mark "Step 8 - ci-fix" >/dev/null
+    IMPLEMENT_TMPDIR="$impl_tmpdir" LARCH_TOKEN_SESSION_ID="$token_session_id" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor claude_sub \
         input=200 output=80 cache_read=20 cache_create=10 total=310 raw=claude_ci >/dev/null
 
     plugin_root="$tmp/plugin"
@@ -319,22 +306,6 @@ EOF
 
     stub_dir="$tmp/stubs"
     mkdir -p "$stub_dir"
-    cat > "$stub_dir/token-report.sh"  << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"vendors":[]}\n' > "$out"
-STUB
-    cat > "$stub_dir/timing-report.sh" << 'STUB'
-#!/usr/bin/env bash
-out=/dev/null
-while [ $# -gt 0 ]; do
-  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
-done
-printf '{"workflow_path":"unknown","per_step":[],"total_seconds":0,"total_hms":"00:00:00","vendor_task_averages":[]}\n' > "$out"
-STUB
     cat > "$stub_dir/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"

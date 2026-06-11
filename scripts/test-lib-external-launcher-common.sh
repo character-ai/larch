@@ -577,12 +577,18 @@ case "$mode" in
 esac
 EOF
 chmod +x "$PLUGIN_ROOT/scripts/parse-codex-usage.sh"
-cat > "$PLUGIN_ROOT/scripts/token-ledger.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >> "${LARCH_TEST_LEDGER_CALLS:?}"
+mkdir -p "$PLUGIN_ROOT/python"
+# Stub cli.py: when called as "python3 cli.py token <verb> ..." writes "<verb> ..." to
+# $LARCH_TEST_LEDGER_CALLS so tests can assert which token ledger calls were made.
+cat > "$PLUGIN_ROOT/python/cli.py" <<'EOF'
+#!/usr/bin/env python3
+import os, sys
+calls_file = os.environ.get("LARCH_TEST_LEDGER_CALLS", "")
+if calls_file and len(sys.argv) >= 3 and sys.argv[1] == "token":
+    with open(calls_file, "a") as fh:
+        fh.write(" ".join(sys.argv[2:]) + "\n")
 EOF
-chmod +x "$PLUGIN_ROOT/scripts/token-ledger.sh"
+chmod +x "$PLUGIN_ROOT/python/cli.py"
 
 RECORD_SIDECAR="$TMPDIR_ROOT/usage.sidecar"
 RECORD_FILE="$TMPDIR_ROOT/usage.token-record"

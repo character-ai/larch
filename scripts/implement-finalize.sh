@@ -392,13 +392,13 @@ postbump_mark() {
     source_file=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
     export LARCH_TOKEN_SESSION_ID=$token_session
     export LARCH_CLAUDE_SOURCE_FILE=$source_file
-    "$SCRIPT_DIR/token-ledger.sh" mark "$label" 2>/dev/null || true
-    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "$label" 2>/dev/null || true
+    python3 "$SCRIPT_DIR/../python/cli.py" token mark "$label" 2>/dev/null || true
+    LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing mark "$label" 2>/dev/null || true
 }
 
 postbump_report_since_mark() {
-    "$SCRIPT_DIR/token-report.sh" --since-last-mark --terse 2>/dev/null || true
-    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-report.sh" --since-last-mark --terse 2>/dev/null || true
+    python3 "$SCRIPT_DIR/../python/cli.py" token report --since-last-mark --terse 2>/dev/null || true
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing report --since-last-mark --terse 2>/dev/null || true
 }
 
 run_step8b_rebase() {

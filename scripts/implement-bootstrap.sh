@@ -757,7 +757,7 @@ phase_infra() {
         LARCH_TOKEN_SESSION_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
         export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 
-        if "$SCRIPT_DIR/token-claude-source.sh" \
+        if python3 "$SCRIPT_DIR/../python/cli.py" token claude-source \
             >"$IMPLEMENT_TMPDIR/claude-source.env" \
             2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
             LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
@@ -767,7 +767,7 @@ phase_infra() {
             "$SCRIPT_DIR/append-tool-failure.sh" \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0" \
-                --tool "token-claude-source.sh" \
+                --tool "python3 python/cli.py token claude-source" \
                 --exit-code "$_source_exit" \
                 --category Warnings \
                 --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
@@ -809,8 +809,8 @@ phase_infra() {
             emit_kv STEP_FAILED write-session-env
             exit 2
         fi
-        "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
-        LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
+        python3 "$SCRIPT_DIR/../python/cli.py" token mark "Step 0 — preflight" || true
+        LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing mark "Step 0 — preflight" || true
 
         LARCH_TOKEN_SESSION_ID=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
         LARCH_CLAUDE_SOURCE_FILE=$(python3 "$PY_CLI" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
@@ -862,8 +862,8 @@ phase_tracking() {
     local state_out state_rc state_failed issue_state issue_is_pr
     local post_out post_rc posted
 
-    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — tracking issue" || true
-    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+    python3 "$SCRIPT_DIR/../python/cli.py" token mark "Step 0 — tracking issue" || true
+    LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing mark "Step 0 — tracking issue" || true
 
     if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
         BRANCH_SELECTED=repo-unavailable-skip
@@ -1056,8 +1056,8 @@ phase_plan_materialize() {
     if [ "$RESUME_PLAN_TAIL" != "true" ]; then
         ensure_untracked_baseline_snapshot
 
-        "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
-        LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
+        python3 "$SCRIPT_DIR/../python/cli.py" token mark "implement Step 0 — plan materialization" || true
+        LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing mark "implement Step 0 — plan materialization" || true
 
         if ! append_emergency_bypass_log_if_present; then
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
@@ -1281,8 +1281,8 @@ phase_coder_select() {
         return 0
     fi
 
-    "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — coder select" || true
-    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — coder select" || true
+    python3 "$SCRIPT_DIR/../python/cli.py" token mark "implement Step 0 — coder select" || true
+    LARCH_TIMING_SKILL=implement python3 "$SCRIPT_DIR/../python/cli.py" timing mark "implement Step 0 — coder select" || true
 
     # --emergency forces the main agent to do the coding; external coders are
     # skipped so the operator can bypass plan-adequacy gates without waiting

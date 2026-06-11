@@ -9,7 +9,7 @@ Coverage:
 - relative `--plan-file` rejection and launcher support check
 - unsupported output character rejection
 - literal `cursor-ci-fix` timing allow-list coverage
-- `append-token-record.sh` normalization of Cursor token sidecars
+- `python3 python/cli.py token append-record` normalization of Cursor token sidecars
 - fix-role prompt includes literal `topology.tsv` when the shared CI-fix patterns file exists; non-fix roles omit it
 
 The harness unsets inherited session tempdir variables and points

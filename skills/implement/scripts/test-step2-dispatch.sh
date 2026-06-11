@@ -885,7 +885,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP14="$SCRATCH/test14"; mkdir -p "$TMP14"
 CH14_SESSION="cap-hit-step2-$$-$RANDOM"
-# Ledger must live under TMPDIR: token-ledger.sh validate_under_tmp rejects paths outside it.
+# Ledger must live under TMPDIR: python3 python/cli.py token validate_under_tmp rejects paths outside it.
 CH14_LEDGER="${TMPDIR:-/tmp}/cap-hit-step2-ledger-$$-$RANDOM.jsonl"
 printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH14_LEDGER"
 

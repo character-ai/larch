@@ -131,7 +131,7 @@ if [ "$REPO_UNAV" = "true" ]; then
     LINES_STATUS=unavailable
 else
     set +e
-    lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
+    lines_blob=$(python3 "$PLUGIN_ROOT/python/cli.py" token compute-pr-lines --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
     set -e
     if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
         if ! merge_replace_state_keys "$SHIP_PR_STATE" "$lines_blob"; then
@@ -234,7 +234,7 @@ done
 if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
     tr_json="$IMPLEMENT_TMPDIR/token-report-truth.json"
     if IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" LARCH_TOKEN_SESSION_ID="${LARCH_TOKEN_SESSION_ID:-}" \
-        "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$tr_json" 2>/dev/null && [ -f "$tr_json" ]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json --output "$tr_json" 2>/dev/null && [ -f "$tr_json" ]; then
         TOKEN_JSON="$tr_json"
     fi
 fi

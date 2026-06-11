@@ -156,7 +156,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   transient-retry loop instead of re-hitting the limit and reports a `quota`
   verdict rather than a generic non-auth exit 7 (#3390). Token capture is
   fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
-  per-bucket `token-ledger.sh record-vendor codex` fields; non-zero appends
+  per-bucket `python3 python/cli.py token record-vendor codex` fields; non-zero appends
   the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.
   See [scripts/parse-codex-usage.md](parse-codex-usage.md) for the KV
   contract and fail-closed validation semantics.

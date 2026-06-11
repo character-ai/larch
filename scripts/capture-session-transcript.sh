@@ -116,7 +116,7 @@ if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; 
     recovered=""
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -d "$IMPLEMENT_TMPDIR" ] && [ -n "${HOME:-}" ]; then
         # Narrow search to the encoded project dir for the current git repo, mirroring
-        # token-claude-source.sh. Falls back to the broader projects root if git is
+        # python3 python/cli.py token claude-source. Falls back to the broader projects root if git is
         # unavailable or the project dir doesn't exist yet.
         repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
         if [ -n "$repo_root" ]; then

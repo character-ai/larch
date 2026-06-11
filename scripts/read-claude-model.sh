@@ -12,7 +12,7 @@ larch_quiet_init
 MODEL="unknown"
 
 if command -v jq >/dev/null 2>&1; then
-    source_out="$("$SCRIPT_DIR/token-claude-source.sh" 2>/dev/null || true)"
+    source_out="$(python3 "$SCRIPT_DIR/../python/cli.py" token claude-source 2>/dev/null || true)"
     transcript=""
     while IFS= read -r line; do
         case "$line" in

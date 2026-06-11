@@ -37,7 +37,6 @@ import json
 import os
 import random
 import re
-import shlex
 import signal
 import subprocess
 import sys
@@ -52,6 +51,7 @@ LAST_FAILURES_FILE = REPO_ROOT / ".parallel-tests-last-failures.txt"
 LAST_OUTPUT_DIR = REPO_ROOT / ".parallel-tests-last-output"
 TIMINGS_FILE = REPO_ROOT / ".parallel-tests-timings.json"
 TIMING_LINE_RE = re.compile(r"^LARCH_HARNESS_TIMING\t([^\t]+)\t([0-9.]+)s\s*$")
+HARNESS_SHARD_RE = re.compile(r"^test-harnesses-\d+:\s*(.+)$")
 
 
 def load_timings() -> Dict[str, float]:
@@ -93,65 +93,61 @@ def detect_cores() -> int:
         return os.cpu_count() or 1  # macOS / older platforms
 
 
-def _extract_test_name(line: str) -> Optional[str]:
-    """Parse a `make -n test-harnesses` recipe line into a test name.
-
-    Three patterns observed:
-      1. `bash scripts/harness-timer.sh <name> <inner>`            (most tests)
-      2. `env ... bash scripts/harness-timer.sh <name> <inner>`    (env-prefixed)
-      3. `bash scripts/<test-NAME>.sh`                              (legacy, no timer)
-    """
-    parts = shlex.split(line)
-    if not parts:
-        return None
-    # Skip env-prefix tokens like "env -u FOO=bar" or "VAR=val" until we hit `bash`.
-    i = 0
-    while i < len(parts) and parts[i] != "bash":
-        # tokens that can precede `bash`: `env`, `-u`, `FOO=bar`, etc.
-        i += 1
-    if i >= len(parts) - 1:
-        return None
-    # Now parts[i] == 'bash', parts[i+1] == <script>
-    script = parts[i + 1]
-    if script.endswith("scripts/harness-timer.sh") and i + 2 < len(parts):
-        return parts[i + 2]
-    # Direct invocation: bash scripts/test-foo.sh → name = "test-foo"
-    base = os.path.basename(script)
-    if base.startswith("test-") and base.endswith(".sh"):
-        return base[: -len(".sh")]
-    return None
+def _harness_targets_from_makefile() -> List[str]:
+    makefile = REPO_ROOT / "Makefile"
+    if not makefile.is_file():
+        sys.exit(f"ERROR: Makefile not found at {makefile}")
+    targets: List[str] = []
+    seen: set[str] = set()
+    for line in makefile.read_text(encoding="utf-8").splitlines():
+        match = HARNESS_SHARD_RE.match(line)
+        if not match:
+            continue
+        for name in match.group(1).split():
+            if name not in seen:
+                seen.add(name)
+                targets.append(name)
+    if not targets:
+        sys.exit("ERROR: no test-harnesses-N shard targets found in Makefile")
+    return targets
 
 
-def discover_tests() -> List[Tuple[str, str]]:
-    """Return list of (test_name, command_line) tuples from `make -n test-harnesses`."""
+def _recipe_for_target(name: str) -> Optional[str]:
     res = subprocess.run(
-        ["make", "-n", "test-harnesses"],
+        ["make", "-n", name],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
     )
     if res.returncode != 0:
-        sys.exit(
-            f"ERROR: `make -n test-harnesses` failed (exit {res.returncode}):\n"
-            f"{res.stderr}"
-        )
-    tests: List[Tuple[str, str]] = []
-    seen = set()
-    skipped = 0
-    for line in res.stdout.splitlines():
-        line = line.strip()
+        return None
+    lines: List[str] = []
+    for raw in res.stdout.splitlines():
+        line = raw.strip()
         if not line or line.startswith("#") or line.startswith("make"):
             continue
-        name = _extract_test_name(line)
-        if name is None:
-            skipped += 1
+        lines.append(line)
+    if not lines:
+        return None
+    return " ; ".join(lines)
+
+
+def discover_tests() -> List[Tuple[str, str]]:
+    """Return list of (test_name, command_line) tuples from Makefile shard targets."""
+    tests: List[Tuple[str, str]] = []
+    skipped: List[str] = []
+    for name in _harness_targets_from_makefile():
+        recipe = _recipe_for_target(name)
+        if recipe is None:
+            skipped.append(name)
             continue
-        if name in seen:
-            continue
-        seen.add(name)
-        tests.append((name, line))
+        tests.append((name, recipe))
     if skipped:
-        print(f"# warning: skipped {skipped} unrecognized recipe lines", file=sys.stderr)
+        print(
+            f"# warning: skipped {len(skipped)} harness targets with no recipe: "
+            f"{', '.join(skipped[:5])}{'...' if len(skipped) > 5 else ''}",
+            file=sys.stderr,
+        )
     return tests
 
 

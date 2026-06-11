@@ -39,9 +39,7 @@ rehydrate_larch_triplet() {
 }
 
 rehydrate_plugin_root
-rehydrate_larch_triplet
-"$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 5 — code review" || true
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
 dynamic_archetypes_cap=""
 if [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)

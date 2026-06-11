@@ -13,7 +13,7 @@ basename-derive fallback); failed-slot counting from `round-meta.json` `.collect
 the empty/no-rounds case (empty output, exit 0); usage errors (exit 2); stdout mode;
 per-round VENDOR cost from token-ledger timestamp windows (in-window priced,
 out-of-window excluded, empty window = `$0.00`); and a regression assertion that a
-forced `token-cost.sh` subprocess failure surfaces a labeled `FAIL:` diagnostic
+forced `python/report_tokens_cost.py` subprocess failure surfaces a labeled `FAIL:` diagnostic
 rather than a bare non-zero abort (#3781).
 
 Makefile target `test-render-review-phase-detail`; shard `test-harnesses-2`.

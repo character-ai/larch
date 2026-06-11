@@ -146,9 +146,9 @@ JSON
         printf '{"type":"vendor","vendor":"claude_sub","input":3,"cache_read":48773,"cache_create":36197,"output":2724,"total":87697,"ts":"2023-11-14T22:16:00Z"}\n'
         printf '{"type":"vendor","vendor":"cursor","input":9999,"cache_read":99999,"cache_create":0,"output":9999,"total":119997,"ts":"2023-11-14T23:00:00Z"}\n'
     } >"$CR/token-ledger.jsonl"
-    # Guard token-cost.sh: split producer from post-processor so pipefail cannot mask which side failed.
-    if ! _tc_out="$(bash "$REPO/scripts/token-cost.sh" --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null)"; then
-        fail "token-cost.sh failed (rc=$?)"
+    # Guard token cost CLI: split producer from post-processor so pipefail cannot mask which side failed.
+    if ! _tc_out="$(python3 "$REPO/python/cli.py" token cost --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 --claude-sub-input-tokens 3 --claude-sub-cache-read-tokens 48773 --claude-sub-cache-write-5m-tokens 36197 --claude-sub-output-tokens 2724 2>/dev/null)"; then
+        fail "python3 python/cli.py token cost failed (rc=$?)"
     fi
     exp1="$(printf '%s\n' "$_tc_out" | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
     COUT="$WORK/cost-section.md"
@@ -159,15 +159,14 @@ JSON
     exptot="$(awk -v a="$exp1" 'BEGIN{printf "%.2f", a+0}')"
     grep -Fq -- "| **Total** | **1** | **1** | **0** | **0** | **10m 00s** | **\$$exptot** | **4** |" "$COUT" || fail "total vendor cost wrong (exp \$$exptot): $(grep -F 'Total' "$COUT" || true)"
     pass "per-round VENDOR cost: in-window priced, out-of-window excluded, empty window = \$0.00"
-    # Regression: forced token-cost.sh failure must emit FAIL:, not bare abort (#3781).
-    _bad_repo="$WORK/bad-repo"; mkdir -p "$_bad_repo/scripts"
-    printf '#!/bin/sh\nexit 1\n' > "$_bad_repo/scripts/token-cost.sh"
-    chmod +x "$_bad_repo/scripts/token-cost.sh"
+    # Regression: forced token cost CLI failure must emit FAIL:, not bare abort (#3781).
+    _bad_repo="$WORK/bad-repo"; mkdir -p "$_bad_repo/python"
+    printf 'raise SystemExit(1)\n' > "$_bad_repo/python/cli.py"
     _reg_out="$WORK/reg-fail.txt"
     set +e
     (
-        if ! _tc_out="$(bash "$_bad_repo/scripts/token-cost.sh" 2>/dev/null)"; then
-            fail "token-cost.sh failed (rc=$?)"
+        if ! _tc_out="$(python3 "$_bad_repo/python/cli.py" token cost 2>/dev/null)"; then
+            fail "python3 python/cli.py token cost failed (rc=$?)"
         fi
     ) >"$_reg_out" 2>&1
     _reg_rc=$?

@@ -1,6 +1,6 @@
 # commit-implementation.sh
 
-Thin Step 4 wrapper around `scripts/git-commit.sh`. Emits `token-ledger.sh` and `timing-ledger.sh` marks for "Step 4 — commit implementation" before the git commit, inheriting `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment while forcing `LARCH_TIMING_SKILL=implement` for the timing mark.
+Thin Step 4 wrapper around `scripts/git-commit.sh`. Emits `python3 python/cli.py token` and `python3 python/cli.py timing` marks for "Step 4 — commit implementation" before the git commit, inheriting `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment while forcing `LARCH_TIMING_SKILL=implement` for the timing mark.
 
 Usage:
 

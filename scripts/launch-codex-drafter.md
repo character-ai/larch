@@ -68,7 +68,7 @@ Token and timing recording are handled inside `launch-codex-exec.sh`.
 - `scripts/launch-codex-exec.sh` — inner launcher; argv changes affect this wrapper
 - `skills/design/SKILL.md` — Step 2b drafter dispatch block
 - `docs/configuration-and-permissions.md` — `LARCH_DESIGN_DRAFTER` env var docs
-- `scripts/lib-timing-kinds.sh` — `codex-plan-draft` kind registration
+- `python/timing.py TIMING_TASK_KINDS_ALLOWED` — `codex-plan-draft` kind registration
 
 ## Harness
 

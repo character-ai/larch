@@ -835,7 +835,7 @@ fi
 # without invoking the underlying Cursor binary.
 CH_SESSION="cap-hit-cursor-$$-$RANDOM"
 CH_LEDGER="$SCRATCH/cap-hit-cursor-ledger.jsonl"
-"$REPO_ROOT/scripts/token-ledger.sh" --ledger "$CH_LEDGER" record-vendor cursor total=9999 raw=cap_hit_test >/dev/null
+python3 "$REPO_ROOT/python/cli.py" token record-vendor --ledger "$CH_LEDGER" cursor total=9999 raw=cap_hit_test >/dev/null
 
 CH_ARGV="$SCRATCH/cap-hit-cursor-argv.txt"
 CH_OUT=$(cd "$REPO_ROOT" && \

@@ -353,11 +353,21 @@ cat >"$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh" <<'STUB'
 printf '%s' "${1:-}"
 STUB
 chmod +x "$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh"
-cat >"$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$CURSOR_FAKE_ROOT/python"
+cat >"$CURSOR_FAKE_ROOT/python/cli.py" <<'STUB'
+#!/usr/bin/env python3
+import sys
+
+def main() -> int:
+    if len(sys.argv) >= 2 and sys.argv[1] == "timing":
+        return 0
+    print(f"unexpected cli call: {sys.argv}", file=sys.stderr)
+    return 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 STUB
-chmod +x "$CURSOR_FAKE_ROOT/scripts/timing-ledger.sh"
+chmod +x "$CURSOR_FAKE_ROOT/python/cli.py"
 
 CURSOR_RUN_STUB="$TMP/cursor-run-stub.sh"
 cat >"$CURSOR_RUN_STUB" <<'STUB'

@@ -131,8 +131,8 @@ run_log_flush() {
     local rc out_file status_file
     LOG_FLUSH_STATUS=ok
 
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
-    LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
+    python3 "$PLUGIN_ROOT/python/cli.py" token mark "Step 8 — version bump" || true
+    LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark "Step 8 — version bump" || true
 
     out_file="$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues.log"
     set +e
@@ -147,8 +147,8 @@ run_log_flush() {
         append_best_effort_failure "step-7a" "flush-execution-issues.sh" "$rc" "$out_file"
     fi
 
-    "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
+    python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing report --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
 
     run_larch_log_write token-report "$IMPLEMENT_TMPDIR/token-report-rendered.json"
     run_larch_log_write timing-report "$IMPLEMENT_TMPDIR/timing-report-rendered.json"
@@ -361,8 +361,8 @@ if [ "${forked_target:-false}" = "true" ]; then
     base_remote=upstream
 fi
 
-"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
-LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
+python3 "$PLUGIN_ROOT/python/cli.py" token mark "Step 7a — code flow diagram" || true
+LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark "Step 7a — code flow diagram" || true
 
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip

@@ -296,13 +296,13 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 **When not set:**
 - The `$` column is omitted; the report shows only token counts.
 
-**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
+**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`python/tokens.py research lane docs`](../python/tokens.py research lane docs) for the helper contract.
 
 ### `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`
 
 Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count strictly exceeds this threshold, `/design` switches to the large-plan summary mode at both the Step 3 entry print (`## Plan Candidate for Review`) and the Gate C entry print (`## Final Design Plan`): only the plan title and a `##`/`###` section outline are emitted, plus a bold note offering the full plan on operator request. Empty, `0`, non-numeric values, and values with a leading zero (for example `00` or `0120`) silently fall back to the `120` default; numeric comparisons use base-10 coercion so octal interpretation cannot skew the threshold. The orchestrator does not abort on invalid env values. Affects only chat visibility; the underlying `plan.txt` content sent to reviewers and stored in the design log is unchanged.
 
-**Chat-order note (Step 3 / Gate C):** `skills/design/SKILL.md` prints the visible step breadcrumb, then runs a `timing-ledger.sh mark` Bash fence, then runs a live `run-step3-review.sh --preview-only` fence (Step 3, wrapping the pure `emit-design-plan-preview.sh --variant step3` renderer) or one merged Gate C fence containing only the timing mark plus `emit-design-plan-preview.sh --variant gatec`. Manual acceptance or log audits should treat the plan preview material as belonging **after** that timing-ledger line, not immediately after the `> **🔶 /design …**` breadcrumb alone.
+**Chat-order note (Step 3 / Gate C):** `skills/design/SKILL.md` prints the visible step breadcrumb, then runs a `python3 python/cli.py timing mark` Bash fence, then runs a live `run-step3-review.sh --preview-only` fence (Step 3, wrapping the pure `emit-design-plan-preview.sh --variant step3` renderer) or one merged Gate C fence containing only the timing mark plus `emit-design-plan-preview.sh --variant gatec`. Manual acceptance or log audits should treat the plan preview material as belonging **after** that timing-ledger line, not immediately after the `> **🔶 /design …**` breadcrumb alone.
 
 **Mechanical contract:** large-plan preview behavior lives in `skills/design/scripts/emit-design-plan-preview.sh` as invoked from `skills/design/SKILL.md`; greps and harnesses should key off that script path rather than expecting duplicated inline fenced bodies for the same logic.
 
@@ -312,7 +312,7 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 
 #### Per-vendor rates (`/implement` final summary)
 
-[`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:
+[`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:
 
 - **`LARCH_CLAUDE_RATE_PER_M`** — Claude (per million total tokens). When unset, empty, zero, or malformed, falls back to **`LARCH_TOKEN_RATE_PER_M`** when that value is a positive decimal; otherwise a built-in Claude default (`6.00` USD per 1M total tokens) applies.
 - **`LARCH_CODEX_RATE_PER_M`** — Codex (per million total tokens). When unset, empty, zero, or malformed, a built-in default (`10.00` USD per 1M) applies.
@@ -330,7 +330,7 @@ Malformed env values (non-numeric strings, negatives, etc.) fall back to the def
 
 ### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
 
-Step duration threshold (in seconds) used by `scripts/timing-report.sh --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.
+Step duration threshold (in seconds) used by `python3 python/cli.py timing report --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.
 
 ### `LARCH_VERBOSE_TOKENS`
 

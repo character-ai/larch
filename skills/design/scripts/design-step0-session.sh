@@ -110,7 +110,7 @@ if ((${#PUBLIC_ARGV_WORDS[@]} > 0)); then
     exit "$_parse_rc"
   fi
 fi
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 0 — session setup" || true
 
 # Contract pin for CI (scripts/test-design-structure.sh): python/cli.py session setup --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers
 _ss_args=(--prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers)
@@ -148,7 +148,7 @@ if [ -f "$_step0_parsed_src" ]; then
 fi
 
 DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "design Step 0 — session setup" || true
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token mark "design Step 0 — session setup" || true
 
 _wdce_args=(
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-design-env

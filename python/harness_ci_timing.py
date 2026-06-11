@@ -43,7 +43,7 @@ def fetch_timing_rows(
     """Fetch LARCH_HARNESS_TIMING rows from the last *n_runs* successful CI runs.
 
     Downloads ``gh run view --log`` for each run and parses every
-    ``LARCH_HARNESS_TIMING`` sentinel line emitted by ``harness-timer.sh``.
+    ``LARCH_HARNESS_TIMING`` sentinel line emitted by ``python3 python/cli.py timing harness-mark``.
     Returns an empty list (not an exception) when a run's log cannot be
     fetched so a single transient failure does not abort the whole pass.
     """
@@ -66,7 +66,7 @@ def parse_log(log: str, run_id: int) -> list[TimingRow]:
 
         <job_name>\t<step_name>\t[<timestamp> ]<log_content>
 
-    ``harness-timer.sh`` emits::
+    ``python3 python/cli.py timing harness-mark`` emits::
 
         LARCH_HARNESS_TIMING\t<test-name>\t<N.NNs>
 

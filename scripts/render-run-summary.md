@@ -9,7 +9,7 @@ surfaces.
 
 The `- **Cost**:` bullet from this script is the **sole** authoritative
 dollar-primary cost line for both skills. Do not duplicate that line in
-`SKILL.md` prose, `token-report.sh --summary`, `timing-report.sh --summary`, or
+`SKILL.md` prose, `python3 python/cli.py token report --summary`, `python3 python/cli.py timing report --summary`, or
 committed log batches.
 
 ## Usage (summary)
@@ -31,7 +31,7 @@ bash scripts/render-run-summary.sh \
 
 Omit `--workflow-path` (or pass an empty value) to omit the `- **Path**:` bullet; `/implement` callers omit it, while `/design` callers pass SIMPLE/HARD when available.
 
-Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `token-cost.sh` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks. `--emergency-requested` defaults to `false`; when `true`, the body includes `- Emergency: true`.
+Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `python/report_tokens_cost.py` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks. `--emergency-requested` defaults to `false`; when `true`, the body includes `- Emergency: true`.
 
 ### `--skill design`
 
@@ -70,9 +70,9 @@ renderer’s body inside that upsert payload.
 
 ## Cost line
 
-This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…, Claude (subprocess) $…  |  Tokens: …k`). The `Claude (subprocess)` lane (machine name `claude_sub`, issue #3637) is always rendered, mirroring Codex/Cursor which show even at `$0.00`. There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
+This script shells to `python/report_tokens_cost.py` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…, Claude (subprocess) $…  |  Tokens: …k`). The `Claude (subprocess)` lane (machine name `claude_sub`, issue #3637) is always rendered, mirroring Codex/Cursor which show even at `$0.00`. There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
 
-See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.
+See `python/report_tokens_cost.py docs` for env vars and blended-fallback warning semantics.
 
 ## Lines (PR diff) — implement only
 
@@ -91,7 +91,7 @@ Emitted only when `--skill implement`, immediately after `- **Code review**:`.
 ## Cost unavailable mode
 
 `--cost-unavailable` is an explicit boolean mode for callers that know token data
-is unavailable or unreliable. When set, the renderer skips `token-cost.sh`
+is unavailable or unreliable. When set, the renderer skips `python/report_tokens_cost.py`
 entirely and emits exactly `- **Cost**: N/A`.
 
 Callers should use this flag instead of omitting token flags or passing explicit

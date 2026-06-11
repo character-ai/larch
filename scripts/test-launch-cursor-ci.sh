@@ -46,7 +46,7 @@ if grep -q -- "--task-kind \"\$TIMING_TASK_KIND\"" "$REPO_ROOT/scripts/launch-cu
 if grep -q 'plan-file' "$REPO_ROOT/scripts/launch-cursor-ci.sh"; then ok "script supports --plan-file"; else fail "script supports --plan-file"; fi
 if grep -q -- '--failure-log' "$REPO_ROOT/scripts/launch-cursor-ci.sh"; then ok "script supports --failure-log"; else fail "script supports --failure-log"; fi
 if grep -q 'Local reproduction invariant' "$REPO_ROOT/scripts/launch-cursor-ci.sh"; then ok "fix role prompt carries local reproduction invariant"; else fail "fix role prompt carries local reproduction invariant"; fi
-if grep -q 'cursor-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes cursor-ci-fix"; else fail "timing allow-list includes cursor-ci-fix"; fi
+if grep -q 'cursor-ci-fix' "$REPO_ROOT/python/timing.py"; then ok "timing allow-list includes cursor-ci-fix"; else fail "timing allow-list includes cursor-ci-fix"; fi
 
 cat > "$TMPDIR_BASE/token-record" <<'EOF'
 TOOL=cursor
@@ -57,7 +57,7 @@ CACHE_CREATE=4
 TOTAL=10
 RAW=cursor_ci_fix
 EOF
-"$REPO_ROOT/scripts/append-token-record.sh" --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
+python3 "$REPO_ROOT/python/cli.py" token append-record --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
 if grep -q '"tool":"cursor"' "$TMPDIR_BASE/token-report.ndjson"; then ok "append-token-record normalizes cursor sidecar"; else fail "append-token-record normalizes cursor sidecar"; fi
 
 stall_env() {

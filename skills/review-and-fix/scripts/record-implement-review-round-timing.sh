@@ -107,7 +107,7 @@ fi
 export IMPLEMENT_TMPDIR
 export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 export LARCH_TIMING_SKILL=implement
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
+python3 "$PLUGIN_ROOT/python/cli.py" timing record-round \
     --skill implement \
     --step "$step_label" \
     --round "$round_decimal" \

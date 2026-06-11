@@ -46,16 +46,15 @@ plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
-cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
-cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-format.sh"
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
-cp "$REPO_ROOT/scripts/compute-pr-line-counts.sh" "$plugin/scripts/compute-pr-line-counts.sh"
 cp "$REPO_ROOT/scripts/render-review-phase-detail.sh" "$plugin/scripts/render-review-phase-detail.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
+mkdir -p "$plugin/python"
+cp "$REPO_ROOT/python/"*.py "$plugin/python/"
+chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/python/report_tokens_cost.py" \
     "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
-    "$plugin/scripts/redact-secrets.sh" "$plugin/scripts/compute-pr-line-counts.sh" \
+    "$plugin/scripts/redact-secrets.sh" "$plugin/python/cli.py" \
     "$plugin/scripts/render-review-phase-detail.sh"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
@@ -593,8 +592,19 @@ import os
 import sys
 from pathlib import Path
 
+def _token_report_stub() -> int:
+    idx = 2
+    while idx < len(sys.argv):
+        if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+            Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+            break
+        idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
+        raise SystemExit(_token_report_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -619,18 +629,6 @@ done
 awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, "=") + 1); found=1; exit} END{if(!found) print default}' "$file" 2>/dev/null
 STUB
 chmod +x "$plugin/python/cli.py" "$plugin/python/stubs/session/read-key" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
-cat > "$plugin/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output) printf '{}\n' >"$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-exit 0
-STUB
-chmod +x "$plugin/scripts/token-report.sh"
 kv_step18() {
   awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"
 }

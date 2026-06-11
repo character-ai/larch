@@ -2,7 +2,7 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
-The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Emergency: true` when `run-flags.sh` has `EMERGENCY_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
+The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, emits `- Emergency: true` when `run-flags.sh` has `EMERGENCY_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/report_tokens_cost.py`](../../../python/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
@@ -69,7 +69,7 @@ Still refreshes `summary-final.md` for the upsert but **does not** overwrite `la
 ## PR line counts
 
 After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the script
-skips `scripts/compute-pr-line-counts.sh` entirely and treats line data as
+skips `python3 python/cli.py token compute-pr-line-counts` entirely and treats line data as
 unavailable. Otherwise it first reuses cached `LINES_*` values from
 `ship-pr-state.sh` when they match the current `PR_NUMBER`; on cache miss it
 invokes the helper under `set +e`, parses `LINES_STATUS` and the four counter
@@ -103,7 +103,7 @@ The section is a per-round table (suggestions made/accepted, OOS proposed/accept
 time, cost, reviewers launched), a Total row, the top reviewers by suggestions
 accepted (`vendor/archetype`), and a failed-reviewer-slot breakdown. The Cost
 column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
-attributed by token-ledger timestamp window and priced via `token-cost.sh`; it
+attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`; it
 excludes main-agent Claude, so it is a distinct datum from (and less than) the
 single-source dollar-primary `- **Cost**:` line that `render-run-summary.sh` owns.
 

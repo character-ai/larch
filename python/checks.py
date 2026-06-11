@@ -190,15 +190,11 @@ def _mark_step_ledger(runner: Runner, canonical_tmp: Path, site: str) -> None:
         label = "Step 6 — checks second pass"
     else:
         return
-    scripts = _plugin_scripts_dir()
-    env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp)}
-    for script_name in ("token-ledger.sh", "timing-ledger.sh"):
-        script = scripts / script_name
-        if script.is_file() and os.access(script, os.X_OK):
-            _ = runner.run(
-                [str(script), "mark", label],
-                env=env,
-            )
+    cli = _plugin_scripts_dir().parent / "python" / "cli.py"
+    env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp), "LARCH_TIMING_SKILL": "implement"}
+    _ = runner.run(["python3", str(cli), "token", "mark", label], env=env)
+    timing_env = {**env, "DESIGN_TMPDIR": ""}
+    _ = runner.run(["python3", str(cli), "timing", "mark", label], env=timing_env)
 
 
 def _coverage_from_markers(

@@ -13,11 +13,11 @@ test-harnesses: test-harnesses-1 test-harnesses-2
 test-harnesses-1: test-alpha test-beta
 test-harnesses-2: test-gamma
 test-alpha:
-\tbash scripts/harness-timer.sh $@ bash scripts/test-alpha.sh
+\tpython3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-alpha.sh
 test-beta:
-\tbash scripts/harness-timer.sh $@ bash scripts/test-beta.sh
+\tpython3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-beta.sh
 test-gamma:
-\tbash scripts/harness-timer.sh $@ bash scripts/test-gamma.sh
+\tpython3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gamma.sh
 """
 
 
@@ -64,7 +64,7 @@ def test_write_shards_preserves_other_lines() -> None:
     write_shards(path, original_shards)
     text = Path(path).read_text(encoding="utf-8")
     assert ".PHONY:" in text
-    assert "bash scripts/harness-timer.sh" in text
+    assert "python3 python/cli.py timing harness-mark" in text
     assert "test-harnesses: test-harnesses-1 test-harnesses-2\n" in text
 
 

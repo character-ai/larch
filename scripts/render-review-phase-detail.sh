@@ -13,7 +13,7 @@
 # The Cost column is the per-round VENDOR cost (Codex + Cursor + Claude
 # subprocess): vendor token records from the token ledger are attributed to a
 # round by timestamp window ([round.start_s, round.end_s]) and priced via
-# token-cost.sh. It excludes main-agent Claude, so it is strictly the vendor
+# python token cost. It excludes main-agent Claude, so it is strictly the vendor
 # spend for that round and is therefore less than the run-total Cost line in the
 # summary (which additionally includes main-agent Claude). It renders as an em
 # dash when per-round timing or the token ledger is unavailable.
@@ -24,7 +24,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TOKEN_COST_SH="$SCRIPT_DIR/token-cost.sh"
 
 ROUNDS_ROOT=""
 FINDINGS_FILE=""
@@ -146,7 +145,7 @@ fmt_hms() {
 }
 
 # Per-round vendor cost: window the token ledger by [start,end] (epoch), sum
-# per-vendor token buckets, and price via token-cost.sh. Prints "$N.NN" on
+# per-vendor token buckets, and price via python token cost. Prints "$N.NN" on
 # success, else "—". Runs in a command substitution (subshell), so it MUST NOT
 # mutate the cost accumulators — the caller parses the returned string instead.
 t_cost_acc=""
@@ -154,7 +153,6 @@ any_cost=0
 round_vendor_cost() {
     local start="$1" end="$2"
     [ -n "$TOKEN_LEDGER" ] && [ -f "$TOKEN_LEDGER" ] || { printf -- '—'; return; }
-    [ -x "$TOKEN_COST_SH" ] || { printf -- '—'; return; }
     [ -n "$start" ] && [ -n "$end" ] || { printf -- '—'; return; }
     local sums="$WORK_DIR/cost-sums.tsv"
     jq -r --argjson start "$start" --argjson end "$end" '
@@ -181,7 +179,7 @@ round_vendor_cost() {
     local rc_val=""
     if [ "${#cost_args[@]}" -gt 0 ]; then
         local rc_out
-        rc_out="$("$TOKEN_COST_SH" "${cost_args[@]}" 2>/dev/null || true)"
+        rc_out="$(python3 "$SCRIPT_DIR/../python/cli.py" token cost "${cost_args[@]}" 2>/dev/null || true)"
         rc_val="$(printf '%s\n' "$rc_out" | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
     else
         rc_val="0.00"

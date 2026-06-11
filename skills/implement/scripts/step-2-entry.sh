@@ -53,8 +53,8 @@ rehydrate_larch_triplet
 CODEX_PRESENT=$(read_session_key CODEX_PRESENT false)
 CURSOR_PRESENT=$(read_session_key CURSOR_PRESENT false)
 case "$CODER" in
-  claude) "$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true ;;
-  codex) [ "$CODEX_PRESENT" = true ] || "$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true ;;
-  cursor) [ "$CURSOR_PRESENT" = true ] || "$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true ;;
+  claude) python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
+  codex) [ "$CODEX_PRESENT" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
+  cursor) [ "$CURSOR_PRESENT" = true ] || python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 2 — implementation" || true ;;
 esac
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 2 — implementation" || true

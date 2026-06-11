@@ -56,7 +56,7 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 5 — review handoff" || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 5 — review handoff" || true
 round_start_file="$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s"
 if [ -f "$round_start_file" ]; then
   round_start_s="$(tr -d '\r\n' < "$round_start_file" 2>/dev/null || true)"

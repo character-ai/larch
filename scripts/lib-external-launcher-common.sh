@@ -292,7 +292,7 @@ external_launcher_record_usage_from_events() {
         return 0
     fi
 
-    "$plugin_root/scripts/token-ledger.sh" record-vendor codex \
+    python3 "$plugin_root/python/cli.py" token record-vendor codex \
         input="$input_tokens" \
         cache_read="$cached_tokens" \
         output="$output_tokens" \

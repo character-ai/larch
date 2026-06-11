@@ -24,15 +24,21 @@ printf '%s' "${GIT_COMMIT_ERR:-}" >&2
 exit "${GIT_COMMIT_RC:-0}"
 STUB
 chmod +x "$plugin/scripts/git-commit.sh"
-cat > "$plugin/scripts/token-ledger.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
+mkdir -p "$plugin/python"
+cat > "$plugin/python/cli.py" <<'STUB'
+#!/usr/bin/env python3
+import sys
+
+def main() -> int:
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        return 0
+    print(f"unexpected cli call: {sys.argv}", file=sys.stderr)
+    return 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 STUB
-cat > "$plugin/scripts/timing-ledger.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$plugin/scripts/token-ledger.sh" "$plugin/scripts/timing-ledger.sh"
+chmod +x "$plugin/python/cli.py"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email a@b.test; git -C "$repo" config user.name tester
 printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" commit -qm init

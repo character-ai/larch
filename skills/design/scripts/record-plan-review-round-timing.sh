@@ -95,7 +95,7 @@ if [[ -f "$ledger" ]]; then
         exit 0
     fi
 fi
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
+python3 "$PLUGIN_ROOT/python/cli.py" timing record-round \
     --skill design \
     --step "$step_label" \
     --round "$round_decimal" \

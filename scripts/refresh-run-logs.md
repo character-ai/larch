@@ -41,7 +41,7 @@ Always exits 0.
 - **No push**: `larch-log.sh commit` never pushes and limits its pathspec to
   `larch-logs/implement/<RUN_ID>/`; the caller (`ship-pr.sh`) owns any
   subsequent push.
-- **Best-effort renders**: `token-report.sh`, `timing-report.sh`, and `larch-log.sh write`
+- **Best-effort renders**: `python3 python/cli.py token report`, `python3 python/cli.py timing report`, and `larch-log.sh write`
   calls use `|| true`; render failures are non-fatal.
 - **Transcript status trail preserved on retries**: the retry-path
   `capture-session-transcript.sh` call passes `--execution-issues-log

@@ -59,6 +59,5 @@ fi
 if [ -z "$run_id" ]; then
     run_id=$(read_state_key "$IMPLEMENT_TMPDIR/finalize-state.sh" RUN_ID "")
 fi
-"$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 16 — rejected findings" || true
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 16 — rejected findings" || true
 "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-rejected-findings.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$run_id" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true

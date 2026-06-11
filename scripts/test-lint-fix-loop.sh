@@ -97,7 +97,9 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/lib-external-launcher-common.sh" "$dir/lib-external-launcher-common.sh"
     cp "$SOURCE_SCRIPTS/lib-submodule-prohibition.sh" "$dir/lib-submodule-prohibition.sh"
     cp "$SOURCE_SCRIPTS/parse-codex-usage.sh" "$dir/parse-codex-usage.sh"
-    cp "$SOURCE_SCRIPTS/token-ledger.sh" "$dir/token-ledger.sh"
+    mkdir -p "$(dirname "$dir")/python"
+    cp "$REPO_ROOT/python/"*.py "$(dirname "$dir")/python/"
+    chmod +x "$(dirname "$dir")/python/cli.py"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
     cp "$SOURCE_SCRIPTS/lib-failed-agent-stderr-tail.sh" "$dir/lib-failed-agent-stderr-tail.sh"
     cp "$SOURCE_SCRIPTS/redact-tmpdir-paths.sh" "$dir/redact-tmpdir-paths.sh"
@@ -162,7 +164,6 @@ EOF
         "$dir/lint-fix-loop.sh" \
         "$dir/lib-cursor-launcher-common.sh" \
         "$dir/parse-codex-usage.sh" \
-        "$dir/token-ledger.sh" \
         "$dir/git-commit.sh"
 }
 

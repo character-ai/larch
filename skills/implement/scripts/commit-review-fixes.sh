@@ -57,8 +57,8 @@ if [ -z "${LARCH_TIMING_LEDGER:-}" ] || [ -z "${LARCH_TOKEN_SESSION_ID:-}" ] || 
     export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 fi
 
-"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
-LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
+python3 "$PLUGIN_ROOT/python/cli.py" token mark "Step 7 — commit review fixes" || true
+LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark "Step 7 — commit review fixes" || true
 
 if [ "$STAGE_ALL" = true ]; then
     git add -A

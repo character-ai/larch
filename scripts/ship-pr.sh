@@ -1472,9 +1472,9 @@ _stage_and_push_ci_fixes() {
 
     if [ "$pending_retry" != true ]; then
         fail_file=$(failure_capture_path "$phase")
-        "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+        python3 "$SCRIPT_DIR/../python/cli.py" token append-record --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
         rc=$?
-        [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
+        [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$fail_file" Warnings
 
         vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
         vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
@@ -2776,10 +2776,10 @@ run_rebase_rebump() {
             fi
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
             fail_file=$(failure_capture_path conflict-resolution)
-            "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
+            python3 "$SCRIPT_DIR/../python/cli.py" token append-record --input "${conflict_out}.token-record" \
                 --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
             rc=$?
-            [ "$rc" -eq 0 ] || record_failure conflict-resolution "append-token-record.sh" "$rc" "$fail_file" Warnings
+            [ "$rc" -eq 0 ] || record_failure conflict-resolution "token append-record" "$rc" "$fail_file" Warnings
         fi
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the

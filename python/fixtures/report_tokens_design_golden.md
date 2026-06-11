@@ -23,8 +23,8 @@ Tracked total estimated cost: $13.00.
 
 | Issue | Workflow | Started | Total | Claude | Codex | Cursor | Claude (sub) |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| [#8](https://example.invalid/HARD) | HARD | 2026-01-01 | $7.00 (token-cost) | $1.00 | $2.00 | $3.00 | $4.00 |
-| [#7](https://example.invalid/SIMPLE) | SIMPLE | 2026-01-01 | $6.00 (token-cost) | $1.00 | $2.00 | $3.00 | $4.00 |
+| [#8](https://example.invalid/HARD) | HARD | 2026-01-01 | $7.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
+| [#7](https://example.invalid/SIMPLE) | SIMPLE | 2026-01-01 | $6.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
 
 ## Phase breakdown
 
@@ -101,7 +101,7 @@ Tracked total estimated cost: $13.00.
 
 - Review the highest-cost runs above before optimizing lower-cost phases.
 - Cache-read tokens observed: 0; preserve prompt stability where cache hits are useful.
-- Treat dollar values as estimates; `scripts/token-cost.sh` remains the pricing authority used for headline totals.
+- Treat dollar values as estimates; `python/report_tokens_cost.py` remains the pricing authority used for headline totals.
 
 ## Rates used for display/fallback
 

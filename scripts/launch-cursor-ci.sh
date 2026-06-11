@@ -235,7 +235,7 @@ cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci
 cursor_launcher_promote_inner_done "$OUTPUT"
 
 END_S=$(date +%s)
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
     --vendor cursor \
     --task-kind "$TIMING_TASK_KIND" \
     --start-s "$TIMING_START_S" \

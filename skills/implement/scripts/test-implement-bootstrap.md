@@ -5,7 +5,7 @@
 ## Layout
 
 - Builds a `/tmp` sandbox, copies `implement-bootstrap.sh` plus `lib-quiet.sh`, `lib-execution-issues.sh`, and the real `write-session-env.sh` / `read-session-env-key.sh` beside PATH-resolved `${SCRIPT_DIR}` peers. `$SANDBOX/bin` is prepended to `PATH` for the `gh` stub.
-- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `append-tool-failure.sh`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
+- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `python3 python/cli.py token claude-source`, `append-tool-failure.sh`, `python3 python/cli.py token`, `python3 python/cli.py timing`, `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
 
 ## Cases
 

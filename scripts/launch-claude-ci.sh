@@ -246,7 +246,7 @@ if [[ "$LAUNCHER_EXIT" -eq 0 ]] && [[ -s "$OUTPUT" ]]; then
 fi
 
 END_S=$(date +%s)
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing record-vendor-task \
     --vendor claude \
     --task-kind "$TIMING_TASK_KIND" \
     --start-s "$START_S" \
@@ -262,11 +262,11 @@ fi
 # Record spawned-Claude CI-fix tokens into the claude_sub ledger lane (priced at
 # Claude rates) using the real .usage counts; the single cache_creation field
 # folds into one cache_create bucket. The token-cost report reads this ledger on
-# the next refresh-run-logs token-report.sh pass (issue #3637). When .usage was
+# the next refresh-run-logs python3 python/cli.py token report pass (issue #3637). When .usage was
 # unavailable, fall back to the legacy word-count proxy so the sidecar that
-# ship-pr.sh forwards to append-token-record.sh is still populated.
+# ship-pr.sh forwards to python3 python/cli.py token append-record is still populated.
 if [[ "$CL_TOTAL" -gt 0 ]]; then
-    DESIGN_TMPDIR='' "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor claude_sub \
+    DESIGN_TMPDIR='' python3 "$PLUGIN_ROOT/python/cli.py" token record-vendor claude_sub \
         input="$CL_IN" output="$CL_OUT" cache_read="$CL_CR" cache_create="$CL_CC" \
         total="$CL_TOTAL" raw="claude_ci" >/dev/null 2>&1 || true
     printf 'TOOL=claude\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nCACHE_CREATE=%s\nTOTAL=%s\nRAW=claude_ci\n' \

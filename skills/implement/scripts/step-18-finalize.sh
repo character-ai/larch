@@ -40,10 +40,10 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
-"$CLAUDE_PLUGIN_ROOT/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$CLAUDE_PLUGIN_ROOT/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
-"$CLAUDE_PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 18 — done" || true
-DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$CLAUDE_PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 18 — done" || true
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token report --since-last-mark --terse > /dev/null || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing report --since-last-mark --terse > /dev/null || true
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 18 — done" || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 18 — done" || true
 _restore_finalize=false
 if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
   if [ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]; then

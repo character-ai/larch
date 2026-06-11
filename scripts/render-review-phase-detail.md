@@ -43,7 +43,7 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
   Vendor token records from `--token-ledger` are attributed to a round by
   timestamp window (`jq fromdateiso8601` on each record's `ts` against the
   round's epoch `start_s`/`end_s` from `timing-ledger.tsv`), summed per vendor,
-  and priced with `token-cost.sh` (the ledger's combined `cache_create` is mapped
+  and priced with `python/report_tokens_cost.py` (the ledger's combined `cache_create` is mapped
   to the 5m cache-write bucket). It **excludes** main-agent Claude, so it is the
   per-round vendor spend and is less than the run-total dollar-primary Cost line
   in the summary (which additionally includes main-agent Claude) — i.e. it is a

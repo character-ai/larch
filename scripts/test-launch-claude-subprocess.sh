@@ -453,7 +453,7 @@ JSON
 STUB
 chmod +x "$BIN/claude"
 ledger_warn_out="$TMP/out-ledger-warn.txt"
-# IMPLEMENT_TMPDIR gives timing-ledger.sh a ledger root so it reaches the
+# IMPLEMENT_TMPDIR gives python3 python/cli.py timing a ledger root so it reaches the
 # allow-list check rather than bailing with "no per-run ledger root set".
 IMPLEMENT_TMPDIR="$TMP" LARCH_QUIET_DISABLE=1 PATH="$BIN:$PATH" "$SCRIPT" \
     --prompt-file "$prompt" \

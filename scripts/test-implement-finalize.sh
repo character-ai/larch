@@ -140,8 +140,25 @@ import os
 import sys
 from pathlib import Path
 
+def _ledger_stub() -> int:
+    log = os.environ.get("LEDGER_CALLS_LOG", "")
+    if log and len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        prefix = "token-ledger" if sys.argv[1] == "token" else "timing-ledger"
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(f"{prefix} {' '.join(sys.argv[2:])}\n")
+    if len(sys.argv) >= 4 and sys.argv[2] == "report":
+        idx = 3
+        while idx < len(sys.argv):
+            if sys.argv[idx] == "--output" and idx + 1 < len(sys.argv):
+                Path(sys.argv[idx + 1]).write_text("{}\n", encoding="utf-8")
+                break
+            idx += 1
+    return 0
+
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
+        raise SystemExit(_ledger_stub())
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -225,26 +242,6 @@ done
 printf '%s\n' "$default"
 STUB
     chmod +x "$SANDBOX/python/stubs/session/read-key"
-    cat > "$SANDBOX/scripts/token-ledger.sh" <<STUB
-#!/usr/bin/env bash
-echo "token-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/timing-ledger.sh" <<STUB
-#!/usr/bin/env bash
-echo "timing-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/token-report.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "token report"
-exit 0
-STUB
-    cat > "$SANDBOX/scripts/timing-report.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "timing report"
-exit 0
-STUB
     cat > "$SANDBOX/scripts/larch-log.sh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "---" >> "$SANDBOX/larch-log-argv.txt"
@@ -409,6 +406,7 @@ exit 99
 STUB
     chmod +x "$SANDBOX/scripts/"*.sh
     chmod +x "$SANDBOX/bin/git" "$SANDBOX/bin/gh" "$SANDBOX/bin/ps"
+    export LEDGER_CALLS_LOG="$SANDBOX/ledger-calls.txt"
 }
 
 run_subject() {
