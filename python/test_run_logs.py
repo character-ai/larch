@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -1148,20 +1149,27 @@ def test_render_ledger_reports_uses_direct_renderers(
     )
     captured: dict[str, str] = {}
 
+    def capture_env(env: object) -> None:
+        if isinstance(env, Mapping):
+            env_map = cast("Mapping[object, object]", env)
+            for key, value in env_map.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    captured[key] = value
+
     def fake_token_report(**kwargs: object) -> dict[str, object]:
-        env = kwargs.get("env")
-        if isinstance(env, dict):
-            captured.update(env)
+        capture_env(kwargs.get("env"))
         return {"claude": {}}
 
     def fake_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
-        if isinstance(env, dict):
-            captured.update(env)
+        capture_env(env)
         return {"per_step": []}
+
+    def fake_resolve_timing_ledger_path(**_: object) -> Path:
+        return tmp_path / "timing-ledger.tsv"
 
     monkeypatch.setattr(tokens, "token_report", fake_token_report)
     monkeypatch.setattr(timing.TimingReport, "render_json", fake_render_json)
-    monkeypatch.setattr(timing, "resolve_timing_ledger_path", lambda **_: tmp_path / "timing-ledger.tsv")
+    monkeypatch.setattr(timing, "resolve_timing_ledger_path", fake_resolve_timing_ledger_path)
     ctx = _ctx(tmp_path, str(state))
     run_logs._render_ledger_reports(RecordingRunner(), ctx, tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
 
