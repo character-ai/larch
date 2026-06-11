@@ -396,6 +396,38 @@ def test_partial_success_waterfall_without_handoff_stalls(tmp_path: Path) -> Non
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
 
+def test_partial_success_waterfall_bump_only_stalls_without_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Winning tier + residual bump-only conflicts raises Stalled without handoff flag."""
+    monkeypatch.setenv(config.ENV_LARCH_VERSION_FILES, "pkg/version.txt")
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "pkg/version.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="conflicts remain"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
+        )
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
 def test_handoff_uses_implement_tmpdir_env_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
