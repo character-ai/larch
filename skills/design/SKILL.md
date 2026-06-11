@@ -270,7 +270,15 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
   --claude-pid "$PPID"
 ```
 
-Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-abort-cleanup.sh" \
+  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+  --claude-pid "$PPID"
+```
+
+and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
@@ -374,7 +382,16 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (entry guard prints skip breadcrumbs when brainstorm is off or already complete; the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
 
-When Step 1d.5 finishes or is skipped by its entry guard, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1d.5"` before continuing to Step 1e.
+When Step 1d.5 finishes or is skipped by its entry guard, run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.sh" \
+  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+  --claude-pid "$PPID" \
+  --mode complete
+```
+
+before continuing to Step 1e.
 
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
@@ -789,9 +806,9 @@ Legacy single-round `LOOP_STATUS` mapping for harnesses and manual `--mode singl
 
 - `LOOP_STATUS=complete` — proceed to Gate B. The review loop has not changed `plan.txt`; Gate B is the sole apply point for accepted findings, auto-applying by default and prompting only when `--per-round-approval` is set. Gate-B-settled paths run the heuristic multi-round continuation check after Gate B and any retained Step 2b.5 return; only the stop path proceeds to Step 3b.
 - `LOOP_STATUS=zero-findings-degraded-panel` — proceed to Gate B, whose zero-findings short-circuit returns to the heuristic multi-round continuation check before Step 3b.
-- `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; review aborted; current plan preserved.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --gate-b-bypass`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
-- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run the same `design-step3-state.sh --gate-b-bypass` fail-closed helper path.
-- `LOOP_STATUS=panel-failed` (`rc=1`) — short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run the same `design-step3-state.sh --gate-b-bypass` fail-closed helper path.
+- `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; review aborted; current plan preserved.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
+- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation.**` and short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run the same `design-step3-gate-b-bypass.sh` fail-closed helper path.
+- `LOOP_STATUS=panel-failed` (`rc=1`) — short-circuit to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4 (skip Gate B). Before jumping to Step 3b, run the same `design-step3-gate-b-bypass.sh` fail-closed helper path.
 - `LOOP_STATUS=main-agent-vote-required` — inline main-agent vote path below; after successful adjudication and re-tally, proceed through Gate B like other Gate-B-settled paths (not a skip status).
 - `LOOP_STATUS=cap-reached` — outer Gate-C cap reached; skip Gate B and proceed to Step 3b, then the Step 3b completion boundary, then Step 4.
 
@@ -803,11 +820,11 @@ The driver runs `check-mid-run-dirty-tree.sh --mode checkpoint` after reviewer c
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) — proceed to Step 3.5.
 
-If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Before jumping to Step 3b, run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --gate-b-bypass`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired. The Step 3.5 continuation block below is bypassed on this path.
+If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired. The Step 3.5 continuation block below is bypassed on this path.
 
-If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4. Before every Gate-B-bypass jump, run `design-step3-state.sh --gate-b-bypass` so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B.
+If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4. Before every Gate-B-bypass jump, run `design-step3-gate-b-bypass.sh` so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B.
 
-`.completed/step-3` is written by the Step 3 loop before any terminal Step 3b transition. Legacy `--mode single` Gate-B-bypass paths still use `design-step3-state.sh --gate-b-bypass` to write `step-3` and `step-3.5` before entering Step 3b.
+`.completed/step-3` is written by the Step 3 loop before any terminal Step 3b transition. Legacy `--mode single` Gate-B-bypass paths still use `design-step3-gate-b-bypass.sh` to write `step-3` and `step-3.5` before entering Step 3b.
 
 > **Step 3.5 (Gate B) runs only for loop bail-outs that need prompt-side apply/postplan handling** (`STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required`, `per-round-approval-required`, or `postplan-operator-required`) or for legacy `--mode single` harness callers. Terminal loop envelopes (`complete`, `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, `postplan-failed`) and `main-agent-vote-required` skip Step 3.5 and route per the post-loop branch matrix. The script-internal loop already applied findings, ran postplan, snapshots, and continuation on the happy path — do not re-enter Gate B or the retired orchestrator continuation loop.
 
@@ -836,7 +853,7 @@ Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence 
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
-**Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` (contract: `skills/design/scripts/plan-review-continuation.md`) and parse only its `PLAN_REVIEW_CONTINUE*` KVs. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, run `design-step3-state.sh --auto-continuation-entry`, and loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, then re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop` (never `--no-preview`). Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
+**Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` (contract: `skills/design/scripts/plan-review-continuation.md`) and parse only its `PLAN_REVIEW_CONTINUE*` KVs. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, run `design-step3-continuation-entry.sh`, and loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, then re-invoke `run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop` (never `--no-preview`). Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
 
 <!-- step:3b — Architecture Diagram -->
 
@@ -932,7 +949,7 @@ Print any rejected plan review findings:
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 
 > **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal — Gate C + issue plan write + cleanup still must run.
-At the Step 4 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-4"` before entering Step 4b.
+`.completed/step-4` is written by the Step 4 entry fence before Step 4b.
 
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
@@ -1009,7 +1026,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
    - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5c.
 
 > **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → validate → redact → `design-publish.sh` publish tail) still must run.
-At the Step 5b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5b"` before entering Step 5c.
+`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers for every terminal continue-to-Step-5c path.
 
 ### 5c — Write `larch:plan` to GitHub + publish
 
@@ -1018,7 +1035,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 **MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. Invoke `design-publish.sh` below. It validates `composed-plan.md` unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. Fix-and-retry re-invokes `design-publish.sh`; Override re-invokes it with `--skip-validate`.
+2. Invoke `design-publish.sh` below. It validates `composed-plan.md` unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. Fix-and-retry re-invokes `design-step5c.sh`; Override re-invokes it with `--skip-validate`.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -1030,7 +1047,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
   --claude-pid "$PPID"
 ```
 
-When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs the same `design-publish.sh` call; Override re-runs it with `--skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
+When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs `design-step5c.sh`; Override re-runs `design-step5c.sh --skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
 
 **Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, always parse through `read-result-env.sh` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
 
@@ -1093,12 +1110,17 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, firs
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-validator-autofix.sh" \
   --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
   --claude-pid "$PPID" \
-  --site "<SITE>"
+  --site "<SITE>" \
+  --validator-target-file "${_validator_target_file}" \
+  --validate-log-file "${VALIDATE_LOG_FILE}" \
+  --validate-defect-count "${VALIDATE_DEFECT_COUNT}" \
+  --validate-unsafe-token-count "${VALIDATE_UNSAFE_TOKEN_COUNT}" \
+  --validate-skipped-count "${VALIDATE_SKIPPED_COUNT}"
 ```
 
 Branch on `_autofix_status` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c`):
 
-- **`ok`** — the target file now passes the validator and the helper has already enforced the target-file-only, dirty-tree, and `plan.txt` optional-trailer guards. Append a `Warnings` entry recording the auto-correction via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" --exit-code 0 --category Warnings --output-file "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}" --redact`, then **continue the surrounding success path without prompting**. Use the preserved original validator log path from `ORIGINAL_VALIDATE_LOG_FILE` when present; revalidation may overwrite the live validator log after the defect evidence was captured. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-postplan-emit.sh --with-plan-size ...` fence (same site flags) so plan-size + validation re-run against the fixed plan; for Step 5c, re-invoke `design-publish.sh`. The durable `_autofix_attempted` sentinel remains in place only for the same site/target/evidence cycle so a re-entered identical validator failure falls through to the prompt instead of dispatching another external auto-fix cycle.
+- **`ok`** — the target file now passes the validator and the helper has already enforced the target-file-only, dirty-tree, and `plan.txt` optional-trailer guards. Append a `Warnings` entry recording the auto-correction via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands(auto-fixed:${_autofix_fixed_by})" --exit-code 0 --category Warnings --output-file "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}" --redact`, then **continue the surrounding success path without prompting**. Use the preserved original validator log path from `ORIGINAL_VALIDATE_LOG_FILE` when present; revalidation may overwrite the live validator log after the defect evidence was captured. For Step 2b / Gate B / discussion-round2, re-enter that site's merged `design-step2b-postplan.sh` fence (same `--site` flags) so plan-size + validation re-run against the fixed plan; for Step 5c, re-invoke `design-step5c.sh --skip-validate`. The durable `_autofix_attempted` sentinel remains in place only for the same site/target/evidence cycle so a re-entered identical validator failure falls through to the prompt instead of dispatching another external auto-fix cycle.
 - **`exhausted`, `unavailable`, `failed`, or `skipped-cycle-cap`** — auto-repair did not resolve the defects, no external vendor was available, the helper exited non-zero or omitted/returned an unknown status, validator revalidation had an infrastructure failure, or this same site/target/evidence cycle already spent its auto-fix attempt. **Always** append a `Warnings` entry noting that defects occurred and auto-fix did not resolve them (same `append-tool-failure.sh` call, `--tool "validate-plan-commands(auto-fix-${_autofix_status})"` and `--output-file "${_autofix_log_file:-$DESIGN_TMPDIR/validate-plan-commands.log}"`), then fall through to the operator `AskUserQuestion` below. Missing/unknown `AUTOFIX_STATUS` never continues silently.
 
 When auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.

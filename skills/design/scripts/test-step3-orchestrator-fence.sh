@@ -9,7 +9,9 @@ READ_RESULT_ENV_SH="$REPO_ROOT/scripts/read-result-env.sh"
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
     local _repo_root="$REPO_ROOT"
-    "$_repo_root/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$design_tmpdir" --gate-b-bypass >/dev/null
+    SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
+      "$_repo_root/skills/design/scripts/design-step3-gate-b-bypass.sh" \
+      --session-env-path /dev/null >/dev/null
 }
 export -f apply_gate_b_bypass_sentinels
 
@@ -136,6 +138,16 @@ apply_step3_handoff() {
         LOOP_STATUS=panel-failed
     fi
 }
+
+echo "=== design-step3-review.sh contract pins ==="
+STEP3_REVIEW_SH="$REPO_ROOT/skills/design/scripts/design-step3-review.sh"
+grep -Fq 'STEP3_REVIEW_LOOP_STATUS=' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing STEP3_REVIEW_LOOP_STATUS emit'
+grep -Fq 'LOOP_STATUS=' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing LOOP_STATUS emit'
+grep -Fq 'read-result-env.sh' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing read-result-env handoff'
+pass 'design-step3-review.sh handoff contract present'
 
 echo "=== rc=0 sources result env ==="
 D1="$TMP/rc0-file"

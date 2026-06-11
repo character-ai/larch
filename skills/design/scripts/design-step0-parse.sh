@@ -167,6 +167,21 @@ case "$POSITIONAL_KIND" in
     exit 1
     ;;
 esac
+_step0_parsed_cache_dir="${HOME}/.cache/larch/sessions"
+mkdir -p "$_step0_parsed_cache_dir"
+_step0_parsed_cache="$_step0_parsed_cache_dir/step0-parsed-${CLAUDE_PID}.env"
+cat > "$_step0_parsed_cache" <<EOF_PARSED
+hard_requested=${hard_requested}
+partition_requested=${partition_requested}
+brainstorm_requested=${brainstorm_requested}
+approve_requested=${approve_requested}
+skip_approve_requested=${skip_approve_requested}
+no_dedup_requested=${no_dedup_requested}
+run_id=${run_id}
+POSITIONAL_KIND=${POSITIONAL_KIND}
+POSITIONAL_VALUE=${POSITIONAL_VALUE}
+EOF_PARSED
+printf 'STEP0_PARSED_ENV_PATH=%s\n' "$_step0_parsed_cache"
 printf 'HARD_REQUESTED=%s\nPARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n' \
   "$hard_requested" \
   "$partition_requested" \

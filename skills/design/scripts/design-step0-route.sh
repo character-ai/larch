@@ -88,6 +88,10 @@ design_source_env_optional() {
 }
 
    design_source_env_optional
+   if [ -f "$DESIGN_TMPDIR/.design-step0-parsed.env" ]; then
+     # shellcheck source=/dev/null
+     . "$DESIGN_TMPDIR/.design-step0-parsed.env"
+   fi
    _route_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-route-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 0b: could not allocate design-route stdout capture; aborting /design**" >&2
      exit 1

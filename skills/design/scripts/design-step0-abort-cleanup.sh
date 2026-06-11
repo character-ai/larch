@@ -87,19 +87,19 @@ design_source_env_optional() {
   fi
 }
 
+design_require_plugin_root
 design_source_env_optional
 if [ -z "${DESIGN_TMPDIR:-}" ]; then
-  printf '%s\n' "/design Step 0 degraded: DESIGN_TMPDIR required after session rehydration" >&2
+  printf '%s\n' "/design Step 0 abort-cleanup: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-if [ -f "$DESIGN_TMPDIR/source-env.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$DESIGN_TMPDIR/source-env.sh"
-fi
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
-export CLAUDE_PLUGIN_ROOT
-"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
-  --codex-present "${CODEX_PRESENT:-false}" \
-  --cursor-present "${CURSOR_PRESENT:-false}" \
-  --codex-binary-found "${CODEX_BINARY_FOUND:-false}" \
-  --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"
+printf '%s\n' "**⚠ /design: aborted by operator — external tool unhealthy; re-run once it recovers.**"
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+  --log "$DESIGN_TMPDIR/execution-issues.md" \
+  --site "design Step 0" \
+  --tool "degraded-tools-gate" \
+  --exit-code 0 \
+  --category Warnings \
+  --output-file "$DESIGN_TMPDIR/execution-issues.md" \
+  --redact 2>/dev/null || true
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$DESIGN_TMPDIR"

@@ -87,19 +87,14 @@ design_source_env_optional() {
   fi
 }
 
+design_require_plugin_root
 design_source_env_optional
 if [ -z "${DESIGN_TMPDIR:-}" ]; then
-  printf '%s\n' "/design Step 0 degraded: DESIGN_TMPDIR required after session rehydration" >&2
+  printf '%s\n' "/design Step 3 continuation-entry: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-if [ -f "$DESIGN_TMPDIR/source-env.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$DESIGN_TMPDIR/source-env.sh"
-fi
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
-export CLAUDE_PLUGIN_ROOT
-"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
-  --codex-present "${CODEX_PRESENT:-false}" \
-  --cursor-present "${CURSOR_PRESENT:-false}" \
-  --codex-binary-found "${CODEX_BINARY_FOUND:-false}" \
-  --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-state.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --auto-continuation-entry
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — auto-continuation entry" || true

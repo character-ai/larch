@@ -125,6 +125,11 @@ if [ -z "$DESIGN_TMPDIR" ] || [ -z "$SESSION_ID" ]; then
   exit 1
 fi
 
+_step0_parsed_src="${HOME}/.cache/larch/sessions/step0-parsed-${CLAUDE_PID}.env"
+if [ -f "$_step0_parsed_src" ]; then
+  cp "$_step0_parsed_src" "$DESIGN_TMPDIR/.design-step0-parsed.env"
+fi
+
 DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "design Step 0 — session setup" || true
 

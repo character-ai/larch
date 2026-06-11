@@ -89,19 +89,24 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+_postplan_site="${SITE:-step2b}"
+_postplan_args=(--design-tmpdir "$DESIGN_TMPDIR" --with-plan-size)
+case "$_postplan_site" in
+  step2b|"") _postplan_args+=(--snapshot-original) ;;
+esac
 set +e
 _postplan_out=$(env LARCH_QUIET_DISABLE=1 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --with-plan-size \
-  --snapshot-original)
+  "${_postplan_args[@]}")
 _postplan_rc=$?
 set -e
 printf '%s\n' "${_postplan_out:-}"
 case "${_postplan_rc:-1}" in
   0)
-    mkdir -p "$DESIGN_TMPDIR/.completed"
-    : > "$DESIGN_TMPDIR/.completed/step-2b"
-    : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+    if [[ "$_postplan_site" == step2b || -z "$_postplan_site" ]]; then
+      mkdir -p "$DESIGN_TMPDIR/.completed"
+      : > "$DESIGN_TMPDIR/.completed/step-2b"
+      : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+    fi
     ;;
   10)
     VALIDATE_STATUS=""

@@ -96,5 +96,11 @@ case "${MODE:-}" in
     [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
     LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.5 — brainstorm" || true
     ;;
+  complete)
+    design_source_env_optional
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-1d.5"
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    ;;
   *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
 esac

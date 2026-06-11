@@ -97,14 +97,14 @@ case "${MODE:-}" in
     ;;
   skip)
     design_source_env_optional
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md"
     : > "$DESIGN_TMPDIR/architecture-diagram.skipped"
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     ;;
   architectural)
     design_source_env_optional
-    rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md" "$DESIGN_TMPDIR/architecture-diagram.skipped"
     [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    rm -f "$DESIGN_TMPDIR/architecture-diagram.md" "$DESIGN_TMPDIR/architecture-diagram.candidate.md" "$DESIGN_TMPDIR/architecture-diagram.skipped"
     ;;
   *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
 esac

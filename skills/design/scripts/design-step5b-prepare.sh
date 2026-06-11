@@ -87,9 +87,75 @@ design_source_env_optional() {
   fi
 }
 
-   design_source_env_optional
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-   set +e
-   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" prepare --design-tmpdir "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/oos-filing-prepare.env" 2>"$DESIGN_TMPDIR/oos-filing-prepare.stderr.log"
-   _oos_prep_rc=$?
-   set -e
+design_require_plugin_root
+design_source_env_optional
+if [ -z "${DESIGN_TMPDIR:-}" ]; then
+  printf '%s\n' "/design Step 5b prepare: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+set +e
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" prepare --design-tmpdir "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/oos-filing-prepare.env" 2>"$DESIGN_TMPDIR/oos-filing-prepare.stderr.log"
+_oos_prep_rc=$?
+set -e
+
+step5b_mark_complete() {
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-5b"
+}
+
+FILE_DESIGN_OOS_STATUS=""
+FILE_DESIGN_OOS_COMBINED=""
+FILE_DESIGN_OOS_DEPS_TSV=""
+FILE_DESIGN_OOS_DEPS_AVAILABLE=""
+OOS_ISSUE_STDOUT_PATH="$DESIGN_TMPDIR/oos-issue.stdout.txt"
+
+if [[ "${_oos_prep_rc:-0}" -ne 0 ]]; then
+  if [[ -s "$DESIGN_TMPDIR/oos-filing-prepare.stderr.log" ]]; then
+    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+      --log "$DESIGN_TMPDIR/execution-issues.md" \
+      --site "design Step 5b" \
+      --tool "file-design-oos.sh prepare" \
+      --exit-code "${_oos_prep_rc}" \
+      --category "Tool Failures" \
+      --output-file "$DESIGN_TMPDIR/oos-filing-prepare.stderr.log" \
+      --redact || true
+  fi
+  printf '%s\n' "**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5c**"
+  printf 'STEP5B_STATUS=prepare-failed-continue\nOOS_PREP_RC=%s\nOOS_ISSUE_STDOUT_PATH=%s\n' "${_oos_prep_rc}" "$OOS_ISSUE_STDOUT_PATH"
+  step5b_mark_complete
+  exit 0
+fi
+
+while IFS= read -r _prep_line || [[ -n "$_prep_line" ]]; do
+  case "$_prep_line" in
+    FILE_DESIGN_OOS_STATUS=*) FILE_DESIGN_OOS_STATUS="${_prep_line#FILE_DESIGN_OOS_STATUS=}" ;;
+    FILE_DESIGN_OOS_COMBINED=*) FILE_DESIGN_OOS_COMBINED="${_prep_line#FILE_DESIGN_OOS_COMBINED=}" ;;
+    FILE_DESIGN_OOS_DEPS_TSV=*) FILE_DESIGN_OOS_DEPS_TSV="${_prep_line#FILE_DESIGN_OOS_DEPS_TSV=}" ;;
+    FILE_DESIGN_OOS_DEPS_AVAILABLE=*) FILE_DESIGN_OOS_DEPS_AVAILABLE="${_prep_line#FILE_DESIGN_OOS_DEPS_AVAILABLE=}" ;;
+    FILE_DESIGN_OOS_*|WARN=*)
+      printf '%s\n' "$_prep_line"
+      ;;
+  esac
+done <"$DESIGN_TMPDIR/oos-filing-prepare.env"
+
+printf 'STEP5B_STATUS=%s\nOOS_PREP_RC=%s\nOOS_ISSUE_STDOUT_PATH=%s\n' "${FILE_DESIGN_OOS_STATUS:-}" "${_oos_prep_rc:-0}" "$OOS_ISSUE_STDOUT_PATH"
+[[ -n "${FILE_DESIGN_OOS_COMBINED:-}" ]] && printf 'FILE_DESIGN_OOS_COMBINED=%s\n' "$FILE_DESIGN_OOS_COMBINED"
+[[ -n "${FILE_DESIGN_OOS_DEPS_TSV:-}" ]] && printf 'FILE_DESIGN_OOS_DEPS_TSV=%s\n' "$FILE_DESIGN_OOS_DEPS_TSV"
+[[ -n "${FILE_DESIGN_OOS_DEPS_AVAILABLE:-}" ]] && printf 'FILE_DESIGN_OOS_DEPS_AVAILABLE=%s\n' "$FILE_DESIGN_OOS_DEPS_AVAILABLE"
+
+case "${FILE_DESIGN_OOS_STATUS:-}" in
+  ready)
+    printf 'STEP5B_NEEDS_ANNOTATE=true\n'
+    ;;
+  skip-already-filed-sentinel)
+    if [[ -s "$OOS_ISSUE_STDOUT_PATH" ]]; then
+      printf 'STEP5B_NEEDS_ANNOTATE=true\n'
+    else
+      step5b_mark_complete
+    fi
+    ;;
+  skip-sentinel|skip-no-items|skip-all-security)
+    step5b_mark_complete
+    ;;
+esac

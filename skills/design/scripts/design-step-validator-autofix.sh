@@ -62,6 +62,11 @@ while [ "$#" -gt 0 ]; do
     --skip-validate) SKIP_VALIDATE=1; shift ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
+    --validator-target-file) _validator_target_file="$2"; shift 2 ;;
+    --validate-log-file) VALIDATE_LOG_FILE="$2"; shift 2 ;;
+    --validate-defect-count) VALIDATE_DEFECT_COUNT="$2"; shift 2 ;;
+    --validate-unsafe-token-count) VALIDATE_UNSAFE_TOKEN_COUNT="$2"; shift 2 ;;
+    --validate-skipped-count) VALIDATE_SKIPPED_COUNT="$2"; shift 2 ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -89,6 +94,11 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+case "${SITE:-}" in
+  "design Step 5c"|"design Step 5c "*) _validator_target_file="${_validator_target_file:-$DESIGN_TMPDIR/composed-plan.md}" ;;
+  *) _validator_target_file="${_validator_target_file:-$DESIGN_TMPDIR/plan.txt}" ;;
+esac
+[ -n "${_validator_target_file:-}" ] || _validator_target_file="$DESIGN_TMPDIR/plan.txt"
 _autofix_site_key=$(printf '%s' "$SITE" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_//; s/_$//')
 _autofix_target_key=$(basename "${_validator_target_file:-target}" | tr -cs 'A-Za-z0-9._-' '_' | sed 's/^_//; s/_$//')
 _autofix_evidence_key="${VALIDATE_DEFECT_COUNT:-unknown}-${VALIDATE_UNSAFE_TOKEN_COUNT:-unknown}-${VALIDATE_SKIPPED_COUNT:-unknown}"

@@ -87,8 +87,17 @@ design_source_env_optional() {
   fi
 }
 
-   design_source_env_optional
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+design_require_plugin_root
+design_source_env_optional
+if [ -z "${DESIGN_TMPDIR:-}" ]; then
+  printf '%s\n' "/design Step 5c: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+if [[ ! -f "$DESIGN_TMPDIR/.completed/step-5b" ]]; then
+  printf '%s\n' "**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**" >&2
+  exit 1
+fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1
@@ -177,13 +186,34 @@ design_source_env_optional() {
    . "$_safe_publish_env"
    rm -f "$_publish_stdout_file" "$_safe_publish_env"
    if [[ "$_publish_input_is_temp" == true ]]; then rm -f "$_publish_input"; fi
-   if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
-     mkdir -p "$DESIGN_TMPDIR/.completed"
-     : > "$DESIGN_TMPDIR/.completed/step-5c"
-   fi
+if [[ "${PLAN_WRITE_OK:-}" == true ]]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-5c"
+fi
+
+_cleanup_eligible=false
+if [[ "${PLAN_WRITE_OK:-}" == true && "${STANDALONE_HEAVY_FAILED:-false}" != true ]]; then
+  if [[ -z "${SESSION_ID:-}" || "${PUBLISH_OK:-}" == true ]]; then
+    _cleanup_eligible=true
+  fi
+fi
 
 cat > "$DESIGN_TMPDIR/.design-step5c-status.env" <<EOF_STATUS
 PLAN_WRITE_OK=${PLAN_WRITE_OK:-}
 PUBLISH_OK=${PUBLISH_OK:-}
 STANDALONE_HEAVY_FAILED=${STANDALONE_HEAVY_FAILED:-}
+SESSION_ID=${SESSION_ID:-}
+PUBLISH_RC=${_publish_rc:-}
+PUBLISH_STDOUT_FALLBACK=${_publish_input_is_temp:-false}
+CLEANUP_ELIGIBLE=${_cleanup_eligible}
 EOF_STATUS
+
+printf 'PUBLISH_RC=%s\nPLAN_WRITE_OK=%s\nPUBLISH_OK=%s\n' "${_publish_rc:-}" "${PLAN_WRITE_OK:-}" "${PUBLISH_OK:-}"
+printf 'VALIDATE_STATUS=%s\nVALIDATE_DEFECT_COUNT=%s\nVALIDATE_SKIPPED_COUNT=%s\n' "${VALIDATE_STATUS:-}" "${VALIDATE_DEFECT_COUNT:-}" "${VALIDATE_SKIPPED_COUNT:-}"
+printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\nVALIDATE_LOG_FILE=%s\n' "${VALIDATE_UNSAFE_TOKEN_COUNT:-}" "${VALIDATE_LOG_FILE:-}"
+printf 'FINAL_SUMMARY_PATH=%s\nUPSERT_STATUS=%s\nARCHITECTURE_SOURCE=%s\n' "${FINAL_SUMMARY_PATH:-}" "${UPSERT_STATUS:-}" "${ARCHITECTURE_SOURCE:-}"
+printf 'CLEANUP_ELIGIBLE=%s\n' "${_cleanup_eligible}"
+
+if [[ "${_publish_rc:-0}" -eq 4 ]]; then
+  printf 'STEP5C_STATUS=validator-defects\n'
+fi

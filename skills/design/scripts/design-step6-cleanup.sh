@@ -89,13 +89,27 @@ design_source_env_optional() {
 
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-6"
-if [ -f "$DESIGN_TMPDIR/.design-step5c-status.env" ]; then
-  # shellcheck source=/dev/null
-  . "$DESIGN_TMPDIR/.design-step5c-status.env"
+if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" ]]; then
+  printf '%s\n' "**⚠ Step 6: missing Step 5c status sidecar; preserving $DESIGN_TMPDIR for recovery.**" >&2
+  exit 1
 fi
-if [ "${PUBLISH_OK:-true}" = false ]; then
+# shellcheck source=/dev/null
+. "$DESIGN_TMPDIR/.design-step5c-status.env"
+if [[ "${PLAN_WRITE_OK:-}" != true ]]; then
+  printf '%s\n' "**⚠ Step 6: plan write did not succeed; preserving $DESIGN_TMPDIR.**" >&2
+  exit 1
+fi
+if [[ "${STANDALONE_HEAVY_FAILED:-false}" == true ]]; then
+  printf '%s\n' "**⚠ Step 6: standalone heavy failed; preserving $DESIGN_TMPDIR.**" >&2
+  exit 1
+fi
+if [[ -n "${SESSION_ID:-}" && "${PUBLISH_OK:-}" != true ]]; then
   printf '%s\n' "**⚠ Step 6: publish did not complete; preserving $DESIGN_TMPDIR for recovery.**" >&2
   exit 1
 fi
+if [[ "${CLEANUP_ELIGIBLE:-}" == false ]]; then
+  printf '%s\n' "**⚠ Step 6: cleanup not eligible per Step 5c status; preserving $DESIGN_TMPDIR.**" >&2
+  exit 1
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-6"
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$DESIGN_TMPDIR"

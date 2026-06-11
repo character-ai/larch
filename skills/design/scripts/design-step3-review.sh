@@ -175,6 +175,11 @@ elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|ze
   LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+[[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]] && printf 'STEP3_REVIEW_LOOP_STATUS=%s\n' "$STEP3_REVIEW_LOOP_STATUS"
+[[ -n "${LOOP_STATUS:-}" ]] && printf 'LOOP_STATUS=%s\n' "$LOOP_STATUS"
+[[ -n "${POSTPLAN_RC:-}" ]] && printf 'POSTPLAN_RC=%s\n' "$POSTPLAN_RC"
+[[ -n "${DEDUP_RC:-}" ]] && printf 'DEDUP_RC=%s\n' "$DEDUP_RC"
+[[ -n "${FINAL_ROUND_NUM:-}" ]] && printf 'FINAL_ROUND_NUM=%s\n' "$FINAL_ROUND_NUM"
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
   printf '%s\n' "**⚠ Step 3: postplan failed; preserving \$DESIGN_TMPDIR for operator repair — do not advance to Step 3b or Gate C.**"
   exit 1

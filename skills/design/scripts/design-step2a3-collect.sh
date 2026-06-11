@@ -87,21 +87,29 @@ design_source_env_optional() {
   fi
 }
 
-case "${MODE:-}" in
-  regular)
-    design_source_env_optional
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
-      "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
-      "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" \
-      "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
-    ;;
-  quick)
-    design_source_env_optional
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
-      "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
-      "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
-    ;;
-  *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
-esac
+_collect_paths=()
+if ((${#PUBLIC_ARGV_WORDS[@]} > 0)); then
+  _collect_paths=("${PUBLIC_ARGV_WORDS[@]}")
+else
+  case "${MODE:-}" in
+    regular)
+      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-arch-output.txt")
+      if [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]]; then
+        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-innovation-output.txt")
+        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt")
+      fi
+      ;;
+    quick)
+      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-generic-output.txt")
+      [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-generic-output.txt")
+      ;;
+    *) printf '%s\n' "$0: --mode required" >&2; exit 2 ;;
+  esac
+fi
+if ((${#_collect_paths[@]} == 0)); then
+  printf '%s\n' "COLLECT_STATUS=skipped-no-launched-slots"
+  exit 0
+fi
+design_source_env_optional
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+"${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1260 "${_collect_paths[@]}"

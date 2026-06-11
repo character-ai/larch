@@ -88,6 +88,16 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" ]]; then
+  printf '%s\n' "**⚠ Step 6 prelude: missing Step 5c status sidecar; skipping step-5d write.**" >&2
+  exit 1
+fi
+# shellcheck source=/dev/null
+. "$DESIGN_TMPDIR/.design-step5c-status.env"
+if [[ "${PLAN_WRITE_OK:-}" != true ]]; then
+  printf '%s\n' "**⚠ Step 6 prelude: plan write did not succeed; skipping step-5d write.**" >&2
+  exit 1
+fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-5d"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"

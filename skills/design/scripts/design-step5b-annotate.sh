@@ -87,8 +87,61 @@ design_source_env_optional() {
   fi
 }
 
-     set +e
-     _oos_ann_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" annotate --design-tmpdir "$DESIGN_TMPDIR" --issue-stdout-file "$DESIGN_TMPDIR/oos-issue.stdout.txt" 2>"$DESIGN_TMPDIR/oos-filing-annotate.stderr.log")
-     _oos_ann_rc=$?
-     printf '%s\n' "$_oos_ann_out" > "$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt"
-     set -e
+design_require_plugin_root
+design_source_env_optional
+if [ -z "${DESIGN_TMPDIR:-}" ]; then
+  printf '%s\n' "/design Step 5b annotate: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_oos_issue_stdout="$DESIGN_TMPDIR/oos-issue.stdout.txt"
+set +e
+_oos_ann_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" annotate --design-tmpdir "$DESIGN_TMPDIR" --issue-stdout-file "$_oos_issue_stdout" 2>"$DESIGN_TMPDIR/oos-filing-annotate.stderr.log")
+_oos_ann_rc=$?
+printf '%s\n' "$_oos_ann_out" > "$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt"
+set -e
+printf '%s\n' "$_oos_ann_out"
+printf 'OOS_ANN_RC=%s\n' "${_oos_ann_rc:-0}"
+
+FILE_DESIGN_OOS_STATUS=""
+WARN=""
+while IFS= read -r _ann_line || [[ -n "$_ann_line" ]]; do
+  case "$_ann_line" in
+    FILE_DESIGN_OOS_STATUS=*) FILE_DESIGN_OOS_STATUS="${_ann_line#FILE_DESIGN_OOS_STATUS=}" ;;
+    WARN=*) WARN="${_ann_line#WARN=}" ;;
+  esac
+done <<<"$_oos_ann_out"
+
+if [[ "${_oos_ann_rc:-0}" -ne 0 ]]; then
+  _issues_failed=0
+  if grep -Eq '^ISSUES_FAILED=[1-9][0-9]*' "$_oos_issue_stdout" 2>/dev/null; then
+    _issues_failed=1
+  fi
+  if [[ -s "$DESIGN_TMPDIR/oos-filing-annotate.stderr.log" ]]; then
+    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+      --log "$DESIGN_TMPDIR/execution-issues.md" \
+      --site "design Step 5b" \
+      --tool "file-design-oos.sh annotate" \
+      --exit-code "${_oos_ann_rc}" \
+      --category "Tool Failures" \
+      --output-file "$DESIGN_TMPDIR/oos-filing-annotate.stderr.log" \
+      --redact || true
+  fi
+  if [[ "$_issues_failed" -eq 1 ]]; then
+    printf '%s\n' "**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**"
+  fi
+elif [[ "${FILE_DESIGN_OOS_STATUS:-}" == annotate-skipped-empty-stdout && -n "${WARN:-}" ]]; then
+  "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+    --log "$DESIGN_TMPDIR/execution-issues.md" \
+    --site "design Step 5b annotate-skip" \
+    --tool "file-design-oos.sh annotate" \
+    --exit-code 0 \
+    --category Warnings \
+    --output-file "$DESIGN_TMPDIR/oos-filing-annotate.stderr.log" \
+    --redact || true
+  printf '%s\n' "**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**"
+fi
+
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-5b"
+printf 'STEP5B_STATUS=annotate-complete\n'
