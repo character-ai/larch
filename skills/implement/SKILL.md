@@ -732,7 +732,7 @@ Step 7a composes no prompt-side public summary; the helper owns the `larch:diagr
 `skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch.
 The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
