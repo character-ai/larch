@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import argparse
 import json
@@ -120,6 +121,7 @@ class Manifest:
 class RefreshSkip:
     skipped: bool
     reason: str
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -244,6 +246,35 @@ def _validate_slug(label: str, value: str) -> None:
         raise ValueError(f"invalid {label}: {value}")
 
 
+def _validate_plan_goals_payload(path: Path) -> None:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    in_section = False
+    saw = False
+    body_lines: list[str] = []
+    last_test_plan = 0
+    for line in lines:
+        if line == "## Implementation Plan":
+            if not saw:
+                in_section = True
+            saw = True
+            continue
+        if in_section:
+            body_lines.append(line)
+            if line == "## Test plan":
+                last_test_plan = len(body_lines)
+    if not saw:
+        raise ValueError("plan-goals sanitizer rejected: missing Implementation Plan section")
+    limit = last_test_plan - 1 if last_test_plan > 0 else len(body_lines)
+    impl_body = [line for line in body_lines[:limit] if line.strip()]
+    if not impl_body:
+        raise ValueError("plan-goals sanitizer rejected: Implementation Plan body is empty")
+    first = impl_body[0].strip().lower()
+    if re.fullmatch(r"(see plan\.txt|see attached|see linked|tbd|todo)\.?", first):
+        raise ValueError(
+            "plan-goals sanitizer rejected: Implementation Plan body is a pointer-only placeholder",
+        )
+
+
 def _batch_validate_payload(batch: str, path: Path) -> None:
     sanitizer = _batch_sanitizer(batch)
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -256,8 +287,10 @@ def _batch_validate_payload(batch: str, path: Path) -> None:
             if not line.strip():
                 continue
             json.loads(line)
-    elif sanitizer in {"none", "plan-goals"}:
+    elif sanitizer == "none":
         return
+    elif sanitizer == "plan-goals":
+        _validate_plan_goals_payload(path)
     else:
         raise ValueError(f"unsupported sanitizer for batch {batch}: {sanitizer}")
 
@@ -374,6 +407,20 @@ def _update_manifest_v2(path: Path, updates: dict[str, Any]) -> dict[str, Any]:
     data["updated_at"] = _now_utc()
     _write_manifest_v2(path, data)
     return data
+
+
+def _plugin_version() -> str:
+    plugin_json = _REPO_ROOT / ".claude-plugin" / "plugin.json"
+    if plugin_json.is_file():
+        try:
+            data = json.loads(plugin_json.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                version = str(data.get("version", "") or "").strip()
+                if version and version != "null":
+                    return version
+        except (OSError, json.JSONDecodeError):
+            pass
+    return "unknown"
 
 
 def _now_utc() -> str:
@@ -536,7 +583,7 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
     timing_path = tmpdir / "timing-report-refresh.json"
     env = _report_subprocess_env(ctx)
     if _TOKEN_REPORT.is_file():
-        _ = runner.run(
+        token_result = runner.run(
             [
                 "bash",
                 str(_TOKEN_REPORT),
@@ -549,11 +596,11 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
             cwd=str(_REPO_ROOT),
             env=env,
         )
-    if token_path.is_file():
-        with suppress(Exception):
-            _write_batch(log_root, "implement", run_id, "token-report", token_path)
+        if token_result.returncode == 0 and token_path.is_file():
+            with suppress(Exception):
+                _write_batch(log_root, "implement", run_id, "token-report", token_path)
     if _TIMING_REPORT.is_file():
-        _ = runner.run(
+        timing_result = runner.run(
             [
                 "bash",
                 str(_TIMING_REPORT),
@@ -566,9 +613,9 @@ def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> N
             cwd=str(_REPO_ROOT),
             env=env,
         )
-    if timing_path.is_file():
-        with suppress(Exception):
-            _write_batch(log_root, "implement", run_id, "timing-report", timing_path)
+        if timing_result.returncode == 0 and timing_path.is_file():
+            with suppress(Exception):
+                _write_batch(log_root, "implement", run_id, "timing-report", timing_path)
 
 
 def effective_run_id(ctx: RunContext) -> str:
@@ -615,7 +662,7 @@ def _synthesize_manifest_v2(
         "operator_repo_root": "<REPO_ROOT>",
         "parent_skill": None,
         "issue_number": None,
-        "larch_version": "unknown",
+        "larch_version": _plugin_version(),
         "model_roster": {
             "main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown"),
         },
@@ -854,9 +901,49 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
     return recovery.manifest
 
 
+def _manifest_v2_merge(data: dict[str, Any], manifest: Manifest) -> dict[str, Any]:
+    merged = dict(data)
+    merged["status"] = manifest.status
+    merged["steps_ran"] = dict(manifest.steps_ran)
+    merged["updated_at"] = _now_utc()
+    v2_exclude = {
+        "status",
+        "schema_version",
+        "skill",
+        "run_id",
+        "steps_ran",
+        "started_at",
+        "updated_at",
+        "operator_cwd",
+        "operator_repo_root",
+        "parent_skill",
+        "larch_version",
+        "model_roster",
+        "effort",
+        "attempt",
+        "superseded_by",
+        "stalled_at_step",
+        "flags",
+    }
+    if manifest.extra:
+        for key, value in manifest.extra.items():
+            if key not in v2_exclude:
+                merged[key] = value
+    return merged
+
+
 def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
+    path = _manifest_path(ctx)
+    if path.is_file():
+        try:
+            data = _read_manifest_v2(path)
+            if data.get("schema_version") == 2:
+                _write_manifest_v2(path, _manifest_v2_merge(data, manifest))
+                return
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
     _atomic_write(
-        _manifest_path(ctx),
+        path,
         json.dumps(_manifest_to_dict(manifest), indent=2, sort_keys=True) + "\n",
     )
 
@@ -1048,6 +1135,67 @@ def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
         raise ShipError(msg)
 
 
+def _stage_vendor_failure_diagnostics(ctx: RunContext, log_root: Path) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    script = _REPO_ROOT / "scripts" / "flush-vendor-failure-diagnostics.sh"
+    if not script.is_file():
+        return
+    with suppress(Exception):
+        _ = proc.run(
+            [
+                "bash",
+                str(script),
+                "--tmpdir",
+                ctx.tmpdir,
+                "--run-id",
+                run_id,
+                "--log-root",
+                str(log_root),
+            ],
+            cwd=str(_REPO_ROOT),
+        )
+
+
+def _stage_pre_commit(
+    runner: Runner,
+    ctx: RunContext,
+    log_root: Path,
+    *,
+    mode: str = "refresh",
+) -> None:
+    run_dir = _run_log_dir(ctx)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    if mode == "refresh":
+        _render_execution_issues_batch(
+            ctx,
+            run_dir,
+            step_label="pre-push",
+            source_label="execution-issues.md pre-push refresh",
+        )
+        with suppress(ShipError):
+            _write_final_report(runner, ctx)
+        _render_ledger_reports(runner, ctx, log_root)
+        _render_token_timing_batches(ctx, log_root)
+    else:
+        _render_execution_issues_batch(
+            ctx,
+            run_dir,
+            step_label="commit-tail",
+            source_label="execution-issues.md commit-tail",
+        )
+    _stage_vendor_failure_diagnostics(ctx, log_root)
+    if mode == "refresh":
+        _ = capture_session_transcript(ctx, runner, defer_commit=True)
+        _render_execution_issues_batch(
+            ctx,
+            run_dir,
+            step_label="pre-push-post-transcript",
+            source_label="execution-issues.md post-transcript refresh",
+        )
+
+
 def flush_logs_pre(
     runner: Runner,
     ctx: RunContext,
@@ -1063,25 +1211,7 @@ def flush_logs_pre(
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
-    run_dir = _run_log_dir(ctx)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    _render_execution_issues_batch(
-        ctx,
-        run_dir,
-        step_label="pre-push",
-        source_label="execution-issues.md pre-push refresh",
-    )
-    with suppress(ShipError):
-        _write_final_report(runner, ctx)
-    _render_ledger_reports(runner, ctx, log_root)
-    _render_token_timing_batches(ctx, log_root)
-    _ = capture_session_transcript(ctx, runner, defer_commit=True)
-    _render_execution_issues_batch(
-        ctx,
-        run_dir,
-        step_label="pre-push-post-transcript",
-        source_label="execution-issues.md post-transcript refresh",
-    )
+    _stage_pre_commit(runner, ctx, log_root, mode="refresh")
     step9a1 = _step9a1_heuristic(ctx)
     steps_update = dict(manifest.steps_ran)
     if step9a1 is not None:
@@ -1094,11 +1224,20 @@ def flush_logs_pre(
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
     try:
         commit_result = _commit_run(log_root, "implement", effective_run_id(ctx), cwd=cwd)
-    except (OSError, ShipError):
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+    except (OSError, ShipError) as exc:
+        return RefreshSkip(
+            skipped=True,
+            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            error=str(exc).strip(),
+        )
     if commit_result.returncode != 0:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
-    if commit_result.argv == ("larch-log-volatile-only",):
+        err = (commit_result.stderr or commit_result.stdout or "").strip()
+        return RefreshSkip(
+            skipped=True,
+            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            error=err,
+        )
+    if commit_result.argv in {("larch-log-volatile-only",), ("true",)}:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
     return RefreshSkip(skipped=False, reason="")
 
@@ -1587,7 +1726,12 @@ def _larch_log_commit(
     return git.commit(runner, subject, cwd=git_root)
 
 
-def _copy_tree_to_repo(log_root: Path, repo_root: Path, skill: str, run_id: str) -> tuple[list[str], Path]:
+def _copy_tree_to_repo(
+    log_root: Path,
+    repo_root: Path,
+    skill: str,
+    run_id: str,
+) -> tuple[list[str], Path, str | None]:
     src = _run_dir(log_root, skill, run_id)
     dest = _repo_run_dir(repo_root, skill, run_id)
     rels: list[str] = []
@@ -1597,6 +1741,10 @@ def _copy_tree_to_repo(log_root: Path, repo_root: Path, skill: str, run_id: str)
             with tempfile.TemporaryDirectory(dir=dest.parent, prefix=f".{run_id}.") as tmp:
                 tmp_dest = Path(tmp) / run_id
                 _safe_copy_run_tree(src, tmp_dest)
+                try:
+                    _scrub_run_tree(tmp_dest)
+                except ShipError as exc:
+                    return [], dest, str(exc)
                 if dest.exists():
                     shutil.rmtree(dest)
                 tmp_dest.replace(dest)
@@ -1615,8 +1763,12 @@ def _copy_tree_to_repo(log_root: Path, repo_root: Path, skill: str, run_id: str)
                 elif item.is_file():
                     dest_item.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(item, dest_item)
+            try:
+                _scrub_run_tree(shared_dest)
+            except ShipError as exc:
+                return [], dest, str(exc)
         rels.append("larch-logs/shared")
-    return rels, dest
+    return rels, dest, None
 
 
 def _git_stdout(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -1637,13 +1789,19 @@ def _default_branches(repo_root: Path) -> set[str]:
 def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> CommandResult:
     sentinel = log_root.parent / "post-merge-sentinel"
     if sentinel.exists():
-        return CommandResult(("run-log", "commit"), 3, "", "refusing larch-log commit after post-merge sentinel\n", 0.0)
+        return CommandResult(
+            ("run-log", "commit"),
+            1,
+            "",
+            "refusing larch-log commit after post-merge sentinel\n",
+            0.0,
+        )
     repo_root = _resolve_consumer_repo_root(cwd)
     branch = _git_stdout(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
     if branch.returncode == 0 and branch.stdout.strip() in _default_branches(repo_root):
         return CommandResult(
             ("run-log", "commit"),
-            3,
+            1,
             "",
             f"refusing larch-log commit on default branch {branch.stdout.strip()}\n",
             0.0,
@@ -1652,7 +1810,9 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
     if manifest.is_file():
         with suppress(Exception):
             _update_manifest_v2(manifest, {})
-    rels, dest = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
+    rels, dest, scrub_error = _copy_tree_to_repo(log_root, repo_root, skill, run_id)
+    if scrub_error:
+        return CommandResult(("run-log", "commit"), 1, "", f"{scrub_error}\n", 0.0)
     if not rels:
         return CommandResult(("true",), 0, "", "", 0.0)
     bread_src = log_root.parent / "breadcrumbs"
@@ -1662,11 +1822,6 @@ def _commit_run(log_root: Path, skill: str, run_id: str, *, cwd: str | None) -> 
                 ["--source-dir", str(bread_src), "--dest-dir", str(dest / "breadcrumbs")],
             )
     violations = 0
-    for rel in rels:
-        directory = repo_root / rel
-        if directory.is_dir():
-            count, _files = redact.scrub_log_directory(directory)
-            violations += count
     status = _git_stdout(["git", "status", "--porcelain", "--", *rels], cwd=repo_root)
     if status.returncode != 0:
         return CommandResult(tuple(status.args), status.returncode, status.stdout, status.stderr, 0.0)
@@ -1749,7 +1904,7 @@ def larch_log_init_main(argv: list[str]) -> int:
         "operator_repo_root": "<REPO_ROOT>",
         "parent_skill": args.parent_skill or None,
         "issue_number": int(args.issue) if args.issue else None,
-        "larch_version": "unknown",
+        "larch_version": _plugin_version(),
         "model_roster": {"main": os.environ.get("CLAUDE_CODE_MODEL") or os.environ.get("CLAUDE_MODEL", "unknown")},
         "effort": os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") or os.environ.get("CLAUDE_EFFORT", "unknown"),
         "started_at": ts,
@@ -1809,7 +1964,7 @@ def larch_log_exists_main(argv: list[str]) -> int:
     if args.batch not in _LARCH_LOG_BATCHES:
         return _larch_log_fail(1, f"unknown batch: {args.batch}")
     path = _batch_path(args.log_root_path, args.skill, args.run_id, args.batch)
-    _emit_larch_log_envelope(path=path if path.exists() else None, written=False, unchanged=path.exists())
+    _emit_larch_log_envelope(path=path, written=False, unchanged=path.exists())
     return 0
 
 
@@ -1935,8 +2090,24 @@ def larch_log_flush_main(argv: list[str]) -> int:
     run_id = sid.read_text(encoding="utf-8", errors="replace").strip()
     if not validate_run_id_slug(run_id):
         return 0
+    log_root = Path(tmpdir) / "larch-logs"
+    ctx = RunContext(
+        branch="",
+        issue="",
+        repo="",
+        run_id=run_id,
+        tmpdir=tmpdir,
+        merge=False,
+        draft=False,
+        forked=False,
+        manifest_path=str(log_root / "implement" / run_id / "manifest.json"),
+        tool_label="",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+    )
     with suppress(Exception):
-        result = _commit_run(Path(tmpdir) / "larch-logs", "implement", run_id, cwd=str(Path.cwd()))
+        _stage_pre_commit(proc, ctx, log_root, mode="flush")
+        result = _commit_run(log_root, "implement", run_id, cwd=str(Path.cwd()))
         for line in result.stdout.splitlines():
             if line.startswith("SECRET_SCRUB_VIOLATIONS=") and not line.endswith("=0"):
                 print(
@@ -2012,7 +2183,11 @@ def refresh_run_logs_main(argv: list[str]) -> int:
             config.REFRESH_SKIP_COMMIT_FAILED,
             REFRESH_SKIP_RECOVERY_FAILED,
         }:
-            print(f"REFRESH_COMMITTED=false REASON={skip.reason}")
+            err = " ".join(skip.error.split())
+            if err:
+                print(f"REFRESH_COMMITTED=false REASON={skip.reason} ERROR={err}")
+            else:
+                print(f"REFRESH_COMMITTED=false REASON={skip.reason}")
         elif skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY:
             print("REFRESH_COMMITTED=false REASON=no-changes")
         else:
@@ -2572,6 +2747,149 @@ def append_failure_main(argv: list[str]) -> int:
     return 0
 
 
+_ROUND_SIDECAR_FILES = frozenset({
+    "review-tally.env",
+    "collector-results.env",
+    "collect-agent-results.log",
+    "review-summary.json",
+    "coder.env",
+    "coder-codex.wrapper.log",
+    "coder-cursor.wrapper.log",
+})
+
+_ROUND_ARTIFACT_ALLOW = (
+    "prune-decision.env",
+    "prune-nit.env",
+    "findings-classification.tsv",
+    "scout-archetype-yield.tsv",
+    "rejected-findings.md",
+    "oos-accepted-review.md",
+    "review-round-summary.md",
+    "voting-tally.md",
+    "aggregator-validate.stderr",
+    "aggregator-dispatch.stderr",
+    "review-dirty-tree-summary.env",
+    "panel-manifest.ndjson",
+    "code-voter-slots.ndjson",
+    "coder-prompt.md",
+    "coder-tool.txt",
+    "coder-cursor.log",
+)
+
+_ROUND_ARTIFACT_ALLOW_GLOBS = (
+    "cursor-ci-stall-*.json",
+    "dirty-checkpoint-*.env",
+    "voter*-diag.txt",
+    "*-parse-rate-diag.txt",
+    "skipped-findings*.md",
+    "scout-round*-status.env",
+    "scout-round*-manifest.json",
+)
+
+_ROUND_ARTIFACT_DENY_GLOBS = (
+    "cursor-specialist-*-output.txt",
+    "cursor-specialist-*-output.txt.meta",
+    "cursor-specialist-*-output.txt.json",
+    "cursor-specialist-*-output.txt.cap-hit",
+    "codex-specialist-*-output.txt",
+    "codex-specialist-*-output.txt.meta",
+    "codex-specialist-*-output.txt.json",
+    "codex-specialist-*-output.txt.cap-hit",
+    "cursor-specialist-*-output-phase*.txt",
+    "cursor-specialist-*-output-phase*.txt.*",
+    "cursor-specialist-*-output-retry.txt",
+    "cursor-specialist-*-output-retry.txt.*",
+    "codex-specialist-*-output-phase*.txt",
+    "codex-specialist-*-output-phase*.txt.*",
+    "codex-specialist-*-output-retry.txt",
+    "codex-specialist-*-output-retry.txt.*",
+    "*.dirty-tree",
+    "*.untracked-baseline",
+    "*.done",
+    "*.diag",
+    "*.sidecar",
+    "*.events.jsonl",
+    "*.sidecar.history",
+    "*.events.history",
+    "*.failure-diag",
+    "*-output.txt.prompt",
+    "*-output-*.txt.prompt",
+    "coder-output.log",
+    "coder-codex.log",
+    "*-vote-prompt.txt",
+    "dyn-*-codex-output-retry*.txt",
+    "dyn-*-codex-output-retry*.txt.meta",
+    "dyn-*-codex-output-retry*.txt.json",
+    "dyn-*-codex-output-retry*.txt.cap-hit",
+    "skipped-findings.security.md",
+    "submodule-paths.txt",
+    "submodule-scrub.log",
+    "submodule-revert.log",
+    "coder-commit.log",
+    "dyn-*-prompt.md",
+    "scout-round*-manifest.json.raw",
+    "findings.md",
+    "accepted-findings.md",
+    "rejected-findings-full.md",
+    "oos.md",
+    "reviewer-dyn-*.md",
+)
+
+_ROUND_ARTIFACT_DEBUG_GLOBS = (
+    "dyn-*-codex-output.txt",
+    "dyn-*-codex-output-phase*.txt",
+    "dyn-*-codex-output.txt.meta",
+    "dyn-*-codex-output-phase*.txt.meta",
+    "dyn-*-codex-output.txt.json",
+    "dyn-*-codex-output-phase*.txt.json",
+    "dyn-*-codex-output.txt.cap-hit",
+    "dyn-*-codex-output-phase*.txt.cap-hit",
+    "*-vote-output*.txt",
+    "*-vote-output*.txt.*",
+    "*-ns-retry*.txt",
+    "*-ns-retry*.txt.*",
+    "*-output-first-pass.txt",
+    "*-output.txt",
+    "*-output-*.txt",
+    "*-output.txt.meta",
+    "*-output-*.txt.meta",
+    "*-output.txt.json",
+    "*-output-*.txt.json",
+    "*-output.txt.cap-hit",
+    "*-output-*.txt.cap-hit",
+)
+
+
+def _round_name_matches(name: str, patterns: tuple[str, ...]) -> bool:
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in patterns)
+
+
+def _is_round_sidecar_file(name: str) -> bool:
+    return name in _ROUND_SIDECAR_FILES
+
+
+def _round_artifact_included(name: str) -> bool:
+    if _round_name_matches(name, _ROUND_ARTIFACT_DENY_GLOBS):
+        return False
+    if name in _ROUND_ARTIFACT_ALLOW or _round_name_matches(name, _ROUND_ARTIFACT_ALLOW_GLOBS):
+        return True
+    if os.environ.get("LARCH_FLUSH_DEBUG") == "1" and _round_name_matches(
+        name,
+        _ROUND_ARTIFACT_DEBUG_GLOBS,
+    ):
+        return True
+    return False
+
+
+def _stage_round_artifact(src: Path, name: str) -> str:
+    text = src.read_text(encoding="utf-8", errors="replace")
+    if "-vote-output" in name:
+        raw = text.encode("utf-8")
+        if len(raw) > 2048:
+            text = raw[:2048].decode("utf-8", errors="ignore") + f"\n[TRUNCATED: original {len(raw)} bytes]\n"
+    return redact.redact(text)
+
+
 def larch_log_write_round_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log write-round")
     parser.add_argument("--round", required=True)
@@ -2584,35 +2902,58 @@ def larch_log_write_round_main(argv: list[str]) -> int:
     source = Path(args.source_dir)
     if not source.is_dir() or source.is_symlink():
         return _larch_log_fail(1, f"source directory not found: {source}")
+    dynamic_dir = source / "dynamic-archetypes"
+    if dynamic_dir.is_symlink():
+        return _larch_log_fail(2, f"dynamic-archetypes must not be a symlink: {dynamic_dir}")
     dest = _run_dir(args.log_root_path, args.skill, args.run_id) / f"round-{args.round}"
+    prev_round_dir = _run_dir(args.log_root_path, args.skill, args.run_id) / f"round-{int(args.round) - 1}"
     dest.mkdir(parents=True, exist_ok=True)
     written = False
     archetype_refs: dict[str, str] = {}
-    for item in sorted(source.rglob("*")):
-        if item.parent != source and item.parent.name != "dynamic-archetypes":
-            continue
-        if item.is_symlink() or not item.is_file():
-            continue
-        name = item.name
-        if name.endswith((".done", ".prompt", ".history")) or name.startswith("."):
-            continue
-        if name.startswith("reviewer-dyn-") and name.endswith(".md"):
-            shared = args.log_root_path / "shared" / "archetypes"
-            shared.mkdir(parents=True, exist_ok=True)
-            redacted = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
-            digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()[:12]
-            pool_path = shared / f"{digest}.md"
-            if not pool_path.is_file():
-                _atomic_write(pool_path, redacted)
-            slot = "dyn-" + name.removeprefix("reviewer-dyn-").removesuffix(".md")
-            archetype_refs[slot] = digest
-            written = True
-            continue
-        out = dest / name
-        content = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
-        if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
-            _atomic_write(out, content)
-            written = True
+    seen: dict[str, Path] = {}
+    scan_dirs = [source]
+    if dynamic_dir.is_dir():
+        scan_dirs.append(dynamic_dir)
+    for scan_dir in scan_dirs:
+        for item in sorted(scan_dir.iterdir()):
+            if not item.is_file() or item.is_symlink():
+                continue
+            name = item.name
+            if _is_round_sidecar_file(name):
+                continue
+            if name.startswith("reviewer-dyn-") and name.endswith(".md"):
+                redacted = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
+                digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()[:12]
+                shared = args.log_root_path / "shared" / "archetypes"
+                shared.mkdir(parents=True, exist_ok=True)
+                pool_path = shared / f"{digest}.md"
+                if not pool_path.is_file():
+                    _atomic_write(pool_path, redacted)
+                slot = "dyn-" + name.removeprefix("reviewer-dyn-").removesuffix(".md")
+                archetype_refs[slot] = digest
+                written = True
+                continue
+            if not _round_artifact_included(name):
+                continue
+            if name == "aggregator-output.txt":
+                agg_findings = item.parent / "findings.md"
+                if agg_findings.is_file() and agg_findings.read_bytes() == item.read_bytes():
+                    continue
+            if name.startswith("scout-round") and name.endswith("-manifest.json"):
+                prev_manifest = prev_round_dir / name
+                if prev_manifest.is_file() and prev_manifest.read_bytes() == item.read_bytes():
+                    continue
+            if name in seen:
+                return _larch_log_fail(
+                    2,
+                    f"duplicate round artifact basename '{name}' from {item} and {seen[name]}",
+                )
+            seen[name] = item
+            content = _stage_round_artifact(item, name)
+            out = dest / name
+            if not out.exists() or out.read_text(encoding="utf-8", errors="replace") != content:
+                _atomic_write(out, content)
+                written = True
     panel_manifest = dest / "panel-manifest.ndjson"
     if archetype_refs and panel_manifest.is_file():
         lines: list[str] = []

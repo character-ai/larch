@@ -920,8 +920,8 @@ if [[ "$STATUS" == "complete" ]]; then
     # Note: this check compares declared manifest paths against working-tree
     # paths; it does NOT cross-reference the plan's "Files to modify" section.
     # May include pre-existing dirty paths if the tree was not clean at launch.
-    APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry
-    if [[ -x "$APPEND_TOOL" && -d "$TMPDIR_ARG" ]]; then
+    APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-entry)
+    if command -v python3 >/dev/null 2>&1 && [[ -d "$TMPDIR_ARG" ]]; then
         {
             WT_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-working-tree.XXXXXX")
             MANIFEST_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-manifest.XXXXXX")
@@ -947,7 +947,7 @@ if [[ "$STATUS" == "complete" ]]; then
             if [[ "${OOS_COUNT:-0}" != "0" ]]; then
                 OOS_LIST=$(sed -n '1,5s/^/- /p' "$OOS_PATHS_FILE")
                 OOS_ENTRY=$(printf 'Step 7a.1 — %s working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n%s' "$OOS_COUNT" "$OOS_LIST")
-                "$APPEND_TOOL" \
+                "${APPEND_TOOL[@]}" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --category Warnings \
                     --entry "$OOS_ENTRY" >/dev/null 2>&1 || true
@@ -974,9 +974,9 @@ if [[ "$STATUS" == "complete" ]]; then
     # advisory, and operator / `/review` / pre-commit hooks are the
     # downstream backstops.
     COMMIT_MSG_FILE="$TMPDIR_ARG/${TOOL_TAG}-commit-message.txt"
-    REDACT_FOR_COMMIT=python3 "$PLUGIN_ROOT/python/cli.py" redact secrets
-    if [[ -x "$REDACT_FOR_COMMIT" ]]; then
-        jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "$REDACT_FOR_COMMIT" > "$COMMIT_MSG_FILE.tmp"
+    REDACT_FOR_COMMIT=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
+    if command -v python3 >/dev/null 2>&1; then
+        jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "${REDACT_FOR_COMMIT[@]}" > "$COMMIT_MSG_FILE.tmp"
     else
         # The earlier redactor-not-executable check (top of Step 8 below)
         # would also fail closed, but we have not reached it yet — guard
@@ -1103,9 +1103,9 @@ if [[ "$STATUS" == "complete" ]]; then
         MAT_RC=0
         bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
         if [[ "$MAT_RC" -ne 0 ]]; then
-            APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure
-            if [[ -x "$APPEND_TOOL" ]]; then
-                "$APPEND_TOOL" \
+            APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
+            if command -v python3 >/dev/null 2>&1; then
+                "${APPEND_TOOL[@]}" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --site "step2-materialize-manifest-oos" \
                     --tool "materialize-manifest-oos.sh" \
@@ -1120,9 +1120,9 @@ if [[ "$STATUS" == "complete" ]]; then
         fi
     else
         printf 'materialize helper missing or not executable: %s\n' "$MATERIALIZE_OOS" >"$MAT_OOS_LOG"
-        APPEND_TOOL=python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure
-        if [[ -x "$APPEND_TOOL" ]]; then
-            "$APPEND_TOOL" \
+        APPEND_TOOL=(python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure)
+        if command -v python3 >/dev/null 2>&1; then
+            "${APPEND_TOOL[@]}" \
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --site "step2-materialize-manifest-oos" \
                 --tool "materialize-manifest-oos.sh" \

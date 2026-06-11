@@ -310,9 +310,13 @@ cmd_close_original() {
         printf 'See intra-batch dependency edges filed via /larch:issue (partition-deps.tsv).\n'
     } >"$body"
 
-    local redact_sh="${DECOMPOSE_REDACT_SH:-$PLUGIN_ROOT/python/cli.py redact secrets}"
+    local redact_cmd=(python3 "$PLUGIN_ROOT/python/cli.py" redact secrets)
+    if [[ -n "${DECOMPOSE_REDACT_SH:-}" ]]; then
+        # shellcheck disable=SC2206
+        redact_cmd=($DECOMPOSE_REDACT_SH)
+    fi
     local redacted="$dec/close-comment.redacted.md"
-    if ! "$redact_sh" <"$body" >"$redacted"; then
+    if ! "${redact_cmd[@]}" <"$body" >"$redacted"; then
         if true; then
             set +e
             append_fail_sh \

@@ -127,7 +127,7 @@ jq -e '.partition_requested == true' "$OUT7B" >/dev/null \
 FAKE_PLUGIN="$TMPROOT/fake-plugin"
 STUB_SCRIPTS="$FAKE_PLUGIN/scripts"
 mkdir -p "$STUB_SCRIPTS" "$FAKE_PLUGIN/python"
-for _lib in lib-quiet.sh lib-larch-log.sh append-tool-failure.sh append-execution-issue.sh; do
+for _lib in lib-quiet.sh; do
   ln -sf "$REPO_ROOT/scripts/$_lib" "$STUB_SCRIPTS/$_lib"
 done
 cat >"$FAKE_PLUGIN/python/cli.py" <<STUB
@@ -338,7 +338,7 @@ FAKE_RESUME_PLUGIN="$TMPROOT/fake-resume-plugin"
 STUB_RESUME_SCRIPTS="$FAKE_RESUME_PLUGIN/scripts"
 STUB_RESUME_DESIGN="$FAKE_RESUME_PLUGIN/skills/design/scripts"
 mkdir -p "$STUB_RESUME_SCRIPTS" "$FAKE_RESUME_PLUGIN/python" "$STUB_RESUME_DESIGN"
-for _lib in lib-quiet.sh lib-larch-log.sh append-tool-failure.sh append-execution-issue.sh; do
+for _lib in lib-quiet.sh; do
   ln -sf "$REPO_ROOT/scripts/$_lib" "$STUB_RESUME_SCRIPTS/$_lib"
 done
 cat >"$FAKE_RESUME_PLUGIN/python/cli.py" <<STUB

@@ -480,7 +480,13 @@ def test_flush_logs_pre_happy_path_commits(
     ) -> CommandResult:
         _ = cwd
         commits.append(True)
-        return CommandResult(("true",), 0, "", "", 0.0)
+        return CommandResult(
+            ("git", "commit"),
+            0,
+            "a" * 40 + "\n",
+            "",
+            0.0,
+        )
 
     def noop_write_final_report(_runner: object, _ctx: object) -> None:
         _ = _runner, _ctx

@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 PROMOTE_RELEASE="${LARCH_RELEASE_FINISH_PROMOTE_SCRIPT:-$REPO_ROOT/scripts/promote-release.sh}"
 GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
-REDACT_SECRETS="$REPO_ROOT/python/cli.py redact secrets"
-REDACT_TMPDIR="$REPO_ROOT/python/cli.py redact tmpdir-paths"
+REDACT_SECRETS=(python3 "$REPO_ROOT/python/cli.py" redact secrets)
+REDACT_TMPDIR=(python3 "$REPO_ROOT/python/cli.py" redact tmpdir-paths)
 
 VERSION=""
 NOTES_FILE=""
@@ -104,13 +104,8 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -x "$REDACT_SECRETS" ]]; then
-  echo "ERROR=redact secrets not found" >&2
-  exit 1
-fi
-
-if [[ ! -x "$REDACT_TMPDIR" ]]; then
-  echo "ERROR=redact tmpdir-paths not found" >&2
+if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$REPO_ROOT/python/cli.py" ]]; then
+  echo "ERROR=python3 python/cli.py redact helpers not found" >&2
   exit 1
 fi
 
@@ -136,11 +131,11 @@ fi
 
 REDACTED_NOTES_FILE="$(mktemp)"
 _tmp_notes="$(mktemp)"
-if ! "$REDACT_TMPDIR" < "$NOTES_FILE" > "$_tmp_notes"; then
+if ! "${REDACT_TMPDIR[@]}" < "$NOTES_FILE" > "$_tmp_notes"; then
   echo "ERROR=notes tmpdir redaction failed" >&2
   exit 1
 fi
-if ! "$REDACT_SECRETS" < "$_tmp_notes" > "$REDACTED_NOTES_FILE"; then
+if ! "${REDACT_SECRETS[@]}" < "$_tmp_notes" > "$REDACTED_NOTES_FILE"; then
   echo "ERROR=notes redaction failed" >&2
   exit 1
 fi
