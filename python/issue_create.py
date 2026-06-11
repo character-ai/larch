@@ -663,7 +663,7 @@ def list_issues_main(argv: list[str]) -> int:
         emit_kv("LIST_STATUS", "failed")
         warn("WARN: jq failed to parse gh api output")
         return 0
-    cutoff = _dt.date.today() - _dt.timedelta(days=int(closed_window))
+    cutoff = _dt.datetime.now(tz=_dt.UTC).date() - _dt.timedelta(days=int(closed_window))
     rows: list[str] = []
     for doc in docs:
         if not isinstance(doc, list):
