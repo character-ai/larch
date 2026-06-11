@@ -142,6 +142,8 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a-zero-sketch.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a5.sh`
@@ -234,17 +236,9 @@ Print: `> **🔶 /design 0: setup**`
 
 **When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
 
-Run `parse-design-argv.sh` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string.
+Run `parse-design-argv.sh` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string. The Step 0a session wrapper below invokes `design-step0-parse.sh` with that argv tail before `session setup`; do not invoke a separate parse fence. On parse failure, abort before session setup.
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-parse.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
-  -- <PUBLIC_ARGV_WORDS>
-```
-
-On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`. Do not invoke Step 0a on any parser failure.
+On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`.
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
@@ -254,7 +248,8 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh" \
   --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
   --claude-pid "$PPID" \
-  --plugin-root "${CLAUDE_PLUGIN_ROOT}"
+  --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
+  -- <PUBLIC_ARGV_WORDS>
 ```
 
 If `session setup` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
@@ -298,7 +293,8 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-route.sh" \
   --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+  --claude-pid "$PPID" \
+  --issue-number "${ISSUE_NUMBER:-}"
 ```
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` through `${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh` (file-first with KV-filtered stdout fallback) and source only allowlisted keys. Do not parse raw route stdout except as the helper fallback. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
@@ -492,6 +488,17 @@ If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, 
 **MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 3 regular-mode external slots (1 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot **skip** notes (#3207: an unavailable tool's slot is skipped, not Claude-replaced).
 
 **`<FEATURE_DESCRIPTION>` substitution (outline + brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists, prepend a concise `## Approved direction (outline)` section containing the approved outline. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, also prepend a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
+
+Record launched slot output paths before issuing launches (same availability rules as `sketch-launch.md`):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.sh" \
+  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
+  --claude-pid "$PPID" \
+  --mode regular
+```
+
+Use `--mode quick` in quick/simple mode.
 
 Execute the launches per `sketch-launch.md` — all **available** external launches issued in a single message, Cursor slots first, then Codex slots; skip any slot whose tool is unavailable (no Claude fallback, #3207).
 

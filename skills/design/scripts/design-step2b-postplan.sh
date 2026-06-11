@@ -102,6 +102,8 @@ set -e
 printf '%s\n' "${_postplan_out:-}"
 case "${_postplan_rc:-1}" in
   0)
+    printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
+    printf 'POSTPLAN_STATUS=ok\n'
     if [[ "$_postplan_site" == step2b || -z "$_postplan_site" ]]; then
       mkdir -p "$DESIGN_TMPDIR/.completed"
       : > "$DESIGN_TMPDIR/.completed/step-2b"
@@ -110,6 +112,7 @@ case "${_postplan_rc:-1}" in
     ;;
   10)
     printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
+    printf 'POSTPLAN_STATUS=validate-failed\n'
     VALIDATE_STATUS=""
     VALIDATE_DEFECT_COUNT=""
     VALIDATE_SKIPPED_COUNT=""
@@ -161,11 +164,13 @@ case "${_postplan_rc:-1}" in
     ;;
   12)
     printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
+    printf 'POSTPLAN_STATUS=plan-size-hard-trigger\n'
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;
   13)
     printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
+    printf 'POSTPLAN_STATUS=partition-requested\n'
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-2b"
     ;;

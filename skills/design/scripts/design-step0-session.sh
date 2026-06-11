@@ -87,11 +87,28 @@ design_source_env_optional() {
   fi
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
 design_require_plugin_root
 _cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   printf '%s\n' "/design Step 0: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${_cpr_literal} in the template line before Bash runs; abort" >&2
   exit 1
+fi
+if ((${#PUBLIC_ARGV_WORDS[@]} > 0)); then
+  _parse_args=(
+    --session-env-path "$SESSION_ENV_PATH"
+    --claude-pid "$CLAUDE_PID"
+    --plugin-root "$CLAUDE_PLUGIN_ROOT"
+    --
+    "${PUBLIC_ARGV_WORDS[@]}"
+  )
+  _parse_rc=0
+  _parse_out=$("$SCRIPT_DIR/design-step0-parse.sh" "${_parse_args[@]}") || _parse_rc=$?
+  printf '%s\n' "${_parse_out:-}"
+  if [ "$_parse_rc" -ne 0 ]; then
+    exit "$_parse_rc"
+  fi
 fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
 

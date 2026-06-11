@@ -1307,4 +1307,14 @@ for qa_step in 1c 1d 1d.5; do
   [[ -f "$RESTORE_QA_ONLY/.completed/step-$qa_step" ]] || fail "Q&A-only restore missing contiguous step-$qa_step"
 done
 
+echo "=== pause load clears stale pause-save-complete ==="
+make_design_tmpdir "$DESIGN"
+: >"$DESIGN/.pause-save-complete"
+printf 'body pause-save-complete\n' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+RESTORE_PSC="$TMP/restore-pause-save-complete"
+out_psc_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_PSC" --issue 9 --repo owner/repo)
+[[ "$out_psc_load" == *"LOAD_OK=true"* ]] || fail "pause-save-complete load failed: $out_psc_load"
+[[ ! -e "$RESTORE_PSC/.pause-save-complete" ]] || fail "pause load should clear stale .pause-save-complete"
+
 echo "All assertions passed."

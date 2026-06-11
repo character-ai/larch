@@ -99,20 +99,8 @@ elif [[ -f "$DESIGN_TMPDIR/sketch-launched-paths.txt" ]]; then
     [[ -n "$_launch_path" ]] && _collect_paths+=("$_launch_path")
   done <"$DESIGN_TMPDIR/sketch-launched-paths.txt"
 else
-  case "${MODE:-regular}" in
-    regular)
-      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-arch-output.txt")
-      if [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]]; then
-        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-innovation-output.txt")
-        _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt")
-      fi
-      ;;
-    quick)
-      [[ "${CURSOR_AVAILABLE:-$CURSOR_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/cursor-sketch-generic-output.txt")
-      [[ "${CODEX_AVAILABLE:-$CODEX_PRESENT}" == true ]] && _collect_paths+=("$DESIGN_TMPDIR/codex-sketch-generic-output.txt")
-      ;;
-    *) printf '%s\n' "$0: --mode required (regular|quick)" >&2; exit 2 ;;
-  esac
+  printf '%s\n' "$0: sketch-launched-paths.txt missing; record launched slots before collection" >&2
+  exit 1
 fi
 if ((${#_collect_paths[@]} == 0)); then
   _design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s' HARD)"

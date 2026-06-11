@@ -50,10 +50,13 @@ PUBLISH_OK="${PUBLISH_OK:-}"
 PLAN_WRITE_OK="${PLAN_WRITE_OK:-}"
 STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 
+ISSUE_NUMBER_ARG=""
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --session-env-path) SESSION_ENV_PATH="$2"; shift 2 ;;
     --claude-pid) CLAUDE_PID="$2"; shift 2 ;;
+    --issue-number) ISSUE_NUMBER_ARG="$2"; shift 2 ;;
     --plugin-root) CLAUDE_PLUGIN_ROOT="$2"; shift 2 ;;
     --mode) MODE="$2"; shift 2 ;;
     --site) SITE="$2"; shift 2 ;;
@@ -92,6 +95,14 @@ design_source_env_optional() {
    if [ -f "$DESIGN_TMPDIR/.design-step0-parsed.env" ]; then
      # shellcheck source=/dev/null
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
+   fi
+   if [[ -n "${ISSUE_NUMBER_ARG:-}" ]]; then
+     if [[ "${ISSUE_NUMBER_ARG}" =~ ^[0-9]+$ ]]; then
+       ISSUE_NUMBER="${ISSUE_NUMBER_ARG}"
+     else
+       printf '%s\n' "**⚠ Step 0b: --issue-number requires numeric value; aborting /design**" >&2
+       exit 1
+     fi
    fi
    case "${POSITIONAL_KIND:-}" in
      issue)

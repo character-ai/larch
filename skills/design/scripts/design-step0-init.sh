@@ -94,8 +94,31 @@ design_source_env_optional() {
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
    fi
    if [ -f "$DESIGN_TMPDIR/.design-step0-route-state.env" ]; then
+     _safe_route_state="$(mktemp "${TMPDIR:-/tmp}/larch-route-state-env.XXXXXX")" || {
+       printf '%s\n' "**⚠ Step 0 init: could not allocate safe route state env; aborting /design**" >&2
+       exit 1
+     }
+     set +e
+     "${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh" \
+       --input "$DESIGN_TMPDIR/.design-step0-route-state.env" \
+       --allow ROUTE \
+       --allow RESUME_STEP \
+       --allow HAS_CLARIFY_LABEL \
+       --allow ISSUE_NUMBER \
+       --allow ISSUE_TITLE \
+       --allow REPO \
+       --allow brainstorm_requested \
+       --output "$_safe_route_state"
+     _route_state_rc=$?
+     set -e
+     if [[ "${_route_state_rc:-0}" -ne 0 ]]; then
+       rm -f "$_safe_route_state"
+       printf '%s\n' "**⚠ Step 0 init: could not read route state sidecar; aborting /design**" >&2
+       exit 1
+     fi
      # shellcheck source=/dev/null
-     . "$DESIGN_TMPDIR/.design-step0-route-state.env"
+     . "$_safe_route_state"
+     rm -f "$_safe_route_state"
    fi
    _init_route=""
    if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then

@@ -322,6 +322,7 @@ rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
     emit_load_fail "restore-install-failed"
 fi
+rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 
 emit_kv LOAD_OK true
 emit_kv STEP "$STEP"
