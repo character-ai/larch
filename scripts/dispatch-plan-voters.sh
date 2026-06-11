@@ -14,6 +14,17 @@ source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
+_reemit_voting_stdout() {
+    local _out _line _key _value
+    _out="$("$@")"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -z "$_line" ]] && continue
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        emit_kv "$_key" "$_value"
+    done <<< "$_out"
+}
+
 usage() {
     larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--scope-anchor-file FILE]"
 }
@@ -274,7 +285,7 @@ if (( effective_judges < expected_judges )); then
         emit_kv WARN "plan-voter slot 3 (cursor) failed on usage-limit/quota; see execution-issues.md"
     fi
 fi
-python3 "$CLI" voting degraded-warning "$effective_judges" "$expected_judges" "$_degraded_reason"
+_reemit_voting_stdout python3 "$CLI" voting degraded-warning "$effective_judges" "$expected_judges" "$_degraded_reason"
 
 plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
 pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
@@ -289,7 +300,7 @@ if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" ]]; then
 fi
 mv -f "$pv_tmp" "$plan_voter_paths_file"
 
-python3 "$CLI" voting voter-status-block \
+_reemit_voting_stdout python3 "$CLI" voting voter-status-block \
     "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS" "$VOTER_1_PARSE_RATE_STATUS" \
     "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS" "$VOTER_2_PARSE_RATE_STATUS" \
     "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS" "$VOTER_3_PARSE_RATE_STATUS" \

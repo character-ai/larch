@@ -348,6 +348,158 @@ def test_voter_status_block_path_gate(tmp_path: Path) -> None:
     assert f"VOTER_PATHS_FILE={paths}\n" in result.stdout
 
 
+def test_lint_focus_area_enum_passes() -> None:
+    result = run_cli("lint", "focus-area-enum")
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+def _write_tally_logger(tmp_path: Path) -> Path:
+    logger = tmp_path / "stub-larch-log.sh"
+    logger.write_text("#!/usr/bin/env bash\nprintf 'LOG_WRITTEN=true\\n'\n", encoding="utf-8")
+    logger.chmod(0o755)
+    return logger
+
+
+def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) -> None:
+    invalid_body = tmp_path / "invalid-body.md"
+    invalid_body.write_text("## Voting Tally\n## Foo\n", encoding="utf-8")
+    result = run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "logs-invalid"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-code-invalid",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--body-file",
+        str(invalid_body),
+    )
+    assert result.returncode == 2
+    assert "unrecognized section header in code-review body: ## Foo" in result.stderr
+    assert result.stdout == ""
+
+    logger = _write_tally_logger(tmp_path)
+    valid_body = tmp_path / "valid-body.md"
+    valid_body.write_text("# Code Review Voting Tally\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["LARCH_WRITE_TALLY_LOGGER"] = str(logger)
+    result = run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "logs-code"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-code",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--accepted",
+        "0",
+        "--rejected",
+        "1",
+        "--body-file",
+        str(valid_body),
+        env=env,
+    )
+    assert result.returncode == 0
+    assert "LOG_WRITTEN=true" in result.stdout
+
+    plan_body = tmp_path / "plan-body.md"
+    plan_body.write_text("Plan review accepted with one follow-up.\n", encoding="utf-8")
+    result = run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "logs-plan"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-plan",
+        "--phase",
+        "plan-review",
+        "--mode",
+        "hard",
+        "--rounds",
+        "3",
+        "--accepted",
+        "2",
+        "--rejected",
+        "1",
+        "--body-file",
+        str(plan_body),
+        env=env,
+    )
+    assert result.returncode == 0
+    assert "LOG_WRITTEN=true" in result.stdout
+
+
+def test_parse_rate_retry_empty_retry_output_stays_not_substantive(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    launcher = scripts / "launch-review.sh"
+    launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "out=''\n"
+        "while [ $# -gt 0 ]; do\n"
+        '  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac\n'
+        "done\n"
+        ': >"$out"\n'
+        'printf "0\\n" >"$out.done"\n',
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    append = scripts / "append-tool-failure.sh"
+    append.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    append.chmod(0o755)
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
+    voter = tmp_path / "voter.txt"
+    voter.write_text("narrative only\n", encoding="utf-8")
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("prompt\n", encoding="utf-8")
+    result = run_cli(
+        "voting",
+        "parse-rate-retry",
+        "--ballot-file",
+        str(ballot),
+        "--id-grammar",
+        "finding-only",
+        "--review-tmpdir",
+        str(tmp_path),
+        "--plugin-root",
+        str(root),
+        "--dispatch-label",
+        "dispatch-code-voters.sh",
+        "--retry-prefix-kind",
+        "code",
+        "--launch-mode",
+        "description",
+        "--slot",
+        "1",
+        "--voter-file",
+        str(voter),
+        "--voter-tool",
+        "claude",
+        "--prompt-file",
+        str(prompt),
+    )
+    assert result.returncode == 0
+    assert result.stdout == "NOT_SUBSTANTIVE\n"
+    assert voter.read_text(encoding="utf-8") == "narrative only\n"
+
+
 def test_quiet_parent_diagnostic_stays_off_stdout(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     voter = tmp_path / "voter.txt"
