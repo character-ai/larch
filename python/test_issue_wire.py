@@ -376,6 +376,51 @@ def test_plan_block_strip_body_quiet_subprocess_routes_kv_to_stdout(tmp_path: Pa
     assert result.stdout == "MALFORMED=start-without-end\n"
 
 
+def test_plan_block_strip_body_inherited_quiet_diagnostic_uses_stderr(tmp_path: Path) -> None:
+    side_fd4 = tmp_path / "fd4.txt"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env[config.ENV_LARCH_QUIET_ACTIVE] = "1"
+    env[config.ENV_LARCH_QUIET_PID] = "999999"
+    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    _ = env.pop(config.ENV_LARCH_QUIET_LOG_FILE, None)
+    saved_fd4: int | None = None
+    with contextlib.suppress(OSError):
+        saved_fd4 = os.dup(4)
+    fd4 = os.open(side_fd4, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        if fd4 != 4:
+            _ = os.dup2(fd4, 4)
+            os.close(fd4)
+        result = subprocess.run(
+            [
+                sys.executable,
+                "python/cli.py",
+                "plan-block",
+                "strip-body",
+                "--file",
+                str(tmp_path / "missing.md"),
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
+            pass_fds=(4,),
+        )
+    finally:
+        if saved_fd4 is not None:
+            _ = os.dup2(saved_fd4, 4)
+            os.close(saved_fd4)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(4)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "plan-block-strip-body.sh:" in result.stderr
+    assert side_fd4.read_text(encoding="utf-8") == ""
+
+
 def test_plan_block_read_quiet_subprocess_routes_usage_to_stderr(tmp_path: Path) -> None:
     out = tmp_path / "plan.md"
     env = os.environ.copy()
