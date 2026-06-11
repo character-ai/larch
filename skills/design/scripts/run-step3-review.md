@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 3 — deterministic plan-review phase driver wrapping `plan-review-loop.sh` and, in loop mode, `review-design-step3-loop.sh`.
 
-**Caller**: `skills/design/SKILL.md` Step 3 (uncaptured `--preview-only` fence for live preview; captured `--mode loop` fence for the full multi-round loop). Direct harness callers may still use single mode.
+**Caller**: `skills/design/SKILL.md` Step 3 (uncaptured `--preview-only` fence for live preview; captured `--mode loop` fence via `design-step3-review.sh` for the full multi-round loop). `--mode single` is no longer accepted; use `--no-preview` or omit `--mode` for single-round behavior.
 
 ## Argv
 
@@ -10,15 +10,15 @@
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Raw path in `--preview-only`; validated with `cd … && pwd -P` in review modes |
 | `--preview-only` | no | Render preview live; owns `.step3-entry-plan-printed` sentinel |
-| `--no-preview` | no | Backward-compatible alias for `--mode single` |
-| `--mode single\|loop` | no | `single` runs one review pass; `loop` runs every review round until terminal or bail-out. Default is `single` when no mode flag is present. |
+| `--no-preview` | no | Single-round mode; backward-compatible (do not pass `--mode single`) |
+| `--mode loop` | no | Run every review round until terminal or bail-out. `--mode single` is rejected; omit `--mode` or use `--no-preview` for single-round behavior. |
 | `--starting-round N` | loop only | Resume a loop bail-out at a recorded intra-round phase. Omitted loop starts at `review-round-count.txt + 1`. |
 
 `--preview-only` is mutually exclusive with review modes. `--round-num` is deliberately rejected; the driver derives the artifact round and review-round counter itself.
 
 ## Loop mode
 
-`--mode loop` sources `review-design-step3-loop.sh` and calls `run_design_step3_loop()`. The loop invokes the same shared round body used by `--mode single`, so `run-step3-review.sh` remains the sole writer of `review-round-count.txt`.
+`--mode loop` sources `review-design-step3-loop.sh` and calls `run_design_step3_loop()`. The loop invokes the same shared round body used by single-round mode, so `run-step3-review.sh` remains the sole writer of `review-round-count.txt`.
 
 Resume validation follows the last-consumed-round contract:
 
