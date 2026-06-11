@@ -56,7 +56,7 @@ For every mandatory sub-skill call inside an orchestrator's step, pair the call 
 
 Canonical examples:
 
-- **Step 8+ active-driver contract parse** — on the bash opt-in path, the orchestrator reads machine lines from the foreground `ship-pr.sh` invocation and cross-checks `$IMPLEMENT_TMPDIR/ship-pr-state.sh` before continuing; on the default Python path, it uses JSON stdout + exit code from `python/cli.py ship pr`, not `ship-pr-state.sh` continuation parsing:
+- **Step 8+ active-driver contract parse** — on the bash opt-in path, the orchestrator reads machine lines from the immediate-background `step-8-ship.sh` wrapper after `<task-notification>` and cross-checks `$IMPLEMENT_TMPDIR/ship-pr-state.sh` before continuing; on the default Python path, it uses JSON stdout + exit code from the wrapper-internal `python/cli.py ship pr`, not `ship-pr-state.sh` continuation parsing:
 
   ```bash
   # Parse STATUS, PHASE, OOS_PENDING, STALL_TRACKING, STALL_STEP, RESUME_PHASE,

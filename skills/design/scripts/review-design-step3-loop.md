@@ -25,13 +25,13 @@ For round `N`, `$DESIGN_TMPDIR/.step3-round-N.phase` records one of:
 - `awaiting-postplan-operator` — in-loop postplan returned rc 10/13/14; prompt-side operator handling is required. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N` before resume; the loop consumes the marker, runs HARD snapshots when applicable, and promotes to `awaiting-continuation`. **rc=12 (plan-size hard trigger) is no longer in this set** — it is now handled inline as warn-and-continue, emitting `WARN=plan-size hard trigger … proceeding as warning-only` and promoting directly to `awaiting-continuation` without surfacing `postplan-operator-required`.
 - `awaiting-continuation` — apply/postplan is settled; only `plan-review-continuation.sh` runs.
 
-Every bail-out resumes with:
+Prompt-side bail-outs resume through the wrapper fence:
 
 ```bash
-run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round "$N"
+design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"
 ```
 
-`run-step3-review.sh` validates that a resume for an already consumed round has phase evidence and rejects starts beyond the next unconsumed round.
+The wrapper forwards to `run-step3-review.sh --mode loop --starting-round <round>`. `run-step3-review.sh` validates that a resume for an already consumed round has phase evidence and rejects starts beyond the next unconsumed round.
 
 ## Apply pipeline
 

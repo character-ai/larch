@@ -50,6 +50,7 @@ PUBLISH_OK="${PUBLISH_OK:-}"
 PLAN_WRITE_OK="${PLAN_WRITE_OK:-}"
 STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 STARTING_ROUND=""
+STARTING_ROUND_SEEN=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -61,13 +62,34 @@ while [ "$#" -gt 0 ]; do
     --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
     --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
     --skip-validate) SKIP_VALIDATE=1; shift ;;
-    --starting-round) STARTING_ROUND="$2"; shift 2 ;;
+    --starting-round)
+      if [ "$#" -lt 2 ]; then
+        printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
+        exit 2
+      fi
+      STARTING_ROUND_SEEN=true
+      STARTING_ROUND="${2:-}"
+      shift 2
+      ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [ "$STARTING_ROUND_SEEN" = true ]; then
+  case "$STARTING_ROUND" in
+    ''|*[!0-9]*)
+      printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
+      exit 2
+      ;;
+  esac
+  if [ "$((10#$STARTING_ROUND))" -le 0 ]; then
+    printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
+    exit 2
+  fi
+fi
 
 design_require_plugin_root() {
   _cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'

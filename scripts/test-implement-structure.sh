@@ -20,6 +20,16 @@ def forbid(path, needle, label):
     if needle in text:
         checks.append(f'{label}: forbidden {needle!r} remains in {path}')
 
+def require_near(path, before, after, label, limit=900):
+    text = Path(path).read_text()
+    idx = text.find(before)
+    if idx < 0:
+        checks.append(f'{label}: missing anchor {before!r} in {path}')
+        return
+    window = text[max(0, idx - limit):idx + limit]
+    if after not in window:
+        checks.append(f'{label}: missing {after!r} near {before!r} in {path}')
+
 skill='skills/implement/SKILL.md'
 # New mandatory references.
 for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matrix.md']:
@@ -102,6 +112,15 @@ require(skill, 'NO_ADMIN_FALLBACK=$no_admin_fallback', 'ship state no-admin fall
 require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
+for script, timeout in [
+    ('"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh"', 'timeout: 21600000'),
+    ('"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh"', 'timeout: 1800000'),
+    ('"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh"', 'timeout: 21600000'),
+]:
+    require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
+    require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
+require_near(skill, '"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh"', '<task-notification>', 'Step 5 review task notification wait', 1800)
+require_near(skill, '"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh"', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 require(skill, 'phantom-probe-with-warn.sh" --step 2-post-dispatch', 'phantom 2-post-dispatch probe')
 require(skill, 'phantom-probe-with-warn.sh" --step 8-pre-ship', 'phantom 8-pre-ship probe')
 require(skill, 'git-current-branch.sh', 'post-dispatch branch assertion')
@@ -174,6 +193,18 @@ if exit_matrix.is_file():
         if needle not in exit_text:
             checks.append(f'ship-pr-exit-matrix.md missing {needle!r}')
 require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'ship-pr exit matrix pointer')
+stall_ref = Path('skills/implement/references/stall-recovery.md').read_text()
+for needle in [
+    'step-8-ship.sh',
+    'run_in_background: true',
+    'timeout: 21600000',
+    '<task-notification>',
+]:
+    if needle not in stall_ref:
+        checks.append(f'stall-recovery.md missing {needle!r}')
+if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv' in stall_ref:
+    checks.append('stall-recovery.md must not re-enter ship via direct python/cli.py prose')
+require(skill, 're-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` per the selector', 'NEVER #13 default-path wrapper re-entry')
 for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',
