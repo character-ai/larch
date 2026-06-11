@@ -147,11 +147,11 @@ After the audit report issue is filed and prior reports are handled per **Close 
 1. Print the **full audit-report body** verbatim to chat (the same markdown submitted as the issue body), then print the **audit-report URL**.
 2. **Zero-findings short-circuit**: if `proposed_new_issues` and `proposed_augmentations` are both empty, state `No findings — no bug issues to file.` and exit — do **not** ask the 3-way question.
 3. **Otherwise**, ask the operator a 3-way question: (1) file/augment all, (2) discuss specific findings first, or (3) skip filing. Act on the response:
-   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `create-one.sh`; do not pass multi-line tables through an inline `--body` string).
+   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `issue create-one`; do not pass multi-line tables through an inline `--body` string).
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
 
-4. **Post-report session summary (audit-report issue only):** **only when** an audit-report issue was actually filed (`create-one.sh` returned a non-empty issue number / `AUDIT_REPORT_NUMBER`) **and** you did **not** end the run at step 2’s **zero-findings short-circuit** (that path exits immediately after the chat message — no 3-way walkthrough, **no** session-summary). After step 3’s per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on that audit-report issue (supplementary history). **Skip** this entire step whenever **no** audit-report issue exists — for example the zero-PR `since last audit` short-circuit (no `create-one.sh` call), preflight/resolve failures before filing, or any other path that never yields an audit-report issue number (there is nothing to comment on).
+4. **Post-report session summary (audit-report issue only):** **only when** an audit-report issue was actually filed (`issue create-one` returned a non-empty issue number / `AUDIT_REPORT_NUMBER`) **and** you did **not** end the run at step 2’s **zero-findings short-circuit** (that path exits immediately after the chat message — no 3-way walkthrough, **no** session-summary). After step 3’s per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on that audit-report issue (supplementary history). **Skip** this entire step whenever **no** audit-report issue exists — for example the zero-PR `since last audit` short-circuit (no `issue create-one` call), preflight/resolve failures before filing, or any other path that never yields an audit-report issue number (there is nothing to comment on).
 
    ```markdown
    ## Post-report session summary
@@ -219,9 +219,9 @@ Contracts: `audit-pacific-timestamp.md`, `audit-title.md`.
 
 ### Filing Method
 
-Use `create-one.sh` directly (bypasses the batch parser's `###` heading-trap):
+Use `issue create-one` directly (bypasses the batch parser's `###` heading-trap):
 ```bash
-"$PWD/skills/issue/scripts/create-one.sh" \
+python3 "$PWD/python/cli.py" issue create-one \
   --title "<title>" \
   --body-file "$TMPDIR/audit-report-body.md" \
   --label "audit-report" \
@@ -354,7 +354,7 @@ audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
 audit-title.sh --skill $SKILL → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
-create-one.sh                → file audit report
+issue create-one                → file audit report
 audit-close-priors.sh --skill $SKILL → close prior audit-report issues for this skill
 [LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
 [LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
@@ -378,7 +378,7 @@ audit-close-priors.sh --skill $SKILL → close prior audit-report issues for thi
 
 - Do NOT file an empty audit report (zero PRs audited)
 - Do NOT recurse: the skill must not audit its own audit-report issues
-- Do NOT close prior reports before the new one is confirmed filed (ISSUE_NUMBER from create-one.sh is non-empty)
-- Do NOT `gh issue create` directly — use `create-one.sh` for audit reports and `/larch:issue` for bug issues
+- Do NOT close prior reports before the new one is confirmed filed (ISSUE_NUMBER from issue create-one is non-empty)
+- Do NOT `gh issue create` directly — use `issue create-one` for audit reports and `/larch:issue` for bug issues
 - Do NOT auto-file or auto-augment bug issues — only file the audit report itself at scan/report time. Bug-issue actions require explicit user direction in chat.
 - Do NOT ask the 3-way question when there are zero findings — state `No findings — no bug issues to file.` and exit.

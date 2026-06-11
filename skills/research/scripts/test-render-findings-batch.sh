@@ -4,7 +4,7 @@
 # Feeds canned final-report fixtures to the helper and asserts:
 #   - exit code matches expectation,
 #   - COUNT=<N> on stdout matches expectation,
-#   - the emitted sidecar round-trips through skills/issue/scripts/parse-input.sh
+#   - the emitted sidecar round-trips through python/cli.py issue parse-input
 #     (ITEMS_TOTAL matches COUNT and no MALFORMED items appear).
 #
 # Wired into `make lint` via the `test-render-findings-batch` target.
@@ -16,14 +16,14 @@ export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SCRIPT="$REPO_ROOT/skills/research/scripts/render-findings-batch.sh"
-PARSE_INPUT="$REPO_ROOT/skills/issue/scripts/parse-input.sh"
+PARSE_INPUT=(python3 "$REPO_ROOT/python/cli.py" issue parse-input)
 
 if [[ ! -x "$SCRIPT" ]]; then
   echo "FAIL: helper script not found or not executable: $SCRIPT" >&2
   exit 1
 fi
-if [[ ! -x "$PARSE_INPUT" ]]; then
-  echo "FAIL: parse-input.sh not found or not executable (cross-skill round-trip dep): $PARSE_INPUT" >&2
+if [[ ! -f "$REPO_ROOT/python/cli.py" ]]; then
+  echo "FAIL: python parser CLI not found: $REPO_ROOT/python/cli.py" >&2
   exit 1
 fi
 
@@ -39,7 +39,7 @@ RQ_FILE="$TMPDIR_TEST/research-question.txt"
 echo "Test research question" > "$RQ_FILE"
 
 # run_case <name> <report-content> <expected-exit> <expected-count>
-# When expected-count > 0, the case also asserts a parse-input.sh round-trip
+# When expected-count > 0, the case also asserts a issue parse-input round-trip
 # (ITEMS_TOTAL matches expected-count and no MALFORMED items).
 run_case() {
   local name="$1"
@@ -79,7 +79,7 @@ run_case() {
   if [[ "$expected_count" -gt 0 ]]; then
     local parsed_dir="$TMPDIR_TEST/case${CASE_NUM}-parsed"
     local parse_stdout
-    parse_stdout="$(bash "$PARSE_INPUT" --input-file "$out_file" --output-dir "$parsed_dir" 2>&1)"
+    parse_stdout="$("${PARSE_INPUT[@]}" --input-file "$out_file" --output-dir "$parsed_dir" 2>&1)"
     local items_total
     items_total="$(grep -E '^ITEMS_TOTAL=' <<< "$parse_stdout" | sed 's/^ITEMS_TOTAL=//')"
     if [[ "$items_total" != "$expected_count" ]]; then
@@ -275,7 +275,7 @@ EOF
 run_case "fenced code with ### inside" "$FIXTURE_FENCED" 0 2
 
 # Case 8: body line beginning with `### Foo` at column 0 — must be escaped to
-# `\### Foo` so parse-input.sh round-trip preserves item count.
+# `\### Foo` so issue parse-input round-trip preserves item count.
 read -r -d '' FIXTURE_BODY_ESCAPE <<'EOF' || true
 ## Research Report
 
@@ -354,7 +354,7 @@ EOF
 run_case "special characters in body" "$FIXTURE_SPECIAL" 0 2
 
 # Case 13 (#510 review FINDING_2): body line with `###<tab>Foo`.
-# parse-input.sh:393's regex is `^\#\#\#[[:space:]]+`, which matches tab too.
+# issue parse-input:393's regex is `^\#\#\#[[:space:]]+`, which matches tab too.
 # Without the FINDING_2 fix, this line would slip past the escape and split
 # items downstream.
 read -r -d '' FIXTURE_TAB_HEADER <<EOF || true

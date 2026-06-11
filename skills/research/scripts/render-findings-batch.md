@@ -1,6 +1,6 @@
 # render-findings-batch.sh — Contract
 
-**Purpose**: extract findings from `/research`'s rendered Step 3 final report and emit one `### <title>` block per finding to a sidecar markdown file consumable by `skills/issue/scripts/parse-input.sh` (generic `### <title>` + body fallback path). Closes #510.
+**Purpose**: extract findings from `/research`'s rendered Step 3 final report and emit one `### <title>` block per finding to a sidecar markdown file consumable by `python/cli.py issue parse-input` (generic `### <title>` + body fallback path). Closes #510.
 
 **Consumed by**: `/research` Step 3 (after the rendered final report is written to `$RESEARCH_TMPDIR/research-report-final.md`). The orchestrator invokes this script with the report path; the script slices `### Findings Summary`, extracts global metadata (Risk / Difficulty / Feasibility / Key Files / Open Questions), runs the heuristic ladder (numbered → top-level bulleted → paragraph-per-item), and emits items.
 
@@ -77,7 +77,7 @@ For each item:
 2. The first sentence is taken (split on <code>. </code>, <code>! </code>, <code>? </code>, or end-of-line).
 3. Truncated to 80 chars.
 4. Trailing whitespace and punctuation stripped.
-5. **Empty-title fallback** (FINDING_2): if the result is empty (e.g., the first sentence was all punctuation), the title becomes `Finding <N>` where N is the 1-based item index. Without this fallback, `parse-input.sh:161-163` silently drops empty-title items, breaking the round-trip `ITEMS_TOTAL` assertion.
+5. **Empty-title fallback** (FINDING_2): if the result is empty (e.g., the first sentence was all punctuation), the title becomes `Finding <N>` where N is the 1-based item index. Without this fallback, `issue parse-input:161-163` silently drops empty-title items, breaking the round-trip `ITEMS_TOTAL` assertion.
 
 ## Body composition
 
@@ -92,7 +92,7 @@ For each item, the body contains:
    **Files touched**: <comma-joined Key Files entries | N/A>
    ```
 2. The finding's prose body — verbatim from the synthesis, with one transformation:
-   - **Body-line <code>### </code> escape** (FINDING_5c, refined per #510 review FINDING_2): any line matching `^###[[:space:]]` (any whitespace after the three hashes — space OR tab) is prefixed with a backslash so `parse-input.sh:393`'s `^\#\#\#[[:space:]]+(.+)$` regex does not match it as a new-item boundary downstream. Markdown rendering displays the line unchanged (the leading `\` escapes the first `#`). Lines inside fenced code blocks are NOT escaped (the `IN_FENCE` toggle is honored). Without the FINDING_2 fix, lines like `###<TAB>Foo` would slip past a literal-space-only escape and split items downstream.
+   - **Body-line <code>### </code> escape** (FINDING_5c, refined per #510 review FINDING_2): any line matching `^###[[:space:]]` (any whitespace after the three hashes — space OR tab) is prefixed with a backslash so `issue parse-input:393`'s `^\#\#\#[[:space:]]+(.+)$` regex does not match it as a new-item boundary downstream. Markdown rendering displays the line unchanged (the leading `\` escapes the first `#`). Lines inside fenced code blocks are NOT escaped (the `IN_FENCE` toggle is honored). Without the FINDING_2 fix, lines like `###<TAB>Foo` would slip past a literal-space-only escape and split items downstream.
 3. (Optional) `**Open questions** (if any): <semicolon-joined Open Questions entries>` line — emitted only when the Open Questions section is non-empty.
 4. **Audit-context separator and italic line**:
    ```
@@ -100,7 +100,7 @@ For each item, the body contains:
    *This issue was filed from /research output. Audit context: <RESEARCH_QUESTION>.*
    ```
 
-The metadata `**Source**:` / `**Risk**:` / etc. lines (no leading <code>- </code>) cleanly pass through `parse-input.sh`'s generic-mode body — verified at `parse-input.sh:393-481`. In `CURRENT_MODE=generic`, the OOS field branches require leading `- **Description**:` / `- **Reviewer**:` / etc.; our format cannot trigger them.
+The metadata `**Source**:` / `**Risk**:` / etc. lines (no leading <code>- </code>) cleanly pass through `issue parse-input`'s generic-mode body — verified at `issue parse-input:393-481`. In `CURRENT_MODE=generic`, the OOS field branches require leading `- **Description**:` / `- **Reviewer**:` / etc.; our format cannot trigger them.
 
 ## Known limitations
 
@@ -125,24 +125,24 @@ The metadata `**Source**:` / `**Risk**:` / etc. lines (no leading <code>- </code
 
 ## Cross-skill coupling (research ↔ issue)
 
-This script's output MUST round-trip through `skills/issue/scripts/parse-input.sh` cleanly:
+This script's output MUST round-trip through `python/cli.py issue parse-input` cleanly:
 
-- `parse-input.sh` exits 0.
+- `issue parse-input` exits 0.
 - `ITEMS_TOTAL` matches the helper's `COUNT`.
 - No item carries `MALFORMED=true`.
 
-The harness `test-render-findings-batch.sh` asserts this end-to-end. The coupling is intentional and is also documented in `skills/issue/scripts/parse-input.md` (reverse coupling note): changes to `parse-input.sh`'s generic-mode `### <title>` handling (e.g., new line-prefix rules) require re-running `/research`'s `make lint` even when `skills/research/` is not edited.
+The harness `test-render-findings-batch.sh` asserts this end-to-end. The coupling is intentional and is also documented in `python/issue_create.py` (reverse coupling note): changes to `issue parse-input`'s generic-mode `### <title>` handling (e.g., new line-prefix rules) require re-running `/research`'s `make lint` even when `skills/research/` is not edited.
 
 See FINDING_9 in the design review.
 
 ## Test harness
 
-`skills/research/scripts/test-render-findings-batch.sh` — offline regression harness with canned report fixtures (numbered, bulleted, paragraph, mixed, empty, missing, special chars, multi-paragraph bullets, planner-nested headings, fenced code blocks, body-line <code>### </code> escape, empty-title fallback). Round-trip integration through `parse-input.sh`. Wired into `make lint` via the `test-render-findings-batch` target — three Makefile locations stay in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe).
+`skills/research/scripts/test-render-findings-batch.sh` — offline regression harness with canned report fixtures (numbered, bulleted, paragraph, mixed, empty, missing, special chars, multi-paragraph bullets, planner-nested headings, fenced code blocks, body-line <code>### </code> escape, empty-title fallback). Round-trip integration through `issue parse-input`. Wired into `make lint` via the `test-render-findings-batch` target — three Makefile locations stay in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe).
 
 ## Edit-in-sync rules
 
 - **Section-extraction terminator list changes**: update this contract AND `test-render-findings-batch.sh` AND `scripts/test-research-structure.sh` Step-3 pin (which asserts the helper invocation in SKILL.md).
 - **Heuristic-ladder changes**: update this contract AND `test-render-findings-batch.sh` (fixtures and asserted behavior).
-- **Body-line escape changes**: update this contract AND `test-render-findings-batch.sh` (escape fixture and round-trip assertion) AND the comment-link in `skills/issue/scripts/parse-input.md`.
+- **Body-line escape changes**: update this contract AND `test-render-findings-batch.sh` (escape fixture and round-trip assertion) AND the comment-link in `python/issue_create.py`.
 - **Stdout schema changes** (`COUNT=`): update this contract, the harness, AND the orchestrator's stdout-parsing instruction in SKILL.md Step 3.
 - **Exit code vocabulary changes**: update this contract, the harness, AND SKILL.md Step 3's exit-3 handling.

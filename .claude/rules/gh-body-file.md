@@ -36,8 +36,7 @@ paths:
   - "skills/design/scripts/decompose-file-issues.sh"
   - "skills/implement/SKILL.md"
   - "skills/issue/SKILL.md"
-  - "skills/issue/scripts/create-one.md"
-  - "skills/issue/scripts/create-one.sh"
+  - "python/issue_create.py"
   - "skills/review-and-fix/scripts/review-and-fix.md"
   - "skills/review-and-fix/scripts/review-and-fix.sh"
 ---

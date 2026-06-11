@@ -12,6 +12,21 @@ import importlib
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("issue", "parse-input"): ("issue_create", "parse_input_main"),
+    ("issue", "create-one"): ("issue_create", "create_one_main"),
+    ("issue", "allocate-candidates"): ("issue_create", "allocate_candidates_main"),
+    ("issue", "add-blocked-by"): ("issue_create", "add_blocked_by_main"),
+    ("issue", "fetch-issue-details"): ("issue_create", "fetch_issue_details_main"),
+    ("issue", "list-issues"): ("issue_create", "list_issues_main"),
+    ("issue", "write-sentinel"): ("issue_create", "write_sentinel_main"),
+    ("issue", "cleanup-failed"): ("issue_create", "cleanup_failed_main"),
+    ("block-issue", "add-blocked-by"): ("issue_block", "add_blocked_by_main"),
+    ("alias", "generate"): ("alias_skill", "generate_main"),
+    ("alias", "resolve-target"): ("alias_skill", "resolve_target_main"),
+    ("cleanup", "run"): ("cleanup_skill", "run_main"),
+    ("upgrade-larch", "run"): ("upgrade_larch", "run_main"),
+    ("upgrade-larch", "release-step7-root"): ("upgrade_larch", "release_step7_root_main"),
+    ("forked-repo", "setup"): ("forked_repo", "setup_main"),
     ("render", "specialist"): ("rendering", "render_specialist_main"),
     ("render", "reviewer"): ("rendering", "render_reviewer_main"),
     ("render", "debate-retry"): ("rendering", "render_debate_retry_main"),

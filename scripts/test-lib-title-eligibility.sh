@@ -31,15 +31,15 @@ assert_no_match() {
 # shellcheck disable=SC1091
 source "$LIB"
 
-# --- Source from skills/issue/scripts/ layout (list-issues.sh PWD) ---
+# --- Source from non-root CWD to catch accidental relative-source assumptions ---
 (
-    cd "$ROOT/skills/issue/scripts" || exit 1
+    cd "$ROOT/python" || exit 1
     unset CLAUDE_PLUGIN_ROOT || true
     # shellcheck source=scripts/lib-title-eligibility.sh
     # shellcheck disable=SC1091
     source "$ROOT/scripts/lib-title-eligibility.sh"
     title_has_archival_report_prefix '[Report] foo' || exit 1
-) || fail 'source from skills/issue/scripts/ failed'
+) || fail 'source from non-root CWD failed'
 
 # Lifecycle-reject hits
 for t in \

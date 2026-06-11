@@ -719,10 +719,10 @@ cp "$SANDBOX/case1.out" "$dir/class.env"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
 assert_eq "### [Bug] /implement stall: transient-infra at 8" "$first_line" "20: issue input title shape"
-run_capture "$dir/parse-input.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv INPUT_FILE "$dir/input.out")" --output-dir "$dir/parsed-input"
+run_capture "$dir/parse-input.out" python3 "$REPO_ROOT/python/cli.py" issue parse-input --input-file "$(kv INPUT_FILE "$dir/input.out")" --output-dir "$dir/parsed-input"
 assert_eq 0 "$RC" "20: parse-input accepts issue input file"
 assert_eq 1 "$(kv ITEMS_TOTAL "$dir/parse-input.out")" "20: headed issue input parses as one item"
-run_capture "$dir/parse-body.out" "$REPO_ROOT/skills/issue/scripts/parse-input.sh" --input-file "$(kv BODY_FILE "$dir/body.out")" --output-dir "$dir/parsed-body"
+run_capture "$dir/parse-body.out" python3 "$REPO_ROOT/python/cli.py" issue parse-input --input-file "$(kv BODY_FILE "$dir/body.out")" --output-dir "$dir/parsed-body"
 assert_eq 0 "$RC" "20: parse-input accepts raw bug body"
 assert_eq 0 "$(kv ITEMS_TOTAL "$dir/parse-body.out")" "20: heading-less bug body parses as zero items"
 

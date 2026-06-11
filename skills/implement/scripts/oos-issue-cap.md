@@ -8,16 +8,16 @@ the file-conflict pre-pass that consumes that same path.
 ## Invariants
 
 - **Parser delegation**. The helper invokes
-  `skills/issue/scripts/parse-input.sh` once against the exact merged OOS batch
+  `python/cli.py issue parse-input` once against the exact merged OOS batch
   file that `/issue` would receive. It uses `ITEMS_TOTAL`,
   `ITEM_<i>_TITLE`, `ITEM_<i>_BODY_FILE`, and `ITEM_<i>_MALFORMED=true` as the
   source of item order and body truth; it does not implement a second OOS
   parser.
 - **Input shape**. The helper accepts only OOS-shaped batches whose items begin
   with `### OOS_<digits>:`. Generic fallback input is rejected with exit 1.
-- **Parser/heading parity**. `ITEMS_TOTAL` from `parse-input.sh` must equal the
+- **Parser/heading parity**. `ITEMS_TOTAL` from `issue parse-input` must equal the
   raw `^### OOS_<digits>:` heading count. A mismatch exits 1 because
-  `parse-input.sh`'s pending-heading split path can otherwise make the parser
+  `issue parse-input`'s pending-heading split path can otherwise make the parser
   and raw markdown disagree about item boundaries.
 - **In-place default**. `--input-file FILE` without `--output` rewrites `FILE`
   in place via `FILE.tmp` plus `mv`. `--output PATH` writes a separate stable
@@ -90,7 +90,7 @@ When behavior changes, update these files together:
 - `skills/implement/SKILL.md` Step 9a.1 narrative and file-conflict subsection.
 - `skills/implement/references/oos-pipeline.md` Step 9a.1 procedure.
 - `docs/configuration-and-permissions.md` environment variable entries.
-- `skills/issue/scripts/parse-input.sh` if parser stdout changes.
+- `python/cli.py issue parse-input` if parser stdout changes.
 - `scripts/file-line-regex-lib.sh` if path grammar changes.
 - `scripts/test-implement-structure.sh` assertion 9g.
 - `skills/implement/scripts/test-oos-issue-cap.sh` fixtures.

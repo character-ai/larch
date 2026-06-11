@@ -20,7 +20,7 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the
 <!-- step:1 — Run cleanup -->
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/cleanup/scripts/cleanup.sh"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" cleanup run
 ```
 
 Parse `SESSION_COUNT`, `CACHE_REMOVED`, `TMP_REMOVED`, and `SYMLINKS_REMOVED` from stdout and relay them to the user.

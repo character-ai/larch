@@ -15,10 +15,10 @@ Positional: `ISSUE_A ISSUE_B` — plain issue numbers (≥1). Optional: `--repo 
 
 <!-- step:1 — Add blocked-by relationship -->
 
-Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/block-issue/scripts/add-blocked-by.md`.
+Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag). Script contract: `${CLAUDE_PLUGIN_ROOT}/python/issue_block.py`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/block-issue/scripts/add-blocked-by.sh $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" block-issue add-blocked-by $ARGUMENTS
 ```
 
 Parse `SUCCESS` and the confirmation line from stdout without `eval`/`source`. Verify the relationship was established before reporting:

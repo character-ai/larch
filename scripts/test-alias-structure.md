@@ -1,18 +1,18 @@
 # test-alias-structure.sh — Contract
 
-Structural regression test for `skills/alias/SKILL.md`. Pins the prompt-side contract that target-dir resolution flows through a single `$TARGET_DIR` variable computed once at Step 2 by `resolve-target.sh` and threaded through Steps 2/3/4, never replaced by hardcoded `.claude/skills/<alias-name>` paths in any load-bearing site.
+Structural regression test for `skills/alias/SKILL.md`. Pins the prompt-side contract that target-dir resolution flows through a single `$TARGET_DIR` variable computed once at Step 2 by `python/cli.py alias resolve-target` and threaded through Steps 2/3/4, never replaced by hardcoded `.claude/skills/<alias-name>` paths in any load-bearing site.
 
 ## Purpose
 
 The plan's primary failure mode (#1) is silent drift between Step 2's resolved `$TARGET_DIR` and a hardcoded `.claude/skills/<alias-name>` path that survived in Step 3 (the `/implement` recipe) or Step 4 (the verify sentinel). A future edit could re-introduce such a hardcoded path in one site but not another, creating a path split where `/implement` writes one tree and `verify-skill-called.sh` checks a different tree. This harness catches that class of regression at CI time.
 
-Companion to `scripts/test-alias-target-resolution.sh`: that harness tests the `resolve-target.sh` helper's behavior; this harness tests that `skills/alias/SKILL.md` actually USES the helper's output at all the right sites.
+Companion to `python/test_alias_skill.py`: that harness tests the Python alias resolver's behavior; this harness tests that `skills/alias/SKILL.md` actually USES the resolver's output at all the right sites.
 
 ## Assertions
 
 | ID | What |
 |----|------|
-| A | `resolve-target.sh` is referenced from SKILL.md (Step 2 invocation) |
+| A | `python/cli.py alias resolve-target` is referenced from SKILL.md (Step 2 invocation) |
 | B | Step 1 documents `--private` as a parsed flag |
 | C | Step 2 contains the canonical non-eval allowlist parser literal `REPO_ROOT\|PLUGIN_REPO\|TARGET_DIR` |
 | D | Check 6 uses `test -e "$TARGET_DIR"` — and the old hardcoded `test -d ".claude/skills/<alias-name>"` is gone |
@@ -38,5 +38,5 @@ When modifying `skills/alias/SKILL.md` Steps 2/3/4 or NEVER rules #5–#7:
 
 1. Run this harness: `bash scripts/test-alias-structure.sh`.
 2. Update assertion text here if structural literals shifted.
-3. Run `bash scripts/test-alias-target-resolution.sh` to confirm the helper still meets its contract.
+3. Run `cd python && python3 -m pytest test_alias_skill.py` to confirm the helper still meets its contract.
 4. Run `bash scripts/relevant-checks.sh` to confirm `pre-commit` + `agent-lint` are green.

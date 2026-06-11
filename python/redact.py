@@ -15,7 +15,6 @@ _AKIA_RE = re.compile(r"AKIA[0-9A-Z]{16}")
 _JWT_RE = re.compile(
     r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
 )
-_CRSR_RE = re.compile(r"crsr_[A-Za-z0-9_-]{20,}")
 _PEM_ANCHOR = r"^[\t \v\f\r>]*"
 _PEM_BEGIN_RE = re.compile(
     rf"{_PEM_ANCHOR}-----BEGIN [A-Z ]*PRIVATE KEY-----",
@@ -32,7 +31,7 @@ _UNTERMINATED_MARKER = (
 # `crsr_` is the confirmed Cursor key prefix; `key_{32,}` is the hedge for
 # Cursor admin keys that avoids matching ordinary `key_` identifiers (which
 # carry underscores and rarely run 32 unbroken alphanumerics).
-_CURSOR_RE = re.compile(r"crsr_[A-Za-z0-9]{20,}|key_[A-Za-z0-9]{32,}")
+_CURSOR_RE = re.compile(r"crsr_[A-Za-z0-9_-]{20,}|key_[A-Za-z0-9]{32,}")
 _SLACK_RE = re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")
 _GOOGLE_API_RE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
 _STRIPE_LIVE_RE = re.compile(r"(?:sk|rk)_live_[0-9A-Za-z]{16,}")
@@ -269,7 +268,7 @@ def _split_on_newline_only(text: str) -> list[str]:
 
 def _redact_line_local(line: str) -> str:
     line = _SK_RE.sub(config.REDACTED_TOKEN, line)
-    line = _CRSR_RE.sub(config.REDACTED_TOKEN, line)
+    line = _CURSOR_RE.sub(config.REDACTED_TOKEN, line)
     line = _GH_RE.sub(config.REDACTED_TOKEN, line)
     line = _AKIA_RE.sub(config.REDACTED_TOKEN, line)
     return _JWT_RE.sub(config.REDACTED_TOKEN, line)
@@ -324,6 +323,16 @@ def redact_outbound(text: str) -> str:
     if not text:
         return text
     out = redact(text)
+    if text.endswith("\n"):
+        return out
+    return out.rstrip("\n")
+
+
+def redact_secrets_outbound(text: str) -> str:
+    """Redact secret families only; preserve tmpdir and operator repo paths."""
+    if not text:
+        return text
+    out, _ = scrub_log_secrets(text)
     if text.endswith("\n"):
         return out
     return out.rstrip("\n")

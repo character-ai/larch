@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # render-findings-batch.sh — Extract findings from a /research final report and
 # emit one `### <title>` block per finding to a batch-markdown file consumable
-# by `skills/issue/scripts/parse-input.sh` (generic `### <title>` + body
+# by `python/cli.py issue parse-input` (generic `### <title>` + body
 # fallback path).
 #
 # Consumed by /research Step 3 after the rendered final report is written to
@@ -460,8 +460,8 @@ title_from_body() {
 }
 
 # escape_body_lines prefixes any line starting with `### ` with a backslash so
-# `parse-input.sh`'s `^\#\#\#[[:space:]]+(.+)$` regex (line 393 of
-# parse-input.sh) no longer matches it as a new-item boundary. Markdown
+# `issue parse-input`'s `^\#\#\#[[:space:]]+(.+)$` regex no longer matches it
+# as a new-item boundary. Markdown
 # rendering displays the line unchanged. Toggles `IN_FENCE` on `^\`\`\`` so
 # code-block contents are NOT escaped.
 escape_body_lines() {
@@ -473,9 +473,9 @@ escape_body_lines() {
         print
         next
       }
-      # Match the parse-input.sh line 393 regex (any whitespace after the
-      # three hashes), not just literal U+0020 space, so a body line with a
-      # tab after the hashes does not slip past the escape and split items
+      # Match the issue parse-input boundary regex (any whitespace after the
+      # three hashes), not just literal U+0020 space, so a body line with a tab
+      # after the hashes does not slip past the escape and split items
       # downstream (#510 review FINDING_2).
       if (!in_fence && $0 ~ /^###[[:space:]]/) {
         print "\\" $0

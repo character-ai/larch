@@ -3,7 +3,7 @@
 #
 # Reads arbitrary text on stdin, applies a fixed set of regex replacements,
 # and writes the redacted text to stdout. Intended as the outbound choke
-# point for content that /issue's create-one.sh publishes as a public
+# point for content that python/cli.py issue create-one publishes as a public
 # GitHub issue title or body, complementing prompt-level sanitization in
 # skills/implement/SKILL.md and skills/issue/SKILL.md. See SECURITY.md
 # ("Untrusted GitHub Issue Content") for the dual-layer trust model.

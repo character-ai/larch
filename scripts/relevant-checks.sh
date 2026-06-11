@@ -138,8 +138,8 @@ run_direct_relevant_targets() {
             skills/design/SKILL.md|skills/design/references/*.md)
                 append_target_once test-design-structure
                 ;;
-            skills/upgrade-larch/scripts/upgrade-larch.sh|skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh)
-                append_target_once test-upgrade-larch-retention
+            python/upgrade_larch.py|python/test_upgrade_larch.py)
+                append_target_once py-test
                 ;;
         esac
         case "$f" in
