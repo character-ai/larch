@@ -147,7 +147,7 @@ reminder.
 
 When the body content derives from session data (implementation plans, token
 reports, reviewer prose, or any execution-derived text), pipe the content
-through `scripts/redact-secrets.sh` (and `scripts/redact-tmpdir-paths.sh` when
+through `python/cli.py redact secrets` (and `python/cli.py redact tmpdir-paths` when
 the content may contain local tmpdir paths) before writing it to the body file.
 The shell-layer redaction inside larch scripts does not automatically protect
 prompt-assembled bodies. See `SECURITY.md` for the outbound-redaction policy.

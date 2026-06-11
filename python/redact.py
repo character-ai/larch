@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 import config
 
@@ -300,12 +303,24 @@ def _redact_secrets_pem(text: str) -> tuple[str, bool]:
     return "".join(out), unterminated
 
 
-def _redact_tmpdir_paths(text: str) -> str:
+def redact_tmpdir_paths(text: str) -> str:
     for pattern, repl in _TMPDIR_PATTERNS:
         text = pattern.sub(repl, text)
     for pattern, repl in _OPERATOR_PATTERNS:
         text = pattern.sub(repl, text)
     return text
+
+
+def _redact_tmpdir_paths(text: str) -> str:
+    return redact_tmpdir_paths(text)
+
+
+def redact_secrets_only(text: str) -> str:
+    """Redact secret families only; preserve tmpdir and operator paths."""
+    out, _ = _redact_secrets_pem(text)
+    if out and not out.endswith("\n"):
+        out += "\n"
+    return out
 
 
 def redact(text: str) -> str:
@@ -358,3 +373,225 @@ def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
     for _, pattern in _EXTRA_SECRET_FAMILIES:
         scrubbed = pattern.sub(config.REDACTED_TOKEN, scrubbed)
     return scrubbed, findings
+
+
+def redact_breadcrumb_file(input_path: Path, output_path: Path, state_file: Path) -> None:
+    """Apply path redaction, then PEM-aware secret redaction for breadcrumb logs."""
+    _ = state_file
+    text = input_path.read_text(encoding="utf-8", errors="replace")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(redact_secrets_only(redact_tmpdir_paths(text)), encoding="utf-8")
+
+
+def _streaming_redact(stdin_text: str, state_file: Path) -> str:
+    in_pem = False
+    if state_file.is_file():
+        try:
+            in_pem = "in_pem=1" in state_file.read_text(encoding="utf-8")
+        except OSError:
+            in_pem = False
+    out: list[str] = []
+    for raw in _split_on_newline_only(stdin_text):
+        line = raw.rstrip("\n")
+        newline = "\n" if raw.endswith("\n") else ""
+        if in_pem:
+            if _PEM_END_RE.match(line):
+                in_pem = False
+            continue
+        if _PEM_BEGIN_RE.match(line):
+            out.append(config.REDACTED_PRIVATE_KEY + newline)
+            in_pem = True
+            continue
+        out.append(_redact_line_local(raw))
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(f"in_pem={1 if in_pem else 0}\n", encoding="utf-8")
+    if in_pem:
+        print(
+            "WARN: redact-secrets.sh: unterminated PEM block (streaming)",
+            file=sys.stderr,
+        )
+    return "".join(out)
+
+
+def main_secrets(argv: list[str]) -> int:
+    streaming = False
+    state_file = ""
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == "--streaming":
+            streaming = True
+            idx += 1
+        elif arg == "--state-file":
+            if idx + 1 >= len(argv):
+                print("redact secrets: --state-file requires a value", file=sys.stderr)
+                return 2
+            state_file = argv[idx + 1]
+            idx += 2
+        elif arg.startswith("--state-file="):
+            state_file = arg.split("=", 1)[1]
+            idx += 1
+        else:
+            print(f"redact secrets: unknown option: {arg}", file=sys.stderr)
+            return 2
+    text = sys.stdin.read()
+    if streaming:
+        if not state_file:
+            print("redact secrets: --streaming requires --state-file", file=sys.stderr)
+            return 2
+        sys.stdout.write(_streaming_redact(text, Path(state_file)))
+        return 0
+    sys.stdout.write(redact_secrets_only(text))
+    return 0
+
+
+def main_tmpdir_paths(argv: list[str]) -> int:
+    if argv:
+        print(f"redact tmpdir-paths: unknown option: {argv[0]}", file=sys.stderr)
+        return 2
+    sys.stdout.write(redact_tmpdir_paths(sys.stdin.read()))
+    return 0
+
+
+def scrub_log_directory(directory: Path) -> tuple[int, int]:
+    total = 0
+    files = 0
+    for path in sorted(directory.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        scrubbed, findings = scrub_log_secrets(text)
+        if not findings:
+            continue
+        _, residual = scrub_log_secrets(scrubbed)
+        if residual:
+            raise RuntimeError(f"secret survived scrubbing in {path}")
+        path.write_text(scrubbed, encoding="utf-8")
+        total += sum(findings.values())
+        files += 1
+    return total, files
+
+
+def main_scrub_log_secrets(argv: list[str]) -> int:
+    directory = ""
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg in {"--dir", "--log-root", "--path"}:
+            if idx + 1 >= len(argv):
+                print(f"scrub-log-secrets.sh: {arg} requires a value", file=sys.stderr)
+                return 2
+            directory = argv[idx + 1]
+            idx += 2
+        else:
+            if directory:
+                print(f"scrub-log-secrets.sh: unknown option: {arg}", file=sys.stderr)
+                return 2
+            directory = arg
+            idx += 1
+    if not directory:
+        print("scrub-log-secrets.sh: directory is required", file=sys.stderr)
+        return 2
+    root = Path(directory)
+    if not root.exists():
+        print(f"scrub-log-secrets.sh: directory not found: {root}", file=sys.stderr)
+        return 2
+    try:
+        violations, files = scrub_log_directory(root)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
+    print(f"LARCH_SECRET_SCRUB_VIOLATIONS={violations}")
+    print(f"LARCH_SECRET_SCRUB_FILES={files}")
+    return 0
+
+
+def _discover_submodule_paths(cwd: Path) -> set[str]:
+    paths: set[str] = set()
+    gitmodules = cwd / ".gitmodules"
+    if gitmodules.is_file():
+        for line in gitmodules.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("path") and "=" in stripped:
+                _, _, value = stripped.partition("=")
+                if value.strip():
+                    paths.add(value.strip().strip("/"))
+    result = subprocess.run(
+        ["git", "submodule", "foreach", "--quiet", "printf '%s\\n' \"$sm_path\""],  # noqa: S607
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        paths.update(line.strip().strip("/") for line in result.stdout.splitlines() if line.strip())
+    return paths
+
+
+def scrub_submodule_paths(input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
+    text = input_path.read_text(encoding="utf-8", errors="replace")
+    repo = Path.cwd()
+    submodules = _discover_submodule_paths(repo)
+    scrubbed_count = 0
+    audit: list[str] = []
+    blocks = re.split(r"(?=^### FINDING_)", text, flags=re.MULTILINE)
+    out_blocks: list[str] = []
+    for block in blocks:
+        if not block.startswith("### FINDING_"):
+            out_blocks.append(block)
+            continue
+        matched = False
+        for sub in sorted(submodules, key=len, reverse=True):
+            if re.search(rf"(?m)^(Location|File):\s*{re.escape(sub)}(?:/|$)", block) or re.search(
+                rf"(?<![A-Za-z0-9_.-]){re.escape(sub)}/",
+                block,
+            ):
+                matched = True
+                break
+        if matched:
+            scrubbed_count += 1
+            audit.append(block.splitlines()[0])
+            continue
+        out_blocks.append(block)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("".join(out_blocks), encoding="utf-8")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("\n".join(audit) + ("\n" if audit else ""), encoding="utf-8")
+    return scrubbed_count, True
+
+
+def main_scrub_submodule_paths(argv: list[str]) -> int:
+    input_path = ""
+    output_path = ""
+    log_path = ""
+    idx = 0
+    while idx < len(argv):
+        arg = argv[idx]
+        if arg == "--input" and idx + 1 < len(argv):
+            input_path = argv[idx + 1]
+            idx += 2
+        elif arg == "--output" and idx + 1 < len(argv):
+            output_path = argv[idx + 1]
+            idx += 2
+        elif arg == "--log" and idx + 1 < len(argv):
+            log_path = argv[idx + 1]
+            idx += 2
+        else:
+            print(f"scrub-submodule-paths.sh: unknown or incomplete option: {arg}", file=sys.stderr)
+            return 2
+    if not input_path or not output_path or not log_path:
+        print("scrub-submodule-paths.sh: --input, --output, and --log are required", file=sys.stderr)
+        return 2
+    try:
+        count, ok = scrub_submodule_paths(Path(input_path), Path(output_path), Path(log_path))
+    except OSError as exc:
+        print(f"scrub-submodule-paths.sh: {exc}", file=sys.stderr)
+        print("SCRUB_COUNT=0")
+        print("SCRUB_OK=false")
+        return 2
+    print(f"SCRUB_COUNT={count}")
+    print(f"SCRUB_OK={'true' if ok else 'false'}")
+    return 0

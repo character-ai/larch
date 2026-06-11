@@ -49,7 +49,7 @@ if "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/write-final-report.sh" --implem
   fi
 else
   _step17_wfr_rc=$?
-  "$CLAUDE_PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+  "$CLAUDE_PLUGIN_ROOT/python/cli.py run-log append-failure" \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
     --site "Step 17 — final report" \
     --tool "write-final-report.sh" \

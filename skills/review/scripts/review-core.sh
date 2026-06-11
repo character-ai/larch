@@ -88,8 +88,8 @@ EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
 DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
-LARCH_LOG_SH="${REVIEW_CORE_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
-APPEND_TOOL_FAILURE_SH="${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-$PLUGIN_ROOT/scripts/append-tool-failure.sh}"
+LARCH_LOG_SH="${REVIEW_CORE_LARCH_LOG_SH:-$PLUGIN_ROOT/python/cli.py run-log}"
+APPEND_TOOL_FAILURE_SH="${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-$PLUGIN_ROOT/python/cli.py run-log append-failure}"
 
 kv_get() {
     local file="$1" key="$2"
@@ -233,7 +233,7 @@ append_round_log_write_failure() {
     "$APPEND_TOOL_FAILURE_SH" \
         --log "$issues_log" \
         --site "$site" \
-        --tool "larch-log.sh write-round" \
+        --tool "run-log write-round" \
         --exit-code "$rc" \
         --category "Warnings" \
         --output-file "$output_file" \
@@ -269,8 +269,8 @@ emit_tally_with_failure_isolation() {
 
 append_review_execution_issue() {
     local entry="$1"
-    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
-    "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+    [[ -x "$PLUGIN_ROOT/python/cli.py run-log append-entry" ]] || return 0
+    "$PLUGIN_ROOT/python/cli.py run-log append-entry" \
         --log "$(execution_issues_log)" \
         --category "External Reviewer Issues" \
         --entry "$entry" 2>/dev/null || true

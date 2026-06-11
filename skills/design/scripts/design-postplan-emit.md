@@ -59,11 +59,11 @@ Allowlisted keys for orchestrator reads (never `source`):
 | `12` | Hard trigger (`HARD_TRIGGER_FIRED=true`; hard wins over partition) |
 | `13` | `partition_requested=true` without hard trigger |
 
-**Precedence**: hard → partition → defects (validator handoff, rc **10**). Drift (`DRIFT_TRIGGER_FIRED=true`) no longer exits with a non-zero code; it records a `Warnings` entry in `execution-issues.md` via `append-tool-failure.sh` and exits `0` (with `PLAN_SIZE_STATUS=drift-advisory`).
+**Precedence**: hard → partition → defects (validator handoff, rc **10**). Drift (`DRIFT_TRIGGER_FIRED=true`) no longer exits with a non-zero code; it records a `Warnings` entry in `execution-issues.md` via `run-log append-failure` and exits `0` (with `PLAN_SIZE_STATUS=drift-advisory`).
 
 ## Plan-size nonfatal failures (merged)
 
-On `check-plan-size.sh` rc **2** or **3**: capture stdout+stderr to `check-plan-size.validation.log`, append via `append-tool-failure.sh` (helper stdout/stderr suppressed), emit display `WARN`, exit **0** (under-threshold continuation).
+On `check-plan-size.sh` rc **2** or **3**: capture stdout+stderr to `check-plan-size.validation.log`, append via `run-log append-failure` (helper stdout/stderr suppressed), emit display `WARN`, exit **0** (under-threshold continuation).
 
 ## Soft advisory display
 

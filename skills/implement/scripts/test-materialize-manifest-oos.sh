@@ -131,8 +131,8 @@ set +e
 CLAUDE_PLUGIN_ROOT="$tmp/missing-plugin-root" "$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp" >/dev/null 2>"$tmp/missing-redactor.err"
 rc=$?
 set -e
-[ "$rc" -ne 0 ] || fail "missing redact-secrets.sh with observations must fail closed"
-contains "$tmp/missing-redactor.err" 'redact-secrets.sh missing or not executable' "missing redactor error missing"
+[ "$rc" -ne 0 ] || fail "missing redact secrets with observations must fail closed"
+contains "$tmp/missing-redactor.err" 'redact secrets missing or not executable' "missing redactor error missing"
 rm -rf "$tmp"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")

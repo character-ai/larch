@@ -94,7 +94,7 @@ def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
         runner.git_commits += 1
         return CommandResult(("git", "commit"), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
     assert runner.git_commits == 1
@@ -490,7 +490,7 @@ def test_flush_logs_pre_happy_path_commits(
 
     monkeypatch.setattr(run_logs, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop_capture)
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     runner = RecordingRunner()
     skip = run_logs.flush_logs_pre(runner, ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
@@ -536,7 +536,7 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
     monkeypatch.setattr(run_logs, "_write_final_report", noop)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
@@ -630,7 +630,7 @@ def test_flush_logs_pre_skips_commit_without_repo_cwd(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
     monkeypatch.setattr(run_logs, "_write_final_report", noop)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
@@ -787,7 +787,7 @@ def test_flush_logs_pre_reports_volatile_only_skip_reason(
     def fake_commit(*_a: object, **_k: object) -> CommandResult:
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
-    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
     skip = run_logs.flush_logs_pre(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
     assert skip.skipped
     assert skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY

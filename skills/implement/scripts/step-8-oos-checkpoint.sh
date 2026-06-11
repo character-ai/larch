@@ -37,7 +37,7 @@ fi
 if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
   _oos_fail_site=step-8-oos-checkpoint-validation
   [ "$_oos_chk_rc" -eq 1 ] && _oos_fail_site=step-8-oos-checkpoint
-  "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+  "${CLAUDE_PLUGIN_ROOT}/python/cli.py run-log append-failure" \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
     --site "$_oos_fail_site" \
     --tool oos-disposition-checkpoint.sh \

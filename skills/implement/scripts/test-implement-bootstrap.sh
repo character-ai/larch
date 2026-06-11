@@ -99,7 +99,7 @@ build_sandbox() {
     mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX/python/stubs/session" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
-    cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$SANDBOX/scripts/"
+    cp "$REPO_ROOT/python/cli.py run-log append-entry" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
     cp "$REPO_ROOT"/python/*.py "$SANDBOX/python/"
     mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
@@ -109,21 +109,8 @@ import os
 import sys
 from pathlib import Path
 
-def _ledger_stub(root: Path) -> int:
-    log = root.parent / "invoke-log.txt"
-    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
-        prefix = "token-ledger" if sys.argv[1] == "token" else "timing-ledger"
-        with open(log, "a", encoding="utf-8") as handle:
-            handle.write(f"{prefix} {' '.join(sys.argv[2:])}\n")
-        return 0
-    if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "claude-source":
-        return 0
-    return 1
-
 def main() -> None:
     root = Path(__file__).resolve().parent
-    if len(sys.argv) >= 2 and sys.argv[1] in {"token", "timing"}:
-        raise SystemExit(_ledger_stub(root))
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -142,7 +129,7 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 DISPATCHER
-    chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/scripts/append-execution-issue.sh"
+    chmod +x "$SANDBOX/python/cli.py" "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/python/cli.py run-log append-entry"
 
     cat >"$SANDBOX/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -205,7 +192,13 @@ exit 0
 STUB
     chmod +x "$SANDBOX/python/stubs/session/write-id"
 
-    cat >"$SANDBOX/scripts/append-tool-failure.sh" <<'STUB'
+    cat >"$SANDBOX/scripts/token-claude-source.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/token-claude-source.sh"
+
+    cat >"$SANDBOX/python/cli.py run-log append-failure" <<'STUB'
 #!/usr/bin/env bash
 if [ "${SANDBOX_APPEND_TOOL_FAILURE_EXIT:-0}" -ne 0 ]; then
   printf 'append-tool-failure failure\n' >&2
@@ -229,7 +222,23 @@ if [ -n "$log" ]; then
 fi
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/append-tool-failure.sh"
+    chmod +x "$SANDBOX/python/cli.py run-log append-failure"
+
+    cat >"$SANDBOX/scripts/token-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'token-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/token-ledger.sh"
+
+    cat >"$SANDBOX/scripts/timing-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'timing-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/timing-ledger.sh"
 
     cat >"$SANDBOX/scripts/tracking-issue-read.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -273,7 +282,7 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/get-issue-state.sh"
 
-    cat >"$SANDBOX/scripts/larch-log.sh" <<'STUB'
+    cat >"$SANDBOX/python/cli.py run-log" <<'STUB'
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 printf 'larch-log %s\n' "$*" >>"$script_dir/../invoke-log.txt"
@@ -309,7 +318,7 @@ echo COMMIT_SHA=
 echo UNCHANGED=false
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/larch-log.sh"
+    chmod +x "$SANDBOX/python/cli.py run-log"
 
     cat >"$SANDBOX/skills/implement/scripts/post-tracking-issue.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -568,7 +577,7 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/tracking-issue-summary.sh"
 
-    cat >"$SANDBOX/scripts/redact-secrets.sh" <<'STUB'
+    cat >"$SANDBOX/python/cli.py redact secrets" <<'STUB'
 #!/usr/bin/env bash
 if [ "${SANDBOX_REDACT_SECRETS_EXIT:-0}" -ne 0 ]; then
   printf 'redact secrets failure\n' >&2
@@ -577,9 +586,9 @@ fi
 cat
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/redact-secrets.sh"
+    chmod +x "$SANDBOX/python/cli.py redact secrets"
 
-    cat >"$SANDBOX/scripts/redact-tmpdir-paths.sh" <<'STUB'
+    cat >"$SANDBOX/python/cli.py redact tmpdir-paths" <<'STUB'
 #!/usr/bin/env bash
 input=$(cat)
 if [ -n "${SANDBOX_REDACT_TMPDIR_MATCH:-}" ] && printf '%s' "$input" | grep -qF -- "$SANDBOX_REDACT_TMPDIR_MATCH"; then
@@ -593,7 +602,7 @@ fi
 printf '%s' "$input"
 exit 0
 STUB
-    chmod +x "$SANDBOX/scripts/redact-tmpdir-paths.sh"
+    chmod +x "$SANDBOX/python/cli.py redact tmpdir-paths"
 
     : >"$SANDBOX/invoke-log.txt"
 }
@@ -1598,11 +1607,11 @@ build_sandbox
 write_gp1_session_setup
 write_preflight_plan
 printf 'unexpected bypass text password=secret123\n' >"$SANDBOX/preflight/emergency-bypass.log"
-cat >"$SANDBOX/scripts/redact-secrets.sh" <<'STUB'
+cat >"$SANDBOX/python/cli.py redact secrets" <<'STUB'
 #!/usr/bin/env bash
 sed 's/secret123/<REDACTED>/g'
 STUB
-chmod +x "$SANDBOX/scripts/redact-secrets.sh"
+chmod +x "$SANDBOX/python/cli.py redact secrets"
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyInvalidRedact --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-plan-emergency-invalid-format-redacts-secrets exit 0"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
@@ -1629,11 +1638,11 @@ build_sandbox
 write_gp1_session_setup
 write_preflight_plan
 printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
-cat >"$SANDBOX/scripts/append-execution-issue.sh" <<'STUB'
+cat >"$SANDBOX/python/cli.py run-log append-entry" <<'STUB'
 #!/usr/bin/env bash
 exit 19
 STUB
-chmod +x "$SANDBOX/scripts/append-execution-issue.sh"
+chmod +x "$SANDBOX/python/cli.py run-log append-entry"
 out=$(SANDBOX_APPEND_TOOL_FAILURE_EXIT=17 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyDoubleFailure --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 2 "B5-plan-emergency-append-double-failure exit 2"
 assert_contains "STEP_FAILED=emergency-bypass-log" "$out" "B5-plan-emergency-append-double-failure STEP_FAILED"

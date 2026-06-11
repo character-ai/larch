@@ -87,11 +87,11 @@ example. The committed path shape is shared across publishing skill roots, so
 the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
 `review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
 publisher wires that helper for that skill. Today the landed callers are
-`scripts/larch-log.sh commit` (`/implement`) and `scripts/design-log-publish.sh`
+`python/cli.py run-log commit` (`/implement`) and `scripts/design-log-publish.sh`
 (`design` publish).
 
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
-`scripts/larch-log.sh commit` and `scripts/design-log-publish.sh` invoke the
+`python/cli.py run-log commit` and `scripts/design-log-publish.sh` invoke the
 shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
@@ -111,7 +111,7 @@ committed `breadcrumbs/` directory.
 
 Per-script session-root quiet logs whose basenames match exactly
 `larch-quiet-<script>-<pid>.log` are staged. Each accepted file is individually
-redacted through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming
+redacted through `redact tmpdir-paths | redact secrets --streaming
 --state-file <tmp>`, then all redacted content is **concatenated** into a single
 `larch-logs/<skill>/<run-id>/breadcrumbs/quiet.log` with per-source header lines
 `=== <basename> ===`. The individual source files are not published separately.
@@ -129,7 +129,7 @@ enforced triggers fail closed for the whole directory, while legacy ndjson files
 non-regular files, and non-matching quiet-log basenames are ignored and not
 committed.
 
-`round-<N>/` directories are written by `larch-log.sh write-round` during
+`round-<N>/` directories are written by `run-log write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter
 diagnostic artifacts that are otherwise lost with `$IMPLEMENT_TMPDIR` cleanup.
 Only registered artifact names are copied. `.meta` files have `CMD_JSON=...`
@@ -257,7 +257,7 @@ authoritative operator-facing outcome for that degraded round.
 
 ## manifest.json
 
-Created by `scripts/larch-log.sh init` during **Step 0** when the tracking issue is first resolved (tracking adoption / post-resolution). Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
+Created by `python/cli.py run-log init` during **Step 0** when the tracking issue is first resolved (tracking adoption / post-resolution). Updated by `run-log manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `docs/run-log-cli.md`.
 
 For current `/implement` runs, the committed manifest is normally an `"in-progress"` snapshot because the post-merge `"done"` update happens inside `$IMPLEMENT_TMPDIR` after the last log commit window. That is not an absolute invariant: older committed runs, tests, or manual/status-update flows can still produce committed manifests with `"done"` or other statuses. To assess completion, read `status` as one signal and correlate it with PR merge state plus the surrounding run-log artifacts.
 
@@ -372,7 +372,7 @@ Concatenation of per-slot `*.failure-diag` carriers composed by `append_vendor_f
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. CI-fix rebase/push retries also refresh the batch so the merged PR carries the most recent data: bash opt-in uses `scripts/refresh-run-logs.sh` Triggers A-C inside `ship-pr.sh`, while the default Python driver uses `run_logs.flush_logs_pre` at CI/rebase boundaries.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. CI-fix rebase/push retries also refresh the batch so the merged PR carries the most recent data: bash opt-in uses `python/cli.py run-log refresh` Triggers A-C inside `ship-pr.sh`, while the default Python driver uses `run_logs.flush_logs_pre` at CI/rebase boundaries.
 
 Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
 
@@ -392,7 +392,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry, bash opt-in re-captures through `scripts/refresh-run-logs.sh` Triggers A-C and the default Python driver refreshes through `run_logs.flush_logs_pre`, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry, bash opt-in re-captures through `python/cli.py run-log refresh` Triggers A-C and the default Python driver refreshes through `run_logs.flush_logs_pre`, so the final merged PR carries the most up-to-date transcript available before merge.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. **Schema v3 (policy: prose-errors-only).** The first line is a `{"v": 3, "source_basename": ..., "turns": N, "policy": "prose-errors-only"}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, and errored/warned `tool_result` entries (full body). `tool_call` blocks and non-error `tool_result` blocks are **omitted entirely** (v3 policy). Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit.
 
@@ -414,7 +414,7 @@ aggregator fails (so execution issues can point at committed paths instead of
 `$REVIEW_TMPDIR`),
 per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
-`scripts/larch-log.sh` because the aggregates already cover their content),
+`python/cli.py run-log` because the aggregates already cover their content),
 panel manifest (with `archetype_ref` for dynamic slots — see below),
 code-voter slots, and any later registered coder artifacts. The `review-core.sh`
 flush is the first snapshot for the round; `review-and-fix.sh` may run one more
@@ -522,8 +522,8 @@ Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit sca
 
 ## Authoritative sources
 
-- `scripts/larch-log.md` — `larch-log.sh` verb contracts, log-root resolution, redaction rules
-- `scripts/larch-log-batches.md` — canonical batch slug table (extension, mode, sanitizer)
+- `docs/run-log-cli.md` — `run-log` verb contracts, log-root resolution, redaction rules
+- `docs/run-log-batches.md` — canonical batch slug table (extension, mode, sanitizer)
 - `skills/implement/references/summary-comment-template.md` — marker literals and comment contracts
 ## Concise prune/log audit update
 

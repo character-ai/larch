@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
-APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+APPEND_FAIL_SH="$PLUGIN_ROOT/python/cli.py run-log append-failure"
 
 usage() {
     larch_err "usage: decompose-file-issues.sh prepare --design-tmpdir DIR --partition-file PATH [--issue-number N]"
@@ -310,7 +310,7 @@ cmd_close_original() {
         printf 'See intra-batch dependency edges filed via /larch:issue (partition-deps.tsv).\n'
     } >"$body"
 
-    local redact_sh="${DECOMPOSE_REDACT_SH:-$PLUGIN_ROOT/scripts/redact-secrets.sh}"
+    local redact_sh="${DECOMPOSE_REDACT_SH:-$PLUGIN_ROOT/python/cli.py redact secrets}"
     local redacted="$dec/close-comment.redacted.md"
     if ! "$redact_sh" <"$body" >"$redacted"; then
         if [[ -x "$APPEND_FAIL_SH" ]]; then
@@ -318,7 +318,7 @@ cmd_close_original() {
             bash "$APPEND_FAIL_SH" \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
-                --tool "redact-secrets.sh" \
+                --tool "redact secrets" \
                 --exit-code 1 \
                 --category "External Reviewer Issues" \
                 --output-file "$body" \

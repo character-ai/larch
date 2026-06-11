@@ -34,6 +34,6 @@ oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
 
 ## Consumer
 
-`oos-disposition-checkpoint.sh` invokes this gate from `skills/implement/SKILL.md` Step 8+ and owns exit-code mapping plus `append-tool-failure.sh` logging. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and `--resume-phase pr-create` remain orchestrator-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the orchestrator must not perform those post-pass steps.
+`oos-disposition-checkpoint.sh` invokes this gate from `skills/implement/SKILL.md` Step 8+ and owns exit-code mapping plus `run-log append-failure` logging. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and `--resume-phase pr-create` remain orchestrator-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the orchestrator must not perform those post-pass steps.
 
 Harness: `skills/implement/scripts/test-oos-disposition-gate.sh`.

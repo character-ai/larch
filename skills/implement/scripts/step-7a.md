@@ -22,11 +22,11 @@ skills/implement/scripts/step-7a.sh \
 | `DIAGRAM_STATUS` | `ok`, `skipped`, `failed`, or `skip` (`skip` means the small/non-runtime classifier skipped generation) |
 | `DIAGRAM_PATH` | Absolute path to `code-flow-diagram.md`, or empty |
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
-| `SESSION_TRANSCRIPT_STATUS` | Relayed `capture-session-transcript.sh` status lines, when emitted |
+| `SESSION_TRANSCRIPT_STATUS` | Relayed `run-log capture-transcript` status lines, when emitted |
 | `LOG_FLUSH_STATUS` | `ok`, `degraded`, `skipped-no-logs-commit`, or `skipped-rebase-checkpoint` |
 | `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
 
-The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transcript.sh` KV envelopes onto the caller-visible contract stream before its final KV tail.
+The helper re-emits the `rebase-checkpoint-probe.sh` and `run-log capture-transcript` KV envelopes onto the caller-visible contract stream before its final KV tail.
 
 ## Exit Codes
 

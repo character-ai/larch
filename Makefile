@@ -12,7 +12,7 @@ PYTHON ?= python3
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-snapshot-plan-round test-auto-fix-plan-commands test-gate-b-apply-mode
-.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-step-18b-final-report
@@ -89,7 +89,7 @@ test-harnesses-3: test-launch-review-cursor-core test-decompose-panel-dispatch t
 
 test-harnesses-4: test-review-and-fix-dispatch test-larch-log-write-round test-dispatch-code-voters-regressions-r3-codex test-implement-structure test-token-ledger test-check-review-changes test-scout-plan-archetypes-wrapper test-lint-bash32 test-compose-plan-goals-test test-emit-plan test-ci-rerun-failed test-rebase-push-force-lease test-token-report-dedup test-implement-cleanup-roundtrip
 
-test-harnesses-5: test-dispatch-panel-core-dynamic test-codex-implementer test-harness-timer test-lint-skill-invocations test-timing-report test-step-telemetry-mark test-parse-codex-usage test-check-phantom-dirty test-design-driver test-implement-fork-env test-plan-review-scope-anchor test-persist-retally-step3-env test-commit-implementation test-alias-structure test-parse-bootstrap-routing-envelope
+test-harnesses-5: test-dispatch-panel-core-dynamic test-codex-implementer test-harness-timer test-lint-skill-invocations test-timing-report test-parse-codex-usage test-check-phantom-dirty test-design-driver test-implement-fork-env test-plan-review-scope-anchor test-persist-retally-step3-env test-commit-implementation test-alias-structure test-parse-bootstrap-routing-envelope
 
 test-harnesses-6: test-plan-review-loop test-tracking-issue-write test-check-contains-pins test-dispatch-code-voters-retry-codex-success test-relevant-checks test-gate-b-apply-mode test-tracking-issue-read-sentinel test-redact test-ci-failed-jobs test-gate-b-dedup-plan test-agent-model-args test-review-structure test-pause-skill test-promote-release test-implement-step8-exit3-first-fixer test-brainstorm-prompts
 
@@ -120,111 +120,111 @@ test-harnesses-19: test-step2-dispatch test-revise-plan-with-waterfall test-hook
 
 test-harnesses-20: test-launch-review-codex test-collect-agent-bash32 test-timing-ledger test-tracking-issue-summary test-implement-admission test-lint-readability-preamble test-ci-wait-exit-trap test-append-tool-failure test-implement-review-token-propagation test-emit-design-plan-preview test-render-cost-line-callsites test-lib-cursor-auth test-slack-issue-announce test-implement-cleanup-script
 test-pipe-sigpipe-safety:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-redact-secrets.sh
+	python3 -m pytest -q python/test_redact.py
 
 test-scrub-log-secrets:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scrub-log-secrets.sh
+	python3 -m pytest -q python/test_redact.py
 
 test-redact-tmpdir-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-redact-tmpdir-paths.sh
+	python3 -m pytest -q python/test_redact.py
 
 test-reviewer-prune:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-reviewer-prune.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-reviewer-prune.sh
 
 test-lib-prune-decision:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-prune-decision.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-prune-decision.sh
 
 test-append-tool-failure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-append-tool-failure.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-append-execution-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-append-execution-issue.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-validate-research-output:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-validate-research-output.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-validate-research-output.sh
 
 test-validate-citations:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-validate-citations.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-validate-citations.sh
 
 test-validate-citations-budget:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-validate-citations-budget.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-validate-citations-budget.sh
 
 test-collect-agent-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-collect-agent-bash32.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-bash32.sh
 
 test-collect-agent-retry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-collect-agent-retry.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-retry.sh
 
 test-collect-agent-results:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-collect-agent-results.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-results.sh
 
 test-lib-failed-agent-stderr-tail:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-failed-agent-stderr-tail.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-failed-agent-stderr-tail.sh
 
 test-flush-vendor-failure-diagnostics:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-flush-vendor-failure-diagnostics.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-flush-vendor-failure-diagnostics.sh
 
 test-lib-net:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-net.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-net.sh
 
 
 
 
 
 test-analyze:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/analyze-issues/scripts/test-analyze.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/analyze-issues/scripts/test-analyze.sh
 
 test-fluff-analysis:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
+	bash scripts/harness-timer.sh $@ bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
 
 test-fluff-analysis-corpus:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
+	bash scripts/harness-timer.sh $@ bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-parse-prose-blockers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-prose-blockers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-parse-prose-blockers.sh
 
 test-fetch-combinable-issues-filter:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-fetch-combinable-issues-filter.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-fetch-combinable-issues-filter.sh
 
 test-legacy-title-prefix-literals-scope:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-legacy-title-prefix-literals-scope.sh
 
 test-implement-admission:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-admission.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-admission.sh
 
 test-anti-improvised-wakeup:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-anti-improvised-wakeup.sh
 
 test-audit-runs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/audit-runs/scripts/test-audit-runs.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/audit-runs/scripts/test-audit-runs.sh
 
 
 test-sessionstart:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-sessionstart-health.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-sessionstart-health.sh
 
 test-preflight-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-preflight-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-preflight-args.sh
 
 test-check-clean-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-clean-tree.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-clean-tree.sh
 
 test-check-main-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-main-sync.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-main-sync.sh
 
 test-plan-block:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-block.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-plan-block.sh
 
 test-plan-block-strip-body:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-block-strip-body.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-plan-block-strip-body.sh
 
 test-check-scope-reduction-marker:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-scope-reduction-marker.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-scope-reduction-marker.sh
 
 test-plan-review-scope-anchor:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-scope-anchor.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-plan-review-scope-anchor.sh
 
 test-clarify-comment:
 	cd python && $(PYTHON) -m pytest test_clarify.py
@@ -233,304 +233,301 @@ test-clarify-state:
 	cd python && $(PYTHON) -m pytest test_clarify.py
 
 test-check-stale-plugin:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-stale-plugin.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-stale-plugin.sh
 
 
 test-cache-root-validation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-root-validation.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cache-root-validation.sh
 
 test-cache-key-discipline:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cache-key-discipline.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-finalize-sanity-check.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-finalize-sanity-check.sh
 
 
 test-audit-edit-write:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-audit-edit-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-audit-edit-write.sh
 
 test-block-submodule:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-block-submodule-edit.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-block-submodule-edit.sh
 
 
 test-deny-edit-write:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-deny-edit-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-deny-edit-write.sh
 
 
 
 
 test-token-tally:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-tally.sh
 
 test-token-ledger:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-ledger.sh
 
 test-token-report:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report.sh
 
 test-token-report-dedup:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report-dedup.sh
 
 test-token-cost-per-bucket:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-cost-per-bucket.sh
 
 test-render-cost-line-realism:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line-realism.sh
 
 test-render-cost-line-callsites:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-cost-line-callsites.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line-callsites.sh
 
 test-render-run-summary-callsites:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary-callsites.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-run-summary-callsites.sh
 
 test-render-run-summary-format:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary-format.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-run-summary-format.sh
 
 test-token-report-summary-format:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report-summary-format.sh
 
 test-timing-ledger:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-timing-ledger.sh
 
 test-record-implement-review-round-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh
 
 test-review-implement-step5-loop-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-implement-step5-loop-timing.sh
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-implement-step5-loop-timing.sh
 
 test-record-plan-review-round-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-record-plan-review-round-timing.sh
-
-test-step-telemetry-mark:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-record-plan-review-round-timing.sh
 
 test-timing-report:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-timing-report.sh
 
 test-token-vendor-scrapers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-token-vendor-scrapers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-vendor-scrapers.sh
 
 test-parse-codex-usage:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-codex-usage.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-parse-codex-usage.sh
 
 test-token-claude-source:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-claude-source.sh
 
 test-verify-skill-called:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-verify-skill-called.sh
+	python3 -m pytest -q python/test_verify_skill.py
 
 
 test-relevant-checks:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-relevant-checks.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks.sh
 
 test-relevant-checks-byte-budget:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-relevant-checks-byte-budget.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-byte-budget.sh
 
 test-relevant-checks-validation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-relevant-checks-validation.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-validation.sh
 
 test-relevant-checks-helper-failure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-relevant-checks-helper-failure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-helper-failure.sh
 
 test-hook-anti-read-poll:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-anti-read-poll.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-hook-anti-read-poll.sh
 
 test-hook-progress-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-progress-report.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-hook-progress-report.sh
 
 test-review-relevant-checks-helper:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-relevant-checks-helper.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-review-relevant-checks-helper.sh
 
 test-lint-fix-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-fix-loop.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-fix-loop.sh
 
 
 
 test-classify-bump:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-classify-bump.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-classify-bump.sh
 
 test-release-prepare:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-prepare.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-prepare.sh
 
 test-release-set-version:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-set-version.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-set-version.sh
 
 test-release-finish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-finish.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-finish.sh
 
 test-promote-release:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-promote-release.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-promote-release.sh
 
 
 test-ci-wait-exit-trap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait-exit-trap.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait-exit-trap.sh
 
 test-ci-rerun-failed:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-rerun-failed.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-rerun-failed.sh
 
 test-ci-status:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-status.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-status.sh
 
 test-ci-behind-count:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-behind-count.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-behind-count.sh
 
 test-merge-pr:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-merge-pr.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-merge-pr.sh
 
 test-git-push:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-push.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-git-push.sh
 
 
 test-lint-literal-counts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-literal-counts.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-literal-counts.sh
 
 test-lint-no-raw-stderr-after-quiet-init:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
 
 test-lint-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-bash32.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bash32.sh
 
 
 test-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-halt-banners.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-anti-halt-banners.sh
 
 test-orchestrator-scope-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-orchestrator-scope-sync.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-orchestrator-scope-sync.sh
 
 
 test-alias-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-alias-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-alias-structure.sh
 
 test-design-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-design-structure.sh
 
 test-design-reentry-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-reentry-guard.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-design-reentry-guard.sh
 
 test-design-pause-resume:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-pause-resume.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-pause-resume.sh
 
 test-pause-skill:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
+	bash scripts/harness-timer.sh $@ bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-panel-dispatch.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-decompose-panel-dispatch.sh
 
 test-decompose-aggregator:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-aggregator.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-decompose-aggregator.sh
 
 test-decompose-file-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-file-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-decompose-file-issues.sh
 
 test-design-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-driver.sh
 
 test-design-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-publish.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-publish.sh
 
 test-design-postplan-emit:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-postplan-emit.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-postplan-emit.sh
 
 test-read-result-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-read-result-env.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-read-result-env.sh
 
 test-parse-design-argv:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-parse-design-argv.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-design-argv.sh
 
 
 test-invoke-plan-validator:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-invoke-plan-validator.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-invoke-plan-validator.sh
 
 test-file-design-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-file-design-oos.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-file-design-oos.sh
 
 test-design-log-publish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-log-publish.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-design-log-publish.sh
 
 test-lib-title-eligibility:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-title-eligibility.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-title-eligibility.sh
 
 test-lib-title-markers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-title-markers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-title-markers.sh
 
 test-emit-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-plan.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-emit-plan.sh
 
 test-gate-b-dedup-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-dedup-plan.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-gate-b-dedup-plan.sh
 
 test-gate-b-apply-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-gate-b-apply-mode.sh
 
 test-trailer-helpers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-trailer-helpers.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-trailer-helpers.sh
 
 test-emit-design-plan-preview:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-emit-design-plan-preview.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-emit-design-plan-preview.sh
 test-check-plan-size:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-check-plan-size.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-check-plan-size.sh
 
 test-snapshot-plan-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-snapshot-plan-round.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-snapshot-plan-round.sh
 
 test-auto-fix-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-auto-fix-plan-commands.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-auto-fix-plan-commands.sh
 
 
 test-parse-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-parse-plan-commands.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-plan-commands.sh
 
 
 test-validate-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-validate-plan-commands.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-validate-plan-commands.sh
 
 test-tally-plan-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-tally-plan-review.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-tally-plan-review.sh
 
 test-findings-classification:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-findings-classification.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-findings-classification.sh
 
 test-review-findings-classification:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-findings-classification.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-findings-classification.sh
 
 test-plan-review-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-loop.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-plan-review-loop.sh
 
 test-lib-design-round-artifacts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-design-round-artifacts.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-design-round-artifacts.sh
 
 test-design-multi-round-integration:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-multi-round-integration.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-design-multi-round-integration.sh
 
 test-step3-review-cap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-step3-review-cap.sh
 
 test-persist-retally-step3-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-persist-retally-step3-env.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-persist-retally-step3-env.sh
 
 test-run-step3-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-run-step3-review.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-run-step3-review.sh
 
 test-review-design-step3-loop:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-review-design-step3-loop.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-review-design-step3-loop.sh
 
 test-step3-orchestrator-fence:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-step3-orchestrator-fence.sh
 
 test-design-step3-state:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-state.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-step3-state.sh
 
 test-lib-phase-driver:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-lib-phase-driver.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-lib-phase-driver.sh
 
 test-finalize-plan:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-finalize-plan.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-finalize-plan.sh
 
 test-step0b-router-flag-recovery:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-step0b-router-flag-recovery.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-step0b-router-flag-recovery.sh
 
 test-brainstorm-prompts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-brainstorm-prompts.sh
 
 test-lint-readability-preamble:
 	cd python && $(PYTHON) -m pytest test_lint_readability_preamble.py
@@ -545,39 +542,39 @@ test-lint-skill-invocations:
 	cd python && $(PYTHON) -m pytest test_lint_skill_invocations.py
 
 test-lint-renderer-substitution-safety:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-renderer-substitution-safety.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-renderer-substitution-safety.sh
 
 
 test-lint-bare-grep-probe:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-bare-grep-probe.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bare-grep-probe.sh
 
 
 test-launch-codex-exec:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-exec.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-exec.sh
 
 test-lint-awk-multibyte-regex:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-awk-multibyte-regex.sh
 
 test-scout-plan-archetypes-wrapper:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
 
 test-dispatch-plan-review-panel:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-dispatch-plan-review-panel.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-dispatch-plan-review-panel.sh
 
 test-render-final-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-render-final-summary.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-render-final-summary.sh
 
 test-render-final-summary-bash32:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-final-summary-bash32.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-final-summary-bash32.sh
 
 test-implement-rebase-macro:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-rebase-macro.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-rebase-macro.sh
 
 test-ship-pr-rebase:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ship-pr-rebase.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr-rebase.sh
 
 test-ship-pr-oos-pr-prep:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ship-pr-oos-pr-prep.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr-oos-pr-prep.sh
 
 test-rebase-checkpoint-probe:
 	bash scripts/test-rebase-checkpoint-probe.sh
@@ -586,165 +583,165 @@ test-phantom-probe-with-warn:
 	bash scripts/test-phantom-probe-with-warn.sh
 
 test-implement-step2-routing:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-step2-routing.sh
 
 test-rebase-push-keep-on-conflict:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-keep-on-conflict.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-keep-on-conflict.sh
 
 
 test-rebase-push-force-lease:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-force-lease.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-force-lease.sh
 
 test-rebase-push-fork-mode:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-fork-mode.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-fork-mode.sh
 
 test-rebase-push-no-push-fetch-retry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-rebase-push-no-push-fetch-retry.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-no-push-fetch-retry.sh
 
 test-implement-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-structure.sh
 
 test-implement-step8-exit3-first-fixer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step8-exit3-first-fixer.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-step8-exit3-first-fixer.sh
 
 test-oos-disposition-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-disposition-gate.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-oos-disposition-gate.sh
 
 test-plan-adequacy-audit:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-plan-adequacy-audit.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-plan-adequacy-audit.sh
 
 test-implement-positional-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-positional-issue.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-positional-issue.sh
 
 test-implement-fence-shape:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-fence-shape.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-fence-shape.sh
 
 test-implement-timing-rehydration:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-timing-rehydration.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-timing-rehydration.sh
 
 test-implement-cleanup-roundtrip:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-cleanup-roundtrip.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-cleanup-roundtrip.sh
 
 test-implement-anti-polling-rule:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-anti-polling-rule.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-anti-polling-rule.sh
 
 test-implement-relevant-checks-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
 
 test-implement-anti-halt:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-anti-halt.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-anti-halt.sh
 
 test-implement-review-token-propagation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-review-token-propagation.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-review-token-propagation.sh
 
 test-run-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-run-step2-dispatch.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-run-step2-dispatch.sh
 
 test-step2-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step2-dispatch.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step2-dispatch.sh
 
 test-stall-recovery-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-stall-recovery-report.sh
 
 test-step-18b-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-18b-final-report.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-18b-final-report.sh
 
 test-cursor-implementer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cursor-implementer.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cursor-implementer.sh
 
 test-codex-implementer:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-codex-implementer.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-codex-implementer.sh
 
 test-extract-plan-scope-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-extract-plan-scope-paths.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-extract-plan-scope-paths.sh
 
 test-git-commit-only:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-git-commit-only.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-git-commit-only.sh
 
 test-refresh-run-logs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-refresh-run-logs.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-gh-run-logs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gh-run-logs.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-gh-run-logs.sh
 
 test-ci-failed-jobs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-failed-jobs.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-failed-jobs.sh
 
 test-ci-wait:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait.sh
 
 test-launch-cursor-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-cursor-ci.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-cursor-ci.sh
 
 test-launch-claude-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-ci.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-ci.sh
 
 test-launch-codex-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-ci.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-ci.sh
 
 test-run-negotiation-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-negotiation-round.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-negotiation-round.sh
 
 test-run-external-agent-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-external-agent-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-external-agent-args.sh
 
 test-quick-mode-docs-sync:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
+	bash scripts/harness-timer.sh $@ bash scripts/test-quick-mode-docs-sync.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-finalize.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-finalize.sh
 
 test-implement-bootstrap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-bootstrap.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-bootstrap.sh
 
 test-implement-bootstrap-invoke:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-bootstrap-invoke.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-bootstrap-invoke.sh
 
 test-parse-bootstrap-routing-envelope:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-bootstrap-routing-envelope.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-parse-bootstrap-routing-envelope.sh
 
 test-flush-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-flush-execution-issues.sh
 
 test-step-7a:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-7a.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-7a.sh
 
 test-step-8-ship:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-8-ship.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-8-ship.sh
 
 test-post-tracking-issue:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-post-tracking-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-post-tracking-issue.sh
 
 test-commit-implementation:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-implementation.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-commit-implementation.sh
 
 test-commit-review-fixes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-review-fixes.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-commit-review-fixes.sh
 
 test-generate-code-flow-diagram:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-generate-code-flow-diagram.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-generate-code-flow-diagram.sh
 
 test-refresh-execution-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-refresh-execution-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-refresh-execution-issues.sh
 
 test-write-rejected-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-write-rejected-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-write-rejected-findings.sh
 
 test-slack-issue-announce:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-slack-issue-announce.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-slack-issue-announce.sh
 
 test-write-final-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-write-final-report.sh
 
 test-render-run-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-run-summary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-run-summary.sh
 
 test-render-review-phase-detail:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-render-review-phase-detail.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-review-phase-detail.sh
 
 test-token-cost:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-cost.sh
 
 lint-retired-scripts:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
@@ -752,191 +749,191 @@ lint-retired-scripts:
 	$(PYTHON) python/cli.py lint retired-scripts
 
 test-render-cost-line:
-	cd python && $(PYTHON) -m pytest test_report_tokens_cost.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line.sh
 
 test-implement-cleanup-script:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-cleanup.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cleanup.sh
 
 test-harness-shards-coverage:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-harness-shards-coverage.sh --self-test
+	bash scripts/harness-timer.sh $@ bash scripts/test-harness-shards-coverage.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-harness-shards-coverage.sh --self-test
 
 test-harness-timer:
-	cd python && $(PYTHON) -m pytest test_timing.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-harness-timer.sh
 
 test-references-headers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-references-headers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-references-headers.sh
 
 test-research-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-research-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-research-structure.sh
 
 test-review-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-review-structure.sh
 
 test-gather-context:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-gather-context.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-gather-context.sh
 
 test-review-core:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-review-core.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-review-core.sh
 
 test-dispatch-panel-core:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section core
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section core
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section core-dynamic
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section core-dynamic
 
 test-dispatch-panel-reuse:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section reuse
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section reuse
 
 test-dispatch-panel-limits:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section limits
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section limits
 
 test-scout-dynamic-archetypes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scout-dynamic-archetypes.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-scout-dynamic-archetypes.sh
 
 test-dispatch-plan-voters:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-plan-voters.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-plan-voters.sh
 
 test-prompt-template-invariants:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-prompt-template-invariants.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-prompt-template-invariants.sh
 
 test-lib-submodule-prohibition:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-submodule-prohibition.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-submodule-prohibition.sh
 
 test-collect-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-collect-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-collect-findings.sh
 
 test-aggregate-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-aggregate-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-aggregate-findings.sh
 
 test-prune-nit-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-prune-nit-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-prune-nit-findings.sh
 
 test-tally-code-votes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-tally-code-votes.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-tally-code-votes.sh
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-check-reviewer-failure-threshold.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-check-reviewer-failure-threshold.sh
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section happy
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section happy
 
 test-dispatch-code-voters-edge-and-r3-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section edge-and-r3-claude
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section edge-and-r3-claude
 
 test-dispatch-code-voters-regressions-r1-r2:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section regressions-r1-r2
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section regressions-r1-r2
 
 test-dispatch-code-voters-regressions-r3-codex:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section regressions-r3-codex
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section regressions-r3-codex
 
 test-dispatch-code-voters-retry-claude:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-claude
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section retry-claude
 
 test-dispatch-code-voters-retry-codex-success:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-codex-success
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section retry-codex-success
 
 test-dispatch-code-voters-retry-cursor:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-cursor
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section retry-cursor
 
 test-dispatch-code-voters-retry-codex-fail-and-fallback:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-codex-fail-and-fallback
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section retry-codex-fail-and-fallback
 
 test-emit-tally:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-emit-tally.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-emit-tally.sh
 
 test-log-phase:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-log-phase.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-log-phase.sh
 
 # test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
 # prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four
 # section targets below instead: dispatch, convergence, parsers, and step5-starting-round.
 test-review-and-fix:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-and-fix.sh
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh
 
 test-review-and-fix-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-and-fix.sh --section dispatch
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh --section dispatch
 
 test-review-and-fix-convergence:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-and-fix.sh --section convergence
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh --section convergence
 
 test-review-and-fix-parsers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-and-fix.sh --section parsers
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh --section parsers
 
 test-review-and-fix-step5-starting-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review-and-fix/scripts/test-review-and-fix.sh --section step5-starting-round
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh --section step5-starting-round
 
 test-run-step5-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step5-review.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-step5-review.sh
 
 test-scrub-submodule-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scrub-submodule-paths.sh
+	python3 -m pytest -q python/test_redact.py
 
 
 test-run-research-planner:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-run-research-planner.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-run-research-planner.sh
 
 test-render-findings-batch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-render-findings-batch.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-render-findings-batch.sh
 
 test-research-banner:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-research-banner.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-research-banner.sh
 
 test-synthesis-subagent:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-synthesis-subagent.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-synthesis-subagent.sh
 
 test-research-angle-prompts:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/research/scripts/test-research-angle-prompts.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-research-angle-prompts.sh
 
 test-subskill-anchors:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-subskill-anchors.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-subskill-anchors.sh
 
 test-tracking-issue-write:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-tracking-issue-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-write.sh
 
 test-larch-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-log.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-larch-log-write-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-log-write-round.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-capture-session-transcript:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-capture-session-transcript.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-verify-run-log-completeness:
-	env -u LARCH_VERIFY_MANIFEST python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-verify-run-log-completeness.sh
+	env -u LARCH_VERIFY_MANIFEST python3 -m pytest -q python/test_run_logs.py
 
 test-larch-logs-manifest:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-logs-manifest.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-larch-logs-batches:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-larch-logs-batches.sh
+	python3 -m pytest -q python/test_run_logs.py
 
 test-compose-plan-goals-test:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-plan-goals-test.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-plan-goals-test.sh
 
 test-run-step1-plan-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-step1-plan-log.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-step1-plan-log.sh
 
 test-compose-collector-failure-log:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-collector-failure-log.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-collector-failure-log.sh
 
 test-compose-pr-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-pr-summary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-pr-summary.sh
 
 test-compute-pr-line-counts:
-	cd python && $(PYTHON) -m pytest test_tokens.py -q
+	bash scripts/harness-timer.sh $@ bash scripts/test-compute-pr-line-counts.sh
 
 test-tracking-issue-summary:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-tracking-issue-summary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-summary.sh
 
 test-tracking-issue-read-sentinel:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-tracking-issue-read-sentinel.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-read-sentinel.sh
 
 test-compose-review-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-review-findings.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-review-findings.sh
 
 
 
@@ -945,115 +942,115 @@ test-compose-review-findings:
 
 
 test-check-review-changes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-check-review-changes.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-check-review-changes.sh
 
 test-check-mid-run-dirty-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-mid-run-dirty-tree.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-mid-run-dirty-tree.sh
 
 test-check-phantom-dirty:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-phantom-dirty.sh
 
 test-check-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-reviewers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-reviewers.sh
 
 test-degraded-tools-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-degraded-tools-gate.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-degraded-tools-gate.sh
 
 test-no-grouped-reuse-guard:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-no-grouped-reuse-guard.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-no-grouped-reuse-guard.sh
 
 test-check-topology-rule-paths:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-topology-rule-paths.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-topology-rule-paths.sh
 
 test-external-tool-registry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-external-tool-registry.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-external-tool-registry.sh
 
 test-launch-review:
 	$(MAKE) test-launch-review-codex test-launch-review-cursor-core test-launch-review-cursor-retry
 
 test-launch-review-codex:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-review.sh --section codex
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-review.sh --section codex
 
 test-launch-review-cursor-core:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-review.sh --section cursor-core
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-review.sh --section cursor-core
 
 test-launch-review-cursor-retry:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-review.sh --section cursor-retry
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-review.sh --section cursor-retry
 
 test-lib-external-launcher-common:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-external-launcher-common.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-external-launcher-common.sh
 
 test-launch-claude-subprocess:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-subprocess.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-subprocess.sh
 
 test-launch-claude-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-review.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-review.sh
 
 test-launch-claude-drafter:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-drafter.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-drafter.sh
 
 test-launch-codex-drafter:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-drafter.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-drafter.sh
 
 test-dispatch-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-with-waterfall.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-with-waterfall.sh
 
 test-revise-plan-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-revise-plan-with-waterfall.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-revise-plan-with-waterfall.sh
 
 test-agent-model-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-agent-model-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-agent-model-args.sh
 
 test-effort-prose:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-effort-prose.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-effort-prose.sh
 
 test-lib-cursor-auth:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-cursor-auth.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-cursor-auth.sh
 
 test-lib-quiet:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-quiet.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-quiet.sh
 
 test-lib-design-tmpdir:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-design-tmpdir.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-design-tmpdir.sh
 
 test-github-remote-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-github-remote-repo.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-github-remote-repo.sh
 
 test-implement-fork-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-fork-env.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-fork-env.sh
 
 test-get-issue-context:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-get-issue-context.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-get-issue-context.sh
 
 test-get-issue-state:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-get-issue-state.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-get-issue-state.sh
 
 test-create-pr:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-create-pr.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-create-pr.sh
 
 test-resolve-repo:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-repo.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-resolve-repo.sh
 
 test-gh-pr-body-update:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-gh-pr-body-update.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-gh-pr-body-update.sh
 
 test-wait-for-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-wait-for-reviewers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-wait-for-reviewers.sh
 
 test-run-external-agent:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-external-agent.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-external-agent.sh
 
 
 
 
 test-oos-file-conflict-deps:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-file-conflict-deps.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-oos-file-conflict-deps.sh
 
 test-oos-issue-cap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-oos-issue-cap.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-oos-issue-cap.sh
 
 test-materialize-manifest-oos:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-materialize-manifest-oos.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-materialize-manifest-oos.sh
 
 smoke-dialectic:
 	bash scripts/dialectic-smoke-test.sh
@@ -1083,7 +1080,7 @@ eval-research:
 # from CI. The structural test is itself cheap (no API cost) but kept
 # standalone for symmetry. See scripts/test-eval-set-structure.md.
 test-eval-set-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-eval-set-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-eval-set-structure.sh
 
 # Standalone offline regression harness for the `--baseline` flag handling
 # in scripts/eval-research.sh (closes #441). NOT a `test-harnesses`
@@ -1094,7 +1091,7 @@ test-eval-set-structure:
 # so it works on machines without the real binaries.
 # See scripts/test-eval-research-baseline-flag.md.
 test-eval-research-baseline-flag:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-eval-research-baseline-flag.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-eval-research-baseline-flag.sh
 
 shellcheck:
 	pre-commit run shellcheck --all-files
@@ -1136,4 +1133,4 @@ setup:
 	pre-commit install
 
 test-check-contains-pins:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-contains-pins.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-contains-pins.sh

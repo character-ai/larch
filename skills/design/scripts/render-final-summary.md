@@ -77,10 +77,10 @@ heading, with one blank line on each side, and emits
 `<!-- larch:final-summary-fallback v1 -->` directly after the existing
 `<!-- larch:run-summary v=1 -->` marker. The heading remains the first
 non-empty line so first-line outcome parsers in
-`scripts/verify-run-log-completeness.sh` and
+`python/cli.py run-log verify-completeness` and
 `.claude/skills/audit-runs/scripts/audit-scan-run.sh` keep anchoring on the
 terminal outcome. Fallback still exits 0, and Warning recording through
-`append-tool-failure.sh` is unchanged; the banner says "execution issues"
+`run-log append-failure` is unchanged; the banner says "execution issues"
 without a filename because design tmpdirs use `execution-issues.md` while
 published implement logs use `execution-issues.ndjson`.
 

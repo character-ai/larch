@@ -76,7 +76,7 @@ fi
 
 WROTE_BATCH=false
 if [ -n "$LOG_ROOT" ] && [ -n "$RUN_ID" ]; then
-    if "$SCRIPT_DIR/larch-log.sh" write \
+    if python3 "$SCRIPT_DIR/../python/cli.py" run-log write \
         --log-root "$LOG_ROOT" \
         --skill "$SKILL" \
         --run-id "$RUN_ID" \

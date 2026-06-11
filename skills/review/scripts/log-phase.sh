@@ -43,9 +43,9 @@ args=(--skill review --run-id "$RUN_ID" --batch "$BATCH")
 log_phase_stdout=$(mktemp "${TMPDIR:-/tmp}/review-log-phase.XXXXXX") || exit 1
 trap 'rm -f "$log_phase_stdout"' EXIT
 if [[ "$ACTION" == "write" ]]; then
-    "$PLUGIN_ROOT/scripts/larch-log.sh" write "${args[@]}" --input-file "$PAYLOAD_FILE" > "$log_phase_stdout"
+    "$PLUGIN_ROOT/python/cli.py run-log" write "${args[@]}" --input-file "$PAYLOAD_FILE" > "$log_phase_stdout"
 else
-    "$PLUGIN_ROOT/scripts/larch-log.sh" append "${args[@]}" --record-file "$PAYLOAD_FILE" > "$log_phase_stdout"
+    "$PLUGIN_ROOT/python/cli.py run-log" append "${args[@]}" --record-file "$PAYLOAD_FILE" > "$log_phase_stdout"
 fi
 while IFS= read -r line || [[ -n "$line" ]]; do
     emit "$line"

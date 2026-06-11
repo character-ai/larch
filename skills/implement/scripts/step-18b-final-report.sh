@@ -21,7 +21,7 @@ die_argv() {
 append_failure_best_effort() {
     local site=$1 tool=$2 rc=$3 log=$4
     [ -f "$log" ] || : >"$log" 2>/dev/null || true
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \

@@ -149,7 +149,7 @@ if [ "$jq_ok" = true ]; then
             cp "$DESIGN_TMPDIR/token-report-final.stderr.log" "$DESIGN_TMPDIR/token-report-final.failure.log" 2>/dev/null || true
         fi
         if [ "$stderr_nonempty" = true ]; then
-            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design final summary" \
                 --tool "python3 python/cli.py token report" \
@@ -197,7 +197,7 @@ else
         if [ -s "$DESIGN_TMPDIR/token-report-final.stderr.log" ]; then
             cat "$DESIGN_TMPDIR/token-report-final.stderr.log" >>"$DESIGN_TMPDIR/token-report-final.failure.log" 2>/dev/null || true
         fi
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design final summary" \
             --tool "python3 python/cli.py token report" \
@@ -215,7 +215,7 @@ if [ -z "$DURATION" ]; then
         if [ -s "$DESIGN_TMPDIR/timing-report-final.stderr.log" ]; then
             cat "$DESIGN_TMPDIR/timing-report-final.stderr.log" >>"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
         fi
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design final summary" \
             --tool "python3 python/cli.py timing report" \
@@ -498,9 +498,9 @@ invoke_render() {
 append_render_warning() {
     local rc=$1 output_file=$2
     RENDER_WARNING_RECORDED=false
-    [ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ] || return 0
+    [ -x "$PLUGIN_ROOT/python/cli.py run-log append-failure" ] || return 0
     [ -f "$output_file" ] || : >"$output_file"
-    if "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    if "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design final summary" \
         --tool "render-run-summary.sh" \
@@ -649,7 +649,7 @@ if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ] && [ -s "$DESIGN_TMPDIR/final-summary.
     ups_rc=$?
     set -e
     if [ "$ups_rc" -ne 0 ]; then
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5" \
             --tool "tracking-issue-summary.sh upsert-summary" \

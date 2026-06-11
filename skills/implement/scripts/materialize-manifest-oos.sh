@@ -40,7 +40,7 @@ done
 [ -d "$implement_tmpdir" ] || { echo "implement tmpdir missing: $implement_tmpdir" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd -P)}"
-redact_secrets="$plugin_root/scripts/redact-secrets.sh"
+redact_secrets="$plugin_root/python/cli.py redact secrets"
 
 if ! jq -e 'type == "object"' "$manifest_path" >/dev/null 2>&1; then
   echo "manifest must be a JSON object" >&2
@@ -66,7 +66,7 @@ if [ "${LARCH_TEST_MATERIALIZE_FORCE_FAIL:-}" = "true" ] && [ "$count_only" != "
   exit 1
 fi
 if [ ! -x "$redact_secrets" ]; then
-  echo "redact-secrets.sh missing or not executable: $redact_secrets" >&2
+  echo "redact secrets missing or not executable: $redact_secrets" >&2
   exit 1
 fi
 
@@ -182,8 +182,8 @@ append_security_audit() {
     printf -- '- **Disposition**: security-routed; not materialized for public OOS filing\n'
   } >> "$audit"
   entry='- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md'
-  if [ -x "$plugin_root/scripts/append-execution-issue.sh" ]; then
-    "$plugin_root/scripts/append-execution-issue.sh" \
+  if [ -x "$plugin_root/python/cli.py run-log append-entry" ]; then
+    "$plugin_root/python/cli.py run-log append-entry" \
       --log "$implement_tmpdir/execution-issues.md" \
       --category Warnings \
       --entry "$entry" >/dev/null 2>&1 || printf '\n### Warnings\n%s\n' "$entry" >> "$implement_tmpdir/execution-issues.md"

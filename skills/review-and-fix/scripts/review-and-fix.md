@@ -111,15 +111,15 @@ Rejected code-review markdown is accumulated at `$IMPLEMENT_TMPDIR/rejected-find
 
 When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
-- `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
-- `code-review-tally` via `python/cli.py voting write-tally`, with a body containing aggregate counts derived from the composed `[code-review/accepted]` / `[code-review/rejected]` sections, sanitized review round summaries with stale per-round count bullets removed, rejected code-review findings, and the latest round voting tally when present.
-- `review-scout-manifest` via `scripts/larch-log.sh write` when `SCOUT_STATUS` from `review-core.sh` is non-empty and not `na`. The payload is `{"status":"<status>","dynamic_slots":<N>,"manifest_basename":"<basename>","yield_tsv_basename":"<basename>"}`. Invalid scout payload inputs or flush failure are logged to `execution-issues.md` under `Warnings` and do not fail the round.
+- `review-findings-full` via `scripts/compose-review-findings.sh` followed by `python/cli.py run-log write`.
+- `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts derived from the composed `[code-review/accepted]` / `[code-review/rejected]` sections, sanitized review round summaries with stale per-round count bullets removed, rejected code-review findings, and the latest round voting tally when present.
+- `review-scout-manifest` via `python/cli.py run-log write` when `SCOUT_STATUS` from `review-core.sh` is non-empty and not `na`. The payload is `{"status":"<status>","dynamic_slots":<N>,"manifest_basename":"<basename>","yield_tsv_basename":"<basename>"}`. Invalid scout payload inputs or flush failure are logged to `execution-issues.md` under `Warnings` and do not fail the round.
 
 Batch flushing is intentionally non-blocking: failures are suppressed so review status remains governed by the review and fix results.
 
 Submodule guard layers:
 
-1. `scripts/scrub-submodule-paths.sh` removes findings whose paths are under submodule roots.
+1. `python/cli.py redact scrub-submodule-paths` removes findings whose paths are under submodule roots.
 2. The coder prompt includes a submodule prohibition block.
 3. After coder dispatch, tracked changes under submodule roots are reverted with `git checkout -- <path>`, untracked files under submodule roots are removed, and the round is reported as `CODER_STATUS=submodule-violation`.
 

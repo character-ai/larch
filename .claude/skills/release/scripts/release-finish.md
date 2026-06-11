@@ -25,7 +25,7 @@ Publish tail for `/release`: resolve the squash-merge commit, verify `plugin.jso
 
 ## Notes redaction
 
-`--notes-file` is piped through `scripts/redact-tmpdir-paths.sh` then `scripts/redact-secrets.sh` before `gh release create` / `edit`.
+`--notes-file` is piped through `python/cli.py redact tmpdir-paths` then `python/cli.py redact secrets` before `gh release create` / `edit`.
 
 ## Fail-closed version check
 

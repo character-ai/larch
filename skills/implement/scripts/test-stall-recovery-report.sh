@@ -556,7 +556,7 @@ cp "$SCRIPT_DIR/stall-recovery-report.md" "$copyroot/skills/implement/scripts/"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$copyroot/scripts/"
 cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$copyroot/scripts/"
 cp "$REPO_ROOT/python/cli.py" "$copyroot/scripts/"
-cat >"$copyroot/scripts/redact-secrets.sh" <<'SH'
+cat >"$copyroot/python/cli.py redact secrets" <<'SH'
 #!/usr/bin/env bash
 cat >"$STALL_REDACTOR_MARKER"
 {
@@ -564,7 +564,7 @@ cat >"$STALL_REDACTOR_MARKER"
     printf '\nInjected %s\n' 'ghp_''abcdef123456789012345678901234567890'
 } | sed 's/ghp_[A-Za-z0-9_][A-Za-z0-9_]*/<REDACTED-TOKEN>/g'
 SH
-chmod +x "$copyroot/skills/implement/scripts/stall-recovery-report.sh" "$copyroot/scripts/redact-secrets.sh"
+chmod +x "$copyroot/skills/implement/scripts/stall-recovery-report.sh" "$copyroot/python/cli.py redact secrets"
 dir=$(make_tmp case16)
 cat >"$dir/class.env" <<'EOF'
 FAILURE_CLASS=transient-infra

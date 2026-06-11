@@ -1,11 +1,11 @@
 # Plan
 
 ```bash
-scripts/redact-secrets.sh
+python/cli.py redact secrets
 cat << "X"
 ignored body
 X
-scripts/redact-secrets.sh --help
+python/cli.py redact secrets --help
 ```
 
 diff_lines: 1

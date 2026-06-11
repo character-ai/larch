@@ -14,7 +14,7 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-issue-cap.sh"
 DEPS_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-file-conflict-deps.sh"
 COUNT_AWK="$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk"
-APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+APPEND_FAIL_SH="$PLUGIN_ROOT/python/cli.py run-log append-failure"
 
 usage() {
   while IFS= read -r line; do larch_err "$line"; done <<'USAGE'

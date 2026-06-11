@@ -95,8 +95,8 @@ DISPATCHER
 chmod +x "$FAKE_PLUGIN/python/cli.py"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdir.sh"
-ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
-ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$FAKE_SCRIPTS/append-execution-issue.sh"
+ln -sf "$REPO_ROOT/python/cli.py run-log append-failure" "$FAKE_SCRIPTS/run-log append-failure"
+ln -sf "$REPO_ROOT/python/cli.py run-log append-entry" "$FAKE_SCRIPTS/run-log append-entry"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
@@ -724,19 +724,19 @@ assert_contains "$D26/stdout.txt" 'result env write failed' "merged result env d
 assert_not_contains "$D26/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged result env no stdout fallback"
 
 D27="$TMP/merged-plan-size-append-fails"
-rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
 cat >"$FAKE_DESIGN/check-plan-size.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'PLAN_SIZE_STATUS=missing-plan\n'
 printf 'stderr detail from check-plan-size\n' >&2
 exit 2
 STUB
-cat >"$FAKE_SCRIPTS/append-tool-failure.sh" <<'STUB'
+cat >"$FAKE_SCRIPTS/run-log append-failure" <<'STUB'
 #!/usr/bin/env bash
 printf 'APPENDED=false\nLOG=/tmp/leak\n'
 exit 7
 STUB
-chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
 setup_design_tmp "$D27" full SIMPLE
 set +e
 run_subject "$D27" --with-plan-size
@@ -747,9 +747,9 @@ assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged a
 assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
 assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
 assert_not_contains "$D27/stdout.txt" 'LOG=' "merged append failure no LOG leak"
-rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
-ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+ln -sf "$REPO_ROOT/python/cli.py run-log append-failure" "$FAKE_SCRIPTS/run-log append-failure"
 
 D28="$TMP/merged-snapshot-failed-diagnostic"
 setup_design_tmp "$D28" full HARD

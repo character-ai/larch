@@ -9,8 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
-REDACT="$SCRIPT_DIR/redact-secrets.sh"
-REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+PY_CLI="$SCRIPT_DIR/../python/cli.py"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -28,8 +27,8 @@ fail() {
 }
 
 redact_text() {
-    [ -x "$REDACT" ] || fail 3 "redaction helper missing: $REDACT"
-    printf '%s' "$1" | "$REDACT" || fail 3 "redaction failed"
+    [ -f "$PY_CLI" ] || fail 3 "redaction helper missing: $PY_CLI"
+    printf '%s' "$1" | python3 "$PY_CLI" redact secrets || fail 3 "redaction failed"
 }
 
 redact_gh_error() {
@@ -97,8 +96,8 @@ case "$cmd" in
         validate_repo "$REPO"
         content="$(cat "$CONTENT_FILE")"
         body="$MARKER"$'\n\n'"$content"
-        if [ -x "$REDACT_PATHS" ]; then
-            body="$(printf '%s' "$body" | "$REDACT_PATHS" 2>/dev/null || printf '%s' "$body")"
+        if [ -f "$PY_CLI" ]; then
+            body="$(printf '%s' "$body" | python3 "$PY_CLI" redact tmpdir-paths 2>/dev/null || printf '%s' "$body")"
         fi
         body="$(redact_text "$body")"
         ids=""

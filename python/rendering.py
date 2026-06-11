@@ -953,9 +953,9 @@ def mermaid_sanitize_main(argv: list[str]) -> int:
                 logging_util.emit_kv(f"FENCE_{i}_HEADING", fence.heading)
         if args.warnings_log:
             tokens = " ".join(sorted({r.split("=", 1)[1].split()[0] for r in reasons}))
-            append = REPO_ROOT / "scripts" / "append-execution-issue.sh"
+            append = REPO_ROOT / "python" / "cli.py"
             if append.exists():
-                subprocess.run(["bash", str(append), "--log", args.warnings_log, "--category", "Warnings", "--entry", f"- **Step {args.warnings_step} — mermaid sanitizer rejected:** {tokens}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S607
+                subprocess.run(["python3", str(append), "run-log", "append-entry", "--log", args.warnings_log, "--category", "Warnings", "--entry", f"- **Step {args.warnings_step} — mermaid sanitizer rejected:** {tokens}"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S607
         return 1
     logging_util.emit_kv("STATUS", "ok")
     logging_util.emit_kv("FENCE_COUNT", str(len(fences)))

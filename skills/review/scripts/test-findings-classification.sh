@@ -11,6 +11,7 @@ TALLY="$SCRIPT_DIR/tally-code-votes.sh"
 LOG_PHASE="$SCRIPT_DIR/log-phase.sh"
 LARCH_LOG="$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh"
 CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
+PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/review-findings-classification.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT

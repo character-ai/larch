@@ -1,6 +1,6 @@
 # oos-disposition-checkpoint.sh
 
-Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs (fork/repo flags, commit range, `oos-issues.ndjson` discovery, design-OOS path, non-security block count, ndjson precondition), invokes `oos-disposition-gate.sh`, and logs failures via `append-tool-failure.sh`. The orchestrator calls this script and branches on its exit code; it does **not** clear `OOS_PENDING`, write `run-statistics`, or re-enter `--resume-phase pr-create` (see NEVER #17 / #18 in `skills/implement/SKILL.md`).
+Step 8+ OOS checkpoint helper for `/implement`. Computes disposition-gate inputs (fork/repo flags, commit range, `oos-issues.ndjson` discovery, design-OOS path, non-security block count, ndjson precondition), invokes `oos-disposition-gate.sh`, and logs failures via `run-log append-failure`. The orchestrator calls this script and branches on its exit code; it does **not** clear `OOS_PENDING`, write `run-statistics`, or re-enter `--resume-phase pr-create` (see NEVER #17 / #18 in `skills/implement/SKILL.md`).
 
 ## Invocation
 
@@ -44,7 +44,7 @@ Gate exit 2 is **not** collapsed into exit 1 (unlike the prior inline orchestrat
 
 ## Logging (`log_checkpoint_failure`)
 
-Every non-zero exit calls `append-tool-failure.sh` best-effort (`|| true`) then `exit` with the saved checkpoint rc:
+Every non-zero exit calls `run-log append-failure` best-effort (`|| true`) then `exit` with the saved checkpoint rc:
 
 - `--log "$IMPLEMENT_TMPDIR/execution-issues.md"` (required)
 - `--site` — `step-8-oos-checkpoint` (rc 1) or `step-8-oos-checkpoint-validation` (rc 2 and pre-gate exit 2)

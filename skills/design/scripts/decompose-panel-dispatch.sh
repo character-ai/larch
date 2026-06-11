@@ -14,7 +14,7 @@ larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
-APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+APPEND_FAIL_SH="$PLUGIN_ROOT/python/cli.py run-log append-failure"
 
 usage() {
     larch_err "Usage: decompose-panel-dispatch.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false --mode plan|feature-only [--plan-file PATH] [--feature-file PATH] [--discussion-round1-file PATH] [--timeout SEC]"

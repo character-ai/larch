@@ -10,8 +10,8 @@ properties the issue requires for committed run logs:
   log) with **non-empty** diagnostics whenever any diagnostic stream had content.
 - **Flushed** — those diagnostics reach git (design: `design-log-publish.sh`
   staging; implement: the `vendor-failure-diagnostics` batch and/or the
-  `execution-issues` batch), redacted via `redact-secrets.sh` /
-  `redact-tmpdir-paths.sh`.
+  `execution-issues` batch), redacted via `redact secrets` /
+  `redact tmpdir-paths`.
 
 ## Design
 
@@ -26,7 +26,7 @@ exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
 
 Every launch that funnels through `run-external-agent.sh` therefore **inherits**
-the saved carrier with no per-site change. `scripts/append-tool-failure.sh` gains
+the saved carrier with no per-site change. `python/cli.py run-log append-failure` gains
 a fail-closed backstop (missing / zero-byte `--output-file` → synthesize
 `no diagnostics captured (exit N)`), so every `execution-issues.md` failure entry
 is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
@@ -43,18 +43,18 @@ below.
 |---|---|---|---|---|---|
 | `scripts/run-external-agent.sh` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
 | `scripts/lib-failed-agent-stderr-tail.sh` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
-| `scripts/append-tool-failure.sh` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
+| `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `scripts/launch-review.sh` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
 | `scripts/launch-review.sh` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |
 | `scripts/launch-claude-subprocess.sh` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |
 | `scripts/flush-vendor-failure-diagnostics.sh` | — | — | ✅ | **D** | Merges per-slot parts → batch; clear-after-success. |
 | `scripts/design-log-publish.sh` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
-| `scripts/larch-log-batches.sh` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
-| `scripts/larch-log.sh` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
+| `python/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
+| `python/cli.py run-log` | — | — | ✅ implement | **D** | Keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied in `round_artifact_included` (batch is the sole durable path; F14). |
 | `scripts/lib-design-round-artifacts.sh` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
-| `scripts/larch-log-flush.sh` | — | — | ✅ | **D** | Commit-tail flush. |
-| `scripts/refresh-run-logs.sh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
+| `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
+| `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
 | `scripts/implement-finalize.sh` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `scripts/launch-codex-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through `run-external-agent.sh` (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `scripts/launch-cursor-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
@@ -76,11 +76,11 @@ below.
 
 The central carrier (`run-external-agent.sh`) + the `launch-claude-subprocess.sh`
 F7 path mean **Saved** holds at every site above. The
-`append-tool-failure.sh` backstop means **Logged** is never-empty at every site
+`run-log append-failure` backstop means **Logged** is never-empty at every site
 that logs through it. The remaining residuals are **Flushed-to-batch** and
 **real-diagnostics-at-give-up** gaps, all on the implement side where the carrier
 is on disk but the launcher's own give-up has not yet been updated to (a) resolve
-the carrier into its `append-tool-failure.sh` source and (b) call
+the carrier into its `run-log append-failure` source and (b) call
 `append_vendor_failure_diagnostics`:
 
 1. `launch-codex-ci.sh` / `launch-cursor-ci.sh` / `launch-claude-ci.sh` give-up:

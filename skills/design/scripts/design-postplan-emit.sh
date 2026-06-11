@@ -324,7 +324,7 @@ _postplan_append_plan_size_warning() {
     set +e
     _combined_cap=$(mktemp "${TMPDIR:-/tmp}/design-postplan-plan-size.XXXXXX")
     cp -f "$_validation_log" "$_combined_cap" 2>/dev/null || printf '%s\n' "${_plan_size_out:-}" >"$_combined_cap"
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 2b.5" \
         --tool "check-plan-size.sh" \
@@ -412,7 +412,7 @@ _postplan_finish_merged_plan_size() {
         _drift_log=$(mktemp "${TMPDIR:-/tmp}/design-postplan-drift.XXXXXX")
         if [[ -n "$_drift_log" ]]; then
             printf '%s\n' "**⚠ 2b.5: plan-size — drift advisory: plan grew PLAN_LINES=${PLAN_LINES:-} (baseline ${BASELINE_PLAN_LINES:-}, ratio ${DRIFT_PLAN_RATIO:-1}) / DIFF_LINES=${DIFF_LINES:-} (baseline ${BASELINE_DIFF_LINES:-}, ratio ${DRIFT_DIFF_RATIO:-1}) ≥ ×${DRIFT_MULTIPLE:-2}, under absolute limits; proceeding.**" >"$_drift_log" 2>/dev/null || true
-            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design Step 2b.5" \
                 --tool "check-plan-size.sh (drift)" \

@@ -175,45 +175,54 @@ cmp -s "$D/final-summary.md" "$outline_std" || fail 'cancelled-outline stdout/fi
 pass 'cancelled-outline outcome renders'
 
 PLUGIN_STUB="$TMP/plugin"
-mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/python"
+mkdir -p "$PLUGIN_STUB/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
+cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_STUB/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/redact-secrets.sh"
-cat >"$PLUGIN_STUB/python/cli.py" <<'EOF'
-import os, sys
-cmd = sys.argv[1:3]
-args = sys.argv[3:]
-def get_out(argv):
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--output" and i+1 < len(argv):
-            return argv[i+1]
-        i += 1
-    return None
-if cmd == ["token", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh:
-        fh.write('{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":1050}},"cursor":{"totals":{"total":0}},"BUCKETS_claude":{"input":0,"cache_read":0,"cache_create_5m":0,"cache_create_1h":0,"output":0},"BUCKETS_codex":{"input":100,"cached_input":900,"output":50,"total":1050},"BUCKETS_cursor":{"input":0,"cache_read":0,"output":0}}\n')
-elif cmd == ["timing", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh:
-        fh.write('{"total_hms":"12s"}\n')
-elif cmd == ["token", "cost"]:
-    import subprocess
-    raise SystemExit(subprocess.call([sys.executable, os.environ["TRFS_REAL_CLI"], "token", "cost", *args]))
-else:
-    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
-    raise SystemExit(2)
+cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_STUB/python/cli.py run-log append-failure"
+cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_STUB/python/cli.py run-log append-entry"
+cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_STUB/python/cli.py redact secrets"
+cat >"$PLUGIN_STUB/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+cat >"$out" <<'JSON'
+{
+  "claude": {"totals": {"total": 0}},
+  "codex": {"totals": {"total": 1050}},
+  "cursor": {"totals": {"total": 0}},
+  "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0},
+  "BUCKETS_codex": {"input": 100, "cached_input": 900, "output": 50, "total": 1050},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
+}
+JSON
 EOF
-export TRFS_REAL_CLI="$ROOT/python/cli.py"
-chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh" \
-    "$PLUGIN_STUB/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh" \
-    "$PLUGIN_STUB/scripts/redact-secrets.sh"
+cat >"$PLUGIN_STUB/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"12s"}' >"$out"
+EOF
+chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-report.sh" \
+    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh" \
+    "$PLUGIN_STUB/python/cli.py run-log append-failure" "$PLUGIN_STUB/python/cli.py run-log append-entry" \
+    "$PLUGIN_STUB/python/cli.py redact secrets"
 
 printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
 rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
@@ -396,7 +405,7 @@ fb_co_cancel_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/
 [[ -n "$fb_co_fallback_line" && -n "$fb_co_cancel_line" && "$fb_co_cancel_line" -gt "$fb_co_fallback_line" ]] \
     || fail 'renderer-fail cancelled-outline Cancel site bullet must follow fallback marker'
 pass 'renderer-fail cancelled-outline fallback preserves marker ordering before Cancel site'
-rm -f "$PLUGIN_STUB/scripts/append-tool-failure.sh"
+rm -f "$PLUGIN_STUB/python/cli.py run-log append-failure"
 : >"$D/execution-issues.md"
 std_fb_nowarn="$TMP/std-fallback-no-warning.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-NOWARN" \
@@ -409,35 +418,28 @@ cp "$TMP/render-run-summary.real" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 
 PLUGIN_FAILTOK="$TMP/plugin-failtok"
-mkdir -p "$PLUGIN_FAILTOK/scripts" "$PLUGIN_FAILTOK/python"
+mkdir -p "$PLUGIN_FAILTOK/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_FAILTOK/scripts/render-run-summary.sh"
+cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_FAILTOK/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_FAILTOK/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAILTOK/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAILTOK/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_FAILTOK/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_FAILTOK/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_FAILTOK/scripts/redact-secrets.sh"
-cat >"$PLUGIN_FAILTOK/python/cli.py" <<'EOF'
-import os, sys
-cmd = sys.argv[1:3]
-args = sys.argv[3:]
-def get_out(argv):
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--output" and i+1 < len(argv): return argv[i+1]
-        i += 1
-    return None
-if cmd == ["token", "report"]:
-    print("token report unavailable", file=sys.stderr)
-    raise SystemExit(9)
-elif cmd == ["timing", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh: fh.write('{"total_hms":"1s"}\n')
-elif cmd == ["token", "cost"]:
-    pass
-else:
-    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
-    raise SystemExit(2)
+cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_FAILTOK/python/cli.py run-log append-failure"
+cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_FAILTOK/python/cli.py run-log append-entry"
+cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_FAILTOK/python/cli.py redact secrets"
+cat >"$PLUGIN_FAILTOK/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'token report unavailable\n' >&2
+exit 9
+EOF
+cat >"$PLUGIN_FAILTOK/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+printf '%s\n' '{"total_hms":"1s"}' >"$out"
 EOF
 chmod +x "$PLUGIN_FAILTOK/scripts/"*.sh
 FAILTOK_RENDER_STUB="$PLUGIN_FAILTOK/scripts/render-run-summary.sh"
@@ -477,36 +479,34 @@ grep -Fq -- '--cost-unavailable' "$TMP/render-args.log" || fail 'token-data-miss
 pass 'token-data-missing path renders Cost N/A'
 
 PLUGIN_BADJSON="$TMP/plugin-badjson"
-mkdir -p "$PLUGIN_BADJSON/scripts" "$PLUGIN_BADJSON/python"
+mkdir -p "$PLUGIN_BADJSON/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_BADJSON/scripts/render-run-summary.sh"
+cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_BADJSON/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_BADJSON/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_BADJSON/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BADJSON/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_BADJSON/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_BADJSON/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_BADJSON/scripts/redact-secrets.sh"
-cat >"$PLUGIN_BADJSON/python/cli.py" <<'EOF'
-import os, sys
-cmd = sys.argv[1:3]
-args = sys.argv[3:]
-def get_out(argv):
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--output" and i+1 < len(argv): return argv[i+1]
-        i += 1
-    return None
-if cmd == ["token", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh: fh.write('{not-json\n')
-elif cmd == ["timing", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh: fh.write('{"total_hms":"2s"}\n')
-elif cmd == ["token", "cost"]:
-    pass
-else:
-    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
-    raise SystemExit(2)
+cp "$ROOT/python/cli.py run-log append-failure" "$PLUGIN_BADJSON/python/cli.py run-log append-failure"
+cp "$ROOT/python/cli.py run-log append-entry" "$PLUGIN_BADJSON/python/cli.py run-log append-entry"
+cp "$ROOT/python/cli.py redact secrets" "$PLUGIN_BADJSON/python/cli.py redact secrets"
+cat >"$PLUGIN_BADJSON/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{not-json' >"$out"
+EOF
+cat >"$PLUGIN_BADJSON/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"2s"}' >"$out"
 EOF
 chmod +x "$PLUGIN_BADJSON/scripts/"*.sh
 BADJSON_RENDER_STUB="$PLUGIN_BADJSON/scripts/render-run-summary.sh"
@@ -546,35 +546,33 @@ grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malform
 pass 'malformed token JSON renders Cost N/A'
 
 NOTEARG_PLUGIN="$TMP/plugin-notearg"
-mkdir -p "$NOTEARG_PLUGIN/scripts" "$NOTEARG_PLUGIN/python"
+mkdir -p "$NOTEARG_PLUGIN/scripts"
+cp "$ROOT/scripts/token-cost.sh" "$NOTEARG_PLUGIN/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$NOTEARG_PLUGIN/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$NOTEARG_PLUGIN/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$NOTEARG_PLUGIN/scripts/lib-design-tmpdir.sh"
-cp "$ROOT/scripts/append-tool-failure.sh" "$NOTEARG_PLUGIN/scripts/append-tool-failure.sh"
-cp "$ROOT/scripts/append-execution-issue.sh" "$NOTEARG_PLUGIN/scripts/append-execution-issue.sh"
-cp "$ROOT/scripts/redact-secrets.sh" "$NOTEARG_PLUGIN/scripts/redact-secrets.sh"
-cat >"$NOTEARG_PLUGIN/python/cli.py" <<'EOF'
-import os, sys
-cmd = sys.argv[1:3]
-args = sys.argv[3:]
-def get_out(argv):
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--output" and i+1 < len(argv): return argv[i+1]
-        i += 1
-    return None
-if cmd == ["token", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh: fh.write('{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":0}},"cursor":{"totals":{"total":0}}}\n')
-elif cmd == ["timing", "report"]:
-    out = get_out(args)
-    if not out: raise SystemExit(2)
-    with open(out, "w") as fh: fh.write('{"total_hms":"4s"}\n')
-elif cmd == ["token", "cost"]:
-    pass
-else:
-    print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
-    raise SystemExit(2)
+cp "$ROOT/python/cli.py run-log append-failure" "$NOTEARG_PLUGIN/python/cli.py run-log append-failure"
+cp "$ROOT/python/cli.py run-log append-entry" "$NOTEARG_PLUGIN/python/cli.py run-log append-entry"
+cp "$ROOT/python/cli.py redact secrets" "$NOTEARG_PLUGIN/python/cli.py redact secrets"
+cat >"$NOTEARG_PLUGIN/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":0}},"cursor":{"totals":{"total":0}}}' >"$out"
+EOF
+cat >"$NOTEARG_PLUGIN/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"4s"}' >"$out"
 EOF
 cat >"$NOTEARG_PLUGIN/scripts/render-run-summary.sh" <<'EOF'
 #!/usr/bin/env bash

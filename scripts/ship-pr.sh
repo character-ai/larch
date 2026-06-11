@@ -290,7 +290,7 @@ run_captured_cmd_then_fix_loop() {
                 return 1
             fi
             redacted_log_for_dispatch="${_RCC_RAW_LOG_PATH}.redacted"
-            if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log_for_dispatch" 2>/dev/null; then
+            if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$_RCC_RAW_LOG_PATH" > "$redacted_log_for_dispatch" 2>/dev/null; then
                 _RCC_STATUS=dispatch-failed
                 return 1
             fi
@@ -309,7 +309,7 @@ run_captured_cmd_then_fix_loop() {
             fi
             empty_failures=0
             redacted_log="${_RCC_RAW_LOG_PATH}.redacted"
-            if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log" 2>/dev/null; then
+            if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$_RCC_RAW_LOG_PATH" > "$redacted_log" 2>/dev/null; then
                 _RCC_STATUS=dispatch-failed
                 return 1
             fi
@@ -449,7 +449,7 @@ resolve_plan_file() {
     fi
     [ -n "$path" ] || return 0
     if ! _plan_resolved_under_implement_tmpdir "$path"; then
-        "$SCRIPT_DIR/append-execution-issue.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-entry \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --category Warnings \
             --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
@@ -461,7 +461,7 @@ resolve_plan_file() {
         fi
     fi
     if [ ! -f "$path" ]; then
-        "$SCRIPT_DIR/append-execution-issue.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-entry \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --category Warnings \
             --entry "PLAN_FILE ($path) set but file not found; proceeding without plan context." \
@@ -636,14 +636,14 @@ append_tool_failure_local() {
         larch_err "ship-pr.sh: refusing state-supplied IMPLEMENT_TMPDIR outside allowed roots: $log_tmpdir"
         log_tmpdir="$IMPLEMENT_TMPDIR"
     fi
-    if [ -z "$log_tmpdir" ] || [ ! -x "$SCRIPT_DIR/append-tool-failure.sh" ]; then
+    if [ -z "$log_tmpdir" ] || [ ! -x python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure ]; then
         larch_err "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable"
         # Pipe the capture through redact-secrets.sh before stderr replay so
         # the fallback path mirrors the success-path --redact behavior and
         # never leaks tokens to operator transcripts.
         if [ -n "$output_file" ] && [ -f "$output_file" ]; then
-            if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
-                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" | sanitize_diagnostic_line | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+            if [ -x python3 "$SCRIPT_DIR/../python/cli.py" redact secrets ]; then
+                python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$output_file" | sanitize_diagnostic_line | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
                     sanitize_diagnostic_line < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
             else
                 sanitize_diagnostic_line < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
@@ -655,7 +655,7 @@ append_tool_failure_local() {
     # see when the failure-logging helper itself failed (issue: operators
     # otherwise lose signal that the verbatim record never landed).
     local append_diag="$log_tmpdir/ship-pr-append-failure.log"
-    if ! "$SCRIPT_DIR/append-tool-failure.sh" \
+    if ! python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
         --log "$log_tmpdir/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \
@@ -1024,7 +1024,7 @@ run_bump_phase() {
 
     # Refresh larch-log token/timing artifacts before push via postbump (Trigger C).
     fail_file=$(failure_capture_path bump)
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log refresh \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
@@ -1081,7 +1081,7 @@ sanitize_diagram_or_placeholder() {
         record_failure pr-prep "python/cli.py mermaid sanitize ($label)" "$rc" "$fail_file" Warnings
         reason=$(kv_value REASON_TOKEN "$out")
         [ -n "$reason" ] || reason="unknown"
-        "$SCRIPT_DIR/append-execution-issue.sh" --log "$IMPLEMENT_TMPDIR/execution-issues.md" --category Warnings --entry "Step 9a — PR-body diagram $label rejected: $reason" >/dev/null 2>&1 || true
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-entry --log "$IMPLEMENT_TMPDIR/execution-issues.md" --category Warnings --entry "Step 9a — PR-body diagram $label rejected: $reason" >/dev/null 2>&1 || true
     fi
     printf '%s\n' "$placeholder"
 }
@@ -1169,7 +1169,7 @@ run_pr_create_phase() {
         [ -n "$flush_run_id" ] || flush_run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
         if [ -n "$flush_run_id" ]; then
             fail_file=$(failure_capture_path pr-create)
-            "$SCRIPT_DIR/larch-log.sh" commit \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log commit \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement \
                 --run-id "$flush_run_id" \
@@ -1542,7 +1542,7 @@ _stage_and_push_ci_fixes() {
     fi
 
     fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log refresh \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
@@ -1590,7 +1590,7 @@ run_ci_fix_vendor() {
     gh_logs_capture_redacted=""
     if [ "$gh_logs_rc" -eq 0 ] && [ -n "$gh_logs_capture" ] && [ -s "$gh_logs_capture" ]; then
         gh_logs_capture_redacted="${gh_logs_capture}.redacted"
-        if ! "$SCRIPT_DIR/redact-secrets.sh" < "$gh_logs_capture" > "$gh_logs_capture_redacted" 2>/dev/null; then
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$gh_logs_capture" > "$gh_logs_capture_redacted" 2>/dev/null; then
             gh_logs_capture_redacted=""
         fi
     fi
@@ -2528,7 +2528,7 @@ _run_rebase_rebump_from_step3() {
     [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
 
     fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log refresh \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
@@ -2609,7 +2609,7 @@ run_rebase_rebump() {
     # Failure is non-fatal: refresh-run-logs.sh short-circuits cleanly on post-merge
     # or missing-state.
     fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" run-log refresh \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
@@ -2968,13 +2968,13 @@ run_postmerge_phase() {
             flush_issue_num=$(read_state ISSUE_NUMBER)
             fail_file=$(failure_capture_path postmerge)
             if [ -n "$flush_issue_num" ]; then
-                "$SCRIPT_DIR/larch-log.sh" init \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$flush_run_id" \
                     --issue "$flush_issue_num" \
                     > "$fail_file" 2>&1
             else
-                "$SCRIPT_DIR/larch-log.sh" init \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$flush_run_id" \
                     > "$fail_file" 2>&1
@@ -2985,7 +2985,7 @@ run_postmerge_phase() {
                 recovery_ok=false
             else
                 fail_file=$(failure_capture_path postmerge)
-                "$SCRIPT_DIR/larch-log.sh" manifest \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log manifest \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$flush_run_id" \
                     --field "status=partial" \
@@ -3002,7 +3002,7 @@ run_postmerge_phase() {
         else
             local manifest_ok=false final_report_rc=1
             fail_file=$(failure_capture_path postmerge)
-            "$SCRIPT_DIR/larch-log.sh" manifest \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$flush_run_id" \
                 --field "status=done" \

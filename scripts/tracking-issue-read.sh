@@ -120,13 +120,13 @@ fail_usage() {
 # returned so no original stderr bytes reach ERROR=.
 redact_gh_error() {
     local text="$1"
-    local scrubber="$SCRIPT_DIR/redact-secrets.sh"
+    local scrubber="$SCRIPT_DIR/../python/cli.py"
     local redacted status=0
-    if [[ ! -x "$scrubber" ]]; then
+    if [[ ! -f "$scrubber" ]]; then
         printf '%s' 'gh failure: redaction unavailable'
         return 0
     fi
-    redacted=$(printf '%s' "$text" | "$scrubber" 2>/dev/null) || status=$?
+    redacted=$(printf '%s' "$text" | python3 "$scrubber" redact secrets 2>/dev/null) || status=$?
     if [ "$status" -ne 0 ]; then
         printf '%s' 'gh failure: redaction unavailable'
         return 0

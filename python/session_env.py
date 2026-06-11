@@ -1077,7 +1077,9 @@ def restore_finalize_state_main(argv: list[str]) -> int:
     run_id = state.get("RUN_ID", "")
     if bail_reason and run_id:
         _ = proc.run([
-            str(_scripts_dir() / "larch-log.sh"),
+            "python3",
+            str(_scripts_dir().parent / "python" / "cli.py"),
+            "run-log",
             "write",
             "--log-root",
             str(tmpdir / "larch-logs"),

@@ -113,7 +113,7 @@ if [ "$_ib_rc" -eq 2 ]; then
     copy-plan)
       if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
         _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-copy-plan.XXXXXX")
-        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
+        if python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact tmpdir-paths >"$_ib_redacted_err"; then
           cat "$_ib_redacted_err" >&2
         else
           printf '%s\n' '**⚠ /implement Step 0 plan materialization: copy-plan stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**' >&2
@@ -125,7 +125,7 @@ if [ "$_ib_rc" -eq 2 ]; then
     gh-issue-view)
       if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
         _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-gh-issue-view.XXXXXX")
-        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
+        if python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact tmpdir-paths >"$_ib_redacted_err"; then
           cat "$_ib_redacted_err" >&2
         else
           printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh-issue-view stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**' >&2

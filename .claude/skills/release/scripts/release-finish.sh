@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 PROMOTE_RELEASE="${LARCH_RELEASE_FINISH_PROMOTE_SCRIPT:-$REPO_ROOT/scripts/promote-release.sh}"
 GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
-REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
-REDACT_TMPDIR="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+REDACT_SECRETS="$REPO_ROOT/python/cli.py redact secrets"
+REDACT_TMPDIR="$REPO_ROOT/python/cli.py redact tmpdir-paths"
 
 VERSION=""
 NOTES_FILE=""
@@ -105,12 +105,12 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 if [[ ! -x "$REDACT_SECRETS" ]]; then
-  echo "ERROR=redact-secrets.sh not found" >&2
+  echo "ERROR=redact secrets not found" >&2
   exit 1
 fi
 
 if [[ ! -x "$REDACT_TMPDIR" ]]; then
-  echo "ERROR=redact-tmpdir-paths.sh not found" >&2
+  echo "ERROR=redact tmpdir-paths not found" >&2
   exit 1
 fi
 

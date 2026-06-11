@@ -816,7 +816,7 @@ PATH="$STUB_BIN:$PATH" \
 grep -Fq 'scout_fail_reason=missing_status_sidecar' "$TMP/path-guard-review/scout-parse-failed-round12-diag.txt" \
     || { echo "FAIL: regression2 path-guard — diag missing expected fail reason" >&2; exit 1; }
 if [[ -s "$path_guard_issues" ]]; then
-    echo "FAIL: regression2 path-guard — append-execution-issue.sh was called despite test-tmpdir REVIEW_TMPDIR" >&2
+    echo "FAIL: regression2 path-guard — run-log append-entry was called despite test-tmpdir REVIEW_TMPDIR" >&2
     exit 1
 fi
 

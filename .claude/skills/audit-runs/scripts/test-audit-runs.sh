@@ -2434,7 +2434,7 @@ assert_equal "$ph65" "See round-1/aggregator-validate.stderr in the committed ru
 rm -rf "$T65_BASE"
 
 echo "Test 66: append-tool-failure cursor-ci style embeds body (no output path leak)"
-APP_TF="$REPO_ROOT/scripts/append-tool-failure.sh"
+APP_TF="$REPO_ROOT/python/cli.py run-log append-failure"
 if [ -x "$APP_TF" ]; then
     T66=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t66-XXXXXX")
     LOG66="$T66/execution-issues.md"
@@ -2461,7 +2461,7 @@ if [ -x "$APP_TF" ]; then
     fi
     rm -rf "$T66"
 else
-    echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
+    echo "  SKIP: run-log append-failure not executable at $APP_TF"
 fi
 
 # ===========================================================================

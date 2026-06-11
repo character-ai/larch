@@ -41,7 +41,7 @@ read_session_key() {
 append_failure() {
     local category=$1 site=$2 tool=$3 exit_code=$4 output_file=$5
     [ -f "$output_file" ] || : > "$output_file" 2>/dev/null || true
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
         --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \
@@ -114,7 +114,7 @@ run_larch_log_write() {
     local batch=$1 input_file=$2 out_file rc
     out_file="$IMPLEMENT_TMPDIR/larch-log-write-${batch}.log"
     set +e
-    "$PLUGIN_ROOT/scripts/larch-log.sh" write \
+    "$PLUGIN_ROOT/python/cli.py run-log" write \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
@@ -123,7 +123,7 @@ run_larch_log_write() {
     rc=$?
     set +e
     if [ "$rc" -ne 0 ]; then
-        append_best_effort_failure "step-7a" "larch-log.sh write ${batch}" "$rc" "$out_file"
+        append_best_effort_failure "step-7a" "run-log write ${batch}" "$rc" "$out_file"
     fi
 }
 
@@ -177,7 +177,7 @@ run_log_flush() {
     out_file="$IMPLEMENT_TMPDIR/capture-session-transcript.log"
     status_file="$IMPLEMENT_TMPDIR/capture-session-transcript.stdout"
     set +e
-    LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/capture-session-transcript.sh" \
+    LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/python/cli.py run-log capture-transcript" \
         --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
@@ -195,7 +195,7 @@ run_log_flush() {
     fi
     if [ "$rc" -ne 0 ]; then
         LOG_FLUSH_STATUS=degraded
-        append_best_effort_failure "step-7a" "capture-session-transcript.sh" "$rc" "$out_file"
+        append_best_effort_failure "step-7a" "run-log capture-transcript" "$rc" "$out_file"
     fi
 
     out_file="$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues-post-transcript.log"
@@ -217,7 +217,7 @@ run_log_flush() {
     if [ "${no_logs_commit:-false}" != "true" ]; then
         out_file="$IMPLEMENT_TMPDIR/pre-bump-larch-log-commit.log"
         set +e
-        "$PLUGIN_ROOT/scripts/larch-log.sh" commit \
+        "$PLUGIN_ROOT/python/cli.py run-log" commit \
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --skill implement \
             --run-id "$RUN_ID" >"$out_file" 2>&1
@@ -225,13 +225,13 @@ run_log_flush() {
         set +e
         if [ "$rc" -ne 0 ]; then
             LOG_FLUSH_STATUS=degraded
-            append_best_effort_failure "step-7a" "larch-log.sh commit" "$rc" "$out_file"
+            append_best_effort_failure "step-7a" "run-log commit" "$rc" "$out_file"
         fi
         # Surface a pre-flush secret-scrub on the success path too: the gate
         # emits SECRET_SCRUB_VIOLATIONS=<n> and a banner into the captured
         # commit output even when the commit itself succeeds.
         if grep -qE '^SECRET_SCRUB_VIOLATIONS=[1-9]' "$out_file" 2>/dev/null; then
-            append_failure "Warnings" "step-7a" "scrub-log-secrets.sh redacted secret-shaped value(s) from run logs before flush — ROTATE the affected credential(s)" "0" "$out_file"
+            append_failure "Warnings" "step-7a" "redact scrub-log-secrets redacted secret-shaped value(s) from run logs before flush — ROTATE the affected credential(s)" "0" "$out_file"
         fi
     elif [ "$LOG_FLUSH_STATUS" = "ok" ]; then
         LOG_FLUSH_STATUS=skipped-no-logs-commit

@@ -1,7 +1,7 @@
 # Plan
 
 ```bash
-FOO=bar scripts/redact-secrets.sh --help
+FOO=bar python/cli.py redact secrets --help
 ```
 
 diff_lines: 1

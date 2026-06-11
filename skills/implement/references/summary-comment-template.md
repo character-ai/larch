@@ -27,7 +27,7 @@ standardized block, not the first line of the file).
 `final-summary.md` projection and the GitHub upsert payload (`summary-final.md` for implement; `skills/design/scripts/render-final-summary.sh` owns the `/design` gather + upsert path).
 
 Large runtime payloads are not embedded in these comments. They are written to
-`larch-logs/<skill>/<run-id>/` by `scripts/larch-log.sh` and committed at the
+`larch-logs/<skill>/<run-id>/` by `python/cli.py run-log` and committed at the
 terminal log-flush step. **Exception**: `larch:diagrams` embeds diagram bodies
 directly in the shared issue comment; diagrams are not written as a larch-log
 batch. `/design` owns the Architecture section and `/implement` owns the Code

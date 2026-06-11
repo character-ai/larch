@@ -269,19 +269,19 @@ fi
 printf 'FLUSH_STATUS=ok\nRECORDS=0\n'
 STUB
 
-    cat > "$root/scripts/capture-session-transcript.sh" <<'STUB'
+    cat > "$root/python/cli.py run-log capture-transcript" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'capture-session-transcript.sh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
+printf 'run-log capture-transcript %s\n' "$*" >> "$STEP7A_CALLS_LOG"
 printf 'SESSION_TRANSCRIPT_STATUS=ok\n'
 STUB
 
-    cat > "$root/scripts/larch-log.sh" <<'STUB'
+    cat > "$root/python/cli.py run-log" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 cmd=${1:-}
 shift || true
-printf 'larch-log.sh %s %s\n' "$cmd" "$*" >> "$STEP7A_CALLS_LOG"
+printf 'run-log %s %s\n' "$cmd" "$*" >> "$STEP7A_CALLS_LOG"
 printf 'LOG_STATUS=ok\n'
 STUB
 
@@ -301,7 +301,7 @@ awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, 
 STUB
     chmod +x "$root/python/stubs/session/read-key"
 
-    cat > "$root/scripts/append-tool-failure.sh" <<'STUB'
+    cat > "$root/python/cli.py run-log append-failure" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 log=""; site=""; tool=""; exit_code=""; category=""; output_file=""
@@ -332,15 +332,15 @@ install_real_diagrams_helper() {
     local root=$1
     cp "$REPO_ROOT/python/cli.py" "$root/python/cli.py"
     cp "$REPO_ROOT/scripts/tracking-issue-summary.sh" "$root/scripts/tracking-issue-summary.sh"
-    cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
-    cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
+    cp "$REPO_ROOT/python/cli.py redact secrets" "$root/python/cli.py redact secrets"
+    cp "$REPO_ROOT/python/cli.py redact tmpdir-paths" "$root/python/cli.py redact tmpdir-paths"
     : # mermaid sanitize is handled by the copied Python CLI
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
         "$root/python/cli.py" \
         "$root/scripts/tracking-issue-summary.sh" \
-        "$root/scripts/redact-secrets.sh" \
-        "$root/scripts/redact-tmpdir-paths.sh" \
+        "$root/python/cli.py redact secrets" \
+        "$root/python/cli.py redact tmpdir-paths" \
         "$root/python/cli.py"
 }
 
@@ -723,7 +723,7 @@ assert_equals 0 "$rc" "flush-failure exits 0"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure emits degraded"
 assert_file_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "flush-failure appends tool failure"
 assert_equals 2 "$(cat "$CASE_DIR/flush-count")" "flush-failure still runs post-transcript flush"
-assert_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
+assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
 
 new_case flush-failure-no-logs-commit
 set +e
@@ -732,7 +732,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "flush-failure-no-logs-commit exits 0"
 assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure-no-logs-commit preserves degraded"
-assert_not_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
 
 new_case no-logs-commit
 set +e
@@ -740,7 +740,7 @@ out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 4
 rc=$?
 set -e
 assert_equals 0 "$rc" "no-logs-commit exits 0"
-assert_not_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "no-logs-commit skips commit"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "no-logs-commit skips commit"
 assert_contains "LOG_FLUSH_STATUS=skipped-no-logs-commit" "$out" "no-logs-commit emits skipped"
 
 new_case forked-target

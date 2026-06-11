@@ -40,7 +40,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/issue-anchored-plan.md` — **LIVE** wire format for /design ↔ /implement handoff, clarification round-trip, and `/design` pause pointer. `/implement` Preflight enforces plan gates; `/design` writes the plan block and clarify responses.
 - `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `python/cli.py clarify {state,comment-post,label}`, `scripts/test-plan-block.sh`, `python/test_clarify.py` — helpers and offline harnesses for that wire format.
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
-- `scripts/larch-log.md`, `scripts/larch-log-batches.md` — committed run-log contract and batch table
+- `docs/run-log-cli.md`, `docs/run-log-batches.md` — committed run-log CLI contract and batch table
 - `.claude/skills/release/scripts/classify-bump.md` — authoritative release classification rules
 - `skills/shared/topology.tsv` — projection rows for cross-doc topology counts; runtime authorities listed in the TSV remain source of truth
 - `skills/shared/subskill-invocation.md` — sub-skill invocation conventions

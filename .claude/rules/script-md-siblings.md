@@ -6,7 +6,7 @@ paths: ["scripts/**/*.{sh,py}", "skills/**/scripts/**/*.{sh,py}", ".claude/skill
 
 Every `.sh` / `.py` script under `scripts/` and `skills/<name>/scripts/`
 has a sibling `<basename>.md` beside it (e.g.
-`scripts/redact-secrets.md` beside `scripts/redact-secrets.sh`) covering
+`scripts/redact-secrets.md` beside `python/cli.py redact secrets`) covering
 purpose, primary callers, invariants, Makefile wiring, harness, and
 edit-in-sync rules. Read it before editing a script; update it in the
 same PR as any behavior change. Two co-location patterns are permitted,

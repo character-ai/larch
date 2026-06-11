@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-REDACT_SECRETS_SH="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+REDACT_SECRETS_SH="$PLUGIN_ROOT/python/cli.py redact secrets"
 LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh

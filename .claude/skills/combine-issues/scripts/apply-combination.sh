@@ -24,7 +24,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
-REDACT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+REDACT="$PLUGIN_ROOT/python/cli.py redact secrets"
 # shellcheck source=scripts/lib-net.sh
 source "$PLUGIN_ROOT/scripts/lib-net.sh"
 

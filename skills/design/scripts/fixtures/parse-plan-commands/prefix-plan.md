@@ -1,7 +1,7 @@
 # Plan
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh --help
+bash ${CLAUDE_PLUGIN_ROOT}/python/cli.py redact secrets --help
 ```
 
 diff_lines: 1

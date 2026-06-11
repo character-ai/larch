@@ -9,8 +9,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
-REDACT_TMP="$PLUGIN_ROOT/scripts/redact-tmpdir-paths.sh"
-REDACT_SECRETS="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+REDACT_TMP="$PLUGIN_ROOT/python/cli.py redact tmpdir-paths"
+REDACT_SECRETS="$PLUGIN_ROOT/python/cli.py redact secrets"
 
 usage() {
     larch_err "Usage: write-rejected-findings.sh --implement-tmpdir PATH [--run-id ID --log-root PATH]"

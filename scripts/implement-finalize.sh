@@ -236,7 +236,7 @@ flush_execution_issues_safety_net() {
         return 0
     fi
     set +e
-    out=$("$SCRIPT_DIR/larch-log.sh" append \
+    out=$(python3 "$SCRIPT_DIR/../python/cli.py" run-log append \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -994,19 +994,19 @@ run_teardown() {
         larch_recovery_ok=true
         if [ ! -f "$manifest_path_teardown" ]; then
             if [ -n "$issue_number" ]; then
-                "$SCRIPT_DIR/larch-log.sh" init \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$larch_flush_run_id" \
                     --issue "$issue_number" \
                     2>/dev/null || { warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'; larch_recovery_ok=false; }
             else
-                "$SCRIPT_DIR/larch-log.sh" init \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log init \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$larch_flush_run_id" \
                     2>/dev/null || { warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'; larch_recovery_ok=false; }
             fi
             if [ "$larch_recovery_ok" = "true" ]; then
-                "$SCRIPT_DIR/larch-log.sh" manifest \
+                python3 "$SCRIPT_DIR/../python/cli.py" run-log manifest \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$larch_flush_run_id" \
                     --field "status=partial" \
@@ -1022,7 +1022,7 @@ run_teardown() {
         if [ "$larch_recovery_ok" = "false" ]; then
             :
         elif [ "$stall_tracking" = "true" ]; then
-            "$SCRIPT_DIR/larch-log.sh" manifest \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "stalled_at_step=$stall_step" \
@@ -1030,7 +1030,7 @@ run_teardown() {
         fi
         if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ ! -e "$post_merge_sentinel" ]; then
             # commit also stages per-script quiet logs into breadcrumbs/ for forensics.
-            "$SCRIPT_DIR/larch-log.sh" commit \
+            python3 "$SCRIPT_DIR/../python/cli.py" run-log commit \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
                 2>/dev/null || warn_line '**⚠ 18: larch-log commit failed during teardown flush. Continuing.**'

@@ -113,7 +113,7 @@ NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
 RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
-scripts/redact-tmpdir-paths.sh < "$NOTES_FILE" | scripts/redact-secrets.sh > "$REDACTED_NOTES_FILE"
+python/cli.py redact tmpdir-paths < "$NOTES_FILE" | python/cli.py redact secrets > "$REDACTED_NOTES_FILE"
 mkdir -p "$RECOVERY_NOTES_DIR"
 cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
 ```
@@ -325,7 +325,7 @@ Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless not
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
+- `scripts/resolve-repo.sh`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

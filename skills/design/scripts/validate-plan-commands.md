@@ -26,4 +26,4 @@ Disabled when `--source-kind composed` (pre-redaction `composed-plan.md`). Other
 
 The registry **`hook`** column must be exactly `LARCH_DRY_RUN=1` or `--validate-only`; any other value is a **defect** (`kind=unknown-registry-hook`), not a silent alias.
 
-Validator log lines record Tier 3 child output only as a **bounded, redacted excerpt** (first 64 KiB through `scripts/redact-secrets.sh` when executable), not unlimited verbatim capture.
+Validator log lines record Tier 3 child output only as a **bounded, redacted excerpt** (first 64 KiB through `python/cli.py redact secrets` when executable), not unlimited verbatim capture.

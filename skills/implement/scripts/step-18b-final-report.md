@@ -33,7 +33,7 @@ Helpers invoked with rooted paths:
 - `python3 "$PLUGIN_ROOT/python/cli.py" token report --full --format json --output "$tmpdir/token-report-rendered.json"`
 - `"$SCRIPT_DIR/write-final-report.sh" --implement-tmpdir "$tmpdir"` (no `--print-stdout`)
 
-Non-zero helper exits are captured to the failure logs above and appended with `append-tool-failure.sh` (best-effort); the wrapper continues.
+Non-zero helper exits are captured to the failure logs above and appended with `run-log append-failure` (best-effort); the wrapper continues.
 
 ## Emit decision
 

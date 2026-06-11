@@ -75,7 +75,7 @@ emit_fail() {
 log_failure() {
     local reason="$1" output_file="$2"
     if [[ -n "$DESIGN_TMPDIR" && -d "$DESIGN_TMPDIR" && -f "$output_file" ]]; then
-        "$SCRIPT_DIR/append-tool-failure.sh" \
+        python3 "$SCRIPT_DIR/../python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design pause save" \
             --tool "$reason" \
@@ -242,7 +242,7 @@ fi
     printf 'PAUSED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 } > "$state_tmp"
 
-if ! "$SCRIPT_DIR/redact-secrets.sh" < "$state_tmp" > "$redacted_state_tmp"; then
+if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$state_tmp" > "$redacted_state_tmp"; then
     log_failure "redact-secrets.sh" "$state_tmp"
     emit_fail "pause-state-redaction-failed"
 fi
@@ -296,7 +296,7 @@ if [[ "$PUBLISH_OK" != "true" ]]; then
     fi
 fi
 
-if ! "$SCRIPT_DIR/redact-secrets.sh" < "$state_tmp" > "$redacted_state_tmp"; then
+if ! python3 "$SCRIPT_DIR/../python/cli.py" redact secrets < "$state_tmp" > "$redacted_state_tmp"; then
     log_failure "redact-secrets.sh" "$state_tmp"
     emit_fail "pause-state-redaction-failed"
 fi

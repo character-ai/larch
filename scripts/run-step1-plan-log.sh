@@ -10,9 +10,9 @@ fail() {
 
 append_log_write_failure() {
     local site="$1" tool="$2" output_file="$3"
-    local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
-    if [[ -x "$helper" ]]; then
-        "$helper" \
+    local helper="$PLUGIN_ROOT/python/cli.py"
+    if [[ -f "$helper" ]]; then
+        python3 "$helper" run-log append-failure \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "$site" \
             --tool "$tool" \

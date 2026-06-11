@@ -28,7 +28,7 @@ repos:
         types: [shell]
         # larch-logs/ holds committed run artifacts (e.g. source-env.sh files
         # whose absolute paths have been replaced with <TMPDIR> /
-        # <OPERATOR_REPO_PATH> placeholders by redact-tmpdir-paths.sh).
+        # <OPERATOR_REPO_PATH> placeholders by redact tmpdir-paths).
         # Those redacted artifacts are not valid shell and must not be
         # shellcheck-linted; they are reference logs, not executable scripts.
         exclude: ^larch-logs/

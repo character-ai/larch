@@ -112,8 +112,8 @@ execution_issues_log() {
 
 append_warning() {
     local entry="$1"
-    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
-    "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+    [[ -x "$PLUGIN_ROOT/python/cli.py run-log append-entry" ]] || return 0
+    "$PLUGIN_ROOT/python/cli.py run-log append-entry" \
         --log "$(execution_issues_log)" \
         --category "External Reviewer Issues" \
         --entry "$entry" 2>/dev/null || true

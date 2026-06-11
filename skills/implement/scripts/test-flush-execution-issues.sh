@@ -57,7 +57,7 @@ setup_plugin() {
     mkdir -p "$root/scripts"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
-    cat > "$root/scripts/larch-log.sh" <<'STUB'
+    cat > "$root/python/cli.py run-log" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [ "${LARCH_LOG_FAIL:-}" = "1" ]; then
@@ -83,7 +83,7 @@ mkdir -p "$(dirname "$path")"
 cat "$record_file" >> "$path"
 printf 'LOG_WRITTEN=true\nLOG_PATH=%s\n' "$path"
 STUB
-    cat > "$root/scripts/append-tool-failure.sh" <<'STUB'
+    cat > "$root/python/cli.py run-log append-failure" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 log=""; site=""; tool=""; exit_code=""; output_file=""; category=""
@@ -106,7 +106,7 @@ done
     printf '\n'
 } >> "$log"
 STUB
-    chmod +x "$root/scripts/larch-log.sh" "$root/scripts/append-tool-failure.sh"
+    chmod +x "$root/python/cli.py run-log" "$root/python/cli.py run-log append-failure"
 }
 
 run_helper() {
@@ -246,7 +246,7 @@ assert_equals 1 "$rc" "larch-log failure exits 1"
 assert_contains "FLUSH_STATUS=failed" "$out" "larch-log failure emits failed"
 append_log=$(kv_value APPEND_LOG_FILE "$out")
 if [ -n "$append_log" ] && [ -r "$append_log" ]; then pass "failure preserves append log file"; else fail "failure preserves append log file"; fi
-assert_file_contains "larch-log.sh failed" "$case_dir/execution-issues.md" "larch-log failure is appended to execution issues"
+assert_file_contains "run-log failed" "$case_dir/execution-issues.md" "larch-log failure is appended to execution issues"
 assert_file_contains "simulated larch-log failure" "$case_dir/execution-issues.md" "larch-log failure output is captured"
 
 echo "=== test-flush-execution-issues: $PASS passed, $FAIL failed ==="

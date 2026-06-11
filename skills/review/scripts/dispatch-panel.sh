@@ -238,7 +238,7 @@ write_empty_scout_manifest() {
 }
 
 redact_untrusted_stream() {
-    "$PLUGIN_ROOT/scripts/redact-secrets.sh" | sed -E \
+    "$PLUGIN_ROOT/python/cli.py redact secrets" | sed -E \
         -e 's/&/\&amp;/g' \
         -e 's/</\&lt;/g' \
         -e 's/>/\&gt;/g'
@@ -349,9 +349,9 @@ append_scout_parse_issue() {
     if should_suppress_scout_parse_issue_append; then
         return 0
     fi
-    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
+    [[ -x "$PLUGIN_ROOT/python/cli.py run-log append-entry" ]] || return 0
     set +e
-    append_output=$("$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+    append_output=$("$PLUGIN_ROOT/python/cli.py run-log append-entry" \
         --log "$issues_log" \
         --category Warnings \
         --entry "Review scout dynamic archetype parse failed in round ${ROUND_NUM}; reason=${reason}; manifest=${manifest_label}. Continuing with the static review panel." \

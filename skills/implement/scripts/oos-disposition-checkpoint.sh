@@ -19,7 +19,7 @@ usage() {
 log_checkpoint_failure() {
   local saved_rc=$1 site=$2 output_file=$3
   [ -f "$output_file" ] || : >"$output_file" 2>/dev/null || true
-  "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+  "$PLUGIN_ROOT/python/cli.py run-log append-failure" \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
     --site "$site" \
     --tool oos-disposition-checkpoint.sh \
