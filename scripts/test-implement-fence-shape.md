@@ -5,6 +5,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 ## Invariants
 
 - Every Bash fence has exactly one plugin-rooted `.sh` / `.py` invocation after allowed source guards, comments, and pre-bootstrap awk fallback lines.
+- Every fence whose logical command calls a `${CLAUDE_PLUGIN_ROOT}/…` script MUST include the canonical `plugin-root.env` guard line (`[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"`). The `[ -f … ]` test is load-bearing: it short-circuits when the file is absent rather than crashing with "No such file or directory" on a pre-cleaned tmpdir.
 - No adjacent Bash fences are separated only by blank lines.
 - Telemetry-only fences (`python3 python/cli.py timing telemetry-mark`, token/timing ledgers, token/timing reports) are banned; wrappers own telemetry internally.
 - Inline `session read-key` calls are banned from SKILL.md fences.
