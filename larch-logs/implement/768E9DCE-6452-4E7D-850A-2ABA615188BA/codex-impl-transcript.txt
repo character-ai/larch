@@ -1,0 +1,3 @@
+Bailed with `resume-incompatible`.
+
+The manifest was written atomically at the requested path.
