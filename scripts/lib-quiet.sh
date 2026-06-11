@@ -96,19 +96,19 @@ larch_quiet_redaction_state_file() {
 }
 
 larch_quiet_redact_diagnostic_stream() {
-    local helper state_file _out _rc plugin_root
+    local helper state_file _out _rc _lq_root
     local _buf="" _lqrd_line
-    plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
-    if [ -z "$plugin_root" ]; then
-        plugin_root="$(cd "$LARCH_LIB_QUIET_DIR/.." && pwd -P 2>/dev/null)" || plugin_root=""
+    _lq_root="${CLAUDE_PLUGIN_ROOT:-}"
+    if [ -z "$_lq_root" ]; then
+        _lq_root="$(cd "$LARCH_LIB_QUIET_DIR/.." && pwd -P 2>/dev/null)" || _lq_root=""
     fi
-    helper="$plugin_root/python/cli.py"
+    helper="$_lq_root/python/cli.py"
     # Buffer stdin with bash built-ins (no external cat dependency).
     while IFS= read -r _lqrd_line || [ -n "$_lqrd_line" ]; do
         _buf="$_buf$_lqrd_line"$'\n'
     done
     _buf="${_buf%$'\n'}"
-    if [ -z "$plugin_root" ] || [ ! -f "$helper" ]; then
+    if [ -z "$_lq_root" ] || [ ! -f "$helper" ]; then
         printf 'WARN larch_err-redaction-unavailable\n'
         printf '%s\n' "$_buf"
         return 0

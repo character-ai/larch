@@ -40,7 +40,8 @@ done
 [ -d "$implement_tmpdir" ] || { echo "implement tmpdir missing: $implement_tmpdir" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd -P)}"
-redact_secrets="$plugin_root/python/cli.py redact secrets"
+redact_secrets="$plugin_root/python/cli.py"
+redact_secrets_filter() { python3 "$redact_secrets" redact secrets; }
 
 if ! jq -e 'type == "object"' "$manifest_path" >/dev/null 2>&1; then
   echo "manifest must be a JSON object" >&2
@@ -65,7 +66,7 @@ if [ "${LARCH_TEST_MATERIALIZE_FORCE_FAIL:-}" = "true" ] && [ "$count_only" != "
   echo "LARCH_TEST_MATERIALIZE_FORCE_FAIL" >&2
   exit 1
 fi
-if [ ! -x "$redact_secrets" ]; then
+if [ ! -f "$redact_secrets" ]; then
   echo "redact secrets missing or not executable: $redact_secrets" >&2
   exit 1
 fi
@@ -115,7 +116,7 @@ security_focus_area() {
 }
 
 sanitize_public_text() {
-  printf '%s' "$1" | "$redact_secrets" | sed -E \
+  printf '%s' "$1" | redact_secrets_filter | sed -E \
     -e 's#https?://(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:|[^[:space:]/]+[.](internal|local|corp|lan|intranet|test|example|invalid))[^[:space:]]*#<INTERNAL-URL>#Ig' \
     -e 's#\b(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|[^[:space:]/]+[.](internal|local|corp|lan|intranet))\b#<INTERNAL-URL>#Ig' \
     -e 's/\b(account|user|customer|employee|tenant|org)[_-]?[[:alnum:]]{8,}\b/<REDACTED-PII>/Ig' \
@@ -182,8 +183,8 @@ append_security_audit() {
     printf -- '- **Disposition**: security-routed; not materialized for public OOS filing\n'
   } >> "$audit"
   entry='- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md'
-  if [ -x "$plugin_root/python/cli.py run-log append-entry" ]; then
-    "$plugin_root/python/cli.py run-log append-entry" \
+  if [ -f "$plugin_root/python/cli.py" ]; then
+    python3 "$plugin_root/python/cli.py" run-log append-entry \
       --log "$implement_tmpdir/execution-issues.md" \
       --category Warnings \
       --entry "$entry" >/dev/null 2>&1 || printf '\n### Warnings\n%s\n' "$entry" >> "$implement_tmpdir/execution-issues.md"

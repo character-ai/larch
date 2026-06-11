@@ -54,59 +54,62 @@ kv_value() {
 
 setup_plugin() {
     local root=$1
-    mkdir -p "$root/scripts"
+    mkdir -p "$root/scripts" "$root/python"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
-    cat > "$root/python/cli.py run-log" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [ "${LARCH_LOG_FAIL:-}" = "1" ]; then
-    printf 'simulated larch-log failure\n' >&2
-    exit 1
-fi
-cmd=${1:-}
-shift || true
-[ "$cmd" = "append" ] || { echo "unsupported command: $cmd" >&2; exit 2; }
-log_root=""; skill=""; run_id=""; batch=""; record_file=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --log-root) log_root=$2; shift 2 ;;
-        --skill) skill=$2; shift 2 ;;
-        --run-id) run_id=$2; shift 2 ;;
-        --batch) batch=$2; shift 2 ;;
-        --record-file) record_file=$2; shift 2 ;;
-        *) echo "unknown option: $1" >&2; exit 2 ;;
-    esac
-done
-path="$log_root/$skill/$run_id/$batch.ndjson"
-mkdir -p "$(dirname "$path")"
-cat "$record_file" >> "$path"
-printf 'LOG_WRITTEN=true\nLOG_PATH=%s\n' "$path"
+    cat > "$root/python/cli.py" <<'STUB'
+import os
+import sys
+from pathlib import Path
+
+def _parse(args):
+    d = {}
+    i = 0
+    while i < len(args):
+        if args[i] == "--redact":
+            i += 1
+            continue
+        if args[i].startswith("--") and i + 1 < len(args):
+            d[args[i][2:]] = args[i + 1]
+            i += 2
+        else:
+            print(f"unknown option: {args[i]}", file=sys.stderr)
+            raise SystemExit(2)
+    return d
+
+def main():
+    if len(sys.argv) < 3 or sys.argv[1] != "run-log":
+        print(f"unsupported command: {sys.argv[1:]}", file=sys.stderr)
+        raise SystemExit(2)
+    verb = sys.argv[2]
+    if verb == "append":
+        if os.environ.get("LARCH_LOG_FAIL", "") == "1":
+            print("simulated larch-log failure", file=sys.stderr)
+            raise SystemExit(1)
+        d = _parse(sys.argv[3:])
+        path = Path(d["log-root"]) / d["skill"] / d["run-id"] / f"{d['batch']}.ndjson"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(Path(d["record-file"]).read_text(encoding="utf-8"))
+        print("LOG_WRITTEN=true")
+        print(f"LOG_PATH={path}")
+        raise SystemExit(0)
+    if verb == "append-failure":
+        d = _parse(sys.argv[3:])
+        log = d.get("log", "")
+        body = Path(d["output-file"]).read_text(encoding="utf-8") if d.get("output-file") else ""
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(f"\n### {d.get('category', 'Tool Failures')}\n\n")
+            handle.write(f"- **Step {d.get('site', '')} — {d.get('tool', '')} failed (exit {d.get('exit-code', '')})**:\n")
+            handle.write(body)
+            handle.write("\n")
+        raise SystemExit(0)
+    print(f"unsupported command: {verb}", file=sys.stderr)
+    raise SystemExit(2)
+
+if __name__ == "__main__":
+    main()
 STUB
-    cat > "$root/python/cli.py run-log append-failure" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-log=""; site=""; tool=""; exit_code=""; output_file=""; category=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --log) log=$2; shift 2 ;;
-        --site) site=$2; shift 2 ;;
-        --tool) tool=$2; shift 2 ;;
-        --exit-code) exit_code=$2; shift 2 ;;
-        --category) category=$2; shift 2 ;;
-        --output-file) output_file=$2; shift 2 ;;
-        --redact) shift ;;
-        *) echo "unknown option: $1" >&2; exit 2 ;;
-    esac
-done
-{
-    printf '\n### %s\n\n' "${category:-Tool Failures}"
-    printf -- '- **Step %s — %s failed (exit %s)**:\n' "$site" "$tool" "$exit_code"
-    cat "$output_file"
-    printf '\n'
-} >> "$log"
-STUB
-    chmod +x "$root/python/cli.py run-log" "$root/python/cli.py run-log append-failure"
 }
 
 run_helper() {

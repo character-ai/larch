@@ -377,7 +377,7 @@ parse_artifact() {
             _sec_tmp="$(mktemp)"
             printf '%s\n' "$body" > "$_sec_tmp"
             local _sec_match=false
-            if is_security_block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
+            if python3 "$PY_CLI" voting is-security-block "$_sec_tmp" 2>/dev/null; then _sec_match=true; fi
             rm -f "$_sec_tmp"
             if [[ "$_sec_match" == "true" ]]; then
                 pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""

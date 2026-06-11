@@ -172,11 +172,8 @@ REDACT_FAIL="$TMP/redact-fail-plugin"
 mkdir -p "$REDACT_FAIL/scripts" "$REDACT_FAIL/skills/design/scripts"
 cp "$ROOT/scripts/lib-quiet.sh" "$REDACT_FAIL/scripts/lib-quiet.sh"
 cp "$ROOT/scripts/lib-design-tmpdir.sh" "$REDACT_FAIL/scripts/lib-design-tmpdir.sh"
-cat >"$REDACT_FAIL/python/cli.py redact secrets" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-chmod +x "$REDACT_FAIL/python/cli.py redact secrets"
+mkdir -p "$REDACT_FAIL/python"
+printf 'raise SystemExit(1)\n' >"$REDACT_FAIL/python/cli.py"
 out7=$(AUTOFIX_TEST_MODE=never-fix CLAUDE_PLUGIN_ROOT="$REDACT_FAIL" run_subject "$D7" --codex-present true --cursor-present false --max-attempts 1)
 prompt7="$D7/plan-autofix/attempt-1-codex/prompt.md"
 grep -Fq '[validator log redaction failed; raw log intentionally withheld]' "$prompt7" \

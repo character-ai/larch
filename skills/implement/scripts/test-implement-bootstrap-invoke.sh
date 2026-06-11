@@ -8,8 +8,6 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 REAL_WRAPPER="$REPO_ROOT/scripts/implement-bootstrap-invoke.sh"
 REAL_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
-REAL_REDACT_SECRETS="$REPO_ROOT/python/cli.py redact secrets"
-REAL_REDACT_TMPDIR="$REPO_ROOT/python/cli.py redact tmpdir-paths"
 REAL_LIB_QUIET="$REPO_ROOT/scripts/lib-quiet.sh"
 
 [ -x "$REAL_WRAPPER" ] || { echo "FAIL: $REAL_WRAPPER not executable"; exit 1; }
@@ -81,8 +79,8 @@ build_sandbox() {
   SANDBOX=$(mktemp -d /tmp/larch-ibi-test.XXXXXX)
   mkdir -p "$SANDBOX/scripts"
   cp "$REAL_WRAPPER" "$SANDBOX/scripts/implement-bootstrap-invoke.sh"
-  cp "$REAL_REDACT_SECRETS" "$SANDBOX/python/cli.py redact secrets"
-  cp "$REAL_REDACT_TMPDIR" "$SANDBOX/python/cli.py redact tmpdir-paths"
+  mkdir -p "$SANDBOX/python"
+  cp "$REPO_ROOT"/python/*.py "$SANDBOX/python/"
   cp "$REAL_LIB_QUIET" "$SANDBOX/scripts/lib-quiet.sh"
   chmod +x "$SANDBOX/scripts/"*.sh
 
