@@ -553,10 +553,10 @@ exclude = [
   # python/cli.py mermaid sanitize. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
   # matching the Makefile-only harness pattern above.
-  # scripts/test-redact-secrets.sh is the Makefile-only regression harness for
-  # scripts/redact-secrets.sh. The issue publication path is now covered in
+  # python/test_redact.py is the Makefile-only regression harness for
+  # python/cli.py redact secrets. The issue publication path is now covered in
   # python/test_issue_create.py and python/test_redact.py.
-  "scripts/test-redact-secrets.sh",
+  "python/test_redact.py",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",
