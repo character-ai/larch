@@ -97,13 +97,20 @@ def _extract_test_name(line: str) -> Optional[str]:
     """Parse a `make -n test-harnesses` recipe line into a test name.
 
     Three patterns observed:
-      1. `bash scripts/harness-timer.sh <name> <inner>`            (most tests)
-      2. `env ... bash scripts/harness-timer.sh <name> <inner>`    (env-prefixed)
+      1. `python3 python/cli.py timing harness-mark --label <name> -- <inner>`
+      2. `env ... python3 python/cli.py timing harness-mark --label <name> -- <inner>`
       3. `bash scripts/<test-NAME>.sh`                              (legacy, no timer)
     """
     parts = shlex.split(line)
     if not parts:
         return None
+    for i in range(0, max(0, len(parts) - 6)):
+        if parts[i : i + 4] == ["python3", "python/cli.py", "timing", "harness-mark"]:
+            rest = parts[i + 4 :]
+            if len(rest) >= 4 and rest[0] == "--label" and rest[2] == "--":
+                return rest[1]
+            if len(rest) >= 2:
+                return rest[0]
     # Skip env-prefix tokens like "env -u FOO=bar" or "VAR=val" until we hit `bash`.
     i = 0
     while i < len(parts) and parts[i] != "bash":
@@ -113,8 +120,6 @@ def _extract_test_name(line: str) -> Optional[str]:
         return None
     # Now parts[i] == 'bash', parts[i+1] == <script>
     script = parts[i + 1]
-    if script.endswith("scripts/harness-timer.sh") and i + 2 < len(parts):
-        return parts[i + 2]
     # Direct invocation: bash scripts/test-foo.sh → name = "test-foo"
     base = os.path.basename(script)
     if base.startswith("test-") and base.endswith(".sh"):

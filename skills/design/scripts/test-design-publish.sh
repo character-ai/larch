@@ -52,38 +52,7 @@ ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
 ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$STUB/append-execution-issue.sh"
-ln -sf "$REPO_ROOT/scripts/timing-report.sh" "$STUB/timing-report.sh.bak-real" 2>/dev/null || true
-cat >"$STUB/timing-report.sh" <<'TIMING_STUB'
-#!/usr/bin/env bash
-[[ -n "${PUBLISH_ORDER_LOG:-}" ]] && echo "timing-report" >>"$PUBLISH_ORDER_LOG"
-if [[ -n "${TIMING_REPORT_ENV_LOG:-}" ]]; then
-  {
-    echo "LARCH_TIMING_LEDGER=${LARCH_TIMING_LEDGER:-}"
-    echo "IMPLEMENT_TMPDIR=${IMPLEMENT_TMPDIR-unset}"
-  } >>"$TIMING_REPORT_ENV_LOG"
-fi
-out=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output) out="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out" ]] || exit 1
-if [[ "${TIMING_REPORT_FAIL:-false}" == true ]]; then
-  exit 1
-fi
-if [[ "${TIMING_REPORT_PARTIAL_JSON:-false}" == true ]]; then
-  printf '{"per_step":[]}\n' >"$out"
-  exit 0
-fi
-if [[ "${TIMING_REPORT_NO_ROUNDS_JSON:-false}" == true ]]; then
-  printf '{"workflow_path":"SIMPLE","per_step":[{"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":false}],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
-  exit 0
-fi
-printf '{"workflow_path":"SIMPLE","per_step":[{"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":false,"rounds":[{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]}],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
-TIMING_STUB
-chmod +x "$STUB/timing-report.sh"
+# timing report is now handled by $FAKE_PLUGIN/python/cli.py (created in write_stubs)
 cat >"$STUB/redact-secrets.sh" <<'REDACT_STUB'
 #!/usr/bin/env bash
 # Controllable stub: REDACT_STUB_RC=N exits with that code; REDACT_EMPTY_OUTPUT=true emits nothing; else passes stdin through.
@@ -158,22 +127,52 @@ fi
 STUB
     mkdir -p "$FAKE_PLUGIN/python"
     cat >"$FAKE_PLUGIN/python/cli.py" <<'STUB'
-import os
-import sys
-if sys.argv[1:3] != ["diagrams", "upsert"]:
+import json, os, sys
+cmd = sys.argv[1:3]
+if cmd == ["diagrams", "upsert"]:
+    args = " ".join(sys.argv[3:])
+    with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
+        handle.write(f"upsert-diagrams {args}\n")
+    if os.environ.get("CALL_LOG"):
+        with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+            handle.write(f"upsert-diagrams {args}\n")
+    rc = int(os.environ.get("UPSERT_STUB_RC", "0"))
+    if rc:
+        raise SystemExit(rc)
+    print(f"UPSERT_STATUS={os.environ.get('UPSERT_STATUS_VALUE', 'ok')}")
+    print(f"ARCHITECTURE_SOURCE={os.environ.get('ARCH_SOURCE_VALUE', 'file')}")
+elif cmd == ["timing", "report"]:
+    if os.environ.get("PUBLISH_ORDER_LOG"):
+        with open(os.environ["PUBLISH_ORDER_LOG"], "a") as fh:
+            fh.write("timing-report\n")
+    if os.environ.get("TIMING_REPORT_ENV_LOG"):
+        with open(os.environ["TIMING_REPORT_ENV_LOG"], "a") as fh:
+            fh.write(f"LARCH_TIMING_LEDGER={os.environ.get('LARCH_TIMING_LEDGER','')}\n")
+            fh.write(f"IMPLEMENT_TMPDIR={os.environ.get('IMPLEMENT_TMPDIR','unset') if 'IMPLEMENT_TMPDIR' in os.environ else 'unset'}\n")
+    out = None
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--output" and i + 1 < len(args):
+            out = args[i + 1]; i += 2
+        else:
+            i += 1
+    if not out:
+        raise SystemExit(1)
+    if os.environ.get("TIMING_REPORT_FAIL") == "true":
+        raise SystemExit(1)
+    if os.environ.get("TIMING_REPORT_PARTIAL_JSON") == "true":
+        with open(out, "w") as fh: fh.write('{"per_step":[]}\n')
+        raise SystemExit(0)
+    no_rounds = os.environ.get("TIMING_REPORT_NO_ROUNDS_JSON") == "true"
+    step = {"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":False}
+    if not no_rounds:
+        step["rounds"] = [{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]
+    data = {"workflow_path":"SIMPLE","per_step":[step],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}
+    with open(out, "w") as fh: fh.write(json.dumps(data) + "\n")
+else:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
-args = " ".join(sys.argv[3:])
-with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
-    handle.write(f"upsert-diagrams {args}\n")
-if os.environ.get("CALL_LOG"):
-    with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
-        handle.write(f"upsert-diagrams {args}\n")
-rc = int(os.environ.get("UPSERT_STUB_RC", "0"))
-if rc:
-    raise SystemExit(rc)
-print(f"UPSERT_STATUS={os.environ.get('UPSERT_STATUS_VALUE', 'ok')}")
-print(f"ARCHITECTURE_SOURCE={os.environ.get('ARCH_SOURCE_VALUE', 'file')}")
 STUB
     cat >"$STUB/tracking-issue-write.sh" <<'STUB'
 #!/usr/bin/env bash
