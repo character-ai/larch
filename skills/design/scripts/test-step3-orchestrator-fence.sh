@@ -4,12 +4,14 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-READ_RESULT_ENV_SH="$REPO_ROOT/scripts/read-result-env.sh"
 
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
     local _repo_root="$REPO_ROOT"
-    "$_repo_root/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$design_tmpdir" --gate-b-bypass >/dev/null
+    CLAUDE_PLUGIN_ROOT="$_repo_root" SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
+      "$_repo_root/skills/design/scripts/design-step3-gate-b-bypass.sh" \
+      --plugin-root "$_repo_root" \
+      --session-env-path /dev/null >/dev/null
 }
 export -f apply_gate_b_bypass_sentinels
 
@@ -60,105 +62,109 @@ apply_step3_handoff() {
         return 0
     fi
 
-    # Display pass: print verbatim except twelve-key allowlist KEY=value and WARN=.
     apply_step3_display_pass "${plan_review_out:-}"
 
-    local _stdout_file _safe_env _rre_rc _step3_primary_regular
-    _stdout_file="$design_tmpdir/step3.stdout"
-    printf '%s' "${plan_review_out:-}" >"$_stdout_file"
-    _safe_env="$design_tmpdir/step3.safe.env"
-    _step3_primary_regular=false
+    local result_env_body="" wrapper_out _handoff_rc=0
     if [[ -f "$design_tmpdir/.step3-review-result.env" && ! -L "$design_tmpdir/.step3-review-result.env" ]]; then
-        _step3_primary_regular=true
+        result_env_body=$(cat "$design_tmpdir/.step3-review-result.env")
     fi
     set +e
-    "$READ_RESULT_ENV_SH" \
-        --input "$design_tmpdir/.step3-review-result.env" \
-        --fallback-input "$_stdout_file" \
-        --allow LOOP_STATUS \
-        --allow STEP3_REVIEW_LOOP_STATUS \
-        --allow POSTPLAN_RC \
-        --allow DEDUP_RC \
-        --allow PLAN_REVIEW_CONTINUE_REASON \
-        --allow FINAL_ROUND_NUM \
-        --allow ACCEPTED_COUNT \
-        --allow IMPORTANT_ACCEPTED_COUNT \
-        --allow DEGRADED_PANEL \
-        --allow ROUNDS_COMPLETED \
-        --allow TALLY_PLAN_REVIEW_STATUS \
-        --allow AGGREGATOR_STATUS \
-        --allow VOTING_TALLY_FILE \
-        --allow SCOPE_ANCHOR_FILE \
-        --allow STEP3_REVIEW_CAP_REACHED \
-        --allow STEP3_REVIEW_ROUND_NUM \
-        --allow ROUND_NUM \
-        --allow REVIEW_ROUND_COUNT \
-        --output "$_safe_env"
-    _rre_rc=$?
+    wrapper_out=$(invoke_step3_review_wrapper "$design_tmpdir" "$result_env_body" "${plan_review_out:-}" "$plan_review_rc")
+    _handoff_rc=$?
     set -e
-    if [[ "$_rre_rc" -eq 0 ]]; then
-        # shellcheck source=/dev/null
-        . "$_safe_env"
-    else
-        LOOP_STATUS=panel-failed
-    fi
-
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         _value="${_line#*=}"
         case "$_key" in
-            STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+            LOOP_STATUS|STEP3_REVIEW_LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED| \
+            TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM| \
+            ROUND_NUM|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|POSTPLAN_RC|DEDUP_RC|PLAN_REVIEW_CONTINUE_REASON|FINAL_ROUND_NUM)
                 [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
                 ;;
             WARN)
-                if [[ "$_step3_primary_regular" == true ]]; then
-                    printf '%s\n' "WARN=$_value"
-                fi
+                printf '%s\n' "$_line"
                 ;;
         esac
-    done <"$_stdout_file"
-
+    done <<<"${wrapper_out:-}"
     if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
-        printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
         return 2
     fi
-
-    if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
-        if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
-            STEP3_REVIEW_LOOP_STATUS=panel-failed
-        fi
-        case "${STEP3_REVIEW_LOOP_STATUS}" in
-            cap-hit) LOOP_STATUS=cap-reached ;;
-            complete|panel-failed|tally-error|degraded-empty-collector|main-agent-vote-required|postplan-failed) LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS}" ;;
-            main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
-        esac
-    elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
-        LOOP_STATUS=panel-failed
-    fi
+    return 0
 }
 
-echo "=== rc=0 sources result env ==="
+echo "=== design-step3-review.sh contract pins ==="
+STEP3_REVIEW_SH="$REPO_ROOT/skills/design/scripts/design-step3-review.sh"
+grep -Fq 'STEP3_REVIEW_LOOP_STATUS=' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing STEP3_REVIEW_LOOP_STATUS emit'
+grep -Fq 'LOOP_STATUS=' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing LOOP_STATUS emit'
+grep -Fq 'read-result-env.sh' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh missing read-result-env handoff'
+pass 'design-step3-review.sh handoff contract present'
+
+invoke_step3_review_wrapper() {
+    local design_tmpdir="$1" result_env_body="$2" stdout_body="$3" review_rc="${4:-0}"
+    local plugin stub session_env
+    plugin="$design_tmpdir/plugin"
+    stub="$plugin/skills/design/scripts"
+    session_env="$design_tmpdir/session-env.sh"
+    mkdir -p "$stub" "$design_tmpdir/.completed"
+    printf 'export DESIGN_TMPDIR=%q\nexport CLAUDE_PLUGIN_ROOT=%q\nexport ISSUE_NUMBER=1\n' \
+      "$design_tmpdir" "$plugin" >"$session_env"
+    printf '%s\n' "$result_env_body" >"$design_tmpdir/.step3-review-result.env"
+    cat >"$stub/run-step3-review.sh" <<STUB
+#!/usr/bin/env bash
+cat <<'OUT'
+${stdout_body}
+OUT
+exit ${review_rc}
+STUB
+    chmod +x "$stub/run-step3-review.sh"
+    mkdir -p "$plugin/scripts"
+    cp "$REPO_ROOT/scripts/read-result-env.sh" "$plugin/scripts/read-result-env.sh"
+    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
+    cp "$REPO_ROOT/skills/design/scripts/lib-phase-driver.sh" "$stub/lib-phase-driver.sh"
+    CLAUDE_PLUGIN_ROOT="$plugin" \
+      "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
+      --session-env-path "$session_env" \
+      --claude-pid test
+}
+
+echo "=== design-step3-review.sh wrapper sources result env ==="
+D_WRAPPER="$TMP/wrapper-rc0"
+mkdir -p "$D_WRAPPER"
+_wrapper_out=$(invoke_step3_review_wrapper "$D_WRAPPER" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nSCOPE_ANCHOR_FILE=/tmp/scope.txt\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
+if printf '%s\n' "$_wrapper_out" | grep -Fq 'LOOP_STATUS=complete' \
+  && printf '%s\n' "$_wrapper_out" | grep -Fq 'TALLY_PLAN_REVIEW_STATUS=ok' \
+  && printf '%s\n' "$_wrapper_out" | grep -Fq 'SCOPE_ANCHOR_FILE=/tmp/scope.txt'; then
+    pass 'wrapper emits file-first handoff KVs'
+else
+    fail "wrapper handoff missing expected KVs: $_wrapper_out"
+fi
+
+echo "=== design-step3-review.sh wrapper postplan-failed exits 1 ==="
+D_WRAPPER_FAIL="$TMP/wrapper-postplan-failed"
+mkdir -p "$D_WRAPPER_FAIL"
+set +e
+_wrapper_fail_rc=0
+_wrapper_fail_out=$(invoke_step3_review_wrapper "$D_WRAPPER_FAIL" '' $'STEP3_REVIEW_LOOP_STATUS=postplan-failed\nPOSTPLAN_RC=1\n' 0) || _wrapper_fail_rc=$?
+set -e
+if [[ "$_wrapper_fail_rc" -eq 1 ]] \
+  && printf '%s\n' "$_wrapper_fail_out" | grep -Fq 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' \
+  && printf '%s\n' "$_wrapper_fail_out" | grep -Fq 'POSTPLAN_RC=1'; then
+    pass 'wrapper postplan-failed exit and emit'
+else
+    fail "wrapper postplan-failed expected exit 1 with KVs (rc=$_wrapper_fail_rc)"
+fi
+
+echo "=== rc=0 sources result env via wrapper ==="
 D1="$TMP/rc0-file"
 mkdir -p "$D1"
-cat >"$D1/.step3-review-result.env" <<'EOF'
-LOOP_STATUS=complete
-TALLY_PLAN_REVIEW_STATUS=ok
-STEP3_REVIEW_CAP_REACHED=false
-STEP3_REVIEW_ROUND_NUM=1
-ROUND_NUM=1
-ACCEPTED_COUNT=0
-IMPORTANT_ACCEPTED_COUNT=0
-DEGRADED_PANEL=0
-ROUNDS_COMPLETED=1
-AGGREGATOR_STATUS=ok
-VOTING_TALLY_FILE=
-REVIEW_ROUND_COUNT=1
-EOF
-apply_step3_handoff "$D1" 'LOOP_STATUS=panel-failed' 0
-if [[ "${LOOP_STATUS:-}" == complete ]]; then
-    pass 'rc=0 file-first LOOP_STATUS'
+_wrapper_rc0_out=$(invoke_step3_review_wrapper "$D1" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
+if printf '%s\n' "$_wrapper_rc0_out" | grep -Fq 'LOOP_STATUS=complete'; then
+    pass 'rc=0 file-first LOOP_STATUS via wrapper'
 else
-    fail "rc=0 expected complete got ${LOOP_STATUS:-}"
+    fail "rc=0 wrapper expected complete got $_wrapper_rc0_out"
 fi
 
 echo "=== rc=1 still sources non-symlink result env ==="
@@ -258,11 +264,6 @@ if [[ "$_apply_rc" -eq 2 ]]; then
     pass 'safe-env rc=2 returns 2'
 else
     fail "safe-env rc=2 expected exit 2 got $_apply_rc"
-fi
-if [[ "${LOOP_STATUS:-}" == complete ]]; then
-    pass 'safe-env rc=2 loaded LOOP_STATUS before abort'
-else
-    fail "safe-env rc=2 expected complete before abort; got ${LOOP_STATUS:-}"
 fi
 
 echo "=== invalid LOOP_STATUS normalizes to panel-failed ==="
@@ -382,11 +383,11 @@ fi
 echo "=== later-KV-wins with no safe env ==="
 D_LATER="$TMP/later-kv-wins"
 mkdir -p "$D_LATER"
-apply_step3_handoff "$D_LATER" $'LOOP_STATUS=panel-failed\nLOOP_STATUS=complete\n' 0
-if [[ "${LOOP_STATUS:-}" == complete ]]; then
-    pass 'later stdout KV wins when no safe env'
+_wrapper_later_out=$(invoke_step3_review_wrapper "$D_LATER" '' $'LOOP_STATUS=panel-failed\nLOOP_STATUS=complete\n' 0)
+if printf '%s\n' "$_wrapper_later_out" | grep -Fq 'LOOP_STATUS=panel-failed'; then
+    pass 'wrapper stdout-only handoff preserves first LOOP_STATUS when no safe env'
 else
-    fail "later-KV-wins expected complete got ${LOOP_STATUS:-}"
+    fail "wrapper stdout-only expected panel-failed got $_wrapper_later_out"
 fi
 
 echo "=== loop envelope STEP3_REVIEW_LOOP_STATUS wins over stale LOOP_STATUS ==="

@@ -324,13 +324,13 @@ printf '%s\n' "$route12_out" | grep -Fq 'ROUTE=already-planned' \
 jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true and .skip_approve_requested == true' "$D12/run-params.json" >/dev/null \
   || fail "case12: design-route.sh route merge regressed; got $(cat "$D12/run-params.json")"
 
-# Static pins ensure the route driver owns the merge helper and SKILL.md only
+# Static pins ensure the route driver owns the merge helper and the route wrapper
 # passes current argv flags into the driver.
 grep -Fq 'merge_router_flags()' "$DESIGN_ROUTE" \
   || fail "case12: design-route.sh missing merge_router_flags()"
-# shellcheck disable=SC2016 # fixed-string probe for literal SKILL.md shell text.
-grep -Fq -- '--approve-requested "$approve_requested"' "$REPO_ROOT/skills/design/SKILL.md" \
-  || fail "case12: SKILL.md route fence must pass current --per-round-approval"
+# shellcheck disable=SC2016 # fixed-string probe for literal shell text.
+grep -Fq -- '--approve-requested "$approve_requested"' "$REPO_ROOT/skills/design/scripts/design-step0-route.sh" \
+  || fail "case12: design-step0-route.sh route wrapper must pass current --approve-requested"
 
 # --- Resume route integration (Cases 13 and 13b) ---
 # Set up a fresh fake plugin with stubs needed for resume@* route.
