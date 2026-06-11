@@ -478,7 +478,7 @@ resume_hint_for() {
         12d|bump-branch-guard) printf 'none\n'; return 0 ;;
         2) printf 'step2-impl\n'; return 0 ;;
         5) printf 'step5-review\n'; return 0 ;;
-        8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*)
+        8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*|rebase-failed)
             printf 'step8-shippr\n'
             return 0
             ;;
@@ -500,6 +500,7 @@ classify_from_evidence() {
     case "$step" in
         3|6) printf 'contract-failure\n'; return 0 ;;
         merge-loop-iteration-cap) printf 'unrecoverable\n'; return 0 ;;
+        rebase-failed) printf 'transient-infra\n'; return 0 ;;
     esac
     case "$bail" in
         adopted-issue-closed|tracking-init-failed) printf 'unrecoverable\n'; return 0 ;;
@@ -828,7 +829,7 @@ root_cause_template() {
 
 safe_step_value() {
     local value=${1:-}
-    if [ "$value" = "bump-branch-guard" ] || [ "$value" = "merge-loop-iteration-cap" ]; then
+    if [ "$value" = "bump-branch-guard" ] || [ "$value" = "merge-loop-iteration-cap" ] || [ "$value" = "rebase-failed" ]; then
         printf '%s\n' "$value"
     elif [[ "$value" =~ ^(2|3|5|6)$ ]]; then
         printf '%s\n' "$value"
@@ -841,7 +842,7 @@ safe_step_value() {
 
 safe_phase_value() {
     case "${1:-}" in
-        checks|review|implementation|impl|step2|step5|step8|ship|ship-pr|pr-prep|pr-create|ci-initial|ci-merge|evaluate-failure|force-push-gate|bump|merge|postmerge)
+        checks|review|implementation|impl|step2|step5|step8|ship|ship-pr|pr-prep|pr-create|ci-initial|ci-merge|evaluate-failure|force-push-gate|bump|merge|postmerge|rebase-failed)
             printf '%s\n' "$1"
             ;;
         *)

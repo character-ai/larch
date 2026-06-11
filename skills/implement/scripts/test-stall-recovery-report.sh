@@ -276,6 +276,12 @@ classify_fixture case7n merge-loop-iteration-cap merge "merge loop iteration cap
 out=$CLASSIFY_OUT
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$out")" "7: merge-loop-iteration-cap is unrecoverable"
 assert_eq none "$(kv RESUME_HINT "$out")" "7: merge-loop-iteration-cap stays non-resumable"
+classify_fixture case7r rebase-failed rebase-failed "rebase failed: conflict in Makefile"
+out=$CLASSIFY_OUT
+assert_eq transient-infra "$(kv FAILURE_CLASS "$out")" "7: rebase-failed classifies as transient-infra"
+assert_eq step8-shippr "$(kv RESUME_HINT "$out")" "7: rebase-failed resumes through ship-pr"
+assert_eq rebase-failed "$(kv STALL_STEP "$out")" "7: rebase-failed stall step is preserved"
+assert_eq rebase-failed "$(kv PHASE "$out")" "7: rebase-failed phase is preserved"
 
 dir=$(make_tmp case8a)
 run_capture "$SANDBOX/case8a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
@@ -755,6 +761,7 @@ done <<'EOF'
 10-detached-head
 bump-branch-guard
 merge-loop-iteration-cap
+rebase-failed
 EOF
 
 dir=$(make_tmp case20-unsafe-step)
