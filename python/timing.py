@@ -664,6 +664,9 @@ def _ledger_from_args(args: list[str]) -> tuple[list[str], str | None]:
 
 def timing_mark_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
+    if_latest_differs = "--if-latest-differs" in args
+    if if_latest_differs:
+        args = [a for a in args if a != "--if-latest-differs"]
     if not args:
         print("timing mark requires <step>", file=sys.stderr)
         return 1
@@ -674,6 +677,11 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
         return 1
     if ledger is None:
         return 0
+    if if_latest_differs:
+        skill = os.environ.get("LARCH_TIMING_SKILL", "implement")
+        skill_marks = [m for m in _parse_rows(ledger)[0] if m.skill == skill]
+        if skill_marks and skill_marks[-1].step == args[0]:
+            return 0
     try:
         TimingLedger(ledger, skill=os.environ.get("LARCH_TIMING_SKILL", "implement")).mark(args[0])
     except ValueError as exc:

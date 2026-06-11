@@ -176,6 +176,47 @@ def test_timing_harness_mark_runs_command(tmp_path: Path, capsys: pytest.Capture
     assert fail_out.endswith("s")
 
 
+def test_timing_mark_if_latest_differs_appends_on_differing_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t10\timplement\tStep 4 — commit\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
+    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
+    assert rc == 0
+    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
+    assert len(rows) == 2
+    assert rows[-1].split("\t")[4] == "Step 5 — code review"
+
+
+def test_timing_mark_if_latest_differs_skips_on_identical_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text(
+        "v1\tmark\t10\timplement\tStep 5 — code review\t-\t-\t-\t-\t-\t-\t-\t-\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
+    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
+    assert rc == 0
+    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
+    assert len(rows) == 1
+
+
+def test_timing_mark_if_latest_differs_appends_on_empty_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    monkeypatch.setenv("LARCH_TIMING_LEDGER", str(ledger))
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "implement")
+    rc = timing.timing_mark_main(["--if-latest-differs", "Step 5 — code review"])
+    assert rc == 0
+    assert ledger.is_file()
+    rows = [line for line in ledger.read_text(encoding="utf-8").splitlines() if "\tmark\t" in line]
+    assert len(rows) == 1
+    assert rows[0].split("\t")[4] == "Step 5 — code review"
+
+
 def test_timing_mark_main_catches_invalid_ledger(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     fifo = tmp_path / "fifo.tsv"
     if hasattr(stat, "S_IFIFO"):

@@ -904,6 +904,38 @@ assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
     ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED AGGREGATOR_STATUS \
     VOTING_TALLY_FILE REVIEW_ROUND_COUNT
 
+echo "=== skipped-entry: launcher writes missing design Step 3 mark ==="
+D_MARK_SKIPPED="$TMP/mark-skipped-entry"
+write_common_inputs "$D_MARK_SKIPPED" SIMPLE
+# Seed ledger with Step 2 mark only (simulates skipped design-step3-entry.sh)
+printf 'v1\tmark\t100\tdesign\tdesign Step 2b — plan\t-\t-\t-\t-\t-\t-\t-\t-\n' \
+    >"$D_MARK_SKIPPED/timing-ledger.tsv"
+stub_mark_skip="$(write_loop_stub "$D_MARK_SKIPPED" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub_mark_skip" "$LAUNCHER" \
+    --design-tmpdir "$D_MARK_SKIPPED" >/dev/null
+mark_count="$(awk -F '\t' '$2 == "mark" && $4 == "design" && $5 == "design Step 3 — plan review" { n++ } END { print n+0 }' "$D_MARK_SKIPPED/timing-ledger.tsv")"
+if [[ "$mark_count" -eq 1 ]]; then
+    pass "skipped-entry: launcher writes design Step 3 mark"
+else
+    fail "skipped-entry: expected 1 design Step 3 mark, got $mark_count"
+fi
+
+echo "=== no-duplicate: prior design Step 3 mark present, launcher skips re-mark ==="
+D_MARK_NODUP="$TMP/mark-no-duplicate"
+write_common_inputs "$D_MARK_NODUP" SIMPLE
+# Seed ledger with existing design Step 3 mark (simulates normal design-step3-entry.sh path)
+printf 'v1\tmark\t100\tdesign\tdesign Step 3 — plan review\t-\t-\t-\t-\t-\t-\t-\t-\n' \
+    >"$D_MARK_NODUP/timing-ledger.tsv"
+stub_mark_nodup="$(write_loop_stub "$D_MARK_NODUP" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub_mark_nodup" "$LAUNCHER" \
+    --design-tmpdir "$D_MARK_NODUP" >/dev/null
+mark_count="$(awk -F '\t' '$2 == "mark" && $4 == "design" && $5 == "design Step 3 — plan review" { n++ } END { print n+0 }' "$D_MARK_NODUP/timing-ledger.tsv")"
+if [[ "$mark_count" -eq 1 ]]; then
+    pass "no-duplicate: prior design Step 3 mark not duplicated"
+else
+    fail "no-duplicate: expected 1 design Step 3 mark, got $mark_count"
+fi
+
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-run-step3-review.sh - %s/%s assertions\n' "$PASS" "$TOTAL"
