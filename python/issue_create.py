@@ -344,6 +344,18 @@ def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
     return number, url, issue_id
 
 
+def _issue_create_json_status(output: str) -> str:
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        return "fallback"
+    if not isinstance(data, dict) or not all(key in data for key in ("number", "url", "id")):
+        return "fallback"
+    if _parse_issue_json(output) is not None:
+        return "ok"
+    return "empty_fields"
+
+
 def _create_fallback(repo: str, gh_args: list[str], final_title: str) -> int:
     created = proc.run(["gh", *gh_args])
     if created.returncode != 0:
@@ -417,20 +429,22 @@ def create_one_main(argv: list[str]) -> int:
         for label in valid_labels:
             gh_args.extend(["--label", label])
         result = proc.run(["gh", *gh_args, "--json", "id,number,url"])
-        parsed_json = _parse_issue_json(result.stdout) if result.returncode == 0 else None
-        if parsed_json is not None:
-            number, url, issue_id = parsed_json
-            emit_kv("ISSUE_NUMBER", number)
-            emit_kv("ISSUE_URL", url)
-            emit_kv("ISSUE_ID", issue_id)
-            emit_kv("ISSUE_TITLE", final_title)
-            return 0
         unknown_json = bool(re.search(r"unknown flag|unknown option|flag provided but not defined", result.stderr, re.IGNORECASE)) and "--json" in result.stderr
+        if result.returncode == 0:
+            json_status = _issue_create_json_status(result.stdout)
+            if json_status == "ok":
+                number, url, issue_id = _parse_issue_json(result.stdout) or ("", "", "")
+                emit_kv("ISSUE_NUMBER", number)
+                emit_kv("ISSUE_URL", url)
+                emit_kv("ISSUE_ID", issue_id)
+                emit_kv("ISSUE_TITLE", final_title)
+                return 0
+            if json_status == "empty_fields":
+                redacted_output = _flat_error(result.stdout)
+                return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
+            return _create_fallback(repo, gh_args, final_title)
         if unknown_json:
             return _create_fallback(repo, gh_args, final_title)
-        if result.returncode == 0:
-            redacted_output = _flat_error(result.stdout)
-            return _emit_issue_failed(f"gh issue create returned JSON with empty field(s) (output: {redacted_output})")
         return _emit_issue_failed(_flat_error(result.stderr))
     finally:
         Path(body_tmp_path).unlink(missing_ok=True)
@@ -532,7 +546,12 @@ def _blocked_failure(client: str, blocker: str, message: str, code: int = 2) -> 
     emit_kv("BLOCKED_BY_FAILED", "true")
     emit_kv("CLIENT", client)
     emit_kv("BLOCKER", blocker)
-    emit_kv("ERROR", _flat_error(message))
+    try:
+        error_text = _flat_error(message)
+    except Exception as exc:  # pragma: no cover - defensive seam for tests
+        emit_kv("ERROR", f"redaction:{exc}")
+        return 3
+    emit_kv("ERROR", error_text)
     return code
 
 
@@ -663,7 +682,7 @@ def list_issues_main(argv: list[str]) -> int:
         emit_kv("LIST_STATUS", "failed")
         warn("WARN: jq failed to parse gh api output")
         return 0
-    cutoff = _dt.datetime.now(tz=_dt.UTC).date() - _dt.timedelta(days=int(closed_window))
+    cutoff = _dt.date.today() - _dt.timedelta(days=int(closed_window))
     rows: list[str] = []
     for doc in docs:
         if not isinstance(doc, list):

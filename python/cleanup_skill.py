@@ -113,7 +113,7 @@ def run_main(argv: list[str]) -> int:
                 cache_removed += 1
     _emit("CACHE_REMOVED", cache_removed)
     tmp_removed = 0
-    tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT", tempfile.gettempdir()))
+    tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or tempfile.gettempdir())
     if tmp_root.is_dir():
         try:
             tmp_entries = list(tmp_root.iterdir())

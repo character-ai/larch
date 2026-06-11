@@ -156,6 +156,117 @@ def test_allocate_candidates_union_credit() -> None:
     assert issue_create.allocate_candidates(2, rows) == [10, 11, 12]
 
 
+def test_allocate_candidates_n11_floor_two_spillover() -> None:
+    rows = ""
+    for i in range(1, 12):
+        base = i * 100
+        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 1} dup high\nCAND {i} {base + 2} dup medium\n"
+    expected = (
+        "100,101,102,200,201,202,300,301,302,400,401,402,500,501,502,"
+        "600,601,602,700,701,702,800,801,802,900,901,1000,1001,1100,1101"
+    )
+    assert issue_create.allocate_candidates(11, rows) == [int(value) for value in expected.split(",")]
+
+
+def test_allocate_candidates_n16_floor_one_spillover() -> None:
+    rows = ""
+    for i in range(1, 17):
+        base = i * 100
+        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 1} dup high\n"
+    expected = (
+        "100,101,200,201,300,301,400,401,500,501,600,601,700,701,800,801,"
+        "900,901,1000,1001,1100,1101,1200,1201,1300,1301,1400,1401,1500,1600"
+    )
+    assert issue_create.allocate_candidates(16, rows) == [int(value) for value in expected.split(",")]
+
+
+def test_allocate_candidates_n30_floor_one() -> None:
+    rows = "".join(f"CAND {i} {i * 100} dup high\n" for i in range(1, 31))
+    assert issue_create.allocate_candidates(30, rows) == [i * 100 for i in range(1, 31)]
+
+
+def test_allocate_candidates_over_cap_confidence_only() -> None:
+    rows = ""
+    for i in range(1, 16):
+        base = i * 100
+        rows += f"CAND {i} {base} dup high\nCAND {i} {base + 50} dup medium\nCAND {i} {base + 75} dup low\n"
+    expected = [
+        100,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500,
+        550,
+        600,
+        650,
+        700,
+        750,
+        800,
+        850,
+        900,
+        950,
+        1000,
+        1050,
+        1100,
+        1150,
+        1200,
+        1250,
+        1300,
+        1350,
+        1400,
+        1450,
+        1500,
+        1550,
+    ]
+    assert issue_create.allocate_candidates(31, rows) == expected
+
+
+def test_allocate_candidates_tie_break_issue_asc() -> None:
+    rows = (
+        "CAND 1 105 dup medium\n"
+        "CAND 1 102 dup medium\n"
+        "CAND 1 101 dup medium\n"
+        "CAND 1 104 dup medium\n"
+        "CAND 1 103 dup medium\n"
+    )
+    assert issue_create.allocate_candidates(10, rows) == [101, 102, 103, 104, 105]
+
+
+def test_allocate_candidates_kind_both_first_class() -> None:
+    rows = "CAND 1 100 both high\nCAND 2 100 both medium\n"
+    assert issue_create.allocate_candidates(2, rows) == [100]
+
+
+def test_allocate_candidates_missing_confidence_defaults_low() -> None:
+    rows = "CAND 1 100 dup\nCAND 1 101 dup high\n"
+    assert issue_create.allocate_candidates(1, rows) == [100, 101]
+
+
+def test_allocate_candidates_unknown_kind_defaults_dup() -> None:
+    rows = "CAND 1 100 unknown high\nCAND 1 101 weird medium\n"
+    assert issue_create.allocate_candidates(1, rows) == [100, 101]
+
+
+def test_allocate_candidates_n_zero_ignores_stdin() -> None:
+    assert issue_create.allocate_candidates(0, "CAND 1 100 dup high\n") == []
+
+
+def test_allocate_candidates_empty_stdin() -> None:
+    assert issue_create.allocate_candidates(5, "") == []
+
+
+def test_allocate_candidates_hard_cap_thirty() -> None:
+    rows = ""
+    for i in range(1, 6):
+        for offset in range(10):
+            rows += f"CAND {i} {i * 1000 + offset} dup high\n"
+    assert len(issue_create.allocate_candidates(5, rows)) == 30
+
+
 def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     body = tmp_path / "body.md"
     body.write_text("body crsr_0123456789abcdefghijklmnopqrstuvwxyzABCDEF", encoding="utf-8")
@@ -204,6 +315,32 @@ def test_create_one_success_json(monkeypatch: Any, tmp_path: Path, capsys: Any) 
     assert "ISSUE_NUMBER=5" in out
     assert "ISSUE_ID=99" in out
     assert "ISSUE_TITLE=T" in out
+
+
+def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "issue", "create"]:
+            if "--json" in argv:
+                return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
+            return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:
+            return _result(argv, stdout="4242\n")
+        return _result(argv, stdout="owner/repo\n")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"]) == 0
+    out = capsys.readouterr().out
+    assert "ISSUE_NUMBER=42" in out
+    assert "ISSUE_ID=4242" in out
+    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]
+    assert len(create_calls) == 2
+    assert "--json" in create_calls[0]
+    assert "--json" not in create_calls[1]
 
 
 def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
@@ -326,6 +463,24 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
     assert rc == 2
     assert "BLOCKED_BY_FAILED=true" in out
     assert len(calls) == 2
+
+
+def test_add_blocked_by_redaction_failure_exits_three(monkeypatch: Any, capsys: Any) -> None:
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+            return _result(argv, stdout="200\n")
+        return _result(argv, returncode=1, stderr="HTTP 404: Not Found")
+
+    def boom(_text: str) -> str:
+        raise RuntimeError("redact failed")
+
+    monkeypatch.setattr(issue_create.proc, "run", fake_run)
+    monkeypatch.setattr(issue_create, "redact_secrets_outbound", boom)
+    rc = issue_create.add_blocked_by_main(["--client-issue", "1", "--blocker-issue", "2", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 3
+    assert "BLOCKED_BY_FAILED=true" in out
+    assert "ERROR=redaction:" in out
 
 
 def test_create_one_dry_run_preserves_operator_paths(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

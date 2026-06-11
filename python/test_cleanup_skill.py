@@ -48,3 +48,19 @@ def test_cleanup_invalid_retention_warns(monkeypatch: Any, tmp_path: Path, capsy
     monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
     assert cleanup_skill.run_main([]) == 0
     assert "invalid LARCH_CLEANUP_RETENTION_DAYS" in capsys.readouterr().err
+
+
+def test_cleanup_empty_tmp_root_falls_back(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    tmp_root = tmp_path / "tmp"
+    tmp_root.mkdir()
+    stale = tmp_root / "larch-stale"
+    stale.mkdir()
+    old_time = time.time() - 10 * 86400
+    os.utime(stale, (old_time, old_time))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("LARCH_TEST_TMP_ROOT", "")
+    monkeypatch.setattr(cleanup_skill.tempfile, "gettempdir", lambda: str(tmp_root))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+    assert cleanup_skill.run_main([]) == 0
+    out = capsys.readouterr().out
+    assert "TMP_REMOVED=1" in out
