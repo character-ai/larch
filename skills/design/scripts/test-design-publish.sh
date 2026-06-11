@@ -79,12 +79,6 @@ setup_design_tmp() {
 }
 
 write_stubs() {
-    cat >"$STUB/plan-block-write.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "plan-block-write $*" >>"${PLAN_BLOCK_LOG:?}"
-[[ -n "${CALL_LOG:-}" ]] && echo "plan-block-write $*" >>"$CALL_LOG"
-exit "${PLAN_BLOCK_RC:-0}"
-STUB
     cat >"$STUB/design-log-publish.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
@@ -128,6 +122,14 @@ def _parse_args(args):
         else:
             i += 1
     return d
+if cmd == ["named-block", "write"]:
+    args = " ".join(sys.argv[3:])
+    with open(os.environ["PLAN_BLOCK_LOG"], "a", encoding="utf-8") as handle:
+        handle.write(f"plan-block-write {args}\n")
+    if os.environ.get("CALL_LOG"):
+        with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as handle:
+            handle.write(f"plan-block-write {args}\n")
+    raise SystemExit(int(os.environ.get("PLAN_BLOCK_RC", "0")))
 if cmd == ["diagrams", "upsert"]:
     args = " ".join(sys.argv[3:])
     with open(os.environ["UPSERT_LOG"], "a", encoding="utf-8") as handle:
@@ -227,6 +229,14 @@ STUB
 #!/usr/bin/env bash
 echo "${RESOLVE_REPO_VALUE:-owner/repo}"
 STUB
+    cat >"$STUB/gh" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$1" == "repo" && "$2" == "view" && -n "${GH_REPO_VIEW_VALUE:-}" ]]; then
+  printf '%s\n' "$GH_REPO_VIEW_VALUE"
+  exit 0
+fi
+exit 1
+STUB
     cat >"$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" <<'STUB'
 #!/usr/bin/env bash
 [[ -n "${CALL_LOG:-}" ]] && echo "validator $*" >>"$CALL_LOG"
@@ -252,12 +262,13 @@ STUB
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
-    chmod +x "$STUB"/*.sh "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
+    chmod +x "$STUB"/*.sh "$STUB/gh" "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 }
 
 write_stubs
 
 export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
+export PATH="$STUB:$PATH"
 
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
@@ -268,6 +279,7 @@ reset_publish_stub_env() {
         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE \
         REDACT_STUB_RC REDACT_EMPTY_OUTPUT TIMING_REPORT_NO_ROUNDS_JSON || true
+    unset GH_REPO_VIEW_VALUE || true
 }
 
 init_publish_logs() {
@@ -574,8 +586,11 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
-grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG" \
-  || fail "plan-block-write missing resolved --repo"
+if grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG"; then
+  fail "origin-fallback repo must not be passed to issue-wire plan writer"
+else
+  pass "origin-fallback repo not passed to issue-wire plan writer"
+fi
 awk '/timing-report/ {t=NR} /design-log-publish/ {p=NR} END { exit (t && p && t < p) ? 0 : 1 }' "$PUBLISH_ORDER_LOG" \
   || fail "timing-report must run before design-log-publish on happy path"
 pass "pre-publish timing render runs before design-log-publish"
@@ -666,10 +681,27 @@ bash "$SUBJECT" --design-tmpdir "$D_PLAN_REPO" --issue 42 --session-id sid-1 --c
 rc=$?
 set -e
 assert_rc "plan-block-write receives explicit repo" 0 "$rc"
-grep -Fq -- 'plan-block-write --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
-  || fail "plan-block-write call missing"
+grep -Fq -- 'plan-block-write --marker plan --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
+  || fail "issue-wire plan writer call missing"
 grep -Fq -- '--repo explicit/repo' "$PLAN_BLOCK_LOG" \
   || fail "plan-block-write missing explicit --repo"
+
+D_PLAN_GH_REPO="$TMP/plan-gh-repo"
+setup_design_tmp "$D_PLAN_GH_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export GH_REPO_VIEW_VALUE=gh/repo
+export RESOLVE_REPO_VALUE=fallback/repo
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PLAN_GH_REPO" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "plan-block-write receives gh-only repo" 0 "$rc"
+grep -Fq -- '--repo gh/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing gh-only --repo"
+! grep -Fq -- '--repo fallback/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write must not use origin fallback repo when gh-only resolution succeeds"
 
 # --- publish envelope fields persisted ---
 D_ENV="$TMP/publish-env"
@@ -875,8 +907,8 @@ grep -q 'tracking-issue-write' "$RENAME_LOG"   || fail "exit 3 should still comp
 
 # --- if ! plan-block-write guard ---
 # shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.
-grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$SUBJECT" \
-  || fail "design-publish.sh must use if ! around plan-block-write.sh"
+grep -Fq 'if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"' "$SUBJECT" \
+  || fail "design-publish.sh must use if ! around issue-wire plan writer"
 
 # --- clear-architecture sentinel path ---
 D_CLR="$TMP/clear-arch"

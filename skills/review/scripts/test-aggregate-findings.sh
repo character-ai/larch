@@ -8,6 +8,7 @@ unset LARCH_AGGREGATOR_DISABLED || true
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 AGG="$REPO_ROOT/skills/review/scripts/aggregate-findings.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-aggregate-findings.XXXXXX")"
 TMP_OUTSIDE="$(mktemp -d "${TMPDIR:-/tmp}/test-agg-outside.XXXXXX")"

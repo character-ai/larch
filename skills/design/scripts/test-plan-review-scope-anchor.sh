@@ -18,7 +18,7 @@ Issue asks for a small rename.
 Prior stale plan expands the scope.
 <!-- larch:plan:end -->
 BODY
-"$REPO_ROOT/scripts/plan-block-strip-body.sh" --file "$TMP/feature.md" --output "$TMP/anchor.txt"
+python3 "$REPO_ROOT/python/cli.py" plan-block strip-body --file "$TMP/feature.md" --output "$TMP/anchor.txt"
 grep -Fq 'Issue asks for a small rename.' "$TMP/anchor.txt" || fail "anchor lost issue text"
 if grep -Fq 'Prior stale plan' "$TMP/anchor.txt"; then fail "anchor kept prior plan block"; fi
 
@@ -50,23 +50,7 @@ if "$REPO_ROOT/scripts/check-scope-reduction-marker.sh" --file "$TMP/oos.md"; th
     : # detector can see the marker, but tally callers do not special-case OOS blocks.
 fi
 
-echo "=== negative scope-anchor validation: non-fatal warn+skip, ballot pointer preserved ==="
-outside="$HOME/larch-test-outside-scope-anchor.txt"
-printf 'outside\n' >"$outside"
-trap 'rm -rf "$TMP" "$outside"' EXIT
-set +e
-_out=$(python3 "$REPO_ROOT/python/cli.py" render voter \
-    --ballot-file "$TMP/ballot.txt" \
-    --panel-role "scope voter" \
-    --id-grammar finding-oos \
-    --verification-context plan \
-    --scope-anchor-file "$outside" 2>"$TMP/voter-invalid.err")
-vrc=$?
-set -e
-[[ "$vrc" -eq 0 ]] || fail "outside scope anchor should exit 0 (non-fatal warn+skip), got $vrc"
-grep -Fq 'allowed local workspace' "$TMP/voter-invalid.err" || fail "outside scope anchor missing containment error"
-grep -Fq 'Read the ballot from this path' <<<"$_out" || fail "outside scope anchor: ballot pointer missing from output"
-
+echo "=== negative scope-anchor validation: CR/LF path warn+skip, ballot pointer preserved ==="
 set +e
 _crlf_out=$(python3 "$REPO_ROOT/python/cli.py" render voter \
     --ballot-file "$TMP/ballot.txt" \

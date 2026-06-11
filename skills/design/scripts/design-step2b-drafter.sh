@@ -137,8 +137,6 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     rm -f "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
   fi
   _resolved_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
-  # shellcheck source=scripts/lib-untrusted-block.sh
-  source "$CLAUDE_PLUGIN_ROOT/scripts/lib-untrusted-block.sh"
   {
     printf '%s\n\n' 'You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.'
     printf 'Trusted resolved design_classification: %s\n\n' "$_resolved_design_classification"
@@ -165,27 +163,27 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     printf '\n%s\n' 'Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.'
     if [ -s "$DESIGN_TMPDIR/feature-description.txt" ]; then
       printf '\n%s\n' 'Untrusted feature description:'
-      larch_emit_untrusted_file_block feature_description "$DESIGN_TMPDIR/feature-description.txt"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block feature_description "$DESIGN_TMPDIR/feature-description.txt"
     fi
     if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]; then
       printf '\n%s\n' 'Untrusted approach synthesis:'
-      larch_emit_untrusted_file_block approach_synthesis "$DESIGN_TMPDIR/approach-synthesis.txt"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block approach_synthesis "$DESIGN_TMPDIR/approach-synthesis.txt"
     fi
     if [ -s "$DESIGN_TMPDIR/discussion-round1.md" ]; then
       printf '\n%s\n' 'Untrusted discussion round 1:'
-      larch_emit_untrusted_file_block discussion_round1 "$DESIGN_TMPDIR/discussion-round1.md"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block discussion_round1 "$DESIGN_TMPDIR/discussion-round1.md"
     fi
     if [ -s "$DESIGN_TMPDIR/design-outline.md" ] && [ -f "$DESIGN_TMPDIR/.outline-approved" ]; then
       printf '\n%s\n' 'Untrusted approved design outline:'
-      larch_emit_untrusted_file_block design_outline "$DESIGN_TMPDIR/design-outline.md"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block design_outline "$DESIGN_TMPDIR/design-outline.md"
     fi
     if [ -s "$DESIGN_TMPDIR/brainstorm.md" ]; then
       printf '\n%s\n' 'Untrusted brainstorm:'
-      larch_emit_untrusted_file_block brainstorm "$DESIGN_TMPDIR/brainstorm.md"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block brainstorm "$DESIGN_TMPDIR/brainstorm.md"
     fi
     if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
       printf '\n%s\n' 'Untrusted dialectic resolutions:'
-      larch_emit_untrusted_file_block dialectic_resolutions "$DESIGN_TMPDIR/dialectic-resolutions.md"
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block dialectic_resolutions "$DESIGN_TMPDIR/dialectic-resolutions.md"
     fi
   } > "$DESIGN_TMPDIR/step2b-drafter-prompt.txt"
   _repo_root="$(git -C "$PWD" rev-parse --show-toplevel)"

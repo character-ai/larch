@@ -121,7 +121,7 @@ SCOPE_LIST="$DESIGN_TMPDIR/scout-plan-scope-files.txt"
 write_scope_files() {
     local plan="$1" target="$2"
     mkdir -p "$(dirname "$target")"
-    "$PLUGIN_ROOT/scripts/extract-plan-scope-paths.sh" --plan-file "$plan" >"${target}.tmp" || return 1
+    python3 "$PLUGIN_ROOT/python/cli.py" plan scope-paths --plan-file "$plan" >"${target}.tmp" || return 1
     mv -f "${target}.tmp" "$target"
 }
 write_scope_files "$PLAN_CANON" "$SCOPE_LIST" || fail "scope-files derivation failed"

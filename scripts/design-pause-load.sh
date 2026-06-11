@@ -21,12 +21,13 @@ usage() {
 
 clear_pause_marker() {
     local clear_args=(
-        "$SCRIPT_DIR/named-block-write.sh"
+        python3 "$SCRIPT_DIR/../python/cli.py"
+        named-block write
         --marker design-pause
         --delete
         --issue "$ISSUE"
     )
-    [[ -n "$REPO" ]] && clear_args+=(--repo "$REPO")
+    [[ -n "${ISSUE_WIRE_REPO:-}" ]] && clear_args+=(--repo "$ISSUE_WIRE_REPO")
     "${clear_args[@]}" >/dev/null 2>&1
 }
 
@@ -104,11 +105,20 @@ mkdir -p "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-create-failed"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_load_fail "invalid-issue"
 jq --null-input 'null' >/dev/null 2>&1 || emit_load_fail "jq-missing"
 [[ -z "$REPO" ]] || validate_repo_value "$REPO"
+ISSUE_WIRE_REPO="$REPO"
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")
 CURRENT_REPO=""
-if resolved_repo=$(resolve_repo "$REPO"); then
+if [[ -z "$REPO" ]] && command -v gh >/dev/null 2>&1; then
+    _gh_only_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+    if [[ -n "$_gh_only_repo" ]]; then
+        validate_repo_value "$_gh_only_repo"
+        CURRENT_REPO="$_gh_only_repo"
+        ISSUE_WIRE_REPO="$_gh_only_repo"
+    fi
+fi
+if [[ -z "$CURRENT_REPO" ]] && resolved_repo=$(resolve_repo "$REPO"); then
     CURRENT_REPO="$resolved_repo"
 fi
 [[ -z "$CURRENT_REPO" ]] || validate_repo_value "$CURRENT_REPO"
@@ -120,7 +130,7 @@ enum_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-pause-ls-tree.XXXXXX")
 restore_tmp=$(mktemp -d "${TMPDIR:-/tmp}/design-pause-load-restore.XXXXXX")
 trap 'rm -f "$body_tmp" "$payload_tmp" "$stripped_tmp" "$enum_tmp"; rm -rf "$restore_tmp"' EXIT
 
-if ! gh issue view "$ISSUE" "${gh_repo_args[@]}" --json body | jq -r '.body // ""' > "$body_tmp"; then
+if ! gh issue view "$ISSUE" ${gh_repo_args[@]+"${gh_repo_args[@]}"} --json body | jq -r '.body // ""' > "$body_tmp"; then
     emit_load_fail "issue-body-read-failed"
 fi
 

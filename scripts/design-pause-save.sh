@@ -137,6 +137,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_ARG="${REPO:-}"
+ISSUE_WIRE_REPO="$REPO_ARG"
 if [[ -n "$REPO_ARG" ]] && ! validate_repo "$REPO_ARG"; then
     emit_fail "invalid-repo"
 fi
@@ -159,6 +160,17 @@ if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
 fi
 if [[ -n "$REPO_ARG" ]]; then
     REPO="$REPO_ARG"
+    ISSUE_WIRE_REPO="$REPO_ARG"
+fi
+if [[ -z "$REPO_ARG" ]] && command -v gh >/dev/null 2>&1; then
+    _gh_only_repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+    if [[ -n "$_gh_only_repo" ]]; then
+        validate_repo "$_gh_only_repo" || emit_fail "invalid-repo"
+        if [[ -z "$REPO" || "$REPO" == "$_gh_only_repo" ]]; then
+            REPO="${REPO:-$_gh_only_repo}"
+            ISSUE_WIRE_REPO="$_gh_only_repo"
+        fi
+    fi
 fi
 
 RUN_ID="${SESSION_ID:-}"
@@ -202,6 +214,9 @@ fi
 if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
     emit_fail "invalid-repo"
 fi
+if [[ -n "$ISSUE_WIRE_REPO" ]] && ! validate_repo "$ISSUE_WIRE_REPO"; then
+    emit_fail "invalid-repo"
+fi
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")
@@ -216,7 +231,7 @@ marker_out=$(mktemp "${TMPDIR:-/tmp}/design-pause-marker-out.XXXXXX")
 marker_err=$(mktemp "${TMPDIR:-/tmp}/design-pause-marker-err.XXXXXX")
 trap 'rm -f "$body_tmp" "$stripped_body_tmp" "$state_tmp" "$redacted_state_tmp" "$publish_out" "$publish_err" "$marker_out" "$marker_err"' EXIT
 
-if ! gh issue view "$ISSUE" "${gh_repo_args[@]}" --json body | jq -r '.body // ""' > "$body_tmp"; then
+if ! gh issue view "$ISSUE" ${gh_repo_args[@]+"${gh_repo_args[@]}"} --json body | jq -r '.body // ""' > "$body_tmp"; then
     log_failure "gh issue view" "$body_tmp"
     emit_fail "issue-body-read-failed"
 fi
@@ -305,19 +320,20 @@ fi
 cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
 
 marker_args=(
-    "$SCRIPT_DIR/named-block-write.sh"
+    python3 "$SCRIPT_DIR/../python/cli.py"
+    named-block write
     --marker design-pause
     --content-file "$redacted_state_tmp"
     --issue "$ISSUE"
 )
-[[ -n "$REPO" ]] && marker_args+=(--repo "$REPO")
+[[ -n "$ISSUE_WIRE_REPO" ]] && marker_args+=(--repo "$ISSUE_WIRE_REPO")
 
 set +e
 "${marker_args[@]}" > "$marker_out" 2> "$marker_err"
 marker_rc=$?
 set -e
 if [[ "$marker_rc" -ne 0 ]]; then
-    log_failure "named-block-write.sh" "$marker_err"
+    log_failure "python3 python/cli.py named-block write" "$marker_err"
     emit_fail "marker-write-failed"
 fi
 

@@ -91,7 +91,7 @@ External implementer launches use a fixed 7200-second wall-clock timeout. There 
 - `agents/codex-implementer.md` — the system prompt this dispatcher invokes.
 - `skills/implement/SKILL.md` Step 2 — the caller; any change to the KV envelope must be mirrored in Step 2's parser.
 - `skills/implement/scripts/test-step2-dispatch.sh` — the offline harness; any new outcome / reason token must be exercised.
-- `scripts/extract-plan-scope-paths.sh` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
+- `python/cli.py plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
 - `scripts/check-recovery-paths-in-plan-scope.sh` — fail-closed recovery scope verifier for malformed-manifest preservation.
 - `skills/implement/scripts/compute-step2-recovery-paths.sh` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path.
 - `scripts/external-tool-registry.md` — update its "Sourced by" list when this script's source-list status changes.

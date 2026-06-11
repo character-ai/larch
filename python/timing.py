@@ -687,6 +687,9 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"timing mark: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        print(f"timing mark: WARNING: ledger write skipped: {exc}", file=sys.stderr)
+        return 0
     return 0
 
 
@@ -713,6 +716,9 @@ def timing_record_vendor_task_main(argv: list[str] | None = None) -> int:
     except (KeyError, ValueError) as exc:
         print(f"timing record-vendor-task: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        print(f"timing record-vendor-task: WARNING: ledger write skipped: {exc}", file=sys.stderr)
+        return 0
     return 0
 
 
@@ -735,6 +741,9 @@ def timing_record_round_main(argv: list[str] | None = None) -> int:
     except (KeyError, ValueError) as exc:
         print(f"timing record-round: {exc}", file=sys.stderr)
         return 1
+    except OSError as exc:
+        print(f"timing record-round: WARNING: ledger write skipped: {exc}", file=sys.stderr)
+        return 0
     return 0
 
 

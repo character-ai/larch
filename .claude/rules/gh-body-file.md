@@ -17,13 +17,10 @@ paths:
   - "scripts/create-pr.sh"
   - "scripts/design-log-publish.md"
   - "scripts/design-log-publish.sh"
-  - "scripts/named-block-write.md"
-  - "scripts/named-block-write.sh"
+  - "python/issue_wire.py"
   - "scripts/test-design-log-publish.sh"
   - "scripts/gh-pr-body-update.md"
   - "scripts/gh-pr-body-update.sh"
-  - "scripts/plan-block-write.md"
-  - "scripts/plan-block-write.sh"
   - "scripts/ship-pr.md"
   - "scripts/ship-pr.sh"
   - "scripts/tracking-issue-summary.md"
@@ -126,7 +123,7 @@ PR/merge/recovery semantics may invoke `gh pr create --head <branch>
 `scripts/design-log-publish.sh`; keep its sibling `scripts/design-log-publish.md`
 in sync with that exception.
 
-Issue-body marker writers use `scripts/named-block-write.sh`, which applies
+Issue-body marker writers use `python/cli.py named-block write`, which applies
 redaction and `gh issue edit --body-file` for its callers.
 
 ## Fixed Literals

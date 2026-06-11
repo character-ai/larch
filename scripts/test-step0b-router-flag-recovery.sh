@@ -322,6 +322,36 @@ printf '%s\n' "$route12_out" | grep -Fq 'ROUTE=already-planned' \
 jq -e '.partition_requested == true and .brainstorm_requested == true and .approve_requested == true and .skip_approve_requested == true' "$D12/run-params.json" >/dev/null \
   || fail "case12: design-route.sh route merge regressed; got $(cat "$D12/run-params.json")"
 
+# Case 12b: a title that starts with '-' is forwarded to the title-eligibility
+# CLI as data, not parsed as a flag.
+D12B="$TMPROOT/route12b"
+mkdir -p "$D12B"
+BODY12B="$D12B/body.txt"
+cat >"$BODY12B" <<'EOF_BODY12B'
+Fixture
+<!-- larch:plan:start -->
+## Plan
+## Acceptance
+diff_lines: 1
+<!-- larch:plan:end -->
+EOF_BODY12B
+"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+  --approve-requested false --skip-approve-requested false --output "$D12B/run-params.json" >/dev/null
+set +e
+route12b_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$DESIGN_ROUTE" \
+  --design-tmpdir "$D12B" \
+  --issue 42 \
+  --issue-title "-leading-hyphen" \
+  --issue-body-file "$BODY12B" \
+  --has-clarify-label false \
+  --claude-pid "$$" \
+  --session-id "route12b" 2>&1)
+route12b_rc=$?
+set -e
+[[ "$route12b_rc" -eq 0 ]] || fail "case12b: design-route.sh rc=$route12b_rc out=$route12b_out"
+printf '%s\n' "$route12b_out" | grep -Fq 'ROUTE=already-planned' \
+  || fail "case12b: leading-hyphen title did not route as already-planned: $route12b_out"
+
 # Static pins ensure the route driver owns the merge helper and the route wrapper
 # passes current argv flags into the driver.
 grep -Fq 'merge_router_flags()' "$DESIGN_ROUTE" \

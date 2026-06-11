@@ -1345,6 +1345,77 @@ def label_create(
     )
 
 
+
+def issue_view_body(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> str:
+    result = _retry_read(
+        runner,
+        ["issue", "view", issue, "--repo", repo, "--json", "body"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        msg = _combined(result) or f"gh issue view failed ({result.returncode})"
+        raise ShipError(msg)
+    data = _as_json_object(_loads_json(result.stdout, context="issue view body"), context="issue view body")
+    body = data.get("body")
+    if body is None:
+        return ""
+    if isinstance(body, str):
+        return body
+    msg = "gh JSON field 'body' is not a string (issue view body)"
+    raise ShipError(msg)
+
+
+def resolve_repo_gh_only(runner: Runner, *, cwd: str | None = None) -> str | None:
+    result = runner.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    candidate = result.stdout.strip()
+    return candidate if validate_repo_slug(candidate) else None
+
+
+def issue_edit_body_with_retry(
+    runner: Runner,
+    issue: str,
+    redacted_body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".md",
+        delete=False,
+    ) as handle:
+        _ = handle.write(redacted_body)
+        path = handle.name
+    try:
+        def attempt() -> tuple[CommandResult, int, str]:
+            result = _gh(
+                runner,
+                ["issue", "edit", issue, "--repo", repo, "--body-file", path],
+                cwd=cwd,
+            )
+            return result, result.returncode, _combined(result)
+
+        retried: RetryResult[CommandResult] = with_transient_retry(attempt)
+        result = retried.value
+        if result.returncode != 0:
+            raise ShipError(_combined(result) or f"gh issue edit failed ({result.returncode})")
+        return result
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def issue_edit(
     runner: Runner,
     issue: str,

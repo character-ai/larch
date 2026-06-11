@@ -8,7 +8,6 @@ import argparse
 import contextlib
 import difflib
 import hashlib
-import html
 import os
 import re
 import shutil
@@ -20,6 +19,7 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
 import gh
+import issue_wire
 import logging_util
 import proc
 import pr_body
@@ -206,12 +206,8 @@ def _replace_output_instruction(body: str, *, inscope: Iterable[str], oos: Itera
     return "\n".join(out)
 
 
-def _xml_redact_escape(text: str) -> str:
-    return html.escape(redact.redact(text), quote=False)
-
-
 def _untrusted_file_block(tag: str, path: Path) -> str:
-    return f'<{tag} encoding="literal-redacted">\n{_xml_redact_escape(_read_text(path))}\n</{tag}>\n\n'
+    return issue_wire.emit_untrusted_file_block(tag, path)
 
 
 def _canonical_path(path: Path) -> Path:

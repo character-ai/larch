@@ -284,6 +284,35 @@ def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> 
     assert [row.split("\t")[-1] for row in rows] == ["complete", "signal", "signal"]
 
 
+def test_timing_record_vendor_task_main_skips_ledger_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_record_vendor_task(_self: timing.TimingLedger, **_kwargs: object) -> None:
+        raise PermissionError("blocked ledger")
+
+    monkeypatch.setattr(timing.TimingLedger, "record_vendor_task", fail_record_vendor_task)
+    rc = timing.timing_record_vendor_task_main([
+        "--ledger",
+        str(tmp_path / "timing-ledger.tsv"),
+        "--vendor",
+        "claude",
+        "--task-kind",
+        "claude-review",
+        "--start-s",
+        "1",
+        "--end-s",
+        "2",
+        "--output",
+        "out.txt",
+    ])
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "timing record-vendor-task: WARNING: ledger write skipped" in err
+    assert "blocked ledger" in err
+
+
 def test_timing_telemetry_mark_writes_ledgers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     implement_tmpdir = Path("/tmp") / f"larch-telemetry-{tmp_path.name}"
     implement_tmpdir.mkdir(parents=True, exist_ok=True)

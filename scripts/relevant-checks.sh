@@ -228,11 +228,20 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/lib-untrusted-block.sh|scripts/lib-scope-anchor-handoff.sh)
+            scripts/lib-scope-anchor-handoff.sh)
                 append_target_once test-plan-review-loop
                 append_target_once test-run-step3-review
                 append_target_once test-launch-claude-subprocess
                 append_target_once test-lib-scope-anchor-handoff
+                ;;
+        esac
+        case "$f" in
+            python/issue_wire.py|python/test_issue_wire.py|python/redact.py|python/gh.py|python/rendering.py|python/test_rendering.py|.claude/rules/gh-body-file.md|AGENTS.md|SECURITY.md|agent-lint.toml|docs/issue-anchored-plan.md|docs/linting.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-plan-review-scope-anchor.sh|skills/design/scripts/test-design-pause-resume.sh|scripts/test-legacy-title-prefix-literals-scope.sh)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-design-structure
+                append_target_once test-review-structure
+                append_target_once test-research-structure
                 ;;
         esac
         case "$f" in
