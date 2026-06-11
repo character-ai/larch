@@ -9,6 +9,11 @@ unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 SCRIPT="$REPO_ROOT/scripts/launch-claude-subprocess.sh"
+# The script under test resolves PLUGIN_ROOT from CLAUDE_PLUGIN_ROOT. An
+# inherited plugin-cache pin (e.g. leaked from an /implement checks run) may
+# predate the repo cli.py surface exercised here; pin to the repo itself so
+# the harness is hermetic regardless of caller environment.
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-launch-claude-subprocess.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
