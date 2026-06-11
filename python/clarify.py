@@ -115,6 +115,10 @@ def _resolve_repo_for_clarify(
     return candidate
 
 
+def _kv_safe_text(text: str) -> str:
+    return text.strip().replace("\r", " ").replace("\n", " ")
+
+
 def _redact_gh_error(text: str) -> str:
     try:
         redacted = redact.redact(text)
@@ -294,6 +298,8 @@ def _read_content_file(content_file: str) -> str:
         raise _ClarifyValidationError(f"content file not found: {content_file}")
     try:
         return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise _ClarifyValidationError(f"content file is not valid utf-8: {content_file}") from exc
     except OSError as exc:
         raise _ClarifyValidationError(f"content file not found: {content_file}") from exc
 
@@ -334,7 +340,7 @@ def clarify_comment_post(
     return ClarifyCommentResult(
         posted=True,
         comment_id=parsed_id,
-        comment_url=stripped,
+        comment_url=_kv_safe_text(stripped),
         marker=marker_line,
     )
 

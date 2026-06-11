@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,8 @@ from pathlib import Path
 import pytest
 
 import clarify
+import config
+import logging_util
 import redact
 from errors import ShipError
 from proc import CommandResult
@@ -285,6 +288,132 @@ def test_comment_invalid_issue_is_not_invalid_id(
     assert "invalid-id" not in capsys.readouterr().out
 
 
+def test_comment_invalid_issue_is_stderr_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    content = tmp_path / "content.md"
+    content.write_text("body", encoding="utf-8")
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_post_main(
+        ["--issue", "abc", "--kind", "request", "--id", "1", "--content-file", str(content)]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert "positive integer" in captured.err
+
+
+def test_comment_invalid_kind_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    content = tmp_path / "content.md"
+    content.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(responses=[])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_post_main(
+        ["--issue", "7", "--kind", "bad", "--id", "1", "--content-file", str(content)]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "ERROR=invalid-kind" in out
+    assert not runner.calls
+
+
+def test_comment_invalid_repo_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    content = tmp_path / "content.md"
+    content.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(responses=[])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_post_main(
+        [
+            "--issue",
+            "7",
+            "--kind",
+            "request",
+            "--id",
+            "1",
+            "--content-file",
+            str(content),
+            "--repo",
+            "bad..repo",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "ERROR=invalid-repo" in out
+    assert not runner.calls
+
+
+def test_comment_non_utf8_content_file_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    content = tmp_path / "content.bin"
+    content.write_bytes(b"\xff\xfe\xfd")
+    runner = RecordingRunner(responses=[])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_post_main(
+        ["--issue", "7", "--kind", "request", "--id", "1", "--content-file", str(content), "--repo", "o/r"]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "utf-8" in out
+    assert not runner.calls
+
+
+def test_comment_post_multiline_stdout_flattens_comment_url(tmp_path: Path) -> None:
+    content = tmp_path / "content.md"
+    content.write_text("body", encoding="utf-8")
+    runner = CapturingRunner(
+        responses=[_result(stdout="https://github.com/o/r/issues/7#issuecomment-5\nextra\n")]
+    )
+    result = clarify.clarify_comment_post(
+        runner, "7", "request", "1", str(content), repo="o/r"
+    )
+    assert result.comment_id == "5"
+    assert "\n" not in result.comment_url
+    assert "extra" in result.comment_url
+
+
+def test_comment_transient_retry_exhaustion_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    content = tmp_path / "content.md"
+    content.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            _result(rc=1, stderr="Could not resolve host")
+            for _ in range(config.TRANSIENT_RETRY_MAX_ATTEMPTS)
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_comment_post_main(
+        ["--issue", "7", "--kind", "request", "--id", "1", "--content-file", str(content), "--repo", "o/r"]
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "FAILED=true" in out
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
 def test_comment_redaction_truncation_fails_before_post(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -427,6 +556,32 @@ def test_label_add_failure_cli_redacts_and_caps(
     assert rc == 2
     assert secret not in error_line
     assert len(error_line.removeprefix("ERROR=")) <= 500
+
+
+def test_clarify_state_emits_kv_on_fd3_under_quiet_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(responses=[_result(stdout="[]")])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    saved_stdout = os.dup(1)
+    try:
+        _ = os.dup2(write_fd, 1)
+        os.close(write_fd)
+        rc = clarify.clarify_state_main(["--issue", "7", "--repo", "o/r"])
+        _ = os.dup2(saved_stdout, 1)
+        contract = os.read(read_fd, 4096).decode("utf-8")
+    finally:
+        os.close(read_fd)
+        os.close(saved_stdout)
+        logging_util.reset_quiet_state()
+    assert rc == 0
+    assert "STATE=clean\n" in contract
+    assert "LAST_REQUEST_ID=\n" in contract
 
 
 def test_success_outputs_go_through_emit_kv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
