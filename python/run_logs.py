@@ -37,6 +37,8 @@ _TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
 _TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
 _RENDER_TRANSCRIPT = _REPO_ROOT / "scripts" / "render-session-transcript.py"
 _REQUIRED_FILES_TSV = _REPO_ROOT / "docs" / "run-logs-required-files.tsv"
+_MANIFEST_SCHEMA_VERSION = 2
+_VOTE_OUTPUT_TRUNCATE_BYTES = 2048
 _TERMINAL_OUTCOME_SUFFIX = re.compile(
     r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$",
 )
@@ -714,7 +716,7 @@ def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
 def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
     steps_raw = data.get("steps_ran", {})
     steps = cast("dict[str, Any]", steps_raw) if isinstance(steps_raw, dict) else {}
-    if data.get("schema_version") == 2:
+    if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
         v2_exclude = {
             "status",
             "schema_version",
@@ -925,9 +927,7 @@ def _manifest_v2_merge(data: dict[str, Any], manifest: Manifest) -> dict[str, An
         "flags",
     }
     if manifest.extra:
-        for key, value in manifest.extra.items():
-            if key not in v2_exclude:
-                merged[key] = value
+        merged.update({key: value for key, value in manifest.extra.items() if key not in v2_exclude})
     return merged
 
 
@@ -936,7 +936,7 @@ def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
     if path.is_file():
         try:
             data = _read_manifest_v2(path)
-            if data.get("schema_version") == 2:
+            if data.get("schema_version") == _MANIFEST_SCHEMA_VERSION:
                 _write_manifest_v2(path, _manifest_v2_merge(data, manifest))
                 return
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
@@ -2299,7 +2299,7 @@ def capture_transcript_main(argv: list[str]) -> int:
             )
         result = subprocess.run(
             [
-                "python3",
+                sys.executable,
                 str(_RENDER_TRANSCRIPT),
                 "--input",
                 str(transcript_path),
@@ -2872,20 +2872,21 @@ def _round_artifact_included(name: str) -> bool:
         return False
     if name in _ROUND_ARTIFACT_ALLOW or _round_name_matches(name, _ROUND_ARTIFACT_ALLOW_GLOBS):
         return True
-    if os.environ.get("LARCH_FLUSH_DEBUG") == "1" and _round_name_matches(
+    return os.environ.get("LARCH_FLUSH_DEBUG") == "1" and _round_name_matches(
         name,
         _ROUND_ARTIFACT_DEBUG_GLOBS,
-    ):
-        return True
-    return False
+    )
 
 
 def _stage_round_artifact(src: Path, name: str) -> str:
     text = src.read_text(encoding="utf-8", errors="replace")
     if "-vote-output" in name:
         raw = text.encode("utf-8")
-        if len(raw) > 2048:
-            text = raw[:2048].decode("utf-8", errors="ignore") + f"\n[TRUNCATED: original {len(raw)} bytes]\n"
+        if len(raw) > _VOTE_OUTPUT_TRUNCATE_BYTES:
+            text = raw[:_VOTE_OUTPUT_TRUNCATE_BYTES].decode(
+                "utf-8",
+                errors="ignore",
+            ) + f"\n[TRUNCATED: original {len(raw)} bytes]\n"
     return redact.redact(text)
 
 

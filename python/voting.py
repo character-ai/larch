@@ -95,12 +95,13 @@ _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain
 _UNCERTAIN_VALUES = {"true", "false"}
 
 
-def _python_cli() -> Path:
-    return _plugin_root() / "python" / "cli.py"
+def _python_cli(plugin_root: str = "") -> Path:
+    root = Path(plugin_root) if plugin_root else _plugin_root()
+    return root / "python" / "cli.py"
 
 
-def _run_log_cli_argv(*subcommand: str) -> list[str]:
-    return ["python3", str(_python_cli()), "run-log", *subcommand]
+def _run_log_cli_argv(*subcommand: str, plugin_root: str = "") -> list[str]:
+    return ["python3", str(_python_cli(plugin_root)), "run-log", *subcommand]
 
 
 def _plugin_root() -> Path:
@@ -536,7 +537,7 @@ def check_voter_parse_rate(
             if not should_suppress_parse_rate_issue_append(voter_path, review_tmpdir):
                 proc.run(
                     [
-                        *_run_log_cli_argv("append-failure"),
+                        *_run_log_cli_argv("append-failure", plugin_root=plugin_root),
                         "--log",
                         _issues_log(review_tmpdir),
                         "--site",

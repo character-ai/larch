@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Mapping, Sequence
+from io import StringIO
 from pathlib import Path
 from typing import cast
 
@@ -1332,9 +1334,6 @@ def test_verify_completeness_ok_when_required_file_present(
 
 
 def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
-    import contextlib
-    from io import StringIO
-
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
         rc = run_logs.refresh_run_logs_main(["--implement-tmpdir", str(tmp_path)])
@@ -1343,9 +1342,6 @@ def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:
 
 
 def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
-    import contextlib
-    from io import StringIO
-
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
         rc = run_logs.capture_transcript_main(
