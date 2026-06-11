@@ -1,0 +1,1 @@
+Plan: rework `/implement` auto-error reports to file only terminal failures or successful runs with script-to-main-agent escalations, require a Main Claude root-cause verdict, apply Tier A/Tier B report bodies, and update tests plus SECURITY.md.
