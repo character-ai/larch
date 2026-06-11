@@ -169,7 +169,7 @@ def test_validate_ledger_path_rejects_symlink_escape_before_mkdir(
     link.symlink_to(outside)
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     with pytest.raises(ValueError, match="not under an allowed root"):
-        timing.validate_ledger_path(str(link / "nested" / "timing-ledger.tsv"), env={"TMPDIR": str(allowed)})
+        _ = timing.validate_ledger_path(str(link / "nested" / "timing-ledger.tsv"), env={"TMPDIR": str(allowed)})
     assert not (outside / "nested").exists()
 
 
