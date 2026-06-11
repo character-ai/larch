@@ -15,7 +15,7 @@ FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 DIALPROTO_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
-# shellcheck source=lib-p3119-fence-absence.sh
+# shellcheck source=scripts/lib-p3119-fence-absence.sh
 . "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 
 fail() {
