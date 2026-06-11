@@ -37,7 +37,7 @@ The revise include set is empty — no files from `revise/` appear in committed 
 `design-log-publish.sh` uses a two-tier check for `revise/` files (mirroring the top-level round pattern):
 
 1. `design_round_revise_artifact_included` — always returns 1 (nothing published from `revise/`).
-2. `design_round_revise_artifact_excluded` — returns 0 for known session-only artifacts that are silently skipped: raw vendor outputs (`*-output.txt`), candidate patches (`*-output-candidate.patch`), revision outcome (`revise.env`), revision prompt (`prompt.txt`), and all sidecars (`*.done`, `*.dirty-tree`, `*.meta`, `*.prompt`, `*.sidecar`, `*.sidecar.history`, `*.events.jsonl`, `*.events.history`, `*.untracked-baseline`, `*.diag`, `*.failure-diag`, `*.json`).
+2. `design_round_revise_artifact_excluded` — returns 0 for known session-only artifacts that are silently skipped: raw vendor outputs (`*-output.txt`), candidate patches (`*-output-candidate.patch`), revision outcome (`revise.env`), revision prompt (`prompt.txt`), and all sidecars (`*.done`, `*.dirty-tree`, `*.meta`, `*.prompt`, `*.sidecar`, `*.sidecar.history`, `*.events.jsonl`, `*.events.history`, `*.untracked-baseline`, `*.diag`, `*.failure-diag`, `*.json`, `*.stderr`).
 3. Anything matching neither function is an **unexpected file** and causes a hard publish failure — the loud-failure contract is preserved so genuinely new files added to `revise/` without a corresponding exclusion entry are immediately visible.
 
 ## Vendor failure-diagnostics carrier (#3713)

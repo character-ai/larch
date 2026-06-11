@@ -93,6 +93,7 @@ assert_revise_explicitly_excluded codex-output.txt.untracked-baseline
 assert_revise_explicitly_excluded codex-output.txt.diag
 assert_revise_explicitly_excluded codex-output.txt.failure-diag
 assert_revise_explicitly_excluded codex-output.txt.json
+assert_revise_explicitly_excluded claude-output.txt.stderr
 assert_revise_not_explicitly_excluded extra-revise.log
 
 printf '%s\n' 'test-lib-design-round-artifacts: ok'
