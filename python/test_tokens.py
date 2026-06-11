@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import tokens
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_normalize_sidecar_codex() -> None:

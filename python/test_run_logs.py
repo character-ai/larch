@@ -1154,7 +1154,7 @@ def test_render_ledger_reports_uses_direct_renderers(
             captured.update(env)
         return {"claude": {}}
 
-    def fake_render_json(self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
+    def fake_render_json(_self: timing.TimingReport, *, env: object = None, **_: object) -> dict[str, object]:
         if isinstance(env, dict):
             captured.update(env)
         return {"per_step": []}
