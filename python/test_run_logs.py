@@ -1152,9 +1152,9 @@ def test_render_ledger_reports_uses_direct_renderers(
     def capture_env(env: object) -> None:
         if isinstance(env, Mapping):
             env_map = cast("Mapping[object, object]", env)
-            for key, value in env_map.items():
-                if isinstance(key, str) and isinstance(value, str):
-                    captured[key] = value
+            captured.update(
+                {key: value for key, value in env_map.items() if isinstance(key, str) and isinstance(value, str)}
+            )
 
     def fake_token_report(**kwargs: object) -> dict[str, object]:
         capture_env(kwargs.get("env"))
