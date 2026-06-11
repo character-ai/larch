@@ -88,6 +88,7 @@ design_source_env_optional() {
 }
 
    design_source_env_optional
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    if [ -f "$DESIGN_TMPDIR/.design-step0-parsed.env" ]; then
      # shellcheck source=/dev/null
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
@@ -256,3 +257,12 @@ design_source_env_optional() {
    printf 'ISSUE_NUMBER=%s\n' "${ISSUE_NUMBER:-}"
    printf 'ISSUE_TITLE=%s\n' "${ISSUE_TITLE:-}"
    [[ -n "${REPO:-}" ]] && printf 'REPO=%s\n' "$REPO"
+   {
+     printf 'ROUTE=%s\n' "${ROUTE:-}"
+     [[ -n "${RESUME_STEP:-}" ]] && printf 'RESUME_STEP=%s\n' "$RESUME_STEP"
+     printf 'HAS_CLARIFY_LABEL=%s\n' "${HAS_CLARIFY_LABEL:-false}"
+     printf 'ISSUE_NUMBER=%s\n' "${ISSUE_NUMBER:-}"
+     printf 'ISSUE_TITLE=%s\n' "${ISSUE_TITLE:-}"
+     [[ -n "${REPO:-}" ]] && printf 'REPO=%s\n' "$REPO"
+     [[ -n "${brainstorm_requested:-}" ]] && printf 'brainstorm_requested=%s\n' "$brainstorm_requested"
+   } >"$DESIGN_TMPDIR/.design-step0-route-state.env"

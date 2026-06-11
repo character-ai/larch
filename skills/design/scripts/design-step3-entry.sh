@@ -13,5 +13,11 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+DESIGN_TMPDIR=""
+if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  # shellcheck source=/dev/null
+  . "$SESSION_ENV_PATH"
+fi
 "$SCRIPT_DIR/design-step3-entry-state.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
+[ -n "${DESIGN_TMPDIR:-}" ] && [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
 "$SCRIPT_DIR/design-step3-entry-preview.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"

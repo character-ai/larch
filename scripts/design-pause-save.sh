@@ -328,4 +328,5 @@ fi
 emit_kv PAUSE_OK true
 emit_kv STEP "$STEP"
 emit_kv RUN_ID "$RUN_ID"
+: >"$DESIGN_TMPDIR/.pause-save-complete"
 exit 0

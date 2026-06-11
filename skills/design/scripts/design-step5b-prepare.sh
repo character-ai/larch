@@ -149,11 +149,7 @@ case "${FILE_DESIGN_OOS_STATUS:-}" in
     printf 'STEP5B_NEEDS_ANNOTATE=true\n'
     ;;
   skip-already-filed-sentinel)
-    if [[ -s "$OOS_ISSUE_STDOUT_PATH" ]]; then
-      printf 'STEP5B_NEEDS_ANNOTATE=true\n'
-    else
-      step5b_mark_complete
-    fi
+    printf 'STEP5B_NEEDS_ANNOTATE=true\n'
     ;;
   skip-sentinel|skip-no-items|skip-all-security)
     step5b_mark_complete

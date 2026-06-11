@@ -273,7 +273,10 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
   --claude-pid "$PPID"
 ```
 
-Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
+Parse `STEP0_STATUS`, `DEGRADED`, and `BOTH_DOWN` from the wrapper stdout (ignore unrelated lines). Branch on `STEP0_STATUS` before any later Step 0 work:
+
+- **`ok`** or **`degraded-one-down`** or **`degraded-both-down-auto`** — proceed to Step 0b sub-step 1 (argv/issue binding). `degraded-one-down` and `degraded-both-down-auto` mean the wrapper already wrote `.degraded-tools-gate-prompted`.
+- **`needs-degraded-decision`** — the wrapper already printed the explanation block; fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-abort-cleanup.sh" \

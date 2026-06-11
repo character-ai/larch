@@ -150,6 +150,11 @@ case "${_postplan_rc:-1}" in
       : > "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-pending"
       printf '%s\n' "**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**"
     fi
+    [[ -n "${VALIDATE_STATUS:-}" ]] && printf 'VALIDATE_STATUS=%s\n' "$VALIDATE_STATUS"
+    [[ -n "${VALIDATE_DEFECT_COUNT:-}" ]] && printf 'VALIDATE_DEFECT_COUNT=%s\n' "$VALIDATE_DEFECT_COUNT"
+    [[ -n "${VALIDATE_SKIPPED_COUNT:-}" ]] && printf 'VALIDATE_SKIPPED_COUNT=%s\n' "$VALIDATE_SKIPPED_COUNT"
+    [[ -n "${VALIDATE_UNSAFE_TOKEN_COUNT:-}" ]] && printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\n' "$VALIDATE_UNSAFE_TOKEN_COUNT"
+    [[ -n "${VALIDATE_LOG_FILE:-}" ]] && printf 'VALIDATE_LOG_FILE=%s\n' "$VALIDATE_LOG_FILE"
     ;;
   11)
     exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}

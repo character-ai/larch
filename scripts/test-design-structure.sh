@@ -297,6 +297,17 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-init.sh" 'feature-description.txt' 'Step 0 init wrapper missing feature-description write'
   contains "$SCRIPT_DIR/design-step0-route.sh" "printf 'ROUTE=%s" 'Step 0 route wrapper missing ROUTE stdout emit'
   contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'sketch-launched-paths.txt' 'Step 2a.3 collector missing launched-path sidecar read'
+  contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'cursor-sketch-arch-output.txt' 'Step 2a.3 collector missing regular-mode path assembly'
+  contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'VALIDATE_STATUS=' 'Step 2b postplan wrapper missing VALIDATE_STATUS emit on rc 10'
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'design-pause-save.sh' 'Step 0 route wrapper missing pause-check'
+  contains "$SCRIPT_DIR/design-step0-init.sh" 'design-pause-save.sh' 'Step 0 init wrapper missing pause-check'
+  contains "$SCRIPT_DIR/design-step0-route.sh" '.design-step0-route-state.env' 'Step 0 route wrapper missing route state sidecar write'
+  contains "$SCRIPT_DIR/design-step0-init.sh" '.design-step0-route-state.env' 'Step 0 init wrapper missing route state sidecar read'
+  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'LARCH_SKILL_NON_INTERACTIVE' 'Step 0 degraded wrapper missing explicit non-interactive signal'
+  contains "$SCRIPT_DIR/design-step3-entry-state.sh" 'design-step3-state.sh' 'Step 3 entry-state wrapper missing state helper call'
+  contains "$SCRIPT_DIR/design-step5b-prepare.sh" 'STEP5B_NEEDS_ANNOTATE=true' 'Step 5b prepare wrapper missing annotate recovery handoff'
+  contains "$SKILL_MD" 'STEP0_STATUS' 'SKILL missing STEP0_STATUS consume prose'
+  contains "$SCRIPT_DIR/design-step3-entry.sh" '.pause-save-complete' 'Step 3 combined entry wrapper missing pause-save stop guard'
   contains "$SCRIPT_DIR/design-step2a-zero-sketch.sh" 'NO_SKETCHES_DEGRADED_HARD' 'Step 2a zero-sketch wrapper missing degraded synthesis sentinel'
 }
 
@@ -317,7 +328,10 @@ assert_gate_b_bypass_branch_sentinels() {
 assert_wrapper_pause_before_work() {
   local wrapper label
   for entry in \
+    'design-step0-route.sh:gh issue view' \
+    'design-step0-init.sh:design-init-runparams.sh' \
     'design-step2a3-collect.sh:collect-agent-results.sh' \
+    'design-step3-entry-state.sh:design-step3-state.sh' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped'
   do
@@ -412,8 +426,27 @@ assert_step6_cleanup_wrappers() {
   contains "$SCRIPT_DIR/design-step6-prelude.sh" '.design-step5c-status.env' 'Step 6 prelude wrapper missing Step 5c status read'
 }
 
+assert_route_integration_pins() {
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'cancel-pause-load' 'Step 0 route wrapper missing cancel-pause-load branch'
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'cancel-title-filter' 'Step 0 route wrapper missing cancel-title-filter branch'
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'resume@' 'Step 0 route wrapper missing resume routing'
+  contains "$SCRIPT_DIR/design-step0-route.sh" 'read-result-env.sh' 'Step 0 route wrapper missing KV-only route result read'
+}
+
+assert_behavioral_harness_pins() {
+  contains "$SCRIPT_DIR/design-step0-session.sh" 'session setup' 'Step 0 session wrapper missing session setup call'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'PUBLISH_OK' 'Step 5c wrapper missing publish rc handoff'
+  contains "$SCRIPT_DIR/design-step6-prelude.sh" 'CLEANUP_ELIGIBLE:-}" == false' 'Step 6 prelude wrapper missing cleanup skip on publish failure'
+  contains "$SKILL_MD" 'design-step2b-postplan.sh' 'SKILL missing Gate B postplan wrapper reference'
+  contains "$REPO_ROOT/skills/design/scripts/test-step3-orchestrator-fence.sh" 'invoke_step3_review_wrapper' 'Step 3 handoff harness must exercise design-step3-review.sh'
+}
+
 assert_wrapper_fence_ordering() {
   local wrapper first_line second_line
+  wrapper='design-step3-entry-state.sh'
+  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF 'design-step3-state.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
   wrapper='design-step2a3-collect.sh'
   first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'collect-agent-results.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
@@ -444,6 +477,8 @@ assert_no_direct_state_helper_in_skill_fences
 assert_degraded_tools_gate_fence
 assert_gate_b_bypass_branch_sentinels
 assert_wrapper_pause_before_work
+assert_route_integration_pins
+assert_behavioral_harness_pins
 assert_wrapper_contract_pins
 assert_reference_updates
 assert_postplan_thin_fence "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-step2b-postplan.sh'

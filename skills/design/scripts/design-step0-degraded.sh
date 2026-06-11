@@ -133,16 +133,16 @@ rm -f "$_gate_stdout_file"
 if [[ "${PRESENCE_INPUT_EMPTY:-}" == true ]]; then
   printf '%s\n' '- Step 0 degraded-tools gate: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)' >>"$DESIGN_TMPDIR/execution-issues.md"
 fi
-_design_interactive=false
-if [[ -t 0 && -t 1 ]]; then
-  _design_interactive=true
+_design_interactive=true
+if [[ "${LARCH_SKILL_NON_INTERACTIVE:-}" == true ]]; then
+  _design_interactive=false
 fi
 STEP0_STATUS=ok
 if [[ "${DEGRADED:-false}" == true ]]; then
   if [[ "${BOTH_DOWN:-}" == false ]]; then
     : >"$DESIGN_TMPDIR/.degraded-tools-gate-prompted"
     STEP0_STATUS=degraded-one-down
-  elif [[ "$_design_interactive" != true && "${BOTH_DOWN:-}" == true ]]; then
+  elif [[ "$_design_interactive" != true ]]; then
     printf '%s\n' '- Step 0 degraded-tools gate: both external tools unavailable; proceeding degraded (non-interactive)' >>"$DESIGN_TMPDIR/execution-issues.md"
     : >"$DESIGN_TMPDIR/.degraded-tools-gate-prompted"
     STEP0_STATUS=degraded-both-down-auto

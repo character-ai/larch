@@ -88,9 +88,14 @@ design_source_env_optional() {
 }
 
    design_source_env_optional
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    if [ -f "$DESIGN_TMPDIR/.design-step0-parsed.env" ]; then
      # shellcheck source=/dev/null
      . "$DESIGN_TMPDIR/.design-step0-parsed.env"
+   fi
+   if [ -f "$DESIGN_TMPDIR/.design-step0-route-state.env" ]; then
+     # shellcheck source=/dev/null
+     . "$DESIGN_TMPDIR/.design-step0-route-state.env"
    fi
    _init_route=""
    if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
