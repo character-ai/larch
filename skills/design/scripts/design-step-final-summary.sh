@@ -88,7 +88,7 @@ design_source_env_optional() {
 }
 
 # design-final-summary-anchor (scripts/test-design-structure.sh)
-# Foreground required
+# Immediate-background required; prompt waits for <task-notification> before reading final-summary.md.
 design_source_env_optional
 export CLAUDE_PLUGIN_ROOT
 SUMMARY_MODE_STRING=""

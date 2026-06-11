@@ -28,6 +28,24 @@ contains() {
   grep -Fq -- "$needle" "$file" || fail "$label"
 }
 
+contains_near() {
+  local file="$1" anchor="$2" needle="$3" label="$4" radius="${5:-900}"
+  python3 - "$file" "$anchor" "$needle" "$label" "$radius" <<'PY'
+import sys
+from pathlib import Path
+path, anchor, needle, label, radius = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+text = Path(path).read_text()
+idx = text.find(anchor)
+if idx < 0:
+    print(f"FAIL: {label}: missing anchor {anchor!r}", file=sys.stderr)
+    sys.exit(1)
+window = text[max(0, idx - radius):idx + radius]
+if needle not in window:
+    print(f"FAIL: {label}: missing {needle!r} near {anchor!r}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 assert_design_skill_bash_fences_are_wrappers() {
   python3 - "$SKILL_MD" <<'PY'
 import re
@@ -143,6 +161,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2a3-collect.sh" '--timeout 1260' 'Step 2a.3 wrapper missing collector timeout'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-postplan-emit.sh' 'Step 2b postplan wrapper missing postplan driver'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--fallback-input "$_plan_review_stdout_file"' 'Step 3 review wrapper missing stdout fallback'
+  contains "$SCRIPT_DIR/design-step3-review.sh" '--starting-round "$STARTING_ROUND"' 'Step 3 review wrapper missing starting-round forwarding'
   contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '--input "$DESIGN_TMPDIR/architecture-diagram.candidate.md"' 'Step 3b sanitizer wrapper must use DESIGN_TMPDIR candidate path'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'architecture-diagram.skipped' 'Step 3b entry wrapper missing visible skipped sentinel'
   contains "$SCRIPT_DIR/design-step5c.sh" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate reentry flag'
@@ -180,10 +199,26 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_STATUS=' 'Step 2b postplan wrapper missing POSTPLAN_STATUS emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'SCOPE_ANCHOR_FILE=' 'Step 3 review wrapper missing scope anchor emit'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'TALLY_PLAN_REVIEW_STATUS=' 'Step 3 review wrapper missing tally status emit'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'STARTING_ROUND_SEEN=true' 'Step 3 review wrapper missing starting-round seen guard'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'design-step3-review.sh: --starting-round requires a non-empty positive integer' 'Step 3 review wrapper missing empty starting-round rejection'
+  contains "$SKILL_MD" 'Step 3 resume fence (all mid-loop returns)' 'SKILL missing Step 3 background resume fence'
+  contains "$SKILL_MD" 'STEP3_RESUME_ROUND' 'SKILL missing non-empty Step 3 resume round binding'
+  contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"' 'SKILL missing wrapper-owned Step 3 resume wording'
+  ! grep -Fq 'run-step3-review.sh --design-tmpdir "$DESIGN_TMPDIR" --mode loop --starting-round' "$SKILL_MD" \
+    || fail 'SKILL must not route mid-loop resumes directly through run-step3-review.sh'
   contains "$SKILL_MD" 'design-step3-gate-b-bypass.sh' 'SKILL missing gate-b-bypass wrapper bash fence'
   contains "$SKILL_MD" 'design-step3-continuation-entry.sh' 'SKILL missing continuation-entry wrapper bash fence'
   ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5b"' "$SCRIPT_DIR/design-step5c.sh" \
     || fail 'Step 5c wrapper must not synthesize step-5b sentinel'
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh"' 'Immediate-background required' 'Step 3 review missing immediate-background pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh"' 'timeout: 21600000' 'Step 3 review missing timeout pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh"' '<task-notification>' 'Step 3 review missing task-notification wait' 1700
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh"' 'Immediate-background required' 'Step 5c publish missing immediate-background pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh"' 'timeout: 21600000' 'Step 5c publish missing timeout pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh"' '<task-notification>' 'Step 5c publish missing task-notification wait' 1700
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-final-summary.sh"' 'Immediate-background required' 'Final summary missing immediate-background pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-final-summary.sh"' 'timeout: 21600000' 'Final summary missing timeout pin' 900
+  contains_near "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-final-summary.sh"' '<task-notification>' 'Final summary missing task-notification wait' 1700
 }
 
 assert_no_consecutive_executable_script_call_fences() {
@@ -266,6 +301,7 @@ boundary_markers = (
     '> **🔶 /design 3b: arch diagram**',
     'branch-local skip fence below',
     'architectural entry cleanup fence below',
+    'Step 3 resume fence (all mid-loop returns)',
     '--mode skip',
     '--mode architectural',
 )

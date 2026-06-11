@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 5c — deterministic publish tail after final plan composition.
 
-**Caller**: `skills/design/SKILL.md` Step 5c after item 1 (compose `composed-plan.md`) on Gate-C-approved runs; the orchestrator invokes this driver once in the foreground and re-invokes it for validator retries.
+**Caller**: `skills/design/SKILL.md` Step 5c after item 1 (compose `composed-plan.md`) on Gate-C-approved runs; the orchestrator invokes the `design-step5c.sh` wrapper in immediate-background mode and waits for `<task-notification>` before parsing this driver's result env or stdout fallback.
 
 ## Argv
 
