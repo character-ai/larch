@@ -767,3 +767,112 @@ def test_design_no_anchor_root_manifest_older_than_round_dir_rejected(tmp_path: 
     _set_mtime(round_dir, 200)
 
     assert progress_report._render_design_plan_review(design, None) == ""
+
+
+def _write_voter_manifest(manifest: Path, outputs: list[Path]) -> None:
+    """Write a plan-voter-slots.ndjson with voter-2/voter-3 entries."""
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    tools = ["codex", "cursor"]
+    lines: list[str] = []
+    for idx, (output, tool) in enumerate(zip(outputs, tools, strict=False), start=2):
+        lines.append(f'{{"slot":"voter-{idx}","tool":"{tool}","output":"{output}"}}\n')
+    manifest.write_text("".join(lines), encoding="utf-8")
+
+
+def test_design_step3_voter_manifest_shows_vote_progress(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "")
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_out = _write_output(design / "slot-1-output.txt", 130)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(round_dir / "panel-manifest.ndjson", [reviewer_out])
+    _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+    # Voter manifest written at ts=150 (after plan review mark at ts=90)
+    codex_vote = design / "codex-vote-output.txt"
+    _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
+    _set_mtime(design / "plan-voter-slots.ndjson", 150)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "plan vote in progress" in report
+    assert "voters:" in report
+    assert "reviewers:" in report
+
+
+def test_design_step3_voter_manifest_counts_returned_external_voter(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "")
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_out = _write_output(design / "slot-1-output.txt", 130)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(round_dir / "panel-manifest.ndjson", [reviewer_out])
+    _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+    codex_vote = _write_output(design / "codex-vote-output.txt", 200)
+    cursor_vote = design / "cursor-vote-output.txt"  # not yet written
+    _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote, cursor_vote])
+    _set_mtime(design / "plan-voter-slots.ndjson", 150)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    # 1 external returned (codex), 0 Claude done, 0 cursor done → 1/(2+1)=1/3
+    assert "voters: 1/3 returned" in report
+
+
+def test_design_step3_voter_manifest_counts_claude_voter_done(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "")
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_out = _write_output(design / "slot-1-output.txt", 130)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(round_dir / "panel-manifest.ndjson", [reviewer_out])
+    _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+    _write_output(design / "claude-vote-output.txt", 180)
+    codex_vote = design / "codex-vote-output.txt"
+    cursor_vote = design / "cursor-vote-output.txt"
+    _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote, cursor_vote])
+    _set_mtime(design / "plan-voter-slots.ndjson", 150)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    # Claude done=1, 0 external done → 1/(2+1)=1/3
+    assert "voters: 1/3 returned" in report
+
+
+def test_design_step3_stale_voter_manifest_shows_reviewer_header(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 300)
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", lambda _tmpdir: "")
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    reviewer_out = _write_output(design / "slot-1-output.txt", 130)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(round_dir / "panel-manifest.ndjson", [reviewer_out])
+    _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+    # Voter manifest at ts=80, stale vs step_start_s=90
+    codex_vote = design / "codex-vote-output.txt"
+    _write_voter_manifest(design / "plan-voter-slots.ndjson", [codex_vote])
+    _set_mtime(design / "plan-voter-slots.ndjson", 80)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "plan vote in progress" not in report
+    assert "round 1 in progress" in report
+    assert "reviewers:" in report
