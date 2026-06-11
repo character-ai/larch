@@ -676,14 +676,16 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
     voter_manifest = _fresh_design_voter_manifest(design_tmpdir, start_s)
     if voter_manifest is not None:
         voter_floor = _path_mtime_s(voter_manifest) or 0.0
+        claude_voter_floor = voter_floor
         if start_s is not None:
             voter_floor = max(float(start_s), voter_floor)
+            claude_voter_floor = float(start_s)
         voter_external_total = _count_lines(voter_manifest)
         voter_external_returned = _design_returned_voters(voter_manifest, start_s)
         claude_vote_path = design_tmpdir / "claude-vote-output.txt"
         try:
             claude_stat = claude_vote_path.stat()
-            claude_done = 1 if claude_stat.st_size > 0 and claude_stat.st_mtime >= voter_floor else 0
+            claude_done = 1 if claude_stat.st_size > 0 and claude_stat.st_mtime >= claude_voter_floor else 0
         except OSError:
             claude_done = 0
         voter_total = voter_external_total + 1
