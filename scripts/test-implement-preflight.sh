@@ -53,8 +53,16 @@ if [ "$#" -ge 3 ] && [ "$2" = admission ] && [ "$3" = gate ]; then
       printf 'ADMISSION_RESULT=managed-prefix\nTITLE=[IMPLEMENTING] Sample\n'
       exit 5
       ;;
+    managed-no-title)
+      printf 'ADMISSION_RESULT=managed-prefix\n'
+      exit 5
+      ;;
     blockers)
       printf 'ADMISSION_RESULT=has-blockers\nBLOCKERS=1,2\n'
+      exit 4
+      ;;
+    blockers-no-context)
+      printf 'ADMISSION_RESULT=has-blockers\n'
       exit 4
       ;;
     missing-designed)
@@ -181,6 +189,12 @@ ADMISSION_CASE=report PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'bod
 contains "$TMPROOT/admission-report/stdout" 'TITLE=[BUG report] Sample' 'report title echo'
 ADMISSION_CASE=error PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-error
 contains "$TMPROOT/admission-error/stdout" 'ADMISSION_ERROR=gh=down' 'admission error first line'
+ADMISSION_CASE=managed-no-title PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-managed-no-title
+contains "$TMPROOT/admission-managed-no-title/stdout" 'ADMISSION_RESULT=managed-prefix' 'managed no-title result'
+not_contains "$TMPROOT/admission-managed-no-title/stdout" 'TITLE=' 'managed no-title context absent'
+ADMISSION_CASE=blockers-no-context PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-blockers-no-context
+contains "$TMPROOT/admission-blockers-no-context/stdout" 'ADMISSION_RESULT=has-blockers' 'blockers no-context result'
+not_contains "$TMPROOT/admission-blockers-no-context/stdout" 'BLOCKERS=' 'blockers context absent'
 
 # 3. Emergency admission carve-out forwards --repo and counts bypasses.
 ADMISSION_CASE=missing-designed PLAN_CASE=present GH_JSON="$(json_body 'Title = from JSON' 'body')" run_expect 0 emergency-admission --emergency --repo owner/repo

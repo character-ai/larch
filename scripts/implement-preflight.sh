@@ -143,6 +143,7 @@ print_admission_refusal() {
       [ -n "${ADMISSION_BLOCKERS:-}" ] && printf 'BLOCKERS=%s\n' "$ADMISSION_BLOCKERS"
       ;;
   esac
+  return 0
 }
 
 write_fallback_plan() {
