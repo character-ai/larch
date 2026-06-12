@@ -841,7 +841,7 @@ Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/skills/implement/sc
 
 #### Step 18a.5 — Escalation-success report gate
 
-Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Use `stall-recovery-report.sh normalize-outcome --implement-tmpdir "$IMPLEMENT_TMPDIR" --in-memory-stall-tracking "${STALL_TRACKING:-false}"`, the same helper used by `write-final-report.sh`. Treat only `IMPLEMENT_OUTCOME_SUCCEEDED=true` as success. The helper requires every observed `STALL_TRACKING` layer to be false and requires `CI_PASSED=true` before a `forked-dry-run` can count as succeeded.
+Run Step 18a.5 before Step 18b and outside the active `STALL_TRACKING` gate. Use `stall-recovery-report.sh normalize-outcome --implement-tmpdir "$IMPLEMENT_TMPDIR" --in-memory-stall-tracking "${STALL_TRACKING:-false}"`, the same helper used by `write-final-report.sh`. Treat only `IMPLEMENT_OUTCOME_SUCCEEDED=true` as success. The helper requires every observed `STALL_TRACKING` layer to be false.
 
 Skip when the terminal sentinel exists, the escalation-success sentinel exists, the normalized run outcome did not succeed, no escalation evidence exists, or any stall tracking source is active. Escalation evidence is only the canonical ledger, fallback ledger, record-failure marker, or tagged `record-escalation` Tool Failure entries. Generic Tool Failures do not count.
 

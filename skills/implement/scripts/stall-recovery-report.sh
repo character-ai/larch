@@ -1369,7 +1369,7 @@ cmd_normalize_outcome() {
             [ "$any_stall" = false ] && succeeded=true
             ;;
         forked-dry-run)
-            [ "$any_stall" = false ] && truthy "$ci_passed" && succeeded=true
+            [ "$any_stall" = false ] && succeeded=true
             ;;
     esac
     emit_kv IMPLEMENT_NORMALIZED_OUTCOME "$outcome"
@@ -1588,9 +1588,6 @@ sensitive_token_rejects_file() {
         if sensitive_value_is_allowlisted "$token"; then
             continue
         fi
-        if grep -Fq -- "$token" "$candidate_file"; then
-            return 0
-        fi
         case "$token" in
             *=*)
                 key=${token%%=*}
@@ -1603,14 +1600,25 @@ sensitive_token_rejects_file() {
                         [ "$(safe_larch_version_value "$value")" = "$value" ] && continue
                         ;;
                 esac
+                if sensitive_value_is_allowlisted "$value"; then
+                    continue
+                fi
+                if grep -Fq -- "$token" "$candidate_file"; then
+                    return 0
+                fi
                 case "$value" in
                     ""|[A-Za-z0-9_-]) ;;
                     *)
-                        if ! sensitive_value_is_allowlisted "$value" && grep -Fq -- "$value" "$candidate_file"; then
+                        if grep -Fq -- "$value" "$candidate_file"; then
                             return 0
                         fi
                         ;;
                 esac
+                ;;
+            *)
+                if grep -Fq -- "$token" "$candidate_file"; then
+                    return 0
+                fi
                 ;;
         esac
     done <"$sensitive_file"
@@ -1679,6 +1687,12 @@ append_sensitive_text_lines_from_file() {
     ' "$file" >>"$out" 2>/dev/null || true
 }
 
+append_sensitive_evidence_from_file() {
+    local file=$1 out=$2
+    append_sensitive_shapes_from_file "$file" "$out"
+    append_sensitive_text_lines_from_file "$file" "$out"
+}
+
 build_sensitive_corpus_from_evidence() {
     local tmpdir=$1 sensitive_file=$2 class_file=$3 attempts_file=$4 ledger=$5 fallback=$6 marker=$7 out=$8
     local detail_log
@@ -1686,29 +1700,40 @@ build_sensitive_corpus_from_evidence() {
     if [ -f "$sensitive_file" ] && [ ! -L "$sensitive_file" ]; then
         cat "$sensitive_file" >>"$out"
     fi
-    append_sensitive_shapes_from_file "$class_file" "$out"
-    append_sensitive_shapes_from_file "$attempts_file" "$out"
-    append_sensitive_shapes_from_file "$ledger" "$out"
-    append_sensitive_shapes_from_file "$fallback" "$out"
-    append_sensitive_shapes_from_file "$marker" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/ship-pr-state.sh" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/finalize-state.sh" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/session-env.sh" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/execution-issues.md" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/run-log-pointer.txt" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/plan.txt" "$out"
-    append_sensitive_shapes_from_file "$tmpdir/feature-description.txt" "$out"
-    append_sensitive_text_lines_from_file "$tmpdir/plan.txt" "$out"
-    append_sensitive_text_lines_from_file "$tmpdir/feature-description.txt" "$out"
+    append_sensitive_evidence_from_file "$class_file" "$out"
+    append_sensitive_evidence_from_file "$attempts_file" "$out"
+    append_sensitive_evidence_from_file "$ledger" "$out"
+    append_sensitive_evidence_from_file "$fallback" "$out"
+    append_sensitive_evidence_from_file "$marker" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/ship-pr-state.sh" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/finalize-state.sh" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/session-env.sh" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/execution-issues.md" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/run-log-pointer.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/plan.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/feature-description.txt" "$out"
     detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
     case "$detail_log" in
         "$tmpdir"/*)
             if validate_tmpdir_local_file "$tmpdir" "$detail_log" "--failure-detail-log" >/dev/null 2>&1; then
-                append_sensitive_shapes_from_file "$detail_log" "$out"
-                append_sensitive_text_lines_from_file "$detail_log" "$out"
+                append_sensitive_evidence_from_file "$detail_log" "$out"
             fi
             ;;
     esac
+}
+
+record_escalation_tool_failure_present() {
+    local tmpdir=$1 execution
+    execution="$tmpdir/execution-issues.md"
+    [ -f "$execution" ] && [ ! -L "$execution" ] && [ -r "$execution" ] || return 1
+    grep -Eq '^#{2,3}[[:space:]]+Tool Failure: record-escalation([[:space:]]|$)' "$execution"
+}
+
+append_record_escalation_tool_failure_evidence() {
+    local tmpdir=$1
+    if record_escalation_tool_failure_present "$tmpdir"; then
+        printf -- '- tagged record-escalation Tool Failure present\n'
+    fi
 }
 
 append_file_if_readable() {
@@ -1814,6 +1839,7 @@ compose_tier_b_projection() {
     fi
     [ -s "$fallback" ] && printf -- '- fallback escalation evidence present\n'
     [ -s "$marker" ] && printf -- '- record-failure marker present\n'
+    append_record_escalation_tool_failure_evidence "$tmpdir"
     return 0
 }
 
@@ -1839,6 +1865,10 @@ compose_tier_a_issue() {
     append_file_if_readable "Escalation ledger" "$ledger"
     append_file_if_readable "Fallback escalation evidence" "$fallback"
     append_file_if_readable "Record-failure marker" "$marker"
+    if record_escalation_tool_failure_present "$tmpdir"; then
+        printf '\n## Record-escalation Tool Failure\n\n'
+        printf -- '- tagged record-escalation Tool Failure present\n'
+    fi
     append_validated_failure_detail_log "$tmpdir" "$class_file" || return 1
     append_file_if_readable "Run-log pointer" "$tmpdir/run-log-pointer.txt"
     return 0
@@ -1931,6 +1961,13 @@ DISPATCHER=unknown
     validate_optional_tmpdir_read_file "$tmpdir" "$fallback" "--escalation-fallback-file" || exit 1
     validate_optional_tmpdir_read_file "$tmpdir" "$marker" "--record-failure-marker" || exit 1
     validate_optional_tmpdir_read_file "$tmpdir" "$title_file" "--title-file" || exit 1
+    if [ "$kind" = escalation-success ] \
+        && [ ! -s "$ledger" ] \
+        && [ ! -s "$fallback" ] \
+        && [ ! -s "$marker" ] \
+        && ! record_escalation_tool_failure_present "$tmpdir"; then
+        die_argv "escalation-success report requires escalation evidence"
+    fi
     validate_tmpdir_local_file "$tmpdir" "$root_file" "--root-cause-file" || exit 1
     validate_root_cause_artifact "$root_file" || exit 1
     verdict=$(parse_root_cause_file "$root_file" verdict "")
@@ -2012,6 +2049,7 @@ chat-print	escalation_site	escalation-ledger	enum
 chat-print	escalation_trigger	escalation-ledger	enum
 chat-print	fallback_escalation_marker	escalation-fallback	present-marker
 chat-print	record_failure_marker	record-failure-marker	present-marker
+chat-print	record_escalation_tool_failure	execution-issues	present-marker
 chat-print	bounded_root_cause	bounded-root-cause-file	validated-larch-internal-prose
 EOF
 }

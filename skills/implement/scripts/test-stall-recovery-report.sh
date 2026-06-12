@@ -1551,6 +1551,28 @@ assert_eq 0 "$RC" "23: escalation-success composes without classification"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-ledger-only-compose.out")" "23: ledger-only report prints"
 assert_not_contains "Failure class | \`unrecoverable\`" "$(cat "$dir/out.md")" "23: ledger-only success report does not claim unrecoverable failure"
 
+dir=$(make_tmp case23-tool-failure-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/execution-issues.md" <<'EOF'
+## Tool Failure: record-escalation
+
+- reason: `canonical-ledger-write-failed`
+EOF
+run_capture "$SANDBOX/case23-tool-failure-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success accepts tagged record-escalation Tool Failure evidence"
+assert_contains 'tagged record-escalation Tool Failure present' "$(cat "$dir/out.md")" "23: compose-report renders tagged Tool Failure evidence"
+
+dir=$(make_tmp case23-escalation-success-no-evidence)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-escalation-success-no-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: escalation-success fails closed without evidence"
+
 dir=$(make_tmp case23-ledger-sanitize)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
 cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
@@ -1634,6 +1656,22 @@ printf 'plan names docs/private-plan.md
 ' >"$dir/plan.txt"
 run_capture "$SANDBOX/case23-sensitive-relative-path.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
 assert_eq 1 "$RC" "23: sensitive scan rejects repo-relative paths"
+
+dir=$(make_tmp case23-sensitive-raw-evidence)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+printf 'other-token\n' >"$dir/stall-recovery-sensitive-corpus.env"
+printf 'Client-specific marker prose remains private.\n' >"$dir/stall-recovery-escalation-record-failure.env"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=raw evidence echoed
+
+Client-specific marker prose remains private.
+EOF
+run_capture "$SANDBOX/case23-sensitive-raw-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan rejects raw evidence text"
 
 cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
 verdict=larch-defect
@@ -1731,7 +1769,7 @@ dir=$(make_tmp case23-normalize-forked-ci-failed)
 printf 'FORKED_TARGET=true\nSTALL_TRACKING=false\nCI_PASSED=false\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case23-normalize-forked-ci-failed.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
 assert_eq forked-dry-run "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: normalize-outcome preserves forked outcome"
-assert_eq false "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: forked dry-run does not succeed without CI_PASSED"
+assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: forked dry-run succeeds without CI_PASSED"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

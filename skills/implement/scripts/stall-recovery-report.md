@@ -124,6 +124,7 @@ Lint parity covers Tier B only. The committed TSV, helper code, and this table m
 | chat-print | escalation_trigger | escalation-ledger | enum |
 | chat-print | fallback_escalation_marker | escalation-fallback | present-marker |
 | chat-print | record_failure_marker | record-failure-marker | present-marker |
+| chat-print | record_escalation_tool_failure | execution-issues | present-marker |
 | chat-print | bounded_root_cause | bounded-root-cause-file | validated-larch-internal-prose |
 <!-- stall-recovery-allowlist:end -->
 
