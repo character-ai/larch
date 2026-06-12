@@ -1099,7 +1099,7 @@ def test_continue_predicate_skips_without_feature_description(tmp_path: Path) ->
 
 def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> None:
     target = tmp_path / "routing-target.env"
-    target.write_text("coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
+    _ = target.write_text("coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
     routing = tmp_path / "bootstrap-routing.env"
     routing.symlink_to(target)
     data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
