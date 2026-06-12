@@ -71,7 +71,7 @@ fi
 if [ "${LARCH_SHIP_PR_IMPL:-python}" != "bash" ]; then
   if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
     echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-    printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+    printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
     exit 4
   fi
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr \

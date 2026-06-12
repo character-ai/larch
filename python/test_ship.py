@@ -1911,7 +1911,7 @@ exec {real_python} "$@"
     script = """
 if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
   echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
   exit 4
 fi
 exit 0
@@ -1928,6 +1928,7 @@ exit 0
     )
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
+    assert '"ledger_ready":false' in completed.stdout
     assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
 
 

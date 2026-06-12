@@ -245,6 +245,7 @@ record_helper="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
 case "$review_status" in
     coder-main-agent-required)
         if [[ -x "$record_helper" ]]; then
+            set +e
             "$record_helper" record-escalation \
                 --implement-tmpdir "$IMPLEMENT_TMPDIR" \
                 --site step5 \
@@ -254,6 +255,20 @@ case "$review_status" in
                 --dispatcher run-step5-review \
                 --exit-code "$review_rc" \
                 --failure-detail-log "$review_stderr"
+            record_rc=$?
+            set -e
+            if [[ "$record_rc" -ne 0 ]]; then
+                printf 'STEP5_REVIEW_LEDGER_READY=true\n'
+                printf 'STEP5_REVIEW_LEDGER_SITE=step5\n'
+                printf 'STEP5_REVIEW_LEDGER_TRIGGER=coder-main-agent-required\n'
+                printf 'STEP5_REVIEW_LEDGER_STEP=5\n'
+                printf 'STEP5_REVIEW_LEDGER_PHASE=review\n'
+                printf 'STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review\n'
+                printf 'STEP5_REVIEW_LEDGER_EXIT_CODE=%s\n' "$review_rc"
+                if [[ -s "$review_stderr" ]]; then
+                    printf 'STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG=%s\n' "$review_stderr"
+                fi
+            fi
         fi
         ;;
     main-agent-vote-required)

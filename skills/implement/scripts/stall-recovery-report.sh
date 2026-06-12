@@ -520,58 +520,59 @@ classify_from_evidence() {
     local step=$1 phase=$2 bail=$3 evidence=$4 detail_log_valid=${5:-false} lowered
     lowered=$(printf '%s\n%s\n%s\n' "$phase" "$bail" "$evidence" | LC_ALL=C tr '[:upper:]' '[:lower:]')
     MATCHED_CLASSIFIER_PATTERN=no-match
+    CLASSIFIED_FAILURE_CLASS=unrecoverable
 
     case "$step" in
-        3|6) MATCHED_CLASSIFIER_PATTERN="step-contract"; printf 'contract-failure\n'; return 0 ;;
-        merge-loop-iteration-cap) MATCHED_CLASSIFIER_PATTERN=terminal-step; printf 'unrecoverable\n'; return 0 ;;
-        rebase-failed) MATCHED_CLASSIFIER_PATTERN=rebase-transient; printf 'transient-infra\n'; return 0 ;;
+        3|6) MATCHED_CLASSIFIER_PATTERN="step-contract"; CLASSIFIED_FAILURE_CLASS=contract-failure; return 0 ;;
+        merge-loop-iteration-cap) MATCHED_CLASSIFIER_PATTERN=terminal-step; CLASSIFIED_FAILURE_CLASS=unrecoverable; return 0 ;;
+        rebase-failed) MATCHED_CLASSIFIER_PATTERN=rebase-transient; CLASSIFIED_FAILURE_CLASS=transient-infra; return 0 ;;
     esac
     case "$bail" in
         adopted-issue-closed|tracking-init-failed)
             MATCHED_CLASSIFIER_PATTERN=terminal-bail
-            printf 'unrecoverable\n'
+            CLASSIFIED_FAILURE_CLASS=unrecoverable
             return 0
             ;;
         recovery-out-of-scope)
             MATCHED_CLASSIFIER_PATTERN=recovery-out-of-scope
-            printf 'unrecoverable\n'
+            CLASSIFIED_FAILURE_CLASS=unrecoverable
             return 0
             ;;
     esac
     if printf '%s\n' "$lowered" | grep -Eq 'pytest|jest|vitest|rspec|go test|test failed|failing test|tests failed'; then
         MATCHED_CLASSIFIER_PATTERN=test-output
-        printf 'test-failure\n'
+        CLASSIFIED_FAILURE_CLASS=test-failure
         return 0
     fi
     if printf '%s\n' "$lowered" | grep -Eq 'lint-fix|shellcheck|markdownlint|pre-commit|relevant-checks.*fail|lint.*failed'; then
         MATCHED_CLASSIFIER_PATTERN=lint-output
-        printf 'lint-failure\n'
+        CLASSIFIED_FAILURE_CLASS=lint-failure
         return 0
     fi
     if printf '%s\n' "$lowered" | grep -Eq 'envelope-invalid|invalid.*envelope|orchestrator-envelope-invalid|wrapper-validation|step2.*dispatch'; then
         MATCHED_CLASSIFIER_PATTERN=dispatch-output
-        printf 'dispatch-failure\n'
+        CLASSIFIED_FAILURE_CLASS=dispatch-failure
         return 0
     fi
     case "$bail" in
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|dirty-state-after-timeout|interactive-subprocess-unsupported|main-branch-post-dispatch|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|wrapper-validation-failure|orchestrator-envelope-invalid)
             MATCHED_CLASSIFIER_PATTERN=dispatch-bail-token
-            printf 'dispatch-failure\n'
+            CLASSIFIED_FAILURE_CLASS=dispatch-failure
             return 0
             ;;
     esac
     if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network/auth issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5[0-9][0-9]'; then
         MATCHED_CLASSIFIER_PATTERN=transient-output
-        printf 'transient-infra\n'
+        CLASSIFIED_FAILURE_CLASS=transient-infra
         return 0
     fi
     # CI-fix exhaustion with an actionable failure-detail log is recoverable.
     if [ "$detail_log_valid" = true ]; then
         case "$bail" in
-            ci-fix-exhausted) MATCHED_CLASSIFIER_PATTERN=ci-fix-exhausted-with-detail; printf 'ci-fix-exhausted\n'; return 0 ;;
+            ci-fix-exhausted) MATCHED_CLASSIFIER_PATTERN=ci-fix-exhausted-with-detail; CLASSIFIED_FAILURE_CLASS=ci-fix-exhausted; return 0 ;;
         esac
     fi
-    printf 'unrecoverable\n'
+    CLASSIFIED_FAILURE_CLASS=unrecoverable
 }
 
 safe_matched_pattern_value() {
@@ -818,7 +819,8 @@ $(cat "$session_env")"
         failure_class="unrecoverable"
         MATCHED_CLASSIFIER_PATTERN=no-stall
     else
-        failure_class=$(classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence" "$detail_log_valid")
+        classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence" "$detail_log_valid"
+        failure_class=$CLASSIFIED_FAILURE_CLASS
     fi
     resume_hint=$(resume_hint_for "$failure_class" "$stall_step" "$phase")
     # Mix a bounded evidence digest into the signature so distinct failures with
@@ -1307,7 +1309,7 @@ cmd_normalize_issue_env() {
 cmd_normalize_outcome() {
     local tmpdir="" in_memory="" ship_state finalize_state session_env
     local ship_stall finalize_stall session_stall memory_stall any_stall=false
-    local merge_result merge draft pr_number forked design_done bail_user outcome succeeded=false
+    local merge_result merge draft pr_number forked design_done bail_user ci_passed outcome succeeded=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
@@ -1336,6 +1338,8 @@ cmd_normalize_outcome() {
     pr_number=$(first_nonempty "$(kv_get "$ship_state" PR_NUMBER "")" "$(kv_get "$finalize_state" PR_NUMBER "")")
     forked=$(first_nonempty "$(kv_get "$ship_state" FORKED_TARGET "")" "$(kv_get "$finalize_state" FORKED_TARGET "")" "$(kv_get "$session_env" FORKED_TARGET "")")
     [ -n "$forked" ] || forked=false
+    ci_passed=$(first_nonempty "$(kv_get "$ship_state" CI_PASSED "")" "$(kv_get "$finalize_state" CI_PASSED "")")
+    [ -n "$ci_passed" ] || ci_passed=false
     design_done=$(kv_get "$finalize_state" DESIGN_ONLY_DONE "false")
     bail_user=$(kv_get "$finalize_state" BAIL_NEEDS_USER_INPUT "false")
 
@@ -1361,8 +1365,11 @@ cmd_normalize_outcome() {
     fi
 
     case "$outcome" in
-        merged|force-merged-externally|pr-created|pr-created-draft|forked-dry-run)
+        merged|force-merged-externally|pr-created|pr-created-draft)
             [ "$any_stall" = false ] && succeeded=true
+            ;;
+        forked-dry-run)
+            [ "$any_stall" = false ] && truthy "$ci_passed" && succeeded=true
             ;;
     esac
     emit_kv IMPLEMENT_NORMALIZED_OUTCOME "$outcome"
@@ -1377,6 +1384,7 @@ cmd_normalize_outcome() {
     emit_kv IMPLEMENT_DRAFT "${draft:-false}"
     emit_kv IMPLEMENT_MERGE "${merge:-}"
     emit_kv IMPLEMENT_FORKED_TARGET "${forked:-false}"
+    emit_kv IMPLEMENT_CI_PASSED "${ci_passed:-false}"
     emit_kv IMPLEMENT_DESIGN_ONLY_DONE "${design_done:-false}"
     emit_kv IMPLEMENT_BAIL_NEEDS_USER_INPUT "${bail_user:-false}"
 }
@@ -1480,7 +1488,7 @@ parse_root_cause_file() {
 }
 
 validate_root_cause_artifact() {
-    local file=$1 verdict confidence summary
+    local file=$1 verdict confidence summary prose_count
     [ -f "$file" ] || { larch_err "stall-recovery-report.sh: root-cause file missing"; return 1; }
     [ ! -L "$file" ] || { larch_err "stall-recovery-report.sh: root-cause file must not be a symlink"; return 1; }
     verdict=$(parse_root_cause_file "$file" verdict "")
@@ -1490,7 +1498,26 @@ validate_root_cause_artifact() {
     case "$confidence" in low|medium|high) ;; *) larch_err "stall-recovery-report.sh: invalid root-cause confidence"; return 1 ;; esac
     [ -n "$summary" ] || { larch_err "stall-recovery-report.sh: root-cause summary is required"; return 1; }
     case "$summary" in *$'\n'*|*$'\r'*) larch_err "stall-recovery-report.sh: root-cause summary must be single-line"; return 1 ;; esac
+    prose_count=$(awk '
+        /^[[:space:]]*$/ { next }
+        /^(verdict|confidence|summary)=/ { next }
+        { count++ }
+        END { print count + 0 }
+    ' "$file")
+    [ "$prose_count" -gt 0 ] || { larch_err "stall-recovery-report.sh: root-cause investigation prose is required"; return 1; }
     return 0
+}
+
+root_cause_prose() {
+    local file=$1
+    awk '
+        /^[[:space:]]*$/ {
+            if (seen) print
+            next
+        }
+        /^(verdict|confidence|summary)=/ { next }
+        { seen=1; print }
+    ' "$file"
 }
 
 safe_title_summary() {
@@ -1555,7 +1582,7 @@ sensitive_token_rejects_file() {
     [ -f "$sensitive_file" ] || return 1
     while IFS= read -r token || [ -n "$token" ]; do
         case "$token" in
-            ""|[A-Za-z0-9_-]|[A-Za-z0-9_-][A-Za-z0-9_-]) continue ;;
+            ""|[A-Za-z0-9_-]) continue ;;
             larch-defect|environment|operator-action|terminal-failure|escalation-success|merged|force-merged-externally|pr-created|pr-created-draft|forked-dry-run|main-agent-required|lint-fix-loop|ship-pr|codex|cursor|claude) continue ;;
         esac
         if sensitive_value_is_allowlisted "$token"; then
@@ -1577,7 +1604,7 @@ sensitive_token_rejects_file() {
                         ;;
                 esac
                 case "$value" in
-                    ""|[A-Za-z0-9_-]|[A-Za-z0-9_-][A-Za-z0-9_-]) ;;
+                    ""|[A-Za-z0-9_-]) ;;
                     *)
                         if ! sensitive_value_is_allowlisted "$value" && grep -Fq -- "$value" "$candidate_file"; then
                             return 0
@@ -1591,6 +1618,9 @@ sensitive_token_rejects_file() {
         return 0
     fi
     if grep -Eq "(^|[[:space:]\`(])/(Users|home|private|tmp|var|Volumes)/[^[:space:]\`)]+" "$candidate_file"; then
+        return 0
+    fi
+    if grep -Eq '(^|[[:space:]`(])[A-Za-z0-9_.-]{2,}/[A-Za-z0-9_./-]{2,}' "$candidate_file"; then
         return 0
     fi
     if candidate_has_sensitive_assignment "$candidate_file"; then
@@ -1631,7 +1661,22 @@ append_sensitive_shapes_from_file() {
     grep -Eo 'git@github[.]com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$file" 2>/dev/null >>"$out" || true
     grep -Eo 'github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$file" 2>/dev/null >>"$out" || true
     grep -Eo "(^|[[:space:]\`(])/(Users|home|private|tmp|var|Volumes)/[^[:space:]\`)]+" "$file" 2>/dev/null | sed "s/^[[:space:]\`(]*//" >>"$out" || true
+    grep -Eo '(^|[[:space:]`(])[A-Za-z0-9_.-]{2,}/[A-Za-z0-9_./-]{2,}' "$file" 2>/dev/null | sed 's/^[[:space:]`(]*//' >>"$out" || true
     grep -E '^[A-Z][A-Z0-9_]*=' "$file" 2>/dev/null >>"$out" || true
+}
+
+append_sensitive_text_lines_from_file() {
+    local file=$1 out=$2
+    [ -f "$file" ] && [ ! -L "$file" ] && [ -r "$file" ] || return 0
+    awk '
+        {
+            gsub(/\r$/, "")
+            line=$0
+            sub(/^[[:space:]]+/, "", line)
+            sub(/[[:space:]]+$/, "", line)
+            if (length(line) >= 12 && length(line) <= 240) print line
+        }
+    ' "$file" >>"$out" 2>/dev/null || true
 }
 
 build_sensitive_corpus_from_evidence() {
@@ -1653,11 +1698,14 @@ build_sensitive_corpus_from_evidence() {
     append_sensitive_shapes_from_file "$tmpdir/run-log-pointer.txt" "$out"
     append_sensitive_shapes_from_file "$tmpdir/plan.txt" "$out"
     append_sensitive_shapes_from_file "$tmpdir/feature-description.txt" "$out"
+    append_sensitive_text_lines_from_file "$tmpdir/plan.txt" "$out"
+    append_sensitive_text_lines_from_file "$tmpdir/feature-description.txt" "$out"
     detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
     case "$detail_log" in
         "$tmpdir"/*)
             if validate_tmpdir_local_file "$tmpdir" "$detail_log" "--failure-detail-log" >/dev/null 2>&1; then
                 append_sensitive_shapes_from_file "$detail_log" "$out"
+                append_sensitive_text_lines_from_file "$detail_log" "$out"
             fi
             ;;
     esac
@@ -1668,6 +1716,16 @@ append_file_if_readable() {
     [ -f "$file" ] && [ ! -L "$file" ] && [ -s "$file" ] || return 0
     printf '\n## %s\n\n' "$label"
     cat "$file"
+    printf '\n'
+}
+
+append_validated_failure_detail_log() {
+    local tmpdir=$1 class_file=$2 detail_log
+    detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
+    [ -n "$detail_log" ] || return 0
+    validate_tmpdir_local_file "$tmpdir" "$detail_log" "--failure-detail-log" || return 1
+    printf '\n## Validated failure-detail log\n\n'
+    read_validated_failure_detail_log "$tmpdir" "$detail_log"
     printf '\n'
 }
 
@@ -1714,7 +1772,11 @@ compose_tier_b_projection() {
     printf '## /implement %s report\n\n' "$kind"
     printf '| Field | Value |\n|---|---|\n'
     printf "| Report kind | \`%s\` |\n" "$kind"
-    printf "| Failure class | \`%s\` |\n" "$class"
+    if [ "$kind" = escalation-success ]; then
+        printf "| Recovery outcome | \`success\` |\n"
+    else
+        printf "| Failure class | \`%s\` |\n" "$class"
+    fi
     printf "| Step | \`%s\` |\n" "$step"
     printf "| Phase | \`%s\` |\n" "$phase"
     printf "| Bail reason | \`%s\` |\n" "$bail"
@@ -1726,6 +1788,9 @@ compose_tier_b_projection() {
     printf "| Root-cause verdict | \`%s\` |\n" "$verdict"
     printf "| Root-cause confidence | \`%s\` |\n\n" "$confidence"
     printf '## Bounded root-cause summary\n\n%s\n\n' "$summary"
+    printf '## Bounded root-cause details\n\n'
+    root_cause_prose "$bounded_file"
+    printf '\n\n'
     printf '## Attempts\n\n'
     attempts_table "$attempts_file"
     printf '\n## Escalation evidence\n\n'
@@ -1774,14 +1839,26 @@ compose_tier_a_issue() {
     append_file_if_readable "Escalation ledger" "$ledger"
     append_file_if_readable "Fallback escalation evidence" "$fallback"
     append_file_if_readable "Record-failure marker" "$marker"
-    append_file_if_readable "Validated failure-detail log" "$(kv_get "$class_file" FAILURE_DETAIL_LOG "")"
+    append_validated_failure_detail_log "$tmpdir" "$class_file" || return 1
     append_file_if_readable "Run-log pointer" "$tmpdir/run-log-pointer.txt"
     return 0
 }
 
+tier_a_allowed() {
+    local tmpdir=$1 root=${2:-} forked
+    forked=$(first_nonempty \
+        "$(kv_get "$tmpdir/ship-pr-state.sh" FORKED_TARGET "")" \
+        "$(kv_get "$tmpdir/finalize-state.sh" FORKED_TARGET "")" \
+        "$(kv_get "$tmpdir/session-env.sh" FORKED_TARGET "")" \
+        "false")
+    truthy "$forked" && return 1
+    [ -n "$root" ] || return 1
+    is_larch_dev_clone "$root"
+}
+
 cmd_compose_report() {
     local tmpdir="" kind="" surface="" attempts_file="" class_file="" ledger="" fallback="" marker="" root_file="" bounded_file="" title_file="" sensitive_file="" out_file=""
-    local verdict summary title raw_file tier status=printed dry_run=false sensitive_effective_file
+    local verdict summary title raw_file tier status=printed dry_run=false sensitive_effective_file working_tree_root
     while [ $# -gt 0 ]; do
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
@@ -1813,6 +1890,15 @@ cmd_compose_report() {
     [ -n "$bounded_file" ] || bounded_file="$tmpdir/$DEFAULT_BOUNDED_ROOT_CAUSE_FILE"
     [ -n "$title_file" ] || title_file="$tmpdir/$DEFAULT_TITLE_FILE"
     [ -n "$sensitive_file" ] || sensitive_file="$tmpdir/$DEFAULT_SENSITIVE_CORPUS"
+    working_tree_root=$(first_nonempty \
+        "${CLAUDE_PROJECT_DIR:-}" \
+        "${REPO_ROOT:-}" \
+        "$(kv_get "$tmpdir/session-env.sh" REPO_ROOT "")" \
+        "$(kv_get "$tmpdir/ship-pr-state.sh" REPO_ROOT "")" \
+        "$(git rev-parse --show-toplevel 2>/dev/null || true)")
+    if [ "$surface" = issue-input ] && ! tier_a_allowed "$tmpdir" "$working_tree_root"; then
+        die_argv "issue-input surface requires larch dev clone and non-forked target"
+    fi
     if [ -z "$out_file" ]; then
         case "$surface" in
             issue-input) out_file="$tmpdir/$DEFAULT_ISSUE_INPUT" ;;
@@ -1821,7 +1907,7 @@ cmd_compose_report() {
     fi
     if [ "$kind" = escalation-success ] && [ ! -e "$class_file" ]; then
         validate_tmpdir_write_file "$tmpdir" "$class_file" "--classification-file" false || exit 1
-        atomic_write_text "$class_file" "FAILURE_CLASS=unrecoverable
+        atomic_write_text "$class_file" "FAILURE_CLASS=
 FAILURE_SIGNATURE=$(printf '%s' escalation-success | hash_text)
 RESUME_HINT=none
 STALL_STEP=unknown

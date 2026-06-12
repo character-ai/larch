@@ -59,10 +59,16 @@ lint_fix_ledger_phase() {
 }
 
 emit_lint_fix_ledger_ready() {
-    local trigger=${1:-main-agent-required} exit_code=${2:-0}
+    local trigger=${1:-main-agent-required} exit_code=${2:-0} ledger_site ledger_trigger
+    ledger_site="$SITE"
+    ledger_trigger="$trigger"
+    if [ "$SITE" = "ship-pr-ci-initial" ]; then
+        ledger_site=ship-pr-internal
+        ledger_trigger=ship-pr-internal-lint-fix
+    fi
     emit_kv LINT_FIX_LEDGER_READY true
-    emit_kv LINT_FIX_LEDGER_SITE "$SITE"
-    emit_kv LINT_FIX_LEDGER_TRIGGER "$trigger"
+    emit_kv LINT_FIX_LEDGER_SITE "$ledger_site"
+    emit_kv LINT_FIX_LEDGER_TRIGGER "$ledger_trigger"
     emit_kv LINT_FIX_LEDGER_STEP "$(lint_fix_ledger_step)"
     emit_kv LINT_FIX_LEDGER_PHASE "$(lint_fix_ledger_phase)"
     emit_kv LINT_FIX_LEDGER_DISPATCHER lint-fix-loop

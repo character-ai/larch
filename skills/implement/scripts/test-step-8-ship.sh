@@ -94,6 +94,7 @@ STDERR=$(cat "$TMP_ROOT/stderr.txt" 2>/dev/null || true)
 
 assert_rc "$RC" 4 'dynamic: stale python exits 4'
 assert_contains '"outcome":"STALLED"' "$OUT" 'dynamic: stale python emits STALLED JSON'
+assert_contains '"ledger_ready":false' "$OUT" 'dynamic: stale python emits ledger keys'
 assert_contains 'Python ship driver requires Python 3.11 or newer' "$STDERR" 'dynamic: stale python stderr message'
 
 # Case 3: bash mode with empty RESUME_PHASE must not abort under nounset.
