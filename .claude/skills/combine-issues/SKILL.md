@@ -86,7 +86,7 @@ fi
 <!-- step:oos-1 — Fetch OOS Issues -->
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues fetch --oos
+python3 "$PWD/python/cli.py" combine-issues fetch --repo "$REPO" --oos
 ```
 
 OOS title-prefix filtering logic lives in `python/combine_issues.py` beside the fetch script.
@@ -114,7 +114,7 @@ For each issue, parse its body and extract the individual items. Then for each i
       The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
    b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
-      python3 "$PWD/python/cli.py" block-issue add-blocked-by <N> <M>
+      python3 "$PWD/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO"
       ```
       On failure, still keep the item as **actual** (not blocked) and emit a warning.
    c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
@@ -156,6 +156,7 @@ For each approved group, write the combined body to a temp file, then invoke:
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues apply \
+  --repo "$REPO" \
   --title "<combined title>" \
   --body-file "<temp-file>" \
   --source-issues "<comma-separated issue numbers to close>" \
@@ -168,9 +169,18 @@ Parse `COMBINED_ISSUE`, `SOURCE_ISSUES`, and `CLOSING_DEFERRED` from stdout. Sto
 
 Record these state files for the dependency phases:
 
-- `source_to_combined.json`: JSON object mapping consumed source issue numbers to their combined issue number.
+- `source_to_combined.json`: JSON object mapping consumed source issue numbers to their combined issue number. If one source contributes to multiple combined issues, map that source to a JSON array of every combined issue number.
 - `combined_issues.json`: JSON list of objects with `number`, `title`, and `source_issues`.
 - `blocked_sources.json`: JSON object with `blocked_sources`, one object per source that remains blocked or unconsumed. Each object has `source_issue`, `reason`, and optional `blocked_items`.
+
+Materialize every dependency workflow JSON file before the first dependency command, even on no-op paths:
+
+- `write_results.json`: `{"write_results":[]}`
+- `exception_decisions.json`: `{"decisions":[]}`
+- `blocked_sources.json`: `{"blocked_sources":[]}` when no sources are blocked or unconsumed.
+- `tier2_candidates.json`: `{"candidates":[]}` when Tier-2 is skipped or has no candidates.
+- `existing_edges.json`: `[]` until populated from successful inherited writes.
+- `decided_edges.json`: `{"decisions":[]}` until operator decisions are recorded.
 
 <!-- step:oos-6 — Inherit Source Dependencies -->
 
@@ -178,8 +188,9 @@ Run the Python planner for inherited native dependencies. Do not redo remap, cla
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues fetch-deps \
+  --repo "$REPO" \
   --issues "<all source issues>" > "$DEPS_JSON"
-python3 "$PWD/python/cli.py" combine-issues list-open > "$OPEN_ISSUES_JSON"
+python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$OPEN_ISSUES_JSON"
 python3 "$PWD/python/cli.py" combine-issues plan-inherited \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -187,11 +198,13 @@ python3 "$PWD/python/cli.py" combine-issues plan-inherited \
   --combined-issues-file "$COMBINED_ISSUES_JSON" > "$INHERITED_PLAN_JSON"
 ```
 
+Hard-stop if `fetch-deps`, `list-open`, or `plan-inherited` exits non-zero, or if any emitted JSON status is not `ok`. Do not feed empty, stale, or failed prerequisite files into the next dependency command.
+
 Use `plan-inherited` as the only source of remapped inherited edge classification.
 
 - Mark sources with dependency read failures as not close-eligible.
 - Mark sources tied to unknown inherited classifications as not close-eligible.
-- Write `safe_edges` with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker>`.
+- Write `safe_edges` with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`.
 - Record safe-edge write success, idempotent already-present success, write failures, and unresolved writes in one write-results JSON file.
 
 Write-results JSON is a top-level object with `write_results`. Each entry has `edge`, `client_issue`, `blocker_issue`, `phase`, `status`, `source_issues`, and optional `error`. Use phases `inherited_safe`, `inherited_exception`, `inherited_reclassified_safe`, `inherited_reclassified_exception`, `audit_tier1_safe`, or `audit_approved`. Use statuses `written`, `already_present`, `failed`, or `unresolved`. Only `written` and `already_present` count as successful writes for source closure.
@@ -216,7 +229,7 @@ Do not close sources tied to unresolved inherited exception decisions. Do not cl
 Refresh metadata before source closure, then rerun the inherited planner.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues list-open > "$REFRESHED_OPEN_ISSUES_JSON"
+python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$REFRESHED_OPEN_ISSUES_JSON"
 python3 "$PWD/python/cli.py" combine-issues plan-inherited \
   --deps-file "$DEPS_JSON" \
   --source-to-combined-file "$SOURCE_TO_COMBINED_JSON" \
@@ -224,7 +237,9 @@ python3 "$PWD/python/cli.py" combine-issues plan-inherited \
   --combined-issues-file "$COMBINED_ISSUES_JSON" > "$FINAL_INHERITED_PLAN_JSON"
 ```
 
-Compare the refreshed plan with the initial plan by edge tuple. Write newly safe inherited edges that were previously unknown. Surface newly classified exception edges for approval. Keep still-unknown inherited edges unresolved and close-blocking. Do not put still-unknown inherited edges in `existing_edges.json`.
+Hard-stop if refreshed `list-open` or `plan-inherited` exits non-zero, or if any emitted JSON status is not `ok`.
+
+Compare the refreshed plan with the initial plan by edge tuple. Write newly safe inherited edges that were previously unknown. Record those writes in the shared write-results file with phase `inherited_reclassified_safe`. Surface newly classified exception edges through the same approval gate schema as `oos-6b`; record approved, rejected, and cancellation or missing-answer outcomes in the shared exception-decisions file with phase `inherited_reclassified_exception`. Write approved reclassified exception edges only after approval, and record those writes in the shared write-results file with phase `inherited_reclassified_exception`. Treat cancellation or missing answers as `unresolved`. Keep unresolved and still-unknown inherited edges close-blocking. Do not put unresolved or still-unknown inherited edges in `existing_edges.json`.
 
 <!-- step:oos-7 — Close Consumed Source Issues -->
 
@@ -243,6 +258,7 @@ Close only sources emitted in `eligible_by_combined`. Partition eligible sources
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues close-sources \
+  --repo "$REPO" \
   --combined-issue "<combined issue>" \
   --source-issues "<comma-separated eligible source issues>"
 ```
@@ -254,8 +270,10 @@ Aggregate `CLOSED_ISSUES` from `close-sources` invocations for the final source-
 After source closure, refresh the full open-issue set for audit.
 
 ```bash
-python3 "$PWD/python/cli.py" combine-issues list-open > "$AUDIT_OPEN_ISSUES_JSON"
+python3 "$PWD/python/cli.py" combine-issues list-open --repo "$REPO" > "$AUDIT_OPEN_ISSUES_JSON"
 ```
+
+Hard-stop if audit `list-open` exits non-zero, or if its JSON status is not `ok`.
 
 Include newly combined issues and archival open issues. Exclude closed source issues.
 
@@ -299,6 +317,8 @@ python3 "$PWD/python/cli.py" combine-issues plan-audit \
   --combined-issues-file "$COMBINED_ISSUES_JSON" > "$AUDIT_PLAN_JSON"
 ```
 
+Hard-stop if `prose-audit` or `plan-audit` exits non-zero, or if any emitted JSON status is not `ok` when a status field is present.
+
 Scope this gate to audit-derived candidates not already decided in `oos-6b` or `oos-6c`. Auto-write only Tier-1 safe audit edges from `auto_write_edges`. Ask the operator before writing every edge in `approval_required_edges`.
 
 Approval-required audit edges include:
@@ -306,7 +326,7 @@ Approval-required audit edges include:
 - Audit exception edges where the client is non-OOS and the blocker is a newly combined `[OOS]` issue.
 - All Tier-2 semantic edges.
 
-Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `issue add-blocked-by`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
+Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `issue add-blocked-by --repo "$REPO"`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
 
 <!-- step:oos-10 — Dependency Summary -->
 

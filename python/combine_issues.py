@@ -26,6 +26,7 @@ _BLOCKS_LINE_RE = re.compile(r"^(?:Blocks|Blocking)[ \t]+#([0-9]+)(?:[^0-9]|$)",
 _MARKDOWN_PREFIX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?")
 _EXAMPLE_PREFIX_RE = re.compile(r"^(?:example|examples|e\.g\.|eg\.|for example|sample)\b", re.IGNORECASE)
 _CODE_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+_NEGATION_RE = re.compile(r"\b(?:does\s+not|do\s+not|did\s+not|not|no|never|without)\b", re.IGNORECASE)
 _WRITE_SUCCESS = {"written", "already_present"}
 _INHERITED_SAFE_PHASES = {"inherited_safe", "inherited_reclassified_safe"}
 _INHERITED_EXCEPTION_PHASES = {"inherited_exception", "inherited_reclassified_exception"}
@@ -96,17 +97,32 @@ def _parse_issue_csv(raw: str, *, arg_name: str = "--issues") -> list[int]:
     return values
 
 
-def _parse_source_to_combined(data: Any) -> dict[int, int]:
+def _parse_source_to_combined(data: Any) -> dict[int, list[int]]:
     if not isinstance(data, dict):
         raise ValueError("source-to-combined JSON must be an object")
-    out: dict[int, int] = {}
+    out: dict[int, list[int]] = {}
     for raw_source, raw_combined in data.items():
         source = _positive_int_value(raw_source)
-        combined = _positive_int_value(raw_combined)
-        if source is None or combined is None:
-            raise ValueError("source-to-combined keys and values must be positive integers")
-        out[source] = combined
+        if source is None:
+            raise ValueError("source-to-combined keys must be positive integers")
+        raw_values = raw_combined if isinstance(raw_combined, list) else [raw_combined]
+        combined_values: list[int] = []
+        seen: set[int] = set()
+        for raw_value in raw_values:
+            combined = _positive_int_value(raw_value)
+            if combined is None:
+                raise ValueError("source-to-combined values must be positive integers or lists of positive integers")
+            if combined not in seen:
+                seen.add(combined)
+                combined_values.append(combined)
+        if not combined_values:
+            raise ValueError("source-to-combined values must not be empty")
+        out[source] = combined_values
     return out
+
+
+def _remap_issue_hosts(issue: int, source_to_combined: dict[int, list[int]]) -> list[int]:
+    return source_to_combined.get(issue, [issue])
 
 
 def _edge_key(edge: tuple[int, int] | list[int]) -> str:
@@ -182,12 +198,19 @@ def _parse_prose_blocks(text: str) -> list[int]:
             continue
         line = re.sub(r"`[^`\n]*`", "", raw_line).replace("*", "").replace("_", "")
         line = _MARKDOWN_PREFIX_RE.sub("", line).strip()
-        if not line or _EXAMPLE_PREFIX_RE.match(line):
+        if not line or line.startswith("<!--") or _EXAMPLE_PREFIX_RE.match(line):
+            continue
+        if _NEGATION_RE.search(line.split("#", 1)[0]):
             continue
         match = _BLOCKS_LINE_RE.match(line)
         if match:
             refs.add(int(match.group(1)))
     return sorted(refs)
+
+
+def _require_status_ok(data: Any, *, desc: str) -> None:
+    if isinstance(data, dict) and "status" in data and str(data.get("status") or "") != "ok":
+        raise ValueError(f"{desc}: status is {data.get('status')!r}")
 
 
 def _read_deps_for_issue(repo: str, issue: int) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -332,7 +355,10 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     try:
         deps = _load_json_file(args.deps_file, desc="deps-file")
         source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
-        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        open_data = _load_json_file(args.open_issues_file, desc="open-issues-file")
+        _require_status_ok(deps, desc="deps-file")
+        _require_status_ok(open_data, desc="open-issues-file")
+        open_rows = _open_issue_rows(open_data)
         combined_rows = _combined_issue_rows(_load_json_file(args.combined_issues_file, desc="combined-issues-file"))
     except ValueError as exc:
         return _fail_json_error(str(exc))
@@ -347,28 +373,32 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
     if isinstance(deps, dict) and isinstance(deps.get("warnings"), list):
         warnings.extend(deps["warnings"])
 
-    for source, combined in sorted(source_to_combined.items()):
+    for source, combined_hosts in sorted(source_to_combined.items()):
         entry = _dep_entry(source, deps)
         reasons: list[str] = []
         if not bool(entry.get("read_ok")):
             reasons.append("dependency_read_failed")
         per_source[str(source)] = {"eligible": not reasons, "reasons": reasons}
         for blocker_issue in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocked_by", [])) if n is not None):
-            edge = (combined, source_to_combined.get(blocker_issue, blocker_issue))
-            if edge[0] == edge[1]:
-                self_edges_skipped += 1
-                continue
-            if source in edge_sources[edge] or edge_sources[edge]:
-                duplicate_edges_skipped += 1
-            edge_sources[edge].add(source)
+            for combined in combined_hosts:
+                for blocker_host in _remap_issue_hosts(blocker_issue, source_to_combined):
+                    edge = (combined, blocker_host)
+                    if edge[0] == edge[1]:
+                        self_edges_skipped += 1
+                        continue
+                    if source in edge_sources[edge] or edge_sources[edge]:
+                        duplicate_edges_skipped += 1
+                    edge_sources[edge].add(source)
         for client in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocking", [])) if n is not None):
-            edge = (source_to_combined.get(client, client), combined)
-            if edge[0] == edge[1]:
-                self_edges_skipped += 1
-                continue
-            if source in edge_sources[edge] or edge_sources[edge]:
-                duplicate_edges_skipped += 1
-            edge_sources[edge].add(source)
+            for client_host in _remap_issue_hosts(client, source_to_combined):
+                for combined in combined_hosts:
+                    edge = (client_host, combined)
+                    if edge[0] == edge[1]:
+                        self_edges_skipped += 1
+                        continue
+                    if source in edge_sources[edge] or edge_sources[edge]:
+                        duplicate_edges_skipped += 1
+                    edge_sources[edge].add(source)
 
     safe: list[dict[str, Any]] = []
     exception: list[dict[str, Any]] = []
@@ -525,12 +555,12 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
 
     eligible_by_combined: dict[str, list[int]] = defaultdict(list)
     ineligible_sources: list[int] = []
-    for source, combined in sorted(source_to_combined.items()):
+    for source, combined_hosts in sorted(source_to_combined.items()):
         source_reasons = [r for r in reasons.get(str(source), []) if not r.startswith("inherited_exception_rejected:")]
         if source in blocked_sources or source_reasons:
             ineligible_sources.append(source)
         else:
-            eligible_by_combined[str(combined)].append(source)
+            eligible_by_combined[str(combined_hosts[0])].append(source)
     return _emit_json({
         "eligible_by_combined": dict(sorted(eligible_by_combined.items(), key=lambda kv: int(kv[0]))),
         "ineligible_sources": ineligible_sources,
@@ -608,7 +638,7 @@ def apply_main(argv: list[str] | None = None) -> int:
     if not body.is_file():
         print(f"ERROR=Missing or unreadable --body-file: {args.body_file}", file=sys.stderr)
         return 1
-    repo = args.repo or _repo()
+    repo = _resolve_repo(args.repo)
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
@@ -672,7 +702,7 @@ def close_sources_main(argv: list[str] | None = None) -> int:
     p.add_argument("--combined-issue", required=True)
     p.add_argument("--source-issues", required=True)
     args = p.parse_args(argv)
-    repo = args.repo or _repo()
+    repo = _resolve_repo(args.repo)
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
@@ -700,7 +730,7 @@ def close_sources_main(argv: list[str] | None = None) -> int:
     if warnings:
         print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
     print(f"CLOSED_ISSUES={closed}")
-    return 0
+    return 1 if warnings else 0
 
 
 def _source_close_skip_reason(repo: str, source: int) -> str | None:
@@ -722,20 +752,25 @@ def _source_close_skip_reason(repo: str, source: int) -> str | None:
     return None
 
 
-def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str]:
-    if result.returncode == 0:
-        try:
-            data = json.loads(result.stdout or "{}")
-            if isinstance(data, dict):
-                return str(data.get("title") or fallback.get("title") or ""), str(data.get("body") or fallback.get("body") or "")
-        except json.JSONDecodeError:
-            pass
-    return str(fallback.get("title") or ""), str(fallback.get("body") or "")
+def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str, str]:
+    if result.returncode != 0:
+        raise ValueError("issue view failed")
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"issue view JSON invalid: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("issue view JSON must be an object")
+    return (
+        str(data.get("title") or fallback.get("title") or ""),
+        str(data.get("body") or fallback.get("body") or ""),
+        str(data.get("state") or fallback.get("state") or ""),
+    )
 
 
 def _comment_rows(result: proc.CommandResult) -> list[dict[str, Any]]:
     if result.returncode != 0:
-        return []
+        raise ValueError("issue comments read failed")
     rows = gh.loads_json_paginated_list(result.stdout or "[]")
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -760,59 +795,66 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         combined_issue_numbers = set(_parse_issue_csv(args.combined_issues, arg_name="--combined-issues"))
-        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        open_data = _load_json_file(args.open_issues_file, desc="open-issues-file")
+        _require_status_ok(open_data, desc="open-issues-file")
+        open_rows = _open_issue_rows(open_data)
         existing_edges = _load_edge_pair_list(args.existing_edges_file, desc="existing-edges-file")
         source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
     except ValueError as exc:
         return _fail_json_error(str(exc))
     meta = _metadata(open_rows, [])
     for combined_issue in combined_issue_numbers:
-        meta.setdefault(combined_issue, {"number": combined_issue, "title": "", "state": "open", "labels": [], "body": ""})
+        meta.setdefault(combined_issue, {"number": combined_issue, "title": "", "state": "", "labels": [], "body": ""})
     open_numbers = {row["number"] for row in open_rows}
     all_to_scan = sorted(open_numbers | combined_issue_numbers)
     candidates_by_edge: dict[tuple[int, int], dict[str, Any]] = {}
     warnings: list[dict[str, Any]] = []
 
-    def remap(issue: int) -> int:
-        return source_to_combined.get(issue, issue)
-
     def add_candidate(raw_current: int, ref: int, kind: str, evidence_kind: str, comment_id: int | None = None) -> None:
-        current = remap(raw_current)
-        mapped_ref = remap(ref)
-        edge = (current, mapped_ref) if kind == "blocked_by" else (mapped_ref, current)
-        if edge[0] == edge[1] or edge in existing_edges:
-            return
-        if edge[0] not in meta or edge[1] not in meta:
-            return
-        if str(meta[edge[0]].get("state") or "").lower() != "open" or str(meta[edge[1]].get("state") or "").lower() != "open":
-            return
-        if edge[0] not in combined_issue_numbers and edge[1] not in combined_issue_numbers:
-            return
-        if edge in candidates_by_edge:
-            return
-        record: dict[str, Any] = {
-            "edge": [edge[0], edge[1]],
-            "source_kind": "tier1_prose",
-            "confidence": "explicit",
-            "evidence_kind": evidence_kind,
-            "evidence_issue": raw_current,
-            "reason": _candidate_reason(kind, current, mapped_ref),
-        }
-        if comment_id is not None:
-            record["evidence_comment_id"] = comment_id
-        candidates_by_edge[edge] = record
+        for current in _remap_issue_hosts(raw_current, source_to_combined):
+            for mapped_ref in _remap_issue_hosts(ref, source_to_combined):
+                edge = (current, mapped_ref) if kind == "blocked_by" else (mapped_ref, current)
+                if edge[0] == edge[1] or edge in existing_edges:
+                    continue
+                if edge[0] not in meta or edge[1] not in meta:
+                    continue
+                if str(meta[edge[0]].get("state") or "").lower() != "open" or str(meta[edge[1]].get("state") or "").lower() != "open":
+                    continue
+                if edge[0] not in combined_issue_numbers and edge[1] not in combined_issue_numbers:
+                    continue
+                if edge in candidates_by_edge:
+                    continue
+                record: dict[str, Any] = {
+                    "edge": [edge[0], edge[1]],
+                    "source_kind": "tier1_prose",
+                    "confidence": "explicit",
+                    "evidence_kind": evidence_kind,
+                    "evidence_issue": raw_current,
+                    "reason": _candidate_reason(kind, current, mapped_ref),
+                }
+                if comment_id is not None:
+                    record["evidence_comment_id"] = comment_id
+                candidates_by_edge[edge] = record
 
     for issue in all_to_scan:
         fallback = meta.get(issue, {"number": issue, "title": "", "body": "", "state": "open"})
-        view = gh.issue_view_title_body_read(proc, str(issue), repo=args.repo)
-        title, body_text = _issue_content_from_view(view, fallback)
+        view = gh.issue_view_field_read(proc, str(issue), "title,body,state", repo=args.repo)
+        try:
+            title, body_text, state = _issue_content_from_view(view, fallback)
+        except ValueError as exc:
+            warnings.append({"issue": issue, "code": "issue_view_failed", "message": str(exc)})
+            return _emit_json({"status": "failed", "candidates": [], "warnings": warnings}) or 1
         meta[issue] = {
             "number": issue,
             "title": title,
-            "state": str(fallback.get("state") or "open"),
+            "state": state,
             "labels": fallback.get("labels", []),
             "body": body_text,
         }
+
+    issues_to_scan = [issue for issue in all_to_scan if str(meta.get(issue, {}).get("state") or "").lower() == "open"]
+    for issue in issues_to_scan:
+        body_text = str(meta.get(issue, {}).get("body") or "")
         for ref in blocker.parse_prose_blockers(body_text):
             add_candidate(issue, ref, "blocked_by", "body")
         for ref in _parse_prose_blocks(body_text):
@@ -821,8 +863,8 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
         try:
             rows = _comment_rows(comments)
         except Exception as exc:
-            warnings.append({"issue": issue, "code": "comments_json_invalid", "message": str(exc)})
-            rows = []
+            warnings.append({"issue": issue, "code": "comments_read_failed", "message": str(exc)})
+            return _emit_json({"status": "failed", "candidates": [], "warnings": warnings}) or 1
         for row in rows:
             text = str(row.get("body") or "")
             comment_id = _positive_int_value(row.get("id"))
@@ -847,13 +889,13 @@ def _candidate_rows(data: Any, *, desc: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _decided_edge_set(data: Any) -> set[tuple[int, int]]:
+def _decisions_by_edge_value(data: Any) -> dict[tuple[int, int], set[str]]:
     if not isinstance(data, dict) or not isinstance(data.get("decisions", []), list):
         raise ValueError("decided-edges JSON must be an object with decisions list")
-    out: set[tuple[int, int]] = set()
+    out: dict[tuple[int, int], set[str]] = defaultdict(set)
     for item in data.get("decisions", []):
         if isinstance(item, dict):
-            out.add(_normal_edge(item.get("edge"), desc="decided-edges"))
+            out[_normal_edge(item.get("edge"), desc="decided-edges")].add(str(item.get("decision") or ""))
     return out
 
 
@@ -874,8 +916,10 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
             tagged["_candidate_origin"] = "tier2"
             tier2.append(tagged)
         existing = _load_edge_pair_list(args.existing_edges_file, desc="existing-edges-file")
-        decided = _decided_edge_set(_load_json_file(args.decided_edges_file, desc="decided-edges-file"))
-        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        decided = _decisions_by_edge_value(_load_json_file(args.decided_edges_file, desc="decided-edges-file"))
+        open_data = _load_json_file(args.open_issues_file, desc="open-issues-file")
+        _require_status_ok(open_data, desc="open-issues-file")
+        open_rows = _open_issue_rows(open_data)
         combined_rows = _combined_issue_rows(_load_json_file(args.combined_issues_file, desc="combined-issues-file"))
     except ValueError as exc:
         return _fail_json_error(str(exc))
@@ -885,7 +929,8 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     duplicate = 0
     for row in prose + tier2:
         edge = _normal_edge(row.get("edge"), desc="candidate")
-        if edge in existing or edge in decided:
+        edge_decisions = decided.get(edge, set())
+        if edge in existing or "rejected" in edge_decisions or "unresolved" in edge_decisions:
             duplicate += 1
             continue
         if edge in merged:
@@ -933,7 +978,7 @@ def fetch_main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default="")
     p.add_argument("--oos", action="store_true")
     args = p.parse_args(argv)
-    repo = args.repo or _repo()
+    repo = _resolve_repo(args.repo)
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
