@@ -947,7 +947,61 @@ def test_make_conflict_launch_fn_ingests_external_token_sidecar(
     assert len(ingest_calls) == 1
     assert ingest_calls[0]["tmpdir"] == str(tmp_path)
     assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
+    assert isinstance(ingest_calls[0]["seen"], set)
     assert ingest_calls[0]["cwd"] == str(tmp_path)
+
+
+def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "launch"
+    sidecar = out_dir / "cursor.token-record"
+    sidecar.parent.mkdir(parents=True)
+    _ = sidecar.write_text("TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n", encoding="utf-8")
+    runner = ScriptRunner([], permissive=True)
+    runner_returncodes = [0, 3, 0]
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    def _launch_stdout(
+        _runner: ScriptRunner,
+        tier: str,
+        **kwargs: object,
+    ) -> CommandResult:
+        _ = _runner, tier, kwargs
+        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={sidecar}\n", "", 0.01)
+
+    def _ingest_run(
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        _ = timeout, cwd, env, check, stdout, stderr
+        key = tuple(argv)
+        runner.calls.append(key)
+        rc = runner_returncodes.pop(0) if runner_returncodes else 0
+        return CommandResult(key, rc, "", "", 0.01)
+
+    monkeypatch.setattr(runner, "run", _ingest_run)
+    monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="owner/repo",
+        run_id="run-42",
+        output_dir=out_dir,
+        cwd=str(tmp_path),
+    )
+
+    _ = launch_fn("cursor", "a.txt")
+    _ = launch_fn("cursor", "a.txt")
+
+    verbs = [call[3] for call in runner.calls]
+    assert verbs == ["append-record", "record-vendor-sidecar", "record-vendor-sidecar"]
 
 
 def test_deterministic_prepass_no_checkout_ours_on_vendor() -> None:

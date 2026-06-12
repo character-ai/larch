@@ -185,6 +185,7 @@ def make_conflict_launch_fn(
     """Build a fixer launch_fn using ``build_launch_argv`` / ``launch_tier`` parity."""
     out_root = Path(output_dir)
     out_root.mkdir(parents=True, exist_ok=True)
+    seen_token_records: set[str] = set()
 
     def launch(tier: str, conflict_csv: str) -> agents.TierAttempt:
         output = out_root / f"conflict-{tier}.out"
@@ -207,6 +208,7 @@ def make_conflict_launch_fn(
                 output=output,
                 tmpdir=implement_tmpdir,
                 implement_tmpdir=implement_tmpdir,
+                seen=seen_token_records,
                 cwd=cwd,
             )
         launcher_exit = agents.parse_launcher_exit_text(result.stdout)

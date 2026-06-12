@@ -433,8 +433,15 @@ run_codex() {
     [[ -n "$parsed_exit" ]] || parsed_exit=1
     rm -f "$launcher_stdout"
     if [[ -s "${run_dir}/codex.log.token-record" ]]; then
-        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
-            --input "${run_dir}/codex.log.token-record" >/dev/null 2>&1 || true
+        if ! python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
+            --input "${run_dir}/codex.log.token-record" \
+            --tmpdir "$IMPLEMENT_TMPDIR" >/dev/null 2>&1; then
+            larch_err "lint-fix-loop: warning: codex token-report append failed; continuing."
+        fi
+        if ! IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+            --input "${run_dir}/codex.log.token-record" >/dev/null 2>&1; then
+            larch_err "lint-fix-loop: warning: codex active-ledger token append failed; continuing."
+        fi
     fi
     if (( parsed_exit != 0 )); then
         if [[ -s "${run_dir}/codex.log.sidecar" ]]; then
