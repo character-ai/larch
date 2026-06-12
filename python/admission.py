@@ -109,6 +109,11 @@ def _blockers(issue: int, repo: str) -> tuple[int, str]:
     return 0, ""
 
 
+def _blocker_failure(rc: int) -> int:
+    _emit_kv("ADMISSION_ERROR", f"blocker check failed (exit {rc})")
+    return 2
+
+
 def _read_parent_sentinel(issue: int) -> bool:
     tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not tmpdir:
@@ -171,7 +176,7 @@ def gate_main(argv: list[str]) -> int:
     if _read_parent_sentinel(issue):
         blocker_rc, blockers = _blockers(issue, repo)
         if blocker_rc != 0:
-            blockers = ""
+            return _blocker_failure(blocker_rc)
         if blockers:
             _emit_kv("ADMISSION_RESULT", "has-blockers")
             _emit_kv("BLOCKERS", blockers)
@@ -197,7 +202,7 @@ def gate_main(argv: list[str]) -> int:
         return 6
     blocker_rc, blockers = _blockers(issue, repo)
     if blocker_rc != 0:
-        blockers = ""
+        return _blocker_failure(blocker_rc)
     if blockers:
         _emit_kv("ADMISSION_RESULT", "has-blockers")
         _emit_kv("BLOCKERS", blockers)

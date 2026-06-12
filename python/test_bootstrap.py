@@ -264,6 +264,45 @@ def test_resume_plan_tail_appends_emergency_bypass_before_flags(tmp_path, monkey
     assert order[:2] == ["bypass", "flags"]
 
 
+def test_resume_plan_tail_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
+
+    def dirty_checkpoint() -> list[str]:
+        raise AssertionError("dirty checkpoint should not run after run flag persistence failure")
+
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", dirty_checkpoint)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
+        implement_tmpdir=str(tmp_path),
+    )
+    bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.implement_bail_reason == "run-flags-persist-failed"
+
+
+def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "_append_emergency_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
+
+    def dirty_checkpoint() -> list[str]:
+        raise AssertionError("dirty checkpoint should not run after run flag persistence failure")
+
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", dirty_checkpoint)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+        issue_number_resolved="7",
+    )
+    bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.implement_bail_reason == "run-flags-persist-failed"
+
+
 def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> None:
     calls: list[list[str]] = []
     preflight = tmp_path / "preflight"

@@ -589,7 +589,8 @@ def _phase_plan(st: BootstrapState) -> None:
     if st.opts.resume_plan_tail:
         if not _append_emergency_bypass(st):
             st.emit_tmp_step_failed("emergency-bypass-log")
-        _persist_run_flags(st)
+        if not _persist_run_flags(st):
+            return
     else:
         snapshot = Path(st.implement_tmpdir) / "untracked-baseline.z"
         if not snapshot.exists():
@@ -617,7 +618,8 @@ def _phase_plan(st: BootstrapState) -> None:
             (Path(st.implement_tmpdir) / "gh-issue-view.stderr.log").write_text(gh.stderr, encoding="utf-8")
             st.emit_tmp_step_failed("gh-issue-view")
         feature_file.write_text(gh.stdout, encoding="utf-8")
-        _persist_run_flags(st)
+        if not _persist_run_flags(st):
+            return
     dirty_lines = dirty_tree.checkpoint()
     dkv = _parse_kv("\n".join(dirty_lines))
     if dkv.get("STATUS") in {"dirty", "unknown"}:

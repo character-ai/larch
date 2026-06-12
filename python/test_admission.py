@@ -322,12 +322,27 @@ def test_gate_exit_matrix(monkeypatch, capsys) -> None:
         assert expected_line in capsys.readouterr().out
 
 
-def test_gate_blocker_failure_is_fail_open_for_missing_designed_prefix(monkeypatch, capsys) -> None:
+def test_gate_blocker_failure_fails_closed(monkeypatch, capsys) -> None:
     payload = {"title": "Plain work", "state": "OPEN", "labels": []}
     monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (2, ""))  # pyright: ignore[reportPrivateUsage]
-    assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 5
-    assert "ADMISSION_RESULT=missing-designed-prefix" in capsys.readouterr().out
+    assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
+    out = capsys.readouterr().out
+    assert "ADMISSION_ERROR=blocker check failed (exit 2)" in out
+    assert "ADMISSION_RESULT=missing-designed-prefix" not in out
+
+
+def test_gate_resume_blocker_failure_fails_closed(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("RUN_ID", "R1")
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
+    payload = {"title": "[IMPLEMENTING] Work", "state": "OPEN", "labels": []}
+    monkeypatch.setattr(admission, "_gh_issue_view", lambda _issue, _repo: (0, json.dumps(payload)))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_blockers", lambda _issue, _repo: (2, ""))  # pyright: ignore[reportPrivateUsage]
+    assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
+    out = capsys.readouterr().out
+    assert "ADMISSION_ERROR=blocker check failed (exit 2)" in out
+    assert "RESUME=true" not in out
 
 
 def test_fork_env_success(tmp_path, monkeypatch, capsys) -> None:
