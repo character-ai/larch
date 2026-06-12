@@ -33,7 +33,7 @@ saw_py_launcher = False
 CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
-EXPECTED_OLD = 5
+EXPECTED_OLD = 4
 EXPECTED_NEW = 32
 
 def old_logical_commands(body):
@@ -63,10 +63,10 @@ def old_logical_commands(body):
 def old_target_kind(cmd):
     if 'scripts/extract-closes-issue-from-pr.sh' in cmd:
         return 'structured-invocation'
-    if 'python/cli.py' in cmd and 'plan-block read' in cmd and '--repo "$UPSTREAM_REPO"' in cmd:
-        return 'preflight-plan-fork'
+    if 'scripts/implement-preflight.sh' in cmd:
+        return 'preflight-helper'
     if 'python/cli.py' in cmd and 'plan-block read' in cmd:
-        return 'preflight-plan-default'
+        return 'preflight-plan-direct'
     if 'skills/implement/scripts/step-0-bootstrap.sh' in cmd and '--mode initial' in cmd:
         return 'step-0-initial'
     if 'skills/implement/scripts/step-0-bootstrap.sh' in cmd and '--mode resume' in cmd:
@@ -83,6 +83,12 @@ def nonblank_lines(body):
     return [(ln, raw) for ln, raw in body if raw.strip()]
 
 def validate_old(start, end, body, commands, cmd, kind):
+    if kind == 'preflight-plan-direct':
+        errors.append(f'fence {start}-{end}: direct Preflight plan-block read fence is forbidden')
+        return
+    if kind == 'preflight-helper':
+        validate_preflight_helper(start, end, body, commands, cmd)
+        return
     if len(commands) != 1:
         errors.append(f'fence {start}-{end}: old-shape {kind} must have exactly one logical command, found {len(commands)}')
     if not has_guard(body):
@@ -92,7 +98,7 @@ def validate_old(start, end, body, commands, cmd, kind):
     if requires_awk and not awk:
         errors.append(f'fence {start}-{end}: old-shape {kind} missing session-env awk fallback')
     if not requires_awk and awk:
-        errors.append(f'fence {start}-{end}: preflight plan-block read must remain guard-only without awk fallback')
+        errors.append(f'fence {start}-{end}: old-shape {kind} must remain guard-only without awk fallback')
     if kind == 'step-0-initial' and '--mode initial' not in cmd:
         errors.append(f'fence {start}-{end}: Step 0 initial old-shape target missing --mode initial')
     if kind == 'dirty-tree-resume' and '--mode resume' not in cmd:
@@ -100,6 +106,32 @@ def validate_old(start, end, body, commands, cmd, kind):
     if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', cmd):
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {cmd}')
 
+
+def validate_preflight_helper(start, end, body, commands, cmd):
+    if not has_guard(body):
+        errors.append(f'fence {start}-{end}: preflight-helper missing canonical plugin-root.env guard')
+    if has_awk(body):
+        errors.append(f'fence {start}-{end}: preflight-helper must not use session-env awk fallback')
+    if cmd.count('scripts/implement-preflight.sh') != 1:
+        errors.append(f'fence {start}-{end}: preflight-helper must invoke scripts/implement-preflight.sh exactly once')
+    required = [
+        'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"',
+        '--issue "$TARGET_ISSUE_NUMBER"',
+        '--preflight-tmpdir "$PREFLIGHT_TMPDIR"',
+        'preflight_args=(',
+        '"${preflight_args[@]}"',
+    ]
+    for needle in required:
+        if needle not in cmd:
+            errors.append(f'fence {start}-{end}: preflight-helper missing {needle}')
+    if '--repo "$UPSTREAM_REPO"' not in cmd or '[ -n "${UPSTREAM_REPO:-}" ]' not in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must add --repo only inside the UPSTREAM_REPO non-empty branch')
+    if '--emergency' not in cmd or '[ "${emergency_requested:-false}" = true ]' not in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must add --emergency only inside the emergency_requested=true branch')
+    if '${emergency_requested:+--emergency}' in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must not use parameter-expansion emergency argv')
+    if re.search(r'(?<!bash )"\$\{CLAUDE_PLUGIN_ROOT\}/scripts/implement-preflight\.sh"', cmd):
+        errors.append(f'fence {start}-{end}: preflight-helper must invoke the helper through bash')
 
 def validate_new(start, end, body):
     global saw_py_launcher
@@ -140,10 +172,17 @@ def validate_new(start, end, body):
         errors.append(f'fence {start}-{end}: telemetry-only script invocation is not allowed: {stripped}')
 
 for start, end, body in fences:
+    body_text = '\n'.join(raw for _, raw in body)
     for _, raw in body:
         if 'session read-key' in raw:
             errors.append(f'fence {start}-{end}: inline session read-key is not allowed')
             break
+    if 'python/cli.py' in body_text and 'plan-block read' in body_text:
+        errors.append(f'fence {start}-{end}: direct Preflight plan-block read call is forbidden')
+    if 'gh issue view' in body_text:
+        errors.append(f'fence {start}-{end}: direct Preflight gh issue view call is forbidden')
+    if 'scripts/implement-preflight.sh' in body_text and 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"' not in body_text:
+        errors.append(f'fence {start}-{end}: preflight helper must be executed through bash')
     commands = old_logical_commands(body)
     cmd = ' '.join(commands)
     kind = old_target_kind(cmd)
