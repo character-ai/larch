@@ -6,8 +6,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 TMPROOT="$(mktemp -d /tmp/larch-test-dispatch-waterfall-XXXXXX)"
 trap 'rm -rf "$TMPROOT"' EXIT
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+export LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Linux
+export LARCH_LIB_CURSOR_AUTH_TEST_MODE=1
+export LIB_CURSOR_AUTH_TEST_UNAME=Linux
 # Suppress launch-review.sh transient-retry backoffs (#2357 added 2/4/8s
 # default jittered backoff). Tests not exercising retry timing set this to
 # 0 to skip the sleep and avoid gating the harness on backoff wall time.
