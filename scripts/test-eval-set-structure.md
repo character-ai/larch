@@ -30,7 +30,7 @@ test-eval-set-structure:
 
 (Recipe lines in a Makefile MUST begin with a literal tab; the example reproduces the actual file's bytes.)
 
-`test-eval-set-structure` is added to the `.PHONY` declaration line but is NOT appended to `test-harnesses`. CI runs `make lint` which exercises `test-harnesses + lint-only`; this target is invoked manually by operators. Mirrors the `halt-rate-probe` / `smoke-dialectic` precedent.
+`test-eval-set-structure` is added to the `.PHONY` declaration line but is NOT appended to `test-harnesses`. CI runs `make lint` which exercises `test-harnesses + lint-only`; this target is invoked manually by operators. Mirrors the `halt-rate-probe` precedent.
 
 ## Edit-in-sync
 

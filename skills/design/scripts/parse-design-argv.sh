@@ -53,9 +53,7 @@ write_output_body() {
         printf '\n' >>"$output_tmp" || return 1
         return 0
     fi
-    printf 'hard_requested=' >>"$output_tmp" || return 1
-    quote_single "$hard_requested" >>"$output_tmp" || return 1
-    printf '\npartition_requested=' >>"$output_tmp" || return 1
+    printf 'partition_requested=' >>"$output_tmp" || return 1
     quote_single "$partition_requested" >>"$output_tmp" || return 1
     printf '\nbrainstorm_requested=' >>"$output_tmp" || return 1
     quote_single "$brainstorm_requested" >>"$output_tmp" || return 1
@@ -103,7 +101,6 @@ case "${1:-}" in
         ;;
 esac
 
-hard_requested=false
 partition_requested=false
 brainstorm_requested=false
 approve_requested=false
@@ -113,19 +110,17 @@ run_id=""
 first_positional=""
 positional_value=""
 positional_kind=none
+after_terminator=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --)
             shift
+            after_terminator=true
             break
             ;;
         --hard)
-            if [ "$hard_requested" = true ]; then
-                validation_error '--hard'
-            fi
-            hard_requested=true
-            shift
+            validation_error '--hard'
             ;;
         -p | --partition)
             partition_requested=true
@@ -176,6 +171,15 @@ if [ "$#" -gt 0 ]; then
     first_positional="$1"
     if [[ "$first_positional" =~ ^[0-9]+$ ]]; then
         positional_value="$first_positional"
+        if [ "$after_terminator" != true ]; then
+            shift
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --hard) validation_error '--hard' ;;
+                esac
+                shift
+            done
+        fi
     else
         positional_value="$1"
         shift
@@ -202,7 +206,6 @@ if ! write_output_file; then
     exit 1
 fi
 
-printf '%s\n' "HARD_REQUESTED=$hard_requested"
 printf '%s\n' "PARTITION_REQUESTED=$partition_requested"
 printf '%s\n' "BRAINSTORM_REQUESTED=$brainstorm_requested"
 printf '%s\n' "APPROVE_REQUESTED=$approve_requested"

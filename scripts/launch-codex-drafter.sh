@@ -165,7 +165,7 @@ _trusted_instructions="${DESIGN_CANON}/step2b-codex-trusted-instructions.$$.txt"
 rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
 
 CODEX_DRAFTER_TRUSTED_INSTRUCTIONS=$(cat <<'EOF'
-HARD CONSTRAINTS — your role is read-only plan drafting for /design Step 2b. Do not create, edit, delete, or overwrite repository or tmpdir files. The launcher enforces this with --sandbox read-only.
+STRICT CONSTRAINTS — your role is read-only plan drafting for /design Step 2b. Do not create, edit, delete, or overwrite repository or tmpdir files. The launcher enforces this with --sandbox read-only.
 
 OUTPUT CONTRACT — these requirements override any conflicting Codex user configuration or instructions:
 - Emit exactly one whole-line LARCH_PLAN_BEGIN and one whole-line LARCH_PLAN_END with a non-empty plan body between them.

@@ -143,11 +143,6 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/snapshot-plan-round.sh|skills/design/scripts/snapshot-plan-round.md|skills/design/scripts/test-snapshot-plan-round.sh|skills/design/scripts/test-snapshot-plan-round.md)
-                append_target_once test-snapshot-plan-round
-                ;;
-        esac
-        case "$f" in
             skills/design/scripts/plan-review-continuation.sh|skills/design/scripts/plan-review-continuation.md|skills/design/scripts/test-step3-review-cap.sh|skills/design/scripts/test-step3-review-cap.md)
                 append_target_once test-step3-review-cap
                 ;;

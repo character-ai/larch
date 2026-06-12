@@ -187,7 +187,7 @@ When your skill consumes a session-env file, always route through `session-setup
 
 `--session-env` forwarding and `/design`'s internal heavy-worker dispatch address orthogonal concerns.
 
-- **`/design` execution topology.** `/design` runs sketches → dialectic → plan review → finalize inline in the current context. There is no Agent-tool subagent dispatch.
+- **`/design` execution topology.** `/design` runs sentinel prep → direct plan drafting → plan review → finalize inline in the current context. There is no Agent-tool subagent dispatch.
 
 `SESSION_ENV_PATH` / `--caller-env` shape what crosses the parent/child call boundary. When `/design` is nested under another orchestrator with a non-empty session env, verbosity suppression in `/design` still follows that nested contract.
 
@@ -199,7 +199,7 @@ When your skill consumes a session-env file, always route through `session-setup
 
 The worst shape, and the one that gets skipped most often, is a single-line conditional paragraph that buries the Skill-tool invocation:
 
-> If the classification is HARD, call `/implement --merge $ISSUE_NUMBER` after exporting `SESSION_ENV_PATH="$TMPDIR/session-env.sh"`; otherwise call `/implement --merge $ISSUE_NUMBER` with the same `SESSION_ENV_PATH` (same invocation — do not branch on a pre-design "SIMPLE" guess).
+> Call `/implement --merge $ISSUE_NUMBER` after exporting `SESSION_ENV_PATH="$TMPDIR/session-env.sh"`.
 
 Prose conditionals bury the invocation and reliably slip past the executing model — especially mid-run. Rewrite as an explicit numbered sub-step whose center is the `Skill` tool call (or as Pattern B's heading + variant bullets shape), so the Skill-tool call is the visual center of the step.
 

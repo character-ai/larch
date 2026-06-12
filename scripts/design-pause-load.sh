@@ -33,7 +33,7 @@ clear_pause_marker() {
 
 load_fail_retryable() {
     case "$1" in
-        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree)
+        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree|sentinel-artifact-conflict|sentinel-repair-failed)
             return 0
             ;;
         *)
@@ -78,6 +78,60 @@ validate_repo_value() {
 
 larch_log_slug_is_valid() {
     [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+exact_line_file() {
+    local file="$1" expected="$2"
+    awk -v expected="$expected" '
+      NR == 1 { ok = ($0 == expected) }
+      NR > 1 { ok = 0 }
+      END { exit (NR == 1 && ok) ? 0 : 1 }
+    ' "$file" 2>/dev/null
+}
+
+repair_no_sketch_sentinels() {
+    local root="$1"
+    local no_sketches="NO_SKETCHES"
+    local no_contested="NO_CONTESTED_DECISIONS"
+    local artifacts_ok=true
+    local legacy_no_sketches=false
+    local approach_contents
+
+    approach_contents="$(cat "$root/approach-synthesis.txt" 2>/dev/null || true)"
+    if exact_line_file "$root/approach-synthesis.txt" "$no_sketches"; then
+        :
+    elif [[ "$approach_contents" == "NO_SKETCHES_CLASSIFIED_SI""MPLE" || "$approach_contents" == "NO_SKETCHES_DEGRADED_HA""RD" ]]; then
+        legacy_no_sketches=true
+        artifacts_ok=false
+    else
+        artifacts_ok=false
+    fi
+    if exact_line_file "$root/contested-decisions.md" "$no_contested"; then
+        :
+    else
+        artifacts_ok=false
+    fi
+    [[ -f "$root/dialectic-resolutions.md" ]] || artifacts_ok=false
+
+    if [[ -s "$root/approach-synthesis.txt" ]] \
+        && ! exact_line_file "$root/approach-synthesis.txt" "$no_sketches" \
+        && [[ "$legacy_no_sketches" != true ]]; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+    if [[ -s "$root/contested-decisions.md" ]] && ! exact_line_file "$root/contested-decisions.md" "$no_contested"; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+    if [[ -s "$root/dialectic-resolutions.md" ]]; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+
+    if [[ "$artifacts_ok" != true ]]; then
+        printf '%s\n' "$no_sketches" >"$root/approach-synthesis.txt" || emit_load_fail "sentinel-repair-failed"
+        printf '%s\n' "$no_contested" >"$root/contested-decisions.md" || emit_load_fail "sentinel-repair-failed"
+        : >"$root/dialectic-resolutions.md" || emit_load_fail "sentinel-repair-failed"
+    fi
+    mkdir -p "$root/.completed" || emit_load_fail "sentinel-repair-failed"
+    : >"$root/.completed/step-2a" || emit_load_fail "sentinel-repair-failed"
 }
 
 resolve_repo() {
@@ -153,7 +207,6 @@ esac
 RUN_ID=$(kv_get RUN_ID "$payload_tmp")
 STEP=$(kv_get STEP "$payload_tmp")
 SESSION_ID=$(kv_get SESSION_ID "$payload_tmp")
-TIER=$(kv_get TIER "$payload_tmp")
 BRAINSTORM_DONE=$(kv_get BRAINSTORM_DONE "$payload_tmp")
 BODY_HASH=$(kv_get BODY_HASH "$payload_tmp")
 LOG_RECOVERY_BRANCH=$(kv_get LOG_RECOVERY_BRANCH "$payload_tmp")
@@ -179,6 +232,9 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
 fi
 
 validate_plain_value step "$STEP"
+case "$STEP" in
+    2a.5) STEP=2b ;;
+esac
 STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 if ! awk -F '\t' -v step="$STEP" '$1 == step { found=1 } END { exit(found ? 0 : 1) }' "$STEP_REGISTRY"; then
     emit_load_fail "invalid-step"
@@ -187,13 +243,6 @@ fi
 if [[ -n "$SESSION_ID" ]]; then
     validate_plain_value session-id "$SESSION_ID"
     [[ "$SESSION_ID" == "$RUN_ID" ]] || emit_load_fail "invalid-session-id"
-fi
-
-if [[ -n "$TIER" ]]; then
-    case "$TIER" in
-        SIMPLE|HARD|unknown) ;;
-        *) emit_load_fail "invalid-tier" ;;
-    esac
 fi
 
 if [[ -n "$BRAINSTORM_DONE" ]]; then
@@ -290,11 +339,6 @@ if [[ "$plan_required" == true ]]; then
     [[ -f "$restore_tmp/plan.txt" ]] || emit_load_fail "missing-restored-artifact"
 fi
 
-RESTORED_DESIGN_CLASSIFICATION=$(jq -r '.design_classification // empty' "$restore_tmp/run-params.json" 2>/dev/null) || RESTORED_DESIGN_CLASSIFICATION=""
-case "$RESTORED_DESIGN_CLASSIFICATION" in
-    SIMPLE|HARD) ;;
-    *) RESTORED_DESIGN_CLASSIFICATION=HARD ;;
-esac
 
 RESTORED_ISSUE=$(kv_get ISSUE_NUMBER "$restore_tmp/pause-state.txt")
 validate_plain_value restored-issue-number "$RESTORED_ISSUE"
@@ -328,6 +372,10 @@ fi
 
 rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
 
+if [[ "$STEP" == "2b" ]]; then
+    repair_no_sketch_sentinels "$restore_tmp"
+fi
+
 : > "$restore_tmp/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
@@ -339,7 +387,6 @@ emit_kv LOAD_OK true
 emit_kv STEP "$STEP"
 emit_kv SESSION_ID "${SESSION_ID:-$RUN_ID}"
 emit_kv RUN_ID "$RUN_ID"
-emit_kv TIER "${TIER:-unknown}"
 emit_kv BRAINSTORM_DONE "${BRAINSTORM_DONE:-false}"
 [[ -n "$CURRENT_REPO" ]] && emit_kv REPO "$CURRENT_REPO"
 [[ -n "$WARN_VALUE" ]] && emit_kv WARN "$WARN_VALUE"

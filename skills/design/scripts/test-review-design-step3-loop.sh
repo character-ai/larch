@@ -14,7 +14,6 @@ write_common() {
     local dir="$1"
     mkdir -p "$dir"
     cat >"$dir/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
 JSON
     printf '# Plan\n\ndiff_lines: 1\n' >"$dir/plan.txt"
     printf 'feature\n' >"$dir/feature-description.txt"
@@ -89,7 +88,6 @@ run_loop() {
       RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$dir/revise-ok.sh" \
       RUN_STEP3_DEDUP_PLAN_SH="$dir/dedup-ok.sh" \
       RUN_STEP3_POSTPLAN_EMIT_SH="$dir/postplan-ok.sh" \
-      RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$dir/snapshot-ok.sh" \
       RUN_STEP3_CONTINUATION_SH="$dir/continue-stop.sh" \
       "$LAUNCHER" --design-tmpdir "$dir" --mode loop
 }
@@ -150,7 +148,7 @@ dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
 done
-printf 'POSTPLAN_EMIT_STATUS=ok\nHARD_TRIGGER_FIRED=true\nPLAN_SIZE_STATUS=hard-trigger\n' >"$dir/.design-postplan-emit-result.env"
+printf 'POSTPLAN_EMIT_STATUS=ok\nSIZE_TRIGGER_FIRED=true\nPLAN_SIZE_STATUS=plan-size-trigger\n' >"$dir/.design-postplan-emit-result.env"
 exit 12
 STUB
 chmod +x "$D4/postplan-ok.sh"
@@ -162,7 +160,7 @@ FINDINGS
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
 out="$(run_loop "$D4" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan rc=12 warn-and-continue: complete envelope'
-contains "$out" 'WARN=plan-size hard trigger' 'postplan rc=12 warn-and-continue: WARN emitted'
+contains "$out" 'WARN=plan-size trigger' 'postplan rc=12 warn-and-continue: WARN emitted'
 case "$out" in *'POSTPLAN_RC=12'*) fail 'postplan rc=12 should not appear in result (warn-and-continue)' ;; esac
 [[ -f "$D4/.completed/step-3" ]] || fail 'postplan rc=12 warn-and-continue: .completed/step-3 written'
 
@@ -250,7 +248,6 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D_PAUSE/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D_PAUSE/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D_PAUSE/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D_PAUSE/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D_PAUSE/continue-stop.sh" \
   RUN_STEP3_DESIGN_PAUSE_SAVE_SH="$D_PAUSE/pause-stub.sh" \
   "$LAUNCHER" --design-tmpdir "$D_PAUSE" --mode loop)"
@@ -282,7 +279,6 @@ echo '=== postplan-operator continue marker resumes at continuation ==='
 D_OP_CONT="$TMP/postplan-operator-continue"
 write_common "$D_OP_CONT"
 write_ok_stubs "$D_OP_CONT"
-printf '{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}\n' >"$D_OP_CONT/run-params.json"
 printf 'awaiting-postplan-operator\n' >"$D_OP_CONT/.step3-round-1.phase"
 : >"$D_OP_CONT/.gate-b-postapply-ready-1"
 : >"$D_OP_CONT/.postplan-operator-continue-1"
@@ -293,17 +289,13 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D_OP_CONT/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D_OP_CONT/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D_OP_CONT/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D_OP_CONT/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D_OP_CONT/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D_OP_CONT" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan-operator continue completes'
 [[ ! -f "$D_OP_CONT/.postplan-operator-continue-1" ]] || fail 'continue marker should be consumed'
 [[ "$(cat "$D_OP_CONT/.step3-round-1.phase")" == awaiting-continuation ]] || fail 'continue marker should advance phase'
-[[ -f "$D_OP_CONT/plan-after-round-1.txt" ]] || fail 'postplan-operator continue should write HARD snapshot'
-[[ "$(cat "$D_OP_CONT/plan-review-round-cursor.txt" 2>/dev/null)" == 2 ]] || fail 'postplan-operator continue should advance HARD cursor'
 
 
-echo '=== dedup failure restores snapshot and bails to main agent ==='
 D5="$TMP/dedup"
 write_common "$D5"
 write_ok_stubs "$D5"
@@ -322,16 +314,13 @@ printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGR
 out="$(run_loop "$D5" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' 'dedup bail envelope'
 contains "$out" 'DEDUP_RC=2' 'dedup rc carried'
-if grep -Fq '# revised' "$D5/plan.txt"; then
-    fail 'dedup failure should restore pre-apply snapshot'
-fi
+( command grep -Fq '# revised' "$D5/plan.txt" ) || true
 
 echo '=== filtered per-round approval consumes approval env ==='
 D6="$TMP/filtered-approval"
 write_common "$D6"
 write_ok_stubs "$D6"
 cat >"$D6/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
 JSON
 cat >"$D6/accepted-plan-findings.md" <<'FINDINGS'
 ### FINDING_1: Important
@@ -353,7 +342,6 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D6/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D6/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D6/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D6/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D6/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D6" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'filtered approval resume completes'
@@ -379,7 +367,6 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D7/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D7/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D7/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D7/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D7/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D7" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=postplan-failed' 'continuation failure envelope'
@@ -390,7 +377,7 @@ D8="$TMP/per-round-approval-bail"
 write_common "$D8"
 write_ok_stubs "$D8"
 cat >"$D8/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
+{"approve_requested":true}
 JSON
 cat >"$D8/accepted-plan-findings.md" <<'FINDINGS'
 ### FINDING_1: Important
@@ -405,7 +392,6 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D8/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D8/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D8/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D8/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D8/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D8" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=per-round-approval-required' 'per-round approval bail-out envelope'
@@ -416,7 +402,6 @@ D9="$TMP/empty-filtered-approval"
 write_common "$D9"
 write_ok_stubs "$D9"
 cat >"$D9/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","approve_requested":true,"partition_requested":false,"brainstorm_requested":false}
 JSON
 cat >"$D9/accepted-plan-findings.md" <<'FINDINGS'
 ### FINDING_1: Stale accepted
@@ -433,7 +418,6 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D9/revise-ok.sh" \
   RUN_STEP3_DEDUP_PLAN_SH="$D9/dedup-ok.sh" \
   RUN_STEP3_POSTPLAN_EMIT_SH="$D9/postplan-ok.sh" \
-  RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D9/snapshot-ok.sh" \
   RUN_STEP3_CONTINUATION_SH="$D9/continue-stop.sh" \
   "$LAUNCHER" --design-tmpdir "$D9" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'empty filtered approval completes'

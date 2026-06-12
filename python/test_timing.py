@@ -27,20 +27,19 @@ def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:
     assert "/tmp/secret" not in text
 
 
-def test_timing_report_design_classification_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_timing_report_design_omits_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(
         "v1\tmark\t10\tdesign\tdesign Step 0\t-\t-\t-\t-\t-\t-\t-\t-\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "run-params.json").write_text('{"design_classification":"SIMPLE"}', encoding="utf-8")
     monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
     monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "30")
     data = timing.TimingReport(ledger).render_json()
-    assert data["workflow_path"] == "SIMPLE"
+    assert "workflow_path" not in data
 
 
-def test_timing_report_json_and_design_workflow_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_timing_report_json_and_design_totals(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(
         "v1\tmark\t10\tdesign\tdesign Step 0\t-\t-\t-\t-\t-\t-\t-\t-\n"
@@ -48,11 +47,10 @@ def test_timing_report_json_and_design_workflow_fallback(tmp_path: Path, monkeyp
         "v1\tvendor\t18\tdesign\t-\tcodex\tcodex-review\t11\t18\t7\tout.log\t0\tcomplete\n",
         encoding="utf-8",
     )
-    _ = (tmp_path / "run-params.json").write_text('{"workflow_path":"HARD"}', encoding="utf-8")
     monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
     monkeypatch.setenv("LARCH_TEST_TIMING_NOW", "30")
     data = timing.TimingReport(ledger).render_json()
-    assert data["workflow_path"] == "HARD"
+    assert "workflow_path" not in data
     assert data["total_seconds"] == 10
     assert data["vendor_task_averages"]
 
@@ -138,7 +136,7 @@ def test_timing_report_implement_hides_workflow_path(tmp_path: Path, monkeypatch
     markdown = timing.TimingReport(ledger).render(mode="full", fmt="markdown")
     assert "**Workflow path**:" not in markdown
     data = timing.TimingReport(ledger).render_json()
-    assert data["workflow_path"] == "unknown"
+    assert "workflow_path" not in data
 
 
 def test_timing_harness_mark_missing_executable_emits_sentinel(capsys: pytest.CaptureFixture[str]) -> None:

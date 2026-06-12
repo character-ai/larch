@@ -146,9 +146,8 @@ done
 # flag-like values must be rejected with exit 2 and a clear message, NOT
 # silently consumed (which would either pass `--prompt` as the timing-task-kind
 # value or hit the unknown-flag branch later, masking the original arg-shape
-# defect). The dialectic-execution.md template fix (Bug #1) prevents the LLM
-# from constructing this argv shape in the first place; the launcher
-# validation is defense in depth.
+# defect). Runtime templates are expected to avoid this argv shape; the
+# launcher validation is defense in depth.
 set +e
 "$LAUNCHER" --output "$TMPDIR/bad-empty-tk.txt" --timeout 5 --timing-task-kind "" --prompt "x" >/dev/null 2>"$TMPDIR/bad-empty-tk.stderr"
 RC=$?
@@ -285,7 +284,7 @@ case "$CODEX_HOME_VALUE" in
 esac
 if [[ -s "$CODEX_CONFIG_FILE" ]] \
    && [[ "$(sed -n '1p' "$CODEX_CONFIG_FILE")" == "instructions = '''" ]] \
-   && grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$CODEX_CONFIG_FILE"; then
+   && grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$CODEX_CONFIG_FILE"; then
     pass
 else
     fail "review CODEX_HOME config.toml should carry top-level hardening instructions"
@@ -312,12 +311,12 @@ assert_grep "dirty-tree sidecar mode" "MODE=baseline" "${OUTPUT}.dirty-tree"
 # Issue #1529 / #1708: the hardening preamble is applied through
 # CODEX_HOME/config.toml instructions, not the outgoing PROMPT or retry
 # sidecar.
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV"; then
-    fail "issue #1708 codex argv prompt must NOT carry the HARD CONSTRAINTS preamble"
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV"; then
+    fail "issue #1708 codex argv prompt must NOT carry the STRICT CONSTRAINTS preamble"
 else
     pass
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "${OUTPUT}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${OUTPUT}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
 else
     pass
@@ -520,7 +519,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$RETRY_ARGV" \
     CODEX_STUB_COUNT_FILE="$RETRY_COUNT" \
     "$LAUNCHER" --output "$RETRY_OUTPUT" --timeout 5 --prompt-file "${OUTPUT}.prompt" >/dev/null
-PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$RETRY_ARGV" || true)
+PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'STRICT CONSTRAINTS — your role is read-only review' "$RETRY_ARGV" || true)
 if [[ "$PREAMBLE_COUNT_RETRY" == "0" ]]; then
     pass
 else
@@ -551,12 +550,12 @@ if cmp -s "$EXPECTED_PROMPT_ARG" "$PROMPT_SIDECAR"; then
 else
     fail "--prompt-file should preserve original bytes verbatim in OUTPUT.prompt sidecar"
 fi
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_PROMPT_FILE"; then
-    fail "--prompt-file run must not include the HARD CONSTRAINTS preamble in codex argv"
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_PROMPT_FILE"; then
+    fail "--prompt-file run must not include the STRICT CONSTRAINTS preamble in codex argv"
 else
     pass
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "$PROMPT_SIDECAR"; then
     fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
 else
     pass
@@ -570,8 +569,8 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_COUNT_FILE="$AGENT_COUNT" \
     "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
         --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff >/dev/null
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
-    fail "--agent-file run must not include the HARD CONSTRAINTS preamble in codex argv"
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
+    fail "--agent-file run must not include the STRICT CONSTRAINTS preamble in codex argv"
 else
     pass
 fi
@@ -597,7 +596,7 @@ if grep -Fq -- 'Structure, KISS, and Maintainability' "${AGENT_OUTPUT}.prompt"; 
 else
     pass
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "${AGENT_OUTPUT}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${AGENT_OUTPUT}.prompt"; then
     fail "--agent-file OUTPUT.prompt sidecar must NOT include the preamble"
 else
     pass
@@ -609,7 +608,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_COUNT_FILE="$AGENT_RETRY_COUNT" \
     "$LAUNCHER" --output "$TMPDIR/agent-file-retry-output.txt" --timeout 5 \
         --prompt-file "${AGENT_OUTPUT}.prompt" >/dev/null
-AGENT_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_RETRY_ARGV" || true)
+AGENT_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'STRICT CONSTRAINTS — your role is read-only review' "$AGENT_RETRY_ARGV" || true)
 if [[ "$AGENT_PREAMBLE_COUNT_RETRY" == "0" ]]; then
     pass
 else
@@ -1824,12 +1823,12 @@ assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}
 pass
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
-# via --prompt-file without double-prepending the HARD CONSTRAINTS block.
+# via --prompt-file without double-prepending the STRICT CONSTRAINTS block.
 # The preamble is verified against the actual argv in case C / case AK1
 # (which use argv-recording stubs); case B's stub does not record argv,
 # so this case only verifies the sidecar contract.
 assert_equals "case B prompt sidecar (user-original, no preamble)" "original prompt" "$(cat "${OUT_B}.prompt")"
-if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_B}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${OUT_B}.prompt"; then
     fail "case B prompt sidecar must NOT contain the preamble (retry-replay safety)"
 else
     pass
@@ -1966,7 +1965,7 @@ if grep -Fq -- ' /max-mode on. Prompt: ' "$PROMPT_LOG_C"; then
 else
     fail "case C wrapped prompt must contain the /max-mode wrapper prefix"
 fi
-assert_grep "case C wrapped prompt preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
+assert_grep "case C wrapped prompt preamble" "STRICT CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
 EXPECTED_C_TAIL="$TMPDIR/cursor-c.expected-tail"
 printf 'line one\n\n' > "$EXPECTED_C_TAIL"
 if tail -c "$(wc -c < "$EXPECTED_C_TAIL" | tr -d ' ')" "$PROMPT_LOG_C" | cmp -s - "$EXPECTED_C_TAIL"; then
@@ -1982,7 +1981,7 @@ if cmp -s "$EXPECTED_C_SIDECAR" "${OUT_C}.prompt"; then
 else
     fail "case C OUTPUT.prompt sidecar must equal the user-original --prompt-file bytes (no preamble)"
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_C}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${OUT_C}.prompt"; then
     fail "case C OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
 else
     pass
@@ -2353,7 +2352,7 @@ PATH="$STUB_BIN:$PATH" \
     CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1_RETRY" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$TMPDIR/cursor-ak1-retry.txt" --timeout 5 --prompt-file "${OUT_AK1}.prompt" >/dev/null 2>"$TMPDIR/case-ak1-retry.stderr"
-AK1_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1_RETRY" || true)
+AK1_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1_RETRY" || true)
 if [[ "$AK1_PREAMBLE_COUNT_RETRY" == "1" ]]; then
     pass
 else
@@ -2364,10 +2363,10 @@ fi
 # original so collect-agent-results.sh empty-output retry can replay via
 # --prompt-file without double-prepending the preamble). Verify the argv log
 # carries the preamble and the sidecar does not.
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1"; then
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1"; then
     pass
 else
-    fail "issue #1529 cursor argv must carry the HARD CONSTRAINTS preamble"
+    fail "issue #1529 cursor argv must carry the STRICT CONSTRAINTS preamble"
 fi
 if grep -Fq -- 'Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.' "$ARGV_LOG_AK1"; then
     pass
@@ -2379,7 +2378,7 @@ if grep -Fq -- 'The launcher passes --mode ask to the cursor CLI' "$ARGV_LOG_AK1
 else
     fail "issue #1583 preamble in argv must reference --mode ask enforcement"
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${OUT_AK1}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
 else
     pass
@@ -2404,17 +2403,17 @@ PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$OUT_AK1S" --timeout 5 \
         --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff \
         >/dev/null 2>"$TMPDIR/case-ak1s.stderr"
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S"; then
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S"; then
     pass
 else
-    fail "case AK1S specialist argv must carry the HARD CONSTRAINTS preamble"
+    fail "case AK1S specialist argv must carry the STRICT CONSTRAINTS preamble"
 fi
 if grep -Fq -- 'Structure, KISS, and Maintainability' "${OUT_AK1S}.prompt"; then
     pass
 else
     fail "case AK1S prompt sidecar must contain specialist-rendered body"
 fi
-if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1S}.prompt"; then
+if grep -Fq -- 'STRICT CONSTRAINTS' "${OUT_AK1S}.prompt"; then
     fail "case AK1S prompt sidecar must NOT contain the hardening preamble"
 else
     pass
@@ -2426,7 +2425,7 @@ PATH="$STUB_BIN:$PATH" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$TMPDIR/cursor-ak1s-retry.txt" --timeout 5 \
         --prompt-file "${OUT_AK1S}.prompt" >/dev/null 2>"$TMPDIR/case-ak1s-retry.stderr"
-AK1S_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S_RETRY" || true)
+AK1S_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S_RETRY" || true)
 if [[ "$AK1S_PREAMBLE_COUNT_RETRY" == "1" ]]; then
     pass
 else
@@ -2459,10 +2458,10 @@ if grep -Fxq -- '--trust' "$ARGV_LOG_AK1B"; then
 else
     fail "issue #1583 Cursor argv must still include --trust when LARCH_CURSOR_SANDBOX=disabled"
 fi
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1B"; then
+if grep -Fq -- 'STRICT CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1B"; then
     pass
 else
-    fail "issue #1583 Cursor argv must still carry the HARD CONSTRAINTS preamble when LARCH_CURSOR_SANDBOX=disabled"
+    fail "issue #1583 Cursor argv must still carry the STRICT CONSTRAINTS preamble when LARCH_CURSOR_SANDBOX=disabled"
 fi
 if grep -Fq -- 'rejected by the sandbox' "$ARGV_LOG_AK1B"; then
     fail "issue #1583 preamble MUST NOT claim writes are rejected by the sandbox"

@@ -20,7 +20,7 @@ bash scripts/render-run-summary.sh \
   --outcome <value> \
   --run-id <id> \
   --mode '<flags-or-N/A>' \
-  [--workflow-path SIMPLE|HARD|N/A] \
+  
   [--emergency-requested true|false] \
   --duration '<elapsed-or-N/A>' \
   --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> --claude-sub-tokens <n> \
@@ -29,7 +29,7 @@ bash scripts/render-run-summary.sh \
   ...
 ```
 
-Omit `--workflow-path` (or pass an empty value) to omit the `- **Path**:` bullet; `/implement` callers omit it, while `/design` callers pass SIMPLE/HARD when available.
+The `--workflow-path` flag is removed; no `Path` bullet is emitted.
 
 Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `python/report_tokens_cost.py` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks. `--emergency-requested` defaults to `false`; when `true`, the body includes `- Emergency: true`.
 
@@ -105,7 +105,7 @@ The flag is compatible with token flags; when both are present,
 | Skill | Outcome values with `- **Outcome**:` bullet |
 |-------|-----------------------------------------------|
 | `/implement` | `bailed*`, `stalled`, `cancelled-*`, `failed-*` (shell pattern; includes design-style strings if ever passed) |
-| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-sprawl`, `cancelled-plan-size-hard`, `failed-plan-write`, `failed-publish`, `publish-skipped` (plus implement-style `bailed*` / `stalled` if reused) |
+| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-sprawl`, `cancelled-plan-size`, `failed-plan-write`, `failed-publish`, `publish-skipped` (plus implement-style `bailed*` / `stalled` if reused) |
 | Both | `approved` and other happy-path implement outcomes **omit** the Outcome bullet |
 
 ## Recent contract coverage

@@ -15,7 +15,6 @@ D="$TMP/design"
 mkdir -p "$D"
 
 cat >"$D/run-params.json" <<'JSON'
-{"classification":"SIMPLE","workflow_path":"SIMPLE"}
 JSON
 cat >"$D/voting-tally.md" <<'EOF'
 # Tally
@@ -32,7 +31,7 @@ EOF
 
 std="$TMP/std.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std" 2>/dev/null
 
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'missing Cost bullet'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing sentinel'
@@ -59,7 +58,7 @@ cat >"$D/oos-accepted-design.md" <<'EOF'
 EOF
 std_oos="$TMP/std-with-oos.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-OOS" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_oos" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_oos" 2>/dev/null
 if grep -Fq -- '- **Plan review**: 0 findings' "$D/final-summary.md"; then
     fail 'plan review must not show 0 findings when FINDING_+OOS_ blocks exist'
 fi
@@ -68,7 +67,7 @@ pass 'plan review counts FINDING_+OOS_ blocks with bold Focus area format'
 rm -f "$D/oos-accepted-design.md"
 std_missing_oos="$TMP/std-missing-oos.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-MISSING-OOS" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_missing_oos" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_missing_oos" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 1 ' "$D/final-summary.md" || fail 'missing optional OOS artifact must not zero accepted findings'
 pass 'plan review counts accepted findings when optional OOS artifact is missing'
 
@@ -83,7 +82,7 @@ TIMESTAMP=2025-01-01T00:00:00Z
 EOF
 std_sentinel_oos="$TMP/std-sentinel-oos.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-SENTINEL-OOS" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_sentinel_oos" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_sentinel_oos" 2>/dev/null
 grep -q -- '- \*\*OOS filed\*\*: 3' "$D/final-summary.md" || fail 'sentinel fallback must show OOS count from sentinel when oos-issues-created.md is absent'
 grep -Fq -- 'URLs unavailable' "$D/final-summary.md" || fail 'sentinel fallback must note URLs unavailable when using sentinel count'
 cmp -s "$D/final-summary.md" "$std_sentinel_oos" || fail 'sentinel fallback stdout/file mismatch'
@@ -104,7 +103,7 @@ cat >"$D/accepted-plan-findings-all.md" <<'EOF'
 EOF
 std_all="$TMP/std-cumulative.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_all" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_all" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'plan review line must prefer cumulative accepted findings when present'
 pass 'plan review counts cumulative accepted findings'
 cat >"$D/accepted-plan-findings-all.md" <<'EOF'
@@ -133,14 +132,14 @@ cat >"$D/rejected-findings.md" <<'EOF'
 EOF
 std_skipped="$TMP/std-cumulative-skipped.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE-SKIPPED" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_skipped" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_skipped" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 1 ' "$D/final-summary.md" || fail 'plan review line must exclude Gate B skipped findings from cumulative count'
 pass 'plan review excludes Gate B skipped cumulative findings'
 rm -f "$D/rejected-findings.md"
 rm -f "$D/voting-tally.md"
 std_all_without_tally="$TMP/std-cumulative-no-tally.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-CUMULATIVE-NO-TALLY" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_all_without_tally" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_all_without_tally" 2>/dev/null
 grep -q -- '- \*\*Plan review\*\*: 2 ' "$D/final-summary.md" || fail 'missing voting tally must not zero cumulative accepted findings'
 pass 'plan review counts cumulative accepted findings without voting tally'
 rm -f "$D/accepted-plan-findings-all.md"
@@ -157,14 +156,14 @@ EOF
 
 pre_std="$TMP/std-pre.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-PRE" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --pre-publish-only >"$pre_std" 2>/dev/null
+    "$SUBJECT" --outcome approved --pre-publish-only >"$pre_std" 2>/dev/null
 [ ! -s "$pre_std" ] || fail 'pre-publish path must not print summary to stdout'
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'pre-publish path missing Cost bullet'
 pass 'pre-publish writes file without chat output'
 
 outline_std="$TMP/std-outline.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-OUTLINE" \
-    "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$outline_std" 2>/dev/null
+    "$SUBJECT" --outcome cancelled-outline --post-publish-only >"$outline_std" 2>/dev/null
 grep -Fq -- '- **Outcome**: cancelled-outline' "$D/final-summary.md" || fail 'cancelled-outline missing Outcome bullet'
 grep -Fq -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" || fail 'cancelled-outline missing Step 1d.7 outline phrasing'
 outline_sentinel_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
@@ -217,7 +216,7 @@ printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
 rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
 std_fresh_timing="$TMP/std-fresh-timing.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-REUSE-TIMING" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fresh_timing" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_fresh_timing" 2>/dev/null
 grep -Fq -- '- **Duration**: 12s' "$D/final-summary.md" || fail 'post-publish path must refresh timing-report-final.json duration'
 [[ -f "$D/timing-report-final.stderr.log" ]] || fail 'post-publish timing refresh must capture timing stderr'
 cmp -s "$D/final-summary.md" "$std_fresh_timing" || fail 'post-publish timing refresh stdout/file mismatch'
@@ -225,7 +224,7 @@ pass 'post-publish refreshes final timing JSON'
 
 std_codex="$TMP/std-codex.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_codex" 2>"$TMP/std-codex.err"
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_codex" 2>"$TMP/std-codex.err"
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'codex buckets run missing Cost bullet'
 grep -Fq '💰 TOTAL' "$D/final-summary.md" || fail 'per-agent cost line missing TOTAL marker'
 grep -Fq 'Claude $' "$D/final-summary.md" || fail 'per-agent cost line missing Claude slot'
@@ -257,8 +256,6 @@ done
 cat >"$out" <<'OUT'
 ## /design run RUN-POSTNA — approved
 
-- **Mode**: SIMPLE
-- **Path**: SIMPLE
 - **Duration**: 3s
 - **Cost**: N/A
 - **Issue**: N/A
@@ -275,8 +272,6 @@ chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 cat >"$D/final-summary.md" <<'EOF'
 ## /design run RUN-PREKEEP — approved
 
-- **Mode**: SIMPLE
-- **Path**: SIMPLE
 - **Duration**: 2s
 - **Cost**: 💰 TOTAL: $2.34 | Claude $1.00 | Codex $1.34 | Cursor $0.00 | Tokens: 2345
 - **Issue**: N/A
@@ -290,7 +285,7 @@ cat >"$D/final-summary.md" <<'EOF'
 EOF
 std_post_na="$TMP/std-post-na.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-POSTNA" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_post_na" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_post_na" 2>/dev/null
 # shellcheck disable=SC2016
 grep -Fq '💰 TOTAL: $2.34' "$D/final-summary.md" || fail 'post success with N/A cost must preserve prior usable cost line'
 cmp -s "$D/final-summary.md" "$std_post_na" || fail 'post success preserved-cost stdout/file mismatch'
@@ -305,8 +300,6 @@ chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 cat >"$D/final-summary.md" <<'EOF'
 ## /design run RUN-PREGOOD — approved
 
-- **Mode**: SIMPLE
-- **Path**: SIMPLE
 - **Duration**: 9s
 - **Cost**: 💰 TOTAL: $1.23 | Claude $0.50 | Codex $0.73 | Cursor $0.00 | Tokens: 1234
 - **Issue**: N/A
@@ -323,7 +316,7 @@ EOF
 : >"$D/execution-issues.md"
 std_fb="$TMP/std-fallback.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_fb" 2>/dev/null
 grep -Fq -- '💰 TOTAL' "$D/final-summary.md" || fail 'renderer-fail post path must preserve prior usable cost line'
 grep -Fq -- '## /design run RUN-FB — approved' "$D/final-summary.md" || fail 'renderer-fail post path must refresh title/run id'
 grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail fallback missing degraded banner'
@@ -341,7 +334,7 @@ fb_line2="$(printf '%s\n' "$fb_nonempty" | sed -n '2p')"
 fb_line3="$(printf '%s\n' "$fb_nonempty" | sed -n '3p')"
 [ "$fb_line1" = '## /design run RUN-FB — approved' ] || fail 'renderer-fail fallback first non-empty line must be heading'
 case "$fb_line2" in \*\*⚠\ Degraded\ fallback*) ;; *) fail 'renderer-fail fallback second non-empty line must be degraded banner' ;; esac
-case "$fb_line3" in '- **Mode**:'*|'- **Outcome**:'*) ;; *) fail 'renderer-fail fallback third non-empty line must be first schema bullet' ;; esac
+case "$fb_line3" in '- **Duration**:'*|'- **Outcome**:'*) ;; *) fail 'renderer-fail fallback third non-empty line must be first schema bullet' ;; esac
 if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
 if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
@@ -349,7 +342,7 @@ pass 'renderer-fail fallback prints final file once'
 std_fb_cancel="$TMP/std-fallback-cancelled.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CANCELLED" \
-    "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >"$std_fb_cancel" 2>/dev/null
+    "$SUBJECT" --outcome cancelled-clarify --post-publish-only >"$std_fb_cancel" 2>/dev/null
 grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing degraded banner'
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Outcome bullet'
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Cost N/A'
@@ -371,7 +364,7 @@ cmp -s "$D/final-summary.md" "$std_fb_cancel" || fail 'renderer-fail cancelled f
 std_fb_skip="$TMP/std-fallback-publish-skipped.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="" \
-    "$SUBJECT" --outcome publish-skipped --mode SIMPLE --post-publish-only >"$std_fb_skip" 2>/dev/null
+    "$SUBJECT" --outcome publish-skipped --post-publish-only >"$std_fb_skip" 2>/dev/null
 grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing degraded banner'
 grep -Fq -- '- **Outcome**: publish-skipped' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing Outcome bullet'
 grep -Fq -- '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing publish note'
@@ -384,7 +377,7 @@ cmp -s "$D/final-summary.md" "$std_fb_skip" || fail 'renderer-fail publish-skipp
 std_fb_co="$TMP/std-fallback-cancelled-outline.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CO" \
-    "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$std_fb_co" 2>/dev/null
+    "$SUBJECT" --outcome cancelled-outline --post-publish-only >"$std_fb_co" 2>/dev/null
 grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing degraded banner'
 grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing fallback marker'
 grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing run-summary marker'
@@ -398,7 +391,7 @@ rm -f "$PLUGIN_STUB/python/cli.py"
 : >"$D/execution-issues.md"
 std_fb_nowarn="$TMP/std-fallback-no-warning.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-NOWARN" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb_nowarn" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_fb_nowarn" 2>/dev/null
 grep -Fq -- '**⚠ Degraded fallback — full renderer failed; warning could not be recorded in execution issues.**' "$D/final-summary.md" \
     || fail 'renderer-fail fallback must disclose missing warning record'
 grep -Fq -- '- **Warnings**: 0' "$D/final-summary.md" || fail 'renderer-fail fallback without warning record must keep warning count at 0'
@@ -466,7 +459,7 @@ EOF
 chmod +x "$FAILTOK_RENDER_STUB"
 std_failtok="$TMP/std-failtok.log"
 RENDER_ARGS_LOG="$TMP/render-args.log" CLAUDE_PLUGIN_ROOT="$PLUGIN_FAILTOK" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FAILTOK" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_failtok" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_failtok" 2>/dev/null
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'token-data-missing path missing Cost N/A'
 if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
     fail 'token-data-missing path rendered misleading zero-dollar cost'
@@ -535,7 +528,7 @@ EOF
 chmod +x "$BADJSON_RENDER_STUB"
 std_badjson="$TMP/std-badjson.log"
 BADJSON_RENDER_ARGS_LOG="$TMP/render-badjson-args.log" CLAUDE_PLUGIN_ROOT="$PLUGIN_BADJSON" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-BADJSON" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_badjson" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_badjson" 2>/dev/null
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'malformed token JSON path missing Cost N/A'
 if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
     fail 'malformed token JSON path rendered misleading zero-dollar cost'
@@ -601,7 +594,7 @@ EOF
 chmod +x "$NOTEARG_PLUGIN/scripts/"*.sh
 printf '%s\n' '- **Cancel site**: stale' >"$D/final-summary-notes.md"
 NOTEARG_LOG="$TMP/render-notearg.log" CLAUDE_PLUGIN_ROOT="$NOTEARG_PLUGIN" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-NOTEARG" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >/dev/null 2>&1
+    "$SUBJECT" --outcome approved --post-publish-only >/dev/null 2>&1
 if grep -Fq -- '--note-lines-file' "$TMP/render-notearg.log"; then
     fail 'non-cancelled outcomes must not pass stale note file to renderer'
 fi
@@ -611,36 +604,17 @@ EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
 : >"$EMPTY_MODE_D/execution-issues.md"
 SUMMARY_OUTCOME=cancelled-sprawl
-SUMMARY_MODE_STRING=""
-if [ -f "$EMPTY_MODE_D/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-  SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$EMPTY_MODE_D/run-params.json" 2>/dev/null || echo N/A)"
-fi
-[ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
 DESIGN_TMPDIR="$EMPTY_MODE_D" ISSUE_NUMBER="" SESSION_ID="RUN-EMPTY-MODE" \
-    "$SUBJECT" --outcome "$SUMMARY_OUTCOME" --mode "$SUMMARY_MODE_STRING" --post-publish-only >"$TMP/std-empty-mode.log" 2>/dev/null
-grep -Fq -- '- **Mode**: N/A' "$EMPTY_MODE_D/final-summary.md" || fail 'empty-mode fence did not default to N/A'
-grep -Fq '## /design run RUN-EMPTY-MODE — cancelled-sprawl' "$EMPTY_MODE_D/final-summary.md" || fail 'empty-mode cancellation summary missing'
-pass 'early cancellation empty-mode default'
-
-DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >/dev/null 2>&1
-grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'missing outcome bullet'
-pass 'cancelled-clarify outcome'
-
-DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome cancelled-title-filter --mode SIMPLE --post-publish-only >/dev/null 2>&1
-grep -Fq '## /design run RUN-FIX — cancelled-title-filter' "$D/final-summary.md" || fail 'cancelled-title-filter title missing'
-grep -Fq -- '- **Outcome**: cancelled-title-filter' "$D/final-summary.md" || fail 'missing cancelled-title-filter outcome bullet'
-grep -Fq -- '- **Mode**: Refused (title-filter)' "$D/final-summary.md" || fail 'missing Refused (title-filter) mode line'
+    "$SUBJECT" --outcome "$SUMMARY_OUTCOME" --mode N/A --post-publish-only >"$TMP/std-empty-mode.log" 2>/dev/null
 pass 'cancelled-title-filter outcome'
 
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome approved-partition --mode SIMPLE --post-publish-only >/dev/null 2>&1
+    "$SUBJECT" --outcome approved-partition --post-publish-only >/dev/null 2>&1
 grep -Fq '## /design run RUN-FIX — approved-partition' "$D/final-summary.md" || fail 'approved-partition title missing'
 pass 'approved-partition outcome'
 
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome cancelled-decompose --mode SIMPLE --post-publish-only >/dev/null 2>&1
+    "$SUBJECT" --outcome cancelled-decompose --post-publish-only >/dev/null 2>&1
 grep -Fq '## /design run RUN-FIX — cancelled-decompose' "$D/final-summary.md" || fail 'cancelled-decompose title missing'
 grep -Fq -- '- **Outcome**: cancelled-decompose' "$D/final-summary.md" || fail 'missing cancelled-decompose outcome bullet'
 pass 'cancelled-decompose outcome'
@@ -653,20 +627,20 @@ DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-RUNRECOVERY \
 RENAMED=true \
 DESIGNED_ADMISSION_READY=true \
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
-    "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_stdout" 2>/dev/null
+    "$SUBJECT" --outcome failed-publish --post-publish-only >"$failed_publish_stdout" 2>/dev/null
 grep -Fq -- "- **Log recovery branch**: \`larch-log-design-RUNRECOVERY\`" "$D/final-summary.md" || fail 'failed-publish missing recovery branch'
 grep -Fq -- '- **Log flush PR**: #456 — https://github.com/owner/repo/pull/456' "$D/final-summary.md" || fail 'failed-publish missing flush PR'
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the issue is [DESIGNED]; retry log publish from the preserved design tmpdir before starting /implement when the session may contain secrets.' "$D/final-summary.md" || fail 'failed-publish missing admission-ready recovery guidance'
 cmp -s "$D/final-summary.md" "$failed_publish_stdout" || fail 'failed-publish recovery stdout/file mismatch'
 failed_publish_not_ready_stdout="$TMP/std-failed-publish-not-ready.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
-    "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_not_ready_stdout" 2>/dev/null
+    "$SUBJECT" --outcome failed-publish --post-publish-only >"$failed_publish_not_ready_stdout" 2>/dev/null
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.' "$D/final-summary.md" || fail 'failed-publish missing rename-not-confirmed recovery guidance'
 cmp -s "$D/final-summary.md" "$failed_publish_not_ready_stdout" || fail 'failed-publish not-ready stdout/file mismatch'
 failed_publish_diagram_stdout="$TMP/std-failed-publish-diagram.log"
 RENAMED=true UPSERT_RAN=true UPSERT_STATUS=failed \
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
-    "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_diagram_stdout" 2>/dev/null
+    "$SUBJECT" --outcome failed-publish --post-publish-only >"$failed_publish_diagram_stdout" 2>/dev/null
 grep -Fq -- "- **Publish recovery**: design logs did not finish publishing and the issue title is [DESIGNED], but the diagram comment was not confirmed; verify or repair \`larch:diagrams\` before starting /implement, then retry logs manually from the preserved design tmpdir." "$D/final-summary.md" || fail 'failed-publish missing diagram recovery guidance'
 cmp -s "$D/final-summary.md" "$failed_publish_diagram_stdout" || fail 'failed-publish diagram stdout/file mismatch'
 unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH RENAMED DESIGNED_ADMISSION_READY UPSERT_RAN UPSERT_STATUS
@@ -675,7 +649,7 @@ pass 'failed-publish recovery bullets'
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 publish_skipped_stdout="$TMP/std-publish-skipped.log"
-CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=""     "$SUBJECT" --outcome publish-skipped --mode SIMPLE --post-publish-only >"$publish_skipped_stdout" 2>/dev/null
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=""     "$SUBJECT" --outcome publish-skipped --post-publish-only >"$publish_skipped_stdout" 2>/dev/null
 grep -Fq -- '- **Outcome**: publish-skipped' "$D/final-summary.md" || fail 'publish-skipped missing Outcome bullet'
 grep -Fq -- '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' "$D/final-summary.md" || fail 'publish-skipped missing publish note'
 # shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
@@ -692,7 +666,7 @@ for summary_outcome in \
     cancelled-already-planned \
     cancelled-title-filter \
     cancelled-sprawl \
-    cancelled-plan-size-hard \
+    cancelled-plan-size \
     cancelled-decompose \
     cancelled-outline \
     failed-plan-write \
@@ -702,7 +676,7 @@ do
     session="RUN-MATRIX-${summary_outcome}"
     matrix_stdout="$TMP/std-matrix-${summary_outcome}.log"
     CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="$session" \
-        "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >"$matrix_stdout" 2>/dev/null
+        "$SUBJECT" --outcome "$summary_outcome" --post-publish-only >"$matrix_stdout" 2>/dev/null
     grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail "matrix $summary_outcome missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$D/final-summary.md" || fail "matrix $summary_outcome missing sentinel"
     grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
@@ -724,7 +698,7 @@ pass 'render-final-summary append warning redacts stderr'
 
 set +e
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome cancelled-plan-size-soft --mode SIMPLE --post-publish-only >/dev/null 2>&1
+    "$SUBJECT" --outcome cancelled-plan-size-soft --post-publish-only >/dev/null 2>&1
 rc=$?
 set -e
 test "$rc" -eq 2 || fail 'invalid outcome must exit 2'
@@ -733,7 +707,6 @@ pass 'invalid outcome rejected'
 RPD_D="$TMP/design-rpd"
 mkdir -p "$RPD_D/plan-review/round-1"
 cat >"$RPD_D/run-params.json" <<'JSON'
-{"classification":"SIMPLE","workflow_path":"SIMPLE"}
 JSON
 cat >"$RPD_D/voting-tally.md" <<'EOF'
 # Tally
@@ -762,7 +735,7 @@ printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000
     >"$RPD_D/timing-ledger.tsv"
 std_rpd="$TMP/std-review-phase-detail.log"
 DESIGN_TMPDIR="$RPD_D" ISSUE_NUMBER="" SESSION_ID="RUN-RPD" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_rpd" 2>/dev/null
+    "$SUBJECT" --outcome approved --post-publish-only >"$std_rpd" 2>/dev/null
 grep -Fq -- '## Review Phase Detail' "$RPD_D/final-summary.md" \
     || fail 'post-publish path missing Review Phase Detail section'
 grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 1m 05s | — | 1 |' "$RPD_D/final-summary.md" \

@@ -33,7 +33,7 @@ from run_context import RunContext
 _IN_PROGRESS_MSG = "is still in progress; logs will be available"
 _CI_SUSPEND_THRESHOLD_SEC = 60.0
 _RUN_ID_RE = re.compile(r"runs/(\d+)")
-_MATRIX_SHARD_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$")
+_MATRIX_SLICE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$")
 _MATRIX_ANY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\(([^)]*)\)$")
 _JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -630,7 +630,7 @@ def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:
     raw_name = logging_util.sanitize_diagnostic_line(raw_name)
     if not raw_name:
         return "", "", True
-    match = _MATRIX_SHARD_RE.match(raw_name)
+    match = _MATRIX_SLICE_RE.match(raw_name)
     if match:
         return match.group(1), match.group(2), False
     match = _MATRIX_ANY_RE.match(raw_name)
@@ -773,8 +773,6 @@ def per_job_command(name: str, shard: str) -> tuple[str, ...] | None:
         return ("make", "agent-lint")
     if name == "agnix":
         return ("make", "agnix")
-    if name == "smoke-dialectic":
-        return ("make", "smoke-dialectic")
     if name == "agent-sync":
         return ("make", "agent-sync")
     if name == "python-lint":

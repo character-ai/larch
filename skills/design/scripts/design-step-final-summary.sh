@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -91,14 +89,8 @@ design_source_env_optional() {
 # Immediate-background required; prompt waits for <task-notification> before reading final-summary.md.
 design_source_env_optional
 export CLAUDE_PLUGIN_ROOT
-SUMMARY_MODE_STRING=""
-if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-  SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
-fi
-[ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
 DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
   --outcome "$SUMMARY_OUTCOME" \
-  --mode "${SUMMARY_MODE_STRING}" \
   ${REPO:+--repo "$REPO"} \
   --post-publish-only

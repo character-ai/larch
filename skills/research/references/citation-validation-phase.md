@@ -98,7 +98,7 @@ The splice happens BEFORE `cat`-ing the report for user-visible output, so the f
 
 ## Why a separate phase, not a 6th Step 2 reviewer
 
-Per the design dialectic on issue #516 DECISION_1 (resolved via the plan-review panel's 2-1 sidecar vote, user-confirmed at Step 3.5 round 2), Step 2.5 is a separate phase that writes a sidecar — NOT a 6th reviewer added to Step 2's validation panel. Phase separation:
+Per the design discussion on issue #516 DECISION_1 (resolved via the plan-review panel's 2-1 sidecar vote, user-confirmed at Step 3.5 round 2), Step 2.5 is a separate phase that writes a sidecar — NOT a 6th reviewer added to Step 2's validation panel. Phase separation:
 
 1. Keeps Step 2's voting machinery focused on the synthesis content and accept/reject votes; citation validation has no vote — it is mechanical.
 2. Lets the validator be a deterministic shell script with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).

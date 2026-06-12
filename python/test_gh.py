@@ -13,7 +13,6 @@ from errors import ShipError, TransientNetworkError
 from proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
-import json
 
 
 @dataclass
@@ -1056,14 +1055,6 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert result.returncode == 1
     assert "--repo" in runner.calls[0]
     assert "o/r" in runner.calls[0]
-
-
-# CLI contract tests migrated from test_gh_cli.py.
-def test_workflow_path_prefers_workflow_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    artifact = tmp_path / "artifact.json"
-    _ = artifact.write_text(json.dumps({"workflow_path": "HARD", "design_classification": "SIMPLE"}), encoding="utf-8")
-    assert gh.workflow_path_main([str(artifact)]) == 0
-    assert capsys.readouterr().out.strip() == "HARD"
 
 
 def test_run_logs_main_in_progress_exit_three(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

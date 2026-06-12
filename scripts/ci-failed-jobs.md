@@ -30,7 +30,7 @@ Machine-readable output is emitted through `scripts/lib-quiet.sh` using
 When `--output-tsv` is supplied, the file contains:
 
 ```text
-JOB_NAME<TAB>SHARD<TAB>CLASS
+JOB_NAME<TAB>SLICE<TAB>CLASS
 ```
 
 There is intentionally no local command column. `ship-pr.sh` owns the fixed
@@ -68,11 +68,11 @@ boundaries for `gh` stderr and stdout.
 ## Mapping
 
 Fixable jobs are `lint`, `lint-mermaid`, `shellcheck`, `test-harnesses`,
-`agent-lint`, `agnix`, `smoke-dialectic`, and `agent-sync`. `gitleaks` and
+`agent-lint`, `agnix`, and `agent-sync`. `gitleaks` and
 `trufflehog` are `no-local-equivalent` because CI runs history scans.
 
 Matrix names of the form `test-harnesses (7)` normalize to
-`JOB_NAME=test-harnesses` and `SHARD=7`. Non-digit shard text is ignored, so
+`JOB_NAME=test-harnesses` and `SLICE=7`. Non-digit slice text is ignored, so
 `test-harnesses (abc)` falls back to the unsharded local target. Job names must
 match `^[A-Za-z][A-Za-z0-9_-]*$`; malformed names are classified as
 `no-local-equivalent`.

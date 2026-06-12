@@ -215,11 +215,9 @@ MARKER_AGE=""
 MARKER_TTL=""
 MARKER_REMAINING=0
 DESIGN_REENTRY_MARKER_PATH=""
-SUMMARY_MODE_STRING=N/A
 RESUME_STEP=""
 SESSION_ID=""
 RUN_ID=""
-TIER=""
 BRAINSTORM_DONE=""
 MARKER_CLEARED=""
 WARN_LINES=()
@@ -237,7 +235,6 @@ route_build_kvs() {
     [[ -n "$RESUME_STEP" ]] && ROUTE_KVS+=("RESUME_STEP=$RESUME_STEP")
     [[ -n "$SESSION_ID" ]] && ROUTE_KVS+=("SESSION_ID=$SESSION_ID")
     [[ -n "$RUN_ID" ]] && ROUTE_KVS+=("RUN_ID=$RUN_ID")
-    [[ -n "$TIER" ]] && ROUTE_KVS+=("TIER=$TIER")
     [[ -n "$BRAINSTORM_DONE" ]] && ROUTE_KVS+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
     [[ -n "$MARKER_CLEARED" ]] && ROUTE_KVS+=("MARKER_CLEARED=$MARKER_CLEARED")
     local w e
@@ -304,20 +301,24 @@ merge_router_flags() {
 }
 
 render_cancel_summary() {
-    local outcome="$1" mode="$2"
+    local outcome="$1"
+    local mode_string="N/A"
+    if [[ "$outcome" == cancelled-title-filter ]]; then
+        mode_string="Refused (title-filter)"
+    fi
     set +e
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
             "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
             --outcome "$outcome" \
-            --mode "$mode" \
+            --mode "$mode_string" \
             ${REPO:+--repo "$REPO"} \
             --post-publish-only >/dev/null 2>&4
     else
         DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
             "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
             --outcome "$outcome" \
-            --mode "$mode" \
+            --mode "$mode_string" \
             ${REPO:+--repo "$REPO"} \
             --post-publish-only >/dev/null
     fi
@@ -335,12 +336,12 @@ route_emit_cancel_side_effects() {
                 # shellcheck disable=SC2016 # Markdown code spans are literal in this diagnostic.
                 larch_err '**⚠ /design: issue title matches archival report-prefix `[... Report]` — refusing to design. Such titles are reserved for `/research` / `/report-tokens` artifacts. Rename the title and re-invoke /design.**'
             fi
-            render_cancel_summary cancelled-title-filter N/A
+            render_cancel_summary cancelled-title-filter
             ;;
         cancel-reentry-guard)
             larch_errf '**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#%s ppid=%s marker_age=%ss ttl=%ss. Wait %ss or delete %s to override.**\n' \
                 "$ISSUE" "$CLAUDE_PID" "$MARKER_AGE" "$MARKER_TTL" "$MARKER_REMAINING" "$DESIGN_REENTRY_MARKER_PATH"
-            render_cancel_summary cancelled-reentry-guard "$SUMMARY_MODE_STRING"
+            render_cancel_summary cancelled-reentry-guard
             ;;
     esac
 }
@@ -377,7 +378,6 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
             STEP) _step="$_pval" ;;
             SESSION_ID) SESSION_ID="$_pval" ;;
             RUN_ID) RUN_ID="$_pval" ;;
-            TIER) TIER="$_pval" ;;
             BRAINSTORM_DONE) BRAINSTORM_DONE="$_pval" ;;
             MARKER_CLEARED) MARKER_CLEARED="$_pval" ;;
             WARN) WARN_LINES+=("$_pval") ;;
@@ -498,11 +498,6 @@ if [[ "$_marker_hit" == true ]]; then
     [[ "$MARKER_TTL" =~ ^[0-9]+$ ]] || MARKER_TTL=300
     MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
     [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
-    SUMMARY_MODE_STRING=N/A
-    if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-        SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
-    fi
-    [[ -n "$SUMMARY_MODE_STRING" ]] || SUMMARY_MODE_STRING=N/A
     emit_cancel_route_result
 fi
 

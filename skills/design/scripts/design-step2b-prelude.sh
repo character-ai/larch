@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -88,11 +86,26 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
-if [ "$_design_classification" = HARD ]; then
-  mkdir -p "$DESIGN_TMPDIR/.completed"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+step2b_exact_line_file() {
+  _s2b_file="$1"
+  _s2b_expected="$2"
+  awk -v expected="$_s2b_expected" '
+    NR == 1 { ok = ($0 == expected) }
+    NR > 1 { ok = 0 }
+    END { exit (NR == 1 && ok) ? 0 : 1 }
+  ' "$_s2b_file" 2>/dev/null
+}
+
+if [ -z "${DESIGN_TMPDIR:-}" ] \
+  || [ ! -d "$DESIGN_TMPDIR" ] \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "NO_SKETCHES" \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "NO_CONTESTED_DECISIONS" \
+  || [ ! -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ] \
+  || [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+  printf '%s\n' '**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**' >&2
+  exit 1
 fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2b — plan" || true

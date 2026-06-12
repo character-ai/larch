@@ -11,8 +11,6 @@ At the start of each skill, a binary check plus runtime probe (`scripts/check-re
 
 **Codex auth scope.** Covered Codex paths prefer a live non-whitespace `OPENAI_API_KEY` through per-invocation `-c` provider overrides; unset, empty, or whitespace-only falls back to `codex login` / `~/.codex/auth.json`. The merged inventory is: `launch-review.sh --tool codex`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `launch-codex-exec.sh`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`.
 
-**Exception: dialectic debate buckets (`/design` Step 2a.5) do NOT use replacement-first.** When the assigned external tool (Cursor for odd-indexed decisions, Codex for even) is unavailable, the bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written — Claude subagents are never substituted into the debate path. This carve-out applies only to the **debate execution phase** of dialectic; the post-debate **judge panel** uses replacement-first normally. See [Dialectic-specific behavior](#dialectic-specific-behavior) below and `skills/shared/dialectic-protocol.md` for the full rationale.
-
 ## Trust boundary (filesystem access)
 
 ## Launching External Reviewers
@@ -77,8 +75,6 @@ The optional `--validation-mode` modifier forwards `--validation-mode` to the va
 | `/review` Step 3a code review | `--substantive-validation --validation-mode` |
 | `/design` Step 3 plan review | `--substantive-validation --validation-mode` |
 
-The dialectic-phase (`/design` Step 2a.5 debaters and judges) collectors deliberately do NOT pass these flags — their output contracts (debate prose with structured tags / vote line) differ from the reviewer-style numbered-findings shape.
-
 Authoritative flag documentation lives in the `--substantive-validation` / `--validation-mode` stanza of the `scripts/collect-agent-results.sh` header comment block; update both this section and that header in lockstep when adding a new caller.
 
 ## Timeout Handling
@@ -95,7 +91,6 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 
 | Phase | Role | Skills | Fallback behavior |
 |---|---|---|---|
-| [Collaborative sketches](collaborative-sketches.md) | Propose architectural approaches | `/design` | **Skip** — fewer sketches, no Claude substitution (#3207) |
 | Plan review | Review implementation plans | `/design` | **Full waterfall** (Cursor↔Codex→Claude per slot) |
 | Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `dispatch-panel.sh`) |
 | [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | **Full waterfall** (Voter 2/3 per slot) |
@@ -105,20 +100,4 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | CI / checks recovery | Fix failing CI/checks | `/implement` (active Step 8+ driver) | **Full waterfall** (Codex→Cursor→Claude) |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
-| **Dialectic debate** (`/design` Step 2a.5) | Defend / attack contested decisions | `/design` | **Bucket skipped — no Claude substitution** (per-side Cursor↔Codex→Claude-final retry) |
-| Dialectic judge panel (`/design` Step 2a.5) | Adjudicate between pre-authored defenses | `/design` | Replacement-first (panel shape stays intact) |
 | Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Cursor→Claude waterfall** (#3704; Codex is not in the scout waterfall) |
-
-## Dialectic-specific behavior
-
-`/design` Step 2a.5 runs a **dialectic debate + judge panel** phase whose fallback semantics differ from every other reviewer phase. Both the debate phase and the judge panel are specified in detail at `skills/shared/dialectic-protocol.md`; the integration points with the shared external-reviewer infrastructure are:
-
-1. **Debaters never fall back to Claude** (carve-out): Cursor runs both sides of odd-indexed decisions; Codex runs both sides of even-indexed decisions; if the assigned tool is unavailable at launch time, the bucket is skipped and a `Disposition: bucket-skipped` resolution is written — the synthesis decision stands for that point. This is intentional divergence (see GitHub issue #98): debater outputs are adversarial prose whose style can leak tool identity; substituting a Claude subagent into the debate path would bias the downstream judge panel.
-2. **Dialectic-scoped shadow flags**: the dialectic phase uses `dialectic_codex_available` / `dialectic_cursor_available` flags snapshotted at entry. These flags are **never written back** to the orchestrator-wide `codex_available` / `cursor_available` flags. A Cursor or Codex timeout during a dialectic debate therefore does not lock that tool out of Step 3 plan review.
-3. **Dialectic failures stay local**: `collect-agent-results.sh` no longer mutates session-wide reviewer state. Debate-time failures are interpreted only by the dialectic phase and are never written back to `${SESSION_ENV_PATH}session-env`.
-4. **Judge panel uses replacement-first**: when Cursor or Codex is unavailable at judge launch time, a Claude Code Reviewer subagent replaces that slot so the judge-panel shape remains intact. Judges adjudicate between pre-authored defenses and don't write adversarial prose, so the debater carve-out doesn't apply here.
-5. **Judge-phase eligibility is local**: judge launch eligibility is computed from the dialectic-scoped availability flags for that phase. Debate-time failures must not lock a tool out of later phases; static session presence remains in `${SESSION_ENV_PATH}session-env`.
-
-### Regression guard
-
-`scripts/dialectic-smoke-test.sh` is the offline regression guard for the dialectic parser, tally rules, and structural invariants documented in `skills/shared/dialectic-protocol.md`. Fixtures live under `tests/fixtures/dialectic/`. Run locally via `make smoke-dialectic`; CI runs the same command in the `smoke-dialectic` job. When changing the protocol's Parser tolerance or Threshold Rules sections, update the smoke test and/or fixtures in the same PR.

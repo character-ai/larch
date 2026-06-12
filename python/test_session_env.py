@@ -151,16 +151,12 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     assert link.readlink() == out
 
 
-def test_write_run_params_and_read_classification(tmp_path: Path) -> None:
+def test_write_run_params(tmp_path: Path) -> None:
     out = tmp_path / "run-params.json"
     result = run_cli(
         "write-run-params",
-        "--classification",
-        "SIMPLE",
         "--output",
         str(out),
-        "--reason",
-        "small",
         "--partition-requested",
         "true",
     )
@@ -168,13 +164,8 @@ def test_write_run_params_and_read_classification(tmp_path: Path) -> None:
     assert f"RUN_PARAMS_WRITTEN={out}" in result.stdout
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["schema_version"] == 3
-    assert data["design_classification"] == "SIMPLE"
     assert data["partition_requested"] is True
-    read = run_cli("read-classification", str(out))
-    assert read.stdout == "SIMPLE\n"
-    invalid = run_cli("write-run-params", "--classification", "MEDIUM", "--output", str(out))
-    assert invalid.returncode == 2
-    missing_parent = run_cli("write-run-params", "--classification", "HARD", "--output", str(tmp_path / "nope" / "x.json"))
+    missing_parent = run_cli("write-run-params", "--output", str(tmp_path / "nope" / "x.json"))
     assert missing_parent.returncode == 1
 
 
@@ -537,17 +528,6 @@ def test_setup_runs_admission_preflight_without_skip(tmp_path: Path, monkeypatch
     assert any("admission" in call and "preflight" in call for call in calls)
 
 
-def test_read_classification_missing_and_invalid_paths(tmp_path: Path) -> None:
-    missing = run_cli("read-classification", str(tmp_path / "missing.json"))
-    assert missing.stdout == "HARD\n"
-    assert "run-params not readable" in missing.stderr
-    bad = tmp_path / "bad.json"
-    bad.write_text('{"workflow_path":"SIMPLE"}\n', encoding="utf-8")
-    invalid = run_cli("read-classification", str(bad))
-    assert invalid.stdout == "HARD\n"
-    assert "design_classification missing or invalid" in invalid.stderr
-
-
 def test_local_cleanup_rejects_main_branch() -> None:
     result = run_cli("local-cleanup", "--branch", "main")
     assert result.returncode == 1
@@ -810,8 +790,6 @@ def test_write_run_params_rejects_empty_boolean_flags(tmp_path: Path) -> None:
     out = tmp_path / "run-params.json"
     invalid = run_cli(
         "write-run-params",
-        "--classification",
-        "SIMPLE",
         "--output",
         str(out),
         "--partition-requested",

@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline — Gate A re-entry only post-plan) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv or the Step 0b `Brainstorm:` title-prefix auto-enable.
 
-**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2a** (sketch `<FEATURE_DESCRIPTION>` substitution), **Step 2a.5** (dialectic `{FEATURE_DESCRIPTION}` / synthesis context), **Step 2b** (plan drafting), **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
+**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2b** (plan drafting) and **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
 
 **When to load**: only when Step **1d.5** executes — do not preload during Step 0.
 
@@ -61,7 +61,7 @@ External review **Agent** fallbacks return **text only** to the parent session. 
 
 ## External launches (representative)
 
-Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals (same family as sketch launches). Capture failures under `$DESIGN_TMPDIR/*-brainstorm-launch.failure.log` and append via `run-log append-failure` like Step 2a.
+Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under `$DESIGN_TMPDIR/*-brainstorm-launch.failure.log` and append via `run-log append-failure`.
 
 **Cursor framing** (when `cursor_available`):
 
@@ -81,7 +81,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TM
 
 ## Collection (`collect-agent-results.sh`) — externals only
 
-**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Match Step 2a.3-style dynamic argv — one path when a single external ran, two when both ran. Use `timeout: 1260000` on a foreground `collect-agent-results.sh` Bash tool call.
+**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on a foreground `collect-agent-results.sh` Bash tool call.
 
 **Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
@@ -100,7 +100,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/codex-brainstorm-output.txt"
 ```
 
-Guard this call exactly like Step 2a.3: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `collect-agent-results.sh` with zero paths.
+Guard this call by launched external paths: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `collect-agent-results.sh` with zero paths.
 
 ## Post-collection dirty-tree checkpoint
 
@@ -110,7 +110,7 @@ After the collector returns for whichever externals actually ran, consult `${OUT
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint
 ```
 
-If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel (same semantics as sketch collection).
+If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel.
 
 ---
 
@@ -154,9 +154,7 @@ When the loop ends via terminal path, ensure `.brainstorm-done` exists before en
 
 ## Downstream consumer contract (additive)
 
-- **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, if `brainstorm.md` exists and is non-empty, **prepend** a concise digest under a `## Brainstorm context` header to the feature text **inside the substitution string** (do not replace the issue body file).
-- **Step 2a.5**: `{FEATURE_DESCRIPTION}` / synthesis MAY incorporate the same additive digest when non-empty.
-- **Step 2b**: Read `brainstorm.md` when present; fold ideas only when they do not conflict with voted dialectic resolutions.
+- **Step 2b**: Read `brainstorm.md` when present; fold ideas only when they do not conflict with explicit user refusals.
 - **Step 3**: `plan-review-loop.sh` may stage non-empty `brainstorm.md` as optional feature context, but `plan-review-scope-anchor.txt` remains the binding issue scope for scout, reviewer, voter, and MainAgent fallback decisions.
 
 ## Plan-review binding scope

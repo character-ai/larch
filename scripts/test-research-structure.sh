@@ -178,7 +178,7 @@ for pair in \
   "$RESEARCH_MD:codex-research-arch-output.txt" \
   "$VALIDATION_MD:codex-validation-output.txt" \
   "$REPO_ROOT/skills/shared/voting-protocol.md:codex-vote-output.txt" \
-  "$REPO_ROOT/skills/shared/dialectic-protocol.md:codex-judge-output.txt"; do
+; do
   file="${pair%%:*}"
   stem="${pair#*:}"
   if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" "$file"; then

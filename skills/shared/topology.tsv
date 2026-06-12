@@ -1,5 +1,3 @@
-design.sketch.simple_slots	0 sketch agents	SIMPLE sentinel path	skills/design/references/sketch-launch.md
-design.sketch.regular_slots	3 regular	1 Cursor + 2 Codex	skills/design/references/sketch-launch.md
 design.plan_review.cursor_archetypes	Cursor	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review.md
 design.plan_review.codex_archetypes	Codex	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review.md
 design.plan_review.dynamic_archetypes	up to 3	scout proposes specialists fanned into Cursor+Codex dyn slots	skills/design/references/plan-review.md
@@ -13,8 +11,6 @@ design.decompose.harness_agg	test-decompose-aggregator.sh	offline aggregator mer
 design.decompose.harness_file	test-decompose-file-issues.sh	offline prepare annotate close-original harness	skills/design/scripts/test-decompose-file-issues.sh
 design.plan.preview_emit	Step 3 plan-candidate preview	Gate C final-plan preview	skills/design/scripts/emit-design-plan-preview.sh
 design.plan_commands.validate	Tier2+opt-in Tier3	plan fenced bash/sh	skills/design/scripts/validate-plan.sh
-design.dialectic.judge_panel	3-judge	Claude Code Reviewer subagent + Codex + Cursor	skills/shared/dialectic-protocol.md
-design.dialectic.max_decisions	top-5	selected contested decisions	skills/shared/dialectic-protocol.md
 implement.conflict_review.panel	3-reviewer	Claude Code Reviewer subagent + Codex + Cursor	skills/implement/references/conflict-resolution.md
 implement.conflict_review.rounds_max	2 total	resolution-review rounds	skills/implement/references/conflict-resolution.md
 research.lanes	four research lanes	architecture + edge cases + external comparisons + security	skills/research/references/research-phase.md

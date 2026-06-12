@@ -2,7 +2,7 @@
 
 Structural guard for the `/design` two-tier contract.
 
-The harness asserts that `/design` exposes only SIMPLE/HARD tier routing, uses the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel, runs plan validation unconditionally through `invoke-plan-validator.sh`, includes a unified Step 3 review-round cap (cap 5, both tiers), and no longer references quick-review or v1 budget helpers.
+The harness asserts that `/design` exposes only one-flow routing, uses the `NO_SKETCHES` sentinel, runs plan validation unconditionally through `invoke-plan-validator.sh`, includes a unified Step 3 review-round cap (cap 5, the one flow), and no longer references quick-review or v1 budget helpers.
 
 It also verifies `plan-review-loop.sh` remains stateless with respect to `review-round-count.txt`; Step 3 in `SKILL.md` owns the counter and passes the computed `--round-num`.
 
@@ -20,11 +20,11 @@ The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins th
 
 - Covers the Step 5c publish gate, clarify fail-closed publish/recovery metadata, clarify sub-step 6 summary outcome branch, pause-check `--repo` forwarding, init `--repo` persistence pins, and the Step 0 degraded-tools gate fence that sources durable design env and passes all four explicit false-defaulted operands.
 
-## Step 3b FINALIZE and SIMPLE sentinel routing
+## Step 3b FINALIZE and sentinel routing
 
 The harness now pins FINALIZE to the Step 3b completion-boundary region for fresh runs. Step 4 may contain only the gated compatibility FINALIZE in its entry fence for old paused sessions where `.completed/finalize` is absent, and both FINALIZE failure branches must exit with the captured non-zero status after printing the repair warning.
 
-SIMPLE sentinel writes are pinned to the Step 2a entry fence behind the `design_classification == SIMPLE` guard. The assertions check branch-scoped sentinel writes, fail-fast `set -e`, and completion markers written only after all three SIMPLE artifacts succeed; the `### SIMPLE branch` subsection must not contain its own sentinel Bash block.
+Sentinel writes are pinned to the Step 2a entry fence. The assertions check sentinel writes, fail-fast `set -e`, and completion markers.
 
 The Step 3b, Step 3/Gate-B-bypass/Gate B, `approval-gates.md`, `flags.md`, `configuration-and-permissions.md`, `skills/design/references/plan-review.md`, `run-step3-review.sh`, and `run-step3-review.md` routing checks are line-scoped. They reject direct Step 3b-to-Step 4 routes, including comma and spaced-slash shorthand variants, unless the same line names the Step 3b completion boundary.
 
@@ -43,11 +43,10 @@ Phase 7 folds absorbed prior-step `.completed` writes into adjacent real-work Ba
 | Host fence | Folded / boundary sentinels |
 |------------|----------------------------|
 | Step 1d.5 prelude | `step-1c`, `step-1d` |
-| Step 2a entry | `step-1c`, `step-1d`, conditional `step-1d.5` (`brainstorm_requested` guard), `step-1d.7`, `step-1e`; `step-2a` / `step-2a.5` inside SIMPLE guard |
+| Step 2a entry | `step-1c`, `step-1d`, conditional `step-1d.5` (`brainstorm_requested` guard), `step-1d.7`, `step-1e`; `step-2a` sentinel block |
 | Step 3 entry | `step-1e` |
-| Step 2a.5 prelude | `step-2a` |
-| zero-sketch degraded branch | `step-2a`, `step-2a.5` |
-| Step 2b prelude | `step-2a`, `step-2a.5` |
+| Step 2a entry | `step-2a` |
+| Step 2b prelude | `step-2a` |
 | Step 3.5 prelude | `step-3` |
 | Step 3.6 entry | `step-3.5` |
 | Step 5 prelude | `step-4b` |
@@ -62,11 +61,11 @@ Pure-LLM Steps **1c**, **1d**, **1d.7**, and **1e** must not retain standalone `
 ### Branch and re-entry guards
 
 - `assert_step3b_diagram_branches` — `architecture-diagram.skipped` only on the skip-path fence (`rm -f` before write); architectural entry removes `.skipped`; FINALIZE boundary does not write `.skipped`.
-- `assert_backward_reentry_guards` — Gate B(c)/Gate C(b) re-entry clears `step-1e`…`step-4b`; Step 3 entry clears downstream sentinels and restores the direct-review bypass package (`step-2a` / `step-2a.5` / `step-2b` / `step-2b.5`).
+- `assert_backward_reentry_guards` — Gate B(c)/Gate C(b) re-entry clears `step-1e`…`step-4b`; Step 3 entry clears downstream sentinels and restores the direct-review bypass package (`step-2a` / `step-2b` / `step-2b.5`).
 - `assert_publish_fence_guards` — `design-publish.sh` fence sources env then pause-check and does not write `step-5b`; Gate C preview fence does not write `step-4`.
 
 ### Refactored completion-sentinel scan
 
-`assert_step_completion_sentinels` skips host-absorbed steps (`1c`, `1d`, `1e`, `2a`, `2a.5`, `3`, `3.5`, `4b`, `5d`, `6`) and only section-greps self-writing steps: `0c`, `1d.5`, `2b`, `2b.5`, `3b`, `3.6`, `4`, `5b`, plus `assert_gate_b_bypass_branch_sentinels` for Gate-B-bypass triple writes.
+`assert_step_completion_sentinels` skips host-absorbed steps (`1c`, `1d`, `1e`, `2a`, `3`, `3.5`, `4b`, `5d`, `6`) and only section-greps self-writing steps: `0c`, `1d.5`, `2b`, `2b.5`, `3b`, `3.6`, `4`, `5b`, plus `assert_gate_b_bypass_branch_sentinels` for Gate-B-bypass triple writes.
 
-`assert_bash_fences_have_pause_check` starts at `<!-- step:1c` and scans every surviving source-env Bash fence from Step 1c onward (whitespace-tolerant fence open/close). `assert_step2a_entry_simple_guard` requires pause-check after SIMPLE completion markers inside the entry fence.
+`assert_bash_fences_have_pause_check` starts at `<!-- step:1c` and scans every surviving source-env Bash fence from Step 1c onward (whitespace-tolerant fence open/close). `assert_step2a_entry_simple_guard` requires pause-check after sentinel completion markers inside the entry fence.

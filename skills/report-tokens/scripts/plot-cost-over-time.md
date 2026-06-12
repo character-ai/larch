@@ -15,7 +15,7 @@ The first argv is a JSON file with:
   - `points`: array of `{date, cost}` objects where `date` is an ISO date string and `cost` is a number.
 
 For `implement`, callers pass exactly one `All runs` series. For `design`,
-callers pass `SIMPLE` and `HARD` series. Future schema changes should bump
+callers pass `All runs` series. Future schema changes should bump
 `version` and keep the old reader behavior until callers are cut over.
 
 ## Output and environment

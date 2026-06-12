@@ -51,7 +51,7 @@ class Runner:
 
 
 def _record() -> RunRecord:
-    return RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "SIMPLE", VendorTotals(), VendorTotals(), VendorTotals(), (), {}, total_cost=5)
+    return RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "", VendorTotals(), VendorTotals(), VendorTotals(), (), {}, total_cost=5)
 
 
 def test_plot_contract_and_mplconfig(tmp_path: Path) -> None:
@@ -68,14 +68,14 @@ def test_plot_contract_and_mplconfig(tmp_path: Path) -> None:
     assert "MPLCONFIGDIR" in env
 
 
-def test_plot_design_contract_uses_simple_and_hard_series(tmp_path: Path) -> None:
+def test_plot_design_contract_uses_all_runs_series(tmp_path: Path) -> None:
     runner = Runner(CommandResult(("python",), 0, "__PLOT_DIR__", "", 0.01))
-    hard = RunRecord(2, "t", "u", "2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z", "HARD", VendorTotals(), VendorTotals(), VendorTotals(), (), {}, total_cost=7)
-    paths = plot(runner, skill="design", records=(_record(), hard), plot_parent_dir=tmp_path, plugin_root=Path.cwd())
+    rec2 = RunRecord(2, "t", "u", "2026-01-02T00:00:00Z", "2026-01-03T00:00:00Z", "", VendorTotals(), VendorTotals(), VendorTotals(), (), {}, total_cost=7)
+    paths = plot(runner, skill="design", records=(_record(), rec2), plot_parent_dir=tmp_path, plugin_root=Path.cwd())
     assert paths[0].is_file()
     input_payload = json.loads(Path(runner.calls[0][2]).read_text(encoding="utf-8"))
-    assert [item["label"] for item in input_payload["series"]] == ["SIMPLE", "HARD"]
-    assert [len(item["points"]) for item in input_payload["series"]] == [1, 1]
+    assert [item["label"] for item in input_payload["series"]] == ["All runs"]
+    assert [len(item["points"]) for item in input_payload["series"]] == [2]
 
 
 def test_no_plot_returns_empty(tmp_path: Path) -> None:

@@ -127,19 +127,11 @@ def record_date(record: RunRecord) -> str | None:
     return value[:DATE_LEN] if len(value) >= DATE_LEN else None
 
 
-def workflow_groups(skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
-    groups: dict[str, list[RunRecord]] = {}
-    labels = ("All runs",) if skill == "implement" else ("SIMPLE", "HARD")
-    for label in labels:
-        groups[label] = []
+def workflow_groups(_skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
+    groups: dict[str, list[RunRecord]] = {"All runs": []}
     for record in records:
-        workflow = record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"
-        if skill == "design":
-            if workflow in groups:
-                groups[workflow].append(record)
-        else:
-            groups["All runs"].append(record)
-    return {label: items for label, items in groups.items() if items or skill == "design"}
+        groups["All runs"].append(record)
+    return {label: items for label, items in groups.items() if items}
 
 
 def env_rate(

@@ -18,13 +18,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **Architecture and workflow**
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
-  - [Collaborative Sketches](docs/collaborative-sketches.md) — the diverge-then-converge design phase
+  - [Design Flow](docs/collaborative-sketches.md) — direct plan drafting and plan review
   - [Voting Process](docs/voting-process.md) — the voting panel protocol
   - [Point Competition](docs/point-competition.md) — reviewer scoring system
 
 ## Features
 
-- **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the [configured sketch topology](docs/topology.md#design.sketch.regular_slots) diverges, the [dialectic judge panel](docs/topology.md#design.dialectic.judge_panel) resolves contested decisions, and the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews the final plan.
+- **[Direct design planning and plan reviews](docs/collaborative-sketches.md)** — Step 2b drafts the plan directly, then the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews it.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
 - **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
@@ -62,9 +62,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
-      <td><code>[--hard] [-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id &lt;ID&gt;] &lt;issue-N | feature description&gt;</code></td>
+      <td><code>[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id &lt;ID&gt;] &lt;issue-N | feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). The <code>--hard</code> flag selects HARD; the default tier is SIMPLE (sketch and plan-review depth per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>). <code>-p</code>/<code>--partition</code> routes Step 2b.5 directly to the decomposition panel when no hard plan-size threshold trips; hard triggers still show the hard <code>Split</code>/<code>Override</code>/<code>Cancel</code> prompt: Split enters the decomposition panel, Override records the strongly discouraged escape hatch and continues review, and Cancel exits. Optional <code>--brainstorm</code> runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan) (see <a href="docs/skills.md#design">docs/skills.md</a>). Gate B auto-applies accepted findings by default; <code>--per-round-approval</code> restores the explicit per-round apply prompt. <code>--skip-approve</code>/<code>-s</code> auto-approves the Step 1d.7 outline and Gate C final plan without an <code>AskUserQuestion</code> (no other prompts are skipped). The old <code>--approve</code> flag is rejected; use <code>--per-round-approval</code> instead. Finalize runs upstream <code>/larch:issue</code> batch filing for accepted non-security OOS (Step <strong>5b</strong>) before writing and publishing the <code>larch:plan</code> block (<strong>5c</strong>); tmpdir cleanup is Step <strong>6</strong>.</td></tr>
+    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). <code>-p</code>/<code>--partition</code> routes Step 2b.5 directly to the decomposition panel when no plan-size threshold trips; size triggers show the <code>Override</code>/<code>Cancel</code> prompt. Optional <code>--brainstorm</code> runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan) (see <a href="docs/skills.md#design">docs/skills.md</a>). Gate B auto-applies accepted findings by default; <code>--per-round-approval</code> restores the explicit per-round apply prompt. <code>--skip-approve</code>/<code>-s</code> auto-approves the Step 1d.7 outline and Gate C final plan without an <code>AskUserQuestion</code> (no other prompts are skipped). The old <code>--approve</code> and <code>--hard</code> flags are rejected; use <code>--per-round-approval</code> for explicit Gate B prompts. Finalize runs upstream <code>/larch:issue</code> batch filing for accepted non-security OOS (Step <strong>5b</strong>) before writing and publishing the <code>larch:plan</code> block (<strong>5c</strong>); tmpdir cleanup is Step <strong>6</strong>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#pause"><code>/larch:pause</code></a></td>

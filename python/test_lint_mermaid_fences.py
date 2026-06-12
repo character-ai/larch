@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import stat
 import subprocess
 from pathlib import Path
@@ -79,6 +80,30 @@ def test_parse_only_and_render_modes(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _fake_mmdc(mmdc, "usage without parse")
     rc, _out, err = run_in(tmp_path, monkeypatch, capsys, ["doc.md"])
     assert rc == 0, err
+
+
+def test_missing_local_mmdc_runs_npm_ci(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "doc.md", "```mermaid\ngraph TD\nA-->B\n```\n")
+    write(tmp_path / "mermaid-lint/package-lock.json", "{}\n")
+    npm = tmp_path / "bin/npm"
+    write(
+        npm,
+        """#!/bin/sh
+mkdir -p node_modules/.bin
+cat > node_modules/.bin/mmdc <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = --help ]; then printf '%s\n' 'usage --parseOnly'; exit 0; fi
+exit 0
+EOF
+chmod +x node_modules/.bin/mmdc
+""",
+    )
+    npm.chmod(npm.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setattr(lint_mermaid_fences, "_repo_root", lambda: tmp_path)
+    monkeypatch.setenv("PATH", f"{npm.parent}{os.pathsep}{os.defpath}")
+    rc, _out, err = run_in(tmp_path, monkeypatch, capsys, ["doc.md"])
+    assert rc == 0, err
+    assert (tmp_path / "mermaid-lint/node_modules/.bin/mmdc").is_file()
 
 
 def test_missing_mmdc_with_fence_exit_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

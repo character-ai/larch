@@ -73,7 +73,7 @@ write_input() {
 
 primary="$SCRATCH/primary.env"
 out="$SCRATCH/out.env"
-write_input "$primary" 'INIT_STATUS=ok' 'SECRET=drop' 'RUN_PARAMS_PATH=/tmp/run.json' '' 'DESIGN_CLASSIFICATION=SIMPLE'
+write_input "$primary" 'INIT_STATUS=ok' 'SECRET=drop' 'RUN_PARAMS_PATH=/tmp/run.json' '' 'DESIGN_CLASSIFICATION='
 run_subject --input "$primary" --allow INIT_STATUS --allow RUN_PARAMS_PATH --output "$out"
 assert_rc 'allowlisted primary' 0
 assert_file_contains 'allowlisted key written' "$out" "INIT_STATUS='ok'"

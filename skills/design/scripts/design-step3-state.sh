@@ -101,7 +101,6 @@ case "$ACTION" in
         rm -f "$DESIGN_TMPDIR"/.gate-b-postapply-ready-*
         : >"$DESIGN_TMPDIR/.completed/step-1e"
         : >"$DESIGN_TMPDIR/.completed/step-2a"
-        : >"$DESIGN_TMPDIR/.completed/step-2a.5"
         : >"$DESIGN_TMPDIR/.completed/step-2b"
         : >"$DESIGN_TMPDIR/.completed/step-2b.5"
         if [[ "$ACTION" == direct-review-entry ]]; then

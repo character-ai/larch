@@ -71,7 +71,7 @@ else
     D="$TMPROOT/design"
     mkdir -p "$D"
     cat >"$D/run-params.json" <<'JSON'
-{"classification":"SIMPLE","workflow_path":"SIMPLE"}
+{}
 JSON
     cat >"$D/voting-tally.md" <<'EOF'
 # Tally
@@ -88,7 +88,7 @@ EOF
 
     rc=0
     ISSUE_NUMBER="" SESSION_ID="TEST-BASH32-FIXTURE" DESIGN_TMPDIR="$D" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-        "$SYSTEM_BASH" "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only \
+        "$SYSTEM_BASH" "$SUBJECT" --outcome approved --post-publish-only \
         >"$TMPROOT/case2.stdout" 2>"$TMPROOT/case2.stderr" || rc=$?
 
     case2_ok="true"

@@ -40,12 +40,12 @@
 - **expected_keywords**: no data, schema-only stub, baseline.json, eval-research
 - **notes**: ADVERSARIAL — data-absence. The harness landed in this PR; no Q1-2026 baseline run exists. `eval-baseline.json` is committed as a schema-only stub with `entries: []`. A correct answer says "no data — the harness was added in PR closing #419 and the baseline file is currently a schema-only stub awaiting a follow-up populate run." A failing answer invents numeric scores or claims a prior run.
 
-### eval-5: dialectic-protocol-resolution
-- **question**: How does the dialectic protocol resolve contested decisions in `/design` Step 2a.5, and how does the bucket-assignment rule prevent a single-tool outage from blocking debate?
+### eval-5: plan-review-resolution
+- **question**: How does `/design` Step 3 resolve accepted plan-review findings, and how does the review loop preserve progress when an external reviewer is unavailable?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: dialectic-protocol.md, Disposition, voted, bucket-skipped, dialectic_codex_available
-- **notes**: Architecture; should explain bucket assignment (decisions 1/3/5 → Cursor, 2/4 → Codex), the shadow-flag pattern that protects orchestrator-wide availability, and the four Disposition values (`voted`, `fallback-to-synthesis`, `bucket-skipped`, `over-cap`).
+- **expected_keywords**: run-step3-review.sh, review-design-step3-loop.sh, revise-plan-with-waterfall.sh, plan-review-loop.sh, fallback
+- **notes**: Architecture; should explain that Step 3 runs the plan-review loop, applies accepted findings with `revise-plan-with-waterfall.sh`, records durable round state, and uses the reviewer fallback/waterfall behavior documented for the plan-review panel.
 
 ### eval-6: parent-issue-sentinel-branches
 - **question**: What is the relationship between `/implement` Step 0 tracking adoption (Branch 1 vs Branch 2) and the `parent-issue.md` sentinel file, and how does the sentinel preserve idempotency across resumed runs?
@@ -61,12 +61,12 @@
 - **expected_keywords**: conflict-resolution.md, ship_pr_pre_push, run_rebase_rebump, step12, step10, hard-bail, 12d
 - **notes**: Architecture; should explain why `ship-pr.sh` owns CI-fix rebase/force-push sequencing, when non-bump conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
 
-### eval-8: dialectic-tenure-weighting
-- **question**: How does the dialectic protocol weight reviewer judges by tenure, and where in the codebase is the tenure-lookup table stored?
+### eval-8: plan-review-tenure-weighting
+- **question**: How does the `/design` plan-review voting panel weight reviewer judges by tenure, and where in the codebase is the tenure-lookup table stored?
 - **category**: architecture
 - **expected_provenance_count**: 0
 - **expected_keywords**: no tenure-weighting, YES, NO, EXONERATE, 2+ YES threshold
-- **notes**: ADVERSARIAL — fictitious mechanism. The protocol uses YES/NO/EXONERATE voting with a 2+ YES acceptance threshold; there is no tenure-weighting and no tenure-lookup table. A correct answer rejects the premise and explains the actual mechanism. A failing answer invents tenure weights or fabricates a lookup-table location.
+- **notes**: ADVERSARIAL — fictitious mechanism. The voting protocol uses YES/NO/EXONERATE voting with a 2+ YES acceptance threshold; there is no tenure-weighting and no tenure-lookup table. A correct answer rejects the premise and explains the actual mechanism. A failing answer invents tenure weights or fabricates a lookup-table location.
 
 ### eval-9: research-vs-anthropic-multi-agent
 - **question**: How does `/research`'s 3-lane research-and-validation approach compare to the architecture described in Anthropic's *How we built our multi-agent research system*, and where do the two designs diverge?
@@ -103,12 +103,12 @@
 - **expected_keywords**: python/cli.py admission gate, single-runner, sentinel, RESUME, ADOPTED
 - **notes**: Risk; should describe dirty-tree / working-tree interleaving risks, how admission re-checks open blockers on resume while skipping some title/label gates, and the Known Limitations note about one runner per clone.
 
-### eval-14: implement-cursor-timeout-mid-sketch
-- **question**: What happens to a `/implement` run if `/design`'s Cursor sketch lane times out mid-sketch, and how do `cursor_available` versus `dialectic_cursor_available` differ in their session scope?
+### eval-14: implement-cursor-timeout-plan-review
+- **question**: What happens to a `/implement` run if `/design`'s Cursor plan-review lane times out during review, and how does external reviewer availability propagate into the resumed implementation workflow?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: Runtime Timeout Fallback, dialectic_cursor_available, snapshot, Option B
-- **notes**: Risk; should explain the orchestrator-wide flip that affects subsequent steps versus the dialectic-scoped shadow flag that does NOT mutate the orchestrator-wide flag.
+- **expected_keywords**: plan-review-loop.sh, run-step3-review.sh, cursor_available, fallback, session-env
+- **notes**: Risk; should explain the Step 3 fallback/degraded-review behavior, how reviewer availability is persisted through session-env/run params, and that `/implement` consumes the final issue plan rather than replaying `/design` reviewer lanes.
 
 ### eval-15: ci-fix-rebase-failure-modes
 - **question**: What are the failure modes of `/implement`'s CI-fix rebase/conflict-resolution flow, and how does each map to Step 12 hard-bail versus Step 10 graceful-degrade behavior?
@@ -132,8 +132,11 @@
 - **notes**: Feasibility; should reference the current Step 3 template, identify the consumer boundary (today: human + this eval harness), and propose a side-by-side emission shape.
 
 ### eval-18: implement-fully-offline
+- **question**: Can `/implement` run fully offline after a `/design` plan already exists, and which workflow steps still require GitHub or network access?
 - **category**: feasibility
 - **expected_provenance_count**: 3
+- **expected_keywords**: /implement, offline, GitHub, gh, run logs, local checks, PR
+- **notes**: Feasibility; should explain that local plan materialization and verification can run partly offline, but issue fetches, PR creation, run-log publishing, CI, and merge coordination require GitHub or network access, so there is no fully offline happy path.
 
 ### eval-19: research-planner-pre-pass-feasibility
 - **question**: How does `/research`'s planner pre-pass decompose a question into subquestions, and what dependencies does evaluating its marginal benefit have on this evaluation harness?

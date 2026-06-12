@@ -1,2 +1,0 @@
-STATUS=ERROR
-Judge process timed out; this file is the whole-output-ineligible sentinel used by the smoke test.

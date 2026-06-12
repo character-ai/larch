@@ -18,7 +18,8 @@ Do not satisfy this case by calling `complete_design_steps … 3 3.5` or by manu
 
 ## Legacy compatibility coverage
 
-- Legacy SIMPLE snapshots with `.completed/step-2a` but no `.completed/step-2a.5` save/load at `STEP=2a.5`, then execute the Step 2a.5 compatibility repair and assert the missing marker is written.
+- Legacy Step 2a snapshots without the retired `.completed/step-2a.5` marker resume at `STEP=2b`.
+- Legacy `STEP=2a.5` pause markers load as `STEP=2b` and normalize the required no-planning sentinel artifacts before installing the restored tmpdir.
 - Legacy snapshots with `.completed/step-3b` but no `.completed/finalize` save/load at `STEP=4`, then execute the Step 4 FINALIZE compatibility guard and assert `.completed/finalize` is written.
 - FINALIZE failure coverage pins the operator-visible warning `**⚠ FINALIZE failed; repair the missing artifact before Step 5.**` and the non-zero exit path.
 
@@ -48,7 +49,7 @@ immediately re-pause.
 | Fixture | Intent |
 |---------|--------|
 | Folded discussion through `step-1e` | Resume routes forward to `STEP=2a` (not replay discussion); snapshot retains `.outline-approved` and discussion sentinels. |
-| Direct-review Step 3 entry | With `.step3-reentry` present, Step 3 entry restores `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5`, consumes the marker, and resumes at `STEP=3`. |
+| Direct-review Step 3 entry | With `.step3-reentry` present, Step 3 entry restores `step-2a`/`step-2b`/`step-2b.5`, consumes the marker, and resumes at `STEP=3`. |
 | No-brainstorm Step 2a entry | Discussion sentinels through `step-1d.7` without `step-1d.5`; Step 2a entry repair writes `step-1d.5` before pause-save. |
 | Backward-loop re-entry clear host | Stale `step-1e`…`step-4b` markers are removed before save; resume lands at `STEP=1e` or, after direct-review restoration, `STEP=3` — not Gate C or a later folded host. |
 | Already-planned Q&A-only terminal | Contiguous prefix through `step-1d.5` (`step-1c`, `step-1d`, and `step-1d.5`), not only the non-contiguous `step-1d.5` marker; resume at `STEP=1d.7`. |

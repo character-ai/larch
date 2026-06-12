@@ -42,7 +42,7 @@ step3_loop_emit_envelope() {
     if [[ -f "$DESIGN_TMPDIR/.design-postplan-emit-result.env" && ! -L "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
         while IFS= read -r _line || [[ -n "$_line" ]]; do
             case "$_line" in
-                POSTPLAN_EMIT_STATUS=*|EMIT_PLAN_STATUS=*|DIFF_LINES=*|VALIDATE_STATUS=*|VALIDATE_DEFECT_COUNT=*|PLAN_SIZE_STATUS=*|HARD_TRIGGER_FIRED=*|TRIGGER_REASONS=*|PLAN_LINES=*|DIFF_ADDED=*|DIFF_DELETED=*|MECHANICAL_CHURN=*|SOFT_ADVISORY=*|PARTITION_REQUESTED=*|DRIFT_TRIGGER_FIRED=*|DRIFT_MULTIPLE=*|DRIFT_PLAN_RATIO=*|DRIFT_DIFF_RATIO=*|BASELINE_PLAN_LINES=*|BASELINE_DIFF_LINES=*)
+                POSTPLAN_EMIT_STATUS=*|EMIT_PLAN_STATUS=*|DIFF_LINES=*|VALIDATE_STATUS=*|VALIDATE_DEFECT_COUNT=*|PLAN_SIZE_STATUS=*|SIZE_TRIGGER_FIRED=*|TRIGGER_REASONS=*|PLAN_LINES=*|DIFF_ADDED=*|DIFF_DELETED=*|MECHANICAL_CHURN=*|SOFT_ADVISORY=*|PARTITION_REQUESTED=*|DRIFT_TRIGGER_FIRED=*|DRIFT_MULTIPLE=*|DRIFT_PLAN_RATIO=*|DRIFT_DIFF_RATIO=*|BASELINE_PLAN_LINES=*|BASELINE_DIFF_LINES=*)
                     printf '%s\n' "$_line"
                     ;;
             esac
@@ -139,12 +139,6 @@ step3_loop_write_completed_step3() {
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : >"$DESIGN_TMPDIR/.completed/step-3"
     : >"$DESIGN_TMPDIR/.completed/step-3.5"
-}
-
-step3_loop_is_hard() {
-    local tier=""
-    tier="$(python3 "$PLUGIN_ROOT/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo SIMPLE)"
-    [[ "$tier" == HARD ]]
 }
 
 step3_loop_canonical_dir() {
@@ -295,33 +289,6 @@ step3_loop_run_dedup() {
     return 0
 }
 
-step3_loop_run_hard_snapshots() {
-    local round_num="$1" snap_sh next_round snapshot_rc cursor_rc
-    if ! step3_loop_is_hard; then
-        return 0
-    fi
-    snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
-    if [[ ! -x "$snap_sh" ]]; then
-        POSTPLAN_RC=1
-        return 1
-    fi
-    set +e
-    "$snap_sh" write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$round_num"
-    snapshot_rc=$?
-    next_round=$((10#$round_num + 1))
-    if [[ "$snapshot_rc" -eq 0 ]]; then
-        "$snap_sh" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$next_round"
-        cursor_rc=$?
-    else
-        cursor_rc=1
-    fi
-    if [[ "$snapshot_rc" -ne 0 || "$cursor_rc" -ne 0 ]]; then
-        POSTPLAN_RC=1
-        return 1
-    fi
-    return 0
-}
-
 step3_loop_run_apply() {
     local round_num="$1" snapshot revise_sh revise_out revise_rc revise_status="" findings_file current_phase=""
     ACCEPTED_COUNT="$(step3_loop_count_accepted_findings)"
@@ -405,7 +372,6 @@ step3_loop_run_post_apply() {
     case "$postplan_rc" in
         0)
             set +e
-            step3_loop_run_hard_snapshots "$round_num"
             post_rc=$?
             set -e
             if [[ "$post_rc" -ne 0 ]]; then
@@ -425,9 +391,8 @@ step3_loop_run_post_apply() {
             ;;
         12)
             # Plan-size hard trigger in continuation path: warn and continue (#3959).
-            emit_kv WARN "plan-size hard trigger (postplan rc=12) in continuation (round ${round_num}): proceeding as warning-only"
+            emit_kv WARN "plan-size trigger (postplan rc=12) in continuation (round ${round_num}): proceeding as warning-only"
             set +e
-            step3_loop_run_hard_snapshots "$round_num"
             post_rc=$?
             set -e
             if [[ "$post_rc" -ne 0 ]]; then
@@ -586,7 +551,6 @@ run_design_step3_loop() {
                     if [[ -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}" ]]; then
                         rm -f "$DESIGN_TMPDIR/.postplan-operator-continue-${round_num}"
                         set +e
-                        step3_loop_run_hard_snapshots "$round_num"
                         post_rc=$?
                         set -e
                         if [[ "$post_rc" -ne 0 ]]; then

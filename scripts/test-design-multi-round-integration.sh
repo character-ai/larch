@@ -106,7 +106,7 @@ grep -q 'Accepted OOS' "$TMP/design/oos-accepted-design.md" || fail "accepted OO
 D2="$TMP/design-chain"
 mkdir -p "$D2"
 cat >"$D2/run-params.json" <<'EOF'
-{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
+{"schema_version":3,"approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
 EOF
 printf '## Plan\n\nDo thing better.\n\ndiff_lines: 3\n' >"$D2/plan.txt"
 printf 'feat\n' >"$D2/feature-description.txt"
@@ -133,7 +133,7 @@ fi
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
 EOS
 chmod +x "$chain_stub"
-for helper in revise-ok.sh dedup-ok.sh postplan-ok.sh snapshot-ok.sh continue-true.sh; do
+for helper in revise-ok.sh dedup-ok.sh postplan-ok.sh continue-true.sh; do
     case "$helper" in
         revise-ok.sh) cat >"$D2/$helper" <<'STUB'
 #!/usr/bin/env bash
@@ -159,19 +159,6 @@ printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
 exit 0
 STUB
         ;;
-        snapshot-ok.sh) cat >"$D2/$helper" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-cmd="${1:?}"; shift
-dir=""; value=""; round=""
-while [[ $# -gt 0 ]]; do case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; --value) value="${2:?}"; shift 2 ;; --round) round="${2:?}"; shift 2 ;; *) shift ;; esac; done
-case "$cmd" in
-  write-after) cp "$dir/plan.txt" "$dir/plan-after-round-${round}.txt" ;;
-  write-cursor) printf '%s\n' "$value" >"$dir/plan-review-round-cursor.txt" ;;
-  read-cursor) printf 'ROUND_CURSOR=1\n' ;;
-esac
-STUB
-        ;;
         continue-true.sh) cat >"$D2/$helper" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -195,7 +182,6 @@ run_step3_out=$(env -u LARCH_QUIET_PID \
     RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D2/revise-ok.sh" \
     RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
     RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
-    RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$D2/snapshot-ok.sh" \
     RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
     "$RUN_STEP3" --design-tmpdir "$D2" --mode loop)
 printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' || fail "loop mode should finish with complete envelope"

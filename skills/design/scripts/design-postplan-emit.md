@@ -9,17 +9,16 @@
 | Flag | Required | Notes |
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Canonicalized with `cd … && pwd -P` |
-| `--snapshot-original` | no | Enables the initial HARD `plan.txt-original` write-once snapshot |
+| `--snapshot-original` | no | Deprecated; snapshot is always suppressed |
 | `--with-plan-size` | no | Merged mode: run `check-plan-size.sh` after successful validation; action exit codes; display-only FD 3 |
 
-Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppress the HARD snapshot. Validation is unconditional for all sites.
+The snapshot is always suppressed (`skipped-suppressed`). Validation is unconditional for all sites.
 
 ## Responsibilities
 
 1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, read `partition_requested` from `run-params.json` (`json_boolean_or_sed` for bare `true`/`false` without `jq`).
 2. Pause checkpoint before each internal step. **`--with-plan-size`**: exit **11** after writing result env (orchestrator `exec`s `design-pause-save.sh`). **Legacy**: `exec` pause-save from the driver.
 3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh`.
-4. Optional HARD snapshot when `--snapshot-original`.
 5. Run `invoke-plan-validator.sh` unconditionally.
 6. **`--with-plan-size`**: after validation succeeds without defects, run `check-plan-size.sh` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
 
@@ -33,7 +32,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 
 - `POSTPLAN_EMIT_STATUS`, `EMIT_PLAN_STATUS`, `DIFF_LINES`, `SNAPSHOT_STATUS`
 - `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE`
-- `PLAN_SIZE_STATUS`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `PARTITION_REQUESTED`
+- `PLAN_SIZE_STATUS`, `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `PARTITION_REQUESTED`
 - `DRIFT_TRIGGER_FIRED`, `DRIFT_MULTIPLE`, `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO`, `BASELINE_PLAN_LINES`, `BASELINE_DIFF_LINES`
 - `WARN` (repeatable)
 
@@ -56,7 +55,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 | `2` | Argv / configuration error |
 | `10` | `VALIDATE_STATUS=defects-found` (plan-size skipped) |
 | `11` | Pause requested (orchestrator runs `design-pause-save.sh`) |
-| `12` | Hard trigger (`HARD_TRIGGER_FIRED=true`; hard wins over partition) |
+| `12` | Hard trigger (`SIZE_TRIGGER_FIRED=true`; hard wins over partition) |
 | `13` | `partition_requested=true` without hard trigger |
 
 **Precedence**: hard → partition → defects (validator handoff, rc **10**). Drift (`DRIFT_TRIGGER_FIRED=true`) no longer exits with a non-zero code; it records a `Warnings` entry in `execution-issues.md` via `run-log append-failure` and exits `0` (with `PLAN_SIZE_STATUS=drift-advisory`).
@@ -67,11 +66,11 @@ On `check-plan-size.sh` rc **2** or **3**: capture stdout+stderr to `check-plan-
 
 ## Soft advisory display
 
-When `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=false`, emit mechanical-churn advisory then exit `0`. When both soft advisory and hard trigger, emit advisory plus hard-section preamble before exit **12**.
+When `SOFT_ADVISORY=true` and `SIZE_TRIGGER_FIRED=false`, emit mechanical-churn advisory then exit `0`. When both soft advisory and hard trigger, emit advisory plus hard-section preamble before exit **12**.
 
 ## Classification warnings (#3441)
 
-`read-design-classification.sh` stderr is captured into `WARN` result-env lines and replayed via display `emit` (not `WARN=` tokens on FD 3).
+Missing `run-params.json` defaults optional flags without replaying removed classification-reader warnings.
 
 ## Edit in sync
 

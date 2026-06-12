@@ -16,7 +16,6 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --outcome merged \
     --run-id RUN-FMT \
     --mode '--quick' \
-    --workflow-path SIMPLE \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 1000000 \

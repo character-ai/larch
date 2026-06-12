@@ -33,7 +33,7 @@ parse_kv_from_output() {
             VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_value" ;;
             VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_value" ;;
             VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_value" ;;
-            HARD_TRIGGER_FIRED) HARD_TRIGGER_FIRED="$_value" ;;
+            SIZE_TRIGGER_FIRED) SIZE_TRIGGER_FIRED="$_value" ;;
             TRIGGER_REASONS) TRIGGER_REASONS="$_value" ;;
             PLAN_LINES) PLAN_LINES="$_value" ;;
             DIFF_ADDED) DIFF_ADDED="$_value" ;;
@@ -96,30 +96,6 @@ RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 WARN_LINES=()
 PARTITION_REQUESTED="$(phase_driver_json_boolean_or_sed "$RUN_PARAMS_PATH" partition_requested false)"
-READ_CLASSIFICATION_SH="$PLUGIN_ROOT/python/cli.py"
-if [[ -f "$READ_CLASSIFICATION_SH" ]]; then
-    _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
-    _classification_warn_count_before=${#WARN_LINES[@]}
-    set +e
-    WORKFLOW_PATH=$(python3 "$READ_CLASSIFICATION_SH" session read-classification "$RUN_PARAMS_PATH" 2>"$_classification_stderr")
-    _classification_rc=$?
-    set -e
-    if [[ -s "$_classification_stderr" ]]; then
-        while IFS= read -r _classification_warn || [[ -n "$_classification_warn" ]]; do
-            [[ -n "$_classification_warn" ]] && WARN_LINES+=("$_classification_warn")
-        done <"$_classification_stderr"
-    fi
-    rm -f "$_classification_stderr"
-    if [[ "$_classification_rc" -ne 0 ]]; then
-        if [[ "${#WARN_LINES[@]}" -eq "$_classification_warn_count_before" ]]; then
-            WARN_LINES+=("**⚠ read-design-classification: exited ${_classification_rc}; defaulting design_classification to HARD.**")
-        fi
-        WORKFLOW_PATH=HARD
-    fi
-else
-    WORKFLOW_PATH=HARD
-fi
-case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) WORKFLOW_PATH=HARD ;; esac
 
 POSTPLAN_EMIT_STATUS=pending
 EMIT_PLAN_STATUS=not-run
@@ -131,7 +107,7 @@ VALIDATE_SKIPPED_COUNT=0
 VALIDATE_UNSAFE_TOKEN_COUNT=0
 VALIDATE_LOG_FILE=""
 PLAN_SIZE_STATUS=not-run
-HARD_TRIGGER_FIRED=false
+SIZE_TRIGGER_FIRED=false
 TRIGGER_REASONS=""
 PLAN_LINES=""
 DIFF_ADDED=""
@@ -186,7 +162,7 @@ _postplan_build_kvs() {
     _kvs+=("VALIDATE_LOG_FILE=$VALIDATE_LOG_FILE")
     if [[ "$WITH_PLAN_SIZE" == true ]]; then
         _kvs+=("PLAN_SIZE_STATUS=$PLAN_SIZE_STATUS")
-        _kvs+=("HARD_TRIGGER_FIRED=$HARD_TRIGGER_FIRED")
+        _kvs+=("SIZE_TRIGGER_FIRED=$SIZE_TRIGGER_FIRED")
         _kvs+=("TRIGGER_REASONS=$TRIGGER_REASONS")
         _kvs+=("PLAN_LINES=$PLAN_LINES")
         _kvs+=("DIFF_ADDED=$DIFF_ADDED")
@@ -257,9 +233,6 @@ _postplan_emit_rc1_diagnostic() {
         missing-diff-lines)
             emit "**⚠ 2b: plan.txt is missing a final diff_lines metadata line; repair plan.txt before Step 2b.5 / Step 3.**"
             ;;
-        snapshot-failed)
-            emit "**⚠ 2b: failed to snapshot plan.txt-original for HARD review flow; aborting before Step 3.**"
-            ;;
         validate-driver-failed)
             emit "**⚠ 2b: plan-command validator infrastructure failed; aborting before Step 3.**"
             ;;
@@ -279,15 +252,15 @@ _postplan_emit_soft_advisory() {
     if [[ "$SOFT_ADVISORY" != true ]]; then
         return 0
     fi
-    if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
-        emit "⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=${DIFF_ADDED:-} DIFF_DELETED=${DIFF_DELETED:-} DIFF_LINES=${DIFF_LINES:-}); plan-body gate still requires Split/Cancel"
+    if [[ "$SIZE_TRIGGER_FIRED" == true ]]; then
+        emit "⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=${DIFF_ADDED:-} DIFF_DELETED=${DIFF_DELETED:-} DIFF_LINES=${DIFF_LINES:-}); plan-body gate still requires Override/Cancel"
     else
         emit "⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=${DIFF_ADDED:-} DIFF_DELETED=${DIFF_DELETED:-} DIFF_LINES=${DIFF_LINES:-}); proceeding"
     fi
 }
 
-_postplan_emit_hard_section() {
-    emit "## Plan Size — Hard Trigger"
+_postplan_emit_size_trigger_section() {
+    emit "## Plan Size — Size Trigger"
     emit "PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
     if [[ -n "${DIFF_ADDED:-}" ]]; then
         emit "DIFF_ADDED=${DIFF_ADDED}"
@@ -357,7 +330,7 @@ _postplan_run_plan_size() {
         PLAN_SIZE_STATUS="${PLAN_SIZE_STATUS:-unknown}"
         [[ "$PLAN_SIZE_STATUS" == not-run ]] && PLAN_SIZE_STATUS=unknown
         _postplan_append_plan_size_warning "$_plan_size_rc"
-        HARD_TRIGGER_FIRED=false
+        SIZE_TRIGGER_FIRED=false
         TRIGGER_REASONS=""
         SOFT_ADVISORY=false
         rm -f "$_plan_size_stderr" 2>/dev/null || true
@@ -386,10 +359,10 @@ _postplan_finish_merged_plan_size() {
         _postplan_exit_merged_failure
     fi
     _postplan_emit_soft_advisory
-    if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
-        _postplan_emit_hard_section
+    if [[ "$SIZE_TRIGGER_FIRED" == true ]]; then
+        _postplan_emit_size_trigger_section
         POSTPLAN_EMIT_STATUS=ok
-        PLAN_SIZE_STATUS=hard-trigger
+        PLAN_SIZE_STATUS=plan-size-trigger
         _postplan_flush || exit 1
         exit 12
     fi
@@ -512,36 +485,7 @@ if [[ "$EMIT_PLAN_STATUS" != ok ]]; then
     _postplan_write_result_and_emit
     exit 1
 fi
-_postplan_pause_checkpoint
-if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
-    if [[ "$WORKFLOW_PATH" == HARD ]]; then
-        _snapshot_dest="$DESIGN_TMPDIR/plan.txt-original"
-        _snapshot_existed=false
-        [[ -e "$_snapshot_dest" ]] && _snapshot_existed=true
-        set +e
-        _snap_out=$("$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" write-original --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
-        _snap_rc=$?
-        set -e
-        if [[ "$_snap_rc" -ne 0 ]]; then
-            SNAPSHOT_STATUS=failed
-            POSTPLAN_EMIT_STATUS=snapshot-failed
-            if [[ "$WITH_PLAN_SIZE" == true ]]; then
-                _postplan_exit_merged_failure
-            fi
-            _postplan_write_result_and_emit
-            exit 1
-        fi
-        if [[ "$_snapshot_existed" == true ]]; then
-            SNAPSHOT_STATUS=preserved
-        else
-            SNAPSHOT_STATUS=taken
-        fi
-    else
-        SNAPSHOT_STATUS=skipped-not-hard
-    fi
-else
-    SNAPSHOT_STATUS=skipped-suppressed
-fi
+SNAPSHOT_STATUS=skipped-suppressed
 
 _postplan_pause_checkpoint
 set +e

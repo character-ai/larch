@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor) for SIMPLE and HARD. `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
@@ -31,10 +31,6 @@ When a finding is not accepted, it is classified as either **`neutral`** (at lea
 ## Degraded-Panel Warnings
 
 The dispatch scripts emit loud degraded-panel warnings when effective judges drop below the expected panel size. Effective means the voter did not fail and produced a non-empty output file. Warnings include the available judge count, missing slots, and the active tier (`unanimous-2`, `single-judge`, or `main-agent-required`) so operators can distinguish a stricter degraded vote from a 0-judge main-agent handoff.
-
-### Sketch-count Independence
-
-**Sketch-count independence (audit conclusion).** Plan-review voting thresholds (3 voters, 2+ YES) and dialectic judge thresholds (3 voters, 2+ same-side) are independent of the `/design` sketch-agent count. The dialectic decision cap `min(5, |contested-decisions|)` naturally handles a smaller pool of contested decisions when fewer sketches diverge. Reducing the regular-mode sketch fan-out from 8 to 4 (umbrella issue #1553) does not require any threshold change.
 
 ## Voter Panel Composition
 
@@ -108,29 +104,6 @@ Claude subagent reviewers always produce OOS observations (via their dual-list o
 
 - **Voting Protocol** is used by `/design` and `/review` — see this document
 - **Negotiation Protocol** is used by `/research` — up to N rounds of back-and-forth with external reviewers, where Claude makes the final call
-- **Dialectic Protocol** is used by `/design` Step 2a.5 (contested design decisions) — see [Relationship to Dialectic Protocol](#relationship-to-dialectic-protocol) below
-- The key difference: voting uses a democratic panel with threshold rules; negotiation uses bilateral dialogue with Claude as arbiter; dialectic adjudicates binary debater defenses
+- The key difference: voting uses a democratic panel with threshold rules; negotiation uses bilateral dialogue with Claude as arbiter
 
 See [Point Competition](point-competition.md) for how voting outcomes translate to reviewer scores.
-
-## Relationship to Dialectic Protocol
-
-`/design` Step 2a.5 runs a separate protocol — **dialectic adjudication** — to resolve contested design decisions. This protocol is **structurally parallel to voting-protocol but semantically independent**. The canonical specification lives in [`skills/shared/dialectic-protocol.md`](../skills/shared/dialectic-protocol.md).
-
-### Do not reuse voting-protocol parsers, thresholds, or scoring for dialectic
-
-Maintainers extending Step 2a.5 MUST NOT reuse this document's ballot parser, threshold tables, or scoring rules for dialectic. The two protocols differ on every surface:
-
-| Surface | Voting Protocol | Dialectic Protocol |
-|---|---|---|
-| Ballot ID prefix | `FINDING_N` (and `OOS_N` for out-of-scope) | `DECISION_N` |
-| Vote tokens | `YES` / `NO` | `THESIS` / `ANTI_THESIS` (binary — no third option) |
-| Accept threshold (3 voters) | 2+ YES | 2+ same-side |
-| Scoring | Reviewer competition scoreboard (+1 / 0 / -1) | **No scoring** (dialectic is not a competition) |
-| OOS semantics | In-scope vs `[OUT_OF_SCOPE]` prefix; symmetric scoring for OOS | No OOS concept — every decision is binding or synthesis-falls-back |
-
-### Mechanical "no Claude debaters" rule (debate execution only)
-
-The dialectic protocol diverges from the repo-wide "replacement-first" fallback architecture **for the debate phase only**: when an assigned external debater tool (Cursor for odd-indexed decisions, Codex for even) is unavailable, the bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written — Claude Code Reviewer subagents are **never** substituted into the debate path. This is intentional (see GitHub issue #98 for the rationale): debaters produce adversarial arguments where model-specific writing style could encode tool identity and bias the downstream judge panel.
-
-The **judge panel** (post-debate adjudication, always 3 slots) uses the repo-wide replacement-first pattern normally: when Cursor or Codex is unhealthy, a Claude Code Reviewer subagent replaces that slot so the panel always remains at 3. Judges only adjudicate between pre-authored defenses; the "no Claude substitution" rule is specific to adversarial debate, not to adjudication.

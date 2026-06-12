@@ -12,7 +12,6 @@ RC=0
 SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/test-parse-design-argv.XXXXXX")
 trap 'rm -rf "$SCRATCH"' EXIT
 ARGV_ENV=""
-hard_requested=""
 partition_requested=""
 brainstorm_requested=""
 approve_requested=""
@@ -50,7 +49,7 @@ run_case_with_output() {
 }
 
 source_argv_env() {
-    unset hard_requested partition_requested brainstorm_requested approve_requested skip_approve_requested no_dedup_requested run_id POSITIONAL_KIND POSITIONAL_VALUE VALIDATION_ERROR
+    unset  partition_requested brainstorm_requested approve_requested skip_approve_requested no_dedup_requested run_id POSITIONAL_KIND POSITIONAL_VALUE VALIDATION_ERROR
     # shellcheck source=/dev/null
     . "$ARGV_ENV"
 }
@@ -108,7 +107,7 @@ assert_kv() {
 
 assert_no_flag_kvs() {
     local label="$1"
-    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
+    if printf '%s\n' "$OUT" | grep -Eq '^(PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
         fail "$label emitted success KVs on validation failure"
     else
         pass "$label emitted no success KVs"
@@ -117,7 +116,7 @@ assert_no_flag_kvs() {
 
 assert_success_kv_count() {
     local label="$1" want="$2" got
-    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
+    got=$(printf '%s\n' "$OUT" | awk -F= '/^(PARTITION_REQUESTED|BRAINSTORM_REQUESTED|APPROVE_REQUESTED|SKIP_APPROVE_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
     if [ "$got" = "$want" ]; then
         pass "$label success KV count"
     else
@@ -127,7 +126,6 @@ assert_success_kv_count() {
 
 assert_common_false() {
     local label="$1"
-    assert_kv "$label" HARD_REQUESTED false
     assert_kv "$label" PARTITION_REQUESTED false
     assert_kv "$label" BRAINSTORM_REQUESTED false
     assert_kv "$label" APPROVE_REQUESTED false
@@ -139,7 +137,7 @@ assert_common_false() {
 # bare numeric tail
 run_case 3249
 assert_rc 'numeric tail' 0
-assert_success_kv_count 'numeric tail' 9
+assert_success_kv_count 'numeric tail' 8
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
@@ -158,10 +156,6 @@ assert_kv 'verbal tail' POSITIONAL_KIND verbal
 assert_kv 'verbal tail' POSITIONAL_VALUE 'add a foo flag'
 
 # each boolean flag alone
-run_case --hard
-assert_rc '--hard' 0
-assert_kv '--hard' HARD_REQUESTED true
-assert_kv '--hard' POSITIONAL_KIND none
 
 run_case -p
 assert_rc '-p' 0
@@ -186,7 +180,6 @@ run_case --per-round-approval 3249
 assert_rc '--per-round-approval issue' 0
 assert_kv '--per-round-approval issue' APPROVE_REQUESTED true
 assert_kv '--per-round-approval issue' SKIP_APPROVE_REQUESTED false
-assert_kv '--per-round-approval issue' HARD_REQUESTED false
 assert_kv '--per-round-approval issue' POSITIONAL_KIND issue
 assert_kv '--per-round-approval issue' POSITIONAL_VALUE 3249
 
@@ -262,24 +255,27 @@ assert_kv '--run-id newline smuggling' VALIDATION_ERROR newline-in-value
 assert_no_flag_kvs '--run-id newline smuggling'
 
 # flags then positional
-run_case --hard 3249
+run_case -p --brainstorm --no-dedup 3249
 assert_rc 'flags then positional' 0
-assert_kv 'flags then positional' HARD_REQUESTED true
 assert_kv 'flags then positional' POSITIONAL_KIND issue
 assert_kv 'flags then positional' POSITIONAL_VALUE 3249
 
 # positional then flaglike: trailing token is not re-parsed
-run_case 3249 --hard
+run_case 3249 --bogus
 assert_rc 'positional then flaglike' 0
-assert_kv 'positional then flaglike' HARD_REQUESTED false
 assert_kv 'positional then flaglike' POSITIONAL_KIND issue
 assert_kv 'positional then flaglike' POSITIONAL_VALUE 3249
 
+run_case 3249 --hard
+assert_rc 'numeric issue trailing retired --hard' 3
+assert_kv 'numeric issue trailing retired --hard' VALIDATION_ERROR --hard
+assert_no_flag_kvs 'numeric issue trailing retired --hard'
+
 # validation errors
-run_case --hard --hard
-assert_rc 'duplicate hard' 3
-assert_kv 'duplicate hard' VALIDATION_ERROR --hard
-assert_no_flag_kvs 'duplicate hard'
+run_case --hard
+assert_rc 'retired --hard' 3
+assert_kv 'retired --hard' VALIDATION_ERROR --hard
+assert_no_flag_kvs 'retired --hard'
 
 run_case --per-round-approval --per-round-approval
 assert_rc 'duplicate per-round-approval' 3
@@ -323,15 +319,13 @@ assert_kv 'empty argv' POSITIONAL_KIND none
 assert_kv 'empty argv' POSITIONAL_VALUE ""
 
 # end of options
-run_case --hard --
+run_case --
 assert_rc 'terminator only' 0
-assert_kv 'terminator only' HARD_REQUESTED true
 assert_kv 'terminator only' POSITIONAL_KIND none
 assert_kv 'terminator only' POSITIONAL_VALUE ""
 
-run_case --hard -- 3249
+run_case -- 3249
 assert_rc 'terminator issue' 0
-assert_kv 'terminator issue' HARD_REQUESTED true
 assert_kv 'terminator issue' POSITIONAL_KIND issue
 assert_kv 'terminator issue' POSITIONAL_VALUE 3249
 
@@ -339,7 +333,6 @@ run_case -- --hard
 assert_rc 'terminator flaglike verbal' 0
 assert_common_false 'terminator flaglike verbal'
 assert_kv 'terminator flaglike verbal' POSITIONAL_KIND verbal
-assert_kv 'terminator flaglike verbal' POSITIONAL_VALUE --hard
 
 # verbal metacharacters passed as one arg
 run_case "Strunk & White \$x"
@@ -348,17 +341,16 @@ assert_kv 'metachar verbal' POSITIONAL_KIND verbal
 assert_kv 'metachar verbal' POSITIONAL_VALUE "Strunk & White \$x"
 
 # embedded newline in verbal token is rejected
-run_case $'foo\nHARD_REQUESTED=true'
+run_case $'foo\n=true'
 assert_rc 'newline smuggling' 3
 assert_kv 'newline smuggling' VALIDATION_ERROR newline-in-value
 assert_no_flag_kvs 'newline smuggling'
 
 
 # hidden --output writes sourceable success output and preserves stdout compatibility
-run_case_with_output --hard -p --brainstorm --per-round-approval --skip-approve --no-dedup --run-id RID42 3249
+run_case_with_output -p --brainstorm --per-round-approval --skip-approve --no-dedup --run-id RID42 3249
 assert_rc 'hidden output full flags' 0
-assert_success_kv_count 'hidden output full flags' 9
-assert_file_contains 'hidden output hard binding' "$ARGV_ENV" "hard_requested='true'"
+assert_success_kv_count 'hidden output full flags' 8
 assert_file_contains 'hidden output partition binding' "$ARGV_ENV" "partition_requested='true'"
 assert_file_contains 'hidden output brainstorm binding' "$ARGV_ENV" "brainstorm_requested='true'"
 assert_file_contains 'hidden output approve binding' "$ARGV_ENV" "approve_requested='true'"
@@ -368,8 +360,7 @@ assert_file_contains 'hidden output run-id binding' "$ARGV_ENV" "run_id='RID42'"
 assert_file_contains 'hidden output positional kind binding' "$ARGV_ENV" "POSITIONAL_KIND='issue'"
 assert_file_contains 'hidden output positional value binding' "$ARGV_ENV" "POSITIONAL_VALUE='3249'"
 source_argv_env
-if [ "$hard_requested" = true ] \
-  && [ "$partition_requested" = true ] \
+if [ "$partition_requested" = true ] \
   && [ "$brainstorm_requested" = true ] \
   && [ "$approve_requested" = true ] \
   && [ "$skip_approve_requested" = true ] \
@@ -381,7 +372,6 @@ if [ "$hard_requested" = true ] \
 else
     fail 'hidden output sourceable success bindings'
 fi
-assert_eq 'stdout hard matches source' "$(kv_value HARD_REQUESTED)" "$hard_requested"
 assert_eq 'stdout partition matches source' "$(kv_value PARTITION_REQUESTED)" "$partition_requested"
 assert_eq 'stdout brainstorm matches source' "$(kv_value BRAINSTORM_REQUESTED)" "$brainstorm_requested"
 assert_eq 'stdout approve matches source' "$(kv_value APPROVE_REQUESTED)" "$approve_requested"
@@ -425,9 +415,8 @@ assert_rc 'public output rejected' 3
 assert_kv 'public output rejected' VALIDATION_ERROR --output
 source_argv_env
 assert_eq 'public output validation sources' "${VALIDATION_ERROR:-}" --output
-assert_file_not_contains 'validation output has no success binding' "$ARGV_ENV" 'hard_requested='
+assert_file_not_contains 'validation output has no partition binding' "$ARGV_ENV" 'partition_requested='
 
-run_case_with_output --hard --output public-path
 assert_rc 'public output interleaved rejected' 3
 assert_kv 'public output interleaved rejected' VALIDATION_ERROR --output
 source_argv_env

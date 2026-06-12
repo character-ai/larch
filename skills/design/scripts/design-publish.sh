@@ -378,7 +378,7 @@ fi
 
 MODE="N/A"
 if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-    MODE=$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)
+    MODE=N/A
 fi
 
 _plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md")
@@ -387,7 +387,6 @@ if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
-        --mode "$MODE" \
         ${REPO:+--repo "$REPO"} \
         --post-publish-only || true
     write_result_env_and_emit || exit 1

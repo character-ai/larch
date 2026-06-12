@@ -87,7 +87,6 @@ REPO=<owner/repo>              # optional when repo resolution failed
 RUN_ID=<run-id>
 STEP=<step-id>
 SESSION_ID=<run-id>
-TIER=<classification>
 BRAINSTORM_DONE=true|false
 BODY_HASH=<sha256>
 PAUSED_AT=<utc timestamp>
@@ -292,7 +291,6 @@ out of scope:
 
 - Plan content quality (what constitutes a good plan beyond the Preflight rubric in `skills/implement/references/preflight-plan-audit.md`)
 - Audit judgment beyond the fixed Preflight rubric in `skills/implement/references/preflight-plan-audit.md` (orchestrator applies the rubric; no separate CLI)
-- Design tier selection (`--hard` public argv; default SIMPLE; sketch topology and internal flags per `skills/design/references/flags.md`)
 
 Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/preflight-plan-audit.md` (fixed Preflight rubric), and `skills/implement/SKILL.md` (Preflight orchestration + Step 0 plan materialization).
 
@@ -302,4 +300,4 @@ Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/pr
 
 - **`skills/implement/references/preflight-plan-audit.md`** — fixed Preflight plan adequacy rubric.
 - **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `python/cli.py plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
-- **`skills/design/SKILL.md`** — tiered `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.
+- **`skills/design/SKILL.md`** — `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.

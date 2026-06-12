@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|failed-plan-write|failed-publish|publish-skipped) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size|cancelled-decompose|cancelled-outline|failed-plan-write|failed-publish|publish-skipped) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -58,10 +58,6 @@ esac
 RUN_ID="${SESSION_ID:-}"
 [ -n "$RUN_ID" ] || RUN_ID="unknown"
 
-WORKFLOW_PATH="unknown"
-if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-    WORKFLOW_PATH=$(jq -r '.workflow_path // "unknown"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo unknown)
-fi
 
 ISSUE="${ISSUE_NUMBER:-}"
 [ -n "$ISSUE" ] || ISSUE=""
@@ -475,8 +471,6 @@ invoke_render() {
         --skill design
         --outcome "$OUTCOME"
         --run-id "$RUN_ID"
-        --mode "$MODE_STR"
-        --workflow-path "$WORKFLOW_PATH"
         --duration "$DURATION"
         --issue-number "$ISSUE"
         --issue-url "$ISSUE_URL"
@@ -524,8 +518,6 @@ compose_self_fallback() {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
         printf '%s\n\n' "$banner"
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
-        printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
-        printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
         printf -- '- **Cost**: N/A\n'
         if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then

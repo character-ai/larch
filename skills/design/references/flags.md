@@ -2,19 +2,17 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--per-round-approval`, `--skip-approve` / `-s`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: the normative allowlist for all `/design` public flags — validation rules, dispatch notes, and persistence conventions.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
-**Binding convention**: `SKILL.md`'s compact flag table is a non-normative index — this file is authoritative for validation, tier mapping, and internal dispatch notes.
+**Binding convention**: `SKILL.md`'s compact flag table is a non-normative index — this file is authoritative for validation and internal dispatch notes.
 
 ---
 
 ## Public `/design` flags
 
-Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist and tier-mapping source.
-
-**Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=3`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
+Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist source.
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
@@ -25,9 +23,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 - `--approve`: **retired** — rejected as an unknown public flag before Step 0. Use `--per-round-approval` to restore the explicit per-round Gate B prompt, or `--skip-approve`/`-s` to auto-approve the outline and final plan.
 - `--manual` / `-m`: removed. These flags are rejected as unknown public flags before Step 0. There is no persisted manual mode; Gate B auto-applies by default and `--per-round-approval` is the only way to restore the explicit per-round apply prompt.
 
-`python/cli.py session write-run-params` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration. The `skip_approve_requested` boolean field is also persisted (default `false`; read at Step 1d.7 and Step 4b Gate C).
-
-**Mutual exclusion**: at most one `--hard`, at most one `--per-round-approval`, and at most one `--skip-approve` / `-s` on argv; duplicates → hard error before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive. Any unrecognized or disallowed leading public `--` flag (including retired `--approve`) → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
+`python/cli.py session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and is read at Step 1d.7 and Step 4b Gate C.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 
@@ -58,7 +54,7 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 ## Step 3 review env vars
 
-Step 3 review is single-pass: each entry runs at most one plan-review panel. The Gate C review-run counter cap is **5 for both tiers**, and no env knob exists for the cap.
+Step 3 review is single-pass: each entry runs at most one plan-review panel. The Gate C review-run counter cap is **5**, and no env knob exists for the cap.
 
 If the panel fails, Step 3 skips Gate B and proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the pre-review `plan.txt` unchanged.
 
@@ -69,7 +65,7 @@ The helper emits comma-separated reason tokens in **fixed priority order** `plan
 ## `check-plan-size.sh` contract (summary)
 
 - **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional trailers `diff_added:`, `diff_deleted:`, and `mechanical_churn:` MAY appear in the final contiguous metadata block immediately above `diff_lines:` (strict full-line regexes — see `check-plan-size.md`).
-- **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). `PLAN_LINES` excludes recognized optional metadata trailers above final `diff_lines:`. On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
+- **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). `PLAN_LINES` excludes recognized optional metadata trailers above final `diff_lines:`. On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
 - **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
 
 ## Plan-command validator
@@ -78,9 +74,9 @@ Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after 
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 
-## Internal — sketch dispatch (not public argv)
+## Internal — planning dispatch (not public argv)
 
-- **`/design` sketch phase is inline-only** (issue #2487): sketches, external collectors, synthesis, dialectic, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for the sketch phase.
+- **`/design` planning is inline-only** (issue #2487): sentinel prep, direct drafting, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for Step 2a sentinel prep.
 
 - **`brainstorm_requested` in `run-params.json`**: boolean sibling to `partition_requested`; Step **1d.5** reads this field (default `false` when absent) instead of re-parsing argv after subshell boundaries.
 

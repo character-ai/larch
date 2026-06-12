@@ -1540,20 +1540,6 @@ def run_logs_failed(
     return text, 0
 
 
-def read_workflow_path(path: str) -> str:
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return "unknown"
-    workflow = data.get("workflow_path")
-    if workflow in ("SIMPLE", "HARD"):
-        return str(workflow)
-    classification = data.get("design_classification")
-    if classification in ("SIMPLE", "HARD"):
-        return str(classification)
-    return "unknown"
-
-
 def extract_closes_issue(body: str) -> str:
     match = re.search(r"Closes #([0-9]+)", body)
     return match.group(1) if match else ""
@@ -1612,13 +1598,6 @@ def run_logs_main(argv: list[str]) -> int:
     return rc
 
 
-def workflow_path_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        print("**⚠ read-workflow-path: artifact path not provided; defaulting to unknown**", file=sys.stderr)
-        print("unknown")
-        return 0
-    value = read_workflow_path(argv[0])
-    if value == "unknown":
-        print("**⚠ read-workflow-path: workflow_path/design_classification missing or invalid; defaulting to unknown**", file=sys.stderr)
-    print(value)
+def workflow_path_main(_argv: list[str]) -> int:
+    print("unknown")
     return 0

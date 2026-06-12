@@ -4,7 +4,7 @@ TMP=$(mktemp -d)
 ROOT=/Users/zhupanov/larch1
 RESTORE="$TMP/restore"
 mkdir -p "$RESTORE/.completed"
-printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$RESTORE/run-params.json"
+printf '{"brainstorm_requested":false}\n' >"$RESTORE/run-params.json"
 printf 'plan\n# revised\n' >"$RESTORE/plan.txt"
 printf 'feature\n' >"$RESTORE/feature-description.txt"
 printf 'awaiting-post-apply\n' >"$RESTORE/.step3-round-1.phase"

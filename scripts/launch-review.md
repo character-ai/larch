@@ -182,7 +182,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
 ## Primary Callers
 
 - `skills/implement/SKILL.md` quick review fan-out.
-- `skills/design/SKILL.md` and design references for plan/sketch reviewers.
+- `skills/design/SKILL.md` and design references for plan reviewers.
 - `skills/review/SKILL.md` specialist and generic review fan-out.
 - `scripts/collect-agent-results.sh` empty-output retry replay.
 

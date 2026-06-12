@@ -1,19 +1,18 @@
 ---
 name: design
-description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Two-tier design flow (SIMPLE/HARD) with full plan review and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Single direct-drafting flow with full plan review and clarify loop; verbal prompts create an issue first."
+argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with the mechanical plan-review panel on both tiers (rounds 1-2 and 5 use the full static diagonal; rounds 3-4 may be reduced only by `reviewer-prune.sh`; plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the mechanical plan-review panel; HARD runs 3 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `python/cli.py named-block write --marker plan` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
+Design an implementation plan for a feature and review it with the mechanical plan-review panel (rounds 1-2 and 5 use the full static diagonal; rounds 3-4 may be reduced only by `reviewer-prune.sh`; plus adjudication and voting as documented in this file). `/design` uses a single direct-drafting flow: Step 2a writes sentinel artifacts, Step 2b drafts the plan from direct codebase inspection, and Step 3 runs the plan-review panel. Plan + acceptance are written back to the issue body via `python/cli.py named-block write --marker plan` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
+**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** Any unrecognized or disallowed leading public `--` flag (including removed `--hard`) is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--hard` | `false` | Opt into HARD (default is SIMPLE): 3 sketches, dialectic when contested, full review panel, 5 total review runs |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
 | `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
@@ -21,13 +20,13 @@ Design an implementation plan for a feature and review it with the mechanical pl
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one `--hard`, at most one `--per-round-approval`, and at most one `--skip-approve` / `-s` may appear on argv; duplicates are hard errors before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive — both may appear together. Any other unrecognized or disallowed leading public `--` flag (including retired `--approve`) is a hard error before Step 0 (never swallowed as positional/verbal feature text).
+**Mutual exclusion**: at most one `--per-round-approval` and at most one `--skip-approve` / `-s` may appear on argv; duplicates are hard errors before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive — both may appear together. Any other unrecognized or disallowed leading public `--` flag (including retired `--approve` and `--hard`) is a hard error before Step 0 (never swallowed as positional/verbal feature text).
 
-**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
+**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for flag validation rules. The table above is a non-normative index.
 
 **Positional tail**: Step **0-pre** binds this as `POSITIONAL_KIND=issue|verbal|none` and `POSITIONAL_VALUE=<value>`; see `parse-design-argv.md` for classification details. `POSITIONAL_KIND=verbal` triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. For an Immediate-background Bash fence, "after child returns" means after the `<task-notification>` fires; do not parse stdout, consume result files, or advance steps before that notification. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. For an Immediate-background Bash fence, "after child returns" means after the `<task-notification>` fires; do not parse stdout, consume result files, or advance steps before that notification. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -43,11 +42,11 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 - Use empty string for the `description` parameter on all Bash tool calls.
 - Use terse 3-5 word descriptions for Agent tool calls.
-- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, dialectic resolutions, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
+- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-**Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
+**Compact reviewer status table**: After launching plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
 ```
 📊 Sketches (regular): | Cursor-Arch: ⏳ | Codex-Innovation: ❌ 8m3s | Codex-Pragmatic: ✅ 4m2s |
@@ -92,7 +91,7 @@ Pause/resume helper coverage lives in
 | `step-1c`, `step-1d` | Step 1d.5 prelude; Step 2a entry (idempotent repair) | before pause-check |
 | `step-1d.5` | Step 1d.5 boundary-local success; Step 2a entry when `brainstorm_requested` false | boundary-local or before pause-check |
 | `step-1d.7`, `step-1e` | Step 2a entry; Step 3 writes `step-1e` only when `design-step3-state.sh --direct-review-entry` runs with `.step3-reentry` present | before pause-check |
-| `step-2a`, `step-2a.5` | Step 2a entry SIMPLE guarded block; Step 2a.5 prelude (`step-2a`, HARD); zero-sketch degraded branch fence; Step 2b prelude (both, HARD repair) | before pause-check |
+| `step-2a` | Step 2a entry sentinel prep | before pause-check |
 | `step-3` | Step 3.5 prelude; `design-step3-state.sh --gate-b-bypass` on bypass paths; cleared by `design-step3-state.sh --auto-continuation-entry` before automatic follow-up rounds | before pause-check / before Step 3b / before auto-continuation Step 3 re-entry |
 | `step-3.5` | Step 3b entry | before pause-check |
 | `step-4` | Step 4 success boundary | boundary-local |
@@ -102,7 +101,7 @@ Pause/resume helper coverage lives in
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
 | Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
-| Step 3 direct-review restore | Step 3 entry via `design-step3-state.sh --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2a.5`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
+| Step 3 direct-review restore | Step 3 entry via `design-step3-state.sh --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Diagram branch cleanup | Step 3b skip vs architectural entry fences | `rm -f` stale diagram files per branch |
 | Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block; Step 1d.7 (`SKIP_APPROVE_REQUESTED` read fence) | pause-check retained |
@@ -138,16 +137,8 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d7.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1e-reentry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1e-reentry.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a-zero-sketch.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a-zero-sketch.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a5.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a5.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh`
@@ -199,12 +190,12 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 
 ## Design Mindset
 
-Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice — sketch synthesis, plan drafting, review-finding acceptance — and are the thinking pattern this skill transfers along with its mechanical procedures.
+Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice: plan drafting, review-finding acceptance, and the thinking pattern this skill transfers along with its mechanical procedures.
 
 - **What is the smallest change that achieves the goal?** Resist adding abstractions, flags, or layers the feature description did not ask for. Every additional moving part is a new failure mode.
-- **Where is anchoring risk highest?** The first plausible approach locks architectural direction unless the sketch phase forces alternatives. Do NOT skip Step 2a (anti-pattern rule #1) unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies.
+- **Where is anchoring risk highest?** The first plausible approach locks architectural direction. Step 2a always writes sentinel artifacts; Step 2b drafts the plan from direct codebase inspection. Prefer minimum-change plans.
 - **What hidden constraints must this preserve?** Canonical sources, CI invariants, downstream parsers, contract tokens, byte-preserved reference files. Identify them before edits, not during plan review.
-- **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences belong to the sketch phase — not to the user.
+- **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences are resolved during direct plan drafting and review, not by asking the user to design the internals.
 - **Which anti-patterns in the NEVER list below apply to this specific feature?** Re-read the Anti-patterns section for every non-trivial feature; muscle memory for the six rules is the expert delta this skill aims to transfer.
 
 ## Anti-patterns
@@ -213,19 +204,11 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the primary SIMPLE-tier write site for `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers (written in the guarded SIMPLE block **before** pause-check), with Step 2a.5 allowed to repair legacy or corrupted SIMPLE pauses before skipping. HARD always runs 3 personality sketches; HARD's `.completed/step-2a` is folded into the Step 2a.5 prelude, both `step-2a` and `step-2a.5` into the Step 2b prelude, and the zero-sketch degraded branch fence before jumping to Step 2b. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
+1. **NEVER skip Step 2a** (the sentinel artifact prep). **Why:** Step 2a writes sentinel artifacts required by Step 2b. **How to apply:** Step 2a always runs and writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, the empty legacy placeholder `dialectic-resolutions.md`, and `.completed/step-2a` before proceeding to Step 2b.
 
-2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
+2. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
-3. **NEVER mutate orchestrator-wide `codex_available` / `cursor_available` inside Step 2a.5.** **Why:** Step 3 plan-review panel integrity depends on the Option B snapshot pattern — a debate-phase timeout must not lock a tool out of later plan review. **How to apply:** use the `dialectic_*_available` shadow flags inside Step 2a.5 and the `judge_*_available` shadow flags inside the judge re-probe; never touch the top-level flags.
-
-4. **NEVER call `collect-agent-results.sh` with zero entries: it must receive at least one output path either via positional arguments OR via a `--paths-file` flag that names a readable file yielding at least one non-blank path-line.** **Why:** exit **1** reasons differ: missing/empty positional argv yields `at least one output file is required`; `--paths-file` missing or not readable yields `paths-file not readable: …`; a readable paths-file that is not a regular file (for example a directory) yields `paths-file is not a regular file: …`; readable but whitespace-only / empty usable lines yields `paths-file contains no entries (preserves anti-pattern #4)`; lines containing embedded newline or carriage return are rejected with a dedicated diagnostic. This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call so at least one path is supplied (positionally or via `--paths-file`); the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
-
-5. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
-
-6. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
-
-7. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 1d.7 retains a read-only `SKIP_APPROVE_REQUESTED` fence (no timing mark); Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
+3. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 1d.7 retains a read-only `SKIP_APPROVE_REQUESTED` fence (no timing mark); Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -242,7 +225,7 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
+`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same parse-then-bind pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh" \
@@ -281,9 +264,9 @@ Parse `STEP0_STATUS`, `DEGRADED`, and `BOTH_DOWN` from the wrapper stdout (ignor
 
 and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
-### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
+### 0b — Parse argv, issue binding, clarify / already-planned routers, init → `run-params.json`
 
-1. Consume only the Step **0-pre** bindings (`hard_requested`, `partition_requested`, `brainstorm_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
+1. Consume only the Step **0-pre** bindings (`partition_requested`, `brainstorm_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
    - `POSITIONAL_KIND=issue` → set `ISSUE_NUMBER` to `POSITIONAL_VALUE` (digits only; do not re-match raw argv).
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
@@ -299,7 +282,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` through `${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh` (file-first with KV-filtered stdout fallback) and source only allowlisted keys. Do not parse raw route stdout except as the helper fallback. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
-   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). `design-route.sh` still OR-merges current `--partition`, `--brainstorm`, Brainstorm title-prefix auto-enable, `--per-round-approval`, and `--skip-approve` booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
+   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, run-params initialization, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). `design-route.sh` still OR-merges current `--partition`, `--brainstorm`, Brainstorm title-prefix auto-enable, `--per-round-approval`, and `--skip-approve` booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
 3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact secrets`, and `python/cli.py named-block write --marker plan --content-file`. **Only when `python/cli.py named-block write --marker plan` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
@@ -317,7 +300,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 ```
 
    Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
+5. **Flag binding** (only when `ROUTE=proceed`): source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`; keep `approve_requested=true` only when the Step 0-pre binding is true, else `false`; keep `skip_approve_requested=true` only when the Step 0-pre binding is true, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge.
 
 ```bash
@@ -330,7 +313,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session setup` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `session cleanup-tmpdir`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
@@ -349,7 +332,7 @@ See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-s
 
 ### 0c — Plan-relevant symbol breadcrumb
 
-Before sketches, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
+Before plan drafting, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
 
 After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
 
@@ -431,12 +414,12 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 **Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), run the same post-rewrite sequence as `references/approval-gates.md` §Shared post-apply pipeline: before any direct replacement or dedup rewrite run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` (companion `.gate-b-optional-trailer-keys.values`); after the rewrite run `gate-b-dedup-plan.sh --dedup` (fail closed if snapshot missing — `--dedup` refreshes the values snapshot from the post-rewrite plan before mechanical dedup so explicitly recomputed estimates are allowed). Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. Only after the dedup breadcrumb run the same merged post-plan fence as `references/discussion-rounds.md` Round 2 (`design-postplan-emit.sh --with-plan-size` with the Step 2b thin-fence `case` arms). On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design discussion-round2`; on Override run retained Step 2b.5; on `_postplan_rc=0` or drift advisory (`PLAN_SIZE_STATUS=drift-advisory`) write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before returning to Gate A.
 
-Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** writes `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
+Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** writes `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a.
 
 `.completed/step-1e` is batch-written by the Step 2a entry fence and, on Gate A direct-review re-entry only, by `design-step3-state.sh --direct-review-entry` when `.step3-reentry` is present — not on first-time Step 3 entry.
 
-<!-- step:2a — Collaborative Approach Sketches -->
-## Step 2a — Collaborative Approach Sketches
+<!-- step:2a — Sentinel Artifact Prep -->
+## Step 2a — Sentinel Artifact Prep
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.sh" \
@@ -444,198 +427,7 @@ Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or G
   --claude-pid "$PPID"
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, `3`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=3`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
-
-**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 3 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
-
-A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
-
-### SIMPLE branch (`design_classification == SIMPLE`) — no sketch agents
-
-Launch no external agents and no Claude fallback agents. When `_design_classification` is `SIMPLE`, the Step 2a entry fence either verifies or writes the SIMPLE sentinels and `.completed/step-2a` / `.completed/step-2a.5` markers before this prose is reached. If it sees pre-existing non-sentinel sketch or dialectic artifacts, it refuses to overwrite them and exits for inspection.
-
-Skip Step 2a.5 and proceed directly to Step 2b only after the full SIMPLE sentinel package and both completion markers are present. If a resumed SIMPLE run reaches this branch without that complete package, do not fall through to regular sketch launch; continue to the Step 2a.5 repair guard. Do NOT call `collect-agent-results.sh`.
-
-### Regular mode (`sketch_budget=3`) — 3 sketch agents
-
-The 3 sketch slots are **1 Cursor + 2 Codex**. A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207):
-
-1. **Cursor — Architecture/Standards** (skipped if Cursor unavailable).
-2. **Codex — Innovation/Exploration** (skipped if Codex unavailable).
-3. **Codex — Pragmatism/Safety** (skipped if Codex unavailable).
-
-When the assigned external is unavailable, the slot is skipped — no Claude substitution (#3207) — and the phase proceeds with fewer sketches (possibly zero if both tools are down).
-
-### Quick/simple mode (`sketch_budget=2`) — 2 sketch agents
-
-1. **Cursor — Generic** (skipped if Cursor unavailable): a broad-scope sketch without personality specialization.
-2. **Codex — Generic** (skipped if Codex unavailable): same generic prompt as Cursor-Generic.
-
-### Sketch phase (regular and quick mode)
-
-Print `> **🔶 /design 2a: sketches**`.
-
-The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent offload for sketches). Launch sketches per the mode sections below, then continue through collection, synthesis, and dialectic in this skill.
-
-### 2a.2 — Launch Sketches in Parallel
-
-If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b. If `read-design-classification.sh` returns `SIMPLE` but that full package is incomplete, route to Step 2a.5 repair instead of launching regular sketches.
-
-**Regular mode**: when `sketch_budget=3`, up to 3 sketch slots run in parallel: 1 Cursor slot (Architecture/Standards) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
-
-**Quick/simple mode**: when `sketch_budget=2`, up to 2 sketch slots run in parallel: 1 Cursor-Generic + 1 Codex-Generic. A slot whose tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
-
-**MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the three personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
-
-**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 3 regular-mode external slots (1 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot **skip** notes (#3207: an unavailable tool's slot is skipped, not Claude-replaced).
-
-**`<FEATURE_DESCRIPTION>` substitution (outline + brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists, prepend a concise `## Approved direction (outline)` section containing the approved outline. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, also prepend a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
-
-Record launched slot output paths before issuing launches (same availability rules as `sketch-launch.md`):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a2-record-launches.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode regular
-```
-
-Use `--mode quick` in quick/simple mode.
-
-Execute the launches per `sketch-launch.md` — all **available** external launches issued in a single message, Cursor slots first, then Codex slots; skip any slot whose tool is unavailable (no Claude fallback, #3207).
-
-### 2a.3 — Wait and Validate Sketches
-
-Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot whose tool was unavailable — that slot is skipped, not Claude-substituted, per #3207).
-
-If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
-
-**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the degraded no-sketches path: write `NO_SKETCHES_DEGRADED_HARD` to `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` to `contested-decisions.md`, and an empty `dialectic-resolutions.md`; log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then run the zero-sketch degraded fence below, skip Step 2a.5, and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a-zero-sketch.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
-```
-
-**Regular mode** (3 external output files when both tools available):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode regular
-```
-
-**Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a3-collect.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode quick
-```
-
-Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (it is skipped, not Claude-substituted — fewer sketches, per #3207).
-
-Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
-
-Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a launched sketch slot's `STATUS` is not `OK`, **drop that slot** (fewer sketches) — do NOT substitute a Claude replacement and do NOT run the cross-tool waterfall for sketches (#3207); the sketch phase is best-effort and proceeds with whatever valid sketches returned (possibly zero, which takes the no-sketches path above).
-
-For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. Append that file with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
-
-After this collection boundary, consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=sketch-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-sketch-collection` flag so one logical boundary prompts once.
-
-### 2a.4 — Synthesis
-
-Read all sketches that ran (fewer when an external tool was unavailable; if zero ran, the no-sketches path above was already taken). Produce a synthesis that:
-
-1. Identifies where the approaches **agree** (likely the majority)
-2. Identifies where they **diverge** and makes a reasoned call on each contested point with justification
-3. Notes which ideas from each sketch are being incorporated into the full plan
-
-**Regular mode only** (`sketch_budget=3`, personality-specific highlights — skip these when `sketch_budget=2`):
-
-4. Highlights any **Architecture/Standards** concerns that should be addressed in the plan, including boundary conditions, error handling gaps, and failure paths
-5. Highlights any **Pragmatism/Safety** warnings about regression risk, unnecessary complexity, failure recovery, race conditions, or silent data corruption
-6. Notes any **Innovation/Exploration** alternatives worth preserving as options even when not chosen
-
-**Quick mode** (`sketch_budget=2`): attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-6 above. Use generic agreement/divergence analysis only.
-
-7. Lists contested decisions as a structured markdown list in `$DESIGN_TMPDIR/contested-decisions.md`. Use this schema:
-
-   ```markdown
-   ### DECISION_1: <short title>
-   - **Chosen**: <the synthesis choice>
-   - **Alternative**: <the strongest alternative>
-   - **Tension**: <why this is contested — which sketches diverged and why>
-   - **Impact**: High/Medium/Low
-   - **Affected files**: <comma-separated list of files/modules impacted by this decision>
-   ```
-
-   List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
-
-Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. Also print it under an `## Approach Synthesis` header.
-
-On HARD sketch paths, `.completed/step-2a` is written by the Step 2a.5 prelude fence before pause-check — not at a Step 2a success boundary. SIMPLE skip-to-2b and the zero-sketch degraded fence above retain their entry-fence or branch-local marker writes.
-
-### 2a.5 — Dialectic Resolution of Contested Decisions
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode entry
-```
-
-Print: `> **🔶 /design 2a.5: dialectic**`
-
-Before taking the SIMPLE skip, repair pre-existing paused SIMPLE runs. If SIMPLE sentinel artifacts are missing, re-run the guarded SIMPLE write block and write both Step 2a markers. If artifacts exist and only `.completed/step-2a.5` is absent, write the missing Step 2a.5 completion marker:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode repair
-```
-
-If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (SIMPLE) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`. On fresh SIMPLE runs, `.completed/step-2a.5` and `.completed/step-2a` were already written by the Step 2a entry fence; legacy or corrupted SIMPLE resumes are repaired by the guard above before this skip.
-
-Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
-
-**Intentional divergence from the repo-wide waterfall fallback architecture (debate phase only)**. The **debate** phase (steps documented in `dialectic-execution.md`) deliberately diverges from the "Voter Composition" rule in `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md` and from the Cursor/Codex waterfall fallback rules in the "Step 3 — Plan Review" section below: **primary** debater slots are externals-only, and **1st-retry** debater slots remain externals-only per GitHub issue #98. **Claude is permitted only as the 2nd-retry (FINAL) debater** after both externals fail for that side (see `dialectic-protocol.md` "Per-side waterfall retry"). Likewise, the waterfall presence flags (`CODEX_PRESENT`, `CURSOR_PRESENT`) govern session-wide availability, but runtime failures in this phase affect ONLY this phase's bookkeeping via dialectic-scoped shadow flags and never mutate the session-wide presence values. Do NOT "fix" this carve-out back to global-flag mutation + Claude-as-primary-debater behavior — see GitHub issue #98 for the rationale.
-
-This divergence applies **only to debate execution**, not to **judge adjudication**. The post-debate judge panel (see `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`) uses the repo-wide **replacement-first** pattern: when Cursor or Codex is unavailable for judging, a Claude Code Reviewer subagent replaces that slot so the panel always remains at 3 judges. Judges merely adjudicate between pre-authored defenses; the "no Claude substitution" rule is specific to adversarial debate where model-specific writing style could encode tool identity.
-
-Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNTHESIS_TEXT}` for the prompt templates below. If `$DESIGN_TMPDIR/design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists, prepend a concise `## Approved direction (outline)` section to `{FEATURE_DESCRIPTION}` when rendering debate prompts so externals see the operator-approved direction as binding context. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, you MAY also prepend a short `## Brainstorm context` digest so externals see brainstorm ideas as non-binding context. Then apply the following protocol:
-
-1. **Cap = `min(5, |contested-decisions|)`** — select that many decisions from the file (they are already in priority order from Step 2a.4).
-
-2. **Initialize dialectic-scoped shadow flags** at the top of this step:
-   - `dialectic_codex_available = codex_available` (snapshot at entry)
-   - `dialectic_cursor_available = cursor_available` (snapshot at entry)
-   The orchestrator-wide `codex_available` / `cursor_available` flags are NEVER mutated during this step. This preserves Step 3's plan-review panel integrity by construction (Option B).
-
-3. **Deterministic per-side external assignment** (1-based decision index `N` among the Step 2a.5 cap). Full launch matrices, degraded single-external mode, per-side waterfall retries, and output filename conventions live in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` **steps 1 and 5** — read that file at the MANDATORY directive below. Summary only:
-   - **Odd N**: thesis → **Cursor** (`dialectic_cursor_available`); antithesis → **Codex** (`dialectic_codex_available`).
-   - **Even N**: thesis → **Codex**; antithesis → **Cursor**.
-   - **Degraded** (exactly one external available at launch): both sides launch on the **sole available** external; retries target the missing external when it comes online, else Claude 2nd-retry per `dialectic-execution.md`.
-
-4. **Per-side pre-launch availability check**. For each selected decision, apply the launchability matrix in `dialectic-execution.md` **step 1** (per-side tools + degraded single-external mode). If **no** thesis/antithesis launch path exists because required externals are unavailable, print `**⚠ <Tool> unavailable — dialectic skipped for bucket <N> decisions (indices: <comma-list>). Step 2a.4 synthesis decisions stand.**`, skip that decision, and continue. When at least one external is available under step **1**, queue **both** sides (degraded launches may use the same external for thesis and antithesis). Do NOT fall back to a Claude Agent-tool subagent for **primary** debater slots. Do NOT abort this step.
-
-5. **Zero-externals guardrail**. If after iterating all selected decisions, zero debates are queued (no external debater launches at all), print no further launches, do NOT call `collect-agent-results.sh` at all, skip the judge phase entirely. The `dialectic-resolutions.md` file IS still written — it contains only `Disposition: bucket-skipped` entries (one per selected decision) plus any `Disposition: over-cap` entries for decisions ranked outside the top-5 cap — so Step 2b and Step 3.5 parse a uniform schema regardless of dialectic outcome. On this path, follow the second `Do NOT load` variant below.
-
-**MANDATORY — READ ENTIRE FILE before rendering debate prompts (dialectic-execution step 2)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` completely. It contains the byte-preserved execution choreography: per-decision prompt rendering, parallel debater launch, collection, the eligibility gate (Dispositions), the debate quorum gate, the dialectic-local judge-panel re-probe, ballot construction, judge launch, tally, and the `Write dialectic-resolutions.md` sub-step. The first directive inside that file is a nested MANDATORY pointing to `references/dialectic-debate.md` — the template-body file that holds the Thesis/Antithesis prompt substitution placeholders (`{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` plus the `<debater_synthesis>` / `<debater_decision>` reference-block wrappers).
-
-**Do NOT load `dialectic-execution.md` when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`** — the short-circuit print at the top of Step 2a.5 exits before reaching this point, so the reference file is naturally never loaded on the no-contest path.
-
-**Do NOT load `dialectic-execution.md` when the zero-externals guardrail fired (zero buckets queued in step 5 above)** — instead, jump directly to the final sub-step of `dialectic-execution.md` conceptually (emit only `bucket-skipped` / `over-cap` entries into `dialectic-resolutions.md`) without loading the full execution procedure. The dialectic-resolutions schema for these entries is documented in the **Write `$DESIGN_TMPDIR/dialectic-resolutions.md`** section of `dialectic-execution.md`; if the orchestrator already has the schema in context from a prior run, skip the load entirely. Otherwise, a one-time load of `dialectic-execution.md` is acceptable but the debate-execution mechanics inside it MUST NOT fire (no debaters, no judges, no ballot).
-
-Execute **steps 2** through final dialectic resolution writing as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end.
-
-`.completed/step-2a.5` is written by the Step 2b prelude fence before pause-check — not at a Step 2a.5 success boundary.
-
-After each dialectic collection boundary (debate results and judge results), consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=dialectic-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>` flag so one logical boundary prompts once.
+The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md` placeholder) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `collect-agent-results.sh`.
 
 <!-- step:2b — Design the Implementation Plan -->
 
@@ -647,7 +439,7 @@ Print: `> **🔶 /design 2b: full plan**`
   --claude-pid "$PPID"
 ```
 
-#### Step 2b drafter subprocess (attempt before inline drafting)
+### Step 2b drafter subprocess (attempt before inline drafting)
 
 Try the drafter subprocess first. The inline plan-drafting instructions below remain the fallback and must not be removed or rewritten. If the drafter reports structural success and dirty-tree eligibility, do **not** redraft the plan inline; proceed directly to the retained terminal postplan fence. If the drafter fails cleanly, delete stale `plan-summary.md`, log the failed tool, and continue with the inline drafting prose below unchanged.
 
@@ -665,27 +457,17 @@ When the fence writes `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=step-
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
-Read the tier with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
+Apply this emphasis before drafting:
 
-- SIMPLE: "This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
-- HARD: "This is a HARD-tier design. Bias the plan toward **thoroughness**. Surface all relevant edge cases, failure modes, and cross-cutting concerns; do not omit considerations to save effort. Address invariants, contract boundaries, and downstream consumers explicitly."
+"Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
 
-Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_SIMPLE`, treat that as a sentinel that no sketches ran on this SIMPLE-tier run; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement. If it contains exactly `NO_SKETCHES_DEGRADED_HARD`, treat that as a HARD-tier degraded-tools sentinel: preserve HARD thoroughness, but do not fabricate sketch agreement.
+Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a. It contains `NO_SKETCHES` (the sentinel that no planning panel ran). Write the plan from direct codebase/doc inspection.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
 
-Also read `$DESIGN_TMPDIR/design-outline.md` only when it exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Treat the approved Goals, Non-goals, and Surfaces as binding scope. Let the Approach sketch inform the plan structure without treating it as final architecture; Step 2a sketches and Step 2a.5 dialectic own concrete architecture choices.
+Also read `$DESIGN_TMPDIR/design-outline.md` only when it exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Treat the approved Goals, Non-goals, and Surfaces as binding scope. Draft the plan from direct codebase inspection.
 
-Also read `$DESIGN_TMPDIR/brainstorm.md` if it exists and is non-empty. Treat brainstorm output as **additive ideation** — fold ideas into the plan only when they do not conflict with binding dialectic resolutions or explicit user refusals from Round 1.
-
-Also read `$DESIGN_TMPDIR/dialectic-resolutions.md` if it exists and is non-empty. Parse the structured fields defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md` (Resolution, Disposition, Vote tally, Thesis summary, Antithesis summary, Why field). **Branch on `Disposition`**:
-
-- **`Disposition: voted`**: the plan **must** follow the `Resolution` direction and explicitly note how the antithesis concern (from `Antithesis summary`) was addressed, referencing the `Why thesis prevails` / `Why antithesis prevails` justification. These resolutions are binding for Step 2b — do not override them.
-- **`Disposition: fallback-to-synthesis`**: the synthesis decision stands (Resolution is the synthesis choice = `CHOSEN`). Note the `Why fallback` reason briefly (judge panel tie, quorum failure, etc.) but do NOT fabricate antithesis-engagement prose — no antithesis was heard with sufficient rigor to engage.
-- **`Disposition: bucket-skipped`**: the synthesis decision stands. Note that debate was skipped (`Why skipped` reason) but do NOT fabricate antithesis-engagement prose — no debate occurred.
-- **`Disposition: over-cap`**: the synthesis decision stands. Note that this decision was outside the dialectic cap (`Why over-cap` reason) but do NOT fabricate antithesis-engagement prose.
-
-(Note: Step 3 plan review may subsequently revise the plan based on accepted review findings, which supersede dialectic resolutions.)
+Also read `$DESIGN_TMPDIR/brainstorm.md` if it exists and is non-empty. Treat brainstorm output as **additive ideation** — fold ideas into the plan only when they do not conflict with explicit user refusals from Round 1.
 
 Produce a plan that includes:
 
@@ -700,7 +482,7 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
-Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, the initial HARD snapshot is preserved, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` seeds `$DESIGN_TMPDIR/drift-baseline.env` from the initial Step 2b plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers) before later revision paths can expand the plan. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
+Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` seeds `$DESIGN_TMPDIR/drift-baseline.env` from the initial Step 2b plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers) before later revision paths can expand the plan. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh" \
@@ -714,7 +496,7 @@ If the terminal postplan fence prints `**⚠ 2b: drafter plan failed postplan va
 
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b"` then run the retained **Step 2b.5** procedure before continuing.
 
-On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskUserQuestion` with exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site — no Override). On **Split** or partition routing (`_postplan_rc=13`), run **Split-path** in `decompose-panel.md` only — do not re-run Step 2b.5 display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns (**Refine**, no-split **Continue**), write `: > "$DESIGN_TMPDIR/.completed/step-2b"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before continuing to Step 3. Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer prompts — the driver records a warning in `execution-issues.md` and exits `0`; no operator action is required.
+On `_postplan_rc=12`, the driver already printed the plan-size-trigger section. `AskUserQuestion` with exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site — no Override). On **Split** or partition routing (`_postplan_rc=13`), run **Split-path** in `decompose-panel.md` only — do not re-run Step 2b.5 display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns (**Refine**, no-split **Continue**), write `: > "$DESIGN_TMPDIR/.completed/step-2b"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before continuing to Step 3. Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer prompts — the driver records a warning in `execution-issues.md` and exits `0`; no operator action is required.
 
 > **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
@@ -732,14 +514,14 @@ On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskU
   --claude-pid "$PPID"
 ```
 3. **Return-code handling**:
-   - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=`, `DRIFT_TRIGGER_FIRED=`, `DRIFT_MULTIPLE=`, `DRIFT_PLAN_RATIO=`, `DRIFT_DIFF_RATIO=`, `BASELINE_PLAN_LINES=`, and `BASELINE_DIFF_LINES=`. Branch steps 4–7 below.
-   - **Soft advisory** (after rc=0 parse, before hard/partition/no-trigger branches): when `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=false`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); proceeding` (informational; never prompts/blocks). When `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=true`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); plan-body gate still requires Split/Cancel` (informational; then continue to the hard branch).
+   - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SIZE_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=`, `DRIFT_TRIGGER_FIRED=`, `DRIFT_MULTIPLE=`, `DRIFT_PLAN_RATIO=`, `DRIFT_DIFF_RATIO=`, `BASELINE_PLAN_LINES=`, and `BASELINE_DIFF_LINES=`. Branch steps 4–7 below.
+   - **Soft advisory** (after rc=0 parse, before hard/partition/no-trigger branches): when `SOFT_ADVISORY=true` and `SIZE_TRIGGER_FIRED=false`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); proceeding` (informational; never prompts/blocks). When `SOFT_ADVISORY=true` and `SIZE_TRIGGER_FIRED=true`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); plan-body gate still requires Split/Cancel` (informational; then continue to the hard branch).
    - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log" --redact >/dev/null 2>&1 || true` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
    - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`, include `--redact`, stdout/stderr suppressed with `>/dev/null 2>&1 || true`), ignore any partial KV lines, **return** to the caller.
-4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES` and `DIFF_LINES` from the capture; include `DIFF_ADDED` and `DIFF_DELETED` when non-empty. `AskUserQuestion` options are site-aware: initial Step 2b and discussion merged callers offer Split / Cancel only (no **Continue** option — hard triggers are never downgradeable by `--partition`); retained callers (Gate B after validator Override and standalone Step 2b.5 recovery paths) offer Split / Override / Cancel. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` and return to the retained caller. On **Cancel**: export `SUMMARY_OUTCOME=cancelled-plan-size-hard` and run the **Final summary block** fenced bash block (`### Final summary block`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
-5. **Partition branch (`PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false`)** — route directly to Split-path (decomposition panel) without an intermediate `AskUserQuestion`. Print a `## Plan Size — Partition requested` section noting `trigger=partition-flag` and the current `PLAN_LINES` / `DIFF_LINES`, then run **Split-path** below.
+4. **Hard branch (`SIZE_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES` and `DIFF_LINES` from the capture; include `DIFF_ADDED` and `DIFF_DELETED` when non-empty. `AskUserQuestion` options are site-aware: initial Step 2b and discussion merged callers offer Split / Cancel only (no **Continue** option — hard triggers are never downgradeable by `--partition`); retained callers (Gate B after validator Override and standalone Step 2b.5 recovery paths) offer Split / Override / Cancel. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` and return to the retained caller. On **Cancel**: export `SUMMARY_OUTCOME=cancelled-plan-size` and run the **Final summary block** fenced bash block (`### Final summary block`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
+5. **Partition branch (`PARTITION_REQUESTED=true AND SIZE_TRIGGER_FIRED=false`)** — route directly to Split-path (decomposition panel) without an intermediate `AskUserQuestion`. Print a `## Plan Size — Partition requested` section noting `trigger=partition-flag` and the current `PLAN_LINES` / `DIFF_LINES`, then run **Split-path** below.
 6. **Drift branch (`DRIFT_TRIGGER_FIRED=true`)** — after hard and partition checks, the merged driver records a drift warning in `$DESIGN_TMPDIR/execution-issues.md` and exits `0`; no `AskUserQuestion` is presented and the review loop continues autonomously. On the retained standalone path, if `DRIFT_TRIGGER_FIRED=true`, write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` and return to the caller — drift no longer halts execution.
-7. **No-trigger branch** — when `HARD_TRIGGER_FIRED=false`, `PARTITION_REQUESTED=false`, and `DRIFT_TRIGGER_FIRED=false`: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n>)` and return.
+7. **No-trigger branch** — when `SIZE_TRIGGER_FIRED=false`, `PARTITION_REQUESTED=false`, and `DRIFT_TRIGGER_FIRED=false`: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n>)` and return.
 
 #### Split-path (decomposition panel)
 
@@ -776,7 +558,7 @@ Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/em
 
 **Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with existing artifacts.
 
-**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: static external slots (Cursor + Codex for Arch, Innovation, Pragmatic, Requirements) plus **up to 6 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 3). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
+**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: static external slots (Cursor + Codex for Arch, Innovation, Pragmatic, Requirements) plus **up to 6 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 3). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when the plan is short or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
 **MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for reviewer prompts, the Competition notice blockquote, ballot handling, voting thresholds, Finalize Plan Review, and artifact templates. **Scout, panel dispatch, collection, aggregation, voting, and tally run inside** `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Round timing helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.sh` (sibling `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.md`; harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-record-plan-review-round-timing.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-record-plan-review-round-timing.md`). Plan-review prompt rendering lives in `python/cli.py render plan-review` (pytest coverage: `python/test_rendering.py`); sibling script references remain (`scout-plan-archetypes-wrapper.md`, `dispatch-plan-review-panel.md`, etc.). Scope-anchor helper surface: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-block strip-body` strips prior `larch:plan` blocks before anchoring issue scope; `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree scope-marker` validates leading `[SCOPE-REDUCTION]` marker handling. Regression coverage: `${CLAUDE_PLUGIN_ROOT}/scripts/test-python/cli.py plan-block strip-body`, `${CLAUDE_PLUGIN_ROOT}/scripts/test-python/cli.py dirty-tree scope-marker`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-scope-anchor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-scope-anchor.md`), and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-persist-retally-step3-env.sh` (offline harness for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/persist-retally-step3-env.sh`; sibling contracts `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/persist-retally-step3-env.md` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-persist-retally-step3-env.md`). **agent-lint S030 pins** (literal paths retained in SKILL.md): `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render plan-review`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
 
@@ -810,14 +592,14 @@ Plan-review scope anchoring: Step 3 materializes `$DESIGN_TMPDIR/plan-review-sco
 
 **Post-loop branch matrix** (read `STEP3_REVIEW_LOOP_STATUS` from the loop envelope first; `.step3-review-result.env` remains the per-round handoff):
 
-- `STEP3_REVIEW_LOOP_STATUS=complete` — write/keep `.completed/step-3` and proceed to Step 3b; the loop has already run apply, postplan, HARD snapshots, and continuation until a stop decision.
+- `STEP3_REVIEW_LOOP_STATUS=complete` — write/keep `.completed/step-3` and proceed to Step 3b; the loop has already run apply, postplan, and continuation until a stop decision.
 - `STEP3_REVIEW_LOOP_STATUS=cap-hit` — cap reached; skip Gate B and proceed to Step 3b, then the Step 3b completion boundary, then Step 4.
 Before any Step 3 mid-loop resume, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"`. If it is empty or non-numeric, treat that as a Step 3 routing error and do not launch the resume fence. Every mid-loop return resumes through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"`.
 
 - `STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required` — perform the MainAgent vote/re-tally block below, refresh `.step3-review-result.env`, then resume the same round through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`. If re-tally accepts zero findings, write `.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation` before resuming.
 - `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` — apply the accepted findings with the prompt-side Gate B Apply-all body and full Shared post-apply pipeline, write `.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation`, then resume the same round through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`. `DEDUP_RC` identifies dedup-origin bail-outs.
 - `STEP3_REVIEW_LOOP_STATUS=per-round-approval-required` — fire Gate B's `--per-round-approval` prompt, persist the selected apply/filtered-apply decision to `$DESIGN_TMPDIR/.gate-b-per-round-approval-round-$STEP3_RESUME_ROUND.env` as `FINDINGS_FILE=<absolute-path>` (full `accepted-plan-findings.md` for Apply all, operator-filtered findings file for Go through each), then resume the same round through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`; Switch to discussion mode exits to Gate A instead.
-- `STEP3_REVIEW_LOOP_STATUS=postplan-operator-required` — route `POSTPLAN_RC=10/13` through the existing design-postplan operator prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** write `$DESIGN_TMPDIR/.postplan-operator-continue-$STEP3_RESUME_ROUND` (empty marker file) before resuming through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`; the loop consumes the marker, runs HARD snapshots when applicable, and promotes to `awaiting-continuation`. **Plan-changing Fix-and-retry/autofix:** overwrite phase to `awaiting-post-apply` (do not write the continue marker). **`POSTPLAN_RC=12` (plan-size hard trigger) is no longer routed here** — the loop handles it inline as warn-and-continue (issue #3959).
+- `STEP3_REVIEW_LOOP_STATUS=postplan-operator-required` — route `POSTPLAN_RC=10/13` through the existing design-postplan operator prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** write `$DESIGN_TMPDIR/.postplan-operator-continue-$STEP3_RESUME_ROUND` (empty marker file) before resuming through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`; the loop consumes the marker and promotes to `awaiting-continuation`. **Plan-changing Fix-and-retry/autofix:** overwrite phase to `awaiting-post-apply` (do not write the continue marker). **`POSTPLAN_RC=12` (plan-size trigger) is no longer routed here** — the loop handles it inline as warn-and-continue (issue #3959).
 - `STEP3_REVIEW_LOOP_STATUS=postplan-failed` — hard-fail and preserve `$DESIGN_TMPDIR` for repair; do not transition to Step 3b.
 - `STEP3_REVIEW_LOOP_STATUS=panel-failed`, `tally-error`, or `degraded-empty-collector` — write/keep `.completed/step-3`, bypass Gate B, and proceed to Step 3b via the fail-closed helper.
 
@@ -890,7 +672,7 @@ Bind `approve_requested` from the `APPROVE_REQUESTED=` line above. Gate B's appl
 
 **Gate B resume idempotency**: If `$DESIGN_TMPDIR/.gate-b-postapply-ready-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-current}}` exists and `.completed/step-3.5` does not, do not apply accepted findings a second time. Before this idempotency branch resumes Step 3, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` using the shared Step 3 resume binding above; if it is empty or non-numeric, treat that as a Step 3 routing error and do not launch the resume fence. Resume at `approval-gates.md` §Shared post-apply pipeline step 7 (the merged `design-postplan-emit.sh --with-plan-size` fence) using the current `plan.txt`, then resume the script-internal loop through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"` at phase `awaiting-continuation` (do not re-run the retired orchestrator continuation check). Do not jump directly to Step 3b from this post-apply resume branch; the script-internal loop at `awaiting-continuation` handles continuation before any Step 3b transition.
 
-Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting loop-mode path and any retained Step 2b.5 path has returned, bind `STEP3_RESUME_ROUND` through the shared rule above, run the Gate B round snapshot per `approval-gates.md` (`snapshot-plan-round.sh write-after` for `$STEP3_RESUME_ROUND`, then `write-cursor` to the next value), write `$DESIGN_TMPDIR/.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation`, then resume through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`. Legacy `--mode single` harness callers with unset `STEP3_REVIEW_LOOP_STATUS` use the heuristic continuation check below.
+Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and other retained post-plan callers. Gate B's apply UX depends on `approve_requested` (bound above): the default (`false`) **auto-applies** every accepted in-scope finding with no `AskUserQuestion`; `--per-round-approval` (`true`) restores the explicit per-round prompt (Apply all / Go through each / Switch to discussion mode). See `approval-gates.md` §Gate B for the normative branch. On the explicit-mode Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting loop-mode path and any retained Step 2b.5 path has returned, bind `STEP3_RESUME_ROUND` through the shared rule above, write `$DESIGN_TMPDIR/.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation`, then resume through the Step 3 resume fence with `--starting-round "$STEP3_RESUME_ROUND"`. Legacy `--mode single` harness callers with unset `STEP3_REVIEW_LOOP_STATUS` use the heuristic continuation check below.
 `.completed/step-3.5` is written by the Step 3b entry fence before pause-check — not at a Step 3.5 success boundary.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
@@ -1021,7 +803,7 @@ Before the Gate C `AskUserQuestion`, `design-step4b.sh` emits the Gate C preview
 
 When `_skip_approve_requested_gatec=true`, auto-approve Gate C: print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed directly to Step 5 **without** calling `AskUserQuestion`. When `_skip_approve_requested_gatec=false`, fire the Gate C `AskUserQuestion` per `approval-gates.md`.
 
-Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip_approve_requested_gatec=false`). When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip_approve_requested_gatec=false`). When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
@@ -1116,16 +898,16 @@ When `_publish_rc=4`, execute **### Plan command validator failure (shared)** us
 
 ### 5d — Final warning replay + footer
 
-**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
+**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
-- `**⚠ Cursor sketch timed out / produced empty output**`
-- `**⚠ Codex sketch timed out / produced empty output**`
+- `**⚠ Cursor plan review failed / produced empty output**`
+- `**⚠ Codex plan review failed / produced empty output**`
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff (`_publish_rc` 0, 1, or 3), followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
+Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff (`_publish_rc` 0, 1, or 3), followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
 
 The rigid `larch:final-summary` body is produced by `skills/design/scripts/render-final-summary.sh` inside `design-publish.sh` after the publish outcome is known. The orchestrator emits the rendered `final-summary.md` body verbatim once per Step 5c handoff. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
 
@@ -1193,8 +975,7 @@ When auto-repair does not resolve the defects, use **AskUserQuestion** with exac
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/auto-fix-plan-commands.sh` — cross-vendor auto-repair loop run by **### Plan command validator failure (shared)** on `VALIDATE_STATUS=defects-found` before the operator prompt (Codex/Cursor alternation, re-validate, `AUTOFIX_STATUS` contract). Sibling: `auto-fix-plan-commands.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-auto-fix-plan-commands.sh` (Makefile target `test-auto-fix-plan-commands`).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh` — Step 2b / re-emit post-plan phase driver; wraps `ACTION=EMIT_PLAN`, the optional HARD snapshot, and `invoke-plan-validator.sh` with one result-env contract. Sibling: `design-postplan-emit.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.md`).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` — write-once plan snapshots (`plan.txt-original`, `plan-after-round-N.txt`) and `plan-review-round-cursor.txt` used by `run-step3-review.sh`, `design-postplan-emit.sh`, `check-plan-size.sh`, and the Gate-C re-run path. Subcommands: `write-original`, `write-after`, `read-cursor`, `write-cursor`. Sibling: `snapshot-plan-round.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.md`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh` — Step 2b / re-emit post-plan phase driver; wraps `ACTION=EMIT_PLAN` and `invoke-plan-validator.sh` with one result-env contract. Sibling: `design-postplan-emit.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns unconditional validation for `plan.txt`; Step 5c still guards composed-plan validation prompt-side. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
@@ -1205,9 +986,8 @@ When auto-repair does not resolve the defects, use **AskUserQuestion** with exac
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" named-block write --marker plan` — writes the `larch:plan` block into the issue body. Coverage: `python/test_issue_wire.py`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists Step 0 `run-params.json`. Sibling: `write-run-params.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh` — Step 0-pre public argv parser. Sibling: `parse-design-argv.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` — Step 5c publish-tail driver. Sibling: `design-publish.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.md`). `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/record-plan-review-round-timing.sh` is the plan-review timing helper (sibling `record-plan-review-round-timing.md`; harness `test-record-plan-review-round-timing.sh` / `test-record-plan-review-round-timing.md`).
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.

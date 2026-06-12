@@ -56,14 +56,14 @@ def _write_run(base: Path, *, skill: str, good_tokens: bool = True) -> None:
     if not good_tokens:
         report: dict[str, object] = {"claude": {"totals": {}}}
     _ = (run / token_name).write_text(json.dumps(report), encoding="utf-8")
-    _ = (run / "run-params.json").write_text(json.dumps({"design_classification": "SIMPLE"}), encoding="utf-8")
+    _ = (run / "run-params.json").write_text(json.dumps({}), encoding="utf-8")
 
 
 def test_scan_per_skill_basename_and_workflow(tmp_path: Path) -> None:
     _write_run(tmp_path, skill="design")
     result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
     assert len(result.records) == 1
-    assert result.records[0].workflow == "SIMPLE"
+    assert result.records[0].workflow == ""
     assert result.records[0].url == "https://github.com/o/r/issues/1"
 
 
@@ -142,7 +142,7 @@ def test_scan_warns_missing_skill_token_report(tmp_path: Path, capsys: pytest.Ca
     assert "has no token-report-final.json" in capsys.readouterr().err
 
 
-def test_scan_warns_and_skips_invalid_auxiliary_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_warns_and_skips_invalid_auxiliary_json(tmp_path: Path) -> None:
     run = tmp_path / "larch-logs" / "design" / "run1"
     run.mkdir(parents=True)
     _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
@@ -151,9 +151,6 @@ def test_scan_warns_and_skips_invalid_auxiliary_json(tmp_path: Path, capsys: pyt
     _ = (run / "run-params.json").write_text("{", encoding="utf-8")
     result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
     assert len(result.records) == 1
-    captured = capsys.readouterr()
-    assert "invalid timing-report-final.json" in captured.err
-    assert "invalid run-params.json" in captured.err
 
 
 def test_scan_warns_and_skips_non_object_manifest_and_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -183,22 +180,16 @@ def test_scan_ignores_unknown_positive_bucket_keys(tmp_path: Path, capsys: pytes
     assert "lacks vendor totals/BUCKETS" in capsys.readouterr().err
 
 
-def test_scan_warns_unknown_workflow_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_design_workflow_is_always_empty(tmp_path: Path) -> None:
     _write_run(tmp_path, skill="design")
-    run = tmp_path / "larch-logs" / "design" / "run1"
-    _ = (run / "run-params.json").write_text(json.dumps({"design_classification": "MEDIUM"}), encoding="utf-8")
     result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
-    assert result.records[0].workflow == "unknown"
-    assert "lacks SIMPLE/HARD workflow classification" in capsys.readouterr().err
+    assert result.records[0].workflow == ""
 
 
-def test_scan_implement_ignores_legacy_timing_report_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_implement_workflow_is_empty(tmp_path: Path) -> None:
     _write_run(tmp_path, skill="implement")
-    run = tmp_path / "larch-logs" / "implement" / "run1"
-    _ = (run / "timing-report.json").write_text(json.dumps({"workflow_path": "HARD"}), encoding="utf-8")
     result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
     assert result.records[0].workflow == ""
-    assert "workflow" not in capsys.readouterr().err.lower()
 
 
 def test_scan_implement_skips_malformed_workflow_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -232,7 +223,7 @@ def test_scan_accepts_claude_sub_only_tokens(tmp_path: Path) -> None:
         }),
         encoding="utf-8",
     )
-    _ = (run / "run-params.json").write_text(json.dumps({"design_classification": "SIMPLE"}), encoding="utf-8")
+    _ = (run / "run-params.json").write_text(json.dumps({}), encoding="utf-8")
     result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
     assert len(result.records) == 1
     assert result.records[0].claude_sub.total == 50

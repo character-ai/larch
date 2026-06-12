@@ -272,8 +272,10 @@ trap cleanup EXIT
     # Outcome bullet: skipped printf for happy-path outcomes (not empty-string args) so
     # --print-stdout and --output-file bodies stay byte-identical (FINDING_20).
     case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
-    printf -- '- **Mode**: %s\n' "$mode_disp"
-    if [ -n "$path_disp" ]; then
+    if [ "$SKILL" != design ]; then
+        printf -- '- **Mode**: %s\n' "$mode_disp"
+    fi
+    if [ "$SKILL" != design ] && [ -n "$path_disp" ]; then
         printf -- '- **Path**: %s\n' "$path_disp"
     fi
     if [ "$EMERGENCY_REQUESTED" = "true" ]; then

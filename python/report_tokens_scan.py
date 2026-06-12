@@ -17,9 +17,7 @@ from errors import ShipError
 from proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
 
-
 _JSON_ERROR = object()
-
 
 @dataclass(frozen=True)
 class ScanResult:
@@ -27,10 +25,8 @@ class ScanResult:
     repo_slug: str | None
     records: tuple[RunRecord, ...]
 
-
 def _warn(message: str) -> None:
     print(f"Warning: {message}", file=sys.stderr)
-
 
 def _json_file(path: Path) -> object:
     if path.is_symlink():
@@ -42,10 +38,8 @@ def _json_file(path: Path) -> object:
         _warn(f"invalid {path.name} at {path}: {exc}; skipping")
         return _JSON_ERROR
 
-
 def _as_mapping(value: object) -> Mapping[str, object]:
     return cast("Mapping[str, object]", value) if isinstance(value, dict) else {}
-
 
 def _repo_root(runner: Runner) -> Path:
     try:
@@ -58,13 +52,10 @@ def _repo_root(runner: Runner) -> Path:
     suffix = f": {detail}" if detail else ""
     raise ShipError(f"ERROR: could not resolve git repository root{suffix}")
 
-
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-
 
 def _valid_repo_slug(value: str) -> bool:
     return bool(_REPO_SLUG_RE.fullmatch(value)) and not any(part in {".", ".."} for part in value.split("/"))
-
 
 def _repo_slug(runner: Runner, override: str | None) -> str | None:
     if override:
@@ -83,47 +74,11 @@ def _repo_slug(runner: Runner, override: str | None) -> str | None:
     print(f"ERROR: could not resolve GitHub repo owner/name{suffix}", file=sys.stderr)
     return None
 
-
 def _token_basename(skill: Skill) -> str:
     return "token-report-final.json" if skill == "design" else "token-report.json"
 
-
-def _timing_basename(skill: Skill) -> str:
-    return "timing-report-final.json" if skill == "design" else "timing-report.json"
-
-
-def _workflow_from(path: Path) -> str:
-    data = _json_file(path)
-    if data is _JSON_ERROR:
-        return "unknown"
-    mapping = _as_mapping(data)
-    if not mapping:
-        _warn(f"{path.name} at {path} is not a JSON object with workflow classification; using unknown")
-        return "unknown"
-    for key in ("workflow_path", "design_classification"):
-        value = mapping.get(key)
-        if value in ("SIMPLE", "HARD"):
-            return str(value)
-    _warn(f"{path.name} at {path} lacks SIMPLE/HARD workflow classification; using unknown")
-    return "unknown"
-
-
-def _workflow(run_dir: Path, skill: Skill) -> str:
-    if skill == "implement":
-        return ""
-    saw_artifact = False
-    for name in (_timing_basename(skill), "run-params.json"):
-        path = run_dir / name
-        if not path.is_file():
-            continue
-        saw_artifact = True
-        value = _workflow_from(path)
-        if value != "unknown":
-            return value
-    if not saw_artifact:
-        _warn(f"{run_dir} has no workflow artifacts; using unknown")
-    return "unknown"
-
+def _workflow(_run_dir: Path, _skill: Skill) -> str:
+    return ""
 
 def _totals(report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
     vendor_obj = _as_mapping(report.get(vendor))
@@ -138,7 +93,6 @@ def _totals(report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
         output=safe_int(totals.get("output")),
         total=safe_int(totals.get("total")),
     )
-
 
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
     bucket_keys = {
@@ -169,7 +123,6 @@ def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
             return True
     return False
 
-
 def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
     rows: list[PhaseRow] = []
     for vendor in VENDORS:
@@ -191,7 +144,6 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
                 total=safe_int(totals.get("total")),
             ))
     return tuple(rows)
-
 
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
     manifest_obj = _json_file(run_dir / "manifest.json")
@@ -244,7 +196,6 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         raw_report=report,
     )
 
-
 def _run_dirs(log_base: Path) -> list[Path]:
     dirs: list[Path] = []
     try:
@@ -269,7 +220,6 @@ def _run_dirs(log_base: Path) -> list[Path]:
         dirs.append(path)
     return dirs
 
-
 def _limit_value(limit: int | None) -> int | None:
     if limit is not None:
         return limit if limit > 0 else None
@@ -280,7 +230,6 @@ def _limit_value(limit: int | None) -> int | None:
         value = int(raw)
         return value if value > 0 else None
     raise ShipError(f"ERROR: {config.ENV_LARCH_REPORT_TOKENS_LIMIT} must be a non-negative integer")
-
 
 def scan(
     runner: Runner,

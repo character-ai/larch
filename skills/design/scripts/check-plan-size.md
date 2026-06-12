@@ -49,7 +49,7 @@ Emitted keys (exit **0** only):
 | `DIFF_DELETED` | Integer from `diff_deleted:` when present; empty when absent (informational only — never a trigger) |
 | `MECHANICAL_CHURN` | `true` or `false` from the final metadata block |
 | `SOFT_ADVISORY` | `true` when `mechanical_churn: true` downgraded a diff-side hard trigger; `false` otherwise |
-| `HARD_TRIGGER_FIRED` | `true` or `false` |
+| `SIZE_TRIGGER_FIRED` | `true` or `false` |
 | `TRIGGER_REASONS` | Comma-separated tokens in **fixed priority order** `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy). Empty string when no hard threshold crossing. When mechanical churn downgraded the diff trigger, no diff reason is added. |
 | `DRIFT_TRIGGER_FIRED` | `true` when the current plan-body line count or diff count exceeds the write-once baseline by more than `LARCH_DESIGN_DRIFT_MULTIPLE`; otherwise `false` |
 | `DRIFT_MULTIPLE` | Positive integer multiple used for drift comparison; invalid env values fall back to `2` |

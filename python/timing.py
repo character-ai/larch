@@ -15,15 +15,12 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping
 
-import gh
 import tokens
 
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-review", "cursor-review", "codex-review-generic", "cursor-review-generic",
     "codex-implement", "cursor-implement", "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix",
-    "claude-review", "codex-sketch-arch", "codex-sketch-innovation", "codex-sketch-pragmatic",
-    "cursor-sketch-arch", "cursor-sketch-innovation", "cursor-sketch-pragmatic",
-    "codex-sketch-generic", "cursor-sketch-generic", "cursor-brainstorm", "codex-brainstorm",
+    "claude-review", "cursor-brainstorm", "codex-brainstorm",
     "codex-plan-arch", "codex-plan-innovation", "codex-plan-pragmatic", "codex-plan-requirements",
     "cursor-plan-arch", "cursor-plan-innovation", "cursor-plan-pragmatic", "cursor-plan-requirements",
     "codex-plan-voter", "cursor-plan-voter", "claude-plan-voter", "claude-plan-draft",
@@ -38,11 +35,8 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "cursor-phase1-edge-cases", "cursor-phase1-testing", "cursor-phase2-correctness",
     "cursor-phase2-edge-cases", "cursor-phase2-testing", "codex-phase1-correctness",
     "codex-phase1-edge-cases", "codex-phase1-testing", "codex-phase2-correctness",
-    "codex-phase2-edge-cases", "codex-phase2-testing", "codex-debate-thesis",
-    "codex-debate-antithesis", "cursor-debate-thesis", "cursor-debate-antithesis",
-    "cursor-debate-thesis-retry1", "cursor-debate-antithesis-retry1", "codex-debate-thesis-retry1",
-    "codex-debate-antithesis-retry1", "claude-debate-thesis-retry2", "claude-debate-antithesis-retry2",
-    "codex-judge", "cursor-judge", "codex-exec", "codex-plan-draft", "vendor-misc", "implement-code-flow",
+    "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
+    "vendor-misc", "implement-code-flow",
 })
 TIMING_LOCK_TIMEOUT_S = 5.0
 TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"})
@@ -211,7 +205,6 @@ class TimingReport:
         env_map = os.environ if env is None else env
         now = int(env_map.get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
         threshold = _positive_int(env_map.get("LARCH_TIMING_OUTLIER_THRESHOLD_S"), 14400)
-        workflow = _workflow_path(self.ledger_path, env=env_map)
         per_step: list[dict[str, object]] = []
         total_duration = 0
         implement_marks = [mark for mark in marks if mark.skill == "implement"]
@@ -238,7 +231,6 @@ class TimingReport:
                         per_step.append(child_row)
         averages = _vendor_averages(vendors)
         return {
-            "workflow_path": workflow,
             "per_step": per_step,
             "total_seconds": max(0, total_duration),
             "total_hms": _hms(max(0, total_duration)),
@@ -474,21 +466,6 @@ def _positive_int(raw: str | None, default: int) -> int:
     return value if value > 0 else default
 
 
-def _workflow_path(ledger: Path, *, env: Mapping[str, str]) -> str:
-    skill = env.get("LARCH_TIMING_SKILL", "implement")
-    if skill != "design":
-        return "unknown"
-    candidates: list[Path] = []
-    if env.get("DESIGN_TMPDIR"):
-        candidates.append(Path(str(env["DESIGN_TMPDIR"])) / "run-params.json")
-    candidates.append(ledger.parent / "run-params.json")
-    for candidate in candidates:
-        if not candidate.is_file():
-            continue
-        workflow = gh.read_workflow_path(str(candidate))
-        if workflow in {"SIMPLE", "HARD"}:
-            return workflow
-    return "unknown"
 
 
 def _rounds_for(rounds: list[_Round], skill: str, step: str, start: int, end: int) -> list[dict[str, int]]:
@@ -558,9 +535,6 @@ def _vendor_counts_since(path: Path, start: int, *, use_end: bool = False) -> di
 
 def _render_markdown(data: dict[str, object]) -> str:
     lines: list[str] = []
-    workflow = data.get("workflow_path")
-    if workflow in {"SIMPLE", "HARD"}:
-        lines.extend([f"**Workflow path**: {workflow}", ""])
     lines.extend(["## Per-Step Durations", "", "| Skill | Step | Duration |", "| --- | --- | ---: |"])
     per_step_list: list[dict[str, Any]] = cast("list[dict[str, Any]]", data.get("per_step") or [])
     for r in per_step_list:

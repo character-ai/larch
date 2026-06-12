@@ -8,7 +8,6 @@ from lint_readability_preamble import main
 
 EXTERNAL = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
-SKETCH = "Style requirements: <READABILITY_STYLE>."
 ORCH = "**MANDATORY — READ ENTIRE FILE before composing fixture text: `skills/design/references/readability-style.md`.**"
 
 
@@ -37,10 +36,7 @@ def test_valid_external_and_orchestrator(tmp_path: Path, capsys: pytest.CaptureF
     assert rc == 0, err
 
 
-@pytest.mark.parametrize(
-    ("kind", "line"),
-    [("plan-review", PLAN_REVIEW), ("sketch", SKETCH)],
-)
+@pytest.mark.parametrize(("kind", "line"), [("plan-review", PLAN_REVIEW)])
 def test_prompt_kinds(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str, line: str) -> None:
     manifest(tmp_path, f"prompt.md\texternal-prompt\t1\t{kind}\t\n")
     write(tmp_path / "prompt.md", line + "\n")

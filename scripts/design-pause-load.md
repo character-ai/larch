@@ -86,7 +86,7 @@ error.
 ## Output Contract
 
 - Success: `LOAD_OK=true`, `STEP=<id>`, `SESSION_ID=<id>`, `RUN_ID=<id>`,
-  `TIER=<value>`, `BRAINSTORM_DONE=true|false`,
+  `BRAINSTORM_DONE=true|false`,
   `MARKER_CLEARED=true|false`, optional `WARN=body-drift` and/or
   `WARN=marker-delete-failed`, exit 0.
 - Expected failure: `LOAD_OK=false`, `ERROR=<token>`, exit 0.

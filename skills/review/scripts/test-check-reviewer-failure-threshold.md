@@ -4,8 +4,8 @@ Regression harness for `skills/review/scripts/check-reviewer-failure-threshold.s
 
 ## Coverage
 
-- HARD panel: all OK, 6 fail of 12 records → over threshold (6-slot panel), just-over-half fail (7/12 → fail), all fail (12/12 → fail).
-- SIMPLE panel: under threshold (3/7), just-over (4/7).
+- Large panel: all OK, 6 fail of 12 records → over threshold (6-slot panel), just-over-half fail (7/12 → fail), all fail (12/12 → fail).
+- Small panel: under threshold (3/7), just-over (4/7).
 - `STATUS=cap_hit` counted as success (deliberate slot-skip, not failure).
 - `--launched-slots` accounting: never-launched slots count as failures (vendor unhealthy).
 - Both-down case: zero records, zero launched → 6 counted as failures.

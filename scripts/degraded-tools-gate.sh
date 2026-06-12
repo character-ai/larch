@@ -165,9 +165,8 @@ else
     emit "Codex roles fall through to Cursor then Claude, and Cursor roles fall through"
     emit "to Codex then Claude — so the run will still COMPLETE. The cost is reduced"
     emit "model-family diversity: an unavailable tool's slots are covered by the other"
-    emit "external tool (or Claude), and a few tool-specific roles are dropped rather"
-    emit "than substituted (e.g. /design Codex dialectic buckets and Codex sketch"
-    emit "personalities when Codex is down)."
+    emit "external tool (or Claude), and a few tool-specific roles may be dropped rather"
+    emit "than substituted when a local contract requires a reduced panel."
     emit ""
     if [[ "$BOTH_DOWN" == "true" ]]; then
         emit "Continue in this degraded mode (backup waterfall), or abort and retry once"

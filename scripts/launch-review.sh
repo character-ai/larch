@@ -374,7 +374,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${RENDER_ARGS[@]}")
 fi
 
-# Issue #1529: deliver the HARD-CONSTRAINTS read-only preamble through
+# Issue #1529: deliver the STRICT CONSTRAINTS read-only preamble through
 # CODEX_HOME/config.toml as the Codex `instructions` field for every
 # review prompt (specialist or generic, --prompt or --prompt-file or
 # --agent-file). The codex argv below also passes
@@ -390,11 +390,11 @@ fi
 # preamble lives in CODEX_HOME config instead of PROMPT, the sidecar stores
 # the rendered dynamic prompt directly and replay receives the same outgoing
 # prompt plus a fresh CODEX_HOME.
-CODEX_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
-HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands. The launcher enforces this with --sandbox read-only (CLI rejects writes).
+CODEX_REVIEW_STRICT_PREAMBLE=$(cat <<'EOF'
+STRICT CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands. The launcher enforces this with --sandbox read-only (CLI rejects writes).
 EOF
 )
-if grep -Fq "'''" <<< "$CODEX_REVIEW_HARDENING_PREAMBLE"; then
+if grep -Fq "'''" <<< "$CODEX_REVIEW_STRICT_PREAMBLE"; then
     larch_err "launch-review.sh: hardening preamble contains TOML triple-single-quote delimiter"
     exit 2
 fi
@@ -436,7 +436,7 @@ PROJECT_KEY=${PWD//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
 TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
 {
-    printf "instructions = '''\n%s\n'''\n\n" "$CODEX_REVIEW_HARDENING_PREAMBLE"
+    printf "instructions = '''\n%s\n'''\n\n" "$CODEX_REVIEW_STRICT_PREAMBLE"
     if [[ -f ~/.codex/config.toml ]]; then
         # Strip any existing top-level `instructions` assignment to avoid duplicate
         # keys — TOML parsers treat duplicate top-level keys as an error or silently
@@ -951,7 +951,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" render specialist "${RENDER_ARGS[@]}")
 fi
 
-# Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Cursor
+# Issue #1529: prepend a STRICT CONSTRAINTS read-only preamble to every Cursor
 # review prompt (specialist or generic, --prompt or --prompt-file or
 # --agent-file). The cursor argv below passes `--mode ask`; both `plan` and
 # `ask` modes are read-only per Cursor docs, so the CLI itself disables the agent's write tools; the preamble is the
@@ -967,13 +967,13 @@ fi
 # on retry the launcher reads the body, prepends the preamble exactly once,
 # and produces an identical outgoing PROMPT — no preamble stacking.
 CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode ask to the cursor CLI. Any post-run mutation will be detected by the dirty-tree sidecar."
-CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<EOF
-HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.
+CURSOR_REVIEW_STRICT_PREAMBLE=$(cat <<EOF
+STRICT CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.
 ${CURSOR_SANDBOX_ENFORCEMENT_LINE}
 EOF
 )
 ORIGINAL_PROMPT="$PROMPT"
-PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
+PROMPT="${CURSOR_REVIEW_STRICT_PREAMBLE}"$'\n\n'"${PROMPT}"
 
 WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
 WRAPPED_PROMPT=${WRAPPED_PROMPT%X}

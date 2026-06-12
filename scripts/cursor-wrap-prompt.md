@@ -17,11 +17,10 @@ Cursor also has no way to configure a non-default model via config file that ove
 
 ## Callers
 
-- `scripts/launch-review.sh --tool cursor` — canonical Cursor launch wrapper; all SKILL.md Cursor reviewer/sketch/debater launches now route through this script.
+- `scripts/launch-review.sh --tool cursor` — canonical Cursor launch wrapper; SKILL.md Cursor reviewer launches route through this script.
 - `scripts/launch-cursor-implement.sh` — Cursor implementer launcher for `/implement --coder=cursor`.
 - `skills/research/references/validation-phase.md` — Cursor validation-reviewer launch (research lanes themselves are Codex-first; Cursor is not used for research lanes).
 - `skills/shared/voting-protocol.md` — Cursor voter template.
-- `skills/shared/dialectic-protocol.md` — Cursor judge template.
 - `scripts/run-negotiation-round.sh` — Cursor negotiation-round branch.
 - `scripts/lint-fix-loop.sh` — Cursor lint-fix coder branch (`run_cursor`).
 - `scripts/check-reviewers.sh` — Cursor presence probe (`larch_run_one_cursor_probe`).
@@ -29,8 +28,6 @@ Cursor also has no way to configure a non-default model via config file that ove
 
 **Migrated to `launch-review.sh --tool cursor`** (no longer direct callers):
 - `skills/design/SKILL.md` (was 1 — plan-review Cursor reviewer)
-- `skills/design/references/sketch-launch.md` (was 3 — sketch slots)
-- `skills/design/references/dialectic-execution.md` (was 1 — debater launch)
 - `skills/review/SKILL.md` (was 2 — diff/description Cursor reviewer blocks)
 - `skills/implement/SKILL.md` (was 1 — quick-mode Cursor reviewer)
 

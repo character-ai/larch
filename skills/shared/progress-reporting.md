@@ -11,7 +11,7 @@ By default, progress lines use prose payloads:
 ```
 
 - **`{icon}`**: One of the icons below, indicating the line type.
-- **`{step_number}`**: The full numeric step designation including any parent prefix (e.g., `1.2a.5` when `/design` step `2a.5` is called from `/implement` step `1`).
+- **`{step_number}`**: The full numeric step designation including any parent prefix (e.g., `1.2b.5` when `/design` step `2b.5` is called from `/implement` step `1`).
 - **`{breadcrumb_path}`**: Human-readable path from root to current step, segments joined by ` | `. Built from `STEP_PATH_PREFIX | step_short_name` when nested, or just `step_short_name` when standalone.
 - **`{payload}`**: Optional description, outcome, or reason — appended after ` — `.
 
@@ -150,7 +150,7 @@ Child skills parse `--step-prefix` into three mental variables:
 When outputting a step:
 
 - **Skill path**: Standalone uses the local skill name, e.g., `/design`. Nested uses `{PARENT_SKILL_PATH}:/{local_skill_name}` when `PARENT_SKILL_PATH` is non-empty.
-- **Step number**: `{STEP_NUM_PREFIX}{local_step_number}` (e.g., `1.` + `2a.5` = `1.2a.5`)
+- **Step number**: `{STEP_NUM_PREFIX}{local_step_number}` (e.g., `1.` + `2b.5` = `1.2b.5`)
 - **Breadcrumb path**: If `STEP_PATH_PREFIX` is non-empty: `{STEP_PATH_PREFIX} | {step_short_name}`. Otherwise: just `{step_short_name}`.
 
 ### Examples
@@ -158,17 +158,17 @@ When outputting a step:
 Standalone `/design` (no `--step-prefix`):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 /design 2a: sketches**
+> **🔶 /design 2a: sentinel prep**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 /design 2a.5: dialectic**
+> **🔶 /design 2b: full plan**
 ```
 
 `/design` called from `/implement` with `--step-prefix "1.::design plan::/implement"`:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 /implement:/design 1.2a: design plan | sketches**
+> **🔶 /implement:/design 1.2a: design plan | sentinel prep**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 /implement:/design 1.2a.5: design plan | dialectic**
+> **🔶 /implement:/design 1.2b: design plan | full plan**
 ```
 
 `/review` called from `/implement` with `--step-prefix "5.::code review::/implement"`:

@@ -10,7 +10,7 @@ def test_dataclasses_and_helpers() -> None:
         url="u",
         started_at="2026-01-01T00:00:00Z",
         closed_at="2026-01-02T00:00:00Z",
-        workflow="SIMPLE",
+        workflow="",
         claude=VendorTotals(total=1),
         codex=VendorTotals(total=2),
         cursor=VendorTotals(total=3),

@@ -34,7 +34,6 @@ The loop emits `STEP3_REVIEW_LOOP_STATUS` with values `complete`, `cap-hit`, `ma
 0. **`--preview-only`** — live FD-3 preview via `emit`; driver owns `.step3-entry-plan-printed` with output-string + allowlist touch rules.
 1. Review-round cap entry guard → `.step3-review-cap.env`.
 2. Symlink-safe cleanup of only the active `plan-review/round-<ROUND_NUM>` slot before launch.
-3. HARD round-cursor read/advance via `snapshot-plan-round.sh`.
 4. Pending round persist to `review-round-count.txt` before launch.
 5. Foreground `plan-review-loop.sh` (`RUN_STEP3_PLAN_REVIEW_LOOP_SH` override for tests), passing both `--round-num "$ROUND_NUM"` and `--prune-round-num "$STEP3_REVIEW_ROUND_NUM"`.
 6. Parse `.step3-plan-review-result.env` + stdout fallback; normalize `LOOP_STATUS`.
@@ -52,7 +51,6 @@ The cap warning remains boundary-qualified: `**⚠ Step 3: review-round cap (<ca
 | Code | When |
 |------|------|
 | `0` | Normal completion or loop bail-out envelope |
-| `1` | HARD `snapshot-plan-round.sh` write-cursor failure before review launch, or refusal to write symlinked `.step3-review-result.env` |
 | `2` | Argv / missing executable inner loop / invalid loop resume |
 
 ## Harness
@@ -67,5 +65,3 @@ The cap warning remains boundary-qualified: `**⚠ Step 3: review-round cap (<ca
 
 `run-step3-review.sh` writes `STEP3_REVIEW_ROUND_NUM` to `review-round-count.txt` before calling `plan-review-loop.sh` and also passes the same value explicitly as `--prune-round-num`. `plan-review-loop.sh` defaults omitted `--prune-round-num` to `--round-num` for direct single-pass callers and no longer reads `review-round-count.txt`.
 ## Concise prune/log audit update
-
-For non-HARD workflows, artifact `ROUND_NUM` follows `STEP3_REVIEW_ROUND_NUM` before cleanup and dispatch. HARD workflows keep cursor read/advance semantics, and `--prune-round-num` remains the review counter.

@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -88,33 +86,51 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
-if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
-  printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
-  exit 1
-fi
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 _brainstorm_requested=false
-if command -v jq >/dev/null 2>&1; then
-  case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
-    true) _brainstorm_requested=true ;;
-  esac
-elif grep -Eq '"brainstorm_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
-  _brainstorm_requested=true
-fi
-if [ "$_design_classification" = SIMPLE ]; then
-  set -e
-  _simple_artifacts_ok=true
-  if ( grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
-  if ( grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
-  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
-  _simple_artifact_conflict=false
-  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
-  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
-  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
-  if [ "$_simple_artifact_conflict" = true ]; then
-    printf '%s\n' '**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**' >&2
-    exit 1
+if [ -f "$DESIGN_TMPDIR/run-params.json" ]; then
+  if command -v jq >/dev/null 2>&1; then
+    case "$(jq -r '.brainstorm_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+      true) _brainstorm_requested=true ;;
+    esac
+  elif ( command grep -Eq '"brainstorm_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null ); then
+    _brainstorm_requested=true
   fi
+fi
+# Repair or write sentinel artifacts; do not overwrite non-sentinel data
+_exact_line_file() {
+  _elf_file="$1"
+  _elf_expected="$2"
+  awk -v expected="$_elf_expected" '
+    NR == 1 { ok = ($0 == expected) }
+    NR > 1 { ok = 0 }
+    END { exit (NR == 1 && ok) ? 0 : 1 }
+  ' "$_elf_file" 2>/dev/null
+}
+
+_artifacts_ok=true
+_NO_SKETCHES="NO_SKETCHES"
+_NO_CONTESTED="NO_CONTESTED_DECISIONS"
+_LEGACY_NO_SKETCHES=false
+if _exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "$_NO_SKETCHES"; then
+  :
+elif [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_CLASSIFIED_SI""MPLE" ] \
+  || [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_DEGRADED_HA""RD" ]; then
+  _LEGACY_NO_SKETCHES=true
+  _artifacts_ok=false
+else
+  _artifacts_ok=false
+fi
+if _exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "$_NO_CONTESTED"; then :; else _artifacts_ok=false; fi
+if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _artifacts_ok=false; fi
+_artifact_conflict=false
+if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] \
+  && ! _exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "$_NO_SKETCHES" \
+  && [ "$_LEGACY_NO_SKETCHES" != true ]; then _artifact_conflict=true; fi
+if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! _exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "$_NO_CONTESTED"; then _artifact_conflict=true; fi
+if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _artifact_conflict=true; fi
+if [ "$_artifact_conflict" = true ]; then
+  printf '%s\n' '**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect before continuing.**' >&2
+  exit 1
 fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-1c"
@@ -124,14 +140,11 @@ if [ "$_brainstorm_requested" != true ]; then
 fi
 : > "$DESIGN_TMPDIR/.completed/step-1d.7"
 : > "$DESIGN_TMPDIR/.completed/step-1e"
-if [ "$_design_classification" = SIMPLE ]; then
-  if [ "$_simple_artifacts_ok" != true ]; then
-    printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
-    printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
-    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
-  fi
-  : > "$DESIGN_TMPDIR/.completed/step-2a"
-  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+if [ "$_artifacts_ok" != true ]; then
+  printf '%s\n' "$_NO_SKETCHES" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+  printf '%s\n' "$_NO_CONTESTED" > "$DESIGN_TMPDIR/contested-decisions.md"
+  : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
 fi
+: > "$DESIGN_TMPDIR/.completed/step-2a"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2a — sketches" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2a — sentinel prep" || true
