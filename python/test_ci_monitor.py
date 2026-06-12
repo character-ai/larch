@@ -152,6 +152,47 @@ def _status(
     }
 
 
+def test_default_launch_fn_ingests_external_token_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(ci_monitor, "_implement_tmpdir", lambda: str(tmp_path))
+
+    def fake_build_launch_argv(tier: str, **_kwargs: object) -> list[str]:
+        return ["launch", tier]
+
+    monkeypatch.setattr(ci_monitor.agents, "build_launch_argv", fake_build_launch_argv)
+    ingest_calls: list[dict[str, object]] = []
+
+    def fake_ingest(_runner: RecordingRunner, **kwargs: object) -> bool:
+        ingest_calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
+    runner.responses[("launch", "codex")] = _cr(
+        ("launch", "codex"),
+        stdout=f"LAUNCHER_EXIT=0\nTOKEN_RECORD={tmp_path / 'codex.token-record'}\n",
+    )
+    launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        run_id="run",
+        repo="owner/repo",
+        plan_file=None,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+    attempt = launch_fn("codex")
+    assert attempt.launcher_exit == 0
+    assert len(ingest_calls) == 1
+    assert ingest_calls[0]["tmpdir"] == str(tmp_path)
+    assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
+    assert ingest_calls[0]["cwd"] == str(tmp_path)
+    assert isinstance(ingest_calls[0]["seen"], set)
+
+
 @pytest.mark.parametrize(
     ("status", "behind", "conflicted", "iteration", "rebase_count", "fix_attempts", "expected"),
     [

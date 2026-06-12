@@ -18,6 +18,7 @@ from report_tokens_cost import (
     price_run,
     render_cost_line_main,
     token_cost_argv,
+    token_cost_from_args,
     token_cost_main,
 )
 from report_tokens_models import RunRecord, VendorTotals
@@ -66,6 +67,11 @@ def _record() -> RunRecord:
     )
 
 
+def _parsed_cost(argv: list[str], env: Mapping[str, str] | None = None) -> dict[str, str]:
+    out = token_cost_from_args(argv, env=env)
+    return dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
+
+
 def test_mixed_bucket_and_blended_argv() -> None:
     argv = token_cost_argv(_record(), plugin_root=Path("/repo"))
     assert "--claude-input-tokens" in argv
@@ -100,6 +106,7 @@ def test_price_run_uses_python_pricing() -> None:
 
 
 def test_python_pricing_includes_claude_sub_cost() -> None:
+    rates = display_rates(environ={})
     record = RunRecord(
         number=1,
         title="t",
@@ -114,8 +121,8 @@ def test_python_pricing_includes_claude_sub_cost() -> None:
         raw_report={"BUCKETS_claude_sub": {"input": 1_000_000}},
     )
     priced = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
-    assert priced.claude_sub_cost == 5.00
-    assert priced.total_cost == 5.00
+    assert priced.claude_sub_cost == rates.claude_input
+    assert priced.total_cost == rates.claude_input
 
 
 def test_real_token_cost_override() -> None:
@@ -251,13 +258,15 @@ def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
     rc = token_cost_main(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
     assert rc == 0
     out = capsys.readouterr().out
     parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     assert parsed["CLAUDE_COST"] == "0.00"
-    assert parsed["CODEX_COST"] == "35.00"
-    assert parsed["TOTAL_COST"] == "35.00"
+    expected = f"{rates.codex_input + rates.codex_output:.2f}"
+    assert parsed["CODEX_COST"] == expected
+    assert parsed["TOTAL_COST"] == expected
     assert parsed["TOTAL_TOKENS"] == "2000000"
     assert out.strip().splitlines()[0].startswith("CLAUDE_COST=")
     assert out.strip().splitlines()[4].startswith("TOTAL_COST=")
@@ -305,11 +314,64 @@ def test_env_rate_alias_precedence() -> None:
 def test_codex_and_cursor_blended_defaults_derive_from_fleet_mix() -> None:
     rates = display_rates(environ={})
     assert CODEX_CURSOR_BLENDED_FLEET_MIX == {"input": 0.07, "cache_read": 0.92, "output": 0.01}
-    assert rates.codex_blended == (5.00 * 0.07) + (0.50 * 0.92) + (30.00 * 0.01)
-    assert rates.cursor_blended == (0.50 * 0.07) + (0.20 * 0.92) + (2.50 * 0.01)
+    assert rates.codex_blended == (
+        rates.codex_input * CODEX_CURSOR_BLENDED_FLEET_MIX["input"]
+        + rates.codex_cached_input * CODEX_CURSOR_BLENDED_FLEET_MIX["cache_read"]
+        + rates.codex_output * CODEX_CURSOR_BLENDED_FLEET_MIX["output"]
+    )
+    assert rates.cursor_blended == (
+        rates.cursor_input * CODEX_CURSOR_BLENDED_FLEET_MIX["input"]
+        + rates.cursor_cache_read * CODEX_CURSOR_BLENDED_FLEET_MIX["cache_read"]
+        + rates.cursor_output * CODEX_CURSOR_BLENDED_FLEET_MIX["output"]
+    )
+
+
+def test_bucket_pricing_ignores_blended_override_ladder() -> None:
+    parsed = _parsed_cost(
+        [
+            "--claude-input-tokens", "1000000",
+            "--codex-input-tokens", "1000000",
+            "--cursor-input-tokens", "1000000",
+        ],
+        env={
+            "LARCH_TOKEN_RATE_PER_M": "99",
+            "LARCH_CLAUDE_RATE_PER_M": "88",
+            "LARCH_CODEX_RATE_PER_M": "77",
+            "LARCH_CURSOR_RATE_PER_M": "66",
+            "LARCH_CLAUDE_INPUT_RATE_PER_M": "11",
+            "LARCH_CODEX_INPUT_RATE_PER_M": "22",
+            "LARCH_CURSOR_INPUT_RATE_PER_M": "33",
+        },
+    )
+    assert parsed["CLAUDE_COST"] == "11.00"
+    assert parsed["CODEX_COST"] == "22.00"
+    assert parsed["CURSOR_COST"] == "33.00"
+
+
+def test_blended_pricing_override_ladder_uses_vendor_before_legacy_token_rate() -> None:
+    parsed = _parsed_cost(
+        ["--claude-tokens", "1000000", "--codex-tokens", "1000000", "--cursor-tokens", "1000000"],
+        env={
+            "LARCH_TOKEN_RATE_PER_M": "99",
+            "LARCH_CLAUDE_RATE_PER_M": "88",
+            "LARCH_CODEX_RATE_PER_M": "77",
+            "LARCH_CURSOR_RATE_PER_M": "66",
+        },
+    )
+    assert parsed["CLAUDE_COST"] == "88.00"
+    assert parsed["CODEX_COST"] == "77.00"
+    assert parsed["CURSOR_COST"] == "66.00"
+
+    legacy_claude = _parsed_cost(
+        ["--claude-tokens", "1000000", "--codex-tokens", "1000000"],
+        env={"LARCH_TOKEN_RATE_PER_M": "55", "LARCH_CODEX_RATE_PER_M": "44"},
+    )
+    assert legacy_claude["CLAUDE_COST"] == "55.00"
+    assert legacy_claude["CODEX_COST"] == "44.00"
 
 
 def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
     rc = token_cost_main([
         "--codex-input-tokens", "4580000",
         "--codex-cached-input-tokens", "77100000",
@@ -320,8 +382,20 @@ def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> No
     ])
     assert rc == 0
     parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
-    assert abs(float(parsed["CODEX_COST"]) - 75.70) < 0.01
-    assert abs(float(parsed["CURSOR_COST"]) - 22.88) < 0.01
+    expected_codex = round(
+        ((4_580_000 / 1_000_000) * rates.codex_input)
+        + ((77_100_000 / 1_000_000) * rates.codex_cached_input)
+        + ((475_000 / 1_000_000) * rates.codex_output),
+        2,
+    )
+    expected_cursor = round(
+        ((8_000_000 / 1_000_000) * rates.cursor_input)
+        + ((89_100_000 / 1_000_000) * rates.cursor_cache_read)
+        + ((425_000 / 1_000_000) * rates.cursor_output),
+        2,
+    )
+    assert abs(float(parsed["CODEX_COST"]) - expected_codex) < 0.01
+    assert abs(float(parsed["CURSOR_COST"]) - expected_cursor) < 0.01
 
 
 def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.MonkeyPatch) -> None:

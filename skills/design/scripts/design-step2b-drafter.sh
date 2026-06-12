@@ -212,7 +212,7 @@ if [[ "$_step2b_drafter_vendor" == "codex" && -s "$DESIGN_TMPDIR/step2b-drafter-
       --tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1; then
     printf '%s\n' "**⚠ 2b: codex drafter token-report append failed; continuing.**" >&2
   fi
-  if ! env DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
+  if ! env -u IMPLEMENT_TMPDIR DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
       --input "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" >/dev/null 2>&1; then
     printf '%s\n' "**⚠ 2b: codex drafter active-ledger token append failed; continuing.**" >&2
   fi

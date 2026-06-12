@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import os
+import sys
 from pathlib import Path
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -134,7 +135,7 @@ def ingest_launcher_token_sidecar(
         return False
     root = Path(plugin_root) if plugin_root is not None else Path(__file__).resolve().parents[1]
     cli = root / "python" / "cli.py"
-    _ = runner.run(
+    append_result = runner.run(
         [
             "python3",
             str(cli),
@@ -147,10 +148,16 @@ def ingest_launcher_token_sidecar(
         ],
         cwd=cwd,
     )
+    if append_result.returncode != 0:
+        print(
+            f"token sidecar ingest: token append-record failed with exit {append_result.returncode}",
+            file=sys.stderr,
+        )
+        return False
     if implement_tmpdir is not None:
         env = dict(os.environ)
         env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-        _ = runner.run(
+        vendor_result = runner.run(
             [
                 "python3",
                 str(cli),
@@ -162,6 +169,12 @@ def ingest_launcher_token_sidecar(
             cwd=cwd,
             env=env,
         )
+        if vendor_result.returncode != 0:
+            print(
+                f"token sidecar ingest: token record-vendor-sidecar failed with exit {vendor_result.returncode}",
+                file=sys.stderr,
+            )
+            return False
     return True
 
 

@@ -912,6 +912,44 @@ def test_make_conflict_launch_fn_reads_launcher_exit_from_stdout(
     assert attempt.launcher_exit == 1
 
 
+def test_make_conflict_launch_fn_ingests_external_token_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "launch"
+    runner = ScriptRunner([], permissive=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    ingest_calls: list[dict[str, object]] = []
+
+    def _launch_stdout(
+        _runner: ScriptRunner,
+        tier: str,
+        **kwargs: object,
+    ) -> CommandResult:
+        _ = _runner, tier, kwargs
+        return CommandResult(("launch",), 0, f"LAUNCHER_EXIT=0\nTOKEN_RECORD={out_dir / 'cursor.token-record'}\n", "", 0.01)
+
+    def fake_ingest(_runner: ScriptRunner, **kwargs: object) -> bool:
+        ingest_calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
+    monkeypatch.setattr(rebase.agents, "ingest_launcher_token_sidecar", fake_ingest)
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="owner/repo",
+        run_id="run-42",
+        output_dir=out_dir,
+        cwd=str(tmp_path),
+    )
+    attempt = launch_fn("cursor", "a.txt")
+    assert attempt.launcher_exit == 0
+    assert len(ingest_calls) == 1
+    assert ingest_calls[0]["tmpdir"] == str(tmp_path)
+    assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
+    assert ingest_calls[0]["cwd"] == str(tmp_path)
+
+
 def test_deterministic_prepass_no_checkout_ours_on_vendor() -> None:
     runner = ScriptRunner(
         [
