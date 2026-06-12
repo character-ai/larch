@@ -70,6 +70,19 @@ After all groups are applied, print a final tally: `Done — <N> issues combined
 
 Operates only on open issues whose title starts with the `[OOS]` prefix followed by a space (prefix match, not substring). Fetches them, checks actuality item-by-item, discards stale items, and proposes an aggressive combination.
 
+Resolve the target repository once before OOS commands that require `--repo`:
+
+```bash
+REPO=$("$PWD/scripts/resolve-repo.sh" 2>/dev/null || true)
+if [ -z "$REPO" ]; then
+  REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+fi
+if [ -z "$REPO" ]; then
+  echo "Could not determine repository."
+  exit 1
+fi
+```
+
 <!-- step:oos-1 — Fetch OOS Issues -->
 
 ```bash

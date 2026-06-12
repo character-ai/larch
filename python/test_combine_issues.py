@@ -75,6 +75,30 @@ def test_apply_rejects_empty_source_issue_list(tmp_path: Path, capsys):
     assert "ERROR=No source issues provided" in capsys.readouterr().err
 
 
+def test_apply_rejects_malformed_source_issues_before_create(monkeypatch, tmp_path: Path, capsys):
+    class CountingRunner:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def run(self, argv, **_kwargs):
+            self.calls.append(list(argv))
+            return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
+
+    body = tmp_path / "body.md"
+    body.write_text("Combined body\n", encoding="utf-8")
+    runner = CountingRunner()
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
+    assert combine_issues.apply_main([
+        "--repo", "o/r",
+        "--title", "T",
+        "--body-file", str(body),
+        "--source-issues", "1,nope",
+        "--defer-close",
+    ]) == 1
+    assert "ERROR=--source-issues values must be positive integers" in capsys.readouterr().err
+    assert not any(call[:3] == ["gh", "issue", "create"] for call in runner.calls)
+
+
 class ApplyRunner:
     def __init__(self):
         self.calls: list[list[str]] = []
@@ -280,6 +304,64 @@ def test_close_eligible_uses_write_decision_and_blocked_source_schemas(tmp_path:
     assert "blocked item remains" in payload["reasons"]["3"]
 
 
+def test_close_eligible_fails_closed_for_missing_failed_and_unresolved_edges(tmp_path: Path, capsys):
+    plan = _write_json(tmp_path / "plan.json", {
+        "safe_edges": [
+            {"edge": [100, 5], "source_issues": [1]},
+            {"edge": [200, 7], "source_issues": [2]},
+        ],
+        "exception_edges": [{"edge": [8, 300], "source_issues": [3]}],
+        "unknown_edges": [],
+    })
+    writes = _write_json(tmp_path / "writes.json", {"write_results": [
+        {"edge": [100, 5], "phase": "inherited_safe", "status": "failed", "source_issues": [1]},
+    ]})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": [
+        {"edge": [8, 300], "decision": "unresolved", "phase": "inherited_exception", "source_issues": [3], "reason": "operator cancelled"},
+    ]})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100, "2": 200, "3": 300})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["eligible_by_combined"] == {}
+    assert payload["ineligible_sources"] == [1, 2, 3]
+    assert "inherited_safe_write_missing_or_failed:100:5" in payload["reasons"]["1"]
+    assert "inherited_safe_write_missing_or_failed:200:7" in payload["reasons"]["2"]
+    assert "inherited_exception_unresolved:8:300" in payload["reasons"]["3"]
+
+
+def test_close_eligible_allows_approved_exception_with_successful_write(tmp_path: Path, capsys):
+    plan = _write_json(tmp_path / "plan.json", {
+        "safe_edges": [],
+        "exception_edges": [{"edge": [6, 100], "source_issues": [1]}],
+        "unknown_edges": [],
+    })
+    writes = _write_json(tmp_path / "writes.json", {"write_results": [
+        {"edge": [6, 100], "phase": "inherited_exception", "status": "written", "source_issues": [1]},
+    ]})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": [
+        {"edge": [6, 100], "decision": "approved", "phase": "inherited_exception", "source_issues": [1], "reason": "operator approved"},
+    ]})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["eligible_by_combined"] == {"100": [1]}
+    assert payload["ineligible_sources"] == []
+
+
 def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, capsys):
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")
@@ -303,12 +385,38 @@ def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, 
 def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     runner = ApplyRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
     monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1,2"]) == 0
     assert "CLOSED_ISSUES=2" in capsys.readouterr().out
     close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
     assert close_calls[0] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment", "Combined into #99"]
     assert len(close_calls) == 3
+
+
+def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
+    class RefreshRunner:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        def run(self, argv, **_kwargs):
+            self.calls.append(list(argv))
+            if argv[:3] == ["gh", "issue", "view"]:
+                issue = argv[3]
+                title = "[IMPLEMENTING] busy" if issue == "1" else "ready"
+                return CommandResult(tuple(argv), 0, json.dumps({"title": title, "state": "OPEN"}), "", 0.01)
+            if argv[:3] == ["gh", "issue", "close"]:
+                return CommandResult(tuple(argv), 0, "", "", 0.01)
+            return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+    runner = RefreshRunner()
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
+    assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1,2"]) == 0
+    captured = capsys.readouterr()
+    assert "CLOSED_ISSUES=1" in captured.out
+    assert "Skipped #1: source issue has busy title prefix" in captured.err
+    close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
+    assert close_calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--comment", "Combined into #99"]]
 
 
 def test_list_open_uses_paginated_api_and_filters_pulls_and_closed(monkeypatch, capsys):
@@ -332,6 +440,28 @@ def test_list_open_uses_paginated_api_and_filters_pulls_and_closed(monkeypatch, 
     assert runner.calls == [["gh", "api", "--paginate", "repos/o/r/issues?state=open&per_page=100"]]
     payload = json.loads(capsys.readouterr().out)
     assert [row["number"] for row in payload["issues"]] == [1, 3]
+
+
+def test_list_open_fails_closed_on_gh_or_json_errors(monkeypatch, capsys):
+    class FailingOpenRunner:
+        def run(self, argv, **_kwargs):
+            return CommandResult(tuple(argv), 1, "", "network down", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", FailingOpenRunner().run)
+    assert combine_issues.list_open_main(["--repo", "o/r"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["warnings"][0]["code"] == "gh_api_failed"
+
+    class InvalidJsonRunner:
+        def run(self, argv, **_kwargs):
+            return CommandResult(tuple(argv), 0, "not json", "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", InvalidJsonRunner().run)
+    assert combine_issues.list_open_main(["--repo", "o/r"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["warnings"][0]["code"] == "json_invalid"
 
 
 def test_prose_audit_remaps_sources_parses_blocks_and_dedupes_existing(monkeypatch, tmp_path: Path, capsys):
@@ -376,6 +506,73 @@ def test_prose_audit_remaps_sources_parses_blocks_and_dedupes_existing(monkeypat
     assert any(row.get("evidence_comment_id") == 500 for row in payload["candidates"])
 
 
+def test_prose_audit_keeps_combined_endpoints_missing_from_open_metadata(monkeypatch, tmp_path: Path, capsys):
+    open_issues = _write_json(tmp_path / "open.json", {"issues": [
+        {"number": 5, "title": "open client", "state": "open", "body": ""},
+    ]})
+    existing = _write_json(tmp_path / "existing.json", [])
+    source_map = _write_json(tmp_path / "source-map.json", {})
+
+    def view(_runner, issue, *, repo, cwd=None):
+        assert repo == "o/r"
+        assert cwd is None
+        bodies = {
+            "100": "Blocked by #5",
+            "5": "Blocked by #100",
+        }
+        return CommandResult(("gh",), 0, json.dumps({"title": "t", "body": bodies.get(issue, "")}), "", 0.01)
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_title_body_read", view)
+    monkeypatch.setattr(combine_issues.gh, "issue_comments_list_read", lambda *_args, **_kwargs: CommandResult(("gh",), 0, "[]", "", 0.01))
+    assert combine_issues.prose_audit_main([
+        "--repo", "o/r",
+        "--combined-issues", "100",
+        "--open-issues-file", open_issues,
+        "--existing-edges-file", existing,
+        "--source-to-combined-file", source_map,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert {tuple(row["edge"]) for row in payload["candidates"]} == {(5, 100), (100, 5)}
+
+
+def test_prose_audit_blocks_parser_ignores_examples_negation_and_code(monkeypatch, tmp_path: Path, capsys):
+    open_issues = _write_json(tmp_path / "open.json", {"issues": [
+        {"number": 100, "title": "[OOS] combined", "state": "open", "body": ""},
+        {"number": 6, "title": "open blocker", "state": "open", "body": ""},
+    ]})
+    existing = _write_json(tmp_path / "existing.json", [])
+    source_map = _write_json(tmp_path / "source-map.json", {})
+
+    def view(_runner, issue, *, repo, cwd=None):
+        assert repo == "o/r"
+        assert cwd is None
+        if issue == "100":
+            body = (
+                "Inline `Blocks #6` example\n"
+                "Example: Blocks #6\n"
+                "This does not block #6\n"
+                "not Blocking #6\n"
+                "```\n"
+                "Blocks #6\n"
+                "```"
+            )
+        else:
+            body = ""
+        return CommandResult(("gh",), 0, json.dumps({"title": "t", "body": body}), "", 0.01)
+
+    monkeypatch.setattr(combine_issues.gh, "issue_view_title_body_read", view)
+    monkeypatch.setattr(combine_issues.gh, "issue_comments_list_read", lambda *_args, **_kwargs: CommandResult(("gh",), 0, "[]", "", 0.01))
+    assert combine_issues.prose_audit_main([
+        "--repo", "o/r",
+        "--combined-issues", "100",
+        "--open-issues-file", open_issues,
+        "--existing-edges-file", existing,
+        "--source-to-combined-file", source_map,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["candidates"] == []
+
+
 def test_plan_audit_splits_tier1_safe_exceptions_and_tier2(tmp_path: Path, capsys):
     prose = _write_json(tmp_path / "prose.json", {"candidates": [
         {"edge": [100, 5], "source_kind": "tier1_prose", "confidence": "explicit", "reason": "combined blocked by open"},
@@ -403,3 +600,29 @@ def test_plan_audit_splits_tier1_safe_exceptions_and_tier2(tmp_path: Path, capsy
     assert [row["edge"] for row in payload["auto_write_edges"]] == [[100, 5]]
     approval_edges = {tuple(row["edge"]) for row in payload["approval_required_edges"]}
     assert approval_edges == {(5, 100), (100, 6)}
+
+
+def test_plan_audit_rejects_malformed_tier2_source_kind(tmp_path: Path, capsys):
+    prose = _write_json(tmp_path / "prose.json", {"candidates": []})
+    tier2 = _write_json(tmp_path / "tier2.json", {"candidates": [
+        {"edge": [100, 6], "confidence": "medium", "reason": "semantic dependency"},
+    ]})
+    existing = _write_json(tmp_path / "existing.json", [])
+    decided = _write_json(tmp_path / "decided.json", {"decisions": []})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": [
+        {"number": 6, "title": "normal", "state": "open"},
+    ]})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "[OOS] combined", "source_issues": [1]}])
+    assert combine_issues.plan_audit_main([
+        "--prose-candidates-file", prose,
+        "--tier2-candidates-file", tier2,
+        "--existing-edges-file", existing,
+        "--decided-edges-file", decided,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["auto_write_edges"] == []
+    assert payload["approval_required_edges"] == []
+    assert [row["edge"] for row in payload["policy_rejected_edges"]] == [[100, 6]]
+    assert payload["policy_rejected_edges"][0]["policy_reason"] == "tier2 candidate must declare source_kind=tier2_semantic"

@@ -22,7 +22,10 @@ import redact
 
 _BUSY_RE = re.compile(r"^(?:\[(?:DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s|\[LOCKED\])")
 _OOS_RE = re.compile(r"^\[OOS\]\s")
-_BLOCKS_RE = re.compile(r"(?:Blocks|Blocking)[ \t]+#([0-9]+)(?:[^0-9]|$)", re.IGNORECASE)
+_BLOCKS_LINE_RE = re.compile(r"^(?:Blocks|Blocking)[ \t]+#([0-9]+)(?:[^0-9]|$)", re.IGNORECASE)
+_MARKDOWN_PREFIX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?")
+_EXAMPLE_PREFIX_RE = re.compile(r"^(?:example|examples|e\.g\.|eg\.|for example|sample)\b", re.IGNORECASE)
+_CODE_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 _WRITE_SUCCESS = {"written", "already_present"}
 _INHERITED_SAFE_PHASES = {"inherited_safe", "inherited_reclassified_safe"}
 _INHERITED_EXCEPTION_PHASES = {"inherited_exception", "inherited_reclassified_exception"}
@@ -166,6 +169,25 @@ def _dep_numbers(text: str) -> list[int]:
         if number is not None:
             nums.add(number)
     return sorted(nums)
+
+
+def _parse_prose_blocks(text: str) -> list[int]:
+    refs: set[int] = set()
+    in_fence = False
+    for raw_line in (text or "").splitlines():
+        if _CODE_FENCE_RE.match(raw_line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        line = re.sub(r"`[^`\n]*`", "", raw_line).replace("*", "").replace("_", "")
+        line = _MARKDOWN_PREFIX_RE.sub("", line).strip()
+        if not line or _EXAMPLE_PREFIX_RE.match(line):
+            continue
+        match = _BLOCKS_LINE_RE.match(line)
+        if match:
+            refs.add(int(match.group(1)))
+    return sorted(refs)
 
 
 def _read_deps_for_issue(repo: str, issue: int) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -532,11 +554,13 @@ def list_open_main(argv: list[str] | None = None) -> int:
     result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
     warnings: list[dict[str, str]] = []
     if result.returncode != 0:
-        return _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "gh_api_failed", "message": "failed to list open issues"}]})
+        _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "gh_api_failed", "message": "failed to list open issues"}]})
+        return 1
     try:
         rows = gh.loads_json_paginated_list(result.stdout)
     except Exception as exc:
-        return _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "json_invalid", "message": str(exc)}]})
+        _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "json_invalid", "message": str(exc)}]})
+        return 1
     issues: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict) or row.get("pull_request") is not None:
@@ -588,14 +612,19 @@ def apply_main(argv: list[str] | None = None) -> int:
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
-    issues = [x.strip() for x in args.source_issues.split(",") if x.strip()]
-    if not issues:
+    issue_tokens = [x.strip() for x in args.source_issues.split(",") if x.strip()]
+    if not issue_tokens:
         print("ERROR=No source issues provided", file=sys.stderr)
+        return 1
+    try:
+        issues = [str(issue) for issue in _parse_issue_csv(args.source_issues, arg_name="--source-issues")]
+    except ValueError as exc:
+        print(f"ERROR={exc}", file=sys.stderr)
         return 1
     if args.dry_run:
         print("DRY_RUN=true")
         print(f"WOULD_CREATE={args.title}")
-        print(f"WOULD_CLOSE={len(issues)} issues: {args.source_issues}")
+        print(f"WOULD_CLOSE={len(issues)} issues: {','.join(issues)}")
         if args.defer_close:
             print("CLOSING_DEFERRED=true")
         return 0
@@ -659,6 +688,10 @@ def close_sources_main(argv: list[str] | None = None) -> int:
     closed = 0
     warnings = []
     for source in sources:
+        skip_reason = _source_close_skip_reason(repo, source)
+        if skip_reason is not None:
+            warnings.append(f"Skipped #{source}: {skip_reason}")
+            continue
         res = _close_issue_with_retry(str(source), repo, str(combined))
         if res.returncode == 0:
             closed += 1
@@ -668,6 +701,25 @@ def close_sources_main(argv: list[str] | None = None) -> int:
         print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
     print(f"CLOSED_ISSUES={closed}")
     return 0
+
+
+def _source_close_skip_reason(repo: str, source: int) -> str | None:
+    result = gh.issue_view_field_read(proc, str(source), "title,state", repo=repo)
+    if result.returncode != 0:
+        return "could not refresh source issue state"
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return "could not parse source issue state"
+    if not isinstance(data, dict):
+        return "could not parse source issue state"
+    state = str(data.get("state") or "")
+    if state.lower() != "open":
+        return f"source issue is not open ({state or 'unknown'})"
+    title = str(data.get("title") or "")
+    if _BUSY_RE.match(title):
+        return "source issue has busy title prefix"
+    return None
 
 
 def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str]:
@@ -714,6 +766,8 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         return _fail_json_error(str(exc))
     meta = _metadata(open_rows, [])
+    for combined_issue in combined_issue_numbers:
+        meta.setdefault(combined_issue, {"number": combined_issue, "title": "", "state": "open", "labels": [], "body": ""})
     open_numbers = {row["number"] for row in open_rows}
     all_to_scan = sorted(open_numbers | combined_issue_numbers)
     candidates_by_edge: dict[tuple[int, int], dict[str, Any]] = {}
@@ -751,11 +805,18 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
     for issue in all_to_scan:
         fallback = meta.get(issue, {"number": issue, "title": "", "body": "", "state": "open"})
         view = gh.issue_view_title_body_read(proc, str(issue), repo=args.repo)
-        _title, body_text = _issue_content_from_view(view, fallback)
+        title, body_text = _issue_content_from_view(view, fallback)
+        meta[issue] = {
+            "number": issue,
+            "title": title,
+            "state": str(fallback.get("state") or "open"),
+            "labels": fallback.get("labels", []),
+            "body": body_text,
+        }
         for ref in blocker.parse_prose_blockers(body_text):
             add_candidate(issue, ref, "blocked_by", "body")
-        for match in _BLOCKS_RE.finditer(body_text or ""):
-            add_candidate(issue, int(match.group(1)), "blocks", "body")
+        for ref in _parse_prose_blocks(body_text):
+            add_candidate(issue, ref, "blocks", "body")
         comments = gh.issue_comments_list_read(proc, str(issue), repo=args.repo)
         try:
             rows = _comment_rows(comments)
@@ -767,8 +828,8 @@ def prose_audit_main(argv: list[str] | None = None) -> int:
             comment_id = _positive_int_value(row.get("id"))
             for ref in blocker.parse_prose_blockers(text):
                 add_candidate(issue, ref, "blocked_by", "comment", comment_id)
-            for match in _BLOCKS_RE.finditer(text):
-                add_candidate(issue, int(match.group(1)), "blocks", "comment", comment_id)
+            for ref in _parse_prose_blocks(text):
+                add_candidate(issue, ref, "blocks", "comment", comment_id)
     return _emit_json({"status": "ok", "candidates": list(candidates_by_edge.values()), "warnings": warnings})
 
 
@@ -807,7 +868,11 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         prose = _candidate_rows(_load_json_file(args.prose_candidates_file, desc="prose-candidates-file"), desc="prose-candidates-file")
-        tier2 = _candidate_rows(_load_json_file(args.tier2_candidates_file, desc="tier2-candidates-file"), desc="tier2-candidates-file")
+        tier2 = []
+        for row in _candidate_rows(_load_json_file(args.tier2_candidates_file, desc="tier2-candidates-file"), desc="tier2-candidates-file"):
+            tagged = dict(row)
+            tagged["_candidate_origin"] = "tier2"
+            tier2.append(tagged)
         existing = _load_edge_pair_list(args.existing_edges_file, desc="existing-edges-file")
         decided = _decided_edge_set(_load_json_file(args.decided_edges_file, desc="decided-edges-file"))
         open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
@@ -835,12 +900,15 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     warnings: list[dict[str, Any]] = []
     for edge, row in sorted(merged.items()):
         bucket, reason = _classify_edge(edge, meta, combined_oos)
-        enriched = dict(row)
+        enriched = {key: value for key, value in row.items() if key != "_candidate_origin"}
         enriched["client_issue"] = edge[0]
         enriched["blocker_issue"] = edge[1]
         enriched["reason"] = str(row.get("reason") or reason)
         source_kind = str(row.get("source_kind") or "")
-        if source_kind == "tier2_semantic" and str(row.get("confidence") or "") not in {"low", "medium", "high"}:
+        if row.get("_candidate_origin") == "tier2" and source_kind != "tier2_semantic":
+            enriched["policy_reason"] = "tier2 candidate must declare source_kind=tier2_semantic"
+            rejected.append(enriched)
+        elif source_kind == "tier2_semantic" and str(row.get("confidence") or "") not in {"low", "medium", "high"}:
             enriched["policy_reason"] = "tier2 candidate missing low, medium, or high confidence"
             rejected.append(enriched)
         elif bucket == "unknown":
