@@ -284,11 +284,14 @@ def _all_round_dirs_inflight(rounds_root: Path) -> bool:
     if not dirs:
         return False
     for round_dir in dirs:
+        meta_path = round_dir / "round-meta.json"
         try:
-            if (round_dir / "round-meta.json").exists():
-                return False
-        except OSError:
+            meta_path.lstat()
+            return False
+        except FileNotFoundError:
             continue
+        except OSError:
+            return False
     return True
 
 
