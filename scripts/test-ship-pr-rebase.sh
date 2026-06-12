@@ -232,40 +232,39 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
     : >"$STATE_FILE"
     : >"$CALL_LOG"
 
-    cat >"$SCRIPT_DIR/launch-codex-ci.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-out=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --output) out=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-printf '%s\n' 'TOOL=codex' 'INPUT=1' 'OUTPUT=2' 'TOTAL=3' 'RAW=codex_ci_fix' > "${out}.token-record"
-printf 'LAUNCHER_EXIT=1\nTOKEN_RECORD=%s\n' "${out}.token-record"
-EOF
-    chmod +x "$SCRIPT_DIR/launch-codex-ci.sh"
-    cat >"$SCRIPT_DIR/launch-cursor-ci.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-out=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --output) out=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-printf '%s\n' 'TOOL=cursor' 'INPUT=4' 'OUTPUT=5' 'TOTAL=9' 'RAW=cursor_ci_fix' > "${out}.token-record"
-printf 'LAUNCHER_EXIT=0\nTOKEN_RECORD=%s\n' "${out}.token-record"
-EOF
-    chmod +x "$SCRIPT_DIR/launch-cursor-ci.sh"
-
     python3() {
-        local verb="" input=""
+        local verb="" input="" out=""
         case " $* " in
             *" append-record "*) verb=append-record ;;
             *" record-vendor-sidecar "*) verb=record-vendor-sidecar ;;
+            *" agent launch-codex-ci "*)
+                # Simulate codex CI launcher: create token-record and emit TOKEN_RECORD=
+                while [ "$#" -gt 0 ]; do
+                    case "$1" in
+                        --output) out=$2; shift 2 ;;
+                        *) shift ;;
+                    esac
+                done
+                if [[ -n "$out" ]]; then
+                    printf '%s\n' 'TOOL=codex' 'INPUT=1' 'OUTPUT=2' 'TOTAL=3' 'RAW=codex_ci_fix' > "${out}.token-record"
+                    printf 'LAUNCHER_EXIT=1\nTOKEN_RECORD=%s\n' "${out}.token-record"
+                fi
+                return 0
+                ;;
+            *" agent launch-cursor-ci "*)
+                # Simulate cursor CI launcher: create token-record and emit TOKEN_RECORD=
+                while [ "$#" -gt 0 ]; do
+                    case "$1" in
+                        --output) out=$2; shift 2 ;;
+                        *) shift ;;
+                    esac
+                done
+                if [[ -n "$out" ]]; then
+                    printf '%s\n' 'TOOL=cursor' 'INPUT=4' 'OUTPUT=5' 'TOTAL=9' 'RAW=cursor_ci_fix' > "${out}.token-record"
+                    printf 'LAUNCHER_EXIT=0\nTOKEN_RECORD=%s\n' "${out}.token-record"
+                fi
+                return 0
+                ;;
         esac
         while [ "$#" -gt 0 ]; do
             case "$1" in

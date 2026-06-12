@@ -68,7 +68,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 Claude is NOT a primary plan reviewer — the external panel is the default path (present vendors per archetype, plus optional dynamic `dyn-*` pairs when scouting succeeds). Under `--no-fallback` there is **no per-slot Claude pad** when one external tool fails (in round 3+ with both vendors present, fallback is restored per #4060, so a failed Cursor slot may backfill via Codex or Claude). Otherwise Claude runs only when **both** Codex and Cursor are absent at Step 0: `dispatch-plan-review-panel.sh` launches one generic Claude reviewer (all static lenses, same first-line TSV contract as the waterfall path). Voter 1 remains `launch-claude-review.sh` subprocess scope (below).
 
-**Voter 1** (Claude) in the 3-voter adjudication panel is **not** an Agent-tool subagent: `plan-review-loop.sh` drives `scripts/dispatch-plan-voters.sh`, which launches Voter 1 through `scripts/launch-claude-review.sh` (`--role voter`, `--timing-task-kind claude-plan-voter`). The voting prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other `launch-claude-review.sh` lanes.
+**Voter 1** (Claude) in the 3-voter adjudication panel is **not** an Agent-tool subagent: `plan-review-loop.sh` drives `scripts/dispatch-plan-voters.sh`, which launches Voter 1 through `python/cli.py agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The voting prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other `launch-claude-review.sh` lanes.
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 

@@ -99,7 +99,7 @@ export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
 # 10s sleep per stub invocation. Production callers (real Cursor) inherit the
-# default 10s. See scripts/run-external-agent.md.
+# default 10s. See python/agents.py.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 
 PLAN="$SCRATCH/plan.md"

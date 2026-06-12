@@ -1,6 +1,6 @@
 # scripts/run-negotiation-round.sh — contract
 
-`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure or Codex auth setup failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `scripts/agent-model-args.sh` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
+`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure or Codex auth setup failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `python/cli.py agent model-args` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
 
 For Codex, the script preserves the final response via `--output-last-message "$OUTPUT_FILE"` while writing `--json` stdout to the local-only `${OUTPUT_FILE%.txt}.events.jsonl` and stderr to `${OUTPUT_FILE%.txt}.sidecar`. Those two Codex side artifacts are removed before each run so stale events cannot be parsed. The event stream is parsed best-effort into the sanitized token-ledger raw bucket `codex_negotiation`; telemetry failures do not change the reviewer exit behavior.
 
@@ -14,22 +14,22 @@ Sources `scripts/lib-external-launcher-common.sh` to access `external_serial_loc
 
 ## Cursor auth handling
 
-Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. Auth is delivered via the `CURSOR_API_KEY` environment variable (issue #3375) — `cursor_auth_export_env` normalizes/exports it (whitespace-trim; `unset` on empty/whitespace/embedded-newline) and the `cursor agent` child inherits it. No `--api-key` argv element is passed; when the env var is unset/empty `cursor agent` falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
+Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `python/cli.py agent model-args` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. Auth is delivered via the `CURSOR_API_KEY` environment variable (issue #3375) — `cursor_auth_export_env` normalizes/exports it (whitespace-trim; `unset` on empty/whitespace/embedded-newline) and the `cursor agent` child inherits it. No `--api-key` argv element is passed; when the env var is unset/empty `cursor agent` falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
 
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Response written |
-| 1 | Usage / argument error, or the typical `scripts/agent-model-args.sh` validation failure propagated from that helper |
+| 1 | Usage / argument error, or the typical `python/cli.py agent model-args` validation failure propagated from that helper |
 | 2 | Reviewer command failed, or Codex auth setup failed before launch |
 | 3 | `cursor_auth_preflight` failed before `cursor agent` launched |
-| other | Propagated from `scripts/agent-model-args.sh`; inspect that helper's stderr diagnostic |
+| other | Propagated from `python/cli.py agent model-args`; inspect that helper's stderr diagnostic |
 
 The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-review.sh --tool cursor`) is unnecessary here.
 
 ## Stdout envelope symmetry
 
-Every terminal exit path (success, exit 2, exit 3) emits `RESPONSE_FILE=<path>` on stdout before exiting, so callers can parse the response-file path with one rule regardless of failure class. The `RESPONSE_FILE` value still points at the configured `--output` path even on the exit-3 (preflight) path — the file may be empty (the script `rm -f`s it before invocation), but the key is always present. The exit-1 usage-error and `agent-model-args.sh`-propagated paths do NOT emit `RESPONSE_FILE` (they fail before the response-file slot is meaningful).
+Every terminal exit path (success, exit 2, exit 3) emits `RESPONSE_FILE=<path>` on stdout before exiting, so callers can parse the response-file path with one rule regardless of failure class. The `RESPONSE_FILE` value still points at the configured `--output` path even on the exit-3 (preflight) path — the file may be empty (the script `rm -f`s it before invocation), but the key is always present. The exit-1 usage-error and `python3 python/cli.py agent model-args`-propagated paths do NOT emit `RESPONSE_FILE` (they fail before the response-file slot is meaningful).
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

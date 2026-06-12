@@ -127,21 +127,21 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 # is advisory here (the cursor launch / sentinel handling below detects an
 # unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
 # this shell.
-"${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh" || true
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
 # Use a temp file (NOT process substitution) so a non-zero exit from
-# agent-model-args.sh — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
+# `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
 # producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
 # expansion is required for Bash 3.2 compatibility under `set -u`.
 CURSOR_MODEL_ARGS_TMP=$(mktemp)
 trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort > "$CURSOR_MODEL_ARGS_TMP" || exit $?
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent model-args --tool cursor --with-effort > "$CURSOR_MODEL_ARGS_TMP" || exit $?
 CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
   cursor agent -p --trust --mode plan ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
-    "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>.")"
+    "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "<voter prompt with ballot>.")"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
@@ -152,7 +152,7 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 
 ```bash
 # launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
-"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
+"${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
   --output "<tmpdir>/codex-vote-output.txt" \
   --timeout 1200 \
   --workdir "$PWD" \

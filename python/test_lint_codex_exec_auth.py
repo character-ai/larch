@@ -18,7 +18,7 @@ def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
 
 
 def test_clean_and_allowlisted_launcher(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "scripts/launch-codex-exec.sh", "#!/bin/bash", "codex exec --full-auto -C . hi")
+    write(tmp_path / "python/agents.py", 'child = ["codex", "exec", "--full-auto"]')
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
 
@@ -57,6 +57,13 @@ def test_markdown_fences(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     rc, err = run(tmp_path, capsys)
     assert rc == 1
     assert "skills/foo/SKILL.md:2:" in err
+
+
+def test_python_raw_exec_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / "python/new_launcher.py", 'subprocess.run(["codex", "exec", "--full-auto"])')
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "python/new_launcher.py:1:" in err
 
 
 def test_out_of_scope_ignored_and_invalid_root(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

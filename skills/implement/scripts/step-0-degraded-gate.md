@@ -1,6 +1,6 @@
 # step-0-degraded-gate.sh
 
-Step 0 degraded-tools gate. Reads CODEX/CURSOR presence keys from session-env and forwards them to scripts/degraded-tools-gate.sh.
+Step 0 degraded-tools gate. Reads CODEX/CURSOR presence keys from session-env and forwards them to scripts/agent degraded-tools-gate.
 
 ## Caller
 

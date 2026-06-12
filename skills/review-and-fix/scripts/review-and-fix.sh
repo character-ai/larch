@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
-# directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
+# directory for sibling helpers such as lib-cursor-auth.sh.
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
@@ -40,7 +40,14 @@ FINDINGS_FILE=""
 REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
-RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
+PY_CLI="${REVIEW_AND_FIX_PY_CLI:-$PLUGIN_ROOT/python/cli.py}"
+if [[ -n "${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-}" ]]; then
+    RUN_EXTERNAL_AGENT_CMD=("$REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH")
+else
+    RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+fi
+CURSOR_WRAP_PROMPT_CMD=(python3 "$PY_CLI" agent cursor-wrap-prompt)
+CODEX_MODEL_ARGS_CMD=(python3 "$PY_CLI" agent model-args --tool codex --with-effort)
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-}"
 if [[ -n "${REVIEW_AND_FIX_WRITE_TALLY_SH:-}" ]]; then
     [[ -x "$REVIEW_AND_FIX_WRITE_TALLY_SH" ]] || {
@@ -316,9 +323,9 @@ run_coder_dispatch_cursor() {
         external_serial_lock_acquire _SERIAL_LOCK "cursor"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         local _wrapped_prompt
-        _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
+        _wrapped_prompt=$({ "${CURSOR_WRAP_PROMPT_CMD[@]}" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
         _wrapped_prompt=${_wrapped_prompt%X}
-        if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
+        if "${RUN_EXTERNAL_AGENT_CMD[@]}" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
             cursor agent -p --trust \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             --workspace "$PWD" \
@@ -355,7 +362,7 @@ run_coder_dispatch_codex() {
         _codex_model_args=()
         _codex_model_args_tmp=$(mktemp) || codex_rc=1
         if [[ "$codex_rc" -eq 0 ]]; then
-            "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$_codex_model_args_tmp" || codex_rc=$?
+            "${CODEX_MODEL_ARGS_CMD[@]}" >"$_codex_model_args_tmp" || codex_rc=$?
         fi
         if [[ "$codex_rc" -eq 0 ]]; then
             while IFS= read -r _codex_model_arg; do
@@ -376,7 +383,7 @@ run_coder_dispatch_codex() {
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
         # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
-        CODEX_HOME="$codex_home" "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
+        CODEX_HOME="$codex_home" "${RUN_EXTERNAL_AGENT_CMD[@]}" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
             --stderr-sink "$codex_wrapper_log" -- \
             codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
             ${_codex_model_args[@]+"${_codex_model_args[@]}"} \
@@ -1340,7 +1347,11 @@ _implement_round_body() {
     [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" && ! -L "$IMPLEMENT_TMPDIR" ]] || { larch_err "review-and-fix.sh: --implement-tmpdir must name a directory"; exit 2; }
     [[ -n "$SESSION_ENV_PATH" ]] || SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
-    [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
+    { [[ ${#RUN_EXTERNAL_AGENT_CMD[@]} -eq 1 && -f "${RUN_EXTERNAL_AGENT_CMD[0]}" ]] || \
+      { command -v "${RUN_EXTERNAL_AGENT_CMD[0]}" >/dev/null 2>&1 && [[ -f "${RUN_EXTERNAL_AGENT_CMD[1]:-}" ]]; }; } || {
+        larch_err "review-and-fix.sh: run-external-agent command unavailable: ${RUN_EXTERNAL_AGENT_CMD[*]}"
+        exit 2
+    }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)

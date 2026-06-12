@@ -442,7 +442,7 @@ def _ballot_ids(ballot_file: str | Path, grammar: str) -> list[str]:
 
 def parse_rate_check_tool_label(voter_tool: str) -> str:
     if voter_tool == "claude":
-        return "launch-claude-review.sh (voter parse-rate check)"
+        return "agent launch-claude-review (voter parse-rate check)"
     if voter_tool in {"codex", "cursor"}:
         return f"launch-review.sh --tool {voter_tool} (voter parse-rate check)"
     return f"voter parse-rate check ({voter_tool})"
@@ -651,7 +651,10 @@ def launch_voter_retry(
     root = Path(plugin_root) if plugin_root else _plugin_root()
     if voter_tool == "claude":
         argv = [
-            str(root / "scripts" / "launch-claude-review.sh"),
+            "python3",
+            str(root / "python" / "cli.py"),
+            "agent",
+            "launch-claude-review",
             "--output",
             str(retry_output),
             "--prompt-file",

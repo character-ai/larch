@@ -149,7 +149,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step0-parse.sh" 'parse-design-argv.sh' 'Step 0 parse wrapper missing parser call'
   contains "$SCRIPT_DIR/design-step0-session.sh" 'session setup' 'Step 0 session wrapper missing session setup call'
   contains "$SCRIPT_DIR/design-step0-session.sh" '--claude-pid "$CLAUDE_PID"' 'Step 0 session wrapper must use explicit --claude-pid argument'
-  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'degraded-tools-gate.sh" --skill design' 'Step 0 degraded wrapper missing gate call'
+  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'agent degraded-tools-gate --skill design' 'Step 0 degraded wrapper missing gate call'
   contains "$SCRIPT_DIR/design-step0-route.sh" '.design-route-result.env' 'Step 0 route wrapper missing route result env read'
   contains "$SCRIPT_DIR/design-step0-init.sh" '.design-init-runparams-result.env' 'Step 0 init wrapper missing init result env read'
   contains "$SCRIPT_DIR/design-step2a.sh" 'NO_SKETCHES' 'Step 2a wrapper missing NO_SKETCHES sentinel write'
@@ -312,7 +312,7 @@ PY
 
 assert_degraded_tools_gate_fence() {
   contains "$SKILL_MD" 'design-step0-degraded.sh' 'SKILL missing degraded-tools wrapper fence'
-  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'degraded-tools-gate.sh' 'Step 0 degraded wrapper missing gate call'
+  contains "$SCRIPT_DIR/design-step0-degraded.sh" 'agent degraded-tools-gate' 'Step 0 degraded wrapper missing gate call'
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'STEP0_STATUS=' 'Step 0 degraded wrapper missing STEP0_STATUS emit'
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'needs-degraded-decision' 'Step 0 degraded wrapper missing needs-degraded-decision branch'
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'BOTH_DOWN_SEEN' 'Step 0 degraded wrapper missing BOTH_DOWN parse presence tracking'

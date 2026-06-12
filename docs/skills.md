@@ -168,7 +168,7 @@ The workflow is intentionally single-clone (per-clone single-flight lock; multip
 
 **Source**: [`skills/status/SKILL.md`](../skills/status/SKILL.md)
 
-Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `check-reviewers.sh` for binary/runtime probes, then `degraded-tools-gate.sh` to classify each vendor. Reports whether the session would run degraded (reduced panel or Claude-only fallback).
+Print the current larch version and health status of external vendor tools (Codex and Cursor). Uses the same probe machinery as `/implement` Step 0: `check-reviewers.sh` for binary/runtime probes, then `python3 python/cli.py agent degraded-tools-gate` to classify each vendor. Reports whether the session would run degraded (reduced panel or Claude-only fallback).
 
 ## `/upgrade-larch`
 

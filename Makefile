@@ -310,7 +310,7 @@ test-token-vendor-scrapers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-token-vendor-scrapers.sh
 
 test-parse-codex-usage:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-codex-usage.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-token-claude-source:
 	cd python && $(PYTHON) -m pytest test_tokens.py -q
@@ -551,7 +551,7 @@ test-lint-bare-grep-probe:
 
 
 test-launch-codex-exec:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-exec.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-lint-awk-multibyte-regex:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
@@ -670,19 +670,19 @@ test-ci-wait:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-wait.sh
 
 test-launch-cursor-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-cursor-ci.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-launch-claude-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-ci.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-launch-codex-ci:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-ci.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-run-negotiation-round:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-negotiation-round.sh
 
 test-run-external-agent-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-external-agent-args.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-quick-mode-docs-sync:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-quick-mode-docs-sync.sh
@@ -944,7 +944,7 @@ test-check-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-reviewers.sh
 
 test-degraded-tools-gate:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-degraded-tools-gate.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-no-grouped-reuse-guard:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-no-grouped-reuse-guard.sh
@@ -971,10 +971,10 @@ test-lib-external-launcher-common:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-external-launcher-common.sh
 
 test-launch-claude-subprocess:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-subprocess.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-launch-claude-review:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-review.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-launch-claude-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-claude-drafter.sh
@@ -989,7 +989,7 @@ test-revise-plan-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-revise-plan-with-waterfall.sh
 
 test-agent-model-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-agent-model-args.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-effort-prose:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-effort-prose.sh
@@ -1022,7 +1022,7 @@ test-wait-for-reviewers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-wait-for-reviewers.sh
 
 test-run-external-agent:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-external-agent.sh
+	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 
 

@@ -6,7 +6,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 ## Sourced by
 
-- `scripts/agent-model-args.sh`
+- `python/cli.py agent model-args`
 - `scripts/check-reviewers.sh`
 - `scripts/collect-agent-results.sh`
 - `skills/implement/scripts/step2-implement.sh`
@@ -15,7 +15,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Related
 
-`scripts/run-external-agent.sh` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `scripts/run-external-agent.md` for the full sanitization contract.
+`python/cli.py agent run-external-agent` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `python/agents.py` for the full sanitization contract.
 
 ## Public API
 
@@ -42,7 +42,7 @@ Update this list whenever a new consumer sources the registry.
 ## Adding a new external tool
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.
-2. Add the per-tool branch in `agent-model-args.sh`.
+2. Add the per-tool branch in `python3 python/cli.py agent model-args`.
 3. Add the per-tool branch in `check-reviewers.sh` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.

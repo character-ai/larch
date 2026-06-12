@@ -129,23 +129,23 @@ else
 fi
 rm -f "$reviewer_err"
 
-# 14b. agent-model-args.sh handles every registered external tool with non-empty
+# 14b. agent model-args handles every registered external tool with non-empty
 # stdout (catches drift where the registry grows but the per-tool model `case`
 # arm is forgotten — without coverage the script would silently exit 0 with
 # empty stdout and callers would launch probes with no --model).
 agent_err="$(mktemp /tmp/larch-registry-agent-model-err-XXXXXX)"
 for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
-    if model_out=$("$REPO_ROOT/scripts/agent-model-args.sh" --tool "$tool" 2>"$agent_err"); then
+    if model_out=$(python3 "$REPO_ROOT/python/cli.py" agent model-args --tool "$tool" 2>"$agent_err"); then
         if [[ -n "$model_out" ]]; then
             pass
         else
-            fail "agent-model-args.sh --tool $tool returned empty stdout"
+            fail "agent model-args --tool $tool returned empty stdout"
         fi
     else
-        fail "agent-model-args.sh --tool $tool exited non-zero: $(cat "$agent_err")"
+        fail "agent model-args --tool $tool exited non-zero: $(cat "$agent_err")"
     fi
     if grep -q 'internal error: unsupported reviewer tool' "$agent_err"; then
-        fail "agent-model-args.sh --tool $tool emitted unsupported-tool internal error"
+        fail "agent model-args --tool $tool emitted unsupported-tool internal error"
     fi
 done
 rm -f "$agent_err"

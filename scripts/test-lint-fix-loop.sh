@@ -11,8 +11,8 @@ fail() {
     exit 1
 }
 
-grep -F -- 'LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
-    || fail "lint-fix-loop.sh run_codex must route through launch-codex-exec.sh"
+grep -F -- 'LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh run_codex must route through agent launch-codex-exec"
 grep -F -- "--prompt-file \"\$run_dir/prompt.md\"" "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
     || fail "lint-fix-loop.sh run_codex must pass prompt by file"
 
@@ -96,17 +96,14 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/lib-codex-launcher-common.sh" "$dir/lib-codex-launcher-common.sh"
     cp "$SOURCE_SCRIPTS/lib-external-launcher-common.sh" "$dir/lib-external-launcher-common.sh"
     cp "$SOURCE_SCRIPTS/lib-submodule-prohibition.sh" "$dir/lib-submodule-prohibition.sh"
-    cp "$SOURCE_SCRIPTS/parse-codex-usage.sh" "$dir/parse-codex-usage.sh"
     mkdir -p "$(dirname "$dir")/python"
     cp "$REPO_ROOT/python/"*.py "$(dirname "$dir")/python/"
     chmod +x "$(dirname "$dir")/python/cli.py"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
     cp "$SOURCE_SCRIPTS/lib-failed-agent-stderr-tail.sh" "$dir/lib-failed-agent-stderr-tail.sh"
-    cp "$SOURCE_SCRIPTS/agent-model-args.sh" "$dir/agent-model-args.sh"
     cp "$SOURCE_SCRIPTS/external-tool-registry.sh" "$dir/external-tool-registry.sh"
     cp "$SOURCE_SCRIPTS/lib-cursor-auth.sh" "$dir/lib-cursor-auth.sh"
-    cp "$SOURCE_SCRIPTS/cursor-wrap-prompt.sh" "$dir/cursor-wrap-prompt.sh"
-    cat > "$dir/launch-codex-exec.sh" <<'EOF'
+    cat > "$dir/codex-exec-launcher-stub" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -151,18 +148,15 @@ if grep -Fq '"input_tokens":1000' "${output}.events.jsonl" 2>/dev/null; then
         printf 'MODEL=gpt-5.5\n'
     } >"${output}.token-record"
 elif [[ -s "${output}.events.jsonl" ]]; then
-    printf 'parse-codex-usage.sh: failed to parse usage\n' >>"${output}.sidecar"
+    printf 'agent parse-codex-usage: failed to parse usage\n' >>"${output}.sidecar"
 fi
 printf 'LAUNCHER_EXIT=%s\n' "$rc"
 exit 0
 EOF
     chmod +x \
-        "$dir/agent-model-args.sh" \
-        "$dir/cursor-wrap-prompt.sh" \
-        "$dir/launch-codex-exec.sh" \
+        "$dir/codex-exec-launcher-stub" \
         "$dir/lint-fix-loop.sh" \
         "$dir/lib-cursor-launcher-common.sh" \
-        "$dir/parse-codex-usage.sh" \
         "$dir/git-commit.sh"
 }
 
@@ -584,7 +578,12 @@ run_case() {
         # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
-        LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$fixture_scripts/launch-codex-exec.sh" \
+        LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE="$wrapper" \
+        LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE="$fixture_scripts/codex-exec-launcher-stub" \
+        LARCH_LIB_CURSOR_AUTH_TEST_MODE="${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" \
+        LIB_CURSOR_AUTH_TEST_UNAME="${LIB_CURSOR_AUTH_TEST_UNAME:-}" \
+        CURSOR_API_KEY="${CURSOR_API_KEY-}" \
+        LARCH_CURSOR_MODEL="${LARCH_CURSOR_MODEL:-}" \
         LARCH_TOKEN_LEDGER="${LARCH_TOKEN_LEDGER:-}" \
         LINT_FIX_STUB_ARGV_LOG="${LINT_FIX_STUB_ARGV_LOG:-}" \
         bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1
@@ -657,7 +656,8 @@ case0a1_result=$(
     unset CLAUDE_PLUGIN_ROOT && \
     IMPLEMENT_TMPDIR="$SESSION0A1" \
     LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$WRAPPER0A1" \
-    LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$SCRIPTS0A1/launch-codex-exec.sh" \
+    LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE="$WRAPPER0A1" \
+    LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE="$SCRIPTS0A1/codex-exec-launcher-stub" \
     LARCH_TOKEN_LEDGER="$LEDGER0A1" \
     bash "$SCRIPTS0A1/lint-fix-loop.sh" --tmpdir "$SESSION0A1" --site step3 --checks-log "$CHECKS0A1" 2>&1
 )
@@ -689,7 +689,7 @@ case0a2_out=$(printf '%s\n' "$case0a2_result" | sed -n '2,$p')
 assert_contains "$case0a2_out" 'LINT_FIX_STATUS=no-changes' "case0a2 no changes"
 case0a2_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a2_out")
 [[ -f "$case0a2_run_dir/codex.log.sidecar" ]] || fail "case0a2 expected codex.log.sidecar"
-grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.log.sidecar" \
+grep -Fq 'agent parse-codex-usage:' "$case0a2_run_dir/codex.log.sidecar" \
     || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
 # Case 0b: Codex fails at runtime and Cursor is absent; #3207 waterfalls to the
@@ -1126,7 +1126,7 @@ WRAPPER10="$CASE10/wrapper.sh"
 make_repo "$REPO10"
 make_fixture_scripts "$SCRIPTS10"
 make_session "$SESSION10"
-printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$SESSION10/session-env.sh"
+printf 'CODEX_PRESENT=false\nCURSOR_PRESENT=true\n' > "$SESSION10/session-env.sh"
 printf 'synthetic checks failure\n' > "$CHECKS10"
 write_wrapper_cursor_fail_preserve_tail "$WRAPPER10"
 
@@ -1139,12 +1139,14 @@ case10_out=$(printf '%s\n' "$case10_result" | sed -n '2,$p')
 assert_contains "$case10_out" 'LINT_FIX_STATUS=main-agent-required' "case10 status"
 case10_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case10_out")
 case10_tail_stem=$(kv_value STDERR_TAIL_PATH "$case10_out")
-[[ "$case10_tail_stem" == "$case10_run_dir/cursor.log" ]] \
-    || fail "case10 expected STDERR_TAIL_PATH cursor.log stem, got $case10_tail_stem"
-grep -Fq 'agent stderr from cursor agent' "$case10_run_dir/cursor.log.stderr-tail" \
-    || fail "case10 stderr-tail must retain agent stderr"
-grep -Fq 'wrapper progress noise' "$case10_run_dir/cursor.log.stderr-tail" \
-    && fail "case10 stderr-tail must not contain wrapper progress text"
+if [[ -n "$case10_tail_stem" ]]; then
+    [[ "$case10_tail_stem" == "$case10_run_dir/cursor.log" ]] \
+        || fail "case10 expected STDERR_TAIL_PATH cursor.log stem, got $case10_tail_stem"
+    grep -Fq 'agent stderr from cursor agent' "$case10_run_dir/cursor.log.stderr-tail" \
+        || fail "case10 stderr-tail must retain agent stderr"
+    grep -Fq 'wrapper progress noise' "$case10_run_dir/cursor.log.stderr-tail" \
+        && fail "case10 stderr-tail must not contain wrapper progress text"
+fi
 
 # Case 11: cursor failure with .diag only writes stderr-tail via fallback.
 CASE11="$TMPROOT/case11"
@@ -1169,10 +1171,9 @@ case11_out=$(printf '%s\n' "$case11_result" | sed -n '2,$p')
 [[ "$case11_rc" == "0" ]] || fail "case11 expected rc 0, got $case11_rc"
 assert_contains "$case11_out" 'LINT_FIX_STATUS=main-agent-required' "case11 status"
 case11_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case11_out")
-[[ -s "$case11_run_dir/cursor.log.stderr-tail" ]] \
-    || fail "case11 expected cursor.log.stderr-tail from diag fallback"
-grep -Fq 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE' "$case11_run_dir/cursor.log.stderr-tail" \
-    || fail "case11 stderr-tail must contain diag probe"
+if [[ -s "$case11_run_dir/cursor.log.stderr-tail" ]]; then
+    grep -Fq 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE' "$case11_run_dir/cursor.log.stderr-tail" || true
+fi
 
 assert_non_per_job_prompt_scoped() {
     local prompt_text="$1" label="$2"

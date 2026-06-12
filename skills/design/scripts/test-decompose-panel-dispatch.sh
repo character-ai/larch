@@ -335,24 +335,27 @@ PLUGIN_STUB="$TMP/plugin-stub"
 mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
-cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
+CLAUDE_REVIEW_STUB_GOOD="$PLUGIN_STUB/scripts/claude-review-good-stub.sh"
+mkdir -p "$PLUGIN_STUB/scripts"
+cat >"$CLAUDE_REVIEW_STUB_GOOD" <<'CLAUDE_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) OUTPUT="${2:?}"; shift 2 ;;
         --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
-        --mode|--timeout|--timing-task-kind|--feature-file) shift 2 ;;
+        --mode|--timeout|--timing-task-kind|--feature-file|--model) shift 2 ;;
         *) shift ;;
     esac
 done
 printf '## Recommendation\nGeneric decomposition.\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 CLAUDE_STUB
-chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+chmod +x "$CLAUDE_REVIEW_STUB_GOOD"
 D10="$TMP/m10"
 prep_common "$D10"
 DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
+    LARCH_TEST_LAUNCH_CLAUDE_REVIEW="$CLAUDE_REVIEW_STUB_GOOD" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" \
     "$PANEL" \
     --design-tmpdir "$D10" \
@@ -374,21 +377,24 @@ PLUGIN_FAIL="$TMP/plugin-fail-stub"
 mkdir -p "$PLUGIN_FAIL/scripts" "$PLUGIN_FAIL/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAIL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAIL/scripts/"
-cat >"$PLUGIN_FAIL/scripts/launch-claude-review.sh" <<'CLAUDE_FAIL_STUB'
+CLAUDE_REVIEW_STUB_FAIL="$PLUGIN_FAIL/scripts/claude-review-fail-stub.sh"
+mkdir -p "$PLUGIN_FAIL/scripts"
+cat >"$CLAUDE_REVIEW_STUB_FAIL" <<'CLAUDE_FAIL_STUB'
 #!/usr/bin/env bash
 OUTPUT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) OUTPUT="${2:?}"; shift 2 ;;
-        --prompt-file|--mode|--timeout|--timing-task-kind|--feature-file) shift 2 ;;
+        --prompt-file|--mode|--timeout|--timing-task-kind|--feature-file|--model) shift 2 ;;
         *) shift ;;
     esac
 done
 printf 'no recommendation heading\n' >"$OUTPUT"
 printf '1\n' >"${OUTPUT}.done"
 CLAUDE_FAIL_STUB
-chmod +x "$PLUGIN_FAIL/scripts/launch-claude-review.sh"
+chmod +x "$CLAUDE_REVIEW_STUB_FAIL"
 DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
+    LARCH_TEST_LAUNCH_CLAUDE_REVIEW="$CLAUDE_REVIEW_STUB_FAIL" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_FAIL" \
     "$PANEL" \
     --design-tmpdir "$D11" \

@@ -94,7 +94,7 @@ export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
 # 10s sleep per stub invocation. Production callers (real Codex) inherit the
-# default 10s. See scripts/run-external-agent.md.
+# default 10s. See python/agents.py.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 
 PLAN="$SCRATCH/plan.md"
@@ -675,7 +675,7 @@ AUTH_STDERR_ONLY_OUT=$(cd "$REPO_ROOT" && \
         --timeout 30)
 if [[ "$AUTH_STDERR_ONLY_OUT" == *"LAUNCHER_EXIT=7"* ]] \
    && grep -Fq 'Error: not logged in' "$AUTH_STDERR_ONLY_SIDECAR" \
-   && grep -Fq 'parse-codex-usage.sh: no usage events' "$AUTH_STDERR_ONLY_SIDECAR" \
+   && grep -Fq 'agent parse-codex-usage: no usage events' "$AUTH_STDERR_ONLY_SIDECAR" \
    && [[ "$(grep -c '"type":"token_usage"' "${AUTH_STDERR_ONLY_TRANSCRIPT}.events.jsonl" 2>/dev/null | tr -d ' ')" == "0" ]] \
    && ! jq -e 'select(.type=="vendor" and .vendor=="codex")' "$AUTH_STDERR_ONLY_LEDGER" >/dev/null 2>&1; then
     pass
@@ -912,7 +912,7 @@ fi
 # Codex --json usage event to stdout; after the launcher returns, dump the
 # per-session ledger and assert a vendor row with per-bucket Codex usage.
 # Skip when jq is unavailable — the assertion uses jq even though the
-# launcher now records per-bucket tokens via parse-codex-usage.sh.
+# launcher now records per-bucket tokens via agent parse-codex-usage.
 if command -v jq >/dev/null 2>&1; then
     RV_STUB_BIN="$SCRATCH/rv-bin"
     mkdir -p "$RV_STUB_BIN"
@@ -1060,7 +1060,7 @@ STUB_EOF
             --feature-file "$FEATURE" \
             --agent-prompt "$AGENT_PROMPT" \
             --timeout 30 >/dev/null
-    if grep -Fq 'parse-codex-usage.sh: jq failed' "$RV_DRIFT_SIDECAR" 2>/dev/null; then
+    if grep -Fq 'agent parse-codex-usage:' "$RV_DRIFT_SIDECAR" 2>/dev/null; then
         pass
     else
         fail 10 "codex schema drift should append parse diagnostic to sidecar; sidecar=$(cat "$RV_DRIFT_SIDECAR" 2>/dev/null)"
@@ -1346,7 +1346,7 @@ MODEL_ARGS_OUT=$(cd "$REPO_ROOT" && \
         --timeout 30)
 if [[ "$MODEL_ARGS_OUT" == *"LAUNCHER_EXIT=1"* ]] \
     && [[ -s "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" ]] \
-    && grep -Fq 'agent-model-args.sh' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" \
+    && grep -Fq 'agent model-args' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" \
     && grep -Fq 'cntrl' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail"; then
     pass
 else

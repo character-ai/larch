@@ -168,6 +168,11 @@ if [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]]; then
 fi
 
 DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
+    DISPATCH_PLAN_GENERIC_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
+else
+    DISPATCH_PLAN_GENERIC_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review)
+fi
 
 if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     _panel_paths="$DESIGN_TMPDIR/plan-review-panel-paths.txt"
@@ -185,7 +190,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     } >"$_generic_prompt"
     _generic_first_line_ere='^[[:space:]]*(schema_version|\{"no_issues_found|\{"schema_version)'
     set +e
-    "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+    "${DISPATCH_PLAN_GENERIC_LAUNCH_CMD[@]}" \
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \

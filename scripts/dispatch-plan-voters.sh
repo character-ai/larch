@@ -98,7 +98,7 @@ VOTER_1_PATH="$DESIGN_TMPDIR/claude-vote-output.txt"
 # and the Codex+Cursor waterfall launches immediately — no serial gate between
 # the Claude lane and the external lanes (same structure as
 # dispatch-code-voters.sh).
-"$SCRIPT_DIR/launch-claude-review.sh" \
+python3 "$CLI" agent launch-claude-review \
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
     --mode description \
@@ -154,7 +154,11 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
     _voter1_diag="$DESIGN_TMPDIR/voter1-diag.txt"
     {
         printf 'voter1_rc=%s\n' "$voter1_rc"
-        printf 'output_bytes=%s\n' "$(wc -c < "$VOTER_1_PATH" 2>/dev/null || echo 0)"
+        if [[ -f "$VOTER_1_PATH" ]]; then
+            printf 'output_bytes=%s\n' "$(wc -c < "$VOTER_1_PATH" 2>/dev/null || echo 0)"
+        else
+            printf 'output_bytes=0\n'
+        fi
         if [[ "$voter1_rc" -ne 0 && -s "$VOTER_1_PATH" ]]; then
             printf -- '--- first 200 bytes of voter output ---\n'
             head -c 200 "$VOTER_1_PATH" || true
@@ -185,7 +189,7 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
         python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$_issues_log" \
             --site "dispatch-plan-voters.sh voter1" \
-            --tool "launch-claude-review.sh (claude plan voter)" \
+            --tool "agent launch-claude-review (claude plan voter)" \
             --exit-code "$voter1_rc" \
             --status-label "$_status_label" \
             --category Warnings \
@@ -197,7 +201,10 @@ fi
 
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
-[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
+# rc=99 means the Python launcher ran but the JSON envelope was malformed/absent;
+# the output file will contain CLAUDE_JSON_RESULT_INVALID which parse-rate-retry
+# classifies as NOT_SUBSTANTIVE — treat it the same as a successful launch.
+[[ ("$voter1_rc" -eq 0 || "$voter1_rc" -eq 99) && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
 
 dispatch_ok="true"
 waterfall_files=""

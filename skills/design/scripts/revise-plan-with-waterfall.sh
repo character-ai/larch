@@ -125,7 +125,11 @@ DESIGN_TMPDIR="$CANONICAL_DESIGN_TMPDIR"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 LAUNCH_CODEX_REVIEW="${LARCH_TEST_LAUNCH_CODEX_REVIEW:-$PLUGIN_ROOT/scripts/launch-review.sh}"
 LAUNCH_CURSOR_REVIEW="${LARCH_TEST_LAUNCH_CURSOR_REVIEW:-$PLUGIN_ROOT/scripts/launch-review.sh}"
-LAUNCH_CLAUDE_REVIEW="${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-$PLUGIN_ROOT/scripts/launch-claude-review.sh}"
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
+    LAUNCH_CLAUDE_REVIEW_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
+else
+    LAUNCH_CLAUDE_REVIEW_CMD=(python3 "${LARCH_TEST_PY_CLI:-$PLUGIN_ROOT/python/cli.py}" agent launch-claude-review)
+fi
 DESIGN_DRIVER="${LARCH_TEST_DESIGN_DRIVER:-$PLUGIN_ROOT/skills/design/scripts/design-driver.sh}"
 
 ROUND_DIR="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM"
@@ -591,7 +595,7 @@ launch_tier() {
             "$LAUNCH_CURSOR_REVIEW" --tool cursor --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --scope-files "$FINDINGS_FILE"
             ;;
         claude)
-            "$LAUNCH_CLAUDE_REVIEW" --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --scope-files "$FINDINGS_FILE"
+            "${LAUNCH_CLAUDE_REVIEW_CMD[@]}" --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --scope-files "$FINDINGS_FILE"
             ;;
         *) return 2 ;;
     esac

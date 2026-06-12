@@ -263,7 +263,7 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
 | `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
-**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** wrapper. The wrapper rehydrates `CODEX_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_BINARY_FOUND`, and `CURSOR_PRESENT` from durable `$IMPLEMENT_TMPDIR/session-env.sh`, then invokes `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with those explicit presence flags and `--skill implement`.
+**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** wrapper. The wrapper rehydrates `CODEX_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_BINARY_FOUND`, and `CURSOR_PRESENT` from durable `$IMPLEMENT_TMPDIR/session-env.sh`, then invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with those explicit presence flags and `--skill implement`.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-0-degraded-gate.sh

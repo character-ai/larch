@@ -495,7 +495,7 @@ if [[ -s "$TMPDIR/bad-model.txt.diag" ]] && grep -Fq 'STATUS=FAILED' "$TMPDIR/ba
 else
     fail "newline model preflight failure must write .diag with STATUS=FAILED"
 fi
-assert_grep "newline model diag diagnostic" "agent-model-args.sh failed" "$TMPDIR/bad-model.txt.diag"
+assert_grep "newline model diag diagnostic" "agent model-args" "$TMPDIR/bad-model.txt.diag"
 if [[ -s "$TMPDIR/bad-model.txt.meta" ]] && grep -Fq 'CMD_JSON=[]' "$TMPDIR/bad-model.txt.meta"; then
     pass
 else
@@ -912,7 +912,7 @@ set -e
 if [[ "$LCR_SCHEMA_RC" -ne 0 ]]; then
     fail "codex-schema-drift smoke exited rc=$LCR_SCHEMA_RC; stderr=$(cat "$LCR_SCHEMA_STDERR" 2>/dev/null)"
 else
-    assert_grep "codex-schema-drift sidecar appends parse failure diagnostic" "parse-codex-usage.sh: jq failed" "${LCR_SCHEMA_OUT}.sidecar"
+    assert_grep "codex-schema-drift sidecar appends parse failure diagnostic" "agent parse-codex-usage:" "${LCR_SCHEMA_OUT}.sidecar"
     if [[ ! -s "$LCR_SCHEMA_LEDGER" ]]; then
         pass
     else

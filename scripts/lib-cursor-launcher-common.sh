@@ -4,6 +4,7 @@ if [[ -n "${LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0
 fi
 SCRIPT_DIR="${SCRIPT_DIR:-$(cd "${BASH_SOURCE[0]%/*}" && pwd)}"
+_larch_cursor_plugin_root="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "${BASH_SOURCE[0]%/*}/.." && pwd -P)}}"
 
 # Shared launcher mechanics common to Cursor and Codex live in
 # lib-external-launcher-common.sh; the cursor_launcher_* wrappers below
@@ -16,7 +17,7 @@ source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
 cursor_launcher_load_model_args() {
     local model_args_tmp rc arg
     model_args_tmp=$(mktemp) || return 1
-    if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort > "$model_args_tmp"; then
+    if python3 "$_larch_cursor_plugin_root/python/cli.py" agent model-args --tool cursor --with-effort > "$model_args_tmp"; then
         :
     else
         rc=$?
@@ -309,7 +310,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         [[ -n "${tr_tmp:-}" ]] && rm -f "$tr_tmp"
         return 0
     }
-    local _cap_note="The lsof field prefers a pre-SIGTERM snapshot of the stalled wrapper (lsof_capture_phase pre_sigterm) so FD rows survive fast wrapper exit on Linux CI; when that file is empty, a bounded post-SIGTERM lsof -p probe is used (post_sigterm). ps and argv sections are still captured after SIGTERM (capture_phase post_sigterm for the combined ps blob); merged stdout/stderr transcript tails in last_transcript_lines are snapshotted at stall detection before those signals (transcript_tail_capture_phase). The first Stall detected block in OUTPUT.diag is appended before SIGTERM and reflects an immediate pre-kill ps snapshot. The ps field uses uid-scoped ps(1) plus a deliberate grep '[c]ursor' argv filter (capped lines), not a full ps -ef tree — see scripts/launch-cursor-ci.md."
+    local _cap_note="The lsof field prefers a pre-SIGTERM snapshot of the stalled wrapper (lsof_capture_phase pre_sigterm) so FD rows survive fast wrapper exit on Linux CI; when that file is empty, a bounded post-SIGTERM lsof -p probe is used (post_sigterm). ps and argv sections are still captured after SIGTERM (capture_phase post_sigterm for the combined ps blob); merged stdout/stderr transcript tails in last_transcript_lines are snapshotted at stall detection before those signals (transcript_tail_capture_phase). The first Stall detected block in OUTPUT.diag is appended before SIGTERM and reflects an immediate pre-kill ps snapshot. The ps field uses uid-scoped ps(1) plus a deliberate grep '[c]ursor' argv filter (capped lines), not a full ps -ef tree — see python/agents.py."
     if ! jq -nc \
         --arg channel "$channel" \
         --argjson pid "$target_pid" \

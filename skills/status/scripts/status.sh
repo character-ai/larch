@@ -44,11 +44,11 @@ if [ -n "$_check_out" ]; then
     [ -n "$_v" ] && CURSOR_PRESENT="$_v"
 fi
 
-# Interpret results using degraded-tools-gate.sh (same gate as /implement Step 0)
+# Interpret results using agent degraded-tools-gate (same gate as /implement Step 0)
 CODEX_STATE=unknown
 CURSOR_STATE=unknown
 DEGRADED=false
-_gate_out=$("$PLUGIN_ROOT/scripts/degraded-tools-gate.sh" \
+_gate_out=$(python3 "$PLUGIN_ROOT/python/cli.py" agent degraded-tools-gate \
     --codex-binary-found "$CODEX_BINARY_FOUND" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-binary-found "$CURSOR_BINARY_FOUND" \

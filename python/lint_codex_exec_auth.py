@@ -1,4 +1,4 @@
-"""Reject raw codex exec call sites without shared auth wiring."""
+"""Reject raw Codex CLI dispatch call sites without shared auth wiring."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ GIT = shutil.which("git") or "git"
 
 ALLOWED_SHELL_FILES = {
     "scripts/launch-review.sh",
-    "scripts/launch-codex-ci.sh",
     "scripts/launch-codex-implement.sh",
     "scripts/check-reviewers.sh",
-    "scripts/launch-codex-exec.sh",
     "skills/review-and-fix/scripts/review-and-fix.sh",
 }
+ALLOWED_PYTHON_FILES = {"python/agents.py"}
 TRAILING_PRAGMA_RE = re.compile(r"\s#[^\"'`]*lint-codex-exec-auth:\s*ok(\s|$)[^\"'`]*$")
 CODEX_EXEC_RE = re.compile(r"(^|[^A-Za-z0-9_])[\"'\\]?codex[\"'\\]?\s+exec")
+PY_CODEX_EXEC_RE = re.compile(r"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex\s+exec\b)")
 ENV_PREFIX_RE = re.compile(r"^([\s]*[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s*)+")
 
 
@@ -62,6 +62,14 @@ def _shell_files(root: Path) -> list[str]:
             if base.exists():
                 candidates.extend([str(path.relative_to(root)) for path in base.glob("**/*.sh") if path.is_file()])
     return [p for p in candidates if not (Path(p).name.startswith("test-") and p.endswith(".sh"))]
+
+
+def _python_files(root: Path) -> list[str]:
+    if _git_rooted(root):
+        candidates = _git_files(root, ["python/*.py"])
+    else:
+        candidates = [str(path.relative_to(root)) for path in (root / "python").glob("*.py") if path.is_file()]
+    return [p for p in candidates if not Path(p).name.startswith("test_")]
 
 
 def _markdown_files(root: Path) -> list[str]:
@@ -117,7 +125,7 @@ def scan_shell_file(root: Path, rel: str) -> bool:
     for nr, line in _logical_lines(lines):
         if _scan_command(line):
             print(
-                f"lint-codex-exec-auth: {rel}:{nr}: unwired Codex dispatch without auth wiring; use launch-codex-exec.sh or # lint-codex-exec-auth: ok <reason>",
+                f"lint-codex-exec-auth: {rel}:{nr}: unwired Codex dispatch without auth wiring; use python3 python/cli.py agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>",
                 file=sys.stderr,
             )
             violation = True
@@ -138,7 +146,7 @@ def scan_markdown_file(root: Path, rel: str) -> bool:
         nonlocal pending, pending_nr, violation
         if pending and _scan_command(pending):
             print(
-                f"lint-codex-exec-auth: {rel}:{pending_nr}: unwired Codex dispatch in bash fence; use launch-codex-exec.sh",
+                f"lint-codex-exec-auth: {rel}:{pending_nr}: unwired Codex dispatch in bash fence; use python3 python/cli.py agent launch-codex-exec",
                 file=sys.stderr,
             )
             violation = True
@@ -166,11 +174,30 @@ def scan_markdown_file(root: Path, rel: str) -> bool:
             continue
         if _scan_command(line):
             print(
-                f"lint-codex-exec-auth: {rel}:{nr}: unwired Codex dispatch in bash fence; use launch-codex-exec.sh",
+                f"lint-codex-exec-auth: {rel}:{nr}: unwired Codex dispatch in bash fence; use python3 python/cli.py agent launch-codex-exec",
                 file=sys.stderr,
             )
             violation = True
     flush()
+    return violation
+
+
+def scan_python_file(root: Path, rel: str) -> bool:
+    if rel in ALLOWED_PYTHON_FILES:
+        return False
+    path = root / rel
+    if not path.is_file() or path.is_symlink():
+        return False
+    violation = False
+    for nr, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if TRAILING_PRAGMA_RE.search(line) or re.match(r"^\s*#", line):
+            continue
+        if PY_CODEX_EXEC_RE.search(line):
+            print(
+                f"lint-codex-exec-auth: {rel}:{nr}: unwired Python Codex dispatch without auth wiring; use python3 python/cli.py agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>",
+                file=sys.stderr,
+            )
+            violation = True
     return violation
 
 
@@ -186,6 +213,9 @@ def main(argv: list[str] | None = None) -> int:
     violations = 0
     for rel in _shell_files(root):
         if scan_shell_file(root, rel):
+            violations += 1
+    for rel in _python_files(root):
+        if scan_python_file(root, rel):
             violations += 1
     for rel in _markdown_files(root):
         if scan_markdown_file(root, rel):

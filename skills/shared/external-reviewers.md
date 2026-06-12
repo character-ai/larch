@@ -23,10 +23,10 @@ Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `se
 
 ## Degraded-tools gate (Step 0)
 
-Issue #3207: when an external tool is unhealthy at session start, the skill MUST surface what is down and the expected degradation — not silently proceed degraded. On interactive runs, prompt via `AskUserQuestion` only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed automatically. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `scripts/degraded-tools-gate.md`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags. When the gate runs in a different Bash block from `session-setup.sh`, first read `/implement` presence keys from durable session env with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key <KEY> --default ""` (including binary-found keys) so missing keys trigger `PRESENCE_INPUT_EMPTY`; `/design` sources `source-env.sh` and omits binary-found flags when those vars are unset. Then pass explicit flags for every known key. `PRESENCE_INPUT_EMPTY=true` is the loud symptom that this separate-block rehydration rule was violated:
+Issue #3207: when an external tool is unhealthy at session start, the skill MUST surface what is down and the expected degradation — not silently proceed degraded. On interactive runs, prompt via `AskUserQuestion` only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed automatically. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `python/agents.py`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags. When the gate runs in a different Bash block from `session-setup.sh`, first read `/implement` presence keys from durable session env with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key --file "$IMPLEMENT_TMPDIR/session-env.sh" --key <KEY> --default ""` (including binary-found keys) so missing keys trigger `PRESENCE_INPUT_EMPTY`; `/design` sources `source-env.sh` and omits binary-found flags when those vars are unset. Then pass explicit flags for every known key. `PRESENCE_INPUT_EMPTY=true` is the loud symptom that this separate-block rehydration rule was violated:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate \
   --codex-binary-found "$CODEX_BINARY_FOUND" --codex-present "$CODEX_PRESENT" \
   --cursor-binary-found "$CURSOR_BINARY_FOUND" --cursor-present "$CURSOR_PRESENT" \
   --skill <design|implement|review|research>
@@ -54,7 +54,7 @@ When processing reviewer results, failed external slots should fall through the 
 
 - Phase 1 launches the slot's assigned external tool when present.
 - Phase 2 retries the slot with the other present external tool.
-- Phase 3 launches a Claude reviewer subprocess via `scripts/launch-claude-review.sh`.
+- Phase 3 launches a Claude reviewer subprocess via `python/cli.py agent launch-claude-review`.
 
 Use this warning template when a slot reaches Phase 3:
 
@@ -72,7 +72,7 @@ After all other tasks are done, collect and validate external reviewer outputs u
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...]
 ```
 
-Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `run-external-agent.sh`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
+Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and use a foreground collector invocation The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `python3 python/cli.py agent run-external-agent`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
 
 **Output**: The script emits structured `KEY=value` blocks on stdout (one block per reviewer, separated by blank lines):
 ```
@@ -111,6 +111,6 @@ Negotiate with each external reviewer (Codex, Cursor) for up to **`max_rounds` r
      ```bash
      ${CLAUDE_PLUGIN_ROOT}/scripts/run-negotiation-round.sh --tool cursor --prompt-file "<skill-tmpdir>/cursor-negotiation-prompt.txt" --output "<skill-tmpdir>/cursor-negotiation-output.txt" --workspace "$PWD"
      ```
-   Use `timeout: 300000` on both Bash tool calls. `run-negotiation-round.sh` distinguishes failure modes by exit code: `0` success, `1` argv/usage or `agent-model-args.sh` propagation, `2` Codex auth setup failure or reviewer command (`cursor agent` / `codex exec`) failed, `3` Cursor `cursor_auth_preflight` failed before the reviewer ran. Wrappers that need to disambiguate auth-vs-tool failures should branch on these codes — see `${CLAUDE_PLUGIN_ROOT}/scripts/run-negotiation-round.md` for the full contract and the `RESPONSE_FILE=` stdout key.
+   Use `timeout: 300000` on both Bash tool calls. `run-negotiation-round.sh` distinguishes failure modes by exit code: `0` success, `1` argv/usage or `python3 python/cli.py agent model-args` propagation, `2` Codex auth setup failure or reviewer command (`cursor agent` / `codex exec`) failed, `3` Cursor `cursor_auth_preflight` failed before the reviewer ran. Wrappers that need to disambiguate auth-vs-tool failures should branch on these codes; see `${CLAUDE_PLUGIN_ROOT}/scripts/run-negotiation-round.md` for the full contract and the `RESPONSE_FILE=` stdout key.
 3. Repeat up to 3 rounds total. After round 3 (or earlier if all disagreements are resolved), **Claude makes the final call** on any remaining disputes.
 ## External Reviewer Procedures

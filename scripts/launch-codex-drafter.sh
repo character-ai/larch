@@ -179,7 +179,7 @@ printf '%s' "$CODEX_DRAFTER_TRUSTED_INSTRUCTIONS" > "$_trusted_instructions"
 DRAFTER_LAUNCHED=true
 _exec_wrapper_rc=0
 set +e
-"$SCRIPT_DIR/launch-codex-exec.sh" \
+python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-exec \
     --output "$_codex_raw" \
     --timeout "$TIMEOUT" \
     --workdir "$REPO_ROOT" \

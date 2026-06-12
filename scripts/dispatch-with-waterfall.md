@@ -17,7 +17,7 @@ Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remain
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.
 2. Failed or absent phase-1 slots launch on the other present external tool.
-3. Remaining slots launch through `scripts/launch-claude-review.sh`.
+3. Remaining slots launch through `python/cli.py agent launch-claude-review`.
 
 Each phase is collected with `scripts/collect-agent-results.sh --summary-only`; `STATUS=OK` and `STATUS=cap_hit` settle a slot. Other statuses advance to the next phase, and a phase-3 failure leaves `DISPATCH_OK=false`.
 

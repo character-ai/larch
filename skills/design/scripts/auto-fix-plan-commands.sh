@@ -28,8 +28,17 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 # Hermetic seams (default to the verified production launchers / validator).
 VALIDATE_PLAN_SH="${LARCH_AUTOFIX_VALIDATE_PLAN_SH:-$SCRIPT_DIR/validate-plan.sh}"
-LAUNCH_CODEX_EXEC_SH="${LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH:-$PLUGIN_ROOT/scripts/launch-codex-exec.sh}"
-RUN_EXTERNAL_AGENT_SH="${LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
+PY_CLI="${LARCH_AUTOFIX_PY_CLI:-$PLUGIN_ROOT/python/cli.py}"
+if [[ -n "${LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH:-}" ]]; then
+    LAUNCH_CODEX_EXEC_CMD=("$LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH")
+else
+    LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
+fi
+if [[ -n "${LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH:-}" ]]; then
+    RUN_EXTERNAL_AGENT_CMD=("$LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH")
+else
+    RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+fi
 GATE_B_DEDUP_PLAN_SH="${LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH:-$SCRIPT_DIR/gate-b-dedup-plan.sh}"
 # Full per-vendor dispatch override: when set, replaces the real launcher path so
 # the offline harness can simulate a vendor edit deterministically.
@@ -356,7 +365,7 @@ dispatch_vendor_fix() {
             launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/autofix-codex-launcher.XXXXXX") || return 1
             : > "$run_dir/codex.log.token-record" 2>/dev/null || true
             set +e
-            "$LAUNCH_CODEX_EXEC_SH" \
+            "${LAUNCH_CODEX_EXEC_CMD[@]}" \
                 --output "$run_dir/codex.log" \
                 --timeout "$TIMEOUT" \
                 --workdir "$DESIGN_TMPDIR" \
@@ -385,9 +394,9 @@ dispatch_vendor_fix() {
             external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
             local _wrapped_prompt _prompt_body
             _prompt_body=$(cat "$prompt_file")
-            _wrapped_prompt=$({ "$PLUGIN_ROOT/scripts/cursor-wrap-prompt.sh" "$_prompt_body"; printf X; } 2>>"$preflight_log") || return 1
+            _wrapped_prompt=$({ python3 "$PY_CLI" agent cursor-wrap-prompt "$_prompt_body"; printf X; } 2>>"$preflight_log") || return 1
             _wrapped_prompt=${_wrapped_prompt%X}
-            "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout "$TIMEOUT" --capture-stdout -- \
+            "${RUN_EXTERNAL_AGENT_CMD[@]}" --tool cursor --output "$run_dir/cursor.log" --timeout "$TIMEOUT" --capture-stdout -- \
                 cursor agent -p --trust \
                 ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
                 --workspace "$DESIGN_TMPDIR" \

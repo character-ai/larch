@@ -12,7 +12,7 @@ fi
 source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
 
 # Codex stdin contract: every background Codex spawn is launched with stdin
-# redirected from /dev/null in scripts/run-external-agent.sh at the actual
+# redirected from /dev/null in python/cli.py agent run-external-agent at the actual
 # spawn site (default, --capture-stdout, and --capture-stdout-only branches).
 # Codex keeps stdin open for interactive input; inheriting the parent stdin
 # lets parent-shell EOF surface as "write_stdin failed: stdin is closed for

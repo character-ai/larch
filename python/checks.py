@@ -10,7 +10,6 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -508,8 +507,8 @@ def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
 
 
-def _run_external_agent_sh() -> Path:
-    return _plugin_scripts_dir() / "run-external-agent.sh"
+def _agent_cli() -> Path:
+    return Path(__file__).resolve().parents[1] / "python" / "cli.py"
 
 
 def _site_label(site: str) -> str:
@@ -747,63 +746,32 @@ def _run_with_serial_lock(
 
 def _build_codex_argv(
     *,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
-    prompt_body: str,
-    model_args: tuple[str, ...] = (),
+    prompt_file: Path,
 ) -> list[str]:
-    codex_wrapper_log = run_dir / "codex.wrapper.log"
     codex_log = run_dir / "codex.log"
     return [
-        str(run_external),
-        "--tool",
-        "codex",
+        "python3",
+        str(agent_cli),
+        "agent",
+        "launch-codex-exec",
         "--output",
         str(codex_log),
         "--timeout",
         str(_RUN_EXTERNAL_TIMEOUT),
-        "--stderr-sink",
-        str(codex_wrapper_log),
-        "--",
-        "codex",
-        "exec",
-        "--full-auto",
-        "-C",
+        "--workdir",
         repo_root,
         "--add-dir",
         str(run_dir),
         "--add-dir",
         repo_root,
-        *model_args,
-        "--output-last-message",
-        str(codex_log),
-        "--json",
-        "--",
-        prompt_body,
+        "--usage-label",
+        "codex_lint_fix",
+        "--prompt-file",
+        str(prompt_file),
     ]
-
-
-def _load_codex_model_args(*, scripts_dir: Path) -> tuple[str, ...]:
-    result = subprocess.run(
-        [str(scripts_dir / "agent-model-args.sh"), "--tool", "codex"],
-        cwd=str(scripts_dir.parent),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return ()
-    return tuple(line for line in result.stdout.splitlines() if line)
-
-
-def _extract_arg_after(args: tuple[str, ...], flag: str) -> str:
-    prev = ""
-    for arg in args:
-        if prev == flag:
-            return arg
-        prev = arg
-    return ""
 
 
 def _load_cursor_launch_argv(
@@ -839,7 +807,7 @@ printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
 
 def _build_cursor_argv(
     *,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     wrapped_prompt: str,
@@ -848,7 +816,10 @@ def _build_cursor_argv(
 ) -> list[str]:
     cursor_log = run_dir / "cursor.log"
     return [
-        str(run_external),
+        "python3",
+        str(agent_cli),
+        "agent",
+        "run-external-agent",
         "--tool",
         "cursor",
         "--output",
@@ -873,72 +844,87 @@ def _run_codex(
     runner: Runner,
     *,
     scripts_dir: Path,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
 ) -> int:
-    model_args = _load_codex_model_args(scripts_dir=scripts_dir)
-    resolved_model = _extract_arg_after(model_args, "-m")
+    prompt_file = run_dir / "prompt.md"
+    _ = prompt_file.write_text(prompt_body, encoding="utf-8")
     argv = _build_codex_argv(
-        run_external=run_external,
+        agent_cli=agent_cli,
         run_dir=run_dir,
         repo_root=repo_root,
-        prompt_body=prompt_body,
-        model_args=model_args,
+        prompt_file=prompt_file,
     )
-    codex_events = run_dir / "codex.events.jsonl"
+    codex_log = run_dir / "codex.log"
+    codex_events = codex_log.with_suffix(codex_log.suffix + ".events.jsonl")
     codex_wrapper_log = run_dir / "codex.wrapper.log"
-    codex_sidecar = run_dir / "codex.sidecar"
+    codex_sidecar = codex_log.with_suffix(codex_log.suffix + ".sidecar")
     for path in (codex_events, codex_wrapper_log, codex_sidecar):
         if path.exists():
             _ = path.unlink(missing_ok=True)
-    result = _run_with_serial_lock(
-        runner,
-        scripts_dir=scripts_dir,
-        tool="codex",
-        argv=[
-            "bash",
-            "-c",
-            'exec "${@:3}" >"$1" 2>"$2"',
-            "bash",
-            str(codex_events),
-            str(codex_wrapper_log),
-            *argv,
-        ],
+    result = runner.run(
+        argv,
         cwd=repo_root,
     )
-    if result.returncode != 0:
+    launcher_exit = _parse_launcher_exit(result.stdout)
+    if launcher_exit is None:
+        launcher_exit = _read_done_exit(codex_log) or result.returncode
+    if launcher_exit != 0 and codex_sidecar.is_file():
         _write_failed_agent_stderr_tail(
             runner,
             scripts_dir=scripts_dir,
-            source=codex_wrapper_log,
-            output=run_dir / "codex.log",
+            source=codex_sidecar,
+            output=codex_log,
             cwd=repo_root,
         )
-    if codex_events.is_file():
-        plugin_root = scripts_dir.parent
-        sidecar = run_dir / "codex.sidecar"
-        record = (
-            "set -euo pipefail\n"
-            'source "$1"\n'
-            'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" "" "$5" || true\n'
-        )
-        _ = runner.run(
-            [
-                "bash",
-                "-c",
-                record,
-                "bash",
-                str(scripts_dir / "lib-codex-launcher-common.sh"),
-                str(plugin_root),
-                str(codex_events),
-                str(sidecar),
-                resolved_model,
-            ],
-            cwd=repo_root,
-        )
-    return result.returncode
+    token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
+    if launcher_exit == 0 and token_record.is_file():
+        values = _read_token_record(token_record)
+        if values:
+            _ = runner.run(
+                [
+                    "python3",
+                    str(scripts_dir.parent / "python" / "cli.py"),
+                    "token",
+                    "record-vendor",
+                    "codex",
+                    f"input={values.get('INPUT', '0')}",
+                    f"output={values.get('OUTPUT', '0')}",
+                    f"cache_read={values.get('CACHE_READ', '0')}",
+                    f"total={values.get('TOTAL', '0')}",
+                    f"raw={values.get('RAW', 'codex_lint_fix')}",
+                ],
+                cwd=repo_root,
+            )
+    return launcher_exit
+
+
+def _parse_launcher_exit(text: str) -> int | None:
+    for line in text.splitlines():
+        if line.startswith("LAUNCHER_EXIT="):
+            raw = line.split("=", 1)[1].strip()
+            return int(raw) if raw.isdigit() else None
+    return None
+
+
+def _read_done_exit(output: Path) -> int:
+    done = output.with_suffix(output.suffix + ".done")
+    if not done.is_file():
+        return 0
+    raw = done.read_text(encoding="utf-8", errors="replace").strip()
+    return int(raw) if raw.isdigit() else 0
+
+
+def _read_token_record(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value
+    return values
 
 
 def _write_failed_agent_stderr_tail(
@@ -968,7 +954,7 @@ def _run_cursor(
     runner: Runner,
     *,
     scripts_dir: Path,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -990,14 +976,14 @@ def _run_cursor(
         )
         return 1
     model_args, auth_args = launch
-    wrap_script = '{ "$1" "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
+    wrap_script = '{ python3 "$1" agent cursor-wrap-prompt "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
     wrap_result = runner.run(
         [
             "bash",
             "-c",
             wrap_script,
             "bash",
-            str(scripts_dir / "cursor-wrap-prompt.sh"),
+            str(scripts_dir.parent / "python" / "cli.py"),
             prompt_body,
             str(preflight_log),
         ],
@@ -1014,7 +1000,7 @@ def _run_cursor(
         return wrap_result.returncode
     wrapped = wrap_result.stdout.removesuffix("X")
     argv = _build_cursor_argv(
-        run_external=run_external,
+        agent_cli=agent_cli,
         run_dir=run_dir,
         repo_root=repo_root,
         wrapped_prompt=wrapped.rstrip("\n"),
@@ -1165,12 +1151,12 @@ def run_lint_fix(
             coder_tool=None,
         )
     scripts = _plugin_scripts_dir()
-    run_external = _run_external_agent_sh()
-    if not run_external.is_file() or not os.access(run_external, os.X_OK):
+    agent_cli = _agent_cli()
+    if not agent_cli.is_file():
         return FixOutcome(
             status="failed",
             delta_paths=(),
-            failure_reason="missing-run-external-agent",
+            failure_reason="missing-python-agent-cli",
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
@@ -1237,7 +1223,7 @@ def run_lint_fix(
         codex_rc = _run_codex(
             runner,
             scripts_dir=scripts,
-            run_external=run_external,
+            agent_cli=agent_cli,
             run_dir=run_dir,
             repo_root=repo_root,
             prompt_body=prompt_body,
@@ -1248,7 +1234,7 @@ def run_lint_fix(
         cursor_rc = _run_cursor(
             runner,
             scripts_dir=scripts,
-            run_external=run_external,
+            agent_cli=agent_cli,
             run_dir=run_dir,
             repo_root=repo_root,
             prompt_body=prompt_body,

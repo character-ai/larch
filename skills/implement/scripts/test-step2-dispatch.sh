@@ -58,7 +58,7 @@
 set -euo pipefail
 
 # Stubbed codex/cursor binaries must run without the default-on pre-launch health
-# gate (see scripts/run-external-agent.md).
+# gate (see python/agents.py).
 export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"

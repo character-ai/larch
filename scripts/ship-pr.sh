@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# Plugin userConfig env fallbacks are consumed by python/cli.py agent model-args:
+# CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
+# CLAUDE_PLUGIN_OPTION_CODEX_EFFORT.
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib-net.sh"; exit 1; }
 [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-net.sh sourced but sentinel missing"; exit 1; }
@@ -691,6 +694,29 @@ append_tool_failure_local() {
         larch_err "ship-pr.sh: python3 python/cli.py run-log append-failure failed for $tool (site=$site); see $append_diag"
     fi
     return 0
+}
+
+SHIP_PR_INGESTED_TOKEN_RECORDS=()
+
+ship_pr_ingest_token_record_once() {
+    local phase="$1" token_record="$2" log_file="$3"
+    local _seen_token_record rc
+    [[ -n "$token_record" && -s "$token_record" ]] || return 0
+    for _seen_token_record in ${SHIP_PR_INGESTED_TOKEN_RECORDS[@]+"${SHIP_PR_INGESTED_TOKEN_RECORDS[@]}"}; do
+        if [[ "$_seen_token_record" == "$token_record" ]]; then
+            return 0
+        fi
+    done
+    python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
+        --input "$token_record" \
+        --tmpdir "$IMPLEMENT_TMPDIR" >>"$log_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$log_file" Warnings
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+        --input "$token_record" >>"$log_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "token record-vendor-sidecar" "$rc" "$log_file" Warnings
+    SHIP_PR_INGESTED_TOKEN_RECORDS+=("$token_record")
 }
 
 record_failure() {
@@ -1512,29 +1538,6 @@ _run_post_rebase_verify_gates() {
     esac
 }
 
-SHIP_PR_INGESTED_TOKEN_RECORDS=()
-
-ship_pr_ingest_token_record_once() {
-    local phase="$1" token_record="$2" log_file="$3"
-    local _seen_token_record rc
-    [[ -n "$token_record" && -s "$token_record" ]] || return 0
-    for _seen_token_record in ${SHIP_PR_INGESTED_TOKEN_RECORDS[@]+"${SHIP_PR_INGESTED_TOKEN_RECORDS[@]}"}; do
-        if [[ "$_seen_token_record" == "$token_record" ]]; then
-            return 0
-        fi
-    done
-    python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
-        --input "$token_record" \
-        --tmpdir "$IMPLEMENT_TMPDIR" >>"$log_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$log_file" Warnings
-    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
-        --input "$token_record" >>"$log_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || record_failure "$phase" "token record-vendor-sidecar" "$rc" "$log_file" Warnings
-    SHIP_PR_INGESTED_TOKEN_RECORDS+=("$token_record")
-}
-
 _stage_and_push_ci_fixes() {
     local phase=$1 token_record_input=${2:-} checks_site=${3:-} failed_jobs_tsv=${4:-}
     local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
@@ -1647,16 +1650,17 @@ _stage_and_push_ci_fixes() {
 
 run_ci_fix_vendor() {
     local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-}
-    local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc stage_rc
+    local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc stage_rc token_record
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
-    local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher token_record
+    local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher_label
+    local -a launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
     local detail_log pre_refresh_head
     local tiers=(codex cursor claude) tier tier_idx offset waterfall_iter=0 first_tier
+    SHIP_PR_INGESTED_TOKEN_RECORDS=()
 
     larch_err "⚠ ship-pr: CI failed; dispatching fix"
-    SHIP_PR_INGESTED_TOKEN_RECORDS=()
 
     baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
     baseline_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-untracked.txt"
@@ -1688,7 +1692,7 @@ run_ci_fix_vendor() {
     first_tier=${tiers[$offset]}
     for tier_idx in 0 1 2; do
         tier=${tiers[$(( tier_idx ))]}
-        if [ "$tier" = "claude" ] && [ ! -x "$SCRIPT_DIR/launch-claude-ci.sh" ]; then
+        if [ "$tier" = "claude" ] && [ ! -f "$SCRIPT_DIR/../python/cli.py" ]; then
             fail_file=$(failure_capture_path "$phase")
             printf 'launch-claude-ci.sh unavailable (missing or not executable)\n' > "$fail_file"
             record_failure "$phase" "launch-claude-ci.sh unavailable" 1 "$fail_file" Warnings
@@ -1696,10 +1700,11 @@ run_ci_fix_vendor() {
             continue
         fi
         case "$tier" in
-            cursor) launcher="$SCRIPT_DIR/launch-cursor-ci.sh" ;;
-            codex) launcher="$SCRIPT_DIR/launch-codex-ci.sh" ;;
-            claude) launcher="$SCRIPT_DIR/launch-claude-ci.sh" ;;
+            cursor) launcher=(python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci) ;;
+            codex) launcher=(python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci) ;;
+            claude) launcher=(python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-ci) ;;
         esac
+        launcher_label="${launcher[3]}"
 
         tier_out="${ci_fix_out_base}.${tier}"
         fail_file=$(failure_capture_path "$phase")
@@ -1708,7 +1713,7 @@ run_ci_fix_vendor() {
             _failure_log_args=(--failure-log "$gh_logs_capture_redacted")
         fi
 
-        "$launcher" --role fix --output "$tier_out" --run-id "$run_id" \
+        "${launcher[@]}" --role fix --output "$tier_out" --run-id "$run_id" \
             --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
             ${_failure_log_args[@]+"${_failure_log_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
         wrapper_rc=$?
@@ -1722,18 +1727,18 @@ run_ci_fix_vendor() {
 
         if [ "$wrapper_rc" -eq 2 ]; then
             _surface_ci_stderr_tail "$tier_out"
-            record_failure "$phase" "$(basename "$launcher") fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
+            record_failure "$phase" "$launcher_label fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
             _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
             waterfall_iter=$(( waterfall_iter + 1 ))
             continue
         fi
         if [ "$wrapper_rc" -eq 0 ] && [ "${launcher_exit:-0}" -eq 0 ]; then
-            tool_label="$(basename "$launcher") fix"
+            tool_label="$launcher_label fix"
             winning_tier=$tier
             break
         fi
         _surface_ci_stderr_tail "$tier_out"
-        record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
+        record_failure "$phase" "$launcher_label fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
         _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
         if [ "$waterfall_iter" -eq 0 ] && [ "$wrapper_rc" -eq 0 ] && [ "$tier" = "$first_tier" ]; then
             local _lf_class
@@ -2428,18 +2433,11 @@ recovery_waterfall_paths_delta_revert() {
     rm -f "$cur_tracked" "$cur_untracked"
 }
 
-ship_pr_ingest_recovery_token_record() {
-    local phase="$1" token_record="$2" log_file="$3"
-    ship_pr_ingest_token_record_once "$phase" "$token_record" "$log_file"
-}
-
 run_recovery_waterfall() {
     local wf_phase=$1 wf_role=$2 fail_log_path=$3 verify_kind=$4
     local pr_title=${5:-} pr_body=${6:-}
     local baseline_dir baseline_head cur_head wf_log tier_rc verify_rc
     local out output plan_file plan_args=() fl_arg=() run_id repo_r
-    local -a ingested_token_records=()
-    SHIP_PR_INGESTED_TOKEN_RECORDS=()
     baseline_dir=$(mktemp -d "${IMPLEMENT_TMPDIR}/recovery-wf.XXXXXX")
     wf_log="$baseline_dir/wf.log"
     git rev-parse HEAD > "$baseline_dir/head" 2>/dev/null || printf '\n' > "$baseline_dir/head"
@@ -2475,40 +2473,25 @@ run_recovery_waterfall() {
         case "$tier" in
             cursor)
                 if command -v cursor >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             codex)
                 if command -v codex >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-codex-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             claude)
                 if command -v claude >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-claude-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
         esac
         launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ { print $2; exit }' "$launcher_stdout" 2>/dev/null || true)
         launcher_exit="${launcher_exit:-0}"
-        token_record=$(awk -F= '/^TOKEN_RECORD=/ { print substr($0, index($0, "=") + 1); exit }' "$launcher_stdout" 2>/dev/null || true)
-        token_record="${token_record:-${output}.token-record}"
-        if [[ "$tier" == "codex" || "$tier" == "cursor" ]]; then
-            _already_ingested=false
-            for _seen_token_record in "${ingested_token_records[@]}"; do
-                if [[ "$_seen_token_record" == "$token_record" ]]; then
-                    _already_ingested=true
-                    break
-                fi
-            done
-            if [[ "$_already_ingested" != true ]]; then
-                ship_pr_ingest_recovery_token_record "$wf_phase" "$token_record" "$wf_log"
-                ingested_token_records+=("$token_record")
-            fi
-        fi
         rm -f "$launcher_stdout"
         if [ "$tier_rc" -ne 0 ] || [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
             _surface_ci_stderr_tail "$output"
@@ -2877,14 +2860,14 @@ run_rebase_rebump() {
             _launch_extra=()
             [ -n "$vendor_conflict_csv" ] && _launch_extra+=(--conflict-files "$vendor_conflict_csv")
             if command -v codex >/dev/null 2>&1; then
-                tool_label="launch-codex-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                tool_label="agent launch-codex-ci resolve-conflict"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
             else
-                tool_label="launch-cursor-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                tool_label="agent launch-cursor-ci resolve-conflict"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
@@ -2901,13 +2884,6 @@ run_rebase_rebump() {
                 --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
             rc=$?
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "token append-record" "$rc" "$fail_file" Warnings
-            if [[ -s "${conflict_out}.token-record" ]]; then
-                fail_file=$(failure_capture_path conflict-resolution)
-                IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
-                    --input "${conflict_out}.token-record" > "$fail_file" 2>&1
-                rc=$?
-                [ "$rc" -eq 0 ] || record_failure conflict-resolution "token record-vendor-sidecar" "$rc" "$fail_file" Warnings
-            fi
         fi
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the

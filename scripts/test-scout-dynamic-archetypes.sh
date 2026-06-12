@@ -23,19 +23,13 @@ export REAL_JQ
 cat > "$BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-grep -q 'You are a read-only reviewer' || exit 7
+grep -q 'your role is read-only review' || exit 7
 if [[ "${SCOUT_STUB_FAIL:-false}" == "true" ]]; then
     exit 17
 fi
-# launch-claude-subprocess.sh now runs `claude --print --output-format json`
-# (issue #3637): the launcher promotes the envelope's `.result` string to the
-# output file. Wrap the fixture content as the `.result` of a JSON envelope so
-# the scout reads the same bytes a real claude run would deliver. Command
-# substitution strips the fixture's single trailing newline and `jq -r`
-# re-adds one downstream, so the promoted `.result` round-trips the fixture
-# byte-for-byte (assert_raw_matches).
-_scout_stub_content=$(cat "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}")
-jq -cn --arg r "$_scout_stub_content" \
+# Use --rawfile to preserve the fixture's trailing newline so that the
+# promoted .result round-trips the fixture byte-for-byte (assert_raw_matches).
+jq -cn --rawfile r "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}" \
     '{type:"result",subtype:"success",is_error:false,result:$r,usage:{input_tokens:1,output_tokens:1,cache_read_input_tokens:0,cache_creation_input_tokens:0}}'
 STUB
 chmod +x "$BIN/claude"
@@ -55,7 +49,7 @@ cat > "$claude_launch_log" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -n "\${SCOUT_CLAUDE_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_CLAUDE_ARGV_LOG"
-exec "$REPO_ROOT/scripts/launch-claude-subprocess.sh" "\$@"
+exec python3 "$REPO_ROOT/python/cli.py" agent launch-claude-subprocess "\$@"
 STUB
 chmod +x "$claude_launch_log"
 desc_launch="$claude_launch_log"

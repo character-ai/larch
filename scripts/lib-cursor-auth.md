@@ -8,16 +8,16 @@ Sourced library exposing Cursor auth helpers used by every live `cursor agent` c
 
 ## Why env-based auth (issue #3375)
 
-Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `scripts/run-external-agent.sh`'s `.meta` `CMD_JSON` (and in one case into a committed run-log), `ps` listings, and any captured command line. Cursor authenticates equally from the `CURSOR_API_KEY` environment variable, mirroring how Claude (ambient session) and Codex (`CODEX_HOME` + OAuth) authenticate — no secret on argv. The launchers now export the normalized key into the environment the Cursor child inherits and pass **no** `--api-key`.
+Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `python/cli.py agent run-external-agent`'s `.meta` `CMD_JSON` (and in one case into a committed run-log), `ps` listings, and any captured command line. Cursor authenticates equally from the `CURSOR_API_KEY` environment variable, mirroring how Claude (ambient session) and Codex (`CODEX_HOME` + OAuth) authenticate — no secret on argv. The launchers now export the normalized key into the environment the Cursor child inherits and pass **no** `--api-key`.
 
 ## Callers (parity contract)
 
 - `scripts/launch-review.sh --tool cursor` — review reviewer panel launcher (via `cursor_launcher_setup_auth_argv`).
 - `scripts/launch-cursor-implement.sh` — Cursor implementer launcher (Step 2 of `/implement`; via `cursor_launcher_setup_auth_argv`).
-- `scripts/launch-cursor-ci.sh` — Cursor CI-fix launcher (via `cursor_launcher_setup_auth_argv`).
+- `python/cli.py agent launch-cursor-ci` — Cursor CI-fix launcher (via `cursor_launcher_setup_auth_argv`).
 - `scripts/check-reviewers.sh` — reviewer presence check (sources the lib; calls `cursor_preread_service_token` + `cursor_auth_export_env` — `cursor_auth_preflight` is invoked separately to gate the probe loop).
 - `scripts/run-negotiation-round.sh` — negotiation runner (calls `cursor_auth_export_env` after `cursor_auth_preflight`).
-- `scripts/cursor-auth-flags.sh` — Darwin preflight **gate** for runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward. It runs `cursor_auth_preflight` and emits **no** argv flags; the markdown blocks rely on the orchestrator's inherited `CURSOR_API_KEY` for the Cursor child.
+- `python/cli.py agent cursor-auth-preflight` — Darwin preflight **gate** for runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward. It runs `cursor_auth_preflight` and emits **no** argv flags; the markdown blocks rely on the orchestrator's inherited `CURSOR_API_KEY` for the Cursor child.
 
 ## Invariants
 

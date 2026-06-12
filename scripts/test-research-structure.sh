@@ -181,10 +181,10 @@ for pair in \
 ; do
   file="${pair%%:*}"
   stem="${pair#*:}"
-  if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" "$file"; then
+  if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" "$file"; then
     PASS=$((PASS + 1))
   else
-    fail "[codex launcher] $(basename "$file") must use \${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh"
+    fail "[codex launcher] $(basename "$file") must use \${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec"
   fi
   if grep -Fq "$stem" "$file"; then
     PASS=$((PASS + 1))

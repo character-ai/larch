@@ -354,7 +354,7 @@ printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 MODEL_ARGS_TMP=$(mktemp)
 MODEL_ARGS_ERR=$(mktemp)
 MODEL_ARGS_RC=0
-"$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR" || MODEL_ARGS_RC=$?
+python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR" || MODEL_ARGS_RC=$?
 if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     : > "$SIDECAR_LOG"
     cat "$MODEL_ARGS_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
@@ -399,7 +399,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     # (SESSION_TMPDIR = dirname("$MANIFEST_PATH") = codex-step2-out/ after canonicalization).
     # manifest.json, qa-pending.json, and the --output-last-message transcript all land there.
     # Symlink parents and SESSION_TMPDIR == IMPLEMENT_TMPDIR are rejected above.
-    CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
+    CODEX_HOME="$CODEX_HOME_DIR" python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent \
         --tool codex \
         --output "$TRANSCRIPT_PATH" \
         --timeout "$TIMEOUT" \

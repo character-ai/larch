@@ -272,7 +272,7 @@ external_launcher_record_usage_from_events() {
     local input_tokens=0 cached_tokens=0 output_tokens=0 total_tokens=0
 
     usage_err=$(mktemp "${TMPDIR:-/tmp}/external-launcher-usage.XXXXXX") || return 0
-    usage_blob=$("$plugin_root/scripts/parse-codex-usage.sh" "$events_file" 2>"$usage_err") || usage_blob=""
+    usage_blob=$(python3 "$plugin_root/python/cli.py" agent parse-codex-usage "$events_file" 2>"$usage_err") || usage_blob=""
     if [[ -z "$usage_blob" && -s "$usage_err" ]]; then
         cat "$usage_err" >> "$sidecar_path" 2>/dev/null || true
     fi

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -439,8 +440,9 @@ def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.Monkey
         monkeypatch.delenv(key, raising=False)
 
     def resolved(tool: str, flag: str) -> str:
+        cli = Path(__file__).resolve().parents[0] / "cli.py"
         result = subprocess.run(
-            [str(Path(__file__).resolve().parents[1] / "scripts" / "agent-model-args.sh"), "--tool", tool],
+            [sys.executable, str(cli), "agent", "model-args", "--tool", tool],
             capture_output=True,
             text=True,
             check=True,

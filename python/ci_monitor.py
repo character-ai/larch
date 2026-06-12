@@ -955,21 +955,32 @@ def _delta_paths(
     return tuple(sorted(delta))
 
 
-def _parse_launcher_exit(text: str) -> int:
+def _parse_launcher_exit(text: str) -> int | None:
     match = _LAUNCHER_EXIT_RE.search(text)
     if match:
         return int(match.group(1))
-    return 0
+    return None
+
+
+def _read_launcher_done(path: str | Path) -> int | None:
+    done = Path(path).with_suffix(Path(path).suffix + ".done")
+    if not done.is_file():
+        return None
+    text = done.read_text(encoding="utf-8", errors="replace").strip()
+    return int(text) if text.isdigit() else None
+
+
+def _resolve_launcher_exit(*, combined: str, output: str | Path) -> int:
+    """Prefer the launcher `.done` sentinel; LAUNCHER_EXIT KVs are on fd 3, not stdout."""
+    done_exit = _read_launcher_done(output)
+    if done_exit is not None:
+        return done_exit
+    parsed = _parse_launcher_exit(combined)
+    return parsed if parsed is not None else 0
 
 
 def _available_tiers() -> tuple[str, ...]:
-    tiers: list[str] = []
-    for tier in config.FIXER_TIER_ORDER:
-        if tier == "claude":
-            script = _SCRIPTS_DIR / "launch-claude-ci.sh"
-            if not script.is_file() or not os.access(script, os.X_OK):
-                continue
-        tiers.append(tier)
+    tiers = list(config.FIXER_TIER_ORDER)
     return tuple(tiers) if tiers else config.FIXER_TIER_ORDER
 
 
@@ -1059,17 +1070,16 @@ def _make_default_launch_fn(
             cwd=cwd,
         )
         combined = result.stdout + result.stderr
-        if tier in {"codex", "cursor"}:
-            _ = agents.ingest_launcher_token_sidecar(
-                runner,
-                launcher_stdout=combined,
-                output=tier_out,
-                tmpdir=implement_tmpdir,
-                implement_tmpdir=implement_tmpdir,
-                seen=seen_token_records,
-                cwd=cwd,
-            )
-        launcher_exit = _parse_launcher_exit(combined)
+        _ = agents.ingest_launcher_token_sidecar(
+            runner,
+            launcher_stdout=combined,
+            output=tier_out,
+            tmpdir=implement_tmpdir,
+            implement_tmpdir=implement_tmpdir,
+            seen=seen_token_records,
+            cwd=cwd,
+        )
+        launcher_exit = _resolve_launcher_exit(combined=combined, output=tier_out)
         failure = agents.classify_launch_failure(
             launcher_exit,
             sidecar=tier_out,

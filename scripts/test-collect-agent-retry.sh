@@ -710,7 +710,7 @@ assert_fail_closed "case-r2" "$OUT_R2" "Retry metadata invalid: missing OUTER_LA
 
 OUT_R3="$TMPROOT/codex-r3.txt"
 prepare_outer_candidate "$OUT_R3"
-write_outer_meta "$OUT_R3" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_R3}.prompt" "$WORKDIR_Q" \
+write_outer_meta "$OUT_R3" 'agent launch-codex-exec' "${OUT_R3}.prompt" "$WORKDIR_Q" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=write-everywhere' \
@@ -736,7 +736,7 @@ WRONG_LAUNCHER="$TMPROOT/not-launch-review.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WRONG_LAUNCHER"
 chmod +x "$WRONG_LAUNCHER"
 write_outer_meta "$OUT_S2" "$WRONG_LAUNCHER" "${OUT_S2}.prompt" "$WORKDIR_Q"
-assert_fail_closed "case-s2" "$OUT_S2" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or launch-codex-exec.sh"
+assert_fail_closed "case-s2" "$OUT_S2" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or agent launch-codex-exec"
 
 OUT_U1="$TMPROOT/cursor-u1.txt"
 prepare_outer_candidate "$OUT_U1"
@@ -747,7 +747,7 @@ assert_fail_closed "case-u1" "$OUT_U1" "Retry metadata invalid: OUTER_LAUNCHER_P
 
 OUT_U1_CODEX="$TMPROOT/codex-u1.txt"
 prepare_outer_candidate "$OUT_U1_CODEX"
-write_outer_meta "$OUT_U1_CODEX" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX}.prompt" "$WORKDIR_Q" \
+write_outer_meta "$OUT_U1_CODEX" 'agent launch-codex-exec' "${OUT_U1_CODEX}.prompt" "$WORKDIR_Q" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \
@@ -761,7 +761,7 @@ prepare_outer_candidate "$OUT_U1_CODEX_JQ"
 WORKDIR_U1_CODEX_JQ="$TMPROOT/workdir-u1-codex-jq"
 EXTRA_U1_CODEX_JQ="$TMPROOT/extra-u1-codex-jq"
 mkdir -p "$WORKDIR_U1_CODEX_JQ" "$EXTRA_U1_CODEX_JQ"
-write_outer_meta "$OUT_U1_CODEX_JQ" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_JQ}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+write_outer_meta "$OUT_U1_CODEX_JQ" 'agent launch-codex-exec' "${OUT_U1_CODEX_JQ}.prompt" "$WORKDIR_U1_CODEX_JQ" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \
@@ -775,7 +775,7 @@ assert_equals "case U1 codex jq-less output" "OK" "$(cat "${OUT_U1_CODEX_JQ%.txt
 
 OUT_U1_CODEX_BAD_JSON="$TMPROOT/codex-u1-bad-json.txt"
 prepare_outer_candidate "$OUT_U1_CODEX_BAD_JSON"
-write_outer_meta "$OUT_U1_CODEX_BAD_JSON" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_BAD_JSON}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+write_outer_meta "$OUT_U1_CODEX_BAD_JSON" 'agent launch-codex-exec' "${OUT_U1_CODEX_BAD_JSON}.prompt" "$WORKDIR_U1_CODEX_JQ" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \

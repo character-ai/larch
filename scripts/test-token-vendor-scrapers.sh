@@ -29,14 +29,14 @@ wrapper noise
 {"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
 {"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}
 JSONL
-codex_usage=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex.events.jsonl" 2>/dev/null || true)
+codex_usage=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex.events.jsonl" 2>/dev/null || true)
 eq "codex parse usage" $'INPUT=115\nCACHED_INPUT=905\nOUTPUT=57\nTOTAL=1077' "$codex_usage"
 
 cat > "$TMP/codex-bad.events.jsonl" <<'JSONL'
 {"msg":{"kind":"started"}}
 JSONL
 set +e
-codex_bad=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex-bad.events.jsonl" 2>/dev/null)
+codex_bad=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex-bad.events.jsonl" 2>/dev/null)
 codex_bad_rc=$?
 set -e
 eq "codex no-usage fail-closed rc" "1" "$codex_bad_rc"
@@ -47,7 +47,7 @@ cat > "$TMP/codex-rollup.events.jsonl" <<'JSONL'
 {"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}
 {"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
 JSONL
-codex_rollup=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
+codex_rollup=$(python3 "$REPO_ROOT/python/cli.py" agent parse-codex-usage "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
 eq "codex token_usage sums with per-turn usage while ignoring non-token_usage top-level lifecycle fields" $'INPUT=877\nCACHED_INPUT=7900\nOUTPUT=272\nTOTAL=9049' "$codex_rollup"
 
 cat > "$TMP/cursor.json" <<'JSON'

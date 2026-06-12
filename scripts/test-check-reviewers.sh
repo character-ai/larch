@@ -54,14 +54,14 @@ run_cr() {
     local tmp="$1"
     shift
     mkdir -p "$tmp"
-    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 env -u OPENAI_API_KEY "$@" )
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 LARCH_PYTHON3="$PYTHON_BIN" env -u OPENAI_API_KEY "$@" )
 }
 
 run_cr_with_env() {
     local tmp="$1"
     shift
     mkdir -p "$tmp"
-    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@" )
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 LARCH_PYTHON3="$PYTHON_BIN" "$@" )
 }
 
 # --- Baseline stubs (exit 0) ---

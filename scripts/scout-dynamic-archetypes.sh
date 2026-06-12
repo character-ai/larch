@@ -25,7 +25,11 @@ SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 TIMEOUT="180"
 CODEX_PRESENT="false"
 CURSOR_PRESENT="false"
-LAUNCH_CLAUDE_SUBPROCESS_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH:-$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh}"
+if [[ -n "${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH:-}" ]]; then
+    LAUNCH_CLAUDE_SUBPROCESS_CMD=("$SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH")
+else
+    LAUNCH_CLAUDE_SUBPROCESS_CMD=(python3 "${SCOUT_DYNAMIC_ARCHETYPES_PY_CLI:-$PLUGIN_ROOT/python/cli.py}" agent launch-claude-subprocess)
+fi
 LAUNCH_REVIEW_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH:-$PLUGIN_ROOT/scripts/launch-review.sh}"
 MAX_CONTEXT_BYTES=262144
 MAX_STAGED_BYTES=1048576
@@ -438,7 +442,7 @@ run_cursor_tier() {
 run_claude_tier() {
     local launch_stdout="${OUTPUT}.claude.launch.env"
     set +e
-    "$LAUNCH_CLAUDE_SUBPROCESS_SH" \
+    "${LAUNCH_CLAUDE_SUBPROCESS_CMD[@]}" \
         --model claude-sonnet-4-6 \
         --prompt-file "$prompt_file" \
         --output-file "$tier_raw" \

@@ -931,7 +931,7 @@ def test_run_lint_fix_empty_log(tmp_path: Path) -> None:
     assert outcome.status == "no-changes"
 
 
-def test_run_lint_fix_missing_run_external_agent(
+def test_run_lint_fix_missing_scripts_dir_no_longer_checks_deleted_launcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -955,14 +955,14 @@ def test_run_lint_fix_missing_run_external_agent(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "failed"
-    assert outcome.failure_reason == "missing-run-external-agent"
+    assert outcome.status == "no-changes"
+    assert outcome.failure_reason is None
 
 
 def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    run_external = checks._run_external_agent_sh()  # pyright: ignore[reportPrivateUsage]
+    agent_cli = checks._agent_cli()  # pyright: ignore[reportPrivateUsage]
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
     head = "abc123"
@@ -993,84 +993,19 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "launch-cursor-ci.sh" not in flat
     codex_call = next(
         call for call, _kw in runner.calls
-        if any("run-external-agent.sh" in part for part in call)
+        if "launch-codex-exec" in call
     )
-    idx = list(codex_call).index(str(run_external))
+    idx = list(codex_call).index(str(agent_cli))
     argv = list(codex_call)[idx:]
-    assert argv[1:3] == ["--tool", "codex"]
+    assert argv[:3] == [str(agent_cli), "agent", "launch-codex-exec"]
     assert "--timeout" in argv
     assert "1800" in argv
-    assert "--stderr-sink" in argv
-    leaf = argv[argv.index("--") + 1 :]
-    assert leaf[:3] == ["codex", "exec", "--full-auto"]
-    assert "-C" in leaf
-    assert str(repo) in leaf
-    assert "-m" in leaf
-    assert leaf[-1]
-    assert "lib-external-launcher-common.sh" in flat
-    assert "--tool" in flat
-    assert "codex" in flat
-
-
-def test_run_codex_records_usage_with_resolved_model(tmp_path: Path) -> None:
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    agent_model_args = scripts / "agent-model-args.sh"
-    _ = agent_model_args.write_text("#!/usr/bin/env bash\nprintf '%s\\n' -m gpt-lint-test\n", encoding="utf-8")
-    _ = agent_model_args.chmod(0o755)
-    _ = (scripts / "lib-external-launcher-common.sh").write_text("", encoding="utf-8")
-    _ = (scripts / "lib-codex-launcher-common.sh").write_text("", encoding="utf-8")
-    run_external = scripts / "run-external-agent.sh"
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    class UsageRunner(StubRunner):
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            result = super().run(
-                argv,
-                timeout=timeout,
-                cwd=cwd,
-                env=env,
-                check=check,
-                stdout=stdout,
-                stderr=stderr,
-            )
-            for raw in argv:
-                path = Path(raw)
-                if path.name == "codex.events.jsonl":
-                    _ = path.write_text('{"type":"token_usage"}\n', encoding="utf-8")
-            return result
-
-    runner = UsageRunner()
-    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        scripts_dir=scripts,
-        run_external=run_external,
-        run_dir=run_dir,
-        repo_root=str(repo),
-        prompt_body="fix it",
-    )
-    assert rc == 0
-    dispatch_call = next(call for call, _kw in runner.calls if str(run_external) in call)
-    leaf = list(dispatch_call)[list(dispatch_call).index(str(run_external)) :]
-    assert "-m" in leaf
-    assert leaf[leaf.index("-m") + 1] == "gpt-lint-test"
-    record_call = runner.calls[-1][0]
-    assert record_call[:2] == ("bash", "-c")
-    assert 'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" "" "$5"' in record_call[2]
-    assert record_call[-1] == "gpt-lint-test"
+    assert "--workdir" in argv
+    assert str(repo) in argv
+    assert "--prompt-file" in argv
+    assert "--usage-label" in argv
+    assert "codex_lint_fix" in argv
+    assert "run-external-agent" not in argv
 
 
 def test_run_lint_fix_dispatch_failure_ignores_health_classification(
@@ -1303,17 +1238,19 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     assert "--tool" in flat
     assert "cursor" in flat
     wrap_call, wrap_kwargs = next(
-        (call, kw) for call, kw in runner.calls if "cursor-wrap-prompt.sh" in " ".join(call)
+        (call, kw) for call, kw in runner.calls if any("cursor-wrap-prompt" in part for part in call)
     )
-    assert "cursor-wrap-prompt.sh" in " ".join(wrap_call)
+    assert any("agent" in part for part in wrap_call)
+    assert any("cursor-wrap-prompt" in part for part in wrap_call)
     assert wrap_kwargs["cwd"] == str(repo)
     cursor_call = next(
         call for call, _kw in runner.calls
         if "cursor" in call and "agent" in call
     )
-    idx = list(cursor_call).index(str(checks._run_external_agent_sh()))  # pyright: ignore[reportPrivateUsage]
+    idx = list(cursor_call).index(str(checks._agent_cli()))  # pyright: ignore[reportPrivateUsage]
     argv = list(cursor_call)[idx:]
-    assert argv[1:3] == ["--tool", "cursor"]
+    assert argv[:4] == [str(checks._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
+    assert argv[4] == "cursor"
     assert "--timeout" in argv
     assert "1800" in argv
     assert "--capture-stdout" in argv
@@ -1705,7 +1642,7 @@ def test_run_checks_phase_ok_when_checks_skipped(
     assert result.outcome == Outcome.OK
 
 
-def test_run_lint_fix_non_executable_run_external_agent(
+def test_run_lint_fix_non_executable_deleted_launcher_is_ignored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1728,8 +1665,8 @@ def test_run_lint_fix_non_executable_run_external_agent(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "failed"
-    assert outcome.failure_reason == "missing-run-external-agent"
+    assert outcome.status == "no-changes"
+    assert outcome.failure_reason is None
 
 
 def test_run_check_fix_loop_requires_allowed_tmpdir_for_dispatch_first(

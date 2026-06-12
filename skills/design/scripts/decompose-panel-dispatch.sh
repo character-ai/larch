@@ -86,6 +86,12 @@ PROMPTS_DIR="$SCRIPT_DIR/decompose-prompts"
 COMMON_TAIL="$PROMPTS_DIR/_common-tail.txt"
 [[ -f "$COMMON_TAIL" ]] || fail "missing common tail: $COMMON_TAIL"
 
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
+    DECOMPOSE_GENERIC_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
+else
+    DECOMPOSE_GENERIC_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review)
+fi
+
 render_prompt() {
     local archetype="$1" out="$2"
     local arch_file="$PROMPTS_DIR/${archetype}.txt"
@@ -151,7 +157,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     } >"$_generic_prompt"
     rm -f "$_tail_src"
     set +e
-    "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+    "${DECOMPOSE_GENERIC_LAUNCH_CMD[@]}" \
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \

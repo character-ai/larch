@@ -31,8 +31,15 @@ IMPLEMENT_TMPDIR=""
 SITE=""
 CHECKS_LOG=""
 TARGET_CMD_ARGS_FILE=""
-RUN_EXTERNAL_AGENT_SH="${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH:-$SCRIPT_DIR/run-external-agent.sh}"
-LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH:-$SCRIPT_DIR/launch-codex-exec.sh}"
+PY_CLI="${LINT_FIX_LOOP_PY_CLI:-$SCRIPT_DIR/../python/cli.py}"
+RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+if [[ -n "${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE:-}" ]]; then
+    RUN_EXTERNAL_AGENT_CMD=("$LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE")
+fi
+LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
+if [[ -n "${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE:-}" ]]; then
+    LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD=("$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE")
+fi
 
 usage() {
     larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step5-self-review|step5-mav|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job --checks-log REDACTED_LOG_FILE [--target-cmd-args-file PATH]"
@@ -420,7 +427,7 @@ run_codex() {
     launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/lint-fix-codex-launcher.XXXXXX") || return 1
     rm -f "$run_dir/codex.log.events.jsonl" "$run_dir/codex.log.sidecar"
     set +e
-    LARCH_TIMING_SKILL=implement "$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH" \
+    LARCH_TIMING_SKILL=implement "${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD[@]}" \
         --output "$run_dir/codex.log" \
         --timeout 1800 \
         --workdir "$REPO_ROOT" \
@@ -476,12 +483,12 @@ run_cursor() {
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     local _wrapped_prompt
-    _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; } 2>>"$preflight_log") || {
+    _wrapped_prompt=$({ python3 "$PY_CLI" agent cursor-wrap-prompt "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; } 2>>"$preflight_log") || {
         _run_cursor_record_early_fail "$run_dir" "$preflight_log"
         return 1
     }
     _wrapped_prompt=${_wrapped_prompt%X}
-    "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
+    "${RUN_EXTERNAL_AGENT_CMD[@]}" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
         cursor agent -p --trust \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         --workspace "$REPO_ROOT" \
@@ -541,7 +548,7 @@ fi
     larch_err "lint-fix-loop.sh: --checks-log must name a non-symlink file"
     exit 2
 }
-[[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || fail_status "missing-run-external-agent" 1
+[[ -f "$PY_CLI" ]] || fail_status "missing-python-agent-cli" 1
 
 if [[ ! -s "$CHECKS_LOG" ]]; then
     emit_kv LINT_FIX_STATUS no-changes

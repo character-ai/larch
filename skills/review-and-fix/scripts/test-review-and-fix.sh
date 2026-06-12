@@ -885,10 +885,10 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex bad-usage expected exit 0 got $rc"; }
 grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex bad-usage tool"
-if grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.wrapper.log"; then
+if grep -Fq 'agent parse-codex-usage:' "$implement_tmp/round-1/coder-codex.wrapper.log"; then
     fail "codex bad-usage wrapper log must not contain parse diagnostics"
 fi
-grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.sidecar" \
+grep -Fq 'agent parse-codex-usage:' "$implement_tmp/round-1/coder-codex.sidecar" \
     || fail "codex bad-usage telemetry sidecar should capture parse diagnostics"
 
 # #3994 codex-first order: a FAILED codex tier (first in the waterfall) must

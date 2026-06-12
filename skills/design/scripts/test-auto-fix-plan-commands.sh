@@ -358,11 +358,6 @@ cursor_launcher_append_outer_meta() { return 0; }
 cursor_launcher_promote_inner_done() { return 0; }
 cursor_launcher_setup_private_config_dir() { return 0; }
 STUB
-cat >"$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh" <<'STUB'
-#!/usr/bin/env bash
-printf '%s' "${1:-}"
-STUB
-chmod +x "$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh"
 mkdir -p "$CURSOR_FAKE_ROOT/python"
 cat >"$CURSOR_FAKE_ROOT/python/cli.py" <<'STUB'
 #!/usr/bin/env python3
@@ -370,6 +365,9 @@ import sys
 
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "timing":
+        return 0
+    if len(sys.argv) >= 3 and sys.argv[1] == "agent" and sys.argv[2] == "cursor-wrap-prompt":
+        print(sys.argv[3] if len(sys.argv) > 3 else "", end="")
         return 0
     print(f"unexpected cli call: {sys.argv}", file=sys.stderr)
     return 1

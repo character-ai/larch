@@ -100,7 +100,7 @@ _gate_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-degraded-gate-stdout.XXXXXX")
   printf '%s\n' "/design Step 0 degraded: could not allocate gate stdout capture" >&2
   exit 1
 }
-"${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh" --skill design \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate --skill design \
   --codex-present "${CODEX_PRESENT:-false}" \
   --cursor-present "${CURSOR_PRESENT:-false}" \
   --codex-binary-found "${CODEX_BINARY_FOUND:-false}" \

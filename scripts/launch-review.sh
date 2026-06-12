@@ -521,7 +521,7 @@ fi
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 MODEL_ARGS_ERR=$(mktemp)
-if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
+if python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
@@ -535,7 +535,7 @@ else
     : > "$OUTPUT" 2>/dev/null || true
     {
         printf 'STATUS=FAILED\n'
-        printf 'FAILURE_REASON=agent-model-args.sh failed (exit %s): %s\n' \
+        printf 'FAILURE_REASON=agent model-args failed (exit %s): %s\n' \
             "$rc" "$(head -1 "$MODEL_ARGS_ERR" 2>/dev/null | tr '\n' ' ')"
     } > "${OUTPUT}.diag" 2>/dev/null || true
     rm -f "$MODEL_ARGS_ERR"
@@ -559,7 +559,7 @@ while IFS= read -r arg; do
 done < "$MODEL_ARGS_TMP"
 CODEX_AUTH_ARGS=()
 external_codex_auth_config_args CODEX_AUTH_ARGS
-RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
+RUN_EXTERNAL_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent)
 SIDECAR="${OUTPUT}.sidecar"
 CODEX_EVENTS="${OUTPUT}.events.jsonl"
 
@@ -585,7 +585,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         rm -f "$CODEX_EVENTS"
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-        "$RUN_EXTERNAL" \
+        "${RUN_EXTERNAL_CMD[@]}" \
             --tool codex \
             --output "$OUTPUT" \
             --timeout "$TIMEOUT" \
@@ -604,7 +604,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     else
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-        "$RUN_EXTERNAL" \
+        "${RUN_EXTERNAL_CMD[@]}" \
             --tool codex \
             --output "$OUTPUT" \
             --timeout "$TIMEOUT" \
@@ -975,9 +975,9 @@ EOF
 ORIGINAL_PROMPT="$PROMPT"
 PROMPT="${CURSOR_REVIEW_STRICT_PREAMBLE}"$'\n\n'"${PROMPT}"
 
-WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
+WRAPPED_PROMPT=$({ python3 "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
 WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
-RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
+RUN_EXTERNAL_CMD=(python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent)
 SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 # Retry-safe: store the user-original (pre-preamble) bytes so
@@ -1069,7 +1069,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     _ATTEMPT_START=$SECONDS
     RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-    "$RUN_EXTERNAL" \
+    "${RUN_EXTERNAL_CMD[@]}" \
             --tool cursor \
             --output "$OUTPUT" \
             --timeout "$TIMEOUT" \
