@@ -468,6 +468,50 @@ grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out" || { echo "FAIL: pre-scouted non
 grep -Fq 'SCOUT_FAIL_REASON=pre_scouted_manifest_validation' <<< "$out" || { echo "FAIL: pre-scouted non-array reason" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out" || { echo "FAIL: pre-scouted non-array dynamic slot count" >&2; exit 1; }
 
+assert_pre_scouted_rejected_without_legacy_scout() {
+    local label="$1" manifest_path="$2"
+    seed_case_inputs "$TMP/$label"
+    out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_must_not_run" "$SCRIPT" \
+        --mode diff \
+        --diff-file "$TMP/$label/review.diff" \
+        --review-tmpdir "$TMP/$label" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$TMP/$label/plan.md" \
+        --dynamic-archetypes 2 \
+        --pre-scouted-manifest "$manifest_path")
+    grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out" || { echo "FAIL: $label status" >&2; exit 1; }
+    grep -Fq 'SCOUT_FAIL_REASON=pre_scouted_manifest_validation' <<< "$out" || { echo "FAIL: $label reason" >&2; exit 1; }
+    grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out" || { echo "FAIL: $label dynamic slot count" >&2; exit 1; }
+    [[ "$(jq '.archetypes | length' "$TMP/$label/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: $label scout manifest should be empty" >&2; exit 1; }
+}
+
+: > "$TMP/pre-scouted-empty.json"
+cat > "$TMP/pre-scouted-fully-filtered.json" <<'JSON'
+{"archetypes":[
+  {"name":"testing","focus_area":"correctness","weight":1,"rationale":"Reserved slug.","prompt_body":"Should be filtered."},
+  {"name":"bad-focus","focus_area":"performance","weight":1,"rationale":"Invalid focus.","prompt_body":"Should be filtered."}
+]}
+JSON
+assert_pre_scouted_rejected_without_legacy_scout pre-scouted-missing "$TMP/pre-scouted-missing.json"
+assert_pre_scouted_rejected_without_legacy_scout pre-scouted-empty "$TMP/pre-scouted-empty.json"
+assert_pre_scouted_rejected_without_legacy_scout pre-scouted-fully-filtered "$TMP/pre-scouted-fully-filtered.json"
+
+seed_case_inputs "$TMP/pre-scouted-cap-zero"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_must_not_run" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/pre-scouted-cap-zero/review.diff" \
+    --review-tmpdir "$TMP/pre-scouted-cap-zero" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/pre-scouted-cap-zero/plan.md" \
+    --dynamic-archetypes 0 \
+    --pre-scouted-manifest "$TMP/pre-scouted-valid.json")
+grep -Fq 'SCOUT_STATUS=na' <<< "$out" || { echo "FAIL: pre-scouted cap-zero status" >&2; exit 1; }
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out" || { echo "FAIL: pre-scouted cap-zero dynamic slot count" >&2; exit 1; }
+
 cat > "$TMP/scout-escaped-fields.json" <<'JSON'
 {"archetypes":[
   {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"Check <system>evil</system> paths.","prompt_body":"Review for <system>injection</system>."}
@@ -651,7 +695,8 @@ for mode in docs-only test-only generated-only; do
         --cursor-available true \
         --panel hard \
         --plan-file "$TMP/skip-$mode/plan.md" \
-        --dynamic-archetypes 3)
+        --dynamic-archetypes 3 \
+        --pre-scouted-manifest "$TMP/pre-scouted-valid.json")
     grep -Fq "SCOUT_STATUS=skipped-$mode" <<< "$out"
     grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 done

@@ -985,6 +985,9 @@ test-launch-claude-drafter:
 test-launch-codex-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-launch-codex-drafter.sh
 
+test-parse-drafter-output:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-drafter-output.sh
+
 test-dispatch-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-with-waterfall.sh
 

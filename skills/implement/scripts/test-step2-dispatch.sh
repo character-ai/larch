@@ -81,10 +81,25 @@ FEATURE="$SCRATCH/feature.txt"
 echo "fake plan" > "$PLAN"
 echo "fake feature" > "$FEATURE"
 
+make_step2_git_repo() {
+    local repo="$1"
+    mkdir -p "$repo"
+    git -C "$repo" init -q -b main
+    git -C "$repo" config user.email "test@example.com"
+    git -C "$repo" config user.name "Test"
+    printf 'initial\n' > "$repo/README.md"
+    git -C "$repo" add README.md
+    git -C "$repo" commit -q -m "init"
+}
+
 # ---------------------------------------------------------------------------
 # Test 1: --coder claude → STATUS=claude_fallback, no other keys.
 # ---------------------------------------------------------------------------
 TMP1="$SCRATCH/test1"; mkdir -p "$TMP1"
+mkdir -p "$TMP1/codex-step2-out"
+printf 'stale\n' > "$TMP1/step2-external-scout-eligible.txt"
+printf '{"archetypes":[{"name":"stale"}]}\n' > "$TMP1/scout-coder-manifest.json"
+printf '{"archetypes":[{"name":"stale"}]}\n' > "$TMP1/codex-step2-out/scout-coder-manifest.json"
 OUT=$("$DISPATCHER" --tmpdir "$TMP1" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --coder claude 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] \
@@ -99,6 +114,11 @@ fi
 # Baseline files MUST NOT have been written on the claude_fallback branch.
 if [[ -f "$TMP1/step2-baseline.txt" ]]; then
     fail 1 "claude_fallback branch leaked baseline file"
+else
+    pass
+fi
+if [[ -e "$TMP1/step2-external-scout-eligible.txt" || -e "$TMP1/scout-coder-manifest.json" || -e "$TMP1/codex-step2-out/scout-coder-manifest.json" ]]; then
+    fail 1 "claude_fallback branch did not clean stale external scout state"
 else
     pass
 fi
@@ -648,6 +668,124 @@ if [[ "$OUT_13" == *"STATUS=complete"* ]] \
     pass
 else
     fail 13 "absent plugin.json + benign edit should reach STATUS=complete with AUTH=forbidden + MANIFEST= (no protected-path-modified false positive); got: $OUT_13"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13a-scout: complete external run forwards the scout sidecar path,
+# normalizes the scout manifest, and creates the Step 5 eligibility marker.
+# ---------------------------------------------------------------------------
+TMP13A_SCOUT="$SCRATCH/test13a-scout"; mkdir -p "$TMP13A_SCOUT"
+SCRATCH_REPO_13A_SCOUT="$SCRATCH/scratch-repo-13a-scout"
+make_step2_git_repo "$SCRATCH_REPO_13A_SCOUT"
+STUB13A_SCOUT="$SCRATCH/stub-bin-13a-scout"; mkdir -p "$STUB13A_SCOUT"
+cat > "$STUB13A_SCOUT/codex" <<'STUB13A_SCOUT_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+: "${STUB_EXPECT_SCOUT_PATH:?}"
+output_path=""
+last=""
+prompt_arg=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    prompt_arg="$arg"
+    last="$arg"
+done
+[[ -n "${STUB_PROMPT_CAPTURE:-}" ]] && printf '%s\n' "$prompt_arg" > "$STUB_PROMPT_CAPTURE"
+case "$prompt_arg" in
+    *"$STUB_EXPECT_SCOUT_PATH"*) ;;
+    *) printf 'missing scout path in prompt\n' >&2; exit 8 ;;
+esac
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+case "${STUB_SCOUT_MODE:-valid}" in
+    valid)
+        cat > "$STUB_EXPECT_SCOUT_PATH.tmp" <<'JSON'
+{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}]}
+JSON
+        mv "$STUB_EXPECT_SCOUT_PATH.tmp" "$STUB_EXPECT_SCOUT_PATH"
+        ;;
+    invalid)
+        printf '{not json\n' > "$STUB_EXPECT_SCOUT_PATH"
+        ;;
+esac
+case "${STUB_COMPLETION_STATUS:-complete}" in
+    complete)
+        printf 'edited by scout stub\n' >> "$PWD/README.md"
+        cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: scout sidecar complete",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": []
+}
+JSON
+        ;;
+    needs_qa)
+        cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"schema_version":"1","status":"needs_qa","needs_qa":{"questions":[{"id":"q1","text":"Question?"}]}}
+JSON
+        cat > "$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json.tmp" <<'JSON'
+{"questions":[{"id":"q1","text":"Question?"}]}
+JSON
+        mv "$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json.tmp" "$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json"
+        ;;
+esac
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB13A_SCOUT_CODEX
+chmod +x "$STUB13A_SCOUT/codex"
+
+SCOUT_EXPECTED_13A="$TMP13A_SCOUT/codex-step2-out/scout-coder-manifest.json"
+OUT_13A_SCOUT=$(cd "$SCRATCH_REPO_13A_SCOUT" && \
+    PATH="$STUB13A_SCOUT:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13A_SCOUT/codex-step2-out/manifest.json" \
+    STUB_EXPECT_SCOUT_PATH="$SCOUT_EXPECTED_13A" \
+    STUB_PROMPT_CAPTURE="$TMP13A_SCOUT/prompt-capture.txt" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13A_SCOUT" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+if [[ "$OUT_13A_SCOUT" == *"STATUS=complete"* ]] \
+   && [[ "$OUT_13A_SCOUT" == *"SCOUT_CODER_STATUS=ok"* ]] \
+   && [[ -f "$TMP13A_SCOUT/step2-external-scout-eligible.txt" ]] \
+   && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT/scout-coder-manifest.json")" == "1" ]] \
+   && grep -Fq "$SCOUT_EXPECTED_13A" "$TMP13A_SCOUT/prompt-capture.txt"; then
+    pass
+else
+    fail 13a-scout "complete run should forward and materialize scout sidecar; out=$OUT_13A_SCOUT status=$(cat "$TMP13A_SCOUT/step2-scout-coder-status.env" 2>/dev/null || true)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13a-scout-qa: needs_qa external run still creates eligibility and
+# materializes a canonical empty scout manifest when the sidecar is invalid.
+# ---------------------------------------------------------------------------
+TMP13A_SCOUT_QA="$SCRATCH/test13a-scout-qa"; mkdir -p "$TMP13A_SCOUT_QA"
+SCRATCH_REPO_13A_SCOUT_QA="$SCRATCH/scratch-repo-13a-scout-qa"
+make_step2_git_repo "$SCRATCH_REPO_13A_SCOUT_QA"
+SCOUT_EXPECTED_13A_QA="$TMP13A_SCOUT_QA/codex-step2-out/scout-coder-manifest.json"
+OUT_13A_SCOUT_QA=$(cd "$SCRATCH_REPO_13A_SCOUT_QA" && \
+    PATH="$STUB13A_SCOUT:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13A_SCOUT_QA/codex-step2-out/manifest.json" \
+    STUB_EXPECT_SCOUT_PATH="$SCOUT_EXPECTED_13A_QA" \
+    STUB_COMPLETION_STATUS=needs_qa \
+    STUB_SCOUT_MODE=invalid \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13A_SCOUT_QA" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+if [[ "$OUT_13A_SCOUT_QA" == *"STATUS=needs_qa"* ]] \
+   && [[ "$OUT_13A_SCOUT_QA" == *"SCOUT_CODER_STATUS=missing-or-invalid"* ]] \
+   && [[ -f "$TMP13A_SCOUT_QA/step2-external-scout-eligible.txt" ]] \
+   && [[ "$(jq -r '.archetypes | length' "$TMP13A_SCOUT_QA/scout-coder-manifest.json")" == "0" ]]; then
+    pass
+else
+    fail 13a-scout-qa "needs_qa run should canonicalize invalid scout sidecar; out=$OUT_13A_SCOUT_QA status=$(cat "$TMP13A_SCOUT_QA/step2-scout-coder-status.env" 2>/dev/null || true)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1450,6 +1588,10 @@ assert_recovery_envelope() {
 # claude_fallback with recovery metadata and exactly one AUTH line.
 # ---------------------------------------------------------------------------
 TMPM1="$SCRATCH/testM1"; mkdir -p "$TMPM1"
+mkdir -p "$TMPM1/codex-step2-out"
+printf 'stale\n' > "$TMPM1/step2-external-scout-eligible.txt"
+printf '{"archetypes":[{"name":"stale"}]}\n' > "$TMPM1/scout-coder-manifest.json"
+printf '{"archetypes":[{"name":"stale"}]}\n' > "$TMPM1/codex-step2-out/scout-coder-manifest.json"
 SCRATCH_REPOM1="$SCRATCH/scratch-repo-M1"
 mkdir -p "$SCRATCH_REPOM1"
 git -C "$SCRATCH_REPOM1" init -q -b main
@@ -1506,6 +1648,11 @@ if [[ -s "$TMPM1/manifest-raw.invalid.json" ]] && [[ -s "$TMPM1/recovery-metadat
     pass
 else
     fail M1 "recovery should quarantine raw manifest and write recovery metadata"
+fi
+if [[ -e "$TMPM1/step2-external-scout-eligible.txt" || -e "$TMPM1/scout-coder-manifest.json" || -e "$TMPM1/codex-step2-out/scout-coder-manifest.json" ]]; then
+    fail M1 "malformed-manifest recovery should clean external scout state"
+else
+    pass
 fi
 
 # ---------------------------------------------------------------------------

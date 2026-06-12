@@ -352,6 +352,12 @@ exclude = [
   "scripts/launch-codex-drafter.md",
   "scripts/test-launch-codex-drafter.sh",
   "scripts/test-launch-codex-drafter.md",
+  "scripts/test-parse-drafter-output.sh",
+  "scripts/test-parse-drafter-output.md",
+  # read-claude-model.sh is retained as a diagnostic helper for operators; the
+  # anchor assembler caller was removed by the larch-log migration.
+  "scripts/read-claude-model.sh",
+  "scripts/read-claude-model.md",
   "python/cli.py plugin read-version",
   # skills/implement/scripts/test-step2-dispatch.sh is the offline regression
   # harness for skills/implement/scripts/step2-implement.sh (the /implement

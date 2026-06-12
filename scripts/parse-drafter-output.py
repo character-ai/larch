@@ -75,11 +75,17 @@ def plan_contains_standalone_scout_manifest(plan_text):
         if in_fence:
             continue
         unfenced_lines.append(line)
-    unfenced_text = '\n'.join(unfenced_lines)
-    for match in re.finditer(r'\{', unfenced_text):
+    unfenced_text = plan_text if in_fence else '\n'.join(unfenced_lines)
+    for match in re.finditer(r'(?m)^\s*\{', unfenced_text):
         try:
-            parsed, _ = decoder.raw_decode(unfenced_text, match.start())
+            parsed, end = decoder.raw_decode(unfenced_text, match.start())
         except json.JSONDecodeError:
+            continue
+        line_start = unfenced_text.rfind('\n', 0, match.start()) + 1
+        line_end = unfenced_text.find('\n', end)
+        if line_end == -1:
+            line_end = len(unfenced_text)
+        if unfenced_text[line_start:match.start()].strip() or unfenced_text[end:line_end].strip():
             continue
         if isinstance(parsed, dict) and isinstance(parsed.get('archetypes'), list):
             return True
