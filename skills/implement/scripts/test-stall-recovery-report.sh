@@ -196,6 +196,17 @@ assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7k.out")" "7: argv-only Ste
 assert_eq 2 "$(kv STALL_STEP "$SANDBOX/case7k.out")" "7: argv-only Step 2 hard-bail preserves stall step"
 assert_eq implementation "$(kv PHASE "$SANDBOX/case7k.out")" "7: argv-only Step 2 hard-bail preserves phase"
 assert_eq dirty-state-after-timeout "$(kv BAIL_REASON "$SANDBOX/case7k.out")" "7: dirty-state-after-timeout renders allowlisted bail"
+dir=$(make_tmp case7k2)
+write_state "$dir" 2 implementation protected-path-edit-required-out-of-scope "NOTE=network timeout"
+run_capture "$SANDBOX/case7k2.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq protected-path "$(kv FAILURE_CLASS "$SANDBOX/case7k2.out")" "7: protected-path bail is not transient"
+assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7k2.out")" "7: protected-path bail resumes implementation"
+assert_eq protected-path-edit-required-out-of-scope "$(kv BAIL_REASON "$SANDBOX/case7k2.out")" "7: protected-path bail renders allowlisted token"
+assert_eq protected-path-bail-token "$(kv MATCHED_CLASSIFIER_PATTERN "$SANDBOX/case7k2.out")" "7: protected-path bail pattern wins over stale evidence"
+dir=$(make_tmp case7k3)
+run_capture "$SANDBOX/case7k3.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true --stall-step 2 --phase implementation --bail-reason protected-path-edit-required-out-of-scope
+assert_eq protected-path "$(kv FAILURE_CLASS "$SANDBOX/case7k3.out")" "7: argv-only protected-path bail classifies"
+assert_eq step2-impl "$(kv RESUME_HINT "$SANDBOX/case7k3.out")" "7: argv-only protected-path bail resumes implementation"
 dir=$(make_tmp case7l)
 write_state "$dir" 2 implementation
 run_capture "$SANDBOX/case7l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason main-branch-post-dispatch
@@ -236,6 +247,7 @@ transient-infra|4|sleep-seconds.sh 5
 test-failure|8|none
 lint-failure|8|none
 dispatch-failure|3|none
+protected-path|1|none
 same-cause-repeat|2|none
 contract-failure|0|none
 unrecoverable|0|none
