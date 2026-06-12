@@ -1566,7 +1566,7 @@ grep -Fq 'MERGED_COUNT=0' "$TMP/out-pattern-attest.env" || fail "attestation pat
 assert_whitespace_only "$PAT/in.md" "attestation pattern findings.md must be whitespace-only"
 grep -Fq "$EXPECTED_REQUIRE_PATTERN" "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
 
-echo "=== codex_primary_narration_routes_to_phase2_cursor ==="
+echo "=== cursor_primary_runs_in_phase1_with_both_vendors ==="
 WR="$TMP/codex-primary-phase2"
 mkdir -p "$WR"
 cp "$TMP/in3.md" "$WR/in.md"
@@ -1581,20 +1581,20 @@ LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
 AGGREGATE_DISPATCH_SH="$WR/dispatch-wrapper.sh" \
 AGGREGATE_DISPATCH_ARGV_LOG="$WR/dispatch.argv" \
 CODEX_STUB_RESULT_CONTENT='Merging duplicate reviewer findings by behavioral risk.' \
-CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor phase 2 merged title\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt\n- **Severity**: nit\n- **Concern**: Cursor phase 2 concern\n- **Suggested revision**: fix\n' \
+CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor phase 1 merged title\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt\n- **Severity**: nit\n- **Concern**: Cursor phase 1 concern\n- **Suggested revision**: fix\n' \
 "$AGG" \
     --findings-file "$WR/in.md" \
     --review-tmpdir "$WR" \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-wf-rec.env"
-grep -Fq 'AGGREGATED=true' "$TMP/out-wf-rec.env" || fail "phase2 recover AGGREGATED"
-grep -Fq 'REASON=ok' "$TMP/out-wf-rec.env" || fail "phase2 recover REASON"
-grep -Fq 'Cursor phase 2 concern' "$WR/in.md" || fail "expected cursor phase2 ballot persisted"
+grep -Fq 'AGGREGATED=true' "$TMP/out-wf-rec.env" || fail "cursor primary recover AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-wf-rec.env" || fail "cursor primary recover REASON"
+grep -Fq 'Cursor phase 1 concern' "$WR/in.md" || fail "expected cursor phase1 ballot persisted"
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$WR/aggregator-dispatch.env" || fail "expected cursor final tool"
-grep -Eq '^PHASE2_SLOTS=.+aggregator-output-phase2\.txt' "$WR/aggregator-dispatch.env" || fail "expected phase2 slot output"
-grep -Fq -- '--require-result-pattern' "$WR/dispatch.argv" || fail "phase2 recover dispatch missing pattern gate"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$WR/dispatch.argv" || fail "phase2 recover pattern mismatch"
+grep -Eq '^PHASE1_SLOTS=.+aggregator-output\.txt' "$WR/aggregator-dispatch.env" || fail "cursor primary should use phase1 output"
+grep -Fq -- '--require-result-pattern' "$WR/dispatch.argv" || fail "cursor primary dispatch missing pattern gate"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$WR/dispatch.argv" || fail "cursor primary pattern mismatch"
 grep -Fq 'PHASES_ATTEMPTED=' "$TMP/out-wf-rec.env" && fail "PHASES_ATTEMPTED must not be emitted"
 
 echo "=== dispatcher_rejects_pseudo_finding_heading ==="
@@ -1625,7 +1625,7 @@ grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$PSE/aggregator-dispatch.env" || fail "pseud
 grep -Fq -- '--require-result-pattern' "$PSE/dispatch.argv" || fail "pseudo-heading dispatch missing pattern gate"
 grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
 
-echo "=== codex_absent_runs_cursor_in_phase2 ==="
+echo "=== cursor_primary_runs_in_phase1 ==="
 WS="$TMP/waterfall-skip"
 mkdir -p "$WS"
 cp "$TMP/in3.md" "$WS/in.md"
@@ -1636,17 +1636,17 @@ WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.01 \
 LARCH_TRANSIENT_RETRY_DELAY=0 \
 LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
-CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor phase 2 with Codex absent\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt\n- **Severity**: nit\n- **Concern**: codex absent cursor concern\n- **Suggested revision**: fix\n' \
+CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor phase 1 primary\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt\n- **Severity**: nit\n- **Concern**: cursor primary concern\n- **Suggested revision**: fix\n' \
 "$AGG" \
     --findings-file "$WS/in.md" \
     --review-tmpdir "$WS" \
     --codex-present false \
     --cursor-present true \
     --mode diff >"$TMP/out-wf-skip.env"
-grep -Fq 'AGGREGATED=true' "$TMP/out-wf-skip.env" || fail "codex absent AGGREGATED"
-grep -Fq 'REASON=ok' "$TMP/out-wf-skip.env" || fail "codex absent cursor REASON"
-grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$WS/aggregator-dispatch.env" || fail "codex absent final tool"
-grep -Eq '^PHASE2_SLOTS=.+aggregator-output-phase2\.txt' "$WS/aggregator-dispatch.env" || fail "codex absent should use phase2 cursor"
+grep -Fq 'AGGREGATED=true' "$TMP/out-wf-skip.env" || fail "cursor primary AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-wf-skip.env" || fail "cursor primary REASON"
+grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$WS/aggregator-dispatch.env" || fail "cursor primary final tool"
+grep -Eq '^PHASE1_SLOTS=.+aggregator-output\.txt' "$WS/aggregator-dispatch.env" || fail "cursor primary should run in phase1"
 
 echo "=== empty_merge_negative_finding_prose: ### FINDING_ids must not trip preamble signal ==="
 cp "$TMP/in3.md" "$TMP/in3-negprose.md"
