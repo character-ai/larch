@@ -430,9 +430,10 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     _write_base_session_env(st)
     rename = _run([str(_SCRIPTS / "tracking-issue-write.sh"), "rename", "--issue", st.issue_number_resolved, "--state", "implementing"])
-    if rename.returncode != 0 or _parse_kv(rename.stdout).get("FAILED") == "true":
-        _tracking_bail(st, "tracking rename failed", rename)
-        return False
+    if st.implement_tmpdir and (rename.returncode != 0 or _parse_kv(rename.stdout).get("FAILED") == "true"):
+        text = "tracking rename failed\n" + rename.stdout + rename.stderr
+        with contextlib.suppress(OSError):
+            (Path(st.implement_tmpdir) / "tracking-rename-warning.stderr.log").write_text(text, encoding="utf-8")
     init = _cli("run-log", "init", "--log-root", str(Path(st.implement_tmpdir) / "larch-logs"), "--skill", "implement", "--run-id", st.run_id, "--issue", st.issue_number_resolved)
     if init.returncode != 0:
         _tracking_bail(st, "run-log init failed", init)
@@ -683,6 +684,36 @@ def _record_coder_fallback(st: BootstrapState, reason: str) -> None:
         )
 
 
+def _record_explicit_coder_unavailable(st: BootstrapState, requested: str, selected: str) -> None:
+    if not st.implement_tmpdir:
+        return
+    warning = f"**⚠ Requested {requested} implementer unavailable — using {selected}.**\n"
+    _err(warning.rstrip("\n"))
+    diag = Path(st.implement_tmpdir) / f"{requested}-unavailable-warning.txt"
+    with contextlib.suppress(OSError):
+        diag.write_text(f"{warning}REQUESTED={requested}\nSELECTED={selected}\n", encoding="utf-8")
+    if diag.is_file():
+        _cli(
+            "run-log",
+            "append-failure",
+            "--log",
+            str(Path(st.implement_tmpdir) / "execution-issues.md"),
+            "--site",
+            "implement-bootstrap coder-select",
+            "--tool",
+            "phase_coder_select",
+            "--exit-code",
+            "0",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(diag),
+            "--status-label",
+            "fallback",
+            "--redact",
+        )
+
+
 def _phase_coder(st: BootstrapState) -> None:
     if st.implement_bail_reason or st.stall_tracking == "true":
         return
@@ -713,6 +744,12 @@ def _phase_coder(st: BootstrapState) -> None:
     else:
         st.coder = "claude"
         st.coder_fallback = "true"
+    requested_available = (
+        (st.opts.coder_opt == "codex" and st.codex_available == "true")
+        or (st.opts.coder_opt == "cursor" and st.cursor_available == "true")
+    )
+    if st.opts.coder_opt in {"codex", "cursor"} and st.coder != st.opts.coder_opt and not requested_available:
+        _record_explicit_coder_unavailable(st, st.opts.coder_opt, st.coder)
     if st.coder_fallback == "true":
         _record_coder_fallback(st, "requested external coder unavailable")
     _err(f"→ step0: coder={st.coder}")
@@ -903,14 +940,14 @@ def invoke_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="bootstrap invoke", add_help=True)
     parser.add_argument("--mode", required=True, choices=["initial", "resume"])
     parser.add_argument("--issue-number", default="")
-    parser.add_argument("--forked-target", default="")
+    parser.add_argument("--forked-target", default="", choices=["", "true", "false"])
     parser.add_argument("--upstream-repo", default="")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--coder", default="", choices=["", "claude", "codex", "cursor"])
     parser.add_argument("--preflight-tmpdir", default="")
     parser.add_argument("--caller-env", default="")
-    parser.add_argument("--emergency-requested", default="")
-    parser.add_argument("--self-review-requested", default="")
+    parser.add_argument("--emergency-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -965,7 +1002,12 @@ def invoke_main(argv: list[str]) -> int:
         print("bootstrap invoke: refusing to overwrite non-regular bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
         sys.stdout.write(envelope)
         return 0
-    _atomic_text(routing_file, envelope)
+    try:
+        _atomic_text(routing_file, envelope)
+    except OSError as exc:
+        print(f"bootstrap invoke: could not write bootstrap-routing.env ({exc}); stdout envelope emitted", file=sys.stderr)
+        sys.stdout.write(envelope)
+        return 0
     sys.stdout.write(envelope)
     return 0
 

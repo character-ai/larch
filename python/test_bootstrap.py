@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import bootstrap
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_filtered_envelope_allowlist_and_resume_empty_coder() -> None:
@@ -217,3 +220,245 @@ def test_run_bootstrap_unexpected_exception_emits_structured_failure(monkeypatch
     rc = bootstrap.run_bootstrap(bootstrap.BootstrapOptions(up_to_phase="infra"))
     assert rc == 2
     assert "STEP_FAILED=internal-error" in capsys.readouterr().out
+
+
+def test_invoke_rejects_invalid_boolean_cli_value(capsys) -> None:
+    rc = bootstrap.invoke_main(["--mode", "initial", "--forked-target", "tru"])
+    assert rc == 1
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_bootstrap_invoke_rejects_invalid_boolean_value() -> None:
+    result = subprocess.run(
+        [sys.executable, str(_REPO_ROOT / "python" / "cli.py"), "bootstrap", "invoke", "--mode", "initial", "--forked-target", "tru"],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "invalid choice" in result.stderr
+
+
+def test_step0_wrapper_rejects_invalid_boolean_value() -> None:
+    result = subprocess.run(
+        ["bash", str(_REPO_ROOT / "skills" / "implement" / "scripts" / "step-0-bootstrap.sh"), "--mode", "initial", "--forked-target", "tru"],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "--forked-target must be true or false" in result.stderr
+
+
+def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
+    captured: list[bootstrap.BootstrapOptions] = []
+    monkeypatch.setenv("TARGET_ISSUE_NUMBER", "41")
+    monkeypatch.setenv("CALLER_ENV_PATH", "/env/caller")
+    monkeypatch.setenv("PREFLIGHT_TMPDIR", "/env/preflight")
+    monkeypatch.setenv("forked_target", "true")
+    monkeypatch.setenv("UPSTREAM_REPO", "env/upstream")
+    monkeypatch.setenv("RUN_ID", "ENV")
+    monkeypatch.setenv("emergency_requested", "true")
+    monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("coder", "cursor")
+
+    def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
+        captured.append(opts)
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=ARG")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    rc = bootstrap.invoke_main(
+        [
+            "--mode",
+            "initial",
+            "--issue-number",
+            "7",
+            "--caller-env",
+            "/arg/caller",
+            "--preflight-tmpdir",
+            "/arg/preflight",
+            "--forked-target",
+            "false",
+            "--upstream-repo",
+            "arg/upstream",
+            "--run-id",
+            "ARG",
+            "--emergency-requested",
+            "false",
+            "--self-review-requested",
+            "false",
+            "--coder",
+            "codex",
+        ],
+    )
+    assert rc == 0
+    opts = captured[0]
+    assert opts.issue_number == "7"
+    assert opts.caller_env == "/arg/caller"
+    assert opts.preflight_tmpdir == "/arg/preflight"
+    assert opts.forked_target == "false"
+    assert opts.upstream_repo == "arg/upstream"
+    assert opts.run_id == "ARG"
+    assert opts.emergency_requested == "false"
+    assert opts.self_review_requested == "false"
+    assert opts.coder_opt == "codex"
+
+
+def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> None:
+    captured: list[bootstrap.BootstrapOptions] = []
+    monkeypatch.setenv("TARGET_ISSUE_NUMBER", "41")
+    monkeypatch.setenv("CALLER_ENV_PATH", "/env/caller")
+    monkeypatch.setenv("PREFLIGHT_TMPDIR", "/env/preflight")
+    monkeypatch.setenv("forked_target", "true")
+    monkeypatch.setenv("UPSTREAM_REPO", "env/upstream")
+    monkeypatch.setenv("RUN_ID", "ENV")
+    monkeypatch.setenv("emergency_requested", "true")
+    monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("coder", "cursor")
+
+    def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
+        captured.append(opts)
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    opts = captured[0]
+    assert opts.issue_number == "41"
+    assert opts.caller_env == "/env/caller"
+    assert opts.preflight_tmpdir == "/env/preflight"
+    assert opts.forked_target == "true"
+    assert opts.upstream_repo == "env/upstream"
+    assert opts.run_id == "ENV"
+    assert opts.emergency_requested == "true"
+    assert opts.self_review_requested == "true"
+    assert opts.coder_opt == "cursor"
+
+
+def test_invoke_contract_failure_maps_to_exit_2(monkeypatch) -> None:
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print("STEP_FAILED=copy-plan")
+        print("IMPLEMENT_TMPDIR=")
+        return bootstrap.BOOTSTRAP_CONTRACT_FAILURE
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 2
+
+
+def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkeypatch, capsys) -> None:
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        print("coder=codex")
+        return 0
+
+    def fail_atomic(_path: Path, _text: str) -> None:
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    monkeypatch.setattr(bootstrap, "_atomic_text", fail_atomic)  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    captured = capsys.readouterr()
+    assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "RUN_ID=R1" in captured.out
+    assert "could not write bootstrap-routing.env" in captured.err
+
+
+def test_routing_parser_preserve_coder_on_resume(tmp_path, capsys) -> None:
+    tmpdir = tmp_path / "impl"
+    tmpdir.mkdir()
+    (tmpdir / "bootstrap-routing.env").write_text("IMPLEMENT_TMPDIR=/file\ncoder=codex\nRUN_ID=R1\n", encoding="utf-8")
+    stdout = tmp_path / "stdout.txt"
+    stdout.write_text(f"IMPLEMENT_TMPDIR={tmpdir}\ncoder=cursor\nBRANCH_NAME=resume-branch\n", encoding="utf-8")
+    assert bootstrap.parse_routing_main(["--stdout-file", str(stdout), "--tmpdir", str(tmpdir), "--resume", "true"]) == 0
+    out = capsys.readouterr().out
+    assert "coder=" not in out
+    assert "unset coder" not in out
+    assert "RUN_ID=R1" in out
+    assert "BRANCH_NAME=resume-branch" in out
+
+
+@pytest.mark.parametrize(
+    ("requested", "codex_available", "cursor_available", "expected_coder", "expected_fallback", "expected_explicit_warning"),
+    [
+        ("cursor", "true", "false", "codex", "", True),
+        ("codex", "false", "true", "cursor", "", True),
+        ("cursor", "false", "false", "claude", "true", True),
+        ("", "true", "true", "codex", "", False),
+        ("", "false", "true", "cursor", "", False),
+        ("", "false", "false", "claude", "true", False),
+    ],
+)
+def test_phase_coder_selection_matrix(
+    tmp_path,
+    monkeypatch,
+    requested: str,
+    codex_available: str,
+    cursor_available: str,
+    expected_coder: str,
+    expected_fallback: str,
+    expected_explicit_warning: bool,
+) -> None:
+    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    explicit_warnings: list[tuple[str, str]] = []
+    fallback_reasons: list[str] = []
+    monkeypatch.setattr(
+        bootstrap,
+        "_record_explicit_coder_unavailable",
+        lambda _st, req, selected: explicit_warnings.append((req, selected)),
+    )  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda _st, reason: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt=requested),
+        implement_tmpdir=str(tmp_path),
+        repo_unavailable="false",
+        plan_file=str(tmp_path / "plan.txt"),
+        codex_available=codex_available,
+        cursor_available=cursor_available,
+    )
+    bootstrap._phase_coder(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.coder == expected_coder
+    assert st.coder_fallback == expected_fallback
+    assert bool(explicit_warnings) is expected_explicit_warning
+    assert bool(fallback_reasons) is (expected_fallback == "true")
+
+
+def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "tracking-issue-write.sh" in str(argv[0]):
+            calls.append(("rename",))
+            return subprocess.CompletedProcess(argv, 1, "FAILED=true\n", "rename failed\n")
+        if "post-tracking-issue.sh" in str(argv[0]):
+            calls.append(("post",))
+            return subprocess.CompletedProcess(argv, 0, "POSTED=true\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="tracking", issue_number="7"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        repo_unavailable="false",
+        issue_number_resolved="7",
+        run_id="RUN1",
+    )
+    assert bootstrap._perform_tracking_side_effects(st, write_sentinel=True)  # pyright: ignore[reportPrivateUsage]
+    assert st.stall_tracking == "false"
+    assert st.implement_bail_reason == ""
+    assert ("run-log", "init", "--log-root", str(tmp_path / "larch-logs"), "--skill", "implement", "--run-id", "RUN1", "--issue", "7") in calls
+    assert ("post",) in calls
+    assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")

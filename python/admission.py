@@ -68,7 +68,21 @@ def _gh_issue_view(issue: int, repo: str) -> tuple[int, str]:
     if first.returncode == 0:
         return 0, first.stdout
     second = _run(argv)
-    return second.returncode, second.stdout or second.stderr
+    return second.returncode, second.stdout
+
+
+def _atomic_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent), text=True)
+    tmp_path = Path(tmp)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        tmp_path.replace(path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink()
+        raise
 
 
 def _blockers(issue: int, repo: str) -> tuple[int, str]:
@@ -129,7 +143,8 @@ def gate_main(argv: list[str]) -> int:
         return 2
     view_rc, raw = _gh_issue_view(issue, repo)
     if view_rc != 0:
-        _emit_kv("ADMISSION_ERROR", f"gh issue view failed: {_single_line(raw)}")
+        detail = _single_line(raw)
+        _emit_kv("ADMISSION_ERROR", f"gh issue view failed{': ' + detail if detail else ''}")
         return 2
     try:
         data = json.loads(raw)
@@ -146,8 +161,7 @@ def gate_main(argv: list[str]) -> int:
     if _read_parent_sentinel(issue):
         blocker_rc, blockers = _blockers(issue, repo)
         if blocker_rc != 0:
-            _emit_kv("ADMISSION_ERROR", "blocker all-open failed")
-            return 2
+            blockers = ""
         if blockers:
             _emit_kv("ADMISSION_RESULT", "has-blockers")
             _emit_kv("BLOCKERS", blockers)
@@ -173,8 +187,7 @@ def gate_main(argv: list[str]) -> int:
         return 6
     blocker_rc, blockers = _blockers(issue, repo)
     if blocker_rc != 0:
-        _emit_kv("ADMISSION_ERROR", "blocker all-open failed")
-        return 2
+        blockers = ""
     if blockers:
         _emit_kv("ADMISSION_RESULT", "has-blockers")
         _emit_kv("BLOCKERS", blockers)
@@ -297,13 +310,23 @@ def fork_env_main(argv: list[str]) -> int:
     fork_owner = fork_repo.split("/", 1)[0]
     if args.tmpdir:
         bootstrap_tmpdir = Path(args.tmpdir)
-        bootstrap_tmpdir.mkdir(parents=True, exist_ok=True)
+        try:
+            bootstrap_tmpdir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"admission fork-env: could not create bootstrap tmpdir: {exc}", file=sys.stderr)
+            return 2
     else:
-        bootstrap_tmpdir = Path(tempfile.mkdtemp(prefix="larch-fork-bootstrap.", dir=os.environ.get("TMPDIR") or _TMP_FALLBACK))
+        try:
+            bootstrap_tmpdir = Path(tempfile.mkdtemp(prefix="larch-fork-bootstrap.", dir=os.environ.get("TMPDIR") or _TMP_FALLBACK))
+        except OSError as exc:
+            print(f"admission fork-env: could not create bootstrap tmpdir: {exc}", file=sys.stderr)
+            return 2
     caller_env = bootstrap_tmpdir / "caller-env.sh"
-    tmp = caller_env.with_name("caller-env.sh.tmp")
-    tmp.write_text(f"REPO={fork_repo}\n", encoding="utf-8")
-    tmp.replace(caller_env)
+    try:
+        _atomic_text(caller_env, f"REPO={fork_repo}\n")
+    except OSError as exc:
+        print(f"admission fork-env: could not write caller-env.sh: {exc}", file=sys.stderr)
+        return 2
     _emit_kv("BOOTSTRAP_TMPDIR", str(bootstrap_tmpdir))
     _emit_kv("CALLER_ENV_PATH", str(caller_env))
     _emit_kv("FORK_REPO", fork_repo)

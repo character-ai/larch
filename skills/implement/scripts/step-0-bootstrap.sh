@@ -49,6 +49,12 @@ while [ $# -gt 0 ]; do
 done
 case "$MODE" in initial|resume) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --mode initial|resume is required' >&2; exit 2 ;; esac
+case "$EMERGENCY_REQUESTED_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --emergency-requested must be true or false' >&2; exit 2 ;; esac
+case "$SELF_REVIEW_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --self-review-requested must be true or false' >&2; exit 2 ;; esac
+case "$FORKED_TARGET_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --forked-target must be true or false' >&2; exit 2 ;; esac
 
 
 rehydrate_plugin_root() {
