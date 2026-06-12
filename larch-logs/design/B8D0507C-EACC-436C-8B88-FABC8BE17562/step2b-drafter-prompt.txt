@@ -1,0 +1,183 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+Trusted resolved design_classification: SIMPLE
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES_CLASSIFIED_SIMPLE, draft from direct codebase/doc inspection without fabricating sketch agreement; if exactly NO_SKETCHES_DEGRADED_HARD, preserve HARD thoroughness without fabricating sketch agreement.
+- Read discussion-round1.md when present for scope boundaries and hard constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation only when it does not conflict with binding dialectic resolutions or explicit user refusals.
+- Read dialectic-resolutions.md when present and branch on Disposition: voted — follow Resolution and address antithesis; fallback-to-synthesis / bucket-skipped / over-cap — synthesis stands, note Why reason, do not fabricate antithesis-engagement prose.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# Review progress report should produce Gantt timing charts for each completed review round
+
+If no rounds have been completed, it should say so.
+This should apply to both /design and /implement reviews
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES_CLASSIFIED_SIMPLE
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Target file
+- **Question**: Which file owns the review progress report?
+- **Resolution**: `scripts/render-review-phase-detail.sh` (called by both `/design` `render-final-summary.sh` and `/implement` `write-final-report.sh`)
+- **Source**: codebase
+
+## Decision 2: No-rounds message
+- **Question**: When no review rounds completed, what should the section say?
+- **Resolution**: Output `## Review Phase Detail\n\nNo review rounds completed.\n` instead of empty content. Change occurs at the `[ -s "$rounds_list" ]` guard.
+- **Source**: issue body
+
+## Decision 3: Gantt placement
+- **Question**: Where in the section should Gantt charts appear?
+- **Resolution**: After the per-round summary table, before the "Top reviewers" block.
+- **Source**: codebase structure
+
+## Decision 4: Data source for Gantt
+- **Question**: What data drives the Gantt bars?
+- **Resolution**: `vendor` rows in `timing-ledger.tsv` (col[8]=start_s, col[9]=end_s), windowed to each round's start/end from the corresponding `round` row.
+- **Source**: codebase
+
+## Decision 5: Gantt format
+- **Question**: ASCII or mermaid?
+- **Resolution**: Mermaid `gantt` with `dateFormat X`, `axisFormat %M:%S`, timestamps normalized relative to round start (0-based seconds).
+- **Source**: issue request + existing mermaid usage in the repo
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Add a mermaid Gantt timing chart per completed review round to the Review Phase Detail section.
+- Show "No review rounds completed." when no rounds ran, instead of rendering nothing.
+
+### Non-goals
+- No changes to architecture diagram generation (Step 3b).
+- No new `larch:diagrams` tracked diagram artifacts; Gantt charts live only in the final summary note.
+- No changes to how timing data is recorded (timing ledger writers are untouched).
+
+### Approach sketch
+- Modify `scripts/render-review-phase-detail.sh`: change the "no rounds" branch from `finalize_empty` to a message; add per-round Gantt generation using vendor rows from `timing-ledger.tsv`.
+- Each Gantt block uses `dateFormat X`, `axisFormat %M:%S`, timestamps normalized to seconds since round start.
+- Label each bar via the existing `slot_map` lookup and `derive.awk` fallback.
+- Cap tasks per round at 25.
+- Update sibling `.md` doc and harness `test-render-review-phase-detail.sh`.
+
+### Surfaces in scope
+- `scripts/render-review-phase-detail.sh`
+- `scripts/render-review-phase-detail.md`
+- `scripts/test-render-review-phase-detail.sh`
+
+### Open questions
+- None.
+
+</design_outline>
+
