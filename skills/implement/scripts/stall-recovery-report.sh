@@ -726,7 +726,7 @@ cmd_classify() {
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local finalize_stall_step="" finalize_phase="" finalize_stall_tracking="" finalize_bail_reason="" finalize_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
-    local stall_step phase stall_tracking bail_reason bail_reason_raw exit_code failure_class signature resume_hint last_sig evidence_digest matched_pattern classification_file classification_content dispatcher failure_detail_log_value
+    local stall_step phase stall_tracking bail_reason bail_reason_raw exit_code failure_class signature resume_hint last_sig evidence_digest matched_pattern classification_file classification_content dispatcher failure_detail_log_value=""
 
     while [ $# -gt 0 ]; do
         case "$1" in
