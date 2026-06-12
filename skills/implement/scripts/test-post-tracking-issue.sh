@@ -18,11 +18,15 @@ assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; 
 finish(){ if [ "$FAIL" -ne 0 ]; then printf 'FAILURES=%s\n' "$FAIL" >&2; exit 1; fi; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"
-mkdir -p "$plugin/scripts"
+mkdir -p "$plugin/scripts" "$plugin/python"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-cat > "$plugin/scripts/read-plugin-version.sh" <<'STUB'
+cat > "$plugin/python/cli.py" <<'STUB'
 #!/usr/bin/env bash
-printf 'LARCH_PLUGIN_VERSION=9.9.9\n'
+if [ "$1 $2" = "plugin read-version" ]; then
+  printf 'LARCH_PLUGIN_VERSION=9.9.9\n'
+  exit 0
+fi
+exit 2
 STUB
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -36,7 +40,7 @@ while [ $# -gt 0 ]; do
 done
 printf 'COMMENT_URL=https://example.test/comment/1\n'
 STUB
-chmod +x "$plugin/scripts/read-plugin-version.sh" "$plugin/scripts/tracking-issue-summary.sh"
+chmod +x "$plugin/python/cli.py" "$plugin/scripts/tracking-issue-summary.sh"
 
 # Happy path: IMPLEMENT_TMPDIR with parent-issue.md and session-env.sh
 impl_dir="$TMP_ROOT/impl"

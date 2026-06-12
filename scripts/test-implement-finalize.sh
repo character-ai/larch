@@ -131,7 +131,7 @@ build_sandbox() {
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$SANDBOX/scripts/lib-execution-issues.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
-    mkdir -p "$SANDBOX/python/stubs/session"
+    mkdir -p "$SANDBOX/python/stubs/session" "$SANDBOX/python/stubs/verify"
     cp "$SCRIPT_DIR/../python/"*.py "$SANDBOX/python/"
     mv "$SANDBOX/python/cli.py" "$SANDBOX/python/real-cli.py"
     cat >"$SANDBOX/python/cli.py" <<'DISPATCHER'
@@ -187,8 +187,8 @@ def main() -> None:
             for arg in sys.argv[2:]:
                 handle.write(f"{arg}\n")
         raise SystemExit(0)
-    if len(sys.argv) >= 3 and sys.argv[1] == "session":
-        stub = root / "stubs" / "session" / sys.argv[2]
+    if len(sys.argv) >= 3 and sys.argv[1] in {"session", "verify"}:
+        stub = root / "stubs" / sys.argv[1] / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
@@ -206,13 +206,14 @@ echo "BRANCH_DELETED=${STUB_BRANCH_DELETED:-true}"
 exit "${STUB_LOCAL_RC:-0}"
 STUB
     chmod +x "$SANDBOX/python/stubs/session/local-cleanup"
-    cat > "$SANDBOX/scripts/verify-main.sh" <<'STUB'
+    cat > "$SANDBOX/python/stubs/verify/main" <<'STUB'
 #!/usr/bin/env bash
 echo "VERIFIED=${STUB_VERIFIED:-true}"
 echo "COMMIT_HASH=${STUB_COMMIT_HASH:-abc1234}"
 echo "COMMIT_MESSAGE=${STUB_COMMIT_MESSAGE:-Implement finalizer (#123)}"
 exit "${STUB_VERIFY_RC:-0}"
 STUB
+chmod +x "$SANDBOX/python/stubs/verify/main"
     cat > "$SANDBOX/scripts/tracking-issue-write.sh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" >> "$SANDBOX/rename-argv.txt"
@@ -787,7 +788,7 @@ rm -f "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
 write_state "$STATE" ISSUE_NUMBER=
 printf 'RUN_ID=testrun123\n' >> "$STATE"
 # The canonical content of the section (what Step 11 would write after normalization)
-NORM_CONTENT="- **Step bump — release-set-version.sh failed (exit 1)**:
+NORM_CONTENT="- **Step bump — release set-version failed (exit 1)**:
   \`\`\`
 APPLIED=false
 ERROR=origin/main has already bumped; re-classify needed

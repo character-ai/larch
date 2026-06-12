@@ -17,7 +17,7 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 | Flag | Purpose |
 |------|---------|
 | `--dry-run` | Compute and preview only; exit before any write (no branch, PR, merge, tag, Release, promote, or `/upgrade-larch`) |
-| `--bump major\|minor\|patch` | Override the aggregate bump type from `release-prepare.sh` |
+| `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
 | `--repo OWNER/REPO` | Hub repo for `gh` (default: `scripts/resolve-repo.sh`, falling back to `character-ai/larch`) |
 
 ## Step 1 — Parse flags and guard
@@ -35,7 +35,7 @@ Guard (abort before prepare):
 
 On failure, print a clear operator-visible error and stop.
 
-**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch, fast-forward, or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` and fast-forward local `main` only when it is strictly behind `origin/main`; refuse (do not rebase) when local `main` has unpublished commits or has diverged, then continue to Step 2 and let `release-prepare.sh` report `ERROR=stale-local-main` if the cached refs still show a stale checkout.
+**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch, fast-forward, or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` and fast-forward local `main` only when it is strictly behind `origin/main`; refuse (do not rebase) when local `main` has unpublished commits or has diverged, then continue to Step 2 and let `release prepare` report `ERROR=stale-local-main` if the cached refs still show a stale checkout.
 
 ```bash
 dry_run=false
@@ -70,7 +70,7 @@ fi
 
 Branch on `sync_rc`:
 - **Exit 0**: on non-dry-run, local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `sync_out` to note a no-op); on `--dry-run`, sync was deliberately skipped. Continue.
-- **Exit 3** (`LOCAL_MAIN_NOT_PUBLISHED=true`): local `main` has unpublished commits or has diverged from `origin/main`; continue to Step 2 and let `release-prepare.sh` report `ERROR=stale-local-main`.
+- **Exit 3** (`LOCAL_MAIN_NOT_PUBLISHED=true`): local `main` has unpublished commits or has diverged from `origin/main`; continue to Step 2 and let `release prepare` report `ERROR=stale-local-main`.
 - **Other non-zero**: print `**⚠ /release: sync with origin/main failed (exit <rc>). Check network/git state.**` and stop.
 
 On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
@@ -79,7 +79,7 @@ On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
 
 ```bash
 PREPARE_DIR="$(mktemp -d)"
-prepare_out=$("$PWD/.claude/skills/release/scripts/release-prepare.sh" \
+prepare_out=$("python3 "$PWD/python/cli.py" release prepare" \
   --repo "$REPO" \
   ${BUMP_OVERRIDE:+--bump "$BUMP_OVERRIDE"} \
   --out-dir "$PREPARE_DIR")
@@ -136,7 +136,7 @@ On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larc
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
-$PWD/.claude/skills/release/scripts/release-set-version.sh "${NEW_VERSION}"
+python3 "$PWD/python/cli.py" release set-version "${NEW_VERSION}"
 git add .claude-plugin/plugin.json
 git commit -m "Release v${NEW_VERSION}"
 scripts/create-pr.sh --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
@@ -158,32 +158,32 @@ On CI or merge failure, surface the helper status and stop (no tag/Release/promo
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
-$PWD/.claude/skills/release/scripts/release-finish.sh \
+python3 "$PWD/python/cli.py" release finish \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
   --repo "$REPO" \
   --pr "$PR_NUMBER"
 ```
 
-See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotent re-run safety.
+See `$PWD/python/cli.py release finish` for `TARGET_OID` resolution and idempotent re-run safety.
 
-If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release-prepare.sh` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
+If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release prepare` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
 
 ```bash
 RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
 RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
-$PWD/.claude/skills/release/scripts/release-finish.sh \
+python3 "$PWD/python/cli.py" release finish \
   --version "$NEW_VERSION" \
   --notes-file "$RECOVERY_NOTES_FILE" \
   --repo "$REPO" \
   --pr "$PR_NUMBER"
 ```
 
-Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
+Or promote-only: `python3 "$PWD/python/cli.py" release promote "$NEW_VERSION" --repo "$REPO"`.
 
-After a successful `release-finish.sh` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release-finish.sh` retry command after a failure, expand `"$RECOVERY_NOTES_FILE"` to its concrete path; the temp `"$NOTES_DIR"` may be removed after the durable recovery copy exists.
+After a successful `release finish` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release finish` retry command after a failure, expand `"$RECOVERY_NOTES_FILE"` to its concrete path; the temp `"$NOTES_DIR"` may be removed after the durable recovery copy exists.
 
-**Recovery when remote tag exists on a different commit:** `release-finish.sh` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release-finish.sh` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
+**Recovery when remote tag exists on a different commit:** `release finish` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release finish` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
 
 ## Step 7 — Upgrade local install
 
@@ -319,25 +319,25 @@ If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=tr
 
 Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless noted):
 
-- `release-prepare.sh` (contract: `release-prepare.md`) — baseline, PR list, aggregate bump KV
+- `release prepare` (contract: `release-prepare.md`) — baseline, PR list, aggregate bump KV
 - `release-set-version.sh` (contract: `release-set-version.md`) — atomic `plugin.json` version write
-- `release-finish.sh` (contract: `release-finish.md`) — tag, GitHub Release, promote tail
+- `release finish` (contract: `release-finish.md`) — tag, GitHub Release, promote tail
 - `promote-latest-release.sh` (contract: `promote-latest-release.md`) — legacy helper; superseded by the cut-a-release flow but retained for one-off promotion
 
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/resolve-repo.sh`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
+- `scripts/resolve-repo.sh`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `python3 "$PWD/python/cli.py" release promote` (contract: `python/cli.py release promote`)
 - `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 
-- `classify-bump.sh` (contract: `classify-bump.md`) — semver bump classifier; `release-prepare.sh` defaults `CLASSIFY_BUMP` to this path
+- `classify-bump.sh` (contract: `classify-bump.md`) — semver bump classifier; `release prepare` defaults `CLASSIFY_BUMP` to this path
 
 Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`):
 
-- `test-release-prepare.sh` (contract: `test-release-prepare.md`)
+- `test-release prepare` (contract: `test-release-prepare.md`)
 - `test-release-set-version.sh` (contract: `test-release-set-version.md`)
-- `test-release-finish.sh` (contract: `test-release-finish.md`)
-- `scripts/test-promote-release.sh` (contract: `scripts/test-promote-release.md`)
+- `test-release finish` (contract: `test-release-finish.md`)
+- `python/test_release.py` (contract: `python/test_release.py`)
 - `test-classify-bump.sh` (contract: `test-classify-bump.md`)

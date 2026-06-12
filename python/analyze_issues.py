@@ -1,13 +1,15 @@
-#!/usr/bin/env python3
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
+# ruff: noqa: B905, FBT001, FURB167, PERF401, PLC0415, PLR2004, PTH123, RET504, RUF005, RUF007, S108, S607, UP006, UP015, UP017, UP035, UP037
+# pylint: skip-file
 """Analyze GitHub issue JSON for backlog and process insight."""
 
 from __future__ import annotations
 
 import argparse
 import collections
-import importlib.util
 import json
 import math
+import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -374,13 +376,9 @@ def growth_chart(
 
 
 def load_render_chart() -> Any:
-    path = Path(__file__).with_name("render-chart.py")
-    spec = importlib.util.spec_from_file_location("render_chart", path)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"ERROR=Unable to load chart renderer at {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    import render_chart
+
+    return render_chart
 
 
 def pattern_observations(issues: Sequence[Mapping[str, Any]], top_k: int, stats: Mapping[str, Any]) -> str:
@@ -705,5 +703,77 @@ def main(argv: Iterable[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+
+
+
+def analyze_main(argv: Sequence[str] | None = None) -> int:
+    return main(argv)
+
+
+def fetch_main(argv: Sequence[str] | None = None) -> int:
+    import subprocess
+    parser = argparse.ArgumentParser(prog="cli.py analyze-issues fetch")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--limit", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    output = Path(args.output)
+    tmp = output.with_name(output.name + f".tmp.{os.getpid()}")
+    try:
+        with tmp.open("w", encoding="utf-8") as handle:
+            res = subprocess.run([
+                "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
+                "--json", "number,title,state,createdAt,closedAt,body,labels,closedByPullRequestsReferences",
+            ], stdout=handle, text=True, check=False)
+        if res.returncode != 0:
+            print(f"ERROR=gh issue list failed for repo {args.repo}", file=sys.stderr)
+            tmp.unlink(missing_ok=True)
+            return 1
+        tmp.replace(output)
+        return 0
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _detect_repo() -> str:
+    import subprocess
+    res = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], capture_output=True, text=True, check=False)
+    if res.returncode == 0 and res.stdout.strip():
+        return res.stdout.strip()
+    remote = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, check=False).stdout.strip()
+    repo = re.sub(r"^git@[^:]+:", "", remote)
+    repo = re.sub(r"^https?://[^/]+/", "", repo)
+    repo = re.sub(r"\.git$", "", repo)
+    return repo
+
+
+def run_main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py analyze-issues run")
+    parser.add_argument("--limit", default="2000")
+    parser.add_argument("--span-days", default="0")
+    parser.add_argument("--top-K", "--top-k", dest="top_k", default="10")
+    parser.add_argument("--categories", default="default", choices=["auto", "default"])
+    parser.add_argument("--lenient", action="store_true")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    repo = _detect_repo()
+    if not re.fullmatch(r"[^/]+/[^/]+", repo):
+        print("ERROR=Unable to detect GitHub repo owner/name", file=sys.stderr)
+        return 1
+    sanitized = re.sub(r"[^A-Za-z0-9_-]", "", repo.replace("/", "-"))
+    if not sanitized:
+        print(f"ERROR=Sanitized repo name is empty (REPO='{repo}')", file=sys.stderr)
+        return 1
+    dump = Path(os.environ.get("TMPDIR", "/tmp")) / f"{sanitized}-issues.json"
+    old_umask = os.umask(0o077)
+    try:
+        rc = fetch_main(["--repo", repo, "--limit", args.limit, "--output", str(dump)])
+    finally:
+        os.umask(old_umask)
+    if rc != 0:
+        return rc
+    analyze_args = ["--json", str(dump), "--top-k", args.top_k, "--categories", args.categories]
+    if args.span_days != "0":
+        analyze_args.extend(["--span-days", args.span_days])
+    if args.lenient:
+        analyze_args.append("--lenient")
+    return main(analyze_args)

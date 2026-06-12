@@ -1,13 +1,7 @@
 ---
 paths:
   - ".claude/skills/audit-runs/SKILL.md"
-  - ".claude/skills/audit-runs/scripts/audit-close-priors.md"
-  - ".claude/skills/audit-runs/scripts/audit-close-priors.sh"
-  - ".claude/skills/audit-runs/scripts/test-audit-runs.sh"
   - ".claude/skills/combine-issues/SKILL.md"
-  - ".claude/skills/combine-issues/scripts/apply-combination.sh"
-  - ".claude/skills/release/scripts/release-finish.md"
-  - ".claude/skills/release/scripts/release-finish.sh"
   - "AGENTS.md"
   - "BASH_AUTHORING.md"
   - "SECURITY.md"

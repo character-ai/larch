@@ -1,18 +1,24 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
 """Version bump classification and application (Phase 2 port of release scripts)."""
 
 from __future__ import annotations
 
 import fnmatch
+import argparse
 import json
+import os
 import re
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import config
 import git
+import logging_util
+import proc
 import redact
 from errors import ShipError, Stalled
 from proc import Runner
@@ -56,6 +62,10 @@ _redact_outbound = redact.redact_outbound
 def _plugin_path(cwd: Path | None) -> Path:
     root = cwd or Path.cwd()
     return root / config.PLUGIN_JSON_PATH
+
+
+def _repo_root_from_cli_file() -> Path:
+    return Path(__file__).resolve().parents[1]
 
 
 def _read_plugin_version(path: Path) -> str:
@@ -151,15 +161,15 @@ def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bo
     return all(file.startswith("larch-logs/") for file in changed)
 
 
-def _idempotency_ref(runner: Runner, *, cwd: str | None) -> str:
-    ref = "HEAD"
+def _idempotency_ref(runner: Runner, *, head_ref: str = "HEAD", cwd: str | None) -> str:
+    ref = head_ref
     depth = 0
     while depth < config.IDEMPOTENCY_DEPTH:
         if git.try_rev_parse(runner, ref, cwd=cwd) is None:
             break
         if _idempotency_transparent(runner, ref, cwd=cwd):
             depth += 1
-            ref = f"HEAD~{depth}"
+            ref = f"{head_ref}~{depth}"
             continue
         break
     return ref
@@ -205,17 +215,68 @@ def _build_reasoning(
     return "\n".join(lines)
 
 
-def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassification:
-    """Classify semver bump from public-surface diff vs main."""
+def _read_plugin_version_at_ref(runner: Runner, ref: str, *, cwd: str | None) -> str:
+    shown = git.show_file(runner, f"{ref}:{config.PLUGIN_JSON_PATH}", cwd=cwd)
+    if shown.returncode != 0:
+        msg = "could not read plugin.json at --head ref"
+        raise ShipError(msg)
+    try:
+        data = json.loads(shown.stdout)
+    except json.JSONDecodeError as exc:
+        msg = "could not parse plugin.json at --head ref"
+        raise ShipError(msg) from exc
+    version = data.get("version")
+    if not isinstance(version, str) or not version:
+        msg = "plugin.json at --head ref missing .version field"
+        raise ShipError(msg)
+    if not re.fullmatch(config.SEMVER_RE, version):
+        msg = f"version {version!r} is not semver (expected X.Y.Z)"
+        raise ShipError(msg)
+    return version
+
+
+def classify_bump(
+    runner: Runner,
+    *,
+    cwd: str | None = None,
+    base_ref: str | None = None,
+    head_ref: str | None = None,
+) -> BumpClassification:
+    """Classify semver bump from public-surface diff vs main or explicit refs."""
     root = Path(cwd) if cwd else Path.cwd()
-    current_version = _read_plugin_version(_plugin_path(root))
+    worktree_version = _read_plugin_version(_plugin_path(root))
 
-    _ = git.fetch(runner, "origin", "main", cwd=cwd)
+    compare_ref = "HEAD"
+    if head_ref:
+        resolved_head = git.try_rev_parse(runner, f"{head_ref}^{{commit}}", cwd=cwd)
+        if not resolved_head:
+            msg = f"could not resolve --head ref: {head_ref}"
+            raise ShipError(msg)
+        compare_ref = resolved_head
+        current_version = _read_plugin_version_at_ref(runner, compare_ref, cwd=cwd)
+        if worktree_version and worktree_version != current_version:
+            msg = (
+                f"worktree plugin.json version ({worktree_version}) != "
+                f"--head ref ({current_version})"
+            )
+            raise ShipError(msg)
+    else:
+        current_version = worktree_version
 
-    base = _resolve_classify_base(runner, cwd=cwd)
-    idem_ref = _idempotency_ref(runner, cwd=cwd)
+    skip_idempotency = False
+    if base_ref:
+        base = git.try_rev_parse(runner, f"{base_ref}^{{commit}}", cwd=cwd)
+        if not base:
+            msg = f"could not resolve --base ref: {base_ref}"
+            raise ShipError(msg)
+        skip_idempotency = True
+    else:
+        _ = git.fetch(runner, "origin", "main", cwd=cwd)
+        base = _resolve_classify_base(runner, cwd=cwd)
+
+    idem_ref = _idempotency_ref(runner, head_ref=compare_ref, cwd=cwd)
     head_subject = git.log_subject(runner, idem_ref, cwd=cwd)
-    if _BUMP_SUBJECT_RE.fullmatch(head_subject):
+    if not skip_idempotency and _BUMP_SUBJECT_RE.fullmatch(head_subject):
         reasoning = _build_reasoning(
             base=base,
             current_version=current_version,
@@ -239,7 +300,7 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
     diff = git.diff_name_status(
         runner,
         base,
-        "HEAD",
+        compare_ref,
         paths=config.CLASSIFY_SCOPE_DIRS,
         find_renames=True,
         cwd=cwd,
@@ -272,7 +333,7 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
                 major.append(f"Renamed agent `{old_path}` → `{new_path}`")
         elif status == "M" and _public_surface_path(old_path):
             old_show = git.show_file(runner, f"{base}:{old_path}", cwd=cwd)
-            new_show = git.show_file(runner, f"HEAD:{old_path}", cwd=cwd)
+            new_show = git.show_file(runner, f"{compare_ref}:{old_path}", cwd=cwd)
             if old_show.returncode != 0 or new_show.returncode != 0:
                 continue
             old_fm = _extract_frontmatter(old_show.stdout)
@@ -483,3 +544,111 @@ def apply_bump(
         backup_path.unlink()
     sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     return ApplyResult(applied=True, new_version=new_version, commit_sha=sha)
+
+
+
+def _reasoning_file_path() -> Path:
+    session_dir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if session_dir:
+        path = Path(session_dir)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            if os.access(path, os.W_OK):
+                return path / "bump-version-reasoning.md"
+        except OSError:
+            pass
+    tmpdir = Path(os.environ.get("TMPDIR", tempfile.gettempdir()))
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="bump-version-reasoning.",
+        dir=tmpdir,
+        delete=False,
+    ) as handle:
+        return Path(handle.name)
+
+
+def classify_bump_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py release classify-bump")
+    parser.add_argument("--base")
+    parser.add_argument("--head")
+    args = parser.parse_args(argv)
+    try:
+        result = classify_bump(proc, base_ref=args.base, head_ref=args.head)
+        reasoning_file = _reasoning_file_path()
+        reasoning_file.write_text(result.reasoning, encoding="utf-8")
+    except ShipError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    print(f"CURRENT_VERSION={result.current_version}")
+    print(f"NEW_VERSION={result.new_version}")
+    print(f"BUMP_TYPE={result.bump_type}")
+    print(f"REASONING_FILE={reasoning_file}")
+    return 0
+
+
+def set_version_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py release set-version")
+    parser.add_argument("version")
+    args = parser.parse_args(argv)
+    new_version = args.version
+    if not re.fullmatch(config.SEMVER_RE, new_version):
+        print(f"ERROR=invalid semver: {new_version}", file=sys.stderr)
+        return 1
+    plugin_env = os.environ.get("LARCH_RELEASE_SET_VERSION_PLUGIN_JSON", "")
+    plugin_json = Path(plugin_env) if plugin_env else _repo_root_from_cli_file() / config.PLUGIN_JSON_PATH
+    if not plugin_json.is_file():
+        print(f"ERROR={plugin_json} not found", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(plugin_json.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print(f"ERROR={plugin_json} is not valid JSON", file=sys.stderr)
+        return 1
+    current = data.get("version")
+    if not isinstance(current, str) or not current:
+        print(f"ERROR={plugin_json} missing .version", file=sys.stderr)
+        return 1
+    if not re.fullmatch(config.SEMVER_RE, current):
+        print(f"ERROR=current version is not semver: {current}", file=sys.stderr)
+        return 1
+    if new_version == current:
+        print(f"ERROR=no-op: version already {current}", file=sys.stderr)
+        return 1
+    if _semver_parts(new_version) < _semver_parts(current):
+        print(f"ERROR=downgrade refused: {new_version} < {current}", file=sys.stderr)
+        return 1
+    data["version"] = new_version
+    tmp_path = plugin_json.with_name(plugin_json.name + f".tmp.{os.getpid()}")
+    try:
+        tmp_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        tmp_path.replace(plugin_json)
+    except OSError as exc:
+        tmp_path.unlink(missing_ok=True)
+        print(f"ERROR={exc}", file=sys.stderr)
+        return 1
+    print(f"PREVIOUS_VERSION={current}")
+    print(f"NEW_VERSION={new_version}")
+    return 0
+
+
+def read_plugin_version_main(argv: list[str] | None = None) -> int:
+    if argv:
+        print("Usage: cli.py plugin read-version", file=sys.stderr)
+        return 2
+    logging_util.reset_quiet_state()
+    logging_util.quiet_init(argv0="read-plugin-version.sh")
+    root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", "")) if os.environ.get("CLAUDE_PLUGIN_ROOT") else _repo_root_from_cli_file()
+    version = "unknown"
+    try:
+        data = json.loads((root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
+        parsed = data.get("version")
+        if parsed is not None:
+            first = str(parsed).splitlines()[0].strip("\r")
+            if first and first != "null":
+                version = first
+    except (OSError, json.JSONDecodeError, IndexError):
+        version = "unknown"
+    logging_util.emit_kv("LARCH_PLUGIN_VERSION", version)
+    return 0

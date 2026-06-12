@@ -17,7 +17,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 Call the coordinator with any forwarded flags via the Bash tool:
 
 ```bash
-$PWD/.claude/skills/analyze-issues/scripts/run-analysis.sh [flags]
+python3 "$PWD/python/cli.py" analyze-issues run [flags]
 ```
 
 The coordinator fetches issues, analyzes the local JSON dump, and prints the assembled report to stdout. Do not parse, format, branch, or perform the analysis in the main agent.
@@ -36,10 +36,10 @@ The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json
 
 Logic lives in `scripts/`. SKILL.md is a thin coordinator. Per-script contracts are documented beside each file:
 
-- `scripts/run-analysis.sh` (contract: `scripts/run-analysis.md`) — top-level coordinator. Parses flags, detects the repo, chains the fetch and the analyzer.
-- `scripts/fetch-issues.sh` (contract: `scripts/fetch-issues.md`) — wraps the single `gh issue list` shell-out.
-- `scripts/analyze.py` (contract: `scripts/analyze.md`) — main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, executive summary).
-- `scripts/render-chart.py` (contract: `scripts/render-chart.md`) — cumulative-growth ASCII chart helper imported by `analyze.py`.
+- `python/cli.py analyze-issues run` (contract: `scripts/run-analysis.md`) — top-level coordinator. Parses flags, detects the repo, chains the fetch and the analyzer.
+- `python/cli.py analyze-issues fetch` (contract: `scripts/fetch-issues.md`) — wraps the single `gh issue list` shell-out.
+- `python/analyze_issues.py` (contract: `scripts/analyze.md`) — main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, executive summary).
+- `python/render_chart.py` (contract: `scripts/render-chart.md`) — cumulative-growth ASCII chart helper imported by `analyze.py`.
 
 ## Anti-patterns
 

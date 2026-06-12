@@ -30,10 +30,10 @@ Do NOT combine issues that are genuinely independent and benefit from separate r
 <!-- step:1 — Fetch Eligible Issues -->
 
 ```bash
-$PWD/.claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
+python3 "$PWD/python/cli.py" combine-issues fetch
 ```
 
-Title-prefix filtering logic lives in `$PWD/.claude/skills/combine-issues/scripts/combinable-issues-title-filter.jq` beside the fetch script; keep it in sync with `scripts/test-fetch-combinable-issues-filter.sh`.
+Title-prefix filtering logic lives in `python/combine_issues.py` beside the fetch script; keep it in sync with `python/test_combine_issues.py`.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues eligible for combination.` and stop.
 
@@ -56,7 +56,7 @@ Ask the user which groups to apply (e.g., "all", "1,3", or "none").
 For each approved group, write the combined body to a temp file, then invoke:
 
 ```bash
-$PWD/.claude/skills/combine-issues/scripts/apply-combination.sh \
+python3 "$PWD/python/cli.py" combine-issues apply \
   --title "<combined title>" \
   --body-file "<temp-file>" \
   --source-issues "<comma-separated issue numbers>"
@@ -73,10 +73,10 @@ Operates only on open issues whose title starts with the `[OOS]` prefix followed
 <!-- step:oos-1 — Fetch OOS Issues -->
 
 ```bash
-$PWD/.claude/skills/combine-issues/scripts/fetch-combinable-issues.sh --oos
+python3 "$PWD/python/cli.py" combine-issues fetch --oos
 ```
 
-OOS title-prefix filtering logic lives in `$PWD/.claude/skills/combine-issues/scripts/oos-issues-title-filter.jq` beside the fetch script.
+OOS title-prefix filtering logic lives in `python/combine_issues.py` beside the fetch script.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open [OOS] issues found.` and stop.
 
@@ -142,7 +142,7 @@ Present the proposed scheme to the user. Ask: "Apply all groups (yes), apply spe
 For each approved group, write the combined body to a temp file, then invoke:
 
 ```bash
-$PWD/.claude/skills/combine-issues/scripts/apply-combination.sh \
+python3 "$PWD/python/cli.py" combine-issues apply \
   --title "<combined title>" \
   --body-file "<temp-file>" \
   --source-issues "<comma-separated issue numbers to close>"

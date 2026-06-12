@@ -10,13 +10,12 @@ cd "$REPO_ROOT"
 
 ALLOW=(
   .claude/skills/combine-issues/SKILL.md
-  .claude/skills/combine-issues/scripts/combinable-issues-title-filter.jq
-  .claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
+  python/combine_issues.py
+  python/test_combine_issues.py
   SECURITY.md
   docs/linting.md
   python/admission.py
   python/issue_wire.py
-  scripts/test-fetch-combinable-issues-filter.sh
   python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py

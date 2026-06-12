@@ -47,8 +47,8 @@ grep -Fq 'ship-pr-rrr-after-phase14.flag' "$SHIP_PR" \
 # ---------------------------------------------------------------------------
 # (D) Phase 1: no per-PR bump drop/rebump inside ship-pr.sh.
 # ---------------------------------------------------------------------------
-grep -Fq 'classify-bump.sh' "$SHIP_PR" \
-    && fail "(D) ship-pr.sh must not reference classify-bump.sh after Phase 1"
+grep -Fq 'release classify-bump' "$SHIP_PR" \
+    && fail "(D) ship-pr.sh must not invoke release classify-bump after Phase 1"
 
 # ---------------------------------------------------------------------------
 # (D2) Fork carve-out in implement-finalize postbump branch validation.

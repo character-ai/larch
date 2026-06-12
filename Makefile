@@ -175,7 +175,7 @@ test-lib-net:
 
 
 test-analyze:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/analyze-issues/scripts/test-analyze.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_analyze_issues.py -q
 
 test-fluff-analysis:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis.sh
@@ -184,7 +184,7 @@ test-fluff-analysis-corpus:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
 
 test-fetch-combinable-issues-filter:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-fetch-combinable-issues-filter.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_combine_issues.py -q
 
 test-legacy-title-prefix-literals-scope:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-legacy-title-prefix-literals-scope.sh
@@ -202,7 +202,7 @@ test-anti-improvised-wakeup:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
 
 test-audit-runs:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/audit-runs/scripts/test-audit-runs.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_audit_runs.py -q
 
 
 test-sessionstart:
@@ -346,19 +346,19 @@ test-lint-fix-loop:
 
 
 test-classify-bump:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-classify-bump.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_version_bump.py python/test_release.py -q
 
 test-release-prepare:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-prepare.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_release.py -q
 
 test-release-set-version:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-set-version.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_release.py -q
 
 test-release-finish:
-	python3 python/cli.py timing harness-mark --label $@ -- bash .claude/skills/release/scripts/test-release-finish.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_release.py -q
 
 test-promote-release:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-promote-release.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_release.py -q
 
 
 test-ci-wait-exit-trap:

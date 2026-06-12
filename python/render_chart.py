@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
+# ruff: noqa: PERF401, PLR1714, PLR2004, PTH123, UP006, UP015, UP035
+# pylint: skip-file
 """Render a compact ASCII cumulative-growth chart from TSV input."""
 
 from __future__ import annotations
@@ -68,5 +70,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+
+
+def render_chart_main(argv: Iterable[str] | None = None) -> int:
+    return main(argv)

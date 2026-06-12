@@ -22,4 +22,4 @@ The classifier treats the branch as already versioned when the idempotency head 
 
 ## Edit-in-sync
 
-Keep this file aligned with `.claude/skills/release/scripts/classify-bump.sh`, `.claude/skills/release/scripts/test-classify-bump.sh`, and `.claude/skills/release/scripts/release-prepare.sh`.
+Keep this file aligned with `python/cli.py release classify-bump`, `python/test_release.py`, and `python/cli.py release prepare`.

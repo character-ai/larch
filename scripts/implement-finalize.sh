@@ -692,7 +692,7 @@ run_postmerge() {
 
         expected_title="$pr_title (#$pr_number)"
         set +e
-        out=$("$SCRIPT_DIR/verify-main.sh" --expected-title "$expected_title")
+        out=$(python3 "$PY_CLI" verify main --expected-title "$expected_title")
         rc=$?
         set +e
         verified=$(kv_value VERIFIED "$out")

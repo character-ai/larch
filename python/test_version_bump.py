@@ -1,8 +1,8 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
 """Tests for version_bump.py."""
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -41,8 +41,6 @@ class ProcRunner:
             stderr=stderr,
         )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CLASSIFY_SH = REPO_ROOT / ".claude/skills/release/scripts/classify-bump.sh"
 
 
 @dataclass
@@ -160,30 +158,6 @@ def test_apply_unmerged_returns_not_stalled() -> None:
 
 
 
-
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_none_on_head_bump(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    plugin = repo / ".claude-plugin/plugin.json"
-    _ = plugin.write_text('{"version":"1.2.3"}\n', encoding="utf-8")
-    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
-
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    runner = ProcRunner()
-    py = version_bump.classify_bump(runner, cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE")
-    assert py.new_version == bash_kv.get("NEW_VERSION")
 
 
 
@@ -320,50 +294,6 @@ def test_classify_deleted_skill_major(tmp_path: Path) -> None:
     assert any("Deleted" in reason for reason in result.major_reasons)
 
 
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_deleted_skill_major(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    skill = repo / "skills/base/SKILL.md"
-    _ = subprocess.run(["git", "rm", "-q", str(skill.relative_to(repo))], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "remove base skill"], cwd=repo, check=True)
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MAJOR"
-    assert py.new_version == bash_kv.get("NEW_VERSION")
-
-
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_added_skill_minor(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    skill = repo / "skills/new-skill/SKILL.md"
-    _ = skill.parent.mkdir(parents=True)
-    _ = skill.write_text("---\nname: new-skill\n---\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", skill], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "add skill"], cwd=repo, check=True)
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MINOR"
-    assert py.new_version == bash_kv.get("NEW_VERSION")
 
 
 
