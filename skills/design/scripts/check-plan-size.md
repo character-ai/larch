@@ -32,7 +32,8 @@ Parsing rules:
 - Malformed trailer-looking lines are treated as absent and stop the block.
 - `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as `lib-plan-optional-trailers.awk` snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
 - Duplicate keys inside the block: **last match in file order** wins (closest to `diff_lines:`).
-- `mechanical_churn: false` is explicit no-downgrade; absent or malformed mechanical values normalize to `false`.
+- `mechanical_churn: false` is explicit no-downgrade; absent mechanical values normalize to `false`.
+- Only lowercase `true` and `false` are valid `mechanical_churn` values. Any other present value (for example `mechanical_churn: 35` or `mechanical_churn: TRUE`) exits **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
 - Threshold comparisons use bash `10#` decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
 
 ## Output contract (`emit_kv` on FD 3)
@@ -75,7 +76,7 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 | rc | Meaning |
 |----|---------|
 | 0 | Valid plan; KV lines emitted as above |
-| 2 | Missing plan file → `PLAN_SIZE_STATUS=missing-plan`; or missing/malformed trailer → `PLAN_SIZE_STATUS=missing-diff-lines` |
+| 2 | Missing plan file → `PLAN_SIZE_STATUS=missing-plan`; or missing/malformed trailer → `PLAN_SIZE_STATUS=missing-diff-lines`; or invalid `mechanical_churn:` → `PLAN_SIZE_STATUS=invalid-mechanical-churn` |
 | 3 | Invocation / argv error (e.g. missing `--design-tmpdir`, unknown flag) — stderr only; **no** `PLAN_SIZE_STATUS` on the contract stream |
 
 ## Callers

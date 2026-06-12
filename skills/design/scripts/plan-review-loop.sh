@@ -62,6 +62,7 @@ collect_ok_count=0
 collect_failure_count=0
 revise_status="skipped"
 LOOP_REASON=""
+INSCOPE_REMAINING=0
 IMPORTANT_ACCEPTED_COUNT=0
 NIT_ACCEPTED_COUNT=0
 NON_NIT_ACCEPTED_COUNT=0
@@ -225,6 +226,7 @@ emit_loop_kvs() {
     emit_kv NIT_ACCEPTED_COUNT "${NIT_ACCEPTED_COUNT:-0}"
     emit_kv NON_NIT_ACCEPTED_COUNT "${NON_NIT_ACCEPTED_COUNT:-0}"
     emit_kv REASON "${LOOP_REASON:-}"
+    emit_kv INSCOPE_REMAINING "${INSCOPE_REMAINING:-0}"
     emit_kv REVISE_STATUS "${revise_status:-}"
     emit_kv COLLECT_OK_COUNT "${COLLECT_OK_COUNT:-0}"
     emit_kv COLLECT_FAILURE_COUNT "${COLLECT_FAILURE_COUNT:-0}"
@@ -247,6 +249,7 @@ write_step3_result_env() {
         "DEGRADED_PANEL=${DEGRADED_PANEL:-0}" \
         "ROUNDS_COMPLETED=${1:-$ROUND_NUM}" \
         "REASON=${LOOP_REASON:-}" \
+        "INSCOPE_REMAINING=${INSCOPE_REMAINING:-0}" \
         "REVISE_STATUS=${revise_status:-}" \
         "NIT_ACCEPTED_COUNT=${NIT_ACCEPTED_COUNT:-0}" \
         "NON_NIT_ACCEPTED_COUNT=${NON_NIT_ACCEPTED_COUNT:-0}" \
@@ -593,6 +596,7 @@ _write_round_summary() {
         printf 'ACCEPTED_COUNT=%s\n' "${ACCEPTED_COUNT:-0}"
         printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "${IMPORTANT_ACCEPTED_COUNT:-0}"
         printf 'DEGRADED_PANEL=%s\n' "${DEGRADED_PANEL:-0}"
+        printf 'INSCOPE_REMAINING=%s\n' "${INSCOPE_REMAINING:-0}"
         printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
         printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
         printf 'REVISE_STATUS=%s\n' "$revise_st"
@@ -1469,7 +1473,9 @@ if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/n
         DEGRADED_PANEL=1
     elif [[ "$ACCEPTED_COUNT" -eq 0 && "$DEGRADED_PANEL" -eq 1 ]]; then
         LOOP_STATUS=zero-findings-degraded-panel
-        LOOP_REASON=zero-findings-degraded-panel
+        if [[ "${LOOP_REASON:-}" != "ballot-items-lost" ]]; then
+            LOOP_REASON=zero-findings-degraded-panel
+        fi
     else
         LOOP_STATUS=complete
         LOOP_REASON=""
@@ -1577,11 +1583,18 @@ fi
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-${round_num}"
 cp -f "$_plan_prune_out" "$DESIGN_TMPDIR/plan-review/round-${round_num}/prune-nit.env" 2>/dev/null || emit_kv WARN "plan-review-prune-nit: failed to persist prune-nit.env"
 _plan_prune_count=""
+_inscope_remaining=0
 while IFS= read -r _pln || [[ -n "$_pln" ]]; do
     [[ -z "$_pln" ]] && continue
     _pk="${_pln%%=*}"; _pv="${_pln#*=}"
-    case "$_pk" in PRUNED_COUNT) _plan_prune_count="$_pv" ;; esac
+    case "$_pk" in
+        PRUNED_COUNT) _plan_prune_count="$_pv" ;;
+        INSCOPE_REMAINING) _inscope_remaining="$_pv" ;;
+    esac
 done < "$_plan_prune_out"
+INSCOPE_REMAINING="${_inscope_remaining:-0}"
+case "$INSCOPE_REMAINING" in ''|*[!0-9]*) INSCOPE_REMAINING=0 ;; esac
+INSCOPE_REMAINING=$((10#$INSCOPE_REMAINING))
 _plan_prune_count="${_plan_prune_count:-0}"
 if [[ "$_plan_prune_count" != "0" ]]; then
     larch_err "→ plan-review: nit pre-filter pruned ${_plan_prune_count} finding(s) to OOS track"
@@ -1803,6 +1816,18 @@ if (( _nonfailed_voters < 2 )); then
     DEGRADED_PANEL=1
 fi
 
+if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "ok" && "$INSCOPE_REMAINING" -gt 0 ]]; then
+    _tsv_data_rows=0
+    if [[ -f "$_findings_classification_out" ]]; then
+        _tsv_data_rows=$(awk 'NR > 1 && NF { c++ } END { print c + 0 }' "$_findings_classification_out" 2>/dev/null || printf '0')
+    fi
+    case "$_tsv_data_rows" in ''|*[!0-9]*) _tsv_data_rows=0 ;; esac
+    if (( _tsv_data_rows == 0 )); then
+        DEGRADED_PANEL=1
+        LOOP_REASON=ballot-items-lost
+    fi
+fi
+
 LOOP_STATUS="complete"
 [[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]] && LOOP_STATUS="main-agent-vote-required" && loop_status_override="main-agent-vote-required"
 
@@ -1909,7 +1934,9 @@ elif [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 ]]; then
     DEGRADED_PANEL=1
 elif [[ "$ACCEPTED_COUNT" -eq 0 && "$DEGRADED_PANEL" -eq 1 ]]; then
     LOOP_STATUS=zero-findings-degraded-panel
-    LOOP_REASON=zero-findings-degraded-panel
+    if [[ "${LOOP_REASON:-}" != "ballot-items-lost" ]]; then
+        LOOP_REASON=zero-findings-degraded-panel
+    fi
 else
     LOOP_STATUS=complete
     LOOP_REASON=""

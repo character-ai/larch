@@ -23,7 +23,7 @@ Invoked as `awk -v mode=<mode> -v trailer_nr=<N> [-v key=<k>] -f lib-plan-option
 |------|----------------|
 | `keys` | Present keys in fixed order: `diff_added`, `diff_deleted`, `mechanical_churn` (one per line). |
 | `values` | `key=value` for each present key (same order). |
-| `parse` | Four lines: `block_len`, `diff_added` or `-`, `diff_deleted` or `-`, `mechanical_churn` (`false` when absent). |
+| `parse` | Four lines: `block_len`, `diff_added` or `-`, `diff_deleted` or `-`, `mechanical_churn` (`false` when absent; `invalid:<value>` when present but not lowercase `true`/`false`). |
 | `has_key` | Exit **0** if `-v key=` is present; **1** otherwise. |
 
 ### `trailer_nr` contract
@@ -37,6 +37,10 @@ Scan upward from the line above `diff_lines:`. Lines matching strict optional-tr
 ### Octal guard
 
 `diff_added: 08`, `diff_added: 09`, `diff_deleted: 08`, and `diff_deleted: 09` match the strict line regex but are rejected as absent (`has_key` exit **1**; omitted from `keys`/`values`; those physical lines do **not** increment `block_len`). Values such as `010` are retained. Harnesses: `octal-rejected` (`block_len=0`), `octal-then-valid` (only the valid `diff_added: 5` line counts).
+
+### Invalid `mechanical_churn`
+
+Only lowercase `true` and `false` are valid boolean values. When `mechanical_churn:` is present with any other token (including integers, uppercase booleans, or a bare line), awk emits `invalid-mechanical-churn: <value>` to stderr, sets `has_key` success for `mechanical_churn`, and exposes parse line 4 as `invalid:<value>` (not `false`). The `values` mode emits `mechanical_churn=invalid:<value>`. `check-plan-size.sh` rejects invalid values with `PLAN_SIZE_STATUS=invalid-mechanical-churn` and exit **2** before size-gate calculations.
 
 ### `block_len` (`parse` line 1)
 

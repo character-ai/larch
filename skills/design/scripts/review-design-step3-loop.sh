@@ -55,6 +55,7 @@ step3_loop_emit_envelope() {
     emit_kv DEGRADED_PANEL "${DEGRADED_PANEL:-0}"
     [[ -z "$safe_scope_anchor_file" ]] || emit_kv SCOPE_ANCHOR_FILE "$safe_scope_anchor_file"
     emit_kv PLAN_REVIEW_CONTINUE_REASON "$safe_plan_review_continue_reason"
+    emit_kv REASON "${REASON:-}"
     [[ -z "${POSTPLAN_RC:-}" ]] || emit_kv POSTPLAN_RC "${POSTPLAN_RC:-}"
     [[ -z "${DEDUP_RC:-}" ]] || emit_kv DEDUP_RC "${DEDUP_RC:-}"
     if [[ -f "$DESIGN_TMPDIR/.design-postplan-emit-result.env" && ! -L "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
@@ -140,13 +141,14 @@ step3_loop_persist_envelope() {
         "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}"
         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}"
         "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}"
+        "REASON=${REASON:-}"
     )
     [[ -z "${POSTPLAN_RC:-}" ]] || kvs+=("POSTPLAN_RC=${POSTPLAN_RC:-}")
     [[ -z "${DEDUP_RC:-}" ]] || kvs+=("DEDUP_RC=${DEDUP_RC:-}")
     [[ -z "${safe_plan_review_continue_reason:-}" ]] || kvs+=("PLAN_REVIEW_CONTINUE_REASON=${safe_plan_review_continue_reason}")
     [[ -z "${safe_scope_anchor_file:-}" ]] || kvs+=("SCOPE_ANCHOR_FILE=${safe_scope_anchor_file}")
     if [[ -f "$result_env" && ! -L "$result_env" ]]; then
-        for merge_key in TALLY_PLAN_REVIEW_STATUS IMPORTANT_ACCEPTED_COUNT AGGREGATOR_STATUS VOTING_TALLY_FILE PANEL_PRUNED_EMPTY ROUND_NUM PLAN_REVIEW_CONTINUE_REASON; do
+        for merge_key in TALLY_PLAN_REVIEW_STATUS IMPORTANT_ACCEPTED_COUNT AGGREGATOR_STATUS VOTING_TALLY_FILE PANEL_PRUNED_EMPTY ROUND_NUM PLAN_REVIEW_CONTINUE_REASON REASON; do
             _present=false
             for _line in "${kvs[@]}"; do
                 _key="${_line%%=*}"
@@ -507,6 +509,13 @@ run_design_step3_loop() {
             set -e
             cat "$round_body_capture"
             rm -f "$round_body_capture"
+            if [[ -z "${REASON:-}" && -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+                while IFS= read -r _line || [[ -n "$_line" ]]; do
+                    case "$_line" in
+                        REASON=*) REASON="${_line#REASON=}" ;;
+                    esac
+                done <"$DESIGN_TMPDIR/.step3-review-result.env"
+            fi
             if [[ "$body_rc" -ne 0 && "${LOOP_STATUS:-}" != panel-failed ]]; then
                 LOOP_STATUS=panel-failed
             fi
@@ -650,6 +659,7 @@ run_design_step3_loop() {
                     exit 0
                 fi
                 step3_loop_record_timing "$round_num" "$round_start_s" "$(step3_loop_now_s)"
+                REASON=""
                 if [[ "${PLAN_REVIEW_CONTINUE:-false}" == true ]]; then
                     "$PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --auto-continuation-entry >/dev/null 2>&1 || true
                     rm -f "$DESIGN_TMPDIR/.step3-entry-plan-printed"

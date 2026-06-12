@@ -806,10 +806,34 @@ assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached symlinked outer st
 assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'cap-reached symlinked outer stdout tally'
 [[ -L "$D12B/.step3-review-result.env" ]] || fail 'cap-reached symlinked outer must remain a symlink'
 
+echo "=== REASON relay from plan-review-loop stub ==="
+D_REASON="$TMP/reason-relay"
+write_common_inputs "$D_REASON" sketch
+stub_reason="$(write_loop_stub "$D_REASON" 'cat >"$DESIGN_TMPDIR/.step3-plan-review-result.env" <<EOF
+LOOP_STATUS=zero-findings-degraded-panel
+ACCEPTED_COUNT=0
+IMPORTANT_ACCEPTED_COUNT=0
+DEGRADED_PANEL=1
+ROUNDS_COMPLETED=1
+REASON=ballot-items-lost
+INSCOPE_REMAINING=30
+TALLY_PLAN_REVIEW_STATUS=ok
+AGGREGATOR_STATUS=ok
+VOTING_TALLY_FILE=
+COLLECT_OK_COUNT=1
+COLLECT_FAILURE_COUNT=0
+EOF
+printf "LOOP_STATUS=zero-findings-degraded-panel\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nREASON=ballot-items-lost\nINSCOPE_REMAINING=30\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n"
+exit 0')"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub_reason" "$LAUNCHER" --design-tmpdir "$D_REASON")"
+assert_contains "$out" 'REASON=ballot-items-lost' 'stdout relays REASON'
+grep -q '^REASON=ballot-items-lost$' "$D_REASON/.step3-review-result.env" || fail 'result env missing REASON=ballot-items-lost'
+grep -q '^INSCOPE_REMAINING=30$' "$D_REASON/.step3-review-result.env" || fail 'result env missing INSCOPE_REMAINING=30'
+
 echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
     LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM ROUND_NUM \
-    ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED AGGREGATOR_STATUS \
+    ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON INSCOPE_REMAINING AGGREGATOR_STATUS \
     VOTING_TALLY_FILE REVIEW_ROUND_COUNT
 
 echo "=== skipped-entry: launcher writes missing design Step 3 mark ==="

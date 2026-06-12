@@ -98,6 +98,10 @@ metadata_trailer_lines=$(printf '%s\n' "$_metadata_parse" | sed -n '1p')
 _diff_added_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '2p')
 _diff_deleted_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '3p')
 mechanical_churn=$(printf '%s\n' "$_metadata_parse" | sed -n '4p')
+if [[ "$mechanical_churn" != "true" && "$mechanical_churn" != "false" ]]; then
+    emit_kv PLAN_SIZE_STATUS invalid-mechanical-churn
+    exit 2
+fi
 diff_added=""
 diff_deleted=""
 if [[ "$_diff_added_raw" != "-" ]]; then

@@ -667,4 +667,56 @@ out=$(LARCH_DESIGN_DRIFT_MULTIPLE=bogus run_ok "$d")
 assert_kv_eq DRIFT_MULTIPLE 2 "$out"
 assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
 
+# --- Case 39: invalid mechanical_churn integer exits 2 ---
+d="$TMPROOT/c39"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'mechanical_churn: 35\n'
+    printf 'diff_lines: 400\n'
+} >"$d/plan.txt"
+set +e
+out=$("$SUBJECT" --design-tmpdir "$d" 2>"$d/stderr.txt")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "case39: expected rc 2 for mechanical_churn: 35, got $rc"
+assert_kv_eq PLAN_SIZE_STATUS invalid-mechanical-churn "$out"
+grep -Fq 'invalid-mechanical-churn: 35' "$d/stderr.txt" || fail "case39: expected stderr invalid-mechanical-churn: 35"
+parse_out=$(awk -v mode=parse -v trailer_nr="$(awk 'NF { nr=NR } END { print nr+0 }' "$d/plan.txt")" \
+    -f "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$d/plan.txt")
+parse_line4=$(printf '%s\n' "$parse_out" | sed -n '4p')
+[[ "$parse_line4" == "invalid:35" ]] || fail "case39: expected parse line 4 invalid:35, got $parse_line4"
+awk -v mode=has_key -v key=mechanical_churn -v trailer_nr="$(awk 'NF { nr=NR } END { print nr+0 }' "$d/plan.txt")" \
+    -f "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$d/plan.txt" || fail "case39: has_key mechanical_churn should succeed"
+
+# --- Case 40: invalid mechanical_churn TRUE ---
+d="$TMPROOT/c40"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'mechanical_churn: TRUE\n'
+    printf 'diff_lines: 400\n'
+} >"$d/plan.txt"
+set +e
+out=$("$SUBJECT" --design-tmpdir "$d" 2>/dev/null)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "case40: expected rc 2 for mechanical_churn: TRUE, got $rc"
+assert_kv_eq PLAN_SIZE_STATUS invalid-mechanical-churn "$out"
+
+# --- Case 41: bare mechanical_churn: ---
+d="$TMPROOT/c41"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'mechanical_churn:\n'
+    printf 'diff_lines: 400\n'
+} >"$d/plan.txt"
+set +e
+out=$("$SUBJECT" --design-tmpdir "$d" 2>/dev/null)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "case41: expected rc 2 for bare mechanical_churn:, got $rc"
+assert_kv_eq PLAN_SIZE_STATUS invalid-mechanical-churn "$out"
+
 echo "PASS: test-check-plan-size.sh"

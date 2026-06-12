@@ -46,7 +46,8 @@ The script always runs one pass and never invokes the revision waterfall; Gate B
 | `SCOPE_ANCHOR_FILE` | Dual gate: `TALLY_PLAN_REVIEW_STATUS` in (`ok`, `main-agent-vote-required`) and `LOOP_STATUS` in (`complete`, `main-agent-vote-required`); path to staged binding issue scope anchor |
 | `NIT_ACCEPTED_COUNT` | Single-pass severity count |
 | `NON_NIT_ACCEPTED_COUNT` | Single-pass severity count |
-| `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, etc.) |
+| `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, `ballot-items-lost`, etc.) |
+| `INSCOPE_REMAINING` | In-scope ballot items remaining after nit prune (from `prune-nit.env`) |
 | `REVISE_STATUS` | Always `skipped` in single-pass mode |
 | `COLLECT_OK_COUNT` / `COLLECT_FAILURE_COUNT` | Collector evidence counts |
 
@@ -54,7 +55,7 @@ The script always runs one pass and never invokes the revision waterfall; Gate B
 
 ## Single-pass status mapping
 
-The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. Tally-error restores cumulative accepted artifacts and clears the current accepted artifact before exit. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
+The driver runs one review round and never revises `plan.txt`. It counts collector evidence before terminal mapping, preserves `panel-failed`, preserves `main-agent-vote-required`, preserves `tally-error`, accumulates accepted OOS findings, then maps zero accepted / zero collectors to `degraded-empty-collector`, zero accepted / degraded panel to `zero-findings-degraded-panel`, and all remaining successful outcomes to `complete`. When `TALLY_PLAN_REVIEW_STATUS=ok`, `INSCOPE_REMAINING>0`, and `findings-classification.tsv` is header-only, the driver sets `DEGRADED_PANEL=1`, `LOOP_REASON=ballot-items-lost`, and maps the terminal zero-accepted outcome to `zero-findings-degraded-panel` without overwriting `ballot-items-lost`. Tally-error restores cumulative accepted artifacts and clears the current accepted artifact before exit. Normative narrative: `skills/design/references/plan-review.md` § Single-pass review.
 
 ## Durable handoff: `.step3-plan-review-result.env`
 
@@ -62,7 +63,7 @@ Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Va
 
 ## `round-summary.env` schema
 
-Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `NIT_ACCEPTED_COUNT`, `NON_NIT_ACCEPTED_COUNT`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`, `SCOPE_ANCHOR_FILE`. `REVISE_STATUS` is `skipped` because single-pass Step 3 never applies findings. `REVISE_WINNING_TIER` was removed after the revise waterfall was dropped from Step 3.
+Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `NIT_ACCEPTED_COUNT`, `NON_NIT_ACCEPTED_COUNT`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `INSCOPE_REMAINING`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`, `SCOPE_ANCHOR_FILE`. `REVISE_STATUS` is `skipped` because single-pass Step 3 never applies findings. `REVISE_WINNING_TIER` was removed after the revise waterfall was dropped from Step 3.
 
 ## Exit codes
 

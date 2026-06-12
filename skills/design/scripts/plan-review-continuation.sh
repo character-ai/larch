@@ -61,6 +61,7 @@ DEGRADED_PANEL="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" DEGRADED_PANE
 case "$DEGRADED_PANEL" in 1|true) DEGRADED_PANEL=1 ;; *) DEGRADED_PANEL=0 ;; esac
 TALLY_PLAN_REVIEW_STATUS="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" TALLY_PLAN_REVIEW_STATUS)"
 LOOP_STATUS="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" LOOP_STATUS)"
+STEP3_REASON="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" REASON)"
 PANEL_PRUNED_EMPTY="$(kv_get "$DESIGN_TMPDIR/.step3-review-result.env" PANEL_PRUNED_EMPTY)"
 
 ACCEPTED_FILE="$DESIGN_TMPDIR/accepted-plan-findings.md"
@@ -174,6 +175,13 @@ elif (( REVIEW_ROUND_COUNT >= ROUND_CAP )); then
 elif [[ "$PANEL_PRUNED_EMPTY" == true ]]; then
     CONTINUE=true
     REASON=pruned-empty
+elif [[ "$STEP3_REASON" == ballot-items-lost \
+    && "$ACCEPTED_COUNT" -eq 0 \
+    && "$DEGRADED_PANEL" -ne 0 \
+    && "$TALLY_PLAN_REVIEW_STATUS" == ok \
+    && "$LOOP_STATUS" == zero-findings-degraded-panel ]]; then
+    CONTINUE=true
+    REASON=ballot-items-lost
 elif (( DEGRADED_PANEL != 0 && ACCEPTED_COUNT > 0 )); then
     CONTINUE=true
     REASON=degraded-panel
