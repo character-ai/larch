@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
-# directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
+# directory for sibling helpers such as lib-cursor-auth.sh.
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091

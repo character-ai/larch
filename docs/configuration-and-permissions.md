@@ -157,7 +157,7 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ### External Agent Model Configuration
 
-`python/cli.py agent model-args` emits one argv token per stdout line. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
+`python3 python/cli.py agent model-args` emits one argv token per stdout line. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -167,7 +167,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 
 **When set:**
 - All Cursor invocations (reviews, sketches, voting, negotiations, and implement when `--coder=cursor`) use this model
-- The model flag is injected by `python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
+- The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - Defaults to `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
@@ -176,7 +176,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 
 ### `LARCH_VOTER_MODEL`
 
-The model used by the always-on Claude voter when `python/cli.py agent launch-claude-review --role voter` is called without an explicit `--model`.
+The model used by the always-on Claude voter when `python3 python/cli.py agent launch-claude-review --role voter` is called without an explicit `--model`.
 
 **When set:**
 - `/design` plan voting and `/review` / `/implement` code voting use this model for Claude Voter 1 unless the caller passes `--model` explicitly.
@@ -208,7 +208,7 @@ Clean launcher, content, status, or delimiter failures fall back to inline Step 
 
 ### `OPENAI_API_KEY`
 
-When non-whitespace, the covered Codex paths (`launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
+When non-whitespace, the covered Codex paths (`launch-review.sh --tool codex`, `python3 python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python3 python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
 
 Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset, empty, or whitespace-only, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs; literal `api_key` / `openai_api_key` assignments are also stripped from those temp configs.
 
@@ -218,15 +218,15 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
 - All Codex invocations (reviews, sketches, voting, negotiations) use this model
-- The model flag is injected by `python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
+- The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
-- Codex defaults to `gpt-5.5` (hardcoded in `python/cli.py agent model-args`) for all work invocations (reviews, sketches, voting)
-- `scripts/check-reviewers.sh` runs a lightweight `codex exec --sandbox read-only …` health probe with the Codex model argv from `python/cli.py agent model-args --tool codex --with-effort`, matching reviewer launch model selection. If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
+- Codex defaults to `gpt-5.5` (hardcoded in `python3 python/cli.py agent model-args`) for all work invocations (reviews, sketches, voting)
+- `scripts/check-reviewers.sh` runs a lightweight `codex exec --sandbox read-only …` health probe with the Codex model argv from `python3 python/cli.py agent model-args --tool codex --with-effort`, matching reviewer launch model selection. If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
 
 ### `LARCH_SHIP_PR_IMPL`
 
-Selects the `/implement` Step 8+ ship-pr driver. Default is `python`, which runs `python/cli.py ship pr` (delegating to `python/ship.py`) with JSON stdout routing. Set `LARCH_SHIP_PR_IMPL=bash` to run the legacy `scripts/ship-pr.sh` path. Step 18 runs `restore-finalize-state.sh` on bash opt-in, when `finalize-state.sh` is missing, or when terminal `ship-pr-state.sh` overrides make the finalize file stale.
+Selects the `/implement` Step 8+ ship-pr driver. Default is `python`, which runs `python3 python/cli.py ship pr` (delegating to `python/ship.py`) with JSON stdout routing. Set `LARCH_SHIP_PR_IMPL=bash` to run the legacy `scripts/ship-pr.sh` path. Step 18 runs `restore-finalize-state.sh` on bash opt-in, when `finalize-state.sh` is missing, or when terminal `ship-pr-state.sh` overrides make the finalize file stale.
 
 ### External reviewer probe tuning (`check-reviewers.sh`)
 
@@ -236,7 +236,7 @@ These knobs apply to the Step 0 runtime probes emitted into session-env via `ses
 - **`LARCH_PROBE_NEGATIVE_TTL_SECONDS`** — non-negative integer seconds for reusing cached negative reviewer-probe stamps (default `0`). Leave at `0` to avoid transient Cursor or Codex failures excluding a tool for the session. Set a positive integer only when deliberately restoring bounded negative caching.
 - **`LARCH_PROBE_TIMEOUT_SECONDS`** — per-attempt wall-clock timeout while waiting on the background probe PID (default `30`). Non-numeric, empty, or `0` falls back to `30`.
 - **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). Shared with external launchers; the probe loops use the same counter semantics.
-- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `run-external-agent.sh`. Every Codex/Cursor launch via `run-external-agent.sh` gets the gate on by default (`30` via the resolver fallback when nothing else resolves); set `0` to opt out; a positive value overrides the default. Resolution order is the process environment, `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`. When enabled, launches first reuse `check-reviewers.sh` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
+- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `python3 python/cli.py agent run-external-agent`. Every Codex/Cursor launch via that CLI gets the gate on by default (`30` via the resolver fallback when nothing else resolves); set `0` to opt out; a positive value overrides the default. Resolution order is the process environment, `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`. When enabled, launches first reuse `check-reviewers.sh` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
 
 `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is auto-on for all callers via the resolver
 default; `/design` and `/implement` session writers also persist `30` explicitly.
@@ -264,7 +264,7 @@ Per-process random delay (milliseconds) applied once before the cursor auth/retr
 Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
 
 **When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel):**
-- `python/cli.py agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
+- `python3 python/cli.py agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).
@@ -274,7 +274,7 @@ Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accep
 
 ### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
 
-On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `run-external-agent.sh` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.
+On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `python3 python/cli.py agent run-external-agent` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.
 
 - **Default:** `30` (design chose 30 over issue #3202's filed 50).
 - **`0`:** disables tail capture and chat surfacing.

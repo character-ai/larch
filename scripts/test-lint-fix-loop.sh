@@ -148,7 +148,7 @@ if grep -Fq '"input_tokens":1000' "${output}.events.jsonl" 2>/dev/null; then
         printf 'MODEL=gpt-5.5\n'
     } >"${output}.token-record"
 elif [[ -s "${output}.events.jsonl" ]]; then
-    printf 'parse-codex-usage.sh: failed to parse usage\n' >>"${output}.sidecar"
+    printf 'agent parse-codex-usage: failed to parse usage\n' >>"${output}.sidecar"
 fi
 printf 'LAUNCHER_EXIT=%s\n' "$rc"
 exit 0
@@ -689,7 +689,7 @@ case0a2_out=$(printf '%s\n' "$case0a2_result" | sed -n '2,$p')
 assert_contains "$case0a2_out" 'LINT_FIX_STATUS=no-changes' "case0a2 no changes"
 case0a2_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a2_out")
 [[ -f "$case0a2_run_dir/codex.log.sidecar" ]] || fail "case0a2 expected codex.log.sidecar"
-grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.log.sidecar" \
+grep -Fq 'agent parse-codex-usage:' "$case0a2_run_dir/codex.log.sidecar" \
     || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
 # Case 0b: Codex fails at runtime and Cursor is absent; #3207 waterfalls to the

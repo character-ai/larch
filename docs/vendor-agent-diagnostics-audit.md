@@ -25,7 +25,7 @@ exposes `write_failure_diag`, `resolve_failure_diagnostic_source`,
 `external_stream_reset` (per-attempt history archive), `append_vendor_failure_diagnostics`
 (durable per-slot implement batch), and `resolve_execution_issues_log`.
 
-Every launch that funnels through `run-external-agent.sh` therefore **inherits**
+Every launch that funnels through `python3 python/cli.py agent run-external-agent` therefore **inherits**
 the saved carrier with no per-site change. `python/cli.py run-log append-failure` gains
 a fail-closed backstop (missing / zero-byte `--output-file` → synthesize
 `no diagnostics captured (exit N)`), so every `execution-issues.md` failure entry
@@ -33,8 +33,8 @@ is non-empty regardless of site. Raw streams (`*.sidecar`, `*.diag`,
 `*.events.jsonl`, `*.sidecar.history`, `*.events.history`, scout `*.raw.*` stems)
 stay publish-excluded; only the composed `*.failure-diag` carrier reaches git.
 
-Routing key: **D** = directly fixed; **I** = inherits-via-`run-external-agent.sh`
-(or via the now-fixed `launch-claude-subprocess.sh`); **R** = residual gap named
+Routing key: **D** = directly fixed; **I** = inherits-via-`python3 python/cli.py agent run-external-agent`
+(or via the now-fixed `python3 python/cli.py agent launch-claude-subprocess`); **R** = residual gap named
 below.
 
 ## Table
@@ -56,11 +56,11 @@ below.
 | `python/cli.py run-log flush` | — | — | ✅ | **D** | Commit-tail flush. |
 | `python/cli.py run-log refresh` | — | — | ✅ | **D** | CI-retry / rebase pre-push flush. |
 | `scripts/implement-finalize.sh` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
-| `scripts/launch-codex-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through `run-external-agent.sh` (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
+| `scripts/launch-codex-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through `python3 python/cli.py agent run-external-agent` (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `scripts/launch-cursor-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
-| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `run-external-agent.sh`. |
+| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `python3 python/cli.py agent run-external-agent`. |
 | `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
-| `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `launch-claude-subprocess.sh` (carrier saved). |
+| `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `python3 python/cli.py agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
 | `scripts/dispatch-plan-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/dispatch-code-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As plan voters. |
@@ -73,7 +73,7 @@ below.
 
 ## Named residual {saved, logged, flushed} gaps
 
-The central carrier (`run-external-agent.sh`) + the `launch-claude-subprocess.sh`
+The central carrier (`python3 python/cli.py agent run-external-agent`) + the `python3 python/cli.py agent launch-claude-subprocess`
 F7 path mean **Saved** holds at every site above. The
 `run-log append-failure` backstop means **Logged** is never-empty at every site
 that logs through it. The remaining residuals are **Flushed-to-batch** and
@@ -82,11 +82,11 @@ is on disk but the launcher's own give-up has not yet been updated to (a) resolv
 the carrier into its `run-log append-failure` source and (b) call
 `append_vendor_failure_diagnostics`:
 
-1. `launch-codex-ci.sh` / `launch-cursor-ci.sh` / `launch-claude-ci.sh` give-up:
+1. `python3 python/cli.py agent launch-codex-ci` / `python3 python/cli.py agent launch-cursor-ci` / `python3 python/cli.py agent launch-claude-ci` give-up:
    source the carrier lib and append the diagnostic source to the durable batch
    (the implement-side `launch-codex-implement.sh` / `launch-cursor-implement.sh`
    give-up already do this).
-3. `launch-codex-exec.sh` preflight / no-wrapper branches: ordering-A carrier
+3. `python3 python/cli.py agent launch-codex-exec` preflight / no-wrapper branches: ordering-A carrier
    compose before exit.
 4. `dispatch-plan-voters.sh` / `dispatch-code-voters.sh` /
    `dispatch-with-waterfall.sh` dropped-slot give-up: resolve from `VOTER_*_PATH`

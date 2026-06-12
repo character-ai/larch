@@ -993,85 +993,19 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "launch-cursor-ci.sh" not in flat
     codex_call = next(
         call for call, _kw in runner.calls
-        if "run-external-agent" in call
+        if "launch-codex-exec" in call
     )
     idx = list(codex_call).index(str(agent_cli))
     argv = list(codex_call)[idx:]
-    assert argv[:4] == [str(agent_cli), "agent", "run-external-agent", "--tool"]
-    assert argv[4] == "codex"
+    assert argv[:3] == [str(agent_cli), "agent", "launch-codex-exec"]
     assert "--timeout" in argv
     assert "1800" in argv
-    assert "--stderr-sink" in argv
-    leaf = argv[argv.index("--") + 1 :]
-    assert leaf[:3] == ["codex", "exec", "--full-auto"]
-    assert "-C" in leaf
-    assert str(repo) in leaf
-    assert "-m" in leaf
-    assert leaf[-1]
-    assert "lib-external-launcher-common.sh" in flat
-    assert "--tool" in flat
-    assert "codex" in flat
-
-
-def test_run_codex_records_usage_with_resolved_model(tmp_path: Path) -> None:
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    agent_model_args = scripts / "agent-model-args.sh"
-    _ = agent_model_args.write_text("#!/usr/bin/env bash\nprintf '%s\\n' -m gpt-lint-test\n", encoding="utf-8")
-    _ = agent_model_args.chmod(0o755)
-    _ = (scripts / "lib-external-launcher-common.sh").write_text("", encoding="utf-8")
-    _ = (scripts / "lib-codex-launcher-common.sh").write_text("", encoding="utf-8")
-    run_external = scripts / "run-external-agent.sh"
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    class UsageRunner(StubRunner):
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> CommandResult:
-            result = super().run(
-                argv,
-                timeout=timeout,
-                cwd=cwd,
-                env=env,
-                check=check,
-                stdout=stdout,
-                stderr=stderr,
-            )
-            for raw in argv:
-                path = Path(raw)
-                if path.name == "codex.events.jsonl":
-                    _ = path.write_text('{"type":"token_usage"}\n', encoding="utf-8")
-            return result
-
-    runner = UsageRunner()
-    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
-        runner,
-        scripts_dir=scripts,
-        run_external=run_external,
-        run_dir=run_dir,
-        repo_root=str(repo),
-        prompt_body="fix it",
-    )
-    assert rc == 0
-    dispatch_call = next(call for call, _kw in runner.calls if str(run_external) in call)
-    leaf = list(dispatch_call)[list(dispatch_call).index(str(run_external)) :]
-    assert "-m" in leaf
-    assert leaf[leaf.index("-m") + 1] == "gpt-lint-test"
-    record_call = runner.calls[-1][0]
-    assert record_call[:2] == ("bash", "-c")
-    assert 'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" "" "$5"' in record_call[2]
-    assert record_call[-1] == "gpt-lint-test"
+    assert "--workdir" in argv
+    assert str(repo) in argv
+    assert "--prompt-file" in argv
+    assert "--usage-label" in argv
+    assert "codex_lint_fix" in argv
+    assert "run-external-agent" not in argv
 
 
 def test_run_lint_fix_dispatch_failure_ignores_health_classification(

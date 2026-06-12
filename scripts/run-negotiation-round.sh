@@ -22,7 +22,7 @@
 #   1 — usage/argument error
 #   2 — reviewer command failed
 #   3 — cursor_auth_preflight failure
-#   other — agent-model-args.sh failure propagated from the helper
+#   other — agent model-args failure propagated from the helper
 
 set -uo pipefail
 

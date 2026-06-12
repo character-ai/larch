@@ -86,26 +86,26 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 # is advisory here (the cursor launch / sentinel handling below detects an
 # unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
 # this shell.
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-auth-preflight" || true
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
 # Use a temp file (NOT process substitution) so a non-zero exit from
-# agent-model-args.sh — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
+# `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
 # producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
 # expansion is required for Bash 3.2 compatibility under `set -u`.
 CURSOR_MODEL_ARGS_TMP=$(mktemp)
 trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py agent model-args" --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent model-args --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
 CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
-${CLAUDE_PLUGIN_ROOT}/python/cli.py agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
-    "$("${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-wrap-prompt" "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
+    "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-> **Diagnostic note**: this lane uses `run-external-agent.sh` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
+> **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
 
 **Cursor fallback** (if `cursor_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 

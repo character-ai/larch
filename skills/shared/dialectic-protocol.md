@@ -138,8 +138,8 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 
 | Slot | Primary | Replacement (when primary unavailable) |
 |---|---|---|
-| 1 | Cursor (via `run-external-agent.sh --tool cursor --capture-stdout`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
-| 2 | Codex (via `launch-codex-exec.sh`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
+| 1 | Cursor (via `python3 python/cli.py agent run-external-agent --tool cursor --capture-stdout`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
+| 2 | Codex (via `python3 python/cli.py agent launch-codex-exec`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
 | 3 | Claude Code Reviewer subagent (Agent tool, always inline) | — |
 
 The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See `skills/design/references/dialectic-execution.md` step **5** (per-side waterfall retry).
@@ -180,7 +180,7 @@ DECISION_N: ANTI_THESIS — <one-line rationale>
 You must vote on every DECISION_N on the ballot. Do NOT skip any. Do NOT modify files.
 ```
 
-For external judges, effort is handled via the launch mechanism (Codex: `--with-effort` via `agent-model-args.sh`; Cursor: `/max-mode on.` via `cursor-wrap-prompt.sh`). The prose suffix is not appended to judge prompts. For the Claude subagent judge, session-default effort applies.
+For external judges, effort is handled via the launch mechanism (Codex: `--with-effort` via `python3 python/cli.py agent model-args`; Cursor: `/max-mode on.` via `python3 python/cli.py agent cursor-wrap-prompt`). The prose suffix is not appended to judge prompts. For the Claude subagent judge, session-default effort applies.
 
 ## Launching Judges
 
@@ -191,32 +191,32 @@ Launch all 3 judges **in parallel** (single message). Spawn order: Cursor first 
 ```bash
 # Cursor authenticates via the CURSOR_API_KEY environment variable (issue
 # #3375) — no `--api-key` argv element, so the key never reaches the cursor
-# command line, run-external-agent.sh `.meta` CMD_JSON, or `ps`. The call below
+# command line, `python3 python/cli.py agent run-external-agent` `.meta` CMD_JSON, or `ps`. The call below
 # is a Darwin preflight gate: it prints an actionable stderr message when
 # neither CURSOR_API_KEY nor a cursor keychain entry is available (cursor would
 # otherwise emit a cryptic keychain error) and prints no argv flags; its exit
 # is advisory here (the cursor launch / sentinel handling below detects an
 # unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
 # this shell.
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-auth-preflight" || true
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-auth-preflight || true
 # Use a temp file (NOT process substitution) so a non-zero exit from
-# agent-model-args.sh — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
+# `python3 python/cli.py agent model-args` — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
 # producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
 # expansion is required for Bash 3.2 compatibility under `set -u`.
 CURSOR_MODEL_ARGS_TMP=$(mktemp)
 trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/python/cli.py agent model-args" --tool cursor --with-effort > "$CURSOR_MODEL_ARGS_TMP" || exit $?
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent model-args --tool cursor --with-effort > "$CURSOR_MODEL_ARGS_TMP" || exit $?
 CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
-${CLAUDE_PLUGIN_ROOT}/python/cli.py agent run-external-agent --tool cursor \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor \
   --output "$DIALECTIC_TMPDIR/cursor-judge-output.txt" \
   --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust \
     ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} \
     --workspace "$PWD" \
-    "$("${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-wrap-prompt" "<judge prompt from template above>.")"
+    "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "<judge prompt from template above>.")"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -244,7 +244,7 @@ Use `run_in_background: true` and `timeout: 1860000`.
 
 ## Collecting Judge Results (split pattern)
 
-External judges and inline Claude judges use different collection paths. This split is **required** because `collect-agent-results.sh` polls `.done` sentinels produced by `run-external-agent.sh`; inline Agent-tool subagents produce no sentinel.
+External judges and inline Claude judges use different collection paths. This split is **required** because `collect-agent-results.sh` polls `.done` sentinels produced by `python3 python/cli.py agent run-external-agent`; inline Agent-tool subagents produce no sentinel.
 
 Timing note: v1 timing rows are emitted by launch-wrapper scripts. Codex judge calls through `launch-codex-exec.sh` currently record the launcher's default `codex-exec` task kind unless the caller passes an explicit `--timing-task-kind codex-judge`; Cursor judge rows remain tied to their launcher surface.
 

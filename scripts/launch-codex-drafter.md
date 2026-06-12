@@ -3,7 +3,7 @@
 ## Purpose
 
 Read-only Codex plan drafter launcher for `/design` Step 2b. Wraps
-`launch-codex-exec.sh` with a read-only sandbox, passes the drafter prompt,
+`python3 python/cli.py agent launch-codex-exec` with a read-only sandbox, passes the drafter prompt,
 and parses the `LARCH_PLAN_BEGIN/END` + `LARCH_SUMMARY_BEGIN/END` sentinel
 output into `plan.txt` and `plan-summary.md` under `$DESIGN_TMPDIR`.
 
@@ -21,7 +21,7 @@ identically.
 |------|----------|-------------|
 | `--prompt-file FILE` | yes | Drafter prompt text file (must be under DESIGN_TMPDIR or REPO_ROOT) |
 | `--output-file FILE` | yes | Status KV output path (must be under DESIGN_TMPDIR) |
-| `--timeout SECONDS` | yes | Wall-clock cap forwarded to `launch-codex-exec.sh` (1–1800) |
+| `--timeout SECONDS` | yes | Wall-clock cap forwarded to `python3 python/cli.py agent launch-codex-exec` (1–1800) |
 | `--design-tmpdir DIR` | yes | Design session tmpdir |
 | `--repo-root DIR` | yes | Repository root (grants Codex read access via `--add-dir`) |
 | `--timing-task-kind KIND` | no | Timing ledger kind; default `codex-plan-draft` |
@@ -45,7 +45,6 @@ In `--output-file` (status KV file):
 Side files written under `<output-file>.*`:
 - `.dirty-tree` — baseline-delta or absolute dirty-tree sidecar (always written)
 - `.done` — exit code
-- `.token-record` — stable Codex usage sidecar copied from the raw inner launcher before raw-output cleanup when usage parsed
 - `.stderr` — Codex stderr on failure (removed on success)
 - `.failure-diag` — failure classification token (on ERROR)
 - `.stderr-tail` — redacted stderr tail via `write_failed_agent_stderr_tail` (on exec failure)
@@ -56,15 +55,10 @@ Under `DESIGN_TMPDIR`:
 
 ## Implementation
 
-Calls `launch-codex-exec.sh --sandbox read-only --add-dir REPO_ROOT`, captures
+Calls `python3 python/cli.py agent launch-codex-exec --sandbox read-only --add-dir REPO_ROOT`, captures
 `LAUNCHER_EXIT` from its stdout, then parses the `--output-last-message` file
 for plan sentinels using the shared `scripts/parse-drafter-output.py` helper.
-Timing recording is handled inside `launch-codex-exec.sh`. Token sidecar
-creation is also handled there, but this wrapper copies the raw
-`${_codex_raw}.token-record` to stable `<output-file>.token-record` immediately
-after the exec launcher returns. Success and failure paths can expose usage.
-Step 2b owns exactly-once ingestion into `$DESIGN_TMPDIR/token-report.ndjson`
-and the active design token ledger.
+Token and timing recording are handled inside `python3 python/cli.py agent launch-codex-exec`.
 
 ## Edit-in-sync
 

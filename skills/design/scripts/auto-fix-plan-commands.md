@@ -29,8 +29,8 @@
 
 Reuses the verified launcher primitives (same argv grammar as `scripts/lint-fix-loop.sh`):
 
-- **Codex** → `python/cli.py agent launch-codex-exec --workdir "$DESIGN_TMPDIR" --add-dir "$DESIGN_TMPDIR" --prompt-file … --usage-label codex_plan_autofix --timing-task-kind codex-plan-autofix` (parses `LAUNCHER_EXIT`).
-- **Cursor** → `python/cli.py agent run-external-agent --tool cursor --capture-stdout -- cursor agent -p --trust ${MODEL_ARGS} --workspace "$DESIGN_TMPDIR" "<wrapped-prompt>"` with `lib-cursor-launcher-common.sh` model/auth/serial-lock glue and `cursor-wrap-prompt.sh`; the helper records a best-effort `cursor-plan-autofix` timing row around this dispatch.
+- **Codex** → `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-codex-exec --workdir "$DESIGN_TMPDIR" --add-dir "$DESIGN_TMPDIR" --prompt-file … --usage-label codex_plan_autofix --timing-task-kind codex-plan-autofix` (parses `LAUNCHER_EXIT`).
+- **Cursor** → `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --capture-stdout -- cursor agent -p --trust ${MODEL_ARGS} --workspace "$DESIGN_TMPDIR" "<wrapped-prompt>"` with `lib-cursor-launcher-common.sh` model/auth/serial-lock glue and `cursor-wrap-prompt.sh`; the helper records a best-effort `cursor-plan-autofix` timing row around this dispatch.
 
 The agent edits the plan file IN PLACE; `revalidate()` (re-running `validate-plan.sh`) is the authoritative success signal, not the launcher exit code. Nonzero launcher exits, repository dirty-tree deltas, failed non-target `$DESIGN_TMPDIR` restoration, and optional-trailer guard failures are treated as failed attempts and cannot be converted into success by a passing revalidation. Non-target tmpdir mutations that restore cleanly do not fail an otherwise valid target-file fix. The fix prompt wraps the plan content and validator log as **untrusted data** (trust-boundary preserved) and instructs minimal, defect-only edits preserving plan prose, structure, and the trailing metadata block. The helper copies the original validator log to a site/target-specific `plan-autofix/original-validate-plan-commands-*.log` before revalidation can overwrite the live log; if `redact secrets` fails while rendering the prompt, the raw validator log is withheld and a fixed placeholder is included instead. Each revalidation writes `attempt-*/revalidate.log`; validator infrastructure failures stop the loop immediately and emit that path as `REVALIDATE_LOG_FILE`.
 
@@ -49,8 +49,8 @@ Before each dispatch the helper snapshots the target file, all non-target regula
 ## Hermetic seams
 
 - `LARCH_AUTOFIX_VALIDATE_PLAN_SH` — default `validate-plan.sh`; re-validation driver.
-- `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` — default `python/cli.py agent launch-codex-exec`.
-- `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` — default `python/cli.py agent run-external-agent`.
+- `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` — default `python3 python/cli.py agent launch-codex-exec`.
+- `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` — default `python3 python/cli.py agent run-external-agent`.
 - `LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH` — default `gate-b-dedup-plan.sh`; optional-trailer snapshot/dedup guard for `plan.txt`.
 - `LARCH_AUTOFIX_DISPATCH_SH` — full per-vendor dispatch override (`--vendor`, `--run-dir`, `--prompt-file`, `--plan-file`, `--design-tmpdir`); replaces the real launcher path so the harness simulates a vendor edit deterministically.
 
@@ -76,7 +76,7 @@ Update together: `skills/design/SKILL.md` **### Plan command validator failure (
 
 ## External-binary verification
 
-The live Codex/Cursor dispatch reuses already-verified `launch-codex-exec.sh` / `run-external-agent.sh` argv shapes (per `.claude/rules/external-tool-launcher-parity.md`). The offline harness covers loop/alternation/re-validation/KV logic through the full dispatch seam (`LARCH_AUTOFIX_DISPATCH_SH`) and also exercises the per-vendor exit-parsing code paths via the narrower `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` and `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` seams (with stubbed cursor libs via `CLAUDE_PLUGIN_ROOT`). Full end-to-end live cross-vendor fix paths require real vendors; live verification belongs to CI / manual runs.
+The live Codex/Cursor dispatch reuses already-verified `python3 python/cli.py agent launch-codex-exec` / `python3 python/cli.py agent run-external-agent` argv shapes (per `.claude/rules/external-tool-launcher-parity.md`). The offline harness covers loop/alternation/re-validation/KV logic through the full dispatch seam (`LARCH_AUTOFIX_DISPATCH_SH`) and also exercises the per-vendor exit-parsing code paths via the narrower `LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH` and `LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH` seams (with stubbed cursor libs via `CLAUDE_PLUGIN_ROOT`). Full end-to-end live cross-vendor fix paths require real vendors; live verification belongs to CI / manual runs.
 
 ## Harness
 

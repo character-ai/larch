@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -217,6 +218,25 @@ def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -
     assert agents.resolve_model_args("cursor", with_effort=True).argv == ("--model", "cursor-test-model")
 
 
+def test_cursor_wrap_prompt_exact_stdout(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = agents.cursor_wrap_prompt_main(["hello"])
+    assert rc == 0
+    assert capsys.readouterr().out == " /max-mode on. Prompt: hello"
+
+
+def test_read_claude_model_main_unknown_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(*_args: object, **_kwargs: object) -> agents.CommandResult:
+        return agents.CommandResult((), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    rc = agents.read_claude_model_main([])
+    assert rc == 0
+    assert capsys.readouterr().out == "CLAUDE_MODEL=unknown\n"
+
+
 def test_parse_codex_usage_nested_usage(tmp_path: Path) -> None:
     events = tmp_path / "events.jsonl"
     _ = events.write_text(
@@ -239,9 +259,23 @@ def test_parse_codex_usage_preserves_explicit_zeroes(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     totals = agents.parse_codex_usage_file(events)
-    assert totals.input_tokens == 10
-    assert totals.cached_input_tokens == 2
-    assert totals.output_tokens == 3
+    assert totals.input_tokens == 99
+    assert totals.cached_input_tokens == 88
+    assert totals.output_tokens == 77
+
+
+def test_parse_codex_usage_zero_msg_usage_keeps_sibling_msg_fields(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text(
+        '{"msg":{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0},'
+        '"input_tokens":42,"cached_input_tokens":4,"output_tokens":6},'
+        '"usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}\n',
+        encoding="utf-8",
+    )
+    totals = agents.parse_codex_usage_file(events)
+    assert totals.input_tokens == 42
+    assert totals.cached_input_tokens == 4
+    assert totals.output_tokens == 6
 
 
 def test_parse_codex_usage_fails_closed_on_malformed_jsonl(tmp_path: Path) -> None:
@@ -437,6 +471,131 @@ def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> 
     assert f"STDERR_SINK={sink}" in meta
 
 
+def test_run_external_agent_rejects_unsafe_output_without_sidecars(tmp_path: Path) -> None:
+    output = tmp_path / "bad\nout.txt"
+    rc = agents.run_external_agent_main(
+        [
+            "--tool",
+            "claude",
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+            "--",
+            sys.executable,
+            "-c",
+            "print('should not run')",
+        ],
+    )
+    assert rc == 1
+    assert not output.exists()
+    assert not output.with_suffix(output.suffix + ".done").exists()
+    assert not output.with_suffix(output.suffix + ".meta").exists()
+
+
+def test_run_external_agent_inner_sentinel_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "agent.out"
+    monkeypatch.setenv("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done")
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=[sys.executable, "-c", "print('ok')"],
+        capture_stdout_only=True,
+    )
+    assert result.exit_code == 0
+    assert output.with_suffix(output.suffix + ".inner.done").read_text(encoding="utf-8") == "0\n"
+    assert not output.with_suffix(output.suffix + ".done").exists()
+
+
+def test_run_external_agent_cleans_stale_sidecars_and_supplied_streams(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    stdout_path = tmp_path / "stdout.log"
+    stderr_path = tmp_path / "stderr.log"
+    for stale in (
+        output,
+        output.with_suffix(output.suffix + ".done"),
+        output.with_suffix(output.suffix + ".inner.done"),
+        output.with_suffix(output.suffix + ".meta"),
+        output.with_suffix(output.suffix + ".diag"),
+        output.with_suffix(output.suffix + ".stderr-tail"),
+        output.with_suffix(output.suffix + ".failure-diag"),
+        stdout_path,
+        stderr_path,
+    ):
+        _ = stale.write_text("stale", encoding="utf-8")
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        cmd=[sys.executable, "-c", "import sys; print('new-out'); print('new-err', file=sys.stderr)"],
+    )
+    assert result.exit_code == 0
+    assert stdout_path.read_text(encoding="utf-8") == "new-out\n"
+    assert stderr_path.read_text(encoding="utf-8") == "new-err\n"
+    assert not output.with_suffix(output.suffix + ".inner.done").exists()
+    assert not output.with_suffix(output.suffix + ".stderr-tail").exists()
+    assert not output.with_suffix(output.suffix + ".failure-diag").exists()
+
+
+def test_run_external_agent_codex_stdin_is_devnull(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "0")
+    output = tmp_path / "codex.out"
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        capture_stdout_only=True,
+        cmd=[sys.executable, "-c", "import sys; data=sys.stdin.read(); print('empty' if data == '' else 'nonempty')"],
+    )
+    assert result.exit_code == 0
+    assert output.read_text(encoding="utf-8") == "empty\n"
+
+
+def test_run_external_agent_timeout_keeps_stderr_in_diag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "0.05")
+    output = tmp_path / "agent.out"
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=1,
+        capture_stdout_only=True,
+        cmd=[sys.executable, "-c", "import sys, time; print('err-before-timeout', file=sys.stderr, flush=True); time.sleep(5)"],
+    )
+    assert result.exit_code == config.EXIT_TIMEOUT
+    diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert "err-before-timeout" in diag
+    assert "Timed out" in diag
+
+
+def test_run_external_agent_stderr_tail_prefers_diag_for_capture_stdout_only(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        capture_stdout_only=True,
+        cmd=[sys.executable, "-c", "import sys; print('stdout-noise'); print('diag-choice', file=sys.stderr); raise SystemExit(3)"],
+    )
+    assert result.exit_code == 3
+    tail = output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8")
+    assert "diag-choice" in tail
+    assert "stdout-noise" not in tail
+
+
+def test_compose_failure_diag_orders_failure_carriers(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    sink = tmp_path / "sink.log"
+    _ = sink.write_text("sink body\n", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".sidecar").write_text("sidecar body\n", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".diag").write_text("diag body\n", encoding="utf-8")
+    agents._compose_failure_diag(output, sink=str(sink))  # pylint: disable=protected-access
+    carrier = output.with_suffix(output.suffix + ".failure-diag").read_text(encoding="utf-8")
+    assert carrier.index("===== sink =====") < carrier.index("===== sidecar =====") < carrier.index("===== diag =====")
+
+
 def test_run_external_agent_missing_child_is_post_validation_failure(tmp_path: Path) -> None:
     output = tmp_path / "missing.out"
     result = agents.run_external_agent(
@@ -502,6 +661,44 @@ def test_health_gate_timeout_resolves_session_env(monkeypatch: pytest.MonkeyPatc
     assert agents._health_gate_timeout() is None  # pylint: disable=protected-access
     monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "5")
     assert agents._health_gate_timeout() == 5  # pylint: disable=protected-access
+
+
+def test_health_gate_invalid_retry_env_falls_back(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    helper = tmp_path / "scripts" / "check-reviewers.sh"
+    helper.parent.mkdir()
+    _ = helper.write_text("#!/usr/bin/env bash\nprintf 'CURSOR_PRESENT=true\\n'\n", encoding="utf-8")
+    helper.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "bad")
+    assert agents._external_health_gate("cursor") == (True, "")  # pylint: disable=protected-access
+
+
+def test_serial_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME", "Darwin")
+    monkeypatch.setenv("USER", "larch-test-invalid-env")
+    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_TTL", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_TRIES", "bad")
+    monkeypatch.setenv("LARCH_EXTERNAL_SERIAL_LOCK_DELAY", "bad")
+
+    class FakeTimer:
+        def __init__(self, delay: float, callback: object) -> None:
+            self.delay = delay
+            self.callback = callback
+            self.daemon = False
+
+        def start(self) -> None:
+            assert self.delay == 0.5
+
+    monkeypatch.setattr(agents, "Timer", FakeTimer)
+    state = agents.external_serial_lock_acquire("cursor")
+    try:
+        assert state.lock_path is not None
+        agents.external_serial_lock_release_after(state)
+    finally:
+        if state.lock_path is not None:
+            state.lock_path.rmdir()
 
 
 def test_health_gate_fail_open_on_unparseable_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1009,6 +1206,42 @@ def test_launch_cursor_ci_auth_preflight_classifies_as_health_auth(
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "2\n"
 
 
+def test_launch_cursor_ci_model_arg_failure_writes_launcher_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CURSOR_API_KEY", "crsr_test")
+    monkeypatch.setenv("LARCH_CURSOR_MODEL", " \t ")
+    output = tmp_path / "cursor-ci.out"
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "1\n"
+    diag = output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert "STATUS=FAILED" in diag
+    assert "model args failed" in diag
+    assert "LAUNCHER_EXIT=1" in capsys.readouterr().out
+
+
 def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_path: Path) -> None:
     prompt = tmp_path / "outside" / "prompt.md"
     prompt.parent.mkdir()
@@ -1027,6 +1260,60 @@ def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_pat
         ],
     )
     assert rc == 2
+
+
+def test_launch_claude_subprocess_requires_read_tools_add_dir(tmp_path: Path) -> None:
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--read-tools",
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 2
+
+
+def test_launch_claude_subprocess_rejects_read_tools_add_dir_outside_session(tmp_path: Path) -> None:
+    prompt = tmp_path / "session" / "prompt.md"
+    prompt.parent.mkdir()
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    output = prompt.parent / "out.txt"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--read-tools",
+            "--read-tools-add-dir",
+            str(outside),
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 2
+
+
+def test_render_context_files_redacts_secret_shaped_path(tmp_path: Path) -> None:
+    secret = "sk-" + "A" * 24
+    root = tmp_path / f"context-{secret}"
+    root.mkdir()
+    ctx = root / "notes.md"
+    _ = ctx.write_text("ordinary body\n", encoding="utf-8")
+    rc, rendered, msg = agents._render_context_files([ctx], [root])  # pylint: disable=protected-access
+    assert rc == 0
+    assert msg == ""
+    assert secret not in rendered
+    assert "&lt;REDACTED-TOKEN&gt;" in rendered
 
 
 def test_launch_claude_review_forwards_context_files_to_subprocess(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1199,8 +1486,55 @@ def test_cursor_ci_stall_monitor_writes_sidecar(tmp_path: Path, monkeypatch: pyt
         ],
     )
     assert rc == 0
-    assert output.with_suffix(output.suffix + ".stall.json").is_file()
+    stall_path = output.with_suffix(output.suffix + ".stall.json")
+    assert stall_path.is_file()
+    stall = json.loads(stall_path.read_text(encoding="utf-8"))
+    assert stall["tool"] == "cursor"
+    assert stall["channel"] == "stdout"
+    assert stall["capture_phase"] == "pre_sigterm"
+    assert isinstance(stall["git_state"], dict)
+    assert isinstance(stall["last_transcript_lines"], list)
     assert any(output.parent.glob("cursor-ci-stall-*.json"))
+
+
+def test_launch_cursor_ci_rejects_invalid_argv_before_spawn(tmp_path: Path) -> None:
+    output = tmp_path / "cursor-ci.out"
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            "bad-role",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 2
+    assert not output.with_suffix(output.suffix + ".done").exists()
+
+
+def test_stall_kill_terminates_children_before_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, int]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> agents.CommandResult:
+        assert argv == ["pgrep", "-P", "100"]
+        return agents.CommandResult(tuple(argv), 0, "200\n201\n", "", 0.0)
+
+    def fake_kill(pid: int, sig: int) -> None:
+        calls.append((pid, sig))
+
+    monkeypatch.setattr(agents.proc, "run", fake_run)
+    monkeypatch.setattr(agents.os, "kill", fake_kill)
+    def fake_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(agents.time, "sleep", fake_sleep)
+    agents._terminate_child_processes_first(100)  # pylint: disable=protected-access
+    assert calls == [(200, 15), (201, 15), (100, 15), (200, 9), (201, 9), (100, 9)]
 
 
 def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:

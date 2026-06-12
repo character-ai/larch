@@ -195,7 +195,7 @@ require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wr
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
 require('python/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
 for needle in [
-    'degraded-tools-gate.sh', '--codex-present', '--cursor-present',
+    'agent degraded-tools-gate', '--codex-present', '--cursor-present',
     'read_session_key CODEX_PRESENT', 'read_session_key CURSOR_PRESENT',
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
