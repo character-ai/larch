@@ -1,0 +1,191 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] Aggregated rollup of 8 capped OOS items
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Combined: capped per-run rollup
+**Phase**: implement
+**Vote tally**: N/A — capped rollup of 8 entries
+
+## Description
+
+Cap 1 (OOS_ISSUES_PER_RUN_CAP) exceeded; the following 8 items were rolled up by skills/implement/scripts/oos-issue-cap.sh:
+  - **OOS_2:**: - **Description**: [SCOPE-REDUCTION] Makefile and relevant-checks wiring for the new harness is optional. Scenario: Plan says add Makefile wiring only if the implementer chooses; scripts/relevant-chec… [Files: Makefile scripts/implement-preflight.sh scripts/relevant-checks.sh scripts/relevant-checks.sh:273-284]
+  - **OOS_3:**: - **Description**: [OUT_OF_SCOPE] SECURITY.md has stale /implement --emergency downgrade scope. Scenario: The security policy still says emergency does not suppress admission and is mutually exclusive… [Files: SECURITY.md SECURITY.md:245 SKILL.md]
+  - **OOS_1:**: - **Description**: Inline Bash strip_lifecycle_prefix duplicates scripts/tracking-issue-write.sh:127-138 without a sync guard. Scenario: Future prefix additions update tracking-issue-write.sh only; em… [Files: scripts/implement-preflight.sh:105-106 scripts/tracking-issue-write.sh:127-138 tracking-issue-write.sh]
+  - **OOS_3:**: - **Description**: No CI shard target for `scripts/test-implement-preflight.sh`. Scenario: The testing strategy runs the harness explicitly, but unlike `test-plan-adequacy-audit` and `test-implement-f… [Files: Makefile:1-650 scripts/relevant-checks.sh scripts/test-implement-preflight.sh]
+  - **OOS_1:**: - **Description**: No named harness case uses a stacked lifecycle-prefix title fixture. Scenario: Plan edge case at plan.txt:273 requires stripping exactly one prefix when titles are stacked (e.g. `[D… [Files: plan.txt:273 scripts/test-implement-preflight.sh:403-409]
+  - **OOS_2:**: - **Description**: No harness case asserts `RESUME=` envelope forwarding from admission stdout. Scenario: Plan requires `RESUME=&lt;true|false|empty&gt;` in the final KV envelope (plan.txt:249,534) and help… [Files: parent-issue.md plan.txt:249 plan.txt:53 python/test_admission.py scripts/test-implement-preflight.sh:351-442]
+  - **OOS_1:**: - **Description**: Offline harness is not wired into make lint or relevant-checks.sh. Scenario: The plan adds scripts/test-implement-preflight.sh but only optionally mentions Makefile/docs wiring. Wit… [Files: Makefile Makefile:6-106 implement-preflight.sh relevant-checks.sh. scripts/test-implement-preflight.sh]
+  - **OOS_2:**: - **Description**: Contract and harness prose claim "exact admission refusal templates" (plural), but only the `managed-prefix` branch gets partial substring asserts; `has-blockers`, `audit-report-lab… [Files: scripts/implement-preflight.md:253-262 scripts/test-implement-preflight.sh:320-327]
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Scope for `strip_lifecycle_prefix` duplication
+- **Question**: Should the plan add a cross-file sync guard for the Bash/Python duplication?
+- **Resolution**: No. User said "no enhancement of bash machinery we are replacing with python machinery." Skip OOS_1 first entirely.
+- **Source**: user
+
+## Decision 2: Already-done items
+- **Question**: How to handle the items the research shows are already implemented?
+- **Resolution**: Treat as out of scope (already done). The plan covers only the three confirmed gaps.
+- **Source**: codebase (confirmed by reading Makefile, test harness, CI workflow)
+
+## Decision 3: In-scope items
+- **Question**: What are the three remaining gaps?
+- **Resolution**:
+  1. `relevant-checks.sh` — no case for `scripts/implement-preflight.sh` / `scripts/implement-preflight.md` / `scripts/test-implement-preflight.sh` → `test-implement-preflight`
+  2. `SECURITY.md` line ~245 — stale claim that `--emergency` and `--merge` are mutually exclusive (SKILL.md says they're compatible)
+  3. `scripts/test-implement-preflight.sh` — refusal-template first-line assertion (`**❌ /implement preflight: admission blocked — ...`) is present only on the `managed-prefix` branch; missing for `has-blockers`, `missing-designed-prefix`, `report-title`, and `error` branches
+- **Source**: codebase
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Wire `relevant-checks.sh` so edits to `implement-preflight.sh`, its `.md` sibling, and its test trigger `test-implement-preflight`.
+- Fix stale SECURITY.md text: `--emergency` and `--merge` are compatible, not mutually exclusive.
+- Add refusal-template first-line assertions to all untested admission-block branches in the harness.
+
+### Non-goals
+- No `strip_lifecycle_prefix` sync guard (Bash machinery not worth enhancing before Python migration).
+- No changes to `Makefile` or `ci.yaml` (target and CI shard already exist).
+- No new RESUME= tests (case 9 already covers forwarding).
+
+### Approach sketch
+- Add one `case "$f"` block in `relevant-checks.sh` covering all three files in the `implement-preflight` surface.
+- Find and fix the single `mutually exclusive with --merge` sentence in `SECURITY.md`.
+- Add `contains` assertions for the `**❌ /implement preflight: admission blocked` first line in `admission-blockers`, `admission-missing-designed`, `admission-report`, and `admission-error` test cases.
+
+### Surfaces in scope
+- `scripts/relevant-checks.sh`
+- `SECURITY.md`
+- `scripts/test-implement-preflight.sh`
+- `scripts/test-implement-preflight.md` (update harness contract list if needed)
+
+### Open questions
+- None.
+
+</design_outline>
+
