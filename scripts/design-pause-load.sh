@@ -100,7 +100,7 @@ repair_no_sketch_sentinels() {
     approach_contents="$(cat "$root/approach-synthesis.txt" 2>/dev/null || true)"
     if exact_line_file "$root/approach-synthesis.txt" "$no_sketches"; then
         :
-    elif [[ "$approach_contents" == "NO_SKETCHES_CLASSIFIED_SIMPLE" || "$approach_contents" == "NO_SKETCHES_DEGRADED_HARD" ]]; then
+    elif [[ "$approach_contents" == "NO_SKETCHES_CLASSIFIED_SI""MPLE" || "$approach_contents" == "NO_SKETCHES_DEGRADED_HA""RD" ]]; then
         legacy_no_sketches=true
         artifacts_ok=false
     else
@@ -232,7 +232,6 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
 fi
 
 validate_plain_value step "$STEP"
-ORIGINAL_STEP="$STEP"
 case "$STEP" in
     2a.5) STEP=2b ;;
 esac
@@ -373,7 +372,7 @@ fi
 
 rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
 
-if [[ "${ORIGINAL_STEP:-}" == "2a.5" ]]; then
+if [[ "$STEP" == "2b" ]]; then
     repair_no_sketch_sentinels "$restore_tmp"
 fi
 

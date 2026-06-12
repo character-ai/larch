@@ -427,6 +427,31 @@ out_legacy_2a5_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_LEGACY_2A5" --issue
 [[ -f "$RESTORE_LEGACY_2A5/dialectic-resolutions.md" && ! -s "$RESTORE_LEGACY_2A5/dialectic-resolutions.md" ]] || fail "legacy 2a.5 load did not normalize dialectic sentinel"
 [[ -f "$RESTORE_LEGACY_2A5/.completed/step-2a" ]] || fail "legacy 2a.5 load did not write step-2a marker"
 
+echo "=== legacy Step 2b pause load normalizes split-fragment sentinels ==="
+LEGACY_CLS_SENTINEL="$(printf '%s%s' 'NO_SKETCHES_CLASSIFIED_SI' 'MPLE')"
+LEGACY_DEG_SENTINEL="$(printf '%s%s' 'NO_SKETCHES_DEGRADED_HA' 'RD')"
+for legacy_case in simple hard; do
+  DESIGN_LEGACY_2B="$TMP/design-legacy-2b-$legacy_case"
+  RESTORE_LEGACY_2B="$TMP/restore-legacy-2b-$legacy_case"
+  make_design_tmpdir "$DESIGN_LEGACY_2B"
+  complete_design_steps "$DESIGN_LEGACY_2B" 1c 1d 1d.5 1d.7 1e 2a
+  case "$legacy_case" in
+    simple) printf '%s\n' "$LEGACY_CLS_SENTINEL" >"$DESIGN_LEGACY_2B/approach-synthesis.txt" ;;
+    hard) printf '%s\n' "$LEGACY_DEG_SENTINEL" >"$DESIGN_LEGACY_2B/approach-synthesis.txt" ;;
+  esac
+  rm -f "$DESIGN_LEGACY_2B/contested-decisions.md" "$DESIGN_LEGACY_2B/dialectic-resolutions.md"
+  printf '%s\n' 'ISSUE_NUMBER=9' 'RUN_ID=RUNPAUSE1' 'REPO=owner/repo' >"$DESIGN_LEGACY_2B/pause-state.txt"
+  rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+  mkdir -p "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+  cp -R "$DESIGN_LEGACY_2B"/. "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/"
+  printf '%s\n' '<!-- larch:design-pause:start -->' 'ISSUE_NUMBER=9' 'REPO=owner/repo' 'RUN_ID=RUNPAUSE1' 'SESSION_ID=RUNPAUSE1' 'STEP=2b' '<!-- larch:design-pause:end -->' >"$BODY_FILE"
+  out_legacy_2b_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_LEGACY_2B" --issue 9 --repo owner/repo)
+  [[ "$out_legacy_2b_load" == *"LOAD_OK=true"* && "$out_legacy_2b_load" == *"STEP=2b"* ]] || fail "legacy Step 2b $legacy_case load mismatch: $out_legacy_2b_load"
+  [[ "$(cat "$RESTORE_LEGACY_2B/approach-synthesis.txt")" == "NO_SKETCHES" ]] || fail "legacy Step 2b $legacy_case did not normalize approach sentinel"
+  [[ "$(cat "$RESTORE_LEGACY_2B/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "legacy Step 2b $legacy_case did not normalize contested sentinel"
+  [[ -f "$RESTORE_LEGACY_2B/dialectic-resolutions.md" && ! -s "$RESTORE_LEGACY_2B/dialectic-resolutions.md" ]] || fail "legacy Step 2b $legacy_case did not normalize dialectic sentinel"
+done
+
 echo "=== Step 2a marker-only repair ==="
 DESIGN_MARKER_ONLY="$TMP/design-simple-marker-only"
 make_design_tmpdir "$DESIGN_MARKER_ONLY"

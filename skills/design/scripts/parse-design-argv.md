@@ -58,7 +58,7 @@ Single quotes in values are encoded by closing the quote, inserting a double-quo
 
 The parser scans leading flags only until the first positional token or bare `--` terminator.
 
-- First positional token all digits (`^[0-9]+$`) → `POSITIONAL_KIND=issue`, `POSITIONAL_VALUE=<digits>` only. Any additional tokens after a numeric issue are ignored (not joined into `POSITIONAL_VALUE` and not reclassified as verbal).
+- First positional token all digits (`^[0-9]+$`) → `POSITIONAL_KIND=issue`, `POSITIONAL_VALUE=<digits>` only. Any additional tokens after a numeric issue are ignored (not joined into `POSITIONAL_VALUE` and not reclassified as verbal), except a pre-terminator retired `--hard` still fails validation.
 - First positional token non-empty and non-numeric → `POSITIONAL_KIND=verbal`, `POSITIONAL_VALUE=<tail joined by single spaces>`.
 - No positional token → `POSITIONAL_KIND=none`, `POSITIONAL_VALUE=`.
 

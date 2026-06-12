@@ -110,11 +110,13 @@ run_id=""
 first_positional=""
 positional_value=""
 positional_kind=none
+after_terminator=false
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --)
             shift
+            after_terminator=true
             break
             ;;
         --hard)
@@ -169,6 +171,15 @@ if [ "$#" -gt 0 ]; then
     first_positional="$1"
     if [[ "$first_positional" =~ ^[0-9]+$ ]]; then
         positional_value="$first_positional"
+        if [ "$after_terminator" != true ]; then
+            shift
+            while [ "$#" -gt 0 ]; do
+                case "$1" in
+                    --hard) validation_error '--hard' ;;
+                esac
+                shift
+            done
+        fi
     else
         positional_value="$1"
         shift

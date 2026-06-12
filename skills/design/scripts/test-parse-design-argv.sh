@@ -266,6 +266,11 @@ assert_rc 'positional then flaglike' 0
 assert_kv 'positional then flaglike' POSITIONAL_KIND issue
 assert_kv 'positional then flaglike' POSITIONAL_VALUE 3249
 
+run_case 3249 --hard
+assert_rc 'numeric issue trailing retired --hard' 3
+assert_kv 'numeric issue trailing retired --hard' VALIDATION_ERROR --hard
+assert_no_flag_kvs 'numeric issue trailing retired --hard'
+
 # validation errors
 run_case --hard
 assert_rc 'retired --hard' 3

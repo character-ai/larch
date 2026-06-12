@@ -86,6 +86,25 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+step2b_exact_line_file() {
+  _s2b_file="$1"
+  _s2b_expected="$2"
+  awk -v expected="$_s2b_expected" '
+    NR == 1 { ok = ($0 == expected) }
+    NR > 1 { ok = 0 }
+    END { exit (NR == 1 && ok) ? 0 : 1 }
+  ' "$_s2b_file" 2>/dev/null
+}
+
+if [ -z "${DESIGN_TMPDIR:-}" ] \
+  || [ ! -d "$DESIGN_TMPDIR" ] \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "NO_SKETCHES" \
+  || ! step2b_exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "NO_CONTESTED_DECISIONS" \
+  || [ ! -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ] \
+  || [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+  printf '%s\n' '**⚠ Step 2b: Step 2a sentinel artifacts are missing or invalid. Re-run Step 2a before drafting.**' >&2
+  exit 1
+fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
