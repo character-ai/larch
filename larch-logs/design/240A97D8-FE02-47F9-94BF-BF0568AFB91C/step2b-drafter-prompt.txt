@@ -1,0 +1,198 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+Trusted resolved design_classification: SIMPLE
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES_CLASSIFIED_SIMPLE, draft from direct codebase/doc inspection without fabricating sketch agreement; if exactly NO_SKETCHES_DEGRADED_HARD, preserve HARD thoroughness without fabricating sketch agreement.
+- Read discussion-round1.md when present for scope boundaries and hard constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation only when it does not conflict with binding dialectic resolutions or explicit user refusals.
+- Read dialectic-resolutions.md when present and branch on Disposition: voted — follow Resolution and address antithesis; fallback-to-synthesis / bucket-skipped / over-cap — synthesis stands, note Why reason, do not fabricate antithesis-engagement prose.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# eliminate completely HARD flow from /design, removing all machinery and tests…
+
+eliminate completely HARD flow from /design, removing all machinery and tests exclusive to it.  Remove --hard argument, and any mentions of HARD or differentiation by flow type from reports and documentation.  SIMPLE (which becomes the one and only now, and so SIMPLE mentions should also be eliminated as unnecessary, and reports of flow type should be removed entirely as well) retains all its existing characteristics.
+
+## Acceptance
+
+- Grepping the codebase for `SIMPLE` and `HARD` returns no results at the end, except in run logs (`larch-logs/`). Concretely, `git grep -nE 'SIMPLE|HARD' -- ':!larch-logs'` must produce no output (case-sensitive).
+- Note this includes the plan-size machine tokens (`HARD_TRIGGER_FIRED`, `HARD_TRIGGER` reason text) in `check-plan-size.sh`, `design-postplan-emit.sh`, and their docs/tests/consumers: those denote the hard size threshold, not the HARD tier. Rename those tokens and update their consumers and tests; the plan-size braking behavior itself is retained unchanged.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES_CLASSIFIED_SIMPLE
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: HARD_TRIGGER_FIRED rename
+- **Question**: What should the plan-size trigger token be renamed to?
+- **Resolution**: `SIZE_TRIGGER_FIRED`, with cascading renames to `cancelled-plan-size-hard` → `cancelled-plan-size`, `POSTPLAN_STATUS=plan-size-hard-trigger` → `plan-size-trigger`, `## Plan Size — Hard Trigger` → `## Plan Size — Trigger`.
+- **Source**: user (Step 1c AskUserQuestion)
+
+## Decision 2: Removal scope of exclusive HARD machinery
+- **Question**: Does "all machinery and tests exclusive to HARD" include sketch scripts, dialectic scripts, snapshot-plan-round, and related tests?
+- **Resolution**: Yes. The issue says "removing all machinery and tests exclusive to it." Exclusive HARD machinery includes: sketch prompts/launch references, dialectic-execution/debate references, design-step2a2/2a3/2a5/zero-sketch scripts, snapshot-plan-round.sh and tests, step3_loop_is_hard()/step3_loop_run_hard_snapshots() in review-design-step3-loop.sh, and HARD round-cursor logic in run-step3-review.sh.
+- **Source**: codebase (issue acceptance criteria + codebase exploration)
+
+## Decision 3: run-params.json tier fields
+- **Question**: Should design_classification, design_classification_reason, design_classification_source, sketch_budget, and workflow_path be removed from run-params.json?
+- **Resolution**: Yes. All five fields encode the old tier distinction. Remove them; the remaining flags (partition_requested, brainstorm_requested, etc.) are tier-agnostic and stay.
+- **Source**: codebase
+
+## Decision 4: NO_SKETCHES_CLASSIFIED_SIMPLE sentinel rename
+- **Question**: What should NO_SKETCHES_CLASSIFIED_SIMPLE be renamed to?
+- **Resolution**: NO_SKETCHES. The SIMPLE qualifier is no longer meaningful. The sentinel just indicates no sketches ran.
+- **Source**: codebase (issue acceptance: SIMPLE must be removed from code)
+
+## Decision 5: --workflow-path flag in render-run-summary.sh
+- **Question**: Should --workflow-path be removed from render-run-summary.sh (and callers)?
+- **Resolution**: Yes. The flag passed SIMPLE/HARD values, both of which must go. /implement callers already omit it. The Path bullet will no longer appear in /design run summaries.
+- **Source**: codebase (docs/run-logs.md, render-run-summary.md)
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Remove all HARD-tier-specific code, scripts, references, and tests from the `/design` skill.
+- Rename plan-size machine tokens (`HARD_TRIGGER_FIRED` → `SIZE_TRIGGER_FIRED`, related tokens) without changing plan-size braking behavior.
+- Eliminate all `SIMPLE` and `HARD` string literals from the codebase so `git grep -nE 'SIMPLE|HARD' -- ':!larch-logs'` produces no output.
+
+### Non-goals
+- Changing the behavior of the remaining design flow (SIMPLE characteristics stay intact).
+- Altering the plan-size threshold values or the Split/Cancel/Override braking behavior.
+- Touching `/implement`, `/review`, or other skills beyond what is required to remove SIMPLE/HARD references.
+
+### Approach sketch
+- Delete HARD-exclusive scripts and references: `design-step2a2-record-launches.sh`, `design-step2a3-collect.sh`, `design-step2a5.sh`, `design-step2a-zero-sketch.sh`, `snapshot-plan-round.sh`, and their `.md` sibling / test files.
+- Delete HARD-exclusive reference files: `sketch-prompts.md`, `sketch-launch.md`, `dialectic-execution.md`, `dialectic-debate.md`.
+- Simplify surviving scripts that branch on `design_classification` / `is_hard()` / `sketch_budget`: remove HARD branches, remove `read-classification` calls, remove `step3_loop_is_hard()` and `step3_loop_run_hard_snapshots()`.
+- Rename `HARD_TRIGGER_FIRED` → `SIZE_TRIGGER_FIRED` and cascade related tokens in `check-plan-size.sh`, `design-postplan-emit.sh`, `design-step2b-postplan.sh`, `review-design-step3-loop.sh`, `SKILL.md`, docs, and tests.
+- Remove tier fields from `run-params.json` schema: `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `workflow_path` in `session_env.py`, `design-init-runparams.sh`.
+- Remove `--workflow-path` from `render-run-summary.sh` and callers; remove per-tier grouping from `/report-tokens` (`report_tokens_render.py`, fixture updates).
+- Rename sentinel `NO_SKETCHES_CLASSIFIED_SIMPLE` → `NO_SKETCHES` in `design-step2a.sh` and consuming code.
+- Update all docs (`SKILL.md`, reference .md files, README, SECURITY.md, docs/*.md) to remove SIMPLE/HARD language.
+- Run `make lint` to verify no regressions.
+
+### Surfaces in scope
+- `skills/design/SKILL.md` and all `skills/design/references/*.md`
+- `skills/design/scripts/` (deletions and edits as above)
+- `scripts/render-run-summary.sh`, `scripts/render-run-summary.md`, and test harnesses
+- `python/session_env.py`, `python/timing.py`, `python/gh.py`, `python/report_tokens_render.py`
+- `python/fixtures/report_tokens_design_golden.md` and affected Python tests
+- `README.md`, `SECURITY.md`, `docs/*.md`
+- `scripts/test-design-structure.sh` and other test harnesses that assert on SIMPLE/HARD
+- `agent-lint.toml` (any SIMPLE/HARD lint pins)
+
+### Open questions
+- None.
+
+</design_outline>
+
