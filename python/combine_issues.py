@@ -312,11 +312,23 @@ def _open_issue_rows(data: Any) -> list[dict[str, Any]]:
 
 def _metadata(open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     meta: dict[int, dict[str, Any]] = {}
-    for row in open_rows + combined_rows:
+    for row in combined_rows + open_rows:
         number = _positive_int_value(row.get("number"))
         if number is not None:
             meta[number] = row
     return meta
+
+
+def _combined_oos_numbers(combined_rows: list[dict[str, Any]], meta: dict[int, dict[str, Any]]) -> set[int]:
+    out: set[int] = set()
+    for row in combined_rows:
+        number = _positive_int_value(row.get("number"))
+        if number is None:
+            continue
+        live_title = str(meta.get(number, row).get("title") or "")
+        if _is_oos_title(live_title):
+            out.add(number)
+    return out
 
 
 def _is_oos_title(title: str) -> bool:
@@ -370,7 +382,7 @@ def plan_inherited_main(argv: list[str] | None = None) -> int:
         return _fail_json_error(str(exc))
 
     meta = _metadata(open_rows, combined_rows)
-    combined_oos = {int(row["number"]) for row in combined_rows if _is_oos_title(str(row.get("title") or ""))}
+    combined_oos = _combined_oos_numbers(combined_rows, meta)
     edge_sources: dict[tuple[int, int], set[int]] = defaultdict(set)
     self_edges_skipped = 0
     duplicate_edges_skipped = 0
@@ -480,14 +492,16 @@ def _source_issues_from_record(record: dict[str, Any]) -> list[int]:
 
 
 def _write_outcome(rows: list[dict[str, Any]], phases: set[str]) -> str:
-    latest_status = ""
+    has_failed = False
     for row in rows:
         phase = str(row.get("phase") or "")
         if phase in phases:
-            latest_status = str(row.get("status") or "")
-    if latest_status in _WRITE_SUCCESS:
-        return "success"
-    if latest_status in {"failed", "unresolved"}:
+            status = str(row.get("status") or "")
+            if status in _WRITE_SUCCESS:
+                return "success"
+            if status in {"failed", "unresolved"}:
+                has_failed = True
+    if has_failed:
         return "failed"
     return "missing"
 
@@ -959,7 +973,7 @@ def plan_audit_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         return _fail_json_error(str(exc))
     meta = _metadata(open_rows, combined_rows)
-    combined_oos = {int(row["number"]) for row in combined_rows if _is_oos_title(str(row.get("title") or ""))}
+    combined_oos = _combined_oos_numbers(combined_rows, meta)
     merged: dict[tuple[int, int], dict[str, Any]] = {}
     duplicate = 0
     for row in prose + tier2:

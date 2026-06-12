@@ -288,6 +288,30 @@ def test_plan_inherited_expands_split_source_hosts(tmp_path: Path, capsys):
     assert exception_edges == {(6, 100), (6, 101)}
 
 
+def test_plan_inherited_uses_refreshed_open_title_for_combined_oos(tmp_path: Path, capsys):
+    deps = _write_json(tmp_path / "deps.json", {
+        "status": "ok",
+        "issues": {"1": {"blocked_by": [], "blocking": [5], "read_ok": True}},
+        "warnings": [],
+    })
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": [
+        {"number": 5, "title": "normal", "state": "open"},
+        {"number": 100, "title": "[OOS] live title", "state": "open"},
+    ]})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "stale snapshot", "source_issues": [1]}])
+    assert combine_issues.plan_inherited_main([
+        "--deps-file", deps,
+        "--source-to-combined-file", source_map,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["safe_edges"] == []
+    assert [row["edge"] for row in payload["exception_edges"]] == [[5, 100]]
+    assert payload["exception_edges"][0]["blocker_title"] == "[OOS] live title"
+
+
 def test_plan_inherited_unknown_metadata_blocks_source_until_refresh(tmp_path: Path, capsys):
     deps = _write_json(tmp_path / "deps.json", {"issues": {"1": {"blocked_by": [9], "blocking": [], "read_ok": True}}})
     source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
@@ -392,6 +416,33 @@ def test_close_eligible_ignores_retried_safe_write_failure(tmp_path: Path, capsy
     writes = _write_json(tmp_path / "writes.json", {"write_results": [
         {"edge": [100, 5], "phase": "inherited_safe", "status": "failed", "source_issues": [1]},
         {"edge": [100, 5], "phase": "inherited_safe", "status": "written", "source_issues": [1]},
+    ]})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": []})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["eligible_by_combined"] == {"100": [1]}
+    assert payload["ineligible_sources"] == []
+
+
+def test_close_eligible_ignores_later_safe_write_failure_after_success(tmp_path: Path, capsys):
+    plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
+        "safe_edges": [{"edge": [100, 5], "source_issues": [1]}],
+        "exception_edges": [],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
+    })
+    writes = _write_json(tmp_path / "writes.json", {"write_results": [
+        {"edge": [100, 5], "phase": "inherited_safe", "status": "written", "source_issues": [1]},
+        {"edge": [100, 5], "phase": "inherited_safe", "status": "failed", "source_issues": [1]},
     ]})
     decisions = _write_json(tmp_path / "decisions.json", {"decisions": []})
     source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
@@ -889,6 +940,32 @@ def test_plan_audit_splits_tier1_safe_exceptions_and_tier2(tmp_path: Path, capsy
     assert [row["edge"] for row in payload["auto_write_edges"]] == [[100, 5]]
     approval_edges = {tuple(row["edge"]) for row in payload["approval_required_edges"]}
     assert approval_edges == {(5, 100), (100, 6)}
+
+
+def test_plan_audit_uses_refreshed_open_title_for_combined_oos(tmp_path: Path, capsys):
+    prose = _write_json(tmp_path / "prose.json", {"candidates": [
+        {"edge": [5, 100], "source_kind": "tier1_prose", "confidence": "explicit", "reason": "open blocked by oos"},
+    ]})
+    tier2 = _write_json(tmp_path / "tier2.json", {"candidates": []})
+    existing = _write_json(tmp_path / "existing.json", [])
+    decided = _write_json(tmp_path / "decided.json", {"decisions": []})
+    open_issues = _write_json(tmp_path / "open.json", {"issues": [
+        {"number": 5, "title": "normal", "state": "open"},
+        {"number": 100, "title": "[OOS] live title", "state": "open"},
+    ]})
+    combined = _write_json(tmp_path / "combined.json", [{"number": 100, "title": "stale snapshot", "source_issues": [1]}])
+    assert combine_issues.plan_audit_main([
+        "--prose-candidates-file", prose,
+        "--tier2-candidates-file", tier2,
+        "--existing-edges-file", existing,
+        "--decided-edges-file", decided,
+        "--open-issues-file", open_issues,
+        "--combined-issues-file", combined,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["auto_write_edges"] == []
+    assert [row["edge"] for row in payload["approval_required_edges"]] == [[5, 100]]
+    assert payload["approval_required_edges"][0]["blocker_issue"] == 100
 
 
 def test_plan_audit_retries_approved_edge_absent_from_existing(tmp_path: Path, capsys):
