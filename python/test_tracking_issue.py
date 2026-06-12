@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,24 @@ from test_support import RecordingRunner
 
 def _quiet_noop(*, argv0: str | None = None) -> None:
     _ = argv0
+
+
+def _tracking_issue_subprocess(
+    args: list[str],
+    tmp_path: Path,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
+    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    return subprocess.run(
+        [sys.executable, "python/cli.py", "tracking-issue", *args],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
 
 
 def test_link_pr_closes_appends() -> None:
@@ -256,6 +277,54 @@ def test_read_main_prompt_validates_out_dir_before_write(tmp_path: Path, capsys:
     assert not (missing / "task.md").exists()
 
 
+def test_read_main_rejects_malformed_sentinel(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "parent-issue.md"
+    path.write_text("ISSUE_NUMBER=abc\nRUN_ID=run\nADOPTED=false\n", encoding="utf-8")
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.read_main(["--sentinel", str(path)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "malformed-value-omitted" in out
+
+
+def test_read_main_prompt_honors_total_cap_override(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.read_main(
+        ["--prompt", "abcdef", "--out-dir", str(tmp_path), "--max-total-chars", "5"]
+    )
+    _ = capsys.readouterr()
+    content = (tmp_path / "task.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert content == "abcde\n[TRUNCATED — task-file-total exceeded 5 chars]\n"
+
+
+def test_read_issue_prompt_append_failure_maps_to_read_exit_code(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "comment", "9"), 1, "", "boom", 0.01)],
+    )
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.read_main(["--issue", "9", "--prompt", "note", "--repo", "o/r", "--out-dir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "FAILED=true" in out
+    assert "append-comment failed" in out
+    assert not (tmp_path / "task.md").exists()
+
+
 def test_read_issue_filters_marker_comments(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -337,6 +406,20 @@ def test_create_issue_cli_rejects_newline_only_body(
     assert "ERROR=empty body" in out
 
 
+def test_create_issue_validates_body_file_before_repo_resolution(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.create_issue_main(["--title", "title", "--body-file", "missing.md"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "body file not found" in out
+    assert not runner.calls
+
+
 def test_append_comment_cli_rejects_newline_only_body(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -350,6 +433,23 @@ def test_append_comment_cli_rejects_newline_only_body(
     assert rc == 1
     assert "FAILED=true" in out
     assert "ERROR=empty body" in out
+
+
+def test_append_comment_validates_issue_before_repo_resolution(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.append_comment_main(["--issue", "abc", "--body-file", str(body)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "invalid issue" in out
+    assert not runner.calls
 
 
 def test_create_issue_gh_stderr_redacts_token_in_failure_envelope(
@@ -433,6 +533,34 @@ def test_append_comment_cli_requires_issuecomment_url(monkeypatch: pytest.Monkey
     assert rc == 2
 
 
+def test_rename_validates_state_before_issue_fetch(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.rename_main(["--issue", "1", "--state", "bogus", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "invalid --state" in out
+    assert not runner.calls
+
+
+def test_mark_false_positive_validates_issue_before_issue_fetch(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.mark_false_positive_main(["--issue", "abc", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "invalid issue" in out
+    assert not runner.calls
+
+
 def test_mark_false_positive_idempotent_skips_edit() -> None:
     runner = RecordingRunner()
     result = tracking_issue.mark_false_positive(
@@ -445,6 +573,68 @@ def test_mark_false_positive_idempotent_skips_edit() -> None:
     assert not runner.calls
 
 
+def test_upsert_summary_validates_content_file_before_repo_resolution(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.upsert_summary_main(
+        ["--issue", "1", "--marker", "<!-- larch:plan v1 runid=run1 -->", "--content-file", "missing.md"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert "content file not found" in captured.err
+    assert not runner.calls
+
+
+def test_upsert_summary_cli_creates_comment_when_marker_absent(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = tmp_path / "summary.md"
+    content.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "api"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "issue", "comment", "1"),
+                0,
+                "https://github.com/o/r/issues/1#issuecomment-22",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.upsert_summary_main(
+        ["--issue", "1", "--marker", "<!-- larch:plan v1 runid=run1 -->", "--content-file", str(content), "--repo", "o/r"]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMENT_ID=22" in out
+    assert "UPDATED=false" in out
+
+
+def test_tracking_issue_read_missing_value_usage_visible_under_quiet(tmp_path: Path) -> None:
+    result = _tracking_issue_subprocess(["read", "--issue"], tmp_path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "tracking-issue read: error: --issue requires a value" in result.stderr
+
+
+def test_tracking_issue_write_usage_visible_under_quiet(tmp_path: Path) -> None:
+    result = _tracking_issue_subprocess(["append-comment", "--issue", "1"], tmp_path)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "usage: tracking-issue append-comment" in result.stderr
+    assert "the following arguments are required: --body-file" in result.stderr
+
+
 def test_cli_registry_tracking_issue_read_sentinel(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "parent-issue.md"
     path.write_text("ISSUE_NUMBER=5\nRUN_ID=run\nADOPTED=false\n", encoding="utf-8")
@@ -452,3 +642,27 @@ def test_cli_registry_tracking_issue_read_sentinel(tmp_path: Path, capsys: pytes
     out = capsys.readouterr().out
     assert rc == 0
     assert "ISSUE_NUMBER=5" in out
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["tracking-issue", "create-issue", "--title", "t", "--body-file", "missing.md"], "body file not found"),
+        (["tracking-issue", "rename", "--issue", "1", "--state", "bogus", "--repo", "o/r"], "invalid --state"),
+        (["tracking-issue", "mark-false-positive", "--issue", "abc", "--repo", "o/r"], "invalid issue"),
+    ],
+)
+def test_cli_registry_tracking_issue_write_verbs_validate_locally(
+    argv: list[str],
+    expected: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = cli.main(argv)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert expected in captured.out
+    assert not runner.calls

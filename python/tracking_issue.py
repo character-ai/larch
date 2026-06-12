@@ -192,6 +192,14 @@ def _require_numeric_issue(value: str) -> str:
     return value
 
 
+def _validate_tracking_state(state: str) -> None:
+    if state not in config.TRACKING_ISSUE_PREFIX_BY_STATE:
+        raise CliFailure(
+            f"invalid --state: {state} (expected designing|designed|implementing|done|stalled)",
+            1,
+        )
+
+
 def _raw_issue_url(stdout: str) -> CreateIssueOutput | None:
     match = _ISSUE_URL_RE.search(stdout)
     if match is None:
@@ -258,10 +266,10 @@ def _create_issue_cli(
     repo: str | None,
     cwd: str | None = None,
 ) -> CreateIssueOutput:
-    resolved = _resolve_repo_or_fail(runner, repo, cwd=cwd)
     body = _read_text_file(body_file, label="body", require_nonempty=True)
     red_title = _redact_compose(title, context="tracking-issue title")
     red_body = _redact_compose(body, context="tracking-issue body")
+    resolved = _resolve_repo_or_fail(runner, repo, cwd=cwd)
     result = gh.issue_create(
         runner,
         repo=resolved,
@@ -314,11 +322,7 @@ def rename_with_details(
 ) -> RenameOutput:
     """Shell-parity rename core shared by public adapter and CLI."""
     _require_numeric_issue(issue)
-    if state not in config.TRACKING_ISSUE_PREFIX_BY_STATE:
-        raise CliFailure(
-            f"invalid --state: {state} (expected designing|designed|implementing|done|stalled)",
-            1,
-        )
+    _validate_tracking_state(state)
     target_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
     raw_tail = strip_lifecycle_prefix(current_title)
     prospective = _truncate_with_prefix(target_prefix, raw_tail)
@@ -700,11 +704,18 @@ def _render_issue_task(
 
 
 def read_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-read")
     runner: Runner = proc
     try:
         values = _parse_read_argv(argv)
         _validate_read_combination(values)
+    except SystemExit as exc:
+        return int(exc.code or 1)
+    except CliFailure as exc:
+        _emit_failure(exc.message)
+        return exc.exit_code
+
+    logging_util.quiet_init(argv0="tracking-issue-read")
+    try:
         sentinel = cast("str | None", values["sentinel"])
         if sentinel is not None:
             issue_number, run_id, adopted = _read_sentinel(sentinel)
@@ -769,7 +780,6 @@ def _parse_with(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Na
 
 
 def create_issue_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-create-issue")
     parser = _Parser(prog="tracking-issue create-issue")
     parser.add_argument("--title", required=True)
     parser.add_argument("--body-file", required=True)
@@ -777,6 +787,7 @@ def create_issue_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
+    logging_util.quiet_init(argv0="tracking-issue-create-issue")
     try:
         result = _create_issue_cli(proc, title=args.title, body_file=args.body_file, repo=args.repo)
         _emit_kv("ISSUE_NUMBER", result.issue_number)
@@ -793,7 +804,6 @@ def create_issue_main(argv: list[str]) -> int:
 
 
 def append_comment_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-append-comment")
     parser = _Parser(prog="tracking-issue append-comment")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--body-file", required=True)
@@ -802,9 +812,13 @@ def append_comment_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
+    logging_util.quiet_init(argv0="tracking-issue-append-comment")
     try:
-        repo = _resolve_repo_or_fail(proc, args.repo)
+        _require_numeric_issue(args.issue)
+        if args.lifecycle_marker is not None:
+            _validate_lifecycle_marker(args.lifecycle_marker)
         body = _read_text_file(args.body_file, label="body", require_nonempty=True)
+        repo = _resolve_repo_or_fail(proc, args.repo)
         comment_id, comment_url = _append_comment_cli(
             proc,
             issue=args.issue,
@@ -836,7 +850,6 @@ def _fetch_issue_title(runner: Runner, issue: str, *, repo: str, cwd: str | None
 
 
 def rename_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-rename")
     parser = _Parser(prog="tracking-issue rename")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--state", required=True)
@@ -844,7 +857,10 @@ def rename_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
+    logging_util.quiet_init(argv0="tracking-issue-rename")
     try:
+        _require_numeric_issue(args.issue)
+        _validate_tracking_state(args.state)
         repo = _resolve_repo_or_fail(proc, args.repo)
         current_title = _fetch_issue_title(proc, args.issue, repo=repo)
         result = rename_with_details(proc, args.issue, args.state, repo=repo, current_title=current_title)
@@ -882,14 +898,15 @@ def mark_false_positive(
 
 
 def mark_false_positive_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-mark-false-positive")
     parser = _Parser(prog="tracking-issue mark-false-positive")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--repo")
     args = _parse_with(parser, argv)
     if args is None:
         return 1
+    logging_util.quiet_init(argv0="tracking-issue-mark-false-positive")
     try:
+        _require_numeric_issue(args.issue)
         repo = _resolve_repo_or_fail(proc, args.repo)
         current_title = _fetch_issue_title(proc, args.issue, repo=repo)
         result = mark_false_positive(proc, args.issue, repo=repo, current_title=current_title)
@@ -947,9 +964,9 @@ def _upsert_summary_cli(
     _validate_marker_shape(marker)
     if comment_id is not None and (not comment_id.isdigit()):
         raise CliFailure(f"invalid comment id: {comment_id}", 1, stderr=True)
-    resolved = _resolve_repo_or_fail(runner, repo)
     content = _read_text_file(content_file, label="content", require_nonempty=False)
     body = _redact_summary_body(f"{marker}\n\n{content}")
+    resolved = _resolve_repo_or_fail(runner, repo)
     ids = [int(comment_id)] if comment_id is not None else _find_summary_comment_ids(runner, issue, marker, repo=resolved)
     if not ids:
         result = gh.issue_comment_with_retry(runner, issue, body, repo=resolved)
@@ -971,7 +988,6 @@ def _upsert_summary_cli(
 
 
 def upsert_summary_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="tracking-issue-upsert-summary")
     parser = _Parser(prog="tracking-issue upsert-summary")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--marker", required=True)
@@ -981,6 +997,7 @@ def upsert_summary_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
+    logging_util.quiet_init(argv0="tracking-issue-upsert-summary")
     try:
         result = _upsert_summary_cli(
             proc,
