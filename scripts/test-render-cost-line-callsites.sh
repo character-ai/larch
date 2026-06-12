@@ -37,13 +37,19 @@ grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/scripts/step-17.sh" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
-grep -Fq 'step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18b-final-report.sh'
+step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"'
+# shellcheck disable=SC2016
+grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18b-final-report.sh through larch-run.sh'
 # shellcheck disable=SC2016
 grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 orchestrator emit must key on EMIT_BODY=true with WFR_RC=0 and non-empty summary-final.md'
 # shellcheck disable=SC2016
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
-step18_block=$(sed -n '/step-18b-final-report\.sh.*--implement-tmpdir "\$IMPLEMENT_TMPDIR"/,/^```$/p' "$REPO/skills/implement/SKILL.md")
+step18_block=$(awk '
+    /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/step-18b-final-report\.sh --implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { in_block=1 }
+    in_block { print }
+    in_block && /^```$/ { exit }
+' "$REPO/skills/implement/SKILL.md")
 # shellcheck disable=SC2016
 if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"'; then
     fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'

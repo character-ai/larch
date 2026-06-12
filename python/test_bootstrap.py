@@ -90,7 +90,7 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert launcher.stat().st_mode & 0o111
     assert '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
     assert '*.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
-    assert '/*|*..*)' in text
+    assert "/*|*..*)" in text
 
 
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
