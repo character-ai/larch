@@ -40,6 +40,18 @@ _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
 
 
+def _ledger_site_for_lint_site(site: str) -> str:
+    if site == "ship-pr-ci-initial":
+        return "ship-pr-internal"
+    return site
+
+
+def _ledger_trigger_for_lint_site(site: str) -> str:
+    if site == "ship-pr-ci-initial":
+        return config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    return "main-agent-required"
+
+
 def _ledger_step_for_site(site: str) -> str:
     if site.startswith("step5"):
         return "5"
@@ -1152,8 +1164,8 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
             ledger_ready=True,
-            ledger_site=site,
-            ledger_trigger="main-agent-required",
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
             ledger_step=_ledger_step_for_site(site),
             ledger_phase=_ledger_phase_for_site(site),
             ledger_dispatcher="lint-fix-loop",
@@ -1223,8 +1235,8 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
             ledger_ready=True,
-            ledger_site=site,
-            ledger_trigger="main-agent-required",
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
             ledger_step=_ledger_step_for_site(site),
             ledger_phase=_ledger_phase_for_site(site),
             ledger_dispatcher="lint-fix-loop",
@@ -1636,7 +1648,11 @@ def escalate(status: str, *, delta_paths: tuple[str, ...] = (), loop: LoopResult
     if status in {"exhausted", "no-changes-stale"}:
         return make_step(Outcome.STALLED, status)
     if status == "main-agent-required":
-        detail = config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX if loop and loop.ledger_site == "ship-pr-ci-initial" else status
+        detail = (
+            config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+            if loop and loop.ledger_trigger == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+            else status
+        )
         return make_step(Outcome.NEEDS_USER_INPUT, detail)
     return make_step(Outcome.TRANSIENT, status)
 

@@ -253,7 +253,7 @@ case "$review_status" in
                 --phase review \
                 --dispatcher run-step5-review \
                 --exit-code "$review_rc" \
-                --failure-detail-log "$review_stderr" || true
+                --failure-detail-log "$review_stderr"
         fi
         ;;
     main-agent-vote-required)

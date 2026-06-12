@@ -184,6 +184,7 @@ def _step_result_to_ship(
     pr_url: str = "",
     merge_result: str = "",
     default_ledger_phase: str = "ci-merge",
+    default_ledger_failure_detail_log: str = "",
 ) -> ShipResult:
     reason = ""
     detail = step.detail
@@ -225,7 +226,7 @@ def _step_result_to_ship(
         ledger_phase = step.ledger_phase or default_ledger_phase
         ledger_dispatcher = step.ledger_dispatcher or ledger_dispatcher
         ledger_exit_code = step.ledger_exit_code
-        ledger_failure_detail_log = step.ledger_failure_detail_log
+        ledger_failure_detail_log = step.ledger_failure_detail_log or default_ledger_failure_detail_log
     elif step.outcome is Outcome.NEEDS_USER_INPUT and (
         reason in ledger_triggers or reason.startswith(f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:")
     ):
@@ -235,6 +236,7 @@ def _step_result_to_ship(
         ledger_step = "8"
         ledger_phase = default_ledger_phase
         ledger_exit_code = config.OUTCOME_EXIT_MAP[Outcome.NEEDS_USER_INPUT]
+        ledger_failure_detail_log = default_ledger_failure_detail_log
     return ShipResult(
         step.outcome,
         needs_user_reason=reason,
@@ -1531,6 +1533,7 @@ def run_ship(
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
                     default_ledger_phase="ci-initial",
+                    default_ledger_failure_detail_log=_bail_detail_log,
                 )
             if monitor.action not in {"merge", "already_merged"}:
                 if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:

@@ -1272,11 +1272,12 @@ needs_user_bail_reason() {
 }
 
 emit_ship_pr_ledger_ready() {
-    local reason=$1 phase=${2:-ci-merge} detail_log=${3:-}
+    local reason=$1 phase=${2:-ci-merge} detail_log=${3:-} ledger_site=ship-pr
     case "$reason" in
-        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
+        ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
+            [ "$reason" = "ship-pr-internal-lint-fix" ] && ledger_site=ship-pr-internal
             printf 'SHIP_PR_LEDGER_READY=true\n'
-            printf 'SHIP_PR_LEDGER_SITE=ship-pr\n'
+            printf 'SHIP_PR_LEDGER_SITE=%s\n' "$ledger_site"
             printf 'SHIP_PR_LEDGER_TRIGGER=%s\n' "$reason"
             printf 'SHIP_PR_LEDGER_STEP=8\n'
             printf 'SHIP_PR_LEDGER_PHASE=%s\n' "$phase"
@@ -1682,7 +1683,7 @@ run_ci_fix_vendor() {
             _lf_class=$(ship_pr_read_launcher_failure_class "$fail_file")
             if [ "$_lf_class" = "other" ]; then
                 larch_err "⚠ ship-pr: first fixer failed non-health; skipping waterfall"
-                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 return 1
             fi
         fi
@@ -1719,7 +1720,7 @@ run_ci_fix_vendor() {
                     printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
                 } > "$detail_log"
                 larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
-                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 _ffnh_tier_stem="${ci_fix_out_base}.${winning_tier}"
                 if [[ ! -s "${_ffnh_tier_stem}.stderr-tail" ]]; then
                     if [[ -s "${_ffnh_tier_stem}.diag" ]]; then
@@ -1948,7 +1949,7 @@ _verify_failed_jobs_locally() {
             printf '%s\n' "$sanitized" >> "$detail_file"
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
-        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
         emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
@@ -2049,7 +2050,7 @@ run_per_job_local_fix_loop() {
             printf '%s\n' "$sanitized" >> "$detail_file"
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
-        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
         emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
@@ -2254,6 +2255,7 @@ run_evaluate_failure() {
             esac
         fi
         if [ "$(read_state BAIL_REASON)" = "first-fixer-non-health" ]; then
+            state_set_many STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
             emit_ship_pr_ledger_ready first-fixer-non-health "$phase" "$(read_state BAIL_FAILURE_DETAIL_LOG)"
             exit 3
         fi
@@ -2959,6 +2961,7 @@ EOF
                 exit_transient_net "ci-wait: $bail_reason"
             fi
             if needs_user_bail_reason "$bail_reason"; then
+                state_set_many BAIL_REASON "$bail_reason" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 if ! is_autonomous_exit3_bail_reason "$bail_reason"; then
                     state_set BAIL_NEEDS_USER_INPUT true
                 fi

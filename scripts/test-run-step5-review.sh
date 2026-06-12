@@ -281,6 +281,26 @@ assert_contains "$out" "STEP5_REVIEW_LEDGER_SITE=step5-mav" "step5 MAV emits led
 assert_contains "$out" "STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required" "step5 MAV emits ledger trigger"
 assert_contains "$out" "STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review" "step5 MAV emits ledger dispatcher"
 
+echo "=== coder-main-agent-required record-escalation failure is loud ==="
+CMAR_SPY="$TMP/review-cmar-spy.sh"
+cat > "$CMAR_SPY" <<'EOF'
+#!/usr/bin/env bash
+printf 'STEP5_REVIEW_STATUS=coder-main-agent-required\n'
+printf 'needs main agent\n' >&2
+EOF
+chmod +x "$CMAR_SPY"
+case_dir="$TMP/cmar-record-fail"
+make_tmpdir "$case_dir" default true false
+printf 'outside\n' >"$TMP/outside-ledger"
+ln -s "$TMP/outside-ledger" "$case_dir/stall-recovery-escalation-ledger.tsv"
+set +e
+out="$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" RUN_STEP5_REVIEW_SH="$CMAR_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -ne 0 ]]; then pass "step5 CMAR record-escalation failure exits nonzero"; else fail "step5 CMAR record-escalation failure rc=$rc"; fi
+assert_contains "$out" "must not be a symlink" "step5 CMAR surfaces record-escalation error"
+assert_contains "$(cat "$case_dir/execution-issues.md")" "Tool Failure: record-escalation" "step5 CMAR writes record-escalation tool failure"
+
 echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"
 make_tmpdir "$case_dir" default true false

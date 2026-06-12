@@ -1516,7 +1516,12 @@ run_capture "$SANDBOX/case23-compose.out" "$SCRIPT" compose-report --implement-t
 assert_eq 0 "$RC" "23: compose-report Tier B exits 0"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.out")" "23: compose-report prints Tier B"
 assert_contains '[Bug] /implement escalation: lint fix loop missed retry path' "$(cat "$dir/out.md")" "23: compose-report root-caused title"
+assert_contains '| Larch version | `' "$(cat "$dir/out.md")" "23: compose-report includes larch version"
+assert_contains "| Run ID | \`unknown\` |" "$(cat "$dir/out.md")" "23: compose-report includes run id"
 assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
+printf 'stale-partial-row' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-record-newline.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+assert_contains $'stale-partial-row\nutc=' "$(cat "$dir/stall-recovery-escalation-ledger.tsv")" "23: record-escalation repairs missing trailing newline"
 
 dir=$(make_tmp case23-ledger-only)
 printf 'version=1
@@ -1543,6 +1548,18 @@ run_capture "$SANDBOX/case23-ledger-only-record.out" "$SCRIPT" record-escalation
 run_capture "$SANDBOX/case23-ledger-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
 assert_eq 0 "$RC" "23: escalation-success composes without classification"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-ledger-only-compose.out")" "23: ledger-only report prints"
+
+dir=$(make_tmp case23-ledger-sanitize)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=now\tsite=/Users/client/repo\ttrigger=secret-branch\n' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-ledger-sanitize.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: malformed ledger tokens do not fail Tier B"
+assert_contains "site=\`redacted\` trigger=\`redacted\`" "$(cat "$dir/out.md")" "23: malformed ledger tokens are sanitized"
+assert_not_contains '/Users/client/repo' "$(cat "$dir/out.md")" "23: malformed ledger site path is not printed"
 
 for token in adopted-issue-closed adopted-issue-is-pr all-vendors-failed branch-create-failed ci-fix-exhausted design-flaw escalate first-fixer-non-health fix-attempts-exhausted local-unfixable review-required ship-pr-internal-lint-fix ci-timeout ci-status-error ci-too-many-rebases main-agent-required coder-main-agent-required main-agent-vote-required; do
     dir=$(make_tmp "case23-token-$token")
@@ -1582,6 +1599,27 @@ Bounded finding at /Users/example/project/file.txt.
 EOF
 run_capture "$SANDBOX/case23-sensitive-path.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
 assert_eq 1 "$RC" "23: sensitive shape rejects absolute paths"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=main-agent-required handoff is report-safe
+
+Bounded finding mentions BAIL_REASON=main-agent-required.
+EOF
+run_capture "$SANDBOX/case23-allowlisted-assignment.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: allowlisted operational assignment passes sensitive scan"
+printf 'other-token\n' >"$dir/stall-recovery-sensitive-corpus.env"
+printf 'feature text mentions https://client.example.test/private
+' >"$dir/plan.txt"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=plan echoed client URL
+
+Bounded finding mentions https://client.example.test/private.
+EOF
+run_capture "$SANDBOX/case23-sensitive-plan-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan derives URL corpus from plan evidence"
 
 dir=$(make_tmp case23-path-confinement)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
@@ -1594,6 +1632,10 @@ printf 'utc=now\tsite=step5\ttrigger=main-agent-required
 ' >"$outside"
 run_capture "$SANDBOX/case23-path-confinement.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --escalation-ledger-file "$outside" --output-file "$dir/out.md"
 assert_eq 1 "$RC" "23: compose-report rejects outside ledger path"
+missing_outside="$SANDBOX/outside-attempts.env"
+rm -f "$missing_outside"
+run_capture "$SANDBOX/case23-attempts-confinement.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --attempts-file "$missing_outside" --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: compose-report rejects missing attempts path outside tmpdir"
 
 dir=$(make_tmp case23-operator)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env" 2>/dev/null || cat >"$dir/stall-recovery-classification.env" <<'EOF'
@@ -1619,6 +1661,19 @@ if [ -f "$dir/stall-recovery-operator-action.env" ]; then
 else
     fail "23: operator-action sentinel missing"
 fi
+
+dir=$(make_tmp case23-issue-input-status)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-issue-input-status.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq composed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-issue-input-status.out")" "23: issue-input composition is not reported as filed"
+
+dir=$(make_tmp case23-normalize-memory)
+printf 'STALL_TRACKING=false\nMERGE_RESULT=merged\n' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case23-normalize-memory.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir" --in-memory-stall-tracking true
+assert_eq stalled "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-memory.out")" "23: normalize-outcome honors in-memory stall tracking"
+assert_eq true "$(kv IMPLEMENT_MEMORY_STALL_TRACKING "$SANDBOX/case23-normalize-memory.out")" "23: normalize-outcome emits memory stall layer"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

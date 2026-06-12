@@ -429,6 +429,15 @@ validate_tmpdir_write_file() {
     validate_tmpdir_path "$1" "$2" "$3" write "$4"
 }
 
+append_line_preserving_rows() {
+    local dest=$1 line=$2 newline_count
+    if [ -s "$dest" ]; then
+        newline_count=$(tail -c 1 "$dest" 2>/dev/null | wc -l | awk '{print $1}' || printf '0')
+        [ "$newline_count" = "1" ] || printf '\n' >>"$dest" || return 1
+    fi
+    printf '%s\n' "$line" >>"$dest"
+}
+
 validate_optional_state_evidence_file() {
     local path=$1 label=$2 size
     [ -e "$path" ] || return 1
@@ -631,6 +640,54 @@ safe_exit_code_value() {
         ""|*[!0-9]*) printf 'unknown\n' ;;
         *) printf '%s\n' "$1" ;;
     esac
+}
+
+safe_larch_version_value() {
+    case "${1:-}" in
+        [0-9]*.[0-9]*.[0-9]*)
+            if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)?$'; then
+                printf '%s\n' "$1"
+            else
+                printf 'unknown\n'
+            fi
+            ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+read_larch_version() {
+    local out version
+    if [ -x "$SCRIPTS_DIR/read-plugin-version.sh" ]; then
+        out=$("$SCRIPTS_DIR/read-plugin-version.sh" 2>/dev/null || true)
+        version=$(printf '%s\n' "$out" | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
+        safe_larch_version_value "$version"
+    else
+        printf 'unknown\n'
+    fi
+}
+
+safe_run_id_value() {
+    case "${1:-}" in
+        ""|unknown) printf 'unknown\n' ;;
+        *)
+            if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[A-Za-z0-9._-]{1,96}$'; then
+                printf '%s\n' "$1"
+            else
+                printf 'redacted\n'
+            fi
+            ;;
+    esac
+}
+
+read_run_id() {
+    local tmpdir=$1 value
+    value=$(first_nonempty \
+        "$(kv_get "$tmpdir/parent-issue.md" RUN_ID "")" \
+        "$(kv_get "$tmpdir/session-env.sh" RUN_ID "")" \
+        "$(kv_get "$tmpdir/ship-pr-state.sh" RUN_ID "")" \
+        "$(kv_get "$tmpdir/finalize-state.sh" RUN_ID "")" \
+        "unknown")
+    safe_run_id_value "$value"
 }
 
 retry_cap_for() {
@@ -1248,12 +1305,13 @@ cmd_normalize_issue_env() {
 }
 
 cmd_normalize_outcome() {
-    local tmpdir="" ship_state finalize_state session_env
-    local ship_stall finalize_stall session_stall any_stall=false
+    local tmpdir="" in_memory="" ship_state finalize_state session_env
+    local ship_stall finalize_stall session_stall memory_stall any_stall=false
     local merge_result merge draft pr_number forked design_done bail_user outcome succeeded=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --in-memory-stall-tracking) [ $# -ge 2 ] || die_argv "--in-memory-stall-tracking requires a value"; in_memory=$2; shift 2 ;;
             *) die_argv "unknown normalize-outcome option: $1" ;;
         esac
     done
@@ -1266,7 +1324,8 @@ cmd_normalize_outcome() {
     ship_stall=$(kv_get "$ship_state" STALL_TRACKING "")
     finalize_stall=$(kv_get "$finalize_state" STALL_TRACKING "")
     session_stall=$(kv_get "$session_env" STALL_TRACKING "")
-    if truthy "$ship_stall" || truthy "$finalize_stall" || truthy "$session_stall"; then
+    memory_stall=$(first_nonempty "$in_memory" "${STALL_TRACKING:-}" "false")
+    if truthy "$memory_stall" || truthy "$ship_stall" || truthy "$finalize_stall" || truthy "$session_stall"; then
         any_stall=true
     fi
 
@@ -1309,6 +1368,7 @@ cmd_normalize_outcome() {
     emit_kv IMPLEMENT_NORMALIZED_OUTCOME "$outcome"
     emit_kv IMPLEMENT_OUTCOME_SUCCEEDED "$succeeded"
     emit_kv IMPLEMENT_ANY_STALL_TRACKING "$any_stall"
+    emit_kv IMPLEMENT_MEMORY_STALL_TRACKING "${memory_stall:-false}"
     emit_kv IMPLEMENT_SHIP_STALL_TRACKING "${ship_stall:-false}"
     emit_kv IMPLEMENT_FINALIZE_STALL_TRACKING "${finalize_stall:-false}"
     emit_kv IMPLEMENT_SESSION_STALL_TRACKING "${session_stall:-false}"
@@ -1325,7 +1385,7 @@ write_record_escalation_tool_failure() {
     local tmpdir=$1 reason=$2 ts
     local execution="$tmpdir/execution-issues.md"
     ts=$(now_utc)
-    if [ -d "$tmpdir" ] && { [ ! -e "$execution" ] || { [ -f "$execution" ] && [ ! -L "$execution" ] && [ -w "$execution" ]; }; }; then
+    if [ -d "$tmpdir" ] && validate_tmpdir_write_file "$tmpdir" "$execution" "execution-issues.md" false >/dev/null 2>&1; then
         {
             printf '\n## Tool Failure: record-escalation\n\n'
             printf -- "- utc: \`%s\`\n" "$ts"
@@ -1374,19 +1434,32 @@ cmd_record_escalation() {
     ledger="$tmpdir/$DEFAULT_ESCALATION_LEDGER"
     fallback="$tmpdir/$DEFAULT_ESCALATION_FALLBACK"
     marker="$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER"
-    case "$ledger" in "$tmpdir"/*) ;; *) die_argv "canonical escalation ledger outside implement tmpdir" ;; esac
-    if [ -e "$ledger" ]; then
-        [ -f "$ledger" ] || die_argv "canonical escalation ledger must be regular"
-        [ ! -L "$ledger" ] || die_argv "canonical escalation ledger must not be a symlink"
+    if ! validate_tmpdir_write_file "$tmpdir" "$ledger" "--escalation-ledger-file" false; then
+        write_record_escalation_tool_failure "$tmpdir" canonical-ledger-validation-failed
+        exit 1
     fi
     ts=$(now_utc)
-    line=$(printf 'utc=%s\tsite=%s\ttrigger=%s\tstep=%s\tphase=%s\tdispatcher=%s\texit_code=%s\tfailure_detail_log=%s\n' "$ts" "$site" "$trigger" "$step" "$phase" "$dispatcher" "$exit_code" "${rel_log:-}")
-    if printf '%s' "$line" >>"$ledger"; then
+    line=$(printf 'utc=%s\tsite=%s\ttrigger=%s\tstep=%s\tphase=%s\tdispatcher=%s\texit_code=%s\tfailure_detail_log=%s' "$ts" "$site" "$trigger" "$step" "$phase" "$dispatcher" "$exit_code" "${rel_log:-}")
+    if append_line_preserving_rows "$ledger" "$line"; then
         emit_kv ESCALATION_RECORDED true
         emit_kv ESCALATION_LEDGER_FILE "$ledger"
         return 0
     fi
-    if printf '%s' "$line" >>"$fallback" 2>/dev/null; then
+    if ! validate_tmpdir_write_file "$tmpdir" "$fallback" "--escalation-fallback-file" false; then
+        write_record_escalation_tool_failure "$tmpdir" fallback-ledger-validation-failed
+        emit_kv ESCALATION_RECORDED false
+        emit_kv ESCALATION_FALLBACK_WRITTEN false
+        emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
+        return 0
+    fi
+    if ! validate_tmpdir_write_file "$tmpdir" "$marker" "--record-failure-marker" false; then
+        write_record_escalation_tool_failure "$tmpdir" record-failure-marker-validation-failed
+        emit_kv ESCALATION_RECORDED false
+        emit_kv ESCALATION_FALLBACK_WRITTEN false
+        emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
+        return 0
+    fi
+    if append_line_preserving_rows "$fallback" "$line" 2>/dev/null; then
         atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-write-failed\n" || true
         write_record_escalation_tool_failure "$tmpdir" canonical-ledger-write-failed
         emit_kv ESCALATION_RECORDED false
@@ -1434,24 +1507,79 @@ safe_title_summary() {
     printf '%s\n' "$summary"
 }
 
+sensitive_value_is_allowlisted() {
+    local value=${1:-}
+    case "$value" in
+        ""|true|false|TRUE|FALSE|True|False|unknown|none|n/a|N/A|"-") return 0 ;;
+        [0-9]|[0-9][0-9]|[0-9][0-9][0-9]|[0-9][0-9][0-9][0-9]) return 0 ;;
+    esac
+    [ "$(safe_bail_reason_value "$value")" != redacted ] && return 0
+    [ "$(safe_phase_value "$value")" != unknown ] && return 0
+    [ "$(safe_step_value "$value")" != unknown ] && return 0
+    [ "$(safe_site_value "$value")" != redacted ] && return 0
+    [ "$(safe_trigger_value "$value")" != redacted ] && return 0
+    [ "$(safe_dispatcher_value "$value")" != redacted ] && return 0
+    [ "$(safe_matched_pattern_value "$value")" != redacted ] && return 0
+    [ "$(safe_class_value "$value")" = "$value" ] && return 0
+    [ "$(safe_resume_hint_value "$value")" = "$value" ] && return 0
+    [ "$(safe_attempt_outcome_value "$value")" = "$value" ] && return 0
+    [ "$(safe_utc_value "$value")" = "$value" ] && return 0
+    [ "$(safe_larch_version_value "$value")" = "$value" ] && return 0
+    return 1
+}
+
+candidate_has_sensitive_assignment() {
+    local candidate_file=$1 assignment key value
+    while IFS= read -r assignment || [ -n "$assignment" ]; do
+        assignment=${assignment# }
+        key=${assignment%%=*}
+        value=${assignment#*=}
+        value=${value%%[.,;:)]}
+        case "$key" in
+            RUN_ID|LARCH_TOKEN_SESSION_ID)
+                [ "$(safe_run_id_value "$value")" = "$value" ] && continue
+                ;;
+            LARCH_PLUGIN_VERSION|LARCH_VERSION)
+                [ "$(safe_larch_version_value "$value")" = "$value" ] && continue
+                ;;
+        esac
+        if ! sensitive_value_is_allowlisted "$value"; then
+            return 0
+        fi
+    done < <(grep -Eo '(^|[[:space:]])[A-Z][A-Z0-9_]{2,}=[^[:space:]]{3,}' "$candidate_file" 2>/dev/null || true)
+    return 1
+}
+
 sensitive_token_rejects_file() {
-    local sensitive_file=$1 candidate_file=$2 token value
+    local sensitive_file=$1 candidate_file=$2 token key value
     [ -f "$sensitive_file" ] || return 1
     while IFS= read -r token || [ -n "$token" ]; do
         case "$token" in
             ""|[A-Za-z0-9_-]|[A-Za-z0-9_-][A-Za-z0-9_-]) continue ;;
             larch-defect|environment|operator-action|terminal-failure|escalation-success|merged|force-merged-externally|pr-created|pr-created-draft|forked-dry-run|main-agent-required|lint-fix-loop|ship-pr|codex|cursor|claude) continue ;;
         esac
+        if sensitive_value_is_allowlisted "$token"; then
+            continue
+        fi
         if grep -Fq -- "$token" "$candidate_file"; then
             return 0
         fi
         case "$token" in
             *=*)
+                key=${token%%=*}
                 value=${token#*=}
+                case "$key" in
+                    RUN_ID|LARCH_TOKEN_SESSION_ID)
+                        [ "$(safe_run_id_value "$value")" = "$value" ] && continue
+                        ;;
+                    LARCH_PLUGIN_VERSION|LARCH_VERSION)
+                        [ "$(safe_larch_version_value "$value")" = "$value" ] && continue
+                        ;;
+                esac
                 case "$value" in
                     ""|[A-Za-z0-9_-]|[A-Za-z0-9_-][A-Za-z0-9_-]) ;;
                     *)
-                        if grep -Fq -- "$value" "$candidate_file"; then
+                        if ! sensitive_value_is_allowlisted "$value" && grep -Fq -- "$value" "$candidate_file"; then
                             return 0
                         fi
                         ;;
@@ -1465,7 +1593,7 @@ sensitive_token_rejects_file() {
     if grep -Eq "(^|[[:space:]\`(])/(Users|home|private|tmp|var|Volumes)/[^[:space:]\`)]+" "$candidate_file"; then
         return 0
     fi
-    if grep -Eq '(^|[[:space:]])[A-Z][A-Z0-9_]{2,}=[^[:space:]]{3,}' "$candidate_file"; then
+    if candidate_has_sensitive_assignment "$candidate_file"; then
         return 0
     fi
     return 1
@@ -1494,6 +1622,45 @@ validate_optional_tmpdir_read_file() {
     [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
     [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
     return 0
+}
+
+append_sensitive_shapes_from_file() {
+    local file=$1 out=$2
+    [ -f "$file" ] && [ ! -L "$file" ] && [ -r "$file" ] || return 0
+    grep -Eo 'https?://[^[:space:]`)]+' "$file" 2>/dev/null >>"$out" || true
+    grep -Eo 'git@github[.]com:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$file" 2>/dev/null >>"$out" || true
+    grep -Eo 'github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$file" 2>/dev/null >>"$out" || true
+    grep -Eo "(^|[[:space:]\`(])/(Users|home|private|tmp|var|Volumes)/[^[:space:]\`)]+" "$file" 2>/dev/null | sed "s/^[[:space:]\`(]*//" >>"$out" || true
+    grep -E '^[A-Z][A-Z0-9_]*=' "$file" 2>/dev/null >>"$out" || true
+}
+
+build_sensitive_corpus_from_evidence() {
+    local tmpdir=$1 sensitive_file=$2 class_file=$3 attempts_file=$4 ledger=$5 fallback=$6 marker=$7 out=$8
+    local detail_log
+    : >"$out"
+    if [ -f "$sensitive_file" ] && [ ! -L "$sensitive_file" ]; then
+        cat "$sensitive_file" >>"$out"
+    fi
+    append_sensitive_shapes_from_file "$class_file" "$out"
+    append_sensitive_shapes_from_file "$attempts_file" "$out"
+    append_sensitive_shapes_from_file "$ledger" "$out"
+    append_sensitive_shapes_from_file "$fallback" "$out"
+    append_sensitive_shapes_from_file "$marker" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/ship-pr-state.sh" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/finalize-state.sh" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/session-env.sh" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/execution-issues.md" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/run-log-pointer.txt" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/plan.txt" "$out"
+    append_sensitive_shapes_from_file "$tmpdir/feature-description.txt" "$out"
+    detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
+    case "$detail_log" in
+        "$tmpdir"/*)
+            if validate_tmpdir_local_file "$tmpdir" "$detail_log" "--failure-detail-log" >/dev/null 2>&1; then
+                append_sensitive_shapes_from_file "$detail_log" "$out"
+            fi
+            ;;
+    esac
 }
 
 append_file_if_readable() {
@@ -1529,7 +1696,10 @@ attempts_table() {
 
 compose_tier_b_projection() {
     local kind=$1 class_file=$2 attempts_file=$3 ledger=$4 fallback=$5 marker=$6 root_file=$7 bounded_file=$8
-    local summary verdict confidence class step phase bail exit_code matched dispatcher
+    local summary verdict confidence class step phase bail exit_code matched dispatcher tmpdir version run_id site trigger field old_ifs row
+    tmpdir=$(dirname "$class_file")
+    version=$(read_larch_version)
+    run_id=$(read_run_id "$tmpdir")
     summary=$(parse_root_cause_file "$bounded_file" summary "$(parse_root_cause_file "$root_file" summary "")")
     verdict=$(parse_root_cause_file "$root_file" verdict "")
     confidence=$(parse_root_cause_file "$root_file" confidence "")
@@ -1551,6 +1721,8 @@ compose_tier_b_projection() {
     printf "| Exit code | \`%s\` |\n" "$exit_code"
     printf "| Dispatcher | \`%s\` |\n" "$dispatcher"
     printf "| Matched classifier pattern | \`%s\` |\n" "$matched"
+    printf "| Larch version | \`%s\` |\n" "$version"
+    printf "| Run ID | \`%s\` |\n" "$run_id"
     printf "| Root-cause verdict | \`%s\` |\n" "$verdict"
     printf "| Root-cause confidence | \`%s\` |\n\n" "$confidence"
     printf '## Bounded root-cause summary\n\n%s\n\n' "$summary"
@@ -1558,7 +1730,22 @@ compose_tier_b_projection() {
     attempts_table "$attempts_file"
     printf '\n## Escalation evidence\n\n'
     if [ -s "$ledger" ]; then
-        awk -F'\t' '{site=""; trigger=""; for(i=1;i<=NF;i++){split($i,a,"="); if(a[1]=="site") site=a[2]; if(a[1]=="trigger") trigger=a[2]} if(site || trigger) printf "- site=`%s` trigger=`%s`\n", site, trigger}' "$ledger"
+        while IFS= read -r row || [ -n "$row" ]; do
+            site=""
+            trigger=""
+            old_ifs=$IFS
+            IFS='	'
+            for field in $row; do
+                case "$field" in
+                    site=*) site=${field#site=} ;;
+                    trigger=*) trigger=${field#trigger=} ;;
+                esac
+            done
+            IFS=$old_ifs
+            if [ -n "$site" ] || [ -n "$trigger" ]; then
+                printf -- "- site=\`%s\` trigger=\`%s\`\n" "$(safe_site_value "$site")" "$(safe_trigger_value "$trigger")"
+            fi
+        done <"$ledger"
     fi
     [ -s "$fallback" ] && printf -- '- fallback escalation evidence present\n'
     [ -s "$marker" ] && printf -- '- record-failure marker present\n'
@@ -1594,7 +1781,7 @@ compose_tier_a_issue() {
 
 cmd_compose_report() {
     local tmpdir="" kind="" surface="" attempts_file="" class_file="" ledger="" fallback="" marker="" root_file="" bounded_file="" title_file="" sensitive_file="" out_file=""
-    local verdict summary title raw_file tier status=printed dry_run=false
+    local verdict summary title raw_file tier status=printed dry_run=false sensitive_effective_file
     while [ $# -gt 0 ]; do
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
@@ -1647,7 +1834,12 @@ DISPATCHER=unknown
 " || exit 1
     fi
     validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
-    if [ -f "$attempts_file" ]; then validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1; else atomic_write_text "$attempts_file" "version=1\ncreated_utc=$(now_utc)\nattempt_count=0\n" || exit 1; fi
+    if [ -f "$attempts_file" ]; then
+        validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1
+    else
+        validate_tmpdir_write_file "$tmpdir" "$attempts_file" "--attempts-file" false || exit 1
+        atomic_write_text "$attempts_file" "version=1\ncreated_utc=$(now_utc)\nattempt_count=0\n" || exit 1
+    fi
     validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
     validate_optional_tmpdir_read_file "$tmpdir" "$ledger" "--escalation-ledger-file" || exit 1
     validate_optional_tmpdir_read_file "$tmpdir" "$fallback" "--escalation-fallback-file" || exit 1
@@ -1677,7 +1869,7 @@ DISPATCHER=unknown
     raw_file="$out_file.raw.$$"
     if [ "$surface" = issue-input ]; then
         tier=A
-        status=filed
+        status=composed
         compose_tier_a_issue "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$title" "$tmpdir" >"$raw_file"
     else
         tier=B
@@ -1685,15 +1877,20 @@ DISPATCHER=unknown
         validate_tmpdir_local_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" || exit 1
         validate_tmpdir_local_file "$tmpdir" "$bounded_file" "--bounded-root-cause-file" || exit 1
         validate_root_cause_artifact "$bounded_file" || exit 1
-        if sensitive_token_rejects_file "$sensitive_file" "$bounded_file"; then
+        sensitive_effective_file="$tmpdir/stall-recovery-sensitive-corpus.effective.$$"
+        build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$sensitive_effective_file"
+        if sensitive_token_rejects_file "$sensitive_effective_file" "$bounded_file"; then
+            rm -f "$sensitive_effective_file"
             rm -f "$raw_file"
             die_argv "bounded root-cause contains sensitive token"
         fi
         { printf '### %s\n\n' "$title"; compose_tier_b_projection "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$bounded_file"; } >"$raw_file"
-        if sensitive_token_rejects_file "$sensitive_file" "$raw_file"; then
+        if sensitive_token_rejects_file "$sensitive_effective_file" "$raw_file"; then
+            rm -f "$sensitive_effective_file"
             rm -f "$raw_file"
             die_argv "chat-print contains sensitive token"
         fi
+        rm -f "$sensitive_effective_file"
     fi
     redact_to_file "$raw_file" "$out_file"
     rm -f "$raw_file"

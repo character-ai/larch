@@ -2571,6 +2571,16 @@ def test_ship_default_ledger_phase_can_follow_active_phase() -> None:
     assert result.ledger_phase == "ci-initial"
 
 
+def test_ship_default_ledger_detail_log_is_included() -> None:
+    result = ship._step_result_to_ship(  # pyright: ignore[reportPrivateUsage]
+        StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED),
+        default_ledger_phase="ci-initial",
+        default_ledger_failure_detail_log="/tmp/claude-implement-x/ci-fix.log",
+    )
+    assert result.ledger_ready is True
+    assert result.ledger_failure_detail_log == "/tmp/claude-implement-x/ci-fix.log"
+
+
 def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
     detail = f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:job_1,job-2"
     result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, detail))

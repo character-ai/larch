@@ -1337,8 +1337,8 @@ def test_run_checks_phase_checks_site_and_fix_site_split(
             head_changed=False,
             coder_tool=None,
             ledger_ready=True,
-            ledger_site=site,
-            ledger_trigger="main-agent-required",
+            ledger_site="ship-pr-internal",
+            ledger_trigger=config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
             ledger_step="8",
             ledger_phase="ci-initial",
             ledger_dispatcher="lint-fix-loop",
@@ -1361,7 +1361,8 @@ def test_run_checks_phase_checks_site_and_fix_site_split(
     assert result.outcome == Outcome.NEEDS_USER_INPUT
     assert result.detail == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
     assert result.ledger_ready is True
-    assert result.ledger_site == "ship-pr-ci-initial"
+    assert result.ledger_site == "ship-pr-internal"
+    assert result.ledger_trigger == "ship-pr-internal-lint-fix"
     assert result.ledger_phase == "ci-initial"
     assert result.ledger_failure_detail_log == str(log)
     assert captured == {"checks_site": "step6", "fix_site": "ship-pr-ci-initial"}
@@ -2053,5 +2054,7 @@ def test_lint_fix_ship_pr_initial_carries_ci_initial_ledger_phase(tmp_path: Path
     )
     assert outcome.status == "main-agent-required"
     assert outcome.ledger_ready is True
+    assert outcome.ledger_site == "ship-pr-internal"
+    assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
     assert outcome.ledger_step == "8"
     assert outcome.ledger_phase == "ci-initial"
