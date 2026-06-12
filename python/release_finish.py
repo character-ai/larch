@@ -84,10 +84,20 @@ def _query_pr(repo: str, pr: str, field: str) -> str:
 
 
 def _remote_tag_oid(tag: str) -> str:
-    res = _git("ls-remote", "origin", f"refs/tags/{tag}^{{}}")
+    res = _git("ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
     if res.returncode != 0:
         return ""
-    return (res.stdout.split() or [""])[0]
+    direct = ""
+    peeled = ""
+    for line in res.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        if parts[1] == f"refs/tags/{tag}^{{}}":
+            peeled = parts[0]
+        elif parts[1] == f"refs/tags/{tag}":
+            direct = parts[0]
+    return peeled or direct
 
 
 def _redacted_notes(notes_file: Path) -> Path:
@@ -123,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     root = _repo_root()
     if _origin_repo(root) != args.repo:
         return _e(f"ERROR=origin-repo-mismatch: origin ({_origin_repo(root)}) != --repo ({args.repo})")
+    old_cwd = Path.cwd()
     os.chdir(root)
     redacted_notes = _redacted_notes(notes)
     try:
@@ -199,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     finally:
         redacted_notes.unlink(missing_ok=True)
+        os.chdir(old_cwd)
 
 
 if __name__ == "__main__":

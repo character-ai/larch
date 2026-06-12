@@ -62,6 +62,7 @@ def promote_main(argv: list[str] | None = None) -> int:
 
 
 def promote_latest_main(argv: list[str] | None = None) -> int:
+    logging_util.reset_quiet_state()
     parser = argparse.ArgumentParser(prog="cli.py release promote-latest")
     parser.add_argument("--repo", default="character-ai/larch")
     parser.add_argument("--dry-run", action="store_true")

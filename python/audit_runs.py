@@ -374,6 +374,20 @@ def _manifest_fields(path: Path, pr: str = "") -> tuple[str, str, str]:
     return str(data.get("started_at") or ""), str(data.get("larch_version") or ""), str(data.get("closes_issue") or "")
 
 
+def _parent_issue_number(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    match = re.search(r"(?m)^ISSUE_NUMBER=([0-9]+)\s*$", text)
+    return match.group(1) if match else ""
+
+
+def _report_pr_view_failed(pr: str, field: str, res: proc.CommandResult) -> None:
+    reason = _clean_reason(res.stderr or res.stdout or "gh pr view failed")
+    print(f"audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true PR={pr} FIELD={field} REASON={reason}", file=sys.stderr)
+
+
 def map_runs_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py audit-runs map-runs")
     p.add_argument("--skill", required=True)
@@ -402,6 +416,8 @@ def map_runs_main(argv: list[str] | None = None) -> int:
         run_id = started = ver = closes = ""
         if args.skill == "design":
             res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "title"])
+            if res.returncode != 0:
+                _report_pr_view_failed(pr, "title", res)
             obj = _load_json(res.stdout, {}) if res.returncode == 0 else {}
             run_id = extract_design_run_log_pr_id(str(obj.get("title") or "")) if isinstance(obj, dict) else ""
             mf = root / run_id / "manifest.json"
@@ -410,6 +426,8 @@ def map_runs_main(argv: list[str] | None = None) -> int:
             print(f"{pr}\t{run_id}\t{started}\t{ver}\t")
             continue
         body_res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "body"])
+        if body_res.returncode != 0:
+            _report_pr_view_failed(pr, "body", body_res)
         body_obj = _load_json(body_res.stdout, {}) if body_res.returncode == 0 else {}
         body = str(body_obj.get("body") or "") if isinstance(body_obj, dict) else ""
         for kw in ("Closes", "Fixes", "Resolves"):
@@ -423,13 +441,19 @@ def map_runs_main(argv: list[str] | None = None) -> int:
         candidates: list[Path] = []
         if closes:
             for parent in root.glob("*/parent-issue.md"):
-                if f"ISSUE_NUMBER={closes}" in parent.read_text(encoding="utf-8", errors="replace"):
+                if _parent_issue_number(parent) == closes:
                     candidates.append(parent.parent)
         if candidates:
             candidates.sort(key=lambda d: _manifest_epoch(d / "manifest.json"), reverse=True)
-            best = candidates[0]
-            run_id = best.name
-            started, ver, _ = _manifest_fields(best / "manifest.json")
+            best_epoch = _manifest_epoch(candidates[0] / "manifest.json")
+            tied = [d for d in candidates if _manifest_epoch(d / "manifest.json") == best_epoch]
+            if len(tied) > 1:
+                joined = ",".join(sorted(d.name for d in tied))
+                print(f"audit-map-runs.sh: MAP_PARENT_ISSUE_AMBIGUOUS=true ISSUE_NUMBER={closes} RUNS={joined}", file=sys.stderr)
+            else:
+                best = candidates[0]
+                run_id = best.name
+                started, ver, _ = _manifest_fields(best / "manifest.json")
         if not run_id:
             manifests = []
             for mf in root.glob("*/manifest.json"):
@@ -655,7 +679,16 @@ def scan_run_main(argv: list[str] | None = None) -> int:
             else:
                 rk=next((str(s.get("result_kind") or "") for s in sigs if isinstance(s,dict) and s.get("output_basename")=="codex-generalist-output.txt"),"")
                 if not rk: obj={"scan":name,"pr":pr,"result":"skip","detail":"reviewer_signals signal unavailable"}
-                else: obj={"scan":name,"pr":pr,"result":"pass"}
+                else:
+                    elapsed=0
+                    if isinstance(meta, dict):
+                        logs=meta.get("wrapper_logs")
+                        codex_log=str(logs.get("codex") or "") if isinstance(logs, dict) else ""
+                        vals=[int(x) for x in re.findall(r"([0-9]+)s elapsed", codex_log)]
+                        elapsed=max(vals) if vals else 0
+                    no_issues = rk in {"NO_ISSUES_FOUND", "NO_ISSUES_FOUND_TOO_THIN"}
+                    obj={"scan":name,"pr":pr,"result":"fail" if no_issues and elapsed > 120 else "pass","result_kind":rk,"elapsed_seconds":elapsed}
+                    if obj["result"] == "fail": obj["detail"]="codex-generalist returned NO_ISSUES_FOUND after more than 120 seconds"
         elif name == "execution-issues-categories":
             ex,err=_iter_ndjson(run_dir/"execution-issues.ndjson")
             if not (run_dir/"execution-issues.ndjson").is_file(): obj={"scan":name,"pr":pr,"result":"skip","detail":"execution-issues.ndjson not found"}
@@ -758,7 +791,11 @@ def close_priors_main(argv: list[str] | None = None) -> int:
         reason = _clean_reason(res.stderr or res.stdout or "gh issue list failed")
         print(f"ISSUE_LIST_FAILED=true\nREASON={reason}")
         return 1
-    arr=_load_json(res.stdout,[])
+    try:
+        arr=json.loads(res.stdout or "null")
+    except json.JSONDecodeError:
+        print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON")
+        return 1
     if not isinstance(arr,list): print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON"); return 1
     body: Path | None = None
     try:

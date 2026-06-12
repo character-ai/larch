@@ -51,7 +51,8 @@ def fetch_main(argv: list[str] | None = None) -> int:
         print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
         return 1
     if not isinstance(raw, list):
-        raw = []
+        print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
+        return 1
     out = []
     for issue in raw:
         if not isinstance(issue, dict):
@@ -106,6 +107,9 @@ def apply_main(argv: list[str] | None = None) -> int:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
     issues = [x.strip() for x in args.source_issues.split(",") if x.strip()]
+    if not issues:
+        print("ERROR=No source issues provided", file=sys.stderr)
+        return 1
     if args.dry_run:
         print("DRY_RUN=true")
         print(f"WOULD_CREATE={args.title}")

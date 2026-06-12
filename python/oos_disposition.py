@@ -52,7 +52,7 @@ def count_non_security_oos_blocks(path: Path) -> int:
     security = False
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.rstrip("\r")
-        starts = line.startswith("### OOS_") or (re.match(r"^###[ \t]+FINDING_[0-9]+:", line) and re.search(r"\[(OUT_OF_SCOPE|OOS)\]", line))
+        starts = bool(re.match(r"^###[ \t]+OOS_", line)) or (re.match(r"^###[ \t]+FINDING_[0-9]+:", line) and re.search(r"\[(OUT_OF_SCOPE|OOS)\]", line))
         if starts:
             if in_block and not security:
                 count += 1

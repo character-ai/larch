@@ -8,6 +8,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import analyze_issues
 import render_chart
 
@@ -45,3 +47,40 @@ def test_fetch_writes_private_output(monkeypatch, tmp_path: Path) -> None:
     output = tmp_path / "issues.json"
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
     assert output.stat().st_mode & 0o777 == 0o600
+
+
+def test_load_issues_duplicate_first_wins_and_warns(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([
+        {"number": "7", "title": "first", "body": "a"},
+        {"number": 7, "title": "second", "body": "b"},
+    ]), encoding="utf-8")
+    issues = analyze_issues.load_issues(str(fixture), lenient=True)
+    assert [issue["title"] for issue in issues] == ["first"]
+    assert "skipping duplicate parsed number 7" in capsys.readouterr().err
+
+
+def test_load_issues_skip_threshold_aborts_unless_lenient(tmp_path: Path) -> None:
+    fixture = tmp_path / "issues.json"
+    fixture.write_text(json.dumps([
+        {"number": 1, "title": "valid", "body": ""},
+        "bad",
+    ]), encoding="utf-8")
+    with pytest.raises(SystemExit, match="pass --lenient"):
+        analyze_issues.load_issues(str(fixture))
+    assert len(analyze_issues.load_issues(str(fixture), lenient=True)) == 1
+
+
+def test_run_main_forwards_lenient_to_analyzer(monkeypatch, tmp_path: Path) -> None:
+    seen: dict[str, list[str]] = {}
+    monkeypatch.setattr(analyze_issues, "_detect_repo", lambda: "o/r")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setattr(analyze_issues, "fetch_main", lambda _argv: 0)
+
+    def fake_main(argv):
+        seen["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(analyze_issues, "main", fake_main)
+    assert analyze_issues.run_main(["--lenient"]) == 0
+    assert "--lenient" in seen["argv"]

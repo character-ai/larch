@@ -47,6 +47,12 @@ def test_fetch_oos_only(monkeypatch, capsys):
     assert out["COUNT"] == "1"
 
 
+def test_fetch_rejects_non_list_json(monkeypatch, capsys):
+    monkeypatch.setattr(combine_issues.proc, "run", Runner('{"message":"api error"}').run)
+    assert combine_issues.fetch_main(["--repo", "o/r"]) == 1
+    assert "ERROR=Failed to fetch issues from o/r" in capsys.readouterr().err
+
+
 def test_apply_dry_run_wire(tmp_path: Path, capsys):
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")
@@ -55,6 +61,13 @@ def test_apply_dry_run_wire(tmp_path: Path, capsys):
     assert "DRY_RUN=true" in out
     assert "WOULD_CREATE=T" in out
     assert "WOULD_CLOSE=2 issues: 1,2" in out
+
+
+def test_apply_rejects_empty_source_issue_list(tmp_path: Path, capsys):
+    body = tmp_path / "body.md"
+    body.write_text("Combined body\n", encoding="utf-8")
+    assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", " , "]) == 1
+    assert "ERROR=No source issues provided" in capsys.readouterr().err
 
 
 class ApplyRunner:

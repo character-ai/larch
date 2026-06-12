@@ -72,6 +72,18 @@ def test_oos_silent_drop_no_git_fallback(tmp_path: Path, capsys):
     assert row["inline_triage_hits"] == 0
 
 
+def test_oos_silent_drop_accepts_oos_header_whitespace(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "oos-accepted-main-agent.md").write_text("### \tOOS_1: thing\n- **Focus area**: correctness\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-silent-drop\tfile\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "fail"
+    assert row["non_security_oos_blocks"] == 1
+
+
 def test_oos_silent_drop_security_hardening_focus_area_is_excluded(tmp_path: Path, capsys):
     run = tmp_path / "run"
     run.mkdir()
@@ -118,6 +130,15 @@ def test_close_priors_reports_transport_failure_before_json_parse(monkeypatch, c
     out = capsys.readouterr().out
     assert "ISSUE_LIST_FAILED=true" in out
     assert "REASON=network down" in out
+
+
+def test_close_priors_reports_malformed_success_json(monkeypatch, capsys):
+    runner = AuditRunner({
+        ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="not json", rc=0),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
+    assert "ISSUE_LIST_FAILED=true" in capsys.readouterr().out
 
 
 def test_close_priors_body_file_failure_fallback(monkeypatch, capsys):
@@ -183,6 +204,86 @@ def test_preflight_redacts_remote_url_identity_failure(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "ghp_secret123" not in out
     assert "<redacted>@" in out
+
+
+def test_preflight_allow_concurrent_skips_recent_audit_probe(monkeypatch, capsys):
+    responses = {
+        ("git","fetch","origin","main"): cr(("git",)),
+        ("git","branch","--show-current"): cr(("git",), stdout="feature\n"),
+        ("git","rev-parse","--verify","main^{commit}"): cr(("git",), stdout="aaa\n"),
+        ("git","rev-parse","--verify","origin/main^{commit}"): cr(("git",), stdout="aaa\n"),
+        ("git","status","--porcelain"): cr(("git",), stdout=""),
+        ("git","config","--get","remote.origin.url"): cr(("git",), stdout="https://github.com/o/r.git\n"),
+        ("gh","repo","view","o/r","--json","url"): cr(("gh",), stdout='{"url":"https://github.com/o/r"}\n'),
+    }
+    runner = AuditRunner(responses)
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.preflight_main(["--skill","implement","--repo","o/r","--allow-concurrent"]) == 0
+    assert "PREFLIGHT_OK=true" in capsys.readouterr().out
+
+
+def test_map_runs_matches_parent_issue_number_exactly(monkeypatch, tmp_path: Path, capsys):
+    root = tmp_path / "larch-logs" / "implement"
+    wrong = root / "wrong"
+    right = root / "right"
+    wrong.mkdir(parents=True)
+    right.mkdir()
+    (wrong / "parent-issue.md").write_text("ISSUE_NUMBER=123\n", encoding="utf-8")
+    (wrong / "manifest.json").write_text('{"started_at":"2026-01-02T00:00:00+00:00","larch_version":"9.9.9"}\n', encoding="utf-8")
+    (right / "parent-issue.md").write_text("ISSUE_NUMBER=12\n", encoding="utf-8")
+    (right / "manifest.json").write_text('{"started_at":"2026-01-01T00:00:00+00:00","larch_version":"1.2.3"}\n', encoding="utf-8")
+    runner = AuditRunner({
+        ("gh","pr","view","5","--repo","o/r","--json","body"): cr(("gh",), stdout='{"body":"Closes #12"}\n'),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.map_runs_main(["--skill","implement","--pr-list","5","--repo","o/r","--log-root",str(root)]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "5\tright\t2026-01-01T00:00:00+00:00\t1.2.3\t12"
+
+
+def test_map_runs_reports_tied_parent_issue_candidates(monkeypatch, tmp_path: Path, capsys):
+    root = tmp_path / "larch-logs" / "implement"
+    for name in ("a", "b"):
+        run = root / name
+        run.mkdir(parents=True)
+        (run / "parent-issue.md").write_text("ISSUE_NUMBER=12\n", encoding="utf-8")
+        (run / "manifest.json").write_text('{"started_at":"2026-01-01T00:00:00+00:00","larch_version":"1.2.3"}\n', encoding="utf-8")
+    runner = AuditRunner({
+        ("gh","pr","view","5","--repo","o/r","--json","body"): cr(("gh",), stdout='{"body":"Closes #12"}\n'),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.map_runs_main(["--skill","implement","--pr-list","5","--repo","o/r","--log-root",str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "MAP_PARENT_ISSUE_AMBIGUOUS=true" in captured.err
+    assert captured.out.splitlines()[0] == "5\t\t\t\t12"
+
+
+def test_map_runs_reports_pr_view_failure(monkeypatch, tmp_path: Path, capsys):
+    root = tmp_path / "larch-logs" / "implement"
+    root.mkdir(parents=True)
+    runner = AuditRunner({
+        ("gh","pr","view","5","--repo","o/r","--json","body"): cr(("gh",), stderr="auth", rc=1),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.map_runs_main(["--skill","implement","--pr-list","5","--repo","o/r","--log-root",str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "MAP_GH_PR_VIEW_FAILED=true" in captured.err
+    assert captured.out.splitlines()[0] == "5\t\t\t\t"
+
+
+def test_scan_codex_generalist_waste_fails_slow_no_issues(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    round1 = run / "round-1"
+    round1.mkdir(parents=True)
+    (round1 / "round-meta.json").write_text(json.dumps({
+        "reviewer_signals": [{"output_basename": "codex-generalist-output.txt", "result_kind": "NO_ISSUES_FOUND"}],
+        "wrapper_logs": {"codex": "✓ codex agent: completed (exit code 0, 121s elapsed, output 12 bytes)\n"},
+    }), encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\ncodex-generalist-waste\tjson\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "fail"
+    assert row["elapsed_seconds"] == 121
 
 
 def test_scan_required_bail_and_step9a1_gating(tmp_path: Path, capsys):

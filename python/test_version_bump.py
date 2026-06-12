@@ -426,6 +426,21 @@ def test_classify_explicit_head_uses_compare_ref_not_worktree_head(tmp_path: Pat
     assert result.bump_type == "MINOR"
 
 
+def test_classify_explicit_head_rejects_worktree_version_mismatch(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.2.4"}\n', encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "rev-parse", "origin/main^{commit}"): CommandResult(("git", "rev-parse", "origin/main^{commit}"), 0, "head-sha\n", "", 0.01),
+            ("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"): CommandResult(("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"), 0, '{"version":"1.2.3"}\n', "", 0.01),
+        },
+    )
+    with pytest.raises(ShipError, match=r"worktree plugin\.json version"):
+        _ = version_bump.classify_bump(runner, cwd=str(repo), head_ref="origin/main")
+
+
 def test_classify_diff_failure_raises_ship_error(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     plugin = repo / ".claude-plugin"

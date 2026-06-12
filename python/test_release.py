@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import promote_release
+import release_finish
 import release_prepare
 import verify_main
 import version_bump
@@ -34,6 +35,96 @@ class QueueRunner:
 
 def cr(argv, stdout="", stderr="", rc=0):
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
+
+
+class ReleaseFinishRunner:
+    def __init__(self, *, remote_tag: str = "", local_tag: str = "", release_exists: bool = True, merge_oid: str = "abc1234"):
+        self.remote_tag = remote_tag
+        self.local_tag = local_tag
+        self.release_exists = release_exists
+        self.merge_oid = merge_oid
+        self.calls: list[list[str]] = []
+
+    def run(self, argv, **_kwargs):
+        self.calls.append(list(argv))
+        if argv[:3] == ["git", "fetch", "origin"]:
+            return cr(argv)
+        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "mergeCommit":
+            value = {"oid": self.merge_oid} if self.merge_oid else None
+            return cr(argv, json.dumps({"mergeCommit": value}))
+        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "state":
+            return cr(argv, '{"state":"MERGED"}\n')
+        if argv[:3] == ["git", "rev-parse", "--verify"]:
+            target = argv[3]
+            if target == "abc1234^{commit}":
+                return cr(argv, "abc1234\n")
+            if target == "v1.2.3^{commit}" and self.local_tag:
+                return cr(argv, f"{self.local_tag}\n")
+            if target == "v1.2.3^{commit}":
+                return cr(argv, rc=1)
+        if argv[:2] == ["git", "rev-parse"] and argv[2] == "origin/main^{commit}":
+            return cr(argv, "abc1234\n")
+        if argv[:2] == ["git", "rev-parse"] and argv[2] == "abc1234^{commit}":
+            return cr(argv, "abc1234\n")
+        if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return cr(argv)
+        if argv[:3] == ["git", "ls-remote", "origin"]:
+            return cr(argv, self.remote_tag)
+        if argv[:2] == ["git", "tag"]:
+            return cr(argv)
+        if argv[:2] == ["git", "push"]:
+            return cr(argv)
+        if argv[:3] == ["gh", "release", "view"]:
+            return cr(argv, rc=0 if self.release_exists else 1)
+        if argv[:3] == ["gh", "release", "edit"]:
+            return cr(argv)
+        if argv[:3] == ["gh", "release", "create"]:
+            return cr(argv)
+        raise AssertionError(f"unexpected argv: {argv}")
+
+
+def _patch_release_finish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, runner: ReleaseFinishRunner) -> Path:
+    root = tmp_path / "repo"
+    root.mkdir()
+    notes = tmp_path / "notes.md"
+    notes.write_text("notes\n", encoding="utf-8")
+    monkeypatch.setattr(release_finish, "_repo_root", lambda: root)
+    monkeypatch.setattr(release_finish, "_origin_repo", lambda _root: "o/r")
+    monkeypatch.setattr(release_finish, "_plugin_version_at", lambda _oid: "1.2.3")
+    def promote(version, repo, root):
+        runner.calls.append(["promote", version, repo, str(root)])
+        return cr(("promote", version, repo, str(root)))
+    monkeypatch.setattr(release_finish, "_promote_release", promote)
+    monkeypatch.setattr(release_finish.proc, "run", runner.run)
+    monkeypatch.setattr(release_finish.time, "sleep", lambda _seconds: None)
+    return notes
+
+
+def test_release_finish_remote_lightweight_tag_skips_push_and_edits_release(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = ReleaseFinishRunner(remote_tag="abc1234\trefs/tags/v1.2.3\n", release_exists=True)
+    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
+    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
+    out = capsys.readouterr().out
+    assert "RELEASE_ACTION=edit" in out
+    assert not any(call[:2] == ["git", "push"] for call in runner.calls)
+
+
+def test_release_finish_existing_local_tag_creates_missing_release_and_promotes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = ReleaseFinishRunner(local_tag="abc1234", release_exists=False)
+    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
+    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
+    out = capsys.readouterr().out
+    assert "RELEASE_ACTION=create" in out
+    assert any(call[:3] == ["gh", "release", "create"] for call in runner.calls)
+    assert any(call[0] == "promote" for call in runner.calls)
+
+
+def test_release_finish_falls_back_to_origin_main_when_merge_commit_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = ReleaseFinishRunner(local_tag="abc1234", release_exists=True, merge_oid="")
+    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
+    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
+    assert "TARGET_OID=abc1234" in capsys.readouterr().out
+    assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5
 
 
 def test_read_plugin_version_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -89,6 +180,20 @@ def test_promote_latest_errors_are_error_kv_prefixed(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_latest_main(["--repo", "o/r"]) == 1
     assert capsys.readouterr().err.startswith("ERROR=raw gh failure")
+
+
+def test_promote_latest_failure_ignores_inherited_quiet(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = QueueRunner([
+        cr(["gh"], stderr="raw gh failure", rc=1),
+    ])
+    quiet_log = tmp_path / "quiet.log"
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    monkeypatch.setenv("LARCH_QUIET_LOG_FILE", str(quiet_log))
+    monkeypatch.setattr(promote_release.proc, "run", runner.run)
+    assert promote_release.promote_latest_main(["--repo", "o/r"]) == 1
+    assert capsys.readouterr().err.startswith("ERROR=raw gh failure")
+    assert not quiet_log.exists()
 
 
 def test_release_prepare_override_recomputes_from_current() -> None:
