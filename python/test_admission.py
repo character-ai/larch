@@ -386,3 +386,53 @@ def test_fork_env_caller_env_atomic_failure(tmp_path, monkeypatch, capsys) -> No
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "could not write caller-env.sh" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# _blockers unit tests — these test _blockers in isolation (not via mocked
+# _blockers) so that a regression to "return 0, ''" on subprocess failure
+# would be caught here rather than only at the gate_main level.
+# ---------------------------------------------------------------------------
+
+
+def test_blockers_subprocess_failure_propagates_rc(monkeypatch) -> None:
+    monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 1, "", "import error\n"))  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    assert rc == 1
+    assert blockers == ""
+
+
+def test_blockers_subprocess_success_with_blockers_line(monkeypatch) -> None:
+    monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, "BLOCKERS=12 34\n", ""))  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    assert rc == 0
+    assert blockers == "12 34"
+
+
+def test_blockers_subprocess_success_no_blockers_line_is_fail_open(monkeypatch) -> None:
+    # D3: subprocess exits 0 but emits no BLOCKERS= line (e.g. degraded GitHub API
+    # inside the subprocess) → treat as no blockers found (fail-open posture).
+    monkeypatch.setattr(admission, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, "OTHER=value\n", ""))  # pyright: ignore[reportPrivateUsage]
+    rc, blockers = admission._blockers(7, "owner/repo")  # pyright: ignore[reportPrivateUsage]
+    assert rc == 0
+    assert blockers == ""
+
+
+def test_gate_blocker_subprocess_failure_fails_closed_e2e(monkeypatch, capsys) -> None:
+    # End-to-end: _run is mocked directly (not _blockers) so the full call chain
+    # from gate_main → _blockers → _run is exercised.  A regression to
+    # "return 0, ''" inside _blockers would cause gate_main to emit
+    # ADMISSION_RESULT=missing-designed-prefix instead of ADMISSION_ERROR.
+    payload = {"title": "[DESIGNED] Work", "state": "OPEN", "labels": []}
+
+    def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if argv[:3] == ["gh", "issue", "view"]:
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+        return subprocess.CompletedProcess(argv, 1, "", "fake subprocess failure\n")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
+    out = capsys.readouterr().out
+    assert "ADMISSION_ERROR=" in out
+    assert "ADMISSION_RESULT=pass" not in out
+    assert "ADMISSION_RESULT=missing-designed-prefix" not in out
