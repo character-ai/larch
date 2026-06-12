@@ -384,8 +384,9 @@ append_render_warning() {
 }
 
 # --- Review phase detail (per-round review table; issue #3774) ---
-# Best-effort: renders nothing when there were no panel review rounds (e.g.
-# --self-review runs), so the note block stays unchanged in that case.
+# Best-effort: valid roots with zero completed rounds render the Review Phase
+# Detail heading plus "No review rounds completed."; missing/unusable inputs
+# still degrade to an empty note block.
 review_detail_file="$(mktemp "${TMPDIR:-/tmp}/wfr-review-detail.XXXXXX")"
 # Resolve the session token ledger (session-id-hashed name) for per-round
 # vendor cost; left unset when absent so the Cost column degrades to em dashes.

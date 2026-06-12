@@ -348,6 +348,7 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     assert "--timing-ledger" in argv
     assert "--skill" in argv
     assert argv[argv.index("--skill") + 1] == "implement"
+    assert "--no-gantt" in argv
 
 
 def test_strip_md_for_terminal() -> None:
@@ -528,6 +529,7 @@ def test_design_detail_argv_uses_design_skill_and_rounds_root(
     assert argv[argv.index("--skill") + 1] == "design"
     assert argv[argv.index("--rounds-root") + 1] == str(design / "plan-review")
     assert "--timing-ledger" in argv
+    assert "--no-gantt" in argv
 
 
 def test_design_live_root_manifest_counts_after_child_write(

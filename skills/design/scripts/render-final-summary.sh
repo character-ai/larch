@@ -433,7 +433,13 @@ invoke_render() {
     fi
     local _rpd_out="$DESIGN_TMPDIR/review-phase-detail.md"
     rm -f "$_rpd_out" 2>/dev/null || true
+    local _rounds_root=""
     if [ -d "$DESIGN_TMPDIR/plan-review" ]; then
+        _rounds_root="$DESIGN_TMPDIR/plan-review"
+    elif mkdir -p "$DESIGN_TMPDIR/plan-review" 2>/dev/null; then
+        _rounds_root="$DESIGN_TMPDIR/plan-review"
+    fi
+    if [ -n "$_rounds_root" ] && [ -d "$_rounds_root" ] && [ -r "$_rounds_root" ] && [ -x "$_rounds_root" ]; then
         local _rfj="$DESIGN_TMPDIR/review-findings-full.jsonl"
         rm -f "$_rfj" 2>/dev/null || true
         if ! "$PLUGIN_ROOT/scripts/compose-review-findings.sh" \
@@ -449,7 +455,7 @@ invoke_render() {
         done
 
         local _rpd_args=(
-            --rounds-root "$DESIGN_TMPDIR/plan-review"
+            --rounds-root "$_rounds_root"
             --findings-file "$_rfj"
             --timing-ledger "$DESIGN_TMPDIR/timing-ledger.tsv"
             --skill design

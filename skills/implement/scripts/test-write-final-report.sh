@@ -1125,13 +1125,22 @@ cat > "$rpd_dir/larch-logs/implement/run-rpd/review-findings-full.jsonl" <<'JSON
 {"id":"FINDING_1","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1"}
 {"id":"FINDING_2","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"1"}
 JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000065\t65\t2\t1\t1\t-\n'
+    printf 'v1\tvendor\t1700000010\timplement\t-\tcursor\treview\t1700000010\t1700000060\t50\tcursor-specialist-correctness-output.txt\t0\tcomplete\n'
+} > "$rpd_dir/timing-ledger.tsv"
 CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd.md" \
       "$HELPER" --implement-tmpdir "$rpd_dir" >/dev/null
 rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
 assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
 assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
 assert_contains 'cursor/correctness — 2' "$rpd_body" 'review phase detail top reviewer'
-# Regression (issue #3794): round-meta.json only under live working dir -> section absent.
+# Completed-review output can include reviewer timing Gantt charts.
+assert_contains '### Round 1 reviewer timing' "$rpd_body" 'review phase detail includes reviewer timing heading'
+assert_contains '```mermaid' "$rpd_body" 'review phase detail includes Mermaid fence'
+assert_contains 'dateFormat X' "$rpd_body" 'review phase detail includes Mermaid dateFormat'
+assert_contains 'axisFormat %H:%M:%S' "$rpd_body" 'review phase detail includes hour axisFormat'
+# Regression (issue #3794): round-meta.json only under live working dir -> no completed rounds for selected root.
 # This reproduces the path-mismatch bug: renderer must NOT find the table when
 # round-meta.json exists only under IMPLEMENT_TMPDIR/round-N/ (old wrong root).
 rpd_dir_regression="$TMP_ROOT/impl-rpd-regression"
@@ -1157,8 +1166,12 @@ cat > "$rpd_dir_regression/larch-logs/implement/run-rpd-r/review-findings-full.j
 JSON
 CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd-regression.md" \
       "$HELPER" --implement-tmpdir "$rpd_dir_regression" >/dev/null
-assert_not_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content-rpd-regression.md")" 'regression #3794: round-meta only in live dir -> section absent (renderer uses run_dir not IMPLEMENT_TMPDIR)'
-# Happy path (run-5) has no review rounds -> section must be absent (e.g. --self-review).
-assert_not_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content.md")" 'no review rounds -> section omitted'
+rpd_regression_body="$(cat "$TMP_ROOT/content-rpd-regression.md")"
+assert_not_contains '| 1 | 2 | 2 | 0 | 0 |' "$rpd_regression_body" 'regression #3794: round-meta only in live dir -> completed row absent'
+assert_contains '## Review Phase Detail' "$rpd_regression_body" 'regression #3794: selected valid root still renders section'
+assert_contains 'No review rounds completed.' "$rpd_regression_body" 'regression #3794: selected valid root renders no-round message'
+# Happy path (run-5) has no review rounds -> section now reports no completed rounds.
+assert_contains '## Review Phase Detail' "$(cat "$TMP_ROOT/content.md")" 'no review rounds -> section included'
+assert_contains 'No review rounds completed.' "$(cat "$TMP_ROOT/content.md")" 'no review rounds -> no-round message included'
 
 finish

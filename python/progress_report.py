@@ -365,7 +365,7 @@ def _call_render_phase_detail_script(
     script = Path(__file__).resolve().parent.parent / "scripts" / "render-review-phase-detail.sh"
     if not script.is_file():
         return ""
-    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill]
+    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill, "--no-gantt"]
     if timing_ledger is not None and timing_ledger.is_file():
         argv.extend(["--timing-ledger", str(timing_ledger)])
     if token_ledger is not None and token_ledger.is_file():
