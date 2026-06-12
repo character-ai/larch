@@ -12,12 +12,12 @@ ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 probe=Path('scripts/rebase-checkpoint-probe.sh').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
 
-if skill.count('rebase-checkpoint-probe.sh" 1.r') != 1: errors.append('missing one 1.r direct probe call')
-if skill.count('rebase-checkpoint-probe.sh" 4.r') != 1: errors.append('missing one 4.r direct probe call')
-if skill.count('rebase-checkpoint-probe.sh" 7.r') != 1: errors.append('missing one 7.r direct probe call')
-if skill.count("rebase-checkpoint-probe.sh\" 1.r 'plan materialization' --forked-target \"${forked_target:-false}\"") != 1: errors.append('1.r direct probe must pass --forked-target')
-if skill.count("rebase-checkpoint-probe.sh\" 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('4.r direct probe must pass --forked-target')
-if skill.count("rebase-checkpoint-probe.sh\" 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('7.r direct probe must pass --forked-target')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 1.r') != 1: errors.append('missing one 1.r launcher probe call')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 4.r') != 1: errors.append('missing one 4.r launcher probe call')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 7.r') != 1: errors.append('missing one 7.r launcher probe call')
+if skill.count("rebase-checkpoint-probe.sh 1.r 'plan materialization' --forked-target \"${forked_target:-false}\"") != 1: errors.append('1.r launcher probe must pass --forked-target')
+if skill.count("rebase-checkpoint-probe.sh 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('4.r launcher probe must pass --forked-target')
+if skill.count("rebase-checkpoint-probe.sh 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('7.r launcher probe must pass --forked-target')
 if 'BASE_ARGS=()' in skill: errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
     '**Orchestrator contract — parse the wrapper stdout**',

@@ -97,6 +97,43 @@ def _atomic_text(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
+def _write_larch_run_sh(implement_tmpdir: str) -> bool:
+    if not implement_tmpdir:
+        return False
+    path = Path(implement_tmpdir) / "larch-run.sh"
+    script = """#!/usr/bin/env bash
+set -uo pipefail
+
+IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}"
+export IMPLEMENT_TMPDIR
+
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+export CLAUDE_PLUGIN_ROOT
+
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || { printf '%s\\n' 'larch-run.sh: CLAUDE_PLUGIN_ROOT could not be resolved' >&2; exit 2; }
+[ "$#" -ge 1 ] || { printf '%s\\n' 'larch-run.sh: missing relative script path' >&2; exit 2; }
+
+script=$1
+shift
+case "$script" in
+  /*|*..*) printf '%s\\n' "larch-run.sh: invalid relative script path: $script" >&2; exit 2 ;;
+esac
+
+case "$script" in
+  *.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
+  *.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;
+  *) printf '%s\\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
+esac
+"""
+    try:
+        _atomic_text(path, script)
+        path.chmod(0o755)
+    except OSError:
+        return False
+    return True
+
+
 def _read_key(path: Path, key: str, default: str = "") -> str:
     result = _cli("session", "read-key", "--file", str(path), "--key", key, "--default", default)
     return result.stdout.strip() if result.returncode == 0 else default
@@ -343,6 +380,8 @@ def _phase_infra(st: BootstrapState) -> None:
         _cli("token", "mark", "Step 0 — preflight")
         env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
         _cli("timing", "mark", "Step 0 — preflight", env=env)
+    if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):
+        st.emit_step_failed("larch-run")
     pid = os.environ.get("LARCH_CLAUDE_PID", "")
     if pid and st.implement_tmpdir:
         pointer = _cli("session", "write-implement-env", "--claude-pid", pid, "--implement-tmpdir", st.implement_tmpdir, "--cwd", str(Path.cwd()))
@@ -1011,6 +1050,7 @@ def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
         "resume-plan-tail-sentinel": "**⚠ /implement Step 0 dirty-tree recovery: the resume tail could not validate tracking state from the existing session artifacts. Restore or inspect `$IMPLEMENT_TMPDIR`, then restart `/implement`.**",
         "create-branch": "**⚠ /implement Step 0: could not verify branch state before bootstrap. Aborting.**",
         "write-session-env": "**⚠ /implement Step 0: could not write session environment. Aborting.**",
+        "larch-run": "**⚠ /implement Step 0: could not write the session launcher. Aborting.**",
         "emergency-bypass-log": "**⚠ /implement Step 0: emergency bypass log handling failed. Aborting.**",
     }
     if step_failed in {"copy-plan", "gh-issue-view"} and implement_tmpdir:
