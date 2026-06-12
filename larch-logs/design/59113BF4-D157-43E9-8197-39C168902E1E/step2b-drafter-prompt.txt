@@ -1,0 +1,164 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [Bug] Codex bail `protected-path-edit-required-out-of-scope` misclassified as `transient-infra`
+
+### [Bug] Codex bail `protected-path-edit-required-out-of-scope` misclassified as `transient-infra`
+
+## Context
+
+Run `D0D24DD6-D277-4091-A967-DE35D3454893` (issue #4019): Codex bailed with `REASON=protected-path-edit-required-out-of-scope` because the implementation plan requires editing `.claude-plugin/plugin.json`, which Codex's sandbox explicitly forbids.
+
+## Root cause
+
+`stall-recovery-report.sh classify` maps `protected-path-edit-required-out-of-scope` to `FAILURE_CLASS=transient-infra` and `RESUME_HINT=step2-impl` (main agent implements inline). This classification is wrong: the protected-path restriction is a **permanent Codex sandbox policy** — it will never succeed on retry with the same Codex coder. It is not a transient network/infra failure.
+
+The `step2-impl` hint causes the main agent to implement all changes inline. For large plans (100+ files), this consumes enormous context and is slow. The correct dispatch for a protected-path bail should instead be `RESUME_HINT=step2-impl` only when the plan does require protected-path edits that the main agent can make, but the classification should be more specific so operators know what's happening.
+
+## Suggested fix
+
+In `stall-recovery-report.sh` (or its allowlists TSV), add a distinct classification for `protected-path-edit-required-out-of-scope`:
+
+- `FAILURE_CLASS=protected-path` (not `transient-infra`)
+- `RESUME_HINT=step2-impl` (correct — main agent can edit protected paths)
+- A warning displayed to the operator that Codex bailed on a protected path and main Claude will implement
+
+This prevents the misleading "transient-infra" label while preserving the correct recovery dispatch. The retry cap for `protected-path` should be 1 (no point retrying Codex on a permanent ban), and the first-detection message should clarify the protected path name.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Root cause of misclassification
+- **Question**: What causes protected-path-edit-required-out-of-scope to land at transient-infra?
+- **Resolution**: The token is not in the dispatch-bail-token case arm in classify_from_evidence(). Evidence from state files (which includes step, phase, bail, and file content) may contain transient-matching words, causing the transient grep to fire instead. The token also is not in safe_bail_reason_value() so it's sanitized to "redacted" in public output.
+- **Source**: codebase
+
+## Decision 2: New class vs dispatch-failure reuse
+- **Question**: Should we reuse dispatch-failure or create a new protected-path class?
+- **Resolution**: New class FAILURE_CLASS=protected-path per issue. dispatch-failure has retry cap=3 which is wrong for a permanent ban; protected-path needs cap=1.
+- **Source**: issue + codebase
+
+## Decision 3: RESUME_HINT correctness
+- **Question**: Does RESUME_HINT need to change?
+- **Resolution**: No. resume_hint_for() already returns step2-impl for step=2 (main agent can edit protected paths). Only FAILURE_CLASS and retry cap need fixing.
+- **Source**: codebase
+
+## Decision 4: Operator warning scope
+- **Question**: What does "warning to operator" mean in the issue?
+- **Resolution**: Satisfied by the new FAILURE_CLASS=protected-path label in the stall classification output. The "first-detection message clarifying the path name" is OOS — the bail_reason token does not encode the path name; extracting it from the Codex manifest is a separate effort.
+- **Source**: codebase + issue analysis
+
+</discussion_round1>
+
