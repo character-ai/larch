@@ -178,10 +178,29 @@ class MermaidRunner:
             return str(local)
         return shutil.which("mmdc")
 
+    def _install_local_toolchain(self) -> bool:
+        toolchain = self.root / "mermaid-lint"
+        if not (toolchain / "package-lock.json").is_file():
+            return False
+        npm = shutil.which("npm")
+        if not npm:
+            return False
+        return (
+            subprocess.run(
+                [npm, "ci"],
+                cwd=toolchain,
+                check=False,
+                stdout=subprocess.DEVNULL,
+            ).returncode
+            == 0
+        )
+
     def ensure(self) -> int:
         if self.mmdc:
             return 0
         resolved = self._resolve_mmdc()
+        if not resolved and self._install_local_toolchain():
+            resolved = self._resolve_mmdc()
         if not resolved:
             print(
                 "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run: cd mermaid-lint && npm ci)",
