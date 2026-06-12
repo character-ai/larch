@@ -1537,7 +1537,11 @@ Observation: operator action.
 EOF
 run_capture "$SANDBOX/case23-operator.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
 assert_eq skipped_operator_action "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-operator.out")" "23: operator-action skips filing"
-[ -f "$dir/stall-recovery-operator-action.env" ] && pass "23: operator-action sentinel written" || fail "23: operator-action sentinel missing"
+if [ -f "$dir/stall-recovery-operator-action.env" ]; then
+    pass "23: operator-action sentinel written"
+else
+    fail "23: operator-action sentinel missing"
+fi
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

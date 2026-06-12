@@ -9,12 +9,9 @@ SCRIPTS_DIR="$PLUGIN_ROOT/scripts"
 ALLOWLIST_TSV="$SCRIPT_DIR/stall-recovery-report-allowlists.tsv"
 CONTRACT_MD="$SCRIPT_DIR/stall-recovery-report.md"
 
-STALL_REPORT_PREFIX="stall-recovery"
 DEFAULT_ESCALATION_LEDGER="stall-recovery-escalation-ledger.tsv"
 DEFAULT_ESCALATION_FALLBACK="stall-recovery-escalation-fallback.tsv"
 DEFAULT_RECORD_FAILURE_MARKER="stall-recovery-escalation-record-failure.env"
-DEFAULT_TERMINAL_SENTINEL="stall-recovery-terminal-report.env"
-DEFAULT_ESCALATION_SUCCESS_SENTINEL="stall-recovery-escalation-success.env"
 DEFAULT_CLASSIFICATION_FILE="stall-recovery-classification.env"
 DEFAULT_SENSITIVE_CORPUS="stall-recovery-sensitive-corpus.env"
 DEFAULT_ISSUE_INPUT="stall-recovery-issue-input.md"
@@ -516,7 +513,7 @@ classify_from_evidence() {
     MATCHED_CLASSIFIER_PATTERN=no-match
 
     case "$step" in
-        3|6) MATCHED_CLASSIFIER_PATTERN=step-contract; printf 'contract-failure\n'; return 0 ;;
+        3|6) MATCHED_CLASSIFIER_PATTERN="step-contract"; printf 'contract-failure\n'; return 0 ;;
         merge-loop-iteration-cap) MATCHED_CLASSIFIER_PATTERN=terminal-step; printf 'unrecoverable\n'; return 0 ;;
         rebase-failed) MATCHED_CLASSIFIER_PATTERN=rebase-transient; printf 'transient-infra\n'; return 0 ;;
     esac
@@ -998,8 +995,8 @@ compose_body_content() {
         printf "| Bail reason | \`%s\` |\n" "$bail_reason"
         printf "| Exit code | \`%s\` |\n" "$exit_code"
         printf "| Signature hash | \`%s\` |\n\n" "$signature"
-        printf '## Root-cause finding required\n\nMain Claude must investigate and write `%s` before public report composition.\n\n' "$DEFAULT_ROOT_CAUSE_FILE"
-        printf '## Suggested next step\n\nUse `compose-report` for the terminal or escalation-success report after root-cause artifacts are present.\n'
+        printf "## Root-cause finding required\n\nMain Claude must investigate and write \`%s\` before public report composition.\n\n" "$DEFAULT_ROOT_CAUSE_FILE"
+        printf "## Suggested next step\n\nUse \`compose-report\` for the terminal or escalation-success report after root-cause artifacts are present.\n"
         if [ "$comment_mode" = true ]; then
             attempt_count=0
             [ -n "$attempts_file" ] && attempt_count=$(kv_get "$attempts_file" attempt_count "0")
@@ -1282,7 +1279,7 @@ cmd_normalize_outcome() {
     if [ "$any_stall" = true ]; then
         outcome=stalled
     elif [ "$forked" = true ]; then
-        outcome=forked-dry-run
+        outcome="forked-dry-run"
     elif [ "$design_done" = true ]; then
         outcome=design-only
     elif [ "$merge_result" = merged ] || [ "$merge_result" = admin_merged ]; then
@@ -1321,14 +1318,15 @@ cmd_normalize_outcome() {
 }
 
 write_record_escalation_tool_failure() {
-    local tmpdir=$1 reason=$2 execution="$tmpdir/execution-issues.md" ts
+    local tmpdir=$1 reason=$2 ts
+    local execution="$tmpdir/execution-issues.md"
     ts=$(now_utc)
     if [ -d "$tmpdir" ] && { [ ! -e "$execution" ] || { [ -f "$execution" ] && [ ! -L "$execution" ] && [ -w "$execution" ]; }; }; then
         {
             printf '\n## Tool Failure: record-escalation\n\n'
-            printf -- '- utc: `%s`\n' "$ts"
-            printf -- '- helper: `stall-recovery-report.sh record-escalation`\n'
-            printf -- '- reason: `%s`\n' "$reason"
+            printf -- "- utc: \`%s\`\n" "$ts"
+            printf -- "- helper: \`stall-recovery-report.sh record-escalation\`\n"
+            printf -- "- reason: \`%s\`\n" "$reason"
         } >>"$execution" || true
     fi
 }
@@ -1468,7 +1466,7 @@ attempts_table() {
     fi
     i=1
     while [ "$i" -le "$attempt_count" ]; do
-        printf '| `%s` | `%s` | `%s` | `%s` | `%s` |\n' \
+        printf "| \`%s\` | \`%s\` | \`%s\` | \`%s\` | \`%s\` |\n" \
             "$i" \
             "$(safe_class_value "$(kv_get "$attempts_file" "attempt.${i}.class" "")")" \
             "$(safe_resume_hint_value "$(kv_get "$attempts_file" "attempt.${i}.resume_hint" "")")" \
@@ -1494,16 +1492,16 @@ compose_tier_b_projection() {
     dispatcher=$(safe_dispatcher_value "$(kv_get "$class_file" DISPATCHER "")")
     printf '## /implement %s report\n\n' "$kind"
     printf '| Field | Value |\n|---|---|\n'
-    printf '| Report kind | `%s` |\n' "$kind"
-    printf '| Failure class | `%s` |\n' "$class"
-    printf '| Step | `%s` |\n' "$step"
-    printf '| Phase | `%s` |\n' "$phase"
-    printf '| Bail reason | `%s` |\n' "$bail"
-    printf '| Exit code | `%s` |\n' "$exit_code"
-    printf '| Dispatcher | `%s` |\n' "$dispatcher"
-    printf '| Matched classifier pattern | `%s` |\n' "$matched"
-    printf '| Root-cause verdict | `%s` |\n' "$verdict"
-    printf '| Root-cause confidence | `%s` |\n\n' "$confidence"
+    printf "| Report kind | \`%s\` |\n" "$kind"
+    printf "| Failure class | \`%s\` |\n" "$class"
+    printf "| Step | \`%s\` |\n" "$step"
+    printf "| Phase | \`%s\` |\n" "$phase"
+    printf "| Bail reason | \`%s\` |\n" "$bail"
+    printf "| Exit code | \`%s\` |\n" "$exit_code"
+    printf "| Dispatcher | \`%s\` |\n" "$dispatcher"
+    printf "| Matched classifier pattern | \`%s\` |\n" "$matched"
+    printf "| Root-cause verdict | \`%s\` |\n" "$verdict"
+    printf "| Root-cause confidence | \`%s\` |\n\n" "$confidence"
     printf '## Bounded root-cause summary\n\n%s\n\n' "$summary"
     printf '## Attempts\n\n'
     attempts_table "$attempts_file"
@@ -1525,13 +1523,13 @@ compose_tier_a_issue() {
     [ -n "$bail" ] || bail=none
     printf '### %s\n\n' "$title"
     printf '## Report metadata\n\n'
-    printf -- '- **Report kind**: `%s`\n' "$kind"
-    printf -- '- **Failure class**: `%s`\n' "$class"
-    printf -- '- **Step**: `%s`\n' "$step"
-    printf -- '- **Bail reason**: `%s`\n' "$bail"
-    printf -- '- **Run ID**: `%s`\n' "$(first_nonempty "$(kv_get "$tmpdir/parent-issue.md" RUN_ID "")" "unknown")"
-    printf -- '- **Branch**: `%s`\n' "$(first_nonempty "$(kv_get "$tmpdir/session-env.sh" BRANCH "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH "")" "unknown")"
-    printf -- '- **PR URL**: `%s`\n\n' "$(first_nonempty "$(kv_get "$tmpdir/ship-pr-state.sh" PR_URL "")" "$(kv_get "$tmpdir/finalize-state.sh" PR_URL "")" "unknown")"
+    printf -- "- **Report kind**: \`%s\`\n" "$kind"
+    printf -- "- **Failure class**: \`%s\`\n" "$class"
+    printf -- "- **Step**: \`%s\`\n" "$step"
+    printf -- "- **Bail reason**: \`%s\`\n" "$bail"
+    printf -- "- **Run ID**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/parent-issue.md" RUN_ID "")" "unknown")"
+    printf -- "- **Branch**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/session-env.sh" BRANCH "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH "")" "unknown")"
+    printf -- "- **PR URL**: \`%s\`\n\n" "$(first_nonempty "$(kv_get "$tmpdir/ship-pr-state.sh" PR_URL "")" "$(kv_get "$tmpdir/finalize-state.sh" PR_URL "")" "unknown")"
     append_file_if_readable "Root-cause finding" "$root_file"
     printf '\n## Attempts\n\n'
     attempts_table "$attempts_file"
