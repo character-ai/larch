@@ -1,6 +1,6 @@
 {
   "name": "larch",
-  "version": "49.0.19",
+  "version": "50.0.0",
   "description": "Multi-agent workflow automation for Claude Code: issue-anchored `/design` (one direct-drafting flow; plan-review panel) and `/implement` (positional `<issue-N>`, fixed 7200s Step 2 timeout, optional `--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--run-id`). `/implement` Preflight reads the `larch:plan` block from the issue body; `/implement` Step 5 code review always uses the unified strict panel internally (public `--panel` argv removed).",
   "author": {
     "name": "Sergey Zhupanov",
@@ -31,7 +31,7 @@
     "codex_model": {
       "title": "Codex Model",
       "type": "string",
-      "description": "Model for Codex launches — review, implementation, sketches, voting (e.g., o3). Also accepted via LARCH_CODEX_MODEL env var. When unset, defaults to gpt-5.5.",
+      "description": "Model for Codex launches \u2014 review, implementation, sketches, voting (e.g., o3). Also accepted via LARCH_CODEX_MODEL env var. When unset, defaults to gpt-5.5.",
       "sensitive": false
     },
     "codex_effort": {
