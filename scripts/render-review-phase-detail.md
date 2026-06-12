@@ -59,7 +59,9 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 top-reviewers pass joins accepted findings' `reviewer_slots` basenames (from
 `review-findings-full.jsonl`, with a `reviewer` singular fallback for older
 schema) against that map; a basename-parsing fallback (`derive.awk`) handles
-basenames absent from the map. Failed slots come from `round-meta.json`
+basenames absent from the map. `derive.awk` normalizes the basename to lowercase
+before pattern matching so mixed-case dynamic slot names (e.g. `Cursor-dyn-*`)
+are attributed correctly instead of falling through to `unknown/`. Failed slots come from `round-meta.json`
 `.collector` blocks whose `STATUS` is non-empty and not `OK`, attributed by the
 block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 

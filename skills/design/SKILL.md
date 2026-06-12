@@ -1074,9 +1074,14 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
    - On **exit 0**: parse annotate stdout for `FILE_DESIGN_OOS_STATUS=`. When the value is `annotate-skipped-empty-stdout`, parse `WARN=` from annotate stdout; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b annotate-skip`, tool `file-design-oos.sh annotate`, category `Warnings`, exit code 0); print `**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**` and continue to Step 5c.
    - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt` (partial `/issue` failure): append under `Tool Failures` via `run-log append-failure` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5c** (per-block `Filed URL` lines are written only for successful items).
    - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5c.
+   - **Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing — sequencing error): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5c:
+     1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"` — do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
+     2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
+     3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
+     4. Re-run annotate: `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.sh" --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"`.
 
 > **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → validate → redact → `design-publish.sh` publish tail) still must run.
-`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers for every terminal continue-to-Step-5c path.
+`.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path (exit 0: `annotate-complete`, `annotate-skipped-empty-stdout`, and the prepare skip paths); it is **not** written when `design-step5b-annotate.sh` exits non-zero (annotate failure).
 
 ### 5c — Write `larch:plan` to GitHub + publish
 
