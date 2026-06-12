@@ -424,6 +424,9 @@ test-decompose-aggregator:
 test-decompose-file-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-file-issues.sh
 
+test-design-step2b-drafter:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
+
 test-design-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh
 
