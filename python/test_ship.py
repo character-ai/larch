@@ -1995,15 +1995,16 @@ print("contract", file=stream)
 stream.close()
 logging_util.BreadcrumbWriter().emit("crumb")
 print(os.environ[config.ENV_LARCH_QUIET_LOG_FILE], file=logging_util.contract_stream())
-"""
+    """
     _quiet_vars = {config.ENV_LARCH_QUIET_ACTIVE, config.ENV_LARCH_QUIET_PID, config.ENV_LARCH_QUIET_LOG_FILE, config.ENV_LARCH_QUIET_DISABLE}
     clean_env = {k: v for k, v in os.environ.items() if k not in _quiet_vars}
+    python_dir = Path(__file__).resolve().parent
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
         capture_output=True,
         text=True,
-        env={**clean_env, "PYTHONPATH": str(Path.cwd()), "QUIET_TMPDIR": str(tmp_path)},
+        env={**clean_env, "PYTHONPATH": str(python_dir), "QUIET_TMPDIR": str(tmp_path)},
     )
     lines = completed.stdout.strip().splitlines()
     assert lines[0] == "contract"
