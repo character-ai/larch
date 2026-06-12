@@ -142,6 +142,10 @@ elif [[ "${FILE_DESIGN_OOS_STATUS:-}" == annotate-skipped-empty-stdout && -n "${
   printf '%s\n' "**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**"
 fi
 
+if [[ "${_oos_ann_rc:-0}" -ne 0 ]]; then
+    printf 'STEP5B_STATUS=annotate-failed\n'
+    exit "${_oos_ann_rc}"
+fi
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-5b"
 printf 'STEP5B_STATUS=annotate-complete\n'

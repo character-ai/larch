@@ -94,6 +94,7 @@ function derive(b,    core, rest, vendor, arch) {
     sub(/-output-ns-retry$/, "", core)
     sub(/-output$/, "", core)
     sub(/-ns-retry$/, "", core)
+    core = tolower(core)
     if (core ~ /^(cursor|codex|claude_sub|claude)-specialist-/) {
         vendor = core; sub(/-specialist-.*$/, "", vendor)
         arch = core;   sub(/^(cursor|codex|claude_sub|claude)-specialist-/, "", arch)
