@@ -30,6 +30,7 @@ paths = [
     '''^scripts/test-compose-review-findings\.sh$''',
     '''^scripts/test-larch-log-write-round\.sh$''',
     '''^scripts/test-implement-structure\.sh$''',
+    '''^python/test_tracking_issue\.py$''',
     '''^skills/implement/scripts/test-write-rejected-findings\.sh$''',
     '''^python/test_redact\.py$''',
     '''^python/test_checks\.py$''',

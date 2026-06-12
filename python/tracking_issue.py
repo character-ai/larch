@@ -554,7 +554,7 @@ def _parse_read_argv(argv: Sequence[str]) -> dict[str, object]:
         if flag not in value_flags:
             raise CliFailure(f"usage: unknown flag: {flag}", 1)
         if idx + 1 >= len(argv):
-            print(f"tracking-issue read: error: {flag} requires a value", file=sys.stderr)
+            logging_util.diagnostic(f"tracking-issue read: error: {flag} requires a value")
             raise SystemExit(1)
         val = argv[idx + 1]
         if flag == "--issue":
@@ -704,6 +704,7 @@ def _render_issue_task(
 
 
 def read_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-read")
     runner: Runner = proc
     try:
         values = _parse_read_argv(argv)
@@ -714,7 +715,6 @@ def read_main(argv: list[str]) -> int:
         _emit_failure(exc.message)
         return exc.exit_code
 
-    logging_util.quiet_init(argv0="tracking-issue-read")
     try:
         sentinel = cast("str | None", values["sentinel"])
         if sentinel is not None:

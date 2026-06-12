@@ -28,11 +28,15 @@ def _quiet_noop(*, argv0: str | None = None) -> None:
 def _tracking_issue_subprocess(
     args: list[str],
     tmp_path: Path,
+    *,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    if extra_env is not None:
+        env.update(extra_env)
     return subprocess.run(
         [sys.executable, "python/cli.py", "tracking-issue", *args],
         cwd=Path(__file__).resolve().parents[1],
@@ -41,6 +45,31 @@ def _tracking_issue_subprocess(
         check=False,
         env=env,
     )
+
+
+def _tracking_issue_subprocess_redirected(
+    args: list[str],
+    tmp_path: Path,
+    stdout_path: Path,
+    *,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
+    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+    if extra_env is not None:
+        env.update(extra_env)
+    with stdout_path.open("w", encoding="utf-8") as stdout:
+        return subprocess.run(
+            [sys.executable, "python/cli.py", "tracking-issue", *args],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            check=False,
+            env=env,
+        )
 
 
 def test_link_pr_closes_appends() -> None:
@@ -627,12 +656,83 @@ def test_tracking_issue_read_missing_value_usage_visible_under_quiet(tmp_path: P
     assert "tracking-issue read: error: --issue requires a value" in result.stderr
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["read", "--issue", "abc", "--out-dir", "{tmp}"],
+        ["read", "--issue", "1"],
+        ["read", "--sentinel", "{sentinel}", "--out-dir", "{tmp}"],
+    ],
+)
+def test_tracking_issue_read_shell_level_failures_emit_stdout_envelope(
+    args: list[str],
+    tmp_path: Path,
+) -> None:
+    sentinel = tmp_path / "parent-issue.md"
+    sentinel.write_text("ISSUE_NUMBER=1\nRUN_ID=run\nADOPTED=true\n", encoding="utf-8")
+    resolved = [
+        arg.replace("{tmp}", str(tmp_path)).replace("{sentinel}", str(sentinel))
+        for arg in args
+    ]
+    result = _tracking_issue_subprocess(resolved, tmp_path)
+    assert result.returncode == 1
+    assert "FAILED=true" in result.stdout
+    assert "ERROR=usage:" in result.stdout
+    assert result.stderr == ""
+
+
 def test_tracking_issue_write_usage_visible_under_quiet(tmp_path: Path) -> None:
     result = _tracking_issue_subprocess(["append-comment", "--issue", "1"], tmp_path)
     assert result.returncode == 1
     assert result.stdout == ""
     assert "usage: tracking-issue append-comment" in result.stderr
     assert "the following arguments are required: --body-file" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (["create-issue", "--title", "title", "--body-file", "missing.md"], "body file not found"),
+        (["append-comment", "--issue", "abc", "--body-file", "{body}"], "invalid issue"),
+        (["rename", "--issue", "1", "--state", "bogus", "--repo", "o/r"], "invalid --state"),
+        (["mark-false-positive", "--issue", "abc", "--repo", "o/r"], "invalid issue"),
+    ],
+)
+def test_tracking_issue_write_non_usage_failures_emit_stdout_envelope(
+    args: list[str],
+    expected: str,
+    tmp_path: Path,
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    resolved = [arg.replace("{body}", str(body)) for arg in args]
+    result = _tracking_issue_subprocess(resolved, tmp_path)
+    assert result.returncode == 1
+    assert "FAILED=true" in result.stdout
+    assert f"ERROR={expected}" in result.stdout
+    assert result.stderr == ""
+
+
+def test_tracking_issue_read_success_kvs_reach_redirected_stdout_under_inherited_quiet(
+    tmp_path: Path,
+) -> None:
+    sentinel = tmp_path / "parent-issue.md"
+    sentinel.write_text("ISSUE_NUMBER=5\nRUN_ID=run\nADOPTED=false\n", encoding="utf-8")
+    stdout_path = tmp_path / "stdout.txt"
+    result = _tracking_issue_subprocess_redirected(
+        ["read", "--sentinel", str(sentinel)],
+        tmp_path,
+        stdout_path,
+        extra_env={
+            config.ENV_LARCH_QUIET_ACTIVE: "1",
+            config.ENV_LARCH_QUIET_PID: str(os.getpid()),
+        },
+    )
+    assert result.returncode == 0
+    assert stdout_path.read_text(encoding="utf-8") == (
+        "ISSUE_NUMBER=5\nRUN_ID=run\nADOPTED=false\n"
+    )
+    assert result.stderr == ""
 
 
 def test_cli_registry_tracking_issue_read_sentinel(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
