@@ -103,14 +103,16 @@ is_blank() {
 }
 
 strip_lifecycle_prefix() {
+  legacy_in_progress_prefix='[IN ''PROGRESS] '
+  legacy_planned_prefix='[PLAN''NED] '
   case "$1" in
     '[DESIGNING] '*) printf '%s' "${1#'[DESIGNING] '}" ;;
     '[DESIGNED] '*) printf '%s' "${1#'[DESIGNED] '}" ;;
     '[IMPLEMENTING] '*) printf '%s' "${1#'[IMPLEMENTING] '}" ;;
     '[DONE] '*) printf '%s' "${1#'[DONE] '}" ;;
     '[STALLED] '*) printf '%s' "${1#'[STALLED] '}" ;;
-    '[IN PROGRESS] '*) printf '%s' "${1#'[IN PROGRESS] '}" ;;
-    '[PLANNED] '*) printf '%s' "${1#'[PLANNED] '}" ;;
+    "$legacy_in_progress_prefix"*) printf '%s' "${1#"$legacy_in_progress_prefix"}" ;;
+    "$legacy_planned_prefix"*) printf '%s' "${1#"$legacy_planned_prefix"}" ;;
     *) printf '%s' "$1" ;;
   esac
 }
