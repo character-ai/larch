@@ -528,6 +528,11 @@ classify_from_evidence() {
         rebase-failed) MATCHED_CLASSIFIER_PATTERN=rebase-transient; CLASSIFIED_FAILURE_CLASS=transient-infra; return 0 ;;
     esac
     case "$bail" in
+        protected-path-edit-required-out-of-scope)
+            MATCHED_CLASSIFIER_PATTERN=protected-path-bail-token
+            CLASSIFIED_FAILURE_CLASS=protected-path
+            return 0
+            ;;
         adopted-issue-closed|tracking-init-failed)
             MATCHED_CLASSIFIER_PATTERN=terminal-bail
             CLASSIFIED_FAILURE_CLASS=unrecoverable
@@ -577,7 +582,7 @@ classify_from_evidence() {
 
 safe_matched_pattern_value() {
     case "${1:-}" in
-        no-stall|no-match|step-contract|terminal-step|rebase-transient|terminal-bail|recovery-out-of-scope|test-output|lint-output|dispatch-output|dispatch-bail-token|transient-output|ci-fix-exhausted-with-detail|same-cause-repeat)
+        no-stall|no-match|step-contract|terminal-step|rebase-transient|protected-path-bail-token|terminal-bail|recovery-out-of-scope|test-output|lint-output|dispatch-output|dispatch-bail-token|transient-output|ci-fix-exhausted-with-detail|same-cause-repeat)
             printf '%s\n' "$1"
             ;;
         *) printf 'redacted\n' ;;
@@ -589,7 +594,7 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
+        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|interactive-subprocess-unsupported|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|submodule-edit-required-out-of-scope|\
         local-unfixable|checks-failed|checks-timeout|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required)
             printf '%s\n' "$1"
@@ -696,6 +701,7 @@ retry_cap_for() {
         transient-infra) printf '4\n' ;;
         test-failure|lint-failure|ci-fix-exhausted) printf '8\n' ;;
         dispatch-failure) printf '3\n' ;;
+        protected-path) printf '1\n' ;;
         same-cause-repeat) printf '2\n' ;;
         contract-failure|unrecoverable) printf '0\n' ;;
         *) printf '0\n' ;;
@@ -993,7 +999,7 @@ safe_phase_value() {
 
 safe_class_value() {
     case "${1:-}" in
-        transient-infra|test-failure|lint-failure|dispatch-failure|ci-fix-exhausted|contract-failure|same-cause-repeat|unrecoverable)
+        transient-infra|test-failure|lint-failure|dispatch-failure|protected-path|ci-fix-exhausted|contract-failure|same-cause-repeat|unrecoverable)
             printf '%s\n' "$1"
             ;;
         *)
@@ -2138,7 +2144,7 @@ doc_retry_policy_lines() {
 
 code_retry_policy_lines() {
     local class
-    for class in transient-infra test-failure lint-failure dispatch-failure ci-fix-exhausted same-cause-repeat contract-failure unrecoverable; do
+    for class in transient-infra test-failure lint-failure dispatch-failure protected-path ci-fix-exhausted same-cause-repeat contract-failure unrecoverable; do
         printf '%s\t%s\t%s\n' "$class" "$(retry_cap_for "$class")" "$(retry_delay_for "$class")"
     done
 }

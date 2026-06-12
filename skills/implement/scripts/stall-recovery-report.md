@@ -28,7 +28,7 @@ These names are internal constants so `/design` can later parameterize the same 
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>` initializes retry history.
 - `classify --implement-tmpdir <path> ...` emits the sanitized classification KV contract and writes `stall-recovery-classification.env`. The file includes `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, `EXIT_CODE`, `MATCHED_CLASSIFIER_PATTERN`, and `DISPATCHER`.
 - `record-attempt ...` appends retry attempt history.
-- `retry-policy --class <class>` emits the retry-cap table projection. Retry caps are unchanged.
+- `retry-policy --class <class>` emits the retry-cap table projection. Retry caps are part of the public recovery policy.
 - `record-escalation --implement-tmpdir <path> --site <token> --trigger <token> --step <token> --phase <token> [--dispatcher <token>] [--exit-code <n>] [--failure-detail-log <path>]` appends one canonical ledger row. The canonical ledger path is always `stall-recovery-escalation-ledger.tsv`. Invalid, outside-tmpdir, symlinked, non-regular, or malformed paths fail closed. Append failures write fallback evidence or the record-failure marker and add a tagged `record-escalation` Tool Failure when possible.
 - `normalize-outcome --implement-tmpdir <path>` is the shared final-outcome API used by `write-final-report.sh` and Step 18a.5. It emits `IMPLEMENT_NORMALIZED_OUTCOME=<token>`, `IMPLEMENT_OUTCOME_SUCCEEDED=true|false`, stall-tracking layer diagnostics, and the state fields used in the decision.
 - `compose-report --report-kind terminal-failure|escalation-success --surface issue-input|chat-print ...` is the single public report-rendering API. It writes Tier A issue input or Tier B chat-print output and emits normalized report env fields.
@@ -136,12 +136,13 @@ Lint parity covers Tier B only. The committed TSV, helper code, and this table m
 | test-failure | 8 | none |
 | lint-failure | 8 | none |
 | dispatch-failure | 3 | none |
+| protected-path | 1 | none |
 | ci-fix-exhausted | 8 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
 
-For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts.
+For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts. `protected-path` means Codex hit a permanent protected-path sandbox policy; Main Claude resumes Step 2 inline; for `protected-path-edit-required-out-of-scope`, the operator warning names `.claude-plugin/plugin.json`.
 
 ## Dry run
 
