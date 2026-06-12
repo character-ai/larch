@@ -27,6 +27,7 @@ _MARKDOWN_PREFIX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?")
 _EXAMPLE_PREFIX_RE = re.compile(r"^(?:example|examples|e\.g\.|eg\.|for example|sample)\b", re.IGNORECASE)
 _CODE_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 _NEGATION_RE = re.compile(r"\b(?:does\s+not|do\s+not|did\s+not|not|no|never|without)\b", re.IGNORECASE)
+_NEGATION_SCOPE_BOUNDARY_RE = re.compile(r"(?:[.;:!?]|\b(?:and|but|however|then|yet)\b)", re.IGNORECASE)
 _WRITE_SUCCESS = {"written", "already_present"}
 _INHERITED_SAFE_PHASES = {"inherited_safe", "inherited_reclassified_safe"}
 _INHERITED_EXCEPTION_PHASES = {"inherited_exception", "inherited_reclassified_exception"}
@@ -133,6 +134,11 @@ def _edge_list(edge: tuple[int, int]) -> list[int]:
     return [edge[0], edge[1]]
 
 
+def _has_scoped_negation(prefix: str) -> bool:
+    clause = _NEGATION_SCOPE_BOUNDARY_RE.split(prefix)[-1]
+    return _NEGATION_RE.search(clause) is not None
+
+
 def _edge_record(edge: tuple[int, int], source_issues: list[int], reason: str, *, meta: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
     client, blocker_issue = edge
     record: dict[str, Any] = {
@@ -200,9 +206,9 @@ def _parse_prose_blocks(text: str) -> list[int]:
         line = _MARKDOWN_PREFIX_RE.sub("", line).strip()
         if not line or line.startswith("<!--") or _EXAMPLE_PREFIX_RE.match(line):
             continue
-        if _NEGATION_RE.search(line.split("#", 1)[0]):
-            continue
         match = _BLOCKS_LINE_RE.match(line)
+        if match and _has_scoped_negation(line[: match.start()]):
+            continue
         if match:
             refs.add(int(match.group(1)))
     return sorted(refs)
@@ -473,6 +479,19 @@ def _source_issues_from_record(record: dict[str, Any]) -> list[int]:
     return sorted(n for n in (_positive_int_value(v) for v in source_issues if not isinstance(v, dict)) if n is not None)
 
 
+def _write_outcome(rows: list[dict[str, Any]], phases: set[str]) -> str:
+    latest_status = ""
+    for row in rows:
+        phase = str(row.get("phase") or "")
+        if phase in phases:
+            latest_status = str(row.get("status") or "")
+    if latest_status in _WRITE_SUCCESS:
+        return "success"
+    if latest_status in {"failed", "unresolved"}:
+        return "failed"
+    return "missing"
+
+
 def close_eligible_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py combine-issues close-eligible")
     p.add_argument("--inherited-plan-file", required=True)
@@ -527,9 +546,7 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
         if not isinstance(item, dict):
             continue
         edge = _normal_edge(item.get("edge"), desc="safe_edges")
-        successful = any(str(row.get("status")) in _WRITE_SUCCESS and str(row.get("phase")) in _INHERITED_SAFE_PHASES for row in writes_by_edge.get(edge, []))
-        failed = any(str(row.get("status")) in {"failed", "unresolved"} and str(row.get("phase")) in _INHERITED_SAFE_PHASES for row in writes_by_edge.get(edge, []))
-        if not successful or failed:
+        if _write_outcome(writes_by_edge.get(edge, []), _INHERITED_SAFE_PHASES) != "success":
             for source in _source_issues_from_record(item):
                 reasons.setdefault(str(source), []).append(f"inherited_safe_write_missing_or_failed:{_edge_key(edge)}")
     for item in exception_edges:
@@ -537,14 +554,13 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
             continue
         edge = _normal_edge(item.get("edge"), desc="exception_edges")
         decision = _decision_for_edge(decisions_by_edge, edge)
-        write_success = any(str(row.get("status")) in _WRITE_SUCCESS and str(row.get("phase")) in _INHERITED_EXCEPTION_PHASES for row in writes_by_edge.get(edge, []))
-        write_failed = any(str(row.get("status")) in {"failed", "unresolved"} and str(row.get("phase")) in _INHERITED_EXCEPTION_PHASES for row in writes_by_edge.get(edge, []))
+        write_outcome = _write_outcome(writes_by_edge.get(edge, []), _INHERITED_EXCEPTION_PHASES)
         for source in _source_issues_from_record(item):
-            if write_failed:
+            if write_outcome == "failed":
                 reasons.setdefault(str(source), []).append(f"inherited_exception_write_failed:{_edge_key(edge)}")
             elif decision == "rejected":
                 reasons.setdefault(str(source), []).append(f"inherited_exception_rejected:{_edge_key(edge)}")
-            elif decision == "approved" and write_success:
+            elif decision == "approved" and write_outcome == "success":
                 continue
             elif decision == "approved":
                 reasons.setdefault(str(source), []).append(f"approved_exception_write_missing_or_failed:{_edge_key(edge)}")
@@ -557,6 +573,9 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
     ineligible_sources: list[int] = []
     for source, combined_hosts in sorted(source_to_combined.items()):
         source_reasons = [r for r in reasons.get(str(source), []) if not r.startswith("inherited_exception_rejected:")]
+        if len(combined_hosts) != 1:
+            source_reasons.append("multi_combined_host_closure_unsupported")
+            reasons.setdefault(str(source), []).append("multi_combined_host_closure_unsupported")
         if source in blocked_sources or source_reasons:
             ineligible_sources.append(source)
         else:
@@ -730,7 +749,8 @@ def close_sources_main(argv: list[str] | None = None) -> int:
     if warnings:
         print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
     print(f"CLOSED_ISSUES={closed}")
-    return 1 if warnings else 0
+    print(f"PARTIAL={str(bool(warnings)).lower()}")
+    return 0
 
 
 def _source_close_skip_reason(repo: str, source: int) -> str | None:

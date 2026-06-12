@@ -254,7 +254,7 @@ python3 "$PWD/python/cli.py" combine-issues close-eligible \
   --blocked-sources-file "$BLOCKED_SOURCES_JSON" > "$CLOSE_ELIGIBLE_JSON"
 ```
 
-Close only sources emitted in `eligible_by_combined`. Partition eligible sources by their `source_to_combined` host. Invoke `close-sources` once per combined issue with only that combined issue's eligible source issues.
+Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple combined hosts remain ineligible until a canonical closure host is chosen. Partition eligible sources by their `source_to_combined` host. Invoke `close-sources` once per combined issue with only that combined issue's eligible source issues.
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues close-sources \
@@ -263,7 +263,7 @@ python3 "$PWD/python/cli.py" combine-issues close-sources \
   --source-issues "<comma-separated eligible source issues>"
 ```
 
-Aggregate `CLOSED_ISSUES` from `close-sources` invocations for the final source-closed tally. Keep ineligible source issues open. Summarize every source left open with the reason from `close-eligible`.
+Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse `WARNING=` lines from stderr. Treat partial closure as a warning path, not a hard stop. Reserve non-zero exit or `ERROR=` for argument and repository failures. Aggregate `CLOSED_ISSUES` from all invocations for the final source-closed tally. Keep ineligible, skipped, and failed-close source issues open. Summarize every source left open with the reason from `close-eligible` or the `WARNING=` text. Always continue to `oos-10`.
 
 <!-- step:oos-8 — Audit Open Issues -->
 

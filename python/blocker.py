@@ -20,6 +20,12 @@ _CODE_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 _MARKDOWN_PREFIX_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)?")
 _EXAMPLE_PREFIX_RE = re.compile(r"^(?:example|examples|e\.g\.|eg\.|for example|sample)\b", re.IGNORECASE)
 _NEGATION_RE = re.compile(r"\b(?:does\s+not|do\s+not|did\s+not|not|no|never|without)\b", re.IGNORECASE)
+_NEGATION_SCOPE_BOUNDARY_RE = re.compile(r"(?:[.;:!?]|\b(?:and|but|however|then|yet)\b)", re.IGNORECASE)
+
+
+def _has_scoped_negation(prefix: str) -> bool:
+    clause = _NEGATION_SCOPE_BOUNDARY_RE.split(prefix)[-1]
+    return _NEGATION_RE.search(clause) is not None
 
 
 def parse_prose_blockers(text: str) -> list[int]:
@@ -39,7 +45,7 @@ def parse_prose_blockers(text: str) -> list[int]:
                 continue
             for match in _KEYWORD_RE.finditer(line):
                 prefix = line[: match.start()]
-                if _NEGATION_RE.search(prefix):
+                if _has_scoped_negation(prefix):
                     continue
                 refs.add(int(match.group(1)))
         return sorted(refs)
