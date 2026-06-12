@@ -1541,6 +1541,66 @@ assert_contains '| Larch version | `' "$(cat "$dir/out.md")" "23: compose-report
 assert_contains "| Run ID | \`unknown\` |" "$(cat "$dir/out.md")" "23: compose-report includes run id"
 assert_contains 'Bounded larch-only finding.' "$(cat "$dir/out.md")" "23: compose-report renders bounded root-cause prose"
 assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
+
+dir_tier_a=$(make_tmp case23-tier-a-parse-marker)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_a/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_a/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_a/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-tier-a-parse-marker.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_a" --report-kind terminal-failure --surface issue-input --output-file "$dir_tier_a/issue-input.md"
+assert_eq 0 "$RC" "23: Tier A dry-run compose exits 0"
+tier_a_sig=$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case23-tier-a-parse-marker.out")
+run_capture "$SANDBOX/case23-tier-a-parse-marker-parse.out" python3 "$REPO_ROOT/python/cli.py" issue parse-input --input-file "$dir_tier_a/issue-input.md" --output-dir "$dir_tier_a/parsed"
+assert_eq 0 "$RC" "23: parse-input accepts Tier A issue input"
+assert_eq 1 "$(kv ITEMS_TOTAL "$SANDBOX/case23-tier-a-parse-marker-parse.out")" "23: Tier A issue input parses as one item"
+assert_contains "<!-- larch-stall:signature=$tier_a_sig -->" "$(cat "$(kv ITEM_1_BODY_FILE "$SANDBOX/case23-tier-a-parse-marker-parse.out")")" "23: parse-input preserves Tier A dedup marker"
+
+dir_tier_b_dry=$(make_tmp case23-tier-b-dry-run-no-gh)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_b_dry/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_b_dry/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_b_dry/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir_tier_b_dry/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir_tier_b_dry/stall-recovery-sensitive-corpus.env"
+mkdir -p "$dir_tier_b_dry/bin"
+printf '#!/usr/bin/env bash\necho "$@" >>"%s/gh.calls"\nexit 9\n' "$dir_tier_b_dry" >"$dir_tier_b_dry/bin/gh"
+chmod +x "$dir_tier_b_dry/bin/gh"
+run_capture "$SANDBOX/case23-tier-b-dry-run-no-gh.out" env "PATH=$dir_tier_b_dry/bin:$PATH" LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_b_dry" --report-kind terminal-failure --surface chat-print --output-file "$dir_tier_b_dry/chat.md"
+assert_eq 0 "$RC" "23: Tier B dry-run compose exits 0"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-tier-b-dry-run-no-gh.out")" "23: Tier B dry-run status"
+if [ ! -e "$dir_tier_b_dry/gh.calls" ]; then
+    pass "23: Tier B dry-run compose makes no gh calls"
+else
+    fail "23: Tier B dry-run compose should not call gh" "$(cat "$dir_tier_b_dry/gh.calls")"
+fi
+
+dir_tier_b_fail=$(make_tmp case23-tier-b-create-fail)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_b_fail/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_b_fail/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_b_fail/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir_tier_b_fail/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir_tier_b_fail/stall-recovery-sensitive-corpus.env"
+mkdir -p "$dir_tier_b_fail/bin"
+cat >"$dir_tier_b_fail/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_STUB_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s\n' '{"number":1,"body":"different report","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    echo create failed >&2
+    exit 1
+fi
+echo unexpected gh: "$*" >&2
+exit 9
+STUB
+chmod +x "$dir_tier_b_fail/bin/gh"
+run_capture "$SANDBOX/case23-tier-b-create-fail.out" env "PATH=$dir_tier_b_fail/bin:$PATH" "GH_STUB_LOG=$dir_tier_b_fail/gh.calls" LARCH_STALL_RECOVERY_ENABLE_TEST_FILING=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_b_fail" --report-kind terminal-failure --surface chat-print --output-file "$dir_tier_b_fail/chat.md"
+assert_eq 0 "$RC" "23: Tier B helper create failure exits 0"
+assert_eq fallback-print-required "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-tier-b-create-fail.out")" "23: Tier B helper create failure falls back to chat print"
+assert_eq create-failed "$(kv STALL_RECOVERY_REPORT_FALLBACK_REASON "$SANDBOX/case23-tier-b-create-fail.out")" "23: Tier B helper create failure reason"
+assert_contains 'issue create' "$(cat "$dir_tier_b_fail/gh.calls")" "23: Tier B helper attempts create before fallback"
+assert_contains '[Bug] /implement terminal: lint fix loop missed retry path' "$(cat "$dir_tier_b_fail/chat.md")" "23: Tier B helper fallback leaves chat artifact"
 printf 'stale-partial-row' >"$dir/stall-recovery-escalation-ledger.tsv"
 run_capture "$SANDBOX/case23-record-newline.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
 assert_contains $'stale-partial-row\nutc=' "$(cat "$dir/stall-recovery-escalation-ledger.tsv")" "23: record-escalation repairs missing trailing newline"
