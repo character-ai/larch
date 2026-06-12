@@ -43,30 +43,37 @@ for ref in ['rebase-checkpoint-routing.md','phantom-probe.md','ship-pr-exit-matr
                 checks.append(f'{path} missing {header}')
         require(skill, f'skills/implement/references/{ref}', f'SKILL pointer for {ref}')
 
-# Wrapper call sites.
+# Wrapper call sites. The pre-bootstrap Step 0 fences keep the old shape.
 for script in [
     'step-0-bootstrap.sh" --mode initial',
-    'step-0-degraded-gate.sh',
     'step-0-bootstrap.sh" --mode resume',
-    'step-2-entry.sh" --coder "$coder"',
-    'run-step-checks.sh" --site step3',
-    'step-5-entry.sh',
-    'run-step-checks.sh" --site step5-self-review',
-    'commit-review-fixes.sh" --stage-all',
-    'run-step-checks.sh" --site step5-review-fixes',
-    'step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --record-only',
-    'step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
-    'step-6-entry.sh',
-    'run-step-checks.sh" --site step6',
-    'step-8-ship.sh',
-    'step-8-oos-checkpoint.sh',
-    'step-16.sh',
-    'step-17.sh',
-    'step-18a-gate.sh',
-    'step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"',
-    'step-18-finalize.sh',
 ]:
-    require(skill, script, f'SKILL wrapper {script}')
+    require(skill, script, f'SKILL old-shape wrapper {script}')
+
+launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
+for script in [
+    'skills/implement/scripts/step-0-degraded-gate.sh',
+    'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
+    'skills/implement/scripts/run-step-checks.sh --site step3',
+    'skills/implement/scripts/step-5-entry.sh',
+    'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
+    'skills/implement/scripts/commit-review-fixes.sh --stage-all',
+    'scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1',
+    'skills/implement/scripts/run-step-checks.sh --site step5-review-fixes',
+    'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
+    'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
+    'skills/implement/scripts/step-6-entry.sh',
+    'skills/implement/scripts/run-step-checks.sh --site step6',
+    'skills/implement/scripts/step-7a.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'skills/implement/scripts/step-8-ship.sh',
+    'skills/implement/scripts/step-8-oos-checkpoint.sh',
+    'skills/implement/scripts/step-16.sh',
+    'skills/implement/scripts/step-17.sh',
+    'skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"',
+    'skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'skills/implement/scripts/step-18-finalize.sh',
+]:
+    require(skill, launcher + script, f'SKILL launcher wrapper {script}')
 
 for needle in [
     'BASE_ARGS=()',
@@ -113,16 +120,16 @@ require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 for script, timeout in [
-    ('"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh"', 'timeout: 21600000'),
-    ('"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh"', 'timeout: 1800000'),
-    ('"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh"', 'timeout: 21600000'),
+    (launcher + 'scripts/run-step5-review.sh', 'timeout: 21600000'),
+    (launcher + 'skills/implement/scripts/step-7a.sh', 'timeout: 1800000'),
+    (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
-require_near(skill, '"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh"', '<task-notification>', 'Step 5 review task notification wait', 1800)
-require_near(skill, '"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh"', '<task-notification>', 'Step 8 ship task notification wait', 2000)
-require(skill, 'phantom-probe-with-warn.sh" --step 2-post-dispatch', 'phantom 2-post-dispatch probe')
-require(skill, 'phantom-probe-with-warn.sh" --step 8-pre-ship', 'phantom 8-pre-ship probe')
+require_near(skill, launcher + 'scripts/run-step5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
+require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
+require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 2-post-dispatch', 'phantom 2-post-dispatch probe')
+require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe')
 require(skill, 'git-current-branch.sh', 'post-dispatch branch assertion')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
@@ -147,7 +154,7 @@ require('docs/linting.md', 'make test-implement-fence-shape', 'linting docs fenc
 skill_text = Path(skill).read_text()
 if skill_text.count('timeout: 10800000') < 4:
     checks.append('SKILL.md must use the 10800000 timeout tier for all run-step-checks fences')
-if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+\[ -z [\s\S]{0,500}step-5-resume\.sh" --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):
+if not re.search(r'timeout: 21600000`\.\*\*\s+```bash\s+bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" skills/implement/scripts/step-5-resume\.sh --final-round-num "\$FINAL_ROUND_NUM" --ready-to-commit', skill_text):
     checks.append('SKILL.md must background the Step 5 ready-to-commit resume fence with timeout 21600000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')

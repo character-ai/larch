@@ -3,7 +3,7 @@
 # /implement's per-site relevant-checks helper continuation callouts.
 #
 # The skill is prose; this harness statically pins the anti-halt invariant that
-# every load-bearing run-relevant-checks-captured.sh invocation site in
+# every load-bearing launcher-based relevant-checks invocation site in
 # skills/implement/SKILL.md has the canonical continuation blockquote opener
 # nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
 # helper or validate runtime behavior.
@@ -51,8 +51,8 @@ function is_invocation_site(line) {
     # Match concrete launcher invocations: either the direct helper or the
     # per-step wrapper (run-step-checks.sh) that wraps it — but not prose
     # footnotes or anti-halt reminders that name the script basename-only.
-    return line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/run-relevant-checks-captured\.sh/ \
-        || line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/implement\/scripts\/run-step-checks\.sh/
+    return line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" scripts\/run-relevant-checks-captured\.sh/ \
+        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/run-step-checks\.sh/
 }
 
 {

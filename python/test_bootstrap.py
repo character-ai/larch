@@ -83,6 +83,16 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     assert "--auto-mode" in write_env
 
 
+def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> None:
+    assert bootstrap._write_larch_run_sh(str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    launcher = tmp_path / "larch-run.sh"
+    text = launcher.read_text(encoding="utf-8")
+    assert launcher.stat().st_mode & 0o111
+    assert '*.py) exec python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
+    assert '*.sh) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;' in text
+    assert '/*|*..*)' in text
+
+
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 

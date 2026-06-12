@@ -111,16 +111,17 @@ export CLAUDE_PLUGIN_ROOT
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAUDE_PLUGIN_ROOT` is not in the inherited environment after Step 0. Every Bash block after Step 0 that calls a plugin script via `"${CLAUDE_PLUGIN_ROOT}/..."` MUST first rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (written by `python/cli.py session write-env` at Step 0) using the canonical source guard below, then export `IMPLEMENT_TMPDIR` for child wrappers — do not invent variants:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 now emits `$IMPLEMENT_TMPDIR/larch-run.sh`, and every post-Step-0 Bash fence that calls a plugin script MUST delegate through that launcher:
 
 ```text
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script-path> ...
 ```
 
-**Pre-bootstrap sites** (Step 0 foreground, dirty-tree recovery, legacy structured-invocation pin) run before or without a fresh `python/cli.py session setup` / `session write-env` on legacy resume tmpdirs. Prepend the source guard above, then add the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk extract from `$IMPLEMENT_TMPDIR/session-env.sh` (same pattern as the old 4-line fence, without the `if`/`fi` wrapper) when `plugin-root.env` is still absent, then `export CLAUDE_PLUGIN_ROOT`.
+Post-Step-0 fences have exactly one nonblank, noncomment physical line. Do not source `plugin-root.env` inline. Do not use backslash continuations. Move foreground markers, anti-halt reminders, and similar guidance into prose outside the fence. Pass Python CLI targets as `python/cli.py`; the launcher runs `.py` targets with `python3`. Wrappers that need token, timing, stall, run-id, or other session keys read `$IMPLEMENT_TMPDIR/session-env.sh` internally.
 
-Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `python/bootstrap.py --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. Executable Bash fences in this file are intentionally thin: each fence rehydrates `CLAUDE_PLUGIN_ROOT`, exports `IMPLEMENT_TMPDIR`, and delegates to one repo script. Wrappers that need other session keys read them from `$IMPLEMENT_TMPDIR/session-env.sh` internally; do not reintroduce inline `session read-key` triplets.
+Pre-bootstrap fences keep their existing shapes. The structured-invocation pin, Step 0 initial bootstrap, and dirty-tree recovery resume may keep the source guard plus the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallback from `$IMPLEMENT_TMPDIR/session-env.sh`. Both Preflight `python/cli.py plan-block read` fences keep the guard-only shape. Do not add the awk fallback to those Preflight fences.
+
+Sourcing the full `session-env.sh` remains forbidden because it would pull in the entire session-env namespace and might shadow caller-side state. `python/bootstrap.py` emits the minimal launcher after the Step 0 `session write-env` succeeds, and `--resume-plan-tail` emits it for legacy tmpdirs after the existing `plugin-root.env` sync block.
 
 ### Verbosity Control
 
@@ -261,9 +262,7 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 **Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** wrapper. The wrapper rehydrates `CODEX_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_BINARY_FOUND`, and `CURSOR_PRESENT` from durable `$IMPLEMENT_TMPDIR/session-env.sh`, then invokes `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with those explicit presence flags and `--skill implement`.
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-degraded-gate.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-0-degraded-gate.sh
 ```
 
 Apply this inline procedure to the gate stdout:
@@ -291,7 +290,7 @@ export CLAUDE_PLUGIN_ROOT
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
 
-The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash fences rehydrate only `CLAUDE_PLUGIN_ROOT` with the canonical source guard, then delegate to wrappers; wrappers that consume token, timing, stall, or run-id keys read them from `$IMPLEMENT_TMPDIR/session-env.sh` internally via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. `LARCH_RUN_ID` is written by `_persist_larch_run_id()` in `python/bootstrap.py` immediately after `phase_tracking()` resolves `RUN_ID`; it is not written by the initial Step 0 `session write-env` call (which runs before tracking adoption).
+The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash fences delegate through `$IMPLEMENT_TMPDIR/larch-run.sh`; wrappers that consume token, timing, stall, or run-id keys read them from `$IMPLEMENT_TMPDIR/session-env.sh` internally via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. `LARCH_RUN_ID` is written by `_write_base_session_env()` in `python/bootstrap.py` after `_phase_tracking()` resolves `RUN_ID`; it is not written by the initial Step 0 `session write-env` call (which runs before tracking adoption).
 
 ### Cross-Skill Presence Propagation
 
@@ -321,10 +320,7 @@ Every path that reaches Step 2 leads here first.
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# Foreground required
-"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization' --forked-target "${forked_target:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/rebase-checkpoint-probe.sh 1.r 'plan materialization' --forked-target "${forked_target:-false}"
 ```
 
 Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=1.r` and `<short-name>=plan materialization` (parse the process rc, `ROUTE=continue|conflict|bail`, `REBASE_OUTCOME`, and phantom tail KVs from the captured stdout; set `STALL_TRACKING` only on bail branches).
@@ -334,9 +330,7 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 Print: `> **🔶 /implement 2: implementation**`
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-2-entry.sh" --coder "$coder"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-entry.sh --coder "$coder"
 ```
 
 <!-- step:2 entry preconditions — legal next-actions matrix -->
@@ -363,11 +357,7 @@ Regression harnesses for this dispatcher surface are `skills/implement/scripts/t
 **2.1 — First dispatch invocation**:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --coder "$coder"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step2-dispatch.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --coder "$coder"
 ```
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` as a foreground Bash tool call. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
@@ -398,10 +388,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# Foreground required
-"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 2-post-dispatch
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/phantom-probe-with-warn.sh --step 2-post-dispatch
 ```
 
 Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`. Compare to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the script exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-entry` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch`, set `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, set `STALL_STEP=2`, set `PHASE=implementation`, set `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Otherwise proceed to Step 3. Steps 4 / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
@@ -457,9 +444,7 @@ After each `AskUserQuestion` return (Codex Q/A loop in 2.3, Claude-fallback oppo
 1. Compose an NDJSON record with `phase="implement"`, `step="2"`, `category="Q/A"`, and a sanitized markdown `body`.
 2. Append it with:
    ```bash
-   [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-   export IMPLEMENT_TMPDIR
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
+   bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
    ```
 3. On `LOG_WRITTEN=false` with `ERROR=`, log `Step 2 — Q/A larch-log append failed: $ERROR` to `Warnings` and continue. Non-fatal.
 
@@ -478,10 +463,7 @@ Print: `> **🔶 /implement 3: checks (1)**`
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# > **Continue after child returns.** RELEVANT_CHECKS_OK=true / RELEVANT_CHECKS_SKIPPED=true; on checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step3
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step3
 ```
 
 <!-- step:4 — First Commit (implementation) -->
@@ -493,20 +475,13 @@ Print: `> **🔶 /implement 4: commit (impl)**`
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` — the same dual predicate enforced by NEVER #9, the Step 2 entry preconditions matrix, and §2.1.5; if the AUTH key is missing, mismatched, or `forbidden`, Step 2 has already bailed via `orchestrator-envelope-invalid` and Step 4 is unreachable on this branch): stage and commit:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh --message "<descriptive commit message>" <specific-files>
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/commit-implementation.sh --message "<descriptive commit message>" <specific-files>
 ```
 
 On the malformed-manifest recovery sub-branch, pass the synthesized redacted recovery message and the final NUL-delimited path list instead of positional files:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh \
-  --message "$(cat "$IMPLEMENT_TMPDIR/recovery-commit-message.txt")" \
-  --pathspec-from-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul" \
-  --pathspec-file-nul
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/commit-implementation.sh --message "$(cat "$IMPLEMENT_TMPDIR/recovery-commit-message.txt")" --pathspec-from-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul" --pathspec-file-nul
 ```
 
 The wrapper passes `git commit --only --pathspec-from-file ... --pathspec-file-nul`, so unrelated pre-existing staged content remains staged but uncommitted.
@@ -518,10 +493,7 @@ Commit message describes WHAT was implemented and WHY, not HOW.
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# Foreground required
-"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 4.r 'commit (impl)' --forked-target "${forked_target:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/rebase-checkpoint-probe.sh 4.r 'commit (impl)' --forked-target "${forked_target:-false}"
 ```
 
 Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (parse the process rc and `ROUTE=continue|conflict|bail`; phantom probe for `4.r-post-rebase` is already inside the wrapper, so parse `PHANTOM_*` from the same stdout capture).
@@ -532,9 +504,7 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 ## Step 5 — Code Review
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-entry.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-entry.sh
 ```
 
 ### Self-review mode (`--self-review`)
@@ -548,13 +518,12 @@ When `self_review=true`, skip the scripted review loop below and perform an inli
 5. For any in-scope finding NOT applied (because it is a borderline judgment call or low priority), record it in `$IMPLEMENT_TMPDIR/rejected-findings.md` using the `### [Code Review] Self-review` format from the Track Rejected Code Review Findings section below.
 6. Run captured relevant checks:
 
+> **Continue after child returns.** RELEVANT_CHECKS_OK=true / RELEVANT_CHECKS_SKIPPED=true; on checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose below has full triage.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# > **Continue after child returns.** RELEVANT_CHECKS_OK=true / RELEVANT_CHECKS_SKIPPED=true; on checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step5-self-review
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review
 ```
 
 On `STATUS=fail`, pass `REDACTED_LOG_FILE` into the prompt-side lint-fix repair loop documented at Step 3 (`${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step5-self-review --checks-log "$REDACTED_LOG_FILE"`). On terminal stall after lint, set `STALL_TRACKING=true` and skip to Step 16.
@@ -562,9 +531,7 @@ On `STATUS=fail`, pass `REDACTED_LOG_FILE` into the prompt-side lint-fix repair 
 7. If any fixes were applied, stage and commit them:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh" --stage-all
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/commit-review-fixes.sh --stage-all
 ```
 
 8. Log `Step 5 — self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
@@ -588,12 +555,7 @@ Print once before the `run-step5-review.sh` invocation:
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --mode loop \
-  --starting-round 1
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
 ```
 
 Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files.
@@ -616,24 +578,19 @@ Branch on `STEP5_REVIEW_STATUS`:
 
 - **`coder-main-agent-required`**: follow the coder waterfall branch body in the Step 5 review-branches reference, then run captured relevant checks against the applied fixes:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below — do **not** re-invoke the loop wrapper before the deferred timing wrapper. On `STATUS=fail`, pass `REDACTED_LOG_FILE` into the same prompt-side lint-fix repair loop documented at Step 3 (`${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step5-mav --checks-log "$REDACTED_LOG_FILE"`); on terminal stall after lint, invoke `step-5-resume.sh --record-only` per the deferred timing block below before leaving Step 5 — do **not** re-invoke the loop wrapper. Do NOT end the turn, summarize, or write a handoff message until the resume path completes or a terminal stall records timing.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below — do **not** re-invoke the loop wrapper before the deferred timing wrapper. On `STATUS=fail`, pass `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`) into the same prompt-side lint-fix repair loop documented at Step 3 (`${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step5-mav --checks-log "$REDACTED_LOG_FILE"`); on terminal stall after lint, invoke `step-5-resume.sh --record-only` per the deferred timing block below before leaving Step 5 — do **not** re-invoke the loop wrapper. Do NOT end the turn, summarize, or write a handoff message until the resume path completes or a terminal stall records timing.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# > **Continue after child returns.** RELEVANT_CHECKS_OK=true / RELEVANT_CHECKS_SKIPPED=true; on checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step5-review-fixes
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-review-fixes
 ```
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 Before leaving the main-agent handoff path, route timing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh` so timing is recorded exactly once by the wrapper. If checks/lint end in a terminal stall, invoke the wrapper with `--record-only`, then stop Step 5 and skip the commit/reinvoke block below:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --record-only
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
 ```
 
 Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `commit-review-fixes.sh` commits them:
@@ -641,9 +598,7 @@ Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, th
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh" --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit
 ```
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
@@ -670,9 +625,7 @@ Print: `> **🔶 /implement 6: checks (2)**`
 **Post-/review boundary sentinel**: the three required post-/review actions (Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb) are all complete once this step is reached. Write `.review-boundary-passed` immediately at Step 6 entry to release `hook-stop-fail-close.sh`'s post-/review Stop hook guard (which blocks session stop while `review-round-summary.md` exists without this sentinel — issue #1862):
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-6-entry.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-6-entry.sh
 ```
 
 Parse all three stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHANGED"{print $2}'`) — all keys are always emitted on every invocation in stable order: `FILES_CHANGED` first, `UNTRACKED_BASELINE` second, `GIT_PROBE_FAILED` third. Do NOT `eval`/`source` the script's stdout. If `UNTRACKED_BASELINE=missing` (snapshot was never written or got cleaned up after a Step 5 failure), log to `Warnings` (`Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run`) and continue — `FILES_CHANGED` is still authoritative for staged + unstaged. If `GIT_PROBE_FAILED=true` (one or more git probes returned non-zero — transient git outage, missing `.git` directory, etc.), log to `Warnings` (`Step 6 — git probe failed during review-change detection; FILES_CHANGED may have missed review-induced edits`) and continue. Step 6 does NOT pass `--strict` by default: today's contract is to preserve the historical graceful-degradation behavior on the `/implement` Step 6 path. The `--strict` flag exists for callers that want to fail-closed (treat a probe failure as `FILES_CHANGED=true`); adopting it project-wide is a separate decision tracked outside this PR. Issue #1485 added the `GIT_PROBE_FAILED` key and `--strict` flag.
@@ -686,10 +639,7 @@ Else (`FILES_CHANGED=true`):
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 10800000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# > **Continue after child returns.** RELEVANT_CHECKS_OK=true / RELEVANT_CHECKS_SKIPPED=true; on checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step-checks.sh" --site step6
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step6
 ```
 
 <!-- step:7 — Second Commit (review fixes) -->
@@ -699,9 +649,7 @@ Print: `> **🔶 /implement 7: commit (review)**`
 If any files changed during review / checks (Steps 5–6):
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh <specific-files>
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/commit-review-fixes.sh <specific-files>
 ```
 
 If no files changed, skip. Note: `review-and-fix.sh` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's commit still fires when the main agent landed manual edits — typically after the `main-agent-vote-required` adjudication branch of `review-and-fix.sh`, where the coder dispatch did not run.
@@ -713,10 +661,7 @@ Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6�
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# Foreground required
-"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7.r 'commit (review)' --forked-target "${forked_target:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/rebase-checkpoint-probe.sh 7.r 'commit (review)' --forked-target "${forked_target:-false}"
 ```
 
 Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (parse the process rc and `ROUTE=continue|conflict|bail`; phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path. If Steps 6–7 were skipped, skip this entire subsection, including the Bash fence above).
@@ -735,14 +680,7 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --issue-number "${ISSUE_NUMBER:-}" \
-  --run-id "$RUN_ID" \
-  --no-logs-commit "${no_logs_commit:-false}" \
-  --forked-target "${forked_target:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-7a.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
 ```
 
 Treat `step-7a.sh` relay stdout as part of the same KV stream. Scan `REBASE_OUTCOME` first for stream ordering only, then read `ROUTE=continue|conflict|bail` and the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed; this scan ordering does not bypass the process rc plus `ROUTE=continue` skip predicate. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns; `step-7a.sh` preserves the probe exit code and only runs the pre-ship flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
@@ -770,10 +708,7 @@ Immediately before the active Step 8+ driver wrapper (Python selector path unles
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-# Foreground required
-"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 8-pre-ship
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" scripts/phantom-probe-with-warn.sh --step 8-pre-ship
 ```
 
 Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory).
@@ -803,9 +738,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 Invoke:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-ship.sh
 ```
 
 Unless `LARCH_SHIP_PR_IMPL=bash`, the `step-8-ship.sh` wrapper runs the Python invocation and JSON exit routing from the selector above. When `LARCH_SHIP_PR_IMPL=bash`, the same wrapper runs the legacy `ship-pr.sh` argv contract; load the exit matrix reference before routing the returned status. Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
@@ -819,9 +752,7 @@ Unless `LARCH_SHIP_PR_IMPL=bash`, the `step-8-ship.sh` wrapper runs the Python i
 Disposition checkpoint (orchestrator Bash tool call — exit status is load-bearing):
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-oos-checkpoint.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
 ```
 
 The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged. The Step 8+ checkpoint contract is `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.md` (invokes `oos-disposition-gate.sh` per `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.md`); shared URL/rejection counting helpers live in `${CLAUDE_PLUGIN_ROOT}/scripts/oos-disposition-shared.inc.bash` (sourced by the gate and by `audit-scan-run.sh`); `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk` remains alongside the gate; `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-accumulated-seq-seed.awk` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk` support review-round `OOS_WRITE_SEQ` seeding and legacy bare `### FINDING_N:` opener detection (#3550); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh` (sibling `test-oos-disposition-gate.md`; Makefile target `test-oos-disposition-gate`) covers both the gate and the checkpoint.
@@ -831,9 +762,7 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/refresh-execution-issues.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 The active Step 8+ driver writes `finalize-state.sh` for terminal outcomes, records `CI_PASSED=true` internally when Step 10 sees `ACTION=merge` and advances from `ci-initial` to `ci-merge` in the same `ship-pr.sh` invocation, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. CI-fix rebase + force-push lives inside the active Step 8+ driver (`run_rebase_rebump`); the orchestrator does not invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` (retirement stub; #3364 Phase 1). If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
@@ -847,9 +776,7 @@ Print: `> **🔶 /implement 16: rejected findings**`
 Report unimplemented code review suggestions without reprinting the full findings inline:
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-16.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-16.sh
 ```
 
 If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, copied `rejected-findings.md` into the run tmp log for operator inspection, and emitted the Step 16 breadcrumb. The canonical full review tally remains the `code-review-tally` log batch written earlier at Step 5.
@@ -861,9 +788,7 @@ If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, 
 Print: `> **🔶 /implement 16a: notify**`
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/slack-issue-announce.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/slack-issue-announce.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 On `STATUS=skipped`, continue silently. On `STATUS=failed`, log the helper output to `Warnings` and continue.
@@ -877,9 +802,7 @@ Print: `> **🔶 /implement 17: final report**`
 Write/post the terminal `larch:final-summary` projection. Do not branch around this call on early bailouts that still have a tracking issue to update.
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-17.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-17.sh
 ```
 
 The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/python/report_tokens_cost.py`).
@@ -898,12 +821,10 @@ Print: `> **🔶 /implement 18: cleanup**`
 
 ### Step 18a — Stall recovery gate
 
-Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. Use the same session-env rehydration pattern as the teardown blocks below; do not create a `current-implement-env-$PPID.sh` file.
+Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key`. Use the launcher fence below; do not create a `current-implement-env-$PPID.sh` file.
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18a-gate.sh" --stall-tracking-memory "${STALL_TRACKING:-false}"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18a-gate.sh --stall-tracking-memory "${STALL_TRACKING:-false}"
 ```
 
 If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, `STALL_TRACKING_FINALIZE` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. Treat the four layers as an any-of-four gate: skip recovery only when all four layers are false or empty.
@@ -923,9 +844,7 @@ Repeat any external reviewer warnings from earlier (from Step 5 review or runtim
 Before teardown, refresh the token report artifact and decide whether the orchestrator must emit `summary-final.md` (the log batches and flush commit were already written at the Step 7a pre-ship log flush):
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18b-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 `STEP17_EMITTED_PRESENT` is informational-only (diagnostic parity with the wrapper contract); the orchestrator emit gate is `EMIT_BODY`, not this KV.
@@ -937,9 +856,7 @@ When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.
 Cap the per-run token/timing ledgers **before** teardown removes them. The `larch-tokens-<slug>.jsonl` token ledger and `timing-ledger.tsv` timing ledger live **inside** `$IMPLEMENT_TMPDIR`, and `resolve_ledger_path()` in `python3 python/cli.py token` / `python3 python/cli.py timing` requires `$IMPLEMENT_TMPDIR` to be a live directory root — so the `--since-last-mark` reports and the closing `Step 18 — done` mark MUST run before `implement-finalize.sh teardown` deletes the tmpdir. Running them after teardown fails with `no per-run ledger root set` (the `pwd-hash` fallback in `resolve_session_id()` only affects the filename slug, never the directory root). See issue #3425.
 
 ```bash
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-export IMPLEMENT_TMPDIR
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18-finalize.sh"
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18-finalize.sh
 ```
 
 Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
