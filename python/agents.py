@@ -1415,16 +1415,17 @@ def external_auth_verdict(tool: str, *sidecars: str | Path) -> str:
     return "non-auth" if readable else "unclassified"
 
 
-def _record_usage_from_events(events: Path, sidecar: Path, label: str, token_record: Path | None = None) -> None:
+def _record_usage_from_events(events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
     try:
         totals = parse_codex_usage_file(events)
     except (FileNotFoundError, ValueError) as exc:
         _append(sidecar, f"agent parse-codex-usage: {exc}\n")
         return
     if token_record is not None:
+        model_line = f"MODEL={model}\n" if model else ""
         _write(
             token_record,
-            f"TOOL=codex\nINPUT={totals.uncached_input_tokens}\nOUTPUT={totals.output_tokens}\nCACHE_READ={totals.cached_input_tokens}\nTOTAL={totals.total_tokens}\nRAW={label}\n",
+            f"TOOL=codex\n{model_line}INPUT={totals.uncached_input_tokens}\nOUTPUT={totals.output_tokens}\nCACHE_READ={totals.cached_input_tokens}\nTOTAL={totals.total_tokens}\nRAW={label}\n",
         )
         return
     proc.run(
@@ -1833,7 +1834,12 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             ],
             check=False,
         )
-        _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), args.usage_label, output.with_suffix(output.suffix + ".token-record"))
+        _codex_model_name = ""
+        for _i, _arg in enumerate(model_args):
+            if _arg == "-m" and _i + 1 < len(model_args):
+                _codex_model_name = model_args[_i + 1]
+                break
+        _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), args.usage_label, output.with_suffix(output.suffix + ".token-record"), model=_codex_model_name)
         _append(
             output.with_suffix(output.suffix + ".meta"),
             "\n".join(
@@ -2614,10 +2620,16 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             status,
         ],
     )
+    # Emit STATUS based on exit_code (tracks whether JSON promotion succeeded),
+    # but return the subprocess's own returncode so callers that check the
+    # launcher exit status (e.g. dispatch-plan-voters.sh) do not mark a
+    # successfully-running subprocess as a launcher failure just because the
+    # JSON envelope was malformed/absent (which is surfaced as NOT_SUBSTANTIVE
+    # by parse-rate-retry, not as a hard voter failure).
     _emit_kv("STATUS", "OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
     _emit_kv("OUTPUT_FILE", str(output))
     _emit_kv("ELAPSED", elapsed)
-    return exit_code
+    return result.returncode
 
 
 def launch_claude_review_main(argv: list[str] | None = None) -> int:
