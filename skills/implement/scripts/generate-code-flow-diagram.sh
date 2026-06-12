@@ -51,6 +51,11 @@ mkdir -p "$IMPLEMENT_TMPDIR" || {
     exit 1
 }
 
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS:-}" ]]; then
+    DIAGRAM_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS")
+else
+    DIAGRAM_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-subprocess)
+fi
 prompt="$IMPLEMENT_TMPDIR/code-flow-prompt.md"
 raw="$IMPLEMENT_TMPDIR/code-flow-diagram.raw.md"
 candidate="$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md"
@@ -65,7 +70,7 @@ sanitize_log="$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log"
     git diff --name-only "$(git merge-base HEAD "$BASE_TARGET" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || printf HEAD)"..HEAD 2>/dev/null || true
 } > "$prompt"
 
-if ! python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-subprocess \
+if ! "${DIAGRAM_LAUNCH_CMD[@]}" \
     --model "$MODEL" \
     --prompt-file "$prompt" \
     --output-file "$raw" \

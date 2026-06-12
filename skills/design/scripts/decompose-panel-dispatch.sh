@@ -86,6 +86,12 @@ PROMPTS_DIR="$SCRIPT_DIR/decompose-prompts"
 COMMON_TAIL="$PROMPTS_DIR/_common-tail.txt"
 [[ -f "$COMMON_TAIL" ]] || fail "missing common tail: $COMMON_TAIL"
 
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
+    DECOMPOSE_GENERIC_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
+else
+    DECOMPOSE_GENERIC_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review)
+fi
+
 render_prompt() {
     local archetype="$1" out="$2"
     local arch_file="$PROMPTS_DIR/${archetype}.txt"
@@ -227,11 +233,6 @@ for _a in "${_archetypes[@]}"; do
 done
 
 WATERFALL_SH="${DECOMPOSE_PANEL_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
-if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
-    DECOMPOSE_GENERIC_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
-else
-    DECOMPOSE_GENERIC_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review)
-fi
 
 _wf_extra=(--feature-file "$FEATURE_FILE" --timeout "$TIMEOUT")
 if [[ "$MODE" == "plan" ]]; then
