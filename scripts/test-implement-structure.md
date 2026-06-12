@@ -1,11 +1,16 @@
 # test-implement-structure.sh
 
-High-level structural harness for the wrapperized `/implement` prompt. It verifies that the heavy prose moved to references, SKILL.md calls the Step wrapper scripts, wrapper siblings exist, and helper scripts document the current Step 0, Step 5, Step 8, Step 18, telemetry, and launcher responsibilities.
+High-level structural harness for the wrapperized `/implement` prompt. It verifies that heavy prose lives in references, SKILL.md calls Step wrapper scripts, wrapper siblings exist, and helper scripts document current Step 0, Step 5, Step 8, Step 18, telemetry, launcher, and Preflight responsibilities.
 
 ## Launcher invariants
 
-- Five pre-bootstrap call sites retain the old plugin-root guard shape.
-- The two Preflight `plan-block read` fences remain guard-only old-shape anchors.
+- Four pre-bootstrap call sites retain the old plugin-root guard shape.
+- The single Preflight helper call replaces the two direct `plan-block read` fences.
+- The helper block may use Bash 3.2 argv construction.
+- The helper block invokes the script through `bash`, so executable mode is not part of the runtime contract.
+- The helper emits one `KEY=value` record per line on success.
+- The helper emits `RESUME=true` or `RESUME=false`.
+- The prompt-side parser consumes the helper envelope only after exit `0`.
 - Post-Step-0 call sites use `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script>`.
 - Background wrapper assertions match the one-line launcher form for Step 5 review, Step 7a, and Step 8.
 - Timeout assertions and `<task-notification>` assertions remain load-bearing.

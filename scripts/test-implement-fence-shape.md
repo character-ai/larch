@@ -1,15 +1,20 @@
 # test-implement-fence-shape.sh
 
-Structural harness for `/implement` prompt Bash fences. It parses `skills/implement/SKILL.md` and fails when a Bash fence drifts away from one of the two intentional launcher shapes.
+Structural harness for `/implement` prompt Bash fences. It parses `skills/implement/SKILL.md` and fails when a Bash fence drifts away from an intentional launcher shape.
 
 ## Invariants
 
-- Exactly five pre-bootstrap call sites keep the old plugin-root guard shape:
+- Exactly four pre-bootstrap call sites keep the old plugin-root guard shape:
   - the structured invocation pin for `scripts/extract-closes-issue-from-pr.sh`;
-  - the two Preflight `python/cli.py plan-block read` fences, which remain guard-only;
+  - the single Preflight `scripts/implement-preflight.sh` helper fence;
   - Step 0 initial bootstrap;
   - dirty-tree recovery resume.
-- Old-shape pre-bootstrap fences must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
+- The Preflight helper replaces the two prior direct `plan-block read` anchors.
+- The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
+- The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
+- The helper is invoked through `bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"`.
+- Direct Preflight `python/cli.py plan-block read` and `gh issue view` Bash fences are forbidden.
+- Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
 - Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`.
 - Launcher targets must be repo-relative and must not contain `..`.

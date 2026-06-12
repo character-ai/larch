@@ -50,6 +50,45 @@ for script in [
 ]:
     require(skill, script, f'SKILL old-shape wrapper {script}')
 
+# Collapsed Preflight helper surface.
+for path in [
+    'scripts/implement-preflight.sh',
+    'scripts/implement-preflight.md',
+    'scripts/test-implement-preflight.sh',
+    'scripts/test-implement-preflight.md',
+]:
+    if not Path(path).is_file():
+        checks.append(f'missing {path}')
+require(skill, 'scripts/implement-preflight.sh', 'SKILL implement-preflight reference')
+require(skill, 'bash "${CLAUDE_PLUGIN_ROOT}/scripts/implement-preflight.sh"', 'SKILL implement-preflight bash invocation')
+require(skill, '$PREFLIGHT_TMPDIR/issue.json', 'SKILL preflight issue json path')
+require(skill, '$PREFLIGHT_TMPDIR/plan-from-issue.txt', 'SKILL preflight plan path')
+require(skill, 'PLAN_PATH', 'SKILL PLAN_PATH envelope binding')
+require(skill, 'ISSUE_JSON_PATH', 'SKILL ISSUE_JSON_PATH envelope binding')
+require(skill, 'one `KEY=value` record per line', 'SKILL one-record envelope')
+require(skill, 'Split each envelope line at the first `=` only', 'SKILL first-equals parser')
+require(skill, 'Require `RESUME` to be exactly `true` or `false`.', 'SKILL resume boolean parser')
+require(skill, 'Do not accept `RESUME=empty`.', 'SKILL no resume empty token')
+require(skill, 'On non-zero exit, abort before item 4', 'SKILL nonzero preflight abort')
+require(skill, 'Do not parse or require an envelope on non-zero exit.', 'SKILL no exit2 envelope parse')
+require(skill, 'Run `admission fork-env`, then the preflight helper, then Step 0 bootstrap.', 'SKILL forked ordering')
+require('scripts/implement-preflight.md', 'Emit one `KEY=value` record per line.', 'preflight docs one-record envelope')
+require('scripts/implement-preflight.md', 'Emit `RESUME=true` only when admission stdout contains exactly `RESUME=true`.', 'preflight docs resume true')
+require('scripts/implement-preflight.md', 'Emit `RESUME=false` when admission stdout lacks `RESUME=`.', 'preflight docs resume false')
+require('scripts/implement-preflight.md', 'Emit the envelope only on successful exit `0`.', 'preflight docs success-only envelope')
+require('scripts/implement-preflight.md', 'Source the final success-envelope `TITLE` from `issue.json`, not admission stdout.', 'preflight docs title source')
+require('scripts/implement-preflight.md', 'Use Python stdlib `json`', 'preflight docs stdlib json')
+require('scripts/implement-preflight.md', 'Capture admission stdout before branching on the admission return code.', 'preflight docs admission parse before rc')
+require('scripts/implement-preflight.md', 'BLOCKERS=<value>', 'preflight docs blockers echo')
+require('scripts/implement-preflight.md', 'TITLE=<value>', 'preflight docs title echo')
+require('scripts/implement-preflight.md', '$PREFLIGHT_TMPDIR/emergency-bypass.log', 'preflight docs bypass log destination')
+forbid(skill, '${emergency_requested:+--emergency}', 'SKILL preflight emergency argv')
+forbid(skill, 'If `false` and `emergency_requested=false`, print `**❌ Issue #<N> has no larch:plan block', 'SKILL prompt-side missing-plan fallback prose')
+forbid(skill, 'If the script exits **1** and prints `MALFORMED=...`, then when `emergency_requested=false`', 'SKILL prompt-side malformed-plan fallback prose')
+forbid(skill, 'single-line envelope', 'SKILL must not describe single-line envelope')
+forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exit 2')
+
+
 launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
 for script in [
     'skills/implement/scripts/step-0-degraded-gate.sh',
