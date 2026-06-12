@@ -230,6 +230,12 @@ def _step_result_to_ship(
         ledger_ready = True
         ledger_site = step.ledger_site
         ledger_trigger = step.ledger_trigger or reason
+        if ledger_site.startswith("ship-pr-ci-") and ledger_trigger in {
+            "main-agent-required",
+            config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        }:
+            ledger_site = "ship-pr-internal"
+            ledger_trigger = config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
         ledger_step = step.ledger_step
         ledger_phase = step.ledger_phase or default_ledger_phase
         ledger_dispatcher = step.ledger_dispatcher or ledger_dispatcher

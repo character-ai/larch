@@ -36,7 +36,7 @@ These names are internal constants so `/design` can later parameterize the same 
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
 - `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles.
 
-`bug-body`, `bug-comment`, and `issue-input-file` are no longer public report surfaces. Compatibility remains only for older harness fixtures.
+`bug-body`, `bug-comment`, and `issue-input-file` are no longer public report surfaces. Compatibility is gated behind `LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1` for older harness fixtures only.
 
 ## Outcome normalization
 

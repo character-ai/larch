@@ -41,13 +41,13 @@ _ASCII_DELETE: Final = 127
 
 
 def _ledger_site_for_lint_site(site: str) -> str:
-    if site == "ship-pr-ci-initial":
+    if site.startswith("ship-pr-ci-"):
         return "ship-pr-internal"
     return site
 
 
 def _ledger_trigger_for_lint_site(site: str) -> str:
-    if site == "ship-pr-ci-initial":
+    if site.startswith("ship-pr-ci-"):
         return config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
     return "main-agent-required"
 

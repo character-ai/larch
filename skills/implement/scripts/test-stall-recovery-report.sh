@@ -4,6 +4,7 @@
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
+export LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -1512,6 +1513,12 @@ printf 'client-only-token
 ' >"$dir/stall-recovery-sensitive-corpus.env"
 run_capture "$SANDBOX/case23-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
 assert_eq true "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record.out")" "23: record-escalation writes canonical ledger"
+chmod 444 "$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-record-nonwritable.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+chmod 644 "$dir/stall-recovery-escalation-ledger.tsv"
+assert_eq false "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation routes non-writable canonical ledger to fallback"
+assert_eq true "$(kv ESCALATION_FALLBACK_WRITTEN "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation writes fallback for non-writable canonical ledger"
+assert_contains 'RECORD_ESCALATION_FAILED=true' "$(cat "$dir/stall-recovery-escalation-record-failure.env")" "23: record-escalation writes marker on canonical ledger write failure"
 run_capture "$SANDBOX/case23-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
 assert_eq 0 "$RC" "23: compose-report Tier B exits 0"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.out")" "23: compose-report prints Tier B"
@@ -1564,6 +1571,42 @@ EOF
 run_capture "$SANDBOX/case23-tool-failure-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
 assert_eq 0 "$RC" "23: escalation-success accepts tagged record-escalation Tool Failure evidence"
 assert_contains 'tagged record-escalation Tool Failure present' "$(cat "$dir/out.md")" "23: compose-report renders tagged Tool Failure evidence"
+
+dir=$(make_tmp case23-generic-tool-failure-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/execution-issues.md" <<'EOF'
+## Tool Failure: unrelated-helper
+
+- reason: `failed`
+EOF
+run_capture "$SANDBOX/case23-generic-tool-failure-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: escalation-success rejects generic Tool Failure evidence"
+
+dir=$(make_tmp case23-fallback-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=step5\ttrigger=main-agent-required\tstep=5\tphase=review\tdispatcher=lint-fix-loop\texit_code=1\tfailure_detail_log=\n' >"$dir/stall-recovery-escalation-fallback.tsv"
+run_capture "$SANDBOX/case23-fallback-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes from fallback ledger only"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-fallback-only-compose.out")" "23: fallback-only report prints"
+assert_contains '[Bug] /implement escalation: lint fix loop missed retry path (step5:main-agent-required)' "$(cat "$dir/out.md")" "23: fallback-only title uses fallback tokens"
+assert_contains "fallback site=\`step5\` trigger=\`main-agent-required\`" "$(cat "$dir/out.md")" "23: fallback-only body renders fallback tokens"
+
+dir=$(make_tmp case23-marker-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-write-failed\n' >"$dir/stall-recovery-escalation-record-failure.env"
+run_capture "$SANDBOX/case23-marker-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes from record-failure marker only"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-marker-only-compose.out")" "23: marker-only report prints"
+assert_contains 'record-failure marker present' "$(cat "$dir/out.md")" "23: marker-only body renders marker evidence"
 
 dir=$(make_tmp case23-escalation-success-no-evidence)
 cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
@@ -1731,7 +1774,39 @@ cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recov
 cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
 cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
 run_capture "$SANDBOX/case23-issue-input-status.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
-assert_eq composed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-issue-input-status.out")" "23: issue-input composition is not reported as filed"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-issue-input-status.out")" "23: issue-input composition uses documented report status"
+
+run_capture "$SANDBOX/case23-legacy-bug-body-gated.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/stall-recovery-classification.env"
+assert_eq 1 "$RC" "23: legacy bug-body is gated outside test compatibility"
+assert_contains "bug-body is test-only" "$(cat "$SANDBOX/case23-legacy-bug-body-gated.out.err")" "23: legacy bug-body gate explains compose-report replacement"
+
+dir=$(make_tmp case23-issue-input-raw-bail)
+cat >"$dir/stall-recovery-classification.env" <<EOF
+FAILURE_CLASS=unrecoverable
+FAILURE_SIGNATURE=abcdef
+STALL_STEP=8
+PHASE=ship
+BAIL_REASON=redacted
+BAIL_REASON_RAW=operator supplied $GHP_TOKEN_CASE13 during handoff
+EXIT_CODE=4
+MATCHED_CLASSIFIER_PATTERN=terminal-bail
+DISPATCHER=ship-pr
+EOF
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-issue-input-raw-bail.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: Tier A raw bail report composes"
+assert_contains 'operator supplied' "$(cat "$dir/out.md")" "23: Tier A preserves raw bail intent"
+assert_not_contains "$GHP_TOKEN_CASE13" "$(cat "$dir/out.md")" "23: Tier A redacts secret token from raw bail"
+
+dir=$(make_tmp case23-terminal-missing-classification)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-terminal-missing-classification.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: terminal-failure compose fails closed without classification"
+assert_contains "--classification-file missing" "$(cat "$SANDBOX/case23-terminal-missing-classification.out.err")" "23: terminal-failure missing classification error"
 
 dir=$(make_tmp case23-issue-input-denied)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"

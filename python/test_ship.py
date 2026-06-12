@@ -2559,9 +2559,31 @@ def test_step_result_ledger_handoff_overrides_ship_defaults(tmp_path: Path) -> N
     data = ship._step_result_to_ship(step).to_json_dict()  # pyright: ignore[reportPrivateUsage]
     assert data["needs_user_reason"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
     assert data["ledger_ready"] is True
-    assert data["ledger_site"] == "ship-pr-ci-initial"
+    assert data["ledger_site"] == "ship-pr-internal"
+    assert data["ledger_trigger"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
     assert data["ledger_phase"] == "ci-initial"
     assert data["ledger_failure_detail_log"] == str(detail_log)
+
+
+def test_step_result_ledger_handoff_normalizes_merge_lint_fix_tokens(tmp_path: Path) -> None:
+    detail_log = tmp_path / "checks.redacted.log"
+    _ = detail_log.write_text("lint failed\n", encoding="utf-8")
+    step = StepResult(
+        Outcome.NEEDS_USER_INPUT,
+        config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        ledger_ready=True,
+        ledger_site="ship-pr-ci-merge",
+        ledger_trigger="main-agent-required",
+        ledger_step="8",
+        ledger_phase="ci-merge",
+        ledger_dispatcher="lint-fix-loop",
+        ledger_exit_code=config.EXIT_NEEDS_USER_INPUT,
+        ledger_failure_detail_log=str(detail_log),
+    )
+    data = ship._step_result_to_ship(step).to_json_dict()  # pyright: ignore[reportPrivateUsage]
+    assert data["ledger_site"] == "ship-pr-internal"
+    assert data["ledger_trigger"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert data["ledger_phase"] == "ci-merge"
 
 
 def test_ship_default_ledger_phase_can_follow_active_phase() -> None:

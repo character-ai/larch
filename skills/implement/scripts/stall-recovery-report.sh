@@ -1403,6 +1403,34 @@ write_record_escalation_tool_failure() {
     fi
 }
 
+write_record_failure_marker() {
+    local tmpdir=$1 marker=$2 reason=$3
+    validate_tmpdir_write_file "$tmpdir" "$marker" "--record-failure-marker" false >/dev/null 2>&1 || return 1
+    atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true\nREASON=$reason\n"
+}
+
+record_escalation_degraded_evidence() {
+    local tmpdir=$1 fallback=$2 marker=$3 line=$4 reason=$5
+    if validate_tmpdir_write_file "$tmpdir" "$fallback" "--escalation-fallback-file" false >/dev/null 2>&1 \
+        && append_line_preserving_rows "$fallback" "$line" 2>/dev/null; then
+        write_record_failure_marker "$tmpdir" "$marker" "$reason" || true
+        write_record_escalation_tool_failure "$tmpdir" "$reason"
+        emit_kv ESCALATION_RECORDED false
+        emit_kv ESCALATION_FALLBACK_WRITTEN true
+        emit_kv ESCALATION_FALLBACK_FILE "$fallback"
+        return 0
+    fi
+    if write_record_failure_marker "$tmpdir" "$marker" "$reason"; then
+        write_record_escalation_tool_failure "$tmpdir" "$reason"
+        emit_kv ESCALATION_RECORDED false
+        emit_kv ESCALATION_FALLBACK_WRITTEN false
+        emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
+        return 0
+    fi
+    write_record_escalation_tool_failure "$tmpdir" "$reason"
+    return 1
+}
+
 cmd_record_escalation() {
     local tmpdir="" site="" trigger="" step="" phase="" dispatcher="unknown" exit_code="unknown" detail_log=""
     local ledger fallback marker line rel_log="" ts
@@ -1442,44 +1470,22 @@ cmd_record_escalation() {
     ledger="$tmpdir/$DEFAULT_ESCALATION_LEDGER"
     fallback="$tmpdir/$DEFAULT_ESCALATION_FALLBACK"
     marker="$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER"
+    ts=$(now_utc)
+    line=$(printf 'utc=%s\tsite=%s\ttrigger=%s\tstep=%s\tphase=%s\tdispatcher=%s\texit_code=%s\tfailure_detail_log=%s' "$ts" "$site" "$trigger" "$step" "$phase" "$dispatcher" "$exit_code" "${rel_log:-}")
+    if [ -e "$ledger" ] && [ -f "$ledger" ] && [ ! -L "$ledger" ] && { [ ! -r "$ledger" ] || [ ! -w "$ledger" ]; }; then
+        record_escalation_degraded_evidence "$tmpdir" "$fallback" "$marker" "$line" canonical-ledger-not-writable || exit 1
+        return 0
+    fi
     if ! validate_tmpdir_write_file "$tmpdir" "$ledger" "--escalation-ledger-file" false; then
         write_record_escalation_tool_failure "$tmpdir" canonical-ledger-validation-failed
         exit 1
     fi
-    ts=$(now_utc)
-    line=$(printf 'utc=%s\tsite=%s\ttrigger=%s\tstep=%s\tphase=%s\tdispatcher=%s\texit_code=%s\tfailure_detail_log=%s' "$ts" "$site" "$trigger" "$step" "$phase" "$dispatcher" "$exit_code" "${rel_log:-}")
     if append_line_preserving_rows "$ledger" "$line"; then
         emit_kv ESCALATION_RECORDED true
         emit_kv ESCALATION_LEDGER_FILE "$ledger"
         return 0
     fi
-    if ! validate_tmpdir_write_file "$tmpdir" "$fallback" "--escalation-fallback-file" false; then
-        write_record_escalation_tool_failure "$tmpdir" fallback-ledger-validation-failed
-        emit_kv ESCALATION_RECORDED false
-        emit_kv ESCALATION_FALLBACK_WRITTEN false
-        emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
-        return 0
-    fi
-    if ! validate_tmpdir_write_file "$tmpdir" "$marker" "--record-failure-marker" false; then
-        write_record_escalation_tool_failure "$tmpdir" record-failure-marker-validation-failed
-        emit_kv ESCALATION_RECORDED false
-        emit_kv ESCALATION_FALLBACK_WRITTEN false
-        emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
-        return 0
-    fi
-    if append_line_preserving_rows "$fallback" "$line" 2>/dev/null; then
-        atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-write-failed\n" || true
-        write_record_escalation_tool_failure "$tmpdir" canonical-ledger-write-failed
-        emit_kv ESCALATION_RECORDED false
-        emit_kv ESCALATION_FALLBACK_WRITTEN true
-        emit_kv ESCALATION_FALLBACK_FILE "$fallback"
-        return 0
-    fi
-    atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true\nREASON=fallback-ledger-write-failed\n" || true
-    write_record_escalation_tool_failure "$tmpdir" fallback-ledger-write-failed
-    emit_kv ESCALATION_RECORDED false
-    emit_kv ESCALATION_FALLBACK_WRITTEN false
-    emit_kv ESCALATION_RECORD_FAILURE_MARKER "$marker"
+    record_escalation_degraded_evidence "$tmpdir" "$fallback" "$marker" "$line" canonical-ledger-write-failed || exit 1
 }
 
 parse_root_cause_file() {
@@ -1736,6 +1742,55 @@ append_record_escalation_tool_failure_evidence() {
     fi
 }
 
+first_escalation_field() {
+    local field_name=$1 ledger=$2 fallback=$3 file
+    for file in "$ledger" "$fallback"; do
+        [ -s "$file" ] || continue
+        awk -F'\t' -v target="$field_name" '
+            {
+                for (i = 1; i <= NF; i++) {
+                    split($i, a, "=")
+                    if (a[1] == target) {
+                        print a[2]
+                        found = 1
+                        exit
+                    }
+                }
+            }
+            END { exit found ? 0 : 1 }
+        ' "$file" 2>/dev/null && return 0
+    done
+}
+
+append_escalation_row_summaries() {
+    local file=$1 label=$2 old_ifs row field site trigger rendered=false
+    [ -s "$file" ] || return 0
+    while IFS= read -r row || [ -n "$row" ]; do
+        site=""
+        trigger=""
+        old_ifs=$IFS
+        IFS='	'
+        for field in $row; do
+            case "$field" in
+                site=*) site=${field#site=} ;;
+                trigger=*) trigger=${field#trigger=} ;;
+            esac
+        done
+        IFS=$old_ifs
+        if [ -n "$site" ] || [ -n "$trigger" ]; then
+            if [ -n "$label" ]; then
+                printf -- "- %s site=\`%s\` trigger=\`%s\`\n" "$label" "$(safe_site_value "$site")" "$(safe_trigger_value "$trigger")"
+            else
+                printf -- "- site=\`%s\` trigger=\`%s\`\n" "$(safe_site_value "$site")" "$(safe_trigger_value "$trigger")"
+            fi
+            rendered=true
+        fi
+    done <"$file"
+    if [ "$rendered" = false ] && [ -n "$label" ]; then
+        printf -- '- %s present\n' "$label"
+    fi
+}
+
 append_file_if_readable() {
     local label=$1 file=$2
     [ -f "$file" ] && [ ! -L "$file" ] && [ -s "$file" ] || return 0
@@ -1779,7 +1834,7 @@ attempts_table() {
 
 compose_tier_b_projection() {
     local kind=$1 class_file=$2 attempts_file=$3 ledger=$4 fallback=$5 marker=$6 root_file=$7 bounded_file=$8
-    local summary verdict confidence class step phase bail exit_code matched dispatcher tmpdir version run_id site trigger field old_ifs row
+    local summary verdict confidence class step phase bail exit_code matched dispatcher tmpdir version run_id
     tmpdir=$(dirname "$class_file")
     version=$(read_larch_version)
     run_id=$(read_run_id "$tmpdir")
@@ -1819,25 +1874,8 @@ compose_tier_b_projection() {
     printf '## Attempts\n\n'
     attempts_table "$attempts_file"
     printf '\n## Escalation evidence\n\n'
-    if [ -s "$ledger" ]; then
-        while IFS= read -r row || [ -n "$row" ]; do
-            site=""
-            trigger=""
-            old_ifs=$IFS
-            IFS='	'
-            for field in $row; do
-                case "$field" in
-                    site=*) site=${field#site=} ;;
-                    trigger=*) trigger=${field#trigger=} ;;
-                esac
-            done
-            IFS=$old_ifs
-            if [ -n "$site" ] || [ -n "$trigger" ]; then
-                printf -- "- site=\`%s\` trigger=\`%s\`\n" "$(safe_site_value "$site")" "$(safe_trigger_value "$trigger")"
-            fi
-        done <"$ledger"
-    fi
-    [ -s "$fallback" ] && printf -- '- fallback escalation evidence present\n'
+    append_escalation_row_summaries "$ledger" ""
+    append_escalation_row_summaries "$fallback" "fallback"
     [ -s "$marker" ] && printf -- '- record-failure marker present\n'
     append_record_escalation_tool_failure_evidence "$tmpdir"
     return 0
@@ -1987,12 +2025,12 @@ DISPATCHER=unknown
     fi
     case "$kind" in
         terminal-failure) title="[Bug] /implement terminal: $title ($(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")") at $(safe_step_value "$(kv_get "$class_file" STALL_STEP "")"))" ;;
-        escalation-success) title="[Bug] /implement escalation: $title ($(safe_site_value "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++){split($i,a,"="); if(a[1]=="site") print a[2]}}' "$ledger" 2>/dev/null || true)"):$(safe_trigger_value "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++){split($i,a,"="); if(a[1]=="trigger") print a[2]}}' "$ledger" 2>/dev/null || true)"))" ;;
+        escalation-success) title="[Bug] /implement escalation: $title ($(safe_site_value "$(first_escalation_field site "$ledger" "$fallback")"):$(safe_trigger_value "$(first_escalation_field trigger "$ledger" "$fallback")"))" ;;
     esac
     raw_file="$out_file.raw.$$"
     if [ "$surface" = issue-input ]; then
         tier=A
-        status=composed
+        status=printed
         compose_tier_a_issue "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$title" "$tmpdir" >"$raw_file"
     else
         tier=B
@@ -2030,6 +2068,10 @@ DISPATCHER=unknown
 
 cmd_chat_print() {
     cmd_compose_report --surface chat-print "$@"
+}
+
+legacy_report_surfaces_enabled() {
+    truthy "${LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES:-}"
 }
 
 code_allowlist_lines() {
@@ -2181,9 +2223,18 @@ main() {
         compose-report) cmd_compose_report "$@" ;;
         chat-print) cmd_chat_print "$@" ;;
         is-larch-dev-clone) cmd_is_larch_dev_clone "$@" ;;
-        bug-body) cmd_bug_body_like bug-body "$@" ;;
-        bug-comment) cmd_bug_body_like bug-comment "$@" ;;
-        issue-input-file) cmd_issue_input_file "$@" ;;
+        bug-body)
+            legacy_report_surfaces_enabled || die_argv "bug-body is test-only; use compose-report"
+            cmd_bug_body_like bug-body "$@"
+            ;;
+        bug-comment)
+            legacy_report_surfaces_enabled || die_argv "bug-comment is test-only; use compose-report"
+            cmd_bug_body_like bug-comment "$@"
+            ;;
+        issue-input-file)
+            legacy_report_surfaces_enabled || die_argv "issue-input-file is test-only; use compose-report"
+            cmd_issue_input_file "$@"
+            ;;
         normalize-issue-env) cmd_normalize_issue_env "$@" ;;
         clear-stall) cmd_clear_stall "$@" ;;
         seed-terminal-state) cmd_seed_terminal_state "$@" ;;

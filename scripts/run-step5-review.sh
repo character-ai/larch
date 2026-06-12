@@ -234,13 +234,39 @@ LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark --
 
 review_stdout="$IMPLEMENT_TMPDIR/run-step5-review.stdout.$$"
 review_stderr="$IMPLEMENT_TMPDIR/run-step5-review.stderr.$$"
+record_stdout="$IMPLEMENT_TMPDIR/run-step5-record.stdout.$$"
+record_stderr="$IMPLEMENT_TMPDIR/run-step5-record.stderr.$$"
+run_step5_cleanup() {
+    rm -f "$review_stdout" "$review_stderr" "$record_stdout" "$record_stderr" 2>/dev/null || true
+    if [[ -n "${_progress_done_marker:-}" ]]; then
+        mkdir -p "$(dirname "$_progress_done_marker")" 2>/dev/null || true
+        : > "$_progress_done_marker" 2>/dev/null || true
+    fi
+}
+trap run_step5_cleanup EXIT
 set +e
 "$REVIEW_AND_FIX_SH" "${REVIEW_AND_FIX_ARGS[@]}" >"$review_stdout" 2>"$review_stderr"
 review_rc=$?
 set -e
 cat "$review_stdout"
 cat "$review_stderr" >&2
-review_status="$(awk -F= '$1=="STEP5_REVIEW_STATUS"{print $2; exit}' "$review_stdout" 2>/dev/null || true)"
+step5_get_kv() {
+    local file=$1 key=$2
+    awk -v k="$key" '
+        {
+            for (i = 1; i <= NF; i++) {
+                if (index($i, k "=") == 1) {
+                    value = substr($i, length(k) + 2)
+                }
+            }
+        }
+        END {
+            if (value != "") print value
+        }
+    ' "$file" 2>/dev/null || true
+}
+
+review_status="$(step5_get_kv "$review_stdout" STEP5_REVIEW_STATUS)"
 record_helper="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
 case "$review_status" in
     coder-main-agent-required)
@@ -254,10 +280,12 @@ case "$review_status" in
                 --phase review \
                 --dispatcher run-step5-review \
                 --exit-code "$review_rc" \
-                --failure-detail-log "$review_stderr"
+                --failure-detail-log "$review_stderr" \
+                >"$record_stdout" 2>"$record_stderr"
             record_rc=$?
             set -e
             if [[ "$record_rc" -ne 0 ]]; then
+                cat "$record_stderr" >&2
                 printf 'STEP5_REVIEW_LEDGER_READY=true\n'
                 printf 'STEP5_REVIEW_LEDGER_SITE=step5\n'
                 printf 'STEP5_REVIEW_LEDGER_TRIGGER=coder-main-agent-required\n'
