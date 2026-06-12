@@ -30,10 +30,10 @@ Optional 4th positional argument `explicit_sink`: in default (non-capture) mode,
 
 ## Callers
 
-- `scripts/run-external-agent.sh` — mode-aware source via `select_failed_agent_stderr_source` (passes `--stderr-sink` as the explicit sink); `emit_failed_agent_stderr_tail_raw` (non-quiet FD 2).
+- `python/cli.py agent run-external-agent` — mode-aware source via `select_failed_agent_stderr_source` (passes `--stderr-sink` as the explicit sink); `emit_failed_agent_stderr_tail_raw` (non-quiet FD 2).
 - `scripts/collect-agent-results.sh` — batch dedup emit via `larch_err`; delegates tail resolution to `resolve_collector_stderr_tail_file`.
-- `scripts/launch-claude-subprocess.sh` — pre-`.done` tail from `${OUTPUT}.stderr`; clears stale `${OUTPUT}.stderr-tail` at entry and on success.
-- `scripts/launch-claude-review.sh` — parent fallback from subprocess stderr capture; fenced tail via `emit_failed_agent_stderr_tail_larch_err` (quiet-safe).
+- `python/cli.py agent launch-claude-subprocess` — pre-`.done` tail from `${OUTPUT}.stderr`; clears stale `${OUTPUT}.stderr-tail` at entry and on success.
+- `python/cli.py agent launch-claude-review` — parent fallback from subprocess stderr capture; fenced tail via `emit_failed_agent_stderr_tail_larch_err` (quiet-safe).
 - `skills/review/scripts/collect-findings.sh` — replay fallback uses `resolve_collector_stderr_tail_file`.
 
 ## Emission variants
@@ -77,8 +77,8 @@ health-gate fast-fail vs mid-run crash vs timeout (124) vs auth vs quota.
 
 Tunables: `LARCH_VENDOR_FAILURE_DIAG_SECTION_LINES` (default **120**) per-section
 tail lines; `vendor_failure_diag_byte_cap` returns **16384**. Producers:
-`scripts/run-external-agent.sh` (central carrier in the EXIT trap),
-`scripts/launch-review.sh`, `scripts/launch-claude-subprocess.sh`, the implement
+`python/cli.py agent run-external-agent` (central carrier in the EXIT trap),
+`scripts/launch-review.sh`, `python/cli.py agent launch-claude-subprocess`, the implement
 launchers. See `docs/vendor-agent-diagnostics-audit.md` for the per-site audit.
 
 ## Harness

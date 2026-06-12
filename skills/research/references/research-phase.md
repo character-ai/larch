@@ -147,7 +147,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 **Codex launch (per lane)** when `codex_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
+"${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
   --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
   --timeout 1800 \
   --workdir "$PWD" \

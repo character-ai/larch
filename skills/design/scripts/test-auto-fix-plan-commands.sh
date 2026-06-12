@@ -358,11 +358,11 @@ cursor_launcher_append_outer_meta() { return 0; }
 cursor_launcher_promote_inner_done() { return 0; }
 cursor_launcher_setup_private_config_dir() { return 0; }
 STUB
-cat >"$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh" <<'STUB'
+cat >"$CURSOR_FAKE_ROOT/python/cli.py agent cursor-wrap-prompt" <<'STUB'
 #!/usr/bin/env bash
 printf '%s' "${1:-}"
 STUB
-chmod +x "$CURSOR_FAKE_ROOT/scripts/cursor-wrap-prompt.sh"
+chmod +x "$CURSOR_FAKE_ROOT/python/cli.py agent cursor-wrap-prompt"
 mkdir -p "$CURSOR_FAKE_ROOT/python"
 cat >"$CURSOR_FAKE_ROOT/python/cli.py" <<'STUB'
 #!/usr/bin/env python3

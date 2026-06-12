@@ -558,32 +558,25 @@ assert_returns "mirror: /dev/null sidecar is a no-op (returns 0)" 0 \
     external_launcher_mirror_quota_from_events "$_events_quota" "/dev/null"
 
 PLUGIN_ROOT="$TMPDIR_ROOT/plugin-root"
-mkdir -p "$PLUGIN_ROOT/scripts"
-cat > "$PLUGIN_ROOT/scripts/parse-codex-usage.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-mode="${LARCH_TEST_PARSE_MODE:-success}"
-case "$mode" in
-    success)
-        printf 'INPUT=7\nCACHED_INPUT=3\nOUTPUT=2\nTOTAL=12\n'
-        ;;
-    fail)
-        printf 'parse-codex-usage.sh: jq failed\n' >&2
-        exit 1
-        ;;
-    *)
-        exit 2
-        ;;
-esac
-EOF
-chmod +x "$PLUGIN_ROOT/scripts/parse-codex-usage.sh"
-mkdir -p "$PLUGIN_ROOT/python"
+mkdir -p "$PLUGIN_ROOT/scripts" "$PLUGIN_ROOT/python"
 # Stub cli.py: when called as "python3 cli.py token <verb> ..." writes "<verb> ..." to
 # $LARCH_TEST_LEDGER_CALLS so tests can assert which token ledger calls were made.
 cat > "$PLUGIN_ROOT/python/cli.py" <<'EOF'
 #!/usr/bin/env python3
 import os, sys
 calls_file = os.environ.get("LARCH_TEST_LEDGER_CALLS", "")
+if sys.argv[1:3] == ["agent", "parse-codex-usage"]:
+    mode = os.environ.get("LARCH_TEST_PARSE_MODE", "success")
+    if mode == "success":
+        print("INPUT=7")
+        print("CACHED_INPUT=3")
+        print("OUTPUT=2")
+        print("TOTAL=12")
+        raise SystemExit(0)
+    if mode == "fail":
+        print("agent parse-codex-usage: jq failed", file=sys.stderr)
+        raise SystemExit(1)
+    raise SystemExit(2)
 if calls_file and len(sys.argv) >= 3 and sys.argv[1] == "token":
     with open(calls_file, "a") as fh:
         fh.write(" ".join(sys.argv[2:]) + "\n")
@@ -623,7 +616,7 @@ fi
 rm -f "$RECORD_FILE"
 LARCH_TEST_PARSE_MODE=fail \
     external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_review" "$RECORD_FILE"
-if grep -Fq 'parse-codex-usage.sh: jq failed' "$RECORD_SIDECAR" 2>/dev/null && [[ ! -e "$RECORD_FILE" ]]; then
+if grep -Fq 'agent parse-codex-usage: jq failed' "$RECORD_SIDECAR" 2>/dev/null && [[ ! -e "$RECORD_FILE" ]]; then
     pass
 else
     fail "fail-closed parse should append sidecar diagnostic without writing token-record"
@@ -635,7 +628,7 @@ MISSING_SIDECAR="$TMPDIR_ROOT/missing-events.sidecar"
 rm -f "$MISSING_SIDECAR"
 LARCH_TEST_PARSE_MODE=fail \
     external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$MISSING_EVENTS" "$MISSING_SIDECAR" "codex_review"
-if grep -Fq 'parse-codex-usage.sh: jq failed' "$MISSING_SIDECAR" 2>/dev/null; then
+if grep -Fq 'agent parse-codex-usage: jq failed' "$MISSING_SIDECAR" 2>/dev/null; then
     pass
 else
     fail "missing/empty events parse should still append sidecar diagnostic"
@@ -879,7 +872,7 @@ _outer_meta="$TMPDIR_ROOT/codex-exec.meta"
 printf 'TOOL=codex\nTIMEOUT=7\n' > "$_outer_meta"
 external_launcher_append_codex_exec_outer_meta \
     "$_outer_meta" \
-    "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    "$REPO_ROOT/python/cli.py agent launch-codex-exec" \
     "$TMPDIR_ROOT/codex.prompt" \
     "$REPO_ROOT" \
     read-only \
@@ -887,7 +880,7 @@ external_launcher_append_codex_exec_outer_meta \
     codex_exec_unit \
     codex-exec \
     "[\"$REPO_ROOT\"]"
-assert_file_contains "codex-exec outer meta records launcher" "$_outer_meta" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-codex-exec.sh"
+assert_file_contains "codex-exec outer meta records launcher" "$_outer_meta" "OUTER_LAUNCHER=$REPO_ROOT/python/cli.py agent launch-codex-exec"
 assert_file_contains "codex-exec outer meta records prompt" "$_outer_meta" "OUTER_LAUNCHER_PROMPT_FILE=$TMPDIR_ROOT/codex.prompt"
 assert_file_contains "codex-exec outer meta records workdir" "$_outer_meta" "OUTER_LAUNCHER_WORKDIR=$REPO_ROOT"
 assert_file_contains "codex-exec outer meta records kind" "$_outer_meta" "OUTER_LAUNCHER_KIND=codex-exec"

@@ -710,7 +710,7 @@ assert_fail_closed "case-r2" "$OUT_R2" "Retry metadata invalid: missing OUTER_LA
 
 OUT_R3="$TMPROOT/codex-r3.txt"
 prepare_outer_candidate "$OUT_R3"
-write_outer_meta "$OUT_R3" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_R3}.prompt" "$WORKDIR_Q" \
+write_outer_meta "$OUT_R3" "$REPO_ROOT/python/cli.py agent launch-codex-exec" "${OUT_R3}.prompt" "$WORKDIR_Q" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=write-everywhere' \
@@ -747,7 +747,7 @@ assert_fail_closed "case-u1" "$OUT_U1" "Retry metadata invalid: OUTER_LAUNCHER_P
 
 OUT_U1_CODEX="$TMPROOT/codex-u1.txt"
 prepare_outer_candidate "$OUT_U1_CODEX"
-write_outer_meta "$OUT_U1_CODEX" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX}.prompt" "$WORKDIR_Q" \
+write_outer_meta "$OUT_U1_CODEX" "$REPO_ROOT/python/cli.py agent launch-codex-exec" "${OUT_U1_CODEX}.prompt" "$WORKDIR_Q" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \
@@ -761,7 +761,7 @@ prepare_outer_candidate "$OUT_U1_CODEX_JQ"
 WORKDIR_U1_CODEX_JQ="$TMPROOT/workdir-u1-codex-jq"
 EXTRA_U1_CODEX_JQ="$TMPROOT/extra-u1-codex-jq"
 mkdir -p "$WORKDIR_U1_CODEX_JQ" "$EXTRA_U1_CODEX_JQ"
-write_outer_meta "$OUT_U1_CODEX_JQ" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_JQ}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+write_outer_meta "$OUT_U1_CODEX_JQ" "$REPO_ROOT/python/cli.py agent launch-codex-exec" "${OUT_U1_CODEX_JQ}.prompt" "$WORKDIR_U1_CODEX_JQ" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \
@@ -775,7 +775,7 @@ assert_equals "case U1 codex jq-less output" "OK" "$(cat "${OUT_U1_CODEX_JQ%.txt
 
 OUT_U1_CODEX_BAD_JSON="$TMPROOT/codex-u1-bad-json.txt"
 prepare_outer_candidate "$OUT_U1_CODEX_BAD_JSON"
-write_outer_meta "$OUT_U1_CODEX_BAD_JSON" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_BAD_JSON}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+write_outer_meta "$OUT_U1_CODEX_BAD_JSON" "$REPO_ROOT/python/cli.py agent launch-codex-exec" "${OUT_U1_CODEX_BAD_JSON}.prompt" "$WORKDIR_U1_CODEX_JQ" \
     'TOOL=codex' \
     'OUTER_LAUNCHER_KIND=codex-exec' \
     'OUTER_LAUNCHER_SANDBOX=read-only' \

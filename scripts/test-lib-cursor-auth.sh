@@ -159,25 +159,25 @@ else
     fail retry-6 "production security retries should suppress per-attempt stderr and emit only final actionable stderr; attempts=$(cat "$SECURITY_ATTEMPT_LOG" 2>/dev/null || true); stderr=$STDERR"
 fi
 
-# Test 12 (cursor-auth-flags.sh): when CURSOR_API_KEY empty, the preflight
+# Test 12 (agent cursor-auth-preflight): when CURSOR_API_KEY empty, the preflight
 # gate fires (this is the F4 fix from review round 1). On a controlled-Linux
 # test-mode environment, preflight is a no-op so exit is 0 with no stdout.
 FLAGS_OUT=$(CURSOR_API_KEY="" \
     LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
-if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "cursor-auth-flags.sh empty key on Linux: expected exactly rc=0 with no stdout; got: $FLAGS_OUT"; fi
+    python3 "$REPO_ROOT/python/cli.py" agent cursor-auth-preflight; echo "rc=$?")
+if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "agent cursor-auth-preflight empty key on Linux: expected exactly rc=0 with no stdout; got: $FLAGS_OUT"; fi
 
-# Test 13 (cursor-auth-flags.sh): env-based auth (issue #3375) — even with
+# Test 13 (agent cursor-auth-preflight): env-based auth (issue #3375) — even with
 # CURSOR_API_KEY set, the script is a preflight gate only and emits NO argv
 # flags (the cursor child reads CURSOR_API_KEY from the inherited environment).
 FLAGS_OUT=$(CURSOR_API_KEY="abc" \
     LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
-if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 13 "cursor-auth-flags.sh with key set should emit no flags (env-auth); expected exactly rc=0, got: $FLAGS_OUT"; fi
+    python3 "$REPO_ROOT/python/cli.py" agent cursor-auth-preflight; echo "rc=$?")
+if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 13 "agent cursor-auth-preflight with key set should emit no flags (env-auth); expected exactly rc=0, got: $FLAGS_OUT"; fi
 
 # Test 14 (review FINDING_3, issue #3375): an embedded newline / CR in
 # CURSOR_API_KEY is treated as paste corruption — cursor_auth_export_env unsets
@@ -189,7 +189,7 @@ if [[ "$OUT" == "__unset__" ]]; then pass; else fail 14 "embedded newline in key
 OUT=$(_export_run $'sk-test\rleak')
 if [[ "$OUT" == "__unset__" ]]; then pass; else fail 14b "embedded CR in key should unset CURSOR_API_KEY; got: $OUT"; fi
 
-# Test 15 (review FINDING_4): cursor-auth-flags.sh now runs cursor_auth_preflight.
+# Test 15 (review FINDING_4): agent cursor-auth-preflight now runs cursor_auth_preflight.
 # On Darwin (test-mode injected) with empty key + missing keychain, the script
 # exits 2 with no stdout — same actionable failure mode as the launchers, so
 # runtime markdown templates fail consistently rather than silently emitting
@@ -199,25 +199,25 @@ FLAGS_OUT=$(CURSOR_API_KEY="" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
     LIB_CURSOR_AUTH_TEST_SECURITY_RC=1 \
-    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+    python3 "$REPO_ROOT/python/cli.py" agent cursor-auth-preflight; echo "rc=$?")
 if grep -Fxq "rc=2" <<<"$FLAGS_OUT" && ! grep -Fq -- "--api-key" <<<"$FLAGS_OUT"; then
     pass
 else
-    fail 15 "cursor-auth-flags.sh on Darwin preflight failure should exit 2 with no --api-key emitted; got: $FLAGS_OUT"
+    fail 15 "agent cursor-auth-preflight on Darwin preflight failure should exit 2 with no --api-key emitted; got: $FLAGS_OUT"
 fi
 
-# Test 16 (review FINDING_4): cursor-auth-flags.sh on non-Darwin with empty key
+# Test 16 (review FINDING_4): agent cursor-auth-preflight on non-Darwin with empty key
 # returns 0 (preflight no-op) and no flags. Pins that the new preflight gate
 # does not break Linux/CI keychain-irrelevant flow.
 FLAGS_OUT=$(CURSOR_API_KEY="" \
     LARCH_QUIET_DISABLE=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+    python3 "$REPO_ROOT/python/cli.py" agent cursor-auth-preflight; echo "rc=$?")
 if grep -Fxq "rc=0" <<<"$FLAGS_OUT" && ! grep -Fq -- "--api-key" <<<"$FLAGS_OUT"; then
     pass
 else
-    fail 16 "cursor-auth-flags.sh on non-Darwin empty key should exit 0 with no flags; got: $FLAGS_OUT"
+    fail 16 "agent cursor-auth-preflight on non-Darwin empty key should exit 0 with no flags; got: $FLAGS_OUT"
 fi
 
 _preread_run() {

@@ -206,7 +206,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/degraded-tools-gate.sh|scripts/degraded-tools-gate.md|scripts/test-degraded-tools-gate.sh)
+            python/agents.py|python/test_agents.py)
                 append_target_once test-degraded-tools-gate
                 ;;
         esac
@@ -286,7 +286,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/run-external-agent.sh|scripts/run-external-agent.md|scripts/test-run-external-agent.sh|scripts/test-run-external-agent.md)
+            python/agents.py|python/test_agents.py)
                 append_target_once test-run-external-agent
                 ;;
         esac

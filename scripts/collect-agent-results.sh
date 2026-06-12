@@ -712,30 +712,36 @@ launch_outer_retry_or_mark() {
     case "$META_OUTER_LAUNCHER" in
         *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER contains .."; return 1 ;;
     esac
-    _launcher_base=$(basename "$META_OUTER_LAUNCHER")
-    case "$_launcher_base" in
-        launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh"; _outer_launcher_kind="review" ;;
-        launch-codex-exec.sh) _expected_launcher="$SCRIPT_DIR/launch-codex-exec.sh"; _outer_launcher_kind="codex-exec" ;;
-        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or launch-codex-exec.sh"; return 1 ;;
+    _outer_launcher_kind=""
+    _expected_launcher=""
+    case "$META_OUTER_LAUNCHER" in
+        "agent launch-codex-exec") _outer_launcher_kind="codex-exec" ;;
+        *)
+            _launcher_base=$(basename "$META_OUTER_LAUNCHER")
+            case "$_launcher_base" in
+                launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh"; _outer_launcher_kind="review" ;;
+                *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or agent launch-codex-exec"; return 1 ;;
+            esac
+            if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
+                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+                return 1
+            fi
+            if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
+                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+                return 1
+            fi
+            _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
+            _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
+            if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
+                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+                return 1
+            fi
+            if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
+                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
+                return 1
+            fi
+            ;;
     esac
-    if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
-        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-        return 1
-    fi
-    if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
-        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-        return 1
-    fi
-    _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
-    _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
-    if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
-        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
-        return 1
-    fi
-    if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
-        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
-        return 1
-    fi
     _expected_prompt="${orig_output}.prompt"
     case "$META_OUTER_LAUNCHER_PROMPT_FILE" in
         *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains .."; return 1 ;;
@@ -783,7 +789,7 @@ launch_outer_retry_or_mark() {
             env -u LARCH_ALLOW_TEST_HOOKS \
                 -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
                 -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
-                -- "$META_OUTER_LAUNCHER" \
+                -- python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-exec \
                     "${_codex_exec_retry_args[@]}"
         ) >/dev/null 2>&1 &
     fi
@@ -873,7 +879,7 @@ launch_cmd_json_retry_or_mark() {
     _last_idx=$((${#CMD_ARR[@]} - 1))
     CMD_ARR[_last_idx]="${NS_STRONG_HEADER}${CMD_ARR[_last_idx]}"
 
-    "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
+    python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
     eval "$launched_var=1"
     eval "$sentinels_var+=(\"\${retry_output}.done\")"
     return 0
@@ -1114,7 +1120,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             continue
         fi
 
-        "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
+        python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
         RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
         RETRY_LAUNCHED[j]=1
     done

@@ -256,7 +256,7 @@ if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     exit 0
 fi
 rm -f "$MODEL_ARGS_ERR"
-WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
+WRAPPED_PROMPT=$(python3 "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "$PROMPT")
 
 # Run Cursor auth preflight. On preflight failure (Darwin + empty
 # CURSOR_API_KEY + missing `cursor-user` keychain entry), emit the standard
@@ -298,7 +298,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-    "$SCRIPT_DIR/run-external-agent.sh" \
+    python3 "$SCRIPT_DIR/../python/cli.py" agent run-external-agent \
         --tool cursor \
         --output "$TRANSCRIPT_PATH" \
         --timeout "$TIMEOUT" \

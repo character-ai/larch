@@ -584,7 +584,7 @@ run_case() {
         # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
-        LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$fixture_scripts/launch-codex-exec.sh" \
+        LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="$fixture_python/cli.py agent launch-codex-exec" \
         LARCH_TOKEN_LEDGER="${LARCH_TOKEN_LEDGER:-}" \
         LINT_FIX_STUB_ARGV_LOG="${LINT_FIX_STUB_ARGV_LOG:-}" \
         bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1

@@ -1688,7 +1688,7 @@ run_ci_fix_vendor() {
     first_tier=${tiers[$offset]}
     for tier_idx in 0 1 2; do
         tier=${tiers[$(( tier_idx ))]}
-        if [ "$tier" = "claude" ] && [ ! -x "$SCRIPT_DIR/launch-claude-ci.sh" ]; then
+        if [ "$tier" = "claude" ] && [ ! -x python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-ci ]; then
             fail_file=$(failure_capture_path "$phase")
             printf 'launch-claude-ci.sh unavailable (missing or not executable)\n' > "$fail_file"
             record_failure "$phase" "launch-claude-ci.sh unavailable" 1 "$fail_file" Warnings
@@ -1696,9 +1696,9 @@ run_ci_fix_vendor() {
             continue
         fi
         case "$tier" in
-            cursor) launcher="$SCRIPT_DIR/launch-cursor-ci.sh" ;;
-            codex) launcher="$SCRIPT_DIR/launch-codex-ci.sh" ;;
-            claude) launcher="$SCRIPT_DIR/launch-claude-ci.sh" ;;
+            cursor) launcher=python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci ;;
+            codex) launcher=python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci ;;
+            claude) launcher=python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-ci ;;
         esac
 
         tier_out="${ci_fix_out_base}.${tier}"
@@ -2475,19 +2475,19 @@ run_recovery_waterfall() {
         case "$tier" in
             cursor)
                 if command -v cursor >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             codex)
                 if command -v codex >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-codex-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             claude)
                 if command -v claude >/dev/null 2>&1; then
-                    "$SCRIPT_DIR/launch-claude-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                    python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-ci --role "$wf_role" --output "$output" --run-id "$run_id" \
                         --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
@@ -2877,14 +2877,14 @@ run_rebase_rebump() {
             _launch_extra=()
             [ -n "$vendor_conflict_csv" ] && _launch_extra+=(--conflict-files "$vendor_conflict_csv")
             if command -v codex >/dev/null 2>&1; then
-                tool_label="launch-codex-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                tool_label="agent launch-codex-ci resolve-conflict"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-codex-ci --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
             else
-                tool_label="launch-cursor-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                tool_label="agent launch-cursor-ci resolve-conflict"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-cursor-ci --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?

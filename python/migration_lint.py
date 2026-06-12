@@ -24,6 +24,7 @@ import proc
 _MANIFEST_DEFAULT = "python/migrated-scripts.tsv"
 _EXCLUSION_SEGMENTS = frozenset({"larch-logs"})
 _EXCLUSION_FILES = frozenset({"CHANGELOG.md"})
+_EXCLUSION_PATHS = frozenset({".claude-plugin/plugin.json"})
 
 
 def _script_dir_refs(retired_path: str) -> tuple[str, ...]:
@@ -210,6 +211,8 @@ def main(argv: list[str] | None = None) -> int:
     for rel in tracked_rel:
         parts = Path(rel).parts
         if any(seg in _EXCLUSION_SEGMENTS for seg in parts):
+            continue
+        if rel in _EXCLUSION_PATHS:
             continue
         if Path(rel).name in _EXCLUSION_FILES:
             continue

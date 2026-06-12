@@ -931,7 +931,7 @@ def test_run_lint_fix_empty_log(tmp_path: Path) -> None:
     assert outcome.status == "no-changes"
 
 
-def test_run_lint_fix_missing_run_external_agent(
+def test_run_lint_fix_missing_scripts_dir_no_longer_checks_deleted_launcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -955,14 +955,14 @@ def test_run_lint_fix_missing_run_external_agent(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "failed"
-    assert outcome.failure_reason == "missing-run-external-agent"
+    assert outcome.status == "no-changes"
+    assert outcome.failure_reason is None
 
 
 def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    run_external = checks._run_external_agent_sh()  # pyright: ignore[reportPrivateUsage]
+    agent_cli = checks._agent_cli()  # pyright: ignore[reportPrivateUsage]
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
     head = "abc123"
@@ -993,11 +993,12 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "launch-cursor-ci.sh" not in flat
     codex_call = next(
         call for call, _kw in runner.calls
-        if any("run-external-agent.sh" in part for part in call)
+        if "run-external-agent" in call
     )
-    idx = list(codex_call).index(str(run_external))
+    idx = list(codex_call).index(str(agent_cli))
     argv = list(codex_call)[idx:]
-    assert argv[1:3] == ["--tool", "codex"]
+    assert argv[:4] == [str(agent_cli), "agent", "run-external-agent", "--tool"]
+    assert argv[4] == "codex"
     assert "--timeout" in argv
     assert "1800" in argv
     assert "--stderr-sink" in argv
@@ -1303,17 +1304,19 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     assert "--tool" in flat
     assert "cursor" in flat
     wrap_call, wrap_kwargs = next(
-        (call, kw) for call, kw in runner.calls if "cursor-wrap-prompt.sh" in " ".join(call)
+        (call, kw) for call, kw in runner.calls if any("cursor-wrap-prompt" in part for part in call)
     )
-    assert "cursor-wrap-prompt.sh" in " ".join(wrap_call)
+    assert any("agent" in part for part in wrap_call)
+    assert any("cursor-wrap-prompt" in part for part in wrap_call)
     assert wrap_kwargs["cwd"] == str(repo)
     cursor_call = next(
         call for call, _kw in runner.calls
         if "cursor" in call and "agent" in call
     )
-    idx = list(cursor_call).index(str(checks._run_external_agent_sh()))  # pyright: ignore[reportPrivateUsage]
+    idx = list(cursor_call).index(str(checks._agent_cli()))  # pyright: ignore[reportPrivateUsage]
     argv = list(cursor_call)[idx:]
-    assert argv[1:3] == ["--tool", "cursor"]
+    assert argv[:4] == [str(checks._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
+    assert argv[4] == "cursor"
     assert "--timeout" in argv
     assert "1800" in argv
     assert "--capture-stdout" in argv
@@ -1705,7 +1708,7 @@ def test_run_checks_phase_ok_when_checks_skipped(
     assert result.outcome == Outcome.OK
 
 
-def test_run_lint_fix_non_executable_run_external_agent(
+def test_run_lint_fix_non_executable_deleted_launcher_is_ignored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1728,8 +1731,8 @@ def test_run_lint_fix_non_executable_run_external_agent(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "failed"
-    assert outcome.failure_reason == "missing-run-external-agent"
+    assert outcome.status == "no-changes"
+    assert outcome.failure_reason is None
 
 
 def test_run_check_fix_loop_requires_allowed_tmpdir_for_dispatch_first(

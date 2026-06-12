@@ -6,7 +6,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 ## Sourced by
 
-- `scripts/agent-model-args.sh`
+- `python/cli.py agent model-args`
 - `scripts/check-reviewers.sh`
 - `scripts/collect-agent-results.sh`
 - `skills/implement/scripts/step2-implement.sh`
@@ -15,7 +15,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Related
 
-`scripts/run-external-agent.sh` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `scripts/run-external-agent.md` for the full sanitization contract.
+`python/cli.py agent run-external-agent` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `python/agents.py` for the full sanitization contract.
 
 ## Public API
 

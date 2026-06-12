@@ -419,8 +419,8 @@ setup_parse_codex_usage_repo() {
         cd "$dir"
         git checkout -q -b parse-codex-change
         mkdir -p scripts
-        printf '%s\n' "# parse codex usage harness" > scripts/test-parse-codex-usage.sh
-        git add scripts/test-parse-codex-usage.sh
+        printf '%s\n' "# parse codex usage harness" > python/test_agents.py
+        git add python/test_agents.py
         git commit -q -m "touch parse codex usage harness"
     )
 }

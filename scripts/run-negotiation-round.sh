@@ -89,7 +89,7 @@ case "$TOOL" in
             exit 2
         fi
         CODEX_MODEL_ARGS_TMP=$(mktemp)
-        if "$SCRIPT_DIR/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
+        if python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
             :
         else
             rc=$?
@@ -129,7 +129,7 @@ case "$TOOL" in
         ;;
     cursor)
         CURSOR_MODEL_ARGS_TMP=$(mktemp)
-        if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor > "$CURSOR_MODEL_ARGS_TMP"; then
+        if python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool cursor > "$CURSOR_MODEL_ARGS_TMP"; then
             :
         else
             rc=$?
@@ -159,7 +159,7 @@ case "$TOOL" in
         external_serial_lock_acquire _SERIAL_LOCK "cursor"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$WORKSPACE" \
-            "$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
+            "$(python3 "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
             > "$OUTPUT_FILE" 2>&1
         ;;
     *)

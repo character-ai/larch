@@ -13,6 +13,20 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("agent", "model-args"): ("agents", "model_args_main"),
+    ("agent", "read-claude-model"): ("agents", "read_claude_model_main"),
+    ("agent", "cursor-auth-preflight"): ("agents", "cursor_auth_preflight_main"),
+    ("agent", "cursor-wrap-prompt"): ("agents", "cursor_wrap_prompt_main"),
+    ("agent", "external-tool-registry"): ("agents", "external_tool_registry_main"),
+    ("agent", "degraded-tools-gate"): ("agents", "degraded_tools_gate_main"),
+    ("agent", "parse-codex-usage"): ("agents", "parse_codex_usage_main"),
+    ("agent", "run-external-agent"): ("agents", "run_external_agent_main"),
+    ("agent", "launch-codex-ci"): ("agents", "launch_codex_ci_main"),
+    ("agent", "launch-codex-exec"): ("agents", "launch_codex_exec_main"),
+    ("agent", "launch-cursor-ci"): ("agents", "launch_cursor_ci_main"),
+    ("agent", "launch-claude-ci"): ("agents", "launch_claude_ci_main"),
+    ("agent", "launch-claude-review"): ("agents", "launch_claude_review_main"),
+    ("agent", "launch-claude-subprocess"): ("agents", "launch_claude_subprocess_main"),
     ("bootstrap", "invoke"): ("bootstrap", "invoke_main"),
     ("bootstrap", "parse-routing"): ("bootstrap", "parse_routing_main"),
     ("admission", "gate"): ("admission", "gate_main"),

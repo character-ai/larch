@@ -335,7 +335,7 @@ PLUGIN_STUB="$TMP/plugin-stub"
 mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
-cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
+cat >"$PLUGIN_STUB/python/cli.py agent launch-claude-review" <<'CLAUDE_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""
 while [[ $# -gt 0 ]]; do
@@ -349,7 +349,7 @@ done
 printf '## Recommendation\nGeneric decomposition.\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 CLAUDE_STUB
-chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+chmod +x "$PLUGIN_STUB/python/cli.py agent launch-claude-review"
 D10="$TMP/m10"
 prep_common "$D10"
 DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
@@ -374,7 +374,7 @@ PLUGIN_FAIL="$TMP/plugin-fail-stub"
 mkdir -p "$PLUGIN_FAIL/scripts" "$PLUGIN_FAIL/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAIL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAIL/scripts/"
-cat >"$PLUGIN_FAIL/scripts/launch-claude-review.sh" <<'CLAUDE_FAIL_STUB'
+cat >"$PLUGIN_FAIL/python/cli.py agent launch-claude-review" <<'CLAUDE_FAIL_STUB'
 #!/usr/bin/env bash
 OUTPUT=""
 while [[ $# -gt 0 ]]; do
@@ -387,7 +387,7 @@ done
 printf 'no recommendation heading\n' >"$OUTPUT"
 printf '1\n' >"${OUTPUT}.done"
 CLAUDE_FAIL_STUB
-chmod +x "$PLUGIN_FAIL/scripts/launch-claude-review.sh"
+chmod +x "$PLUGIN_FAIL/python/cli.py agent launch-claude-review"
 DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_FAIL" \
     "$PANEL" \

@@ -16,4 +16,4 @@ Invariants:
 
 Harness: `scripts/test-scout-dynamic-archetypes.sh`.
 
-Edit in sync: update this file, the harness, `skills/review/scripts/dispatch-panel.sh`, `skills/design/scripts/scout-plan-archetypes-wrapper.sh`, `scripts/launch-claude-subprocess.sh`, and `SECURITY.md` when changing scout invocation, staging, waterfall semantics, or status tokens.
+Edit in sync: update this file, the harness, `skills/review/scripts/dispatch-panel.sh`, `skills/design/scripts/scout-plan-archetypes-wrapper.sh`, `python/cli.py agent launch-claude-subprocess`, and `SECURITY.md` when changing scout invocation, staging, waterfall semantics, or status tokens.

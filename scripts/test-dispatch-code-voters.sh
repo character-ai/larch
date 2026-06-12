@@ -145,7 +145,7 @@ print("stub voter prompt")
 print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
     chmod +x "$root/python/cli.py"
-    cat > "$root/scripts/launch-claude-review.sh" <<'STUB_CLAUDE'
+    cat > "$root/python/cli.py agent launch-claude-review" <<'STUB_CLAUDE'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -165,7 +165,7 @@ if [[ "${LARCH_VOTER1_DONE_MODE:-delayed}" != "missing" ]]; then
 fi
 exit 0
 STUB_CLAUDE
-    chmod +x "$root/scripts/launch-claude-review.sh"
+    chmod +x "$root/python/cli.py agent launch-claude-review"
     cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
 #!/usr/bin/env bash
 set -euo pipefail

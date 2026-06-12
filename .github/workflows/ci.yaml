@@ -269,7 +269,7 @@ jobs:
       - name: Install test harness Python dependencies
         if: steps.cache-site-packages.outputs.cache-hit != 'true'
         run: pip install -r .github/workflows/requirements-test-harnesses.txt
-      # ripgrep (rg) is required by scripts/test-agent-model-args.sh static
+      # ripgrep (rg) is required by python/test_agents.py static
       # migration guards (FINDING_11 of /review on PR #1367 hardened the
       # harness to fail fast when rg is missing, rather than silently
       # passing all guards via empty `$(rg ... || true)` substitutions).

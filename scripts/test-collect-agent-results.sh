@@ -270,7 +270,7 @@ printf 'Review prompt\n' > "${OUT_T1_CODEX}.prompt"
     printf 'CAPTURE_STDOUT_ONLY=false\n'
     printf 'OUTPUT_FILE=%s\n' "$OUT_T1_CODEX"
     printf 'CMD_JSON=["raw","cmd","must","not","run"]\n'
-    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-codex-exec.sh"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/python/cli.py agent launch-codex-exec"
     printf 'OUTER_LAUNCHER_KIND=codex-exec\n'
     printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_T1_CODEX}.prompt"
     printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_T1_CODEX"

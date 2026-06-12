@@ -43,4 +43,4 @@ CODEX_PRESENT=$(read_session_key CODEX_PRESENT "")
 CURSOR_PRESENT=$(read_session_key CURSOR_PRESENT "")
 CODEX_BINARY_FOUND=$(read_session_key CODEX_BINARY_FOUND "")
 CURSOR_BINARY_FOUND=$(read_session_key CURSOR_BINARY_FOUND "")
-"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement   --codex-present "$CODEX_PRESENT"   --cursor-present "$CURSOR_PRESENT"   --codex-binary-found "$CODEX_BINARY_FOUND"   --cursor-binary-found "$CURSOR_BINARY_FOUND"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" agent degraded-tools-gate --skill implement   --codex-present "$CODEX_PRESENT"   --cursor-present "$CURSOR_PRESENT"   --codex-binary-found "$CODEX_BINARY_FOUND"   --cursor-binary-found "$CURSOR_BINARY_FOUND"

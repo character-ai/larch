@@ -17,7 +17,7 @@
 - Cursor argv shape matches `scripts/launch-review.sh --tool cursor`: `cursor agent -p --force --trust --output-format json <model args> --workspace "$PWD" "$WRAPPED_PROMPT"`.
 - The implementer launcher writes `${TRANSCRIPT_PATH}.prompt`, appends `OUTER_LAUNCHER*` keys to `${TRANSCRIPT_PATH}.meta`, and publishes `${TRANSCRIPT_PATH}.done` only after post-processing completes.
 - No `--` end-of-options separator is inserted before the prompt.
-- The prompt is wrapped by `scripts/cursor-wrap-prompt.sh`.
+- The prompt is wrapped by `python/cli.py agent cursor-wrap-prompt`.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 
 **Optional smoke**: `CURSOR_PRESENT=true bash skills/implement/scripts/test-cursor-implementer.sh --real-smoke` launches a real `cursor agent` against a tiny prompt. This is a local development smoke only and is not wired into the Makefile.
@@ -36,6 +36,6 @@
 - `scripts/launch-cursor-implement.sh` — launcher behavior under test.
 - `scripts/launch-cursor-implement.md` — sibling launcher contract.
 - `scripts/launch-review.sh --tool cursor` — argv parity source.
-- `scripts/cursor-wrap-prompt.sh` and `scripts/cursor-wrap-prompt.md` — prompt wrapper contract and caller registry.
-- `scripts/run-external-agent.sh` — stdout capture semantics.
-- `scripts/agent-model-args.sh` — Cursor model argv generation.
+- `python/cli.py agent cursor-wrap-prompt` and `python/agents.py` — prompt wrapper contract and caller registry.
+- `python/cli.py agent run-external-agent` — stdout capture semantics.
+- `python/cli.py agent model-args` — Cursor model argv generation.

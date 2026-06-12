@@ -323,21 +323,21 @@ exclude = [
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "skills/implement/scripts/test-post-tracking-issue.sh",
   "skills/implement/scripts/test-post-tracking-issue.md",
-  # scripts/test-degraded-tools-gate.sh is the Makefile-only regression harness
-  # for scripts/degraded-tools-gate.sh (issue #3207). The detector itself is
+  # python/test_agents.py is the Makefile-only regression harness
+  # for python/cli.py agent degraded-tools-gate (issue #3207). The detector itself is
   # runtime-referenced from /design, /implement, /review, /research Step 0; the
   # harness is covered by the test-degraded-tools-gate target.
-  "scripts/test-degraded-tools-gate.sh",
-  "scripts/test-degraded-tools-gate.md",
+  "python/test_agents.py",
+  "python/test_agents.py",
   # scripts/test-no-grouped-reuse-guard.sh is the Makefile-only post-condition
   # harness for grouped-reuse rip-out; covered by test-no-grouped-reuse-guard.
   "scripts/test-no-grouped-reuse-guard.sh",
-  # scripts/test-launch-claude-subprocess.sh is the Makefile-only regression
-  # harness for scripts/launch-claude-subprocess.sh. The launcher itself is
+  # python/test_agents.py is the Makefile-only regression
+  # harness for python/cli.py agent launch-claude-subprocess. The launcher itself is
   # runtime-referenced from /review; the harness is not invoked from skill
   # prose and is covered by the test-launch-claude-subprocess target.
-  "scripts/test-launch-claude-subprocess.sh",
-  "scripts/test-launch-claude-subprocess.md",
+  "python/test_agents.py",
+  "python/test_agents.py",
   # scripts/launch-claude-drafter.sh is invoked from /design SKILL.md through
   # a plugin-root variable path, and its harness is Makefile-only. Agent-lint's
   # dead-script graph does not resolve that variable indirection.
@@ -352,10 +352,6 @@ exclude = [
   "scripts/launch-codex-drafter.md",
   "scripts/test-launch-codex-drafter.sh",
   "scripts/test-launch-codex-drafter.md",
-  # read-claude-model.sh is retained as a diagnostic helper for operators; the
-  # anchor assembler caller was removed by the larch-log migration.
-  "scripts/read-claude-model.sh",
-  "scripts/read-claude-model.md",
   "python/cli.py plugin read-version",
   # skills/implement/scripts/test-step2-dispatch.sh is the offline regression
   # harness for skills/implement/scripts/step2-implement.sh (the /implement
@@ -591,13 +587,13 @@ exclude = [
   # (no shebang, not invokable directly). scripts/ship-pr.sh and
   # python/cli.py session restore-finalize-state source it for shared finalizer keys.
   "scripts/lib-finalize-state-keys.sh",
-  # scripts/cursor-auth-flags.sh is a small executable that prints the
+  # python/cli.py agent cursor-auth-preflight is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md,
   # skills/research/references/validation-phase.md via process substitution
-  # (`< <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")`); agent-lint
+  # (`< <("${CLAUDE_PLUGIN_ROOT}/python/cli.py agent cursor-auth-preflight")`); agent-lint
   # does not follow markdown-template invocations.
-  "scripts/cursor-auth-flags.sh",
+  "python/cli.py agent cursor-auth-preflight",
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -709,17 +705,17 @@ exclude = [
   # scripts/check-phantom-dirty.sh. Referenced only from Makefile
   # (test-check-phantom-dirty target) and its sibling contract.
   "scripts/test-check-phantom-dirty.sh",
-  # scripts/test-agent-model-args.sh is the regression harness for
-  # scripts/agent-model-args.sh's line-token argv contract. Referenced only
+  # python/test_agents.py is the regression harness for
+  # python/cli.py agent model-args's line-token argv contract. Referenced only
   # from Makefile (test-agent-model-args target) and
-  # scripts/test-agent-model-args.md (sibling contract).
-  "scripts/test-agent-model-args.sh",
+  # python/test_agents.py (sibling contract).
+  "python/test_agents.py",
   # scripts/test-lib-quiet.sh is the regression harness for scripts/lib-quiet.sh
   # (issue #2109). Referenced only from Makefile (test-lib-quiet target) and
   # scripts/test-lib-quiet.md (sibling contract).
   "scripts/test-lib-quiet.sh",
   # scripts/test-lib-cursor-auth.sh is the hermetic regression harness for
-  # scripts/lib-cursor-auth.sh and scripts/cursor-auth-flags.sh (issue #1358).
+  # scripts/lib-cursor-auth.sh and python/cli.py agent cursor-auth-preflight (issue #1358).
   # Referenced only from Makefile (test-lib-cursor-auth target) and
   # scripts/test-lib-cursor-auth.md (sibling contract).
   "scripts/test-lib-cursor-auth.sh",
@@ -729,18 +725,18 @@ exclude = [
   # (test-wait-for-reviewers target) and scripts/test-wait-for-reviewers.md
   # (sibling contract).
   "scripts/test-wait-for-reviewers.sh",
-  # scripts/test-run-external-agent.sh is the regression harness for
-  # scripts/run-external-agent.sh. Referenced only from Makefile
-  # (test-run-external-agent target) and scripts/test-run-external-agent.md
+  # python/test_agents.py is the regression harness for
+  # python/cli.py agent run-external-agent. Referenced only from Makefile
+  # (test-run-external-agent target) and python/test_agents.py
   # (sibling contract).
-  "scripts/test-run-external-agent.sh",
-  # scripts/test-run-external-agent-args.sh is the offline argument-validation
-  # harness for scripts/run-external-agent.sh that pins --timeout 0 rejection
+  "python/test_agents.py",
+  # python/test_agents.py is the offline argument-validation
+  # harness for python/cli.py agent run-external-agent that pins --timeout 0 rejection
   # (closes the test-coverage gap left by #1115/#1171). Referenced only from
   # Makefile (test-run-external-agent-args target) and
-  # scripts/test-run-external-agent-args.md (sibling contract), matching the
+  # python/test_agents.py (sibling contract), matching the
   # same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-run-external-agent-args.sh",
+  "python/test_agents.py",
   # scripts/test-dispatch-plan-voters.sh is the offline regression harness for
   # scripts/dispatch-plan-voters.sh. Referenced only from Makefile
   # (test-dispatch-plan-voters target) and scripts/test-dispatch-plan-voters.md
@@ -805,13 +801,13 @@ exclude = [
   "scripts/test-render-run-summary.sh",
   "scripts/test-render-run-summary.md",
   # python/cli.py session persist-run-flags. Referenced from Makefile
-  # scripts/parse-codex-usage.sh is invoked by Codex launchers through
+  # python/cli.py agent parse-codex-usage is invoked by Codex launchers through
   # $PLUGIN_ROOT path composition, which agent-lint's dead-script graph does
   # not resolve. Its harness is Makefile-only like adjacent token tests.
-  "scripts/parse-codex-usage.sh",
-  "scripts/parse-codex-usage.md",
-  "scripts/test-parse-codex-usage.sh",
-  "scripts/test-parse-codex-usage.md",
+  "python/cli.py agent parse-codex-usage",
+  "python/agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
@@ -828,11 +824,11 @@ exclude = [
   "scripts/lint-bare-grep-probe.md",
   "scripts/test-lint-bare-grep-probe.sh",
   "scripts/test-lint-bare-grep-probe.md",
-  # scripts/launch-codex-exec.sh — markdown-fence + lint-fix-loop launcher-variable indirection.
-  "scripts/launch-codex-exec.sh",
-  "scripts/launch-codex-exec.md",
-  "scripts/test-launch-codex-exec.sh",
-  "scripts/test-launch-codex-exec.md",
+  # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
+  "python/cli.py agent launch-codex-exec",
+  "python/agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
   "scripts/lint-awk-multibyte-regex.sh",
   "scripts/lint-awk-multibyte-regex.md",
   "scripts/test-lint-awk-multibyte-regex.sh",
@@ -1223,13 +1219,13 @@ exclude = [
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",
   "scripts/lib-codex-launcher-common.md",
-  "scripts/cursor-auth-flags.md",
+  "python/agents.py",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
   "scripts/lib-failed-agent-stderr-tail.md",
   "scripts/test-lib-failed-agent-stderr-tail.md",
-  "scripts/test-run-external-agent.md",
-  "scripts/test-run-external-agent-args.md",
+  "python/test_agents.py",
+  "python/test_agents.py",
   "scripts/test-collect-agent-retry.md",
   "scripts/test-collect-agent-results.md",
   "scripts/test-lib-net.md",
@@ -1400,12 +1396,12 @@ exclude = [
   # scripts/test-ci-wait.md.
   "scripts/test-ci-wait.sh",
   "scripts/test-ci-wait.md",
-  "scripts/test-launch-cursor-ci.sh",
-  "scripts/test-launch-cursor-ci.md",
-  "scripts/test-launch-codex-ci.sh",
-  "scripts/test-launch-codex-ci.md",
-  "scripts/test-launch-claude-ci.sh",
-  "scripts/test-launch-claude-ci.md",
+  "python/test_agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
+  "python/test_agents.py",
   # python/cli.py cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
   # scripts/test-compose-pr-summary.sh is the regression harness for the

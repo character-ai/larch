@@ -235,9 +235,9 @@ launch_slot() {
         (
             set +e
             if [[ -n "$prompt_file" ]]; then
-                "$SCRIPT_DIR/launch-claude-review.sh" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-review --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
             else
-                "$SCRIPT_DIR/launch-claude-review.sh" --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
+                python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-review --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
             fi
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"

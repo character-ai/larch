@@ -15,7 +15,7 @@ properties the issue requires for committed run logs:
 
 ## Design
 
-`scripts/run-external-agent.sh` is the single composed-carrier producer. On any
+`python/cli.py agent run-external-agent` is the single composed-carrier producer. On any
 non-zero exit it composes a bounded, content-filtered `${OUTPUT}.failure-diag`
 carrier inside its `EXIT` trap **before** writing `${OUTPUT}.done`, so a visible
 `.done` always implies the carrier exists for failures. A retry that later
@@ -41,12 +41,12 @@ below.
 
 | Call site | Saved | Logged | Flushed | Class | Notes |
 |---|---|---|---|---|---|
-| `scripts/run-external-agent.sh` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
+| `python/cli.py agent run-external-agent` | ✅ | n/a (callers log) | ✅ batch+publish | **D** | Central carrier producer; health-gate fast-fail echoes stderr. |
 | `scripts/lib-failed-agent-stderr-tail.sh` | ✅ | — | — | **D** | Carrier library: compose / resolve / reset / append / log-resolver. |
 | `python/cli.py run-log append-failure` | — | ✅ never-empty | — | **D** | Fail-closed backstop synthesizes a line for missing/zero-byte input. |
 | `scripts/launch-review.sh` (codex) | ✅ | ✅ | ✅ | **D** | `external_stream_reset` at truncations; verdict-before-reset; give-up resolves carrier + `append_vendor_failure_diagnostics`. |
 | `scripts/launch-review.sh` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |
-| `scripts/launch-claude-subprocess.sh` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |
+| `python/cli.py agent launch-claude-subprocess` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |
 | `scripts/flush-vendor-failure-diagnostics.sh` | — | — | ✅ | **D** | Merges per-slot parts → batch; clear-after-success. |
 | `scripts/design-log-publish.sh` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
 | `python/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
@@ -58,10 +58,10 @@ below.
 | `scripts/implement-finalize.sh` (teardown) | — | — | ✅ | **D** | Safety-net flush mirroring `flush_execution_issues_safety_net` (F13). |
 | `scripts/launch-codex-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through `run-external-agent.sh` (carrier saved); `append_launch_failure` now appends the diagnostic source to the durable batch. |
 | `scripts/launch-cursor-implement.sh` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
-| `scripts/launch-codex-ci.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `run-external-agent.sh`. |
-| `scripts/launch-cursor-ci.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
-| `scripts/launch-claude-ci.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `launch-claude-subprocess.sh` (carrier saved). |
-| `scripts/launch-codex-exec.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
+| `python/cli.py agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher routes through `run-external-agent.sh`. |
+| `python/cli.py agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
+| `python/cli.py agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `launch-claude-subprocess.sh` (carrier saved). |
+| `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
 | `scripts/dispatch-plan-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/dispatch-code-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As plan voters. |
 | `scripts/dispatch-with-waterfall.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |

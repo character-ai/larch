@@ -18,7 +18,7 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
-cat > "$plugin/scripts/launch-claude-subprocess.sh" <<'STUB'
+cat > "$plugin/python/cli.py agent launch-claude-subprocess" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 out=""
@@ -46,7 +46,7 @@ if os.environ.get("SANITIZE_REJECT") == "1":
     raise SystemExit(1)
 print("STATUS=ok")
 STUB
-chmod +x "$plugin/scripts/launch-claude-subprocess.sh" "$plugin/python/cli.py"
+chmod +x "$plugin/python/cli.py agent launch-claude-subprocess" "$plugin/python/cli.py"
 
 repo="$TMP_ROOT/repo"; mkdir -p "$repo"; git -C "$repo" init -q; git -C "$repo" config user.email a@b.test; git -C "$repo" config user.name tester
 printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" commit -qm init

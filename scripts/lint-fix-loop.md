@@ -70,7 +70,7 @@ Behavior:
    `LINT_FIX_STATUS=applied`. The prompt forbids commits; the helper owns any
    allowed commit. Literal ````` fence lines in the log are sanitized before
    embedding.
-5. Dispatch Codex first via `scripts/launch-codex-exec.sh` when Codex is
+5. Dispatch Codex first via `python/cli.py agent launch-codex-exec` when Codex is
    present; if Codex is absent or fails and Cursor is present, dispatch Cursor.
    `run_codex()` passes `--prompt-file "$run_dir/prompt.md"` to avoid large
    prompt argv limits, grants both the repo and run dir with `--add-dir`, and
@@ -84,7 +84,7 @@ Behavior:
    `IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"` exported. Failed Codex attempts with
    parseable usage are counted; ingestion is not gated on `parsed_exit == 0`.
    Codex serial locking and `run-external-agent.sh` dispatch are owned by
-   `scripts/launch-codex-exec.sh`. `run_cursor()` uses `--capture-stdout`;
+   `python/cli.py agent launch-codex-exec`. `run_cursor()` uses `--capture-stdout`;
    `run-external-agent.sh` writes
    `${run_dir}/cursor.log.stderr-tail` on failure. Model-args, auth, and
    wrap-prompt failures before spawn are captured in

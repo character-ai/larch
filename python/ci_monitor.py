@@ -963,13 +963,7 @@ def _parse_launcher_exit(text: str) -> int:
 
 
 def _available_tiers() -> tuple[str, ...]:
-    tiers: list[str] = []
-    for tier in config.FIXER_TIER_ORDER:
-        if tier == "claude":
-            script = _SCRIPTS_DIR / "launch-claude-ci.sh"
-            if not script.is_file() or not os.access(script, os.X_OK):
-                continue
-        tiers.append(tier)
+    tiers = list(config.FIXER_TIER_ORDER)
     return tuple(tiers) if tiers else config.FIXER_TIER_ORDER
 
 

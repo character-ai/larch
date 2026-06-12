@@ -155,10 +155,10 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   classifying, so the sidecar-based quota guard short-circuits the `{5,7}`
   transient-retry loop instead of re-hitting the limit and reports a `quota`
   verdict rather than a generic non-auth exit 7 (#3390). Token capture is
-  fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
+  fail-closed through `python/cli.py agent parse-codex-usage`: exit 0 records
   per-bucket `python3 python/cli.py token record-vendor codex` fields; non-zero appends
   the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.
-  See [scripts/parse-codex-usage.md](parse-codex-usage.md) for the KV
+  See [python/agents.py](parse-codex-usage.md) for the KV
   contract and fail-closed validation semantics.
 - On successful Codex or Cursor review launches, an empty `${OUTPUT}.sidecar`
   is populated with an informational status marker

@@ -185,7 +185,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     } >"$_generic_prompt"
     _generic_first_line_ere='^[[:space:]]*(schema_version|\{"no_issues_found|\{"schema_version)'
     set +e
-    "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review \
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \

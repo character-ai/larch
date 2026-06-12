@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-review.sh", "scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/run-negotiation-round.sh", "scripts/lint-fix-loop.sh", "agents/codex-implementer.md", "agents/cursor-implementer.md", "scripts/run-external-agent.sh", "scripts/collect-agent-results.sh", "scripts/check-reviewers.sh", "skills/implement/scripts/step2-implement.sh", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
+paths: ["scripts/launch-review.sh", "scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/run-negotiation-round.sh", "scripts/lint-fix-loop.sh", "agents/codex-implementer.md", "agents/cursor-implementer.md", "python/cli.py agent run-external-agent", "scripts/collect-agent-results.sh", "scripts/check-reviewers.sh", "skills/implement/scripts/step2-implement.sh", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
 ---
 
 # External-Tool Launcher Parity
@@ -20,7 +20,7 @@ audit:
 - **Serial-lock spawn site** — Darwin `external_serial_lock_acquire` / `external_serial_lock_release_after` coverage and relative ordering versus the actual Codex/Cursor spawn must stay aligned across the launcher family; dedicated harnesses pin the concrete lock behavior.
 - **Sibling agent prompt** — `agents/codex-implementer.md` / `agents/cursor-implementer.md`; schema/wording changes usually apply to both.
 - **Sibling `.md` contracts** — every launcher has `<basename>.md` (per `.claude/rules/script-md-siblings.md`); update both together.
-- **Common collectors** — `scripts/run-external-agent.sh` and `scripts/collect-agent-results.sh`; sanitization, retry, and `.meta` parser changes affect all lanes.
+- **Common collectors** — `python/cli.py agent run-external-agent` and `scripts/collect-agent-results.sh`; sanitization, retry, and `.meta` parser changes affect all lanes.
 - **Health probe** — `scripts/check-reviewers.sh`; healthy/unhealthy semantics must stay aligned.
 - **Codex env-key auth** — `launch-review.sh --tool codex`, `launch-codex-implement.sh`, `launch-codex-ci.sh`, `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `launch-codex-exec.sh`, `/research` Codex research and validation lanes, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh` must share the same `OPENAI_API_KEY` contract: non-whitespace env-key mode, fixed `openai-larch-env` `-c` overrides containing only the variable name, copied temp-config stripping before launch, and login fallback only when the env key is unset/empty/whitespace-only.
 - **Cross-doc surface** — `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, and SKILL.md prose enumerating supported tools must list both identically.

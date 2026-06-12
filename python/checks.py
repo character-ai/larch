@@ -508,8 +508,8 @@ def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
 
 
-def _run_external_agent_sh() -> Path:
-    return _plugin_scripts_dir() / "run-external-agent.sh"
+def _agent_cli() -> Path:
+    return Path(__file__).resolve().parents[1] / "python" / "cli.py"
 
 
 def _site_label(site: str) -> str:
@@ -747,7 +747,7 @@ def _run_with_serial_lock(
 
 def _build_codex_argv(
     *,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -756,7 +756,10 @@ def _build_codex_argv(
     codex_wrapper_log = run_dir / "codex.wrapper.log"
     codex_log = run_dir / "codex.log"
     return [
-        str(run_external),
+        "python3",
+        str(agent_cli),
+        "agent",
+        "run-external-agent",
         "--tool",
         "codex",
         "--output",
@@ -839,7 +842,7 @@ printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
 
 def _build_cursor_argv(
     *,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     wrapped_prompt: str,
@@ -848,7 +851,10 @@ def _build_cursor_argv(
 ) -> list[str]:
     cursor_log = run_dir / "cursor.log"
     return [
-        str(run_external),
+        "python3",
+        str(agent_cli),
+        "agent",
+        "run-external-agent",
         "--tool",
         "cursor",
         "--output",
@@ -873,7 +879,7 @@ def _run_codex(
     runner: Runner,
     *,
     scripts_dir: Path,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -881,7 +887,7 @@ def _run_codex(
     model_args = _load_codex_model_args(scripts_dir=scripts_dir)
     resolved_model = _extract_arg_after(model_args, "-m")
     argv = _build_codex_argv(
-        run_external=run_external,
+        agent_cli=agent_cli,
         run_dir=run_dir,
         repo_root=repo_root,
         prompt_body=prompt_body,
@@ -968,7 +974,7 @@ def _run_cursor(
     runner: Runner,
     *,
     scripts_dir: Path,
-    run_external: Path,
+    agent_cli: Path,
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
@@ -990,14 +996,14 @@ def _run_cursor(
         )
         return 1
     model_args, auth_args = launch
-    wrap_script = '{ "$1" "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
+    wrap_script = '{ python3 "$1" agent cursor-wrap-prompt "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
     wrap_result = runner.run(
         [
             "bash",
             "-c",
             wrap_script,
             "bash",
-            str(scripts_dir / "cursor-wrap-prompt.sh"),
+            str(scripts_dir.parent / "python" / "cli.py"),
             prompt_body,
             str(preflight_log),
         ],
@@ -1014,7 +1020,7 @@ def _run_cursor(
         return wrap_result.returncode
     wrapped = wrap_result.stdout.removesuffix("X")
     argv = _build_cursor_argv(
-        run_external=run_external,
+        agent_cli=agent_cli,
         run_dir=run_dir,
         repo_root=repo_root,
         wrapped_prompt=wrapped.rstrip("\n"),
@@ -1165,12 +1171,12 @@ def run_lint_fix(
             coder_tool=None,
         )
     scripts = _plugin_scripts_dir()
-    run_external = _run_external_agent_sh()
-    if not run_external.is_file() or not os.access(run_external, os.X_OK):
+    agent_cli = _agent_cli()
+    if not agent_cli.is_file():
         return FixOutcome(
             status="failed",
             delta_paths=(),
-            failure_reason="missing-run-external-agent",
+            failure_reason="missing-python-agent-cli",
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
@@ -1237,7 +1243,7 @@ def run_lint_fix(
         codex_rc = _run_codex(
             runner,
             scripts_dir=scripts,
-            run_external=run_external,
+            agent_cli=agent_cli,
             run_dir=run_dir,
             repo_root=repo_root,
             prompt_body=prompt_body,
@@ -1248,7 +1254,7 @@ def run_lint_fix(
         cursor_rc = _run_cursor(
             runner,
             scripts_dir=scripts,
-            run_external=run_external,
+            agent_cli=agent_cli,
             run_dir=run_dir,
             repo_root=repo_root,
             prompt_body=prompt_body,

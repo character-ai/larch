@@ -55,7 +55,7 @@ cat > "$claude_launch_log" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -n "\${SCOUT_CLAUDE_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_CLAUDE_ARGV_LOG"
-exec "$REPO_ROOT/scripts/launch-claude-subprocess.sh" "\$@"
+exec "$REPO_ROOT/python/cli.py agent launch-claude-subprocess" "\$@"
 STUB
 chmod +x "$claude_launch_log"
 desc_launch="$claude_launch_log"

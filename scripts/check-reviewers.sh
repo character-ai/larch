@@ -207,14 +207,14 @@ larch_run_one_cursor_probe() {
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
 
     _probe_model_args=()
-    if MODEL_ARGS_TMP=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool cursor > "$MODEL_ARGS_TMP" 2>/dev/null; then
+    if MODEL_ARGS_TMP=$(mktemp) && python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool cursor > "$MODEL_ARGS_TMP" 2>/dev/null; then
         while IFS= read -r _model_arg; do
             _probe_model_args+=("$_model_arg")
         done < "$MODEL_ARGS_TMP"
     fi
     [[ -n "${MODEL_ARGS_TMP:-}" ]] && rm -f "$MODEL_ARGS_TMP"
 
-    _probe_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "Respond with OK"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || { rm -f "$probe_out"; return 1; }
+    _probe_prompt=$({ python3 "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "Respond with OK"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || { rm -f "$probe_out"; return 1; }
     _probe_prompt=${_probe_prompt%X}
 
     _SERIAL_LOCK=""
@@ -269,7 +269,7 @@ larch_run_one_codex_probe() {
     fi
 
     _probe_model_args=()
-    if model_args_tmp=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$model_args_tmp" 2>/dev/null; then
+    if model_args_tmp=$(mktemp) && python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex --with-effort >"$model_args_tmp" 2>/dev/null; then
         while IFS= read -r _model_arg; do
             _probe_model_args+=("$_model_arg")
         done <"$model_args_tmp"

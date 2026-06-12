@@ -3,19 +3,19 @@
 # tool name taxonomy and implementer-coder taxonomy used across larch.
 #
 # Sourced by:
-#   - scripts/agent-model-args.sh
+#   - python/cli.py agent model-args
 #   - scripts/check-reviewers.sh
 #   - scripts/collect-agent-results.sh
 #   - skills/implement/scripts/step2-implement.sh
 #
 # Related:
-#   - scripts/run-external-agent.sh is NOT sourced from this registry and still
+#   - python/cli.py agent run-external-agent is NOT sourced from this registry and still
 #     does not validate `--tool` against it, per DECISION_1 of #1099. The
 #     human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar
 #     field is sanitized at write time through a label-safe allowlist
 #     (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_`
 #     (length-preserved), and an empty sanitized result falls back to
-#     `sanitized-empty`. See scripts/run-external-agent.md for the full
+#     `sanitized-empty`. See python/agents.py for the full
 #     sanitization contract.
 #
 # Non-goals: per-tool model defaults, probe argv templates, launcher paths,

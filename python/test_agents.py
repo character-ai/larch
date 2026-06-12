@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false
 """Tests for agents.py classification and waterfall."""
 
 from __future__ import annotations
@@ -394,9 +395,109 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
         run_id="run",
         repo="o/r",
     )
-    assert argv[0].endswith(f"launch-{tier}-ci.sh")
-    assert Path(argv[0]).is_absolute()
+    assert argv[:3] == [agents.sys.executable, str(agents._PY_CLI), "agent"]  # pylint: disable=protected-access
+    assert argv[3] == f"launch-{tier}-ci"
     assert "--role" in argv
+
+
+def test_model_args_defaults_and_effort() -> None:
+    result = agents.resolve_model_args("codex", with_effort=True)
+    assert result.argv[:2] == ("-m", "gpt-5.5")
+    assert "-c" in result.argv
+    assert 'model_reasoning_effort="high"' in result.argv
+
+
+def test_model_args_env_rejects_blank(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "   ")
+    with pytest.raises(ValueError, match="blank"):
+        agents.resolve_model_args("codex")
+
+
+def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_CURSOR_MODEL", raising=False)
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL", "cursor-test-model")
+    assert agents.resolve_model_args("cursor", with_effort=True).argv == ("--model", "cursor-test-model")
+
+
+def test_parse_codex_usage_nested_usage(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text(
+        '{"msg":{"usage":{"input_tokens":12,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}}\n',
+        encoding="utf-8",
+    )
+    totals = agents.parse_codex_usage_file(events)
+    assert totals.uncached_input_tokens == 7
+    assert totals.cached_input_tokens == 5
+    assert totals.output_tokens == 7
+    assert totals.total_tokens == 19
+
+
+def test_parse_codex_usage_fails_when_cached_exceeds_input(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text(
+        '{"type":"token_usage","input_tokens":3,"cached_input_tokens":4,"output_tokens":1}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cached_tokens exceeds input_tokens"):
+        agents.parse_codex_usage_file(events)
+
+
+def test_cursor_auth_trims_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CURSOR_API_KEY", "  crsr_key  ")
+    verdict = agents.cursor_auth_preflight()
+    assert verdict.ok is True
+    assert verdict.rc == 0
+    assert agents.os.environ["CURSOR_API_KEY"] == "crsr_key"
+
+
+def test_degraded_tools_empty_presence_is_distinct_bug_signal() -> None:
+    result = agents.degraded_tools_result(
+        codex_binary_found="true",
+        codex_present="",
+        cursor_binary_found="true",
+        cursor_present="true",
+        skill="implement",
+    )
+    assert result.degraded is True
+    assert result.presence_input_empty is True
+    assert result.codex_state == "probe-failed"
+
+
+def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> None:
+    output = tmp_path / "agent.out"
+    sink = tmp_path / "agent.stderr"
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        stderr_sink=str(sink),
+        cmd=[
+            agents.sys.executable,
+            "-c",
+            "import sys; print('ok'); print('diag', file=sys.stderr)",
+        ],
+        capture_stdout_only=True,
+    )
+    assert result.exit_code == 0
+    assert output.read_text(encoding="utf-8") == "ok\n"
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "0\n"
+    meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    assert f"STDERR_SINK={sink}" in meta
+
+
+def test_run_external_agent_missing_child_is_post_validation_failure(tmp_path: Path) -> None:
+    output = tmp_path / "missing.out"
+    result = agents.run_external_agent(
+        tool="claude",
+        output=str(output),
+        timeout_seconds=5,
+        cmd=[str(tmp_path / "missing-child")],
+    )
+    assert result.exit_code == 127
+    assert output.with_suffix(output.suffix + ".meta").is_file()
+    assert output.with_suffix(output.suffix + ".diag").is_file()
+    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "127\n"
 
 
 def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:

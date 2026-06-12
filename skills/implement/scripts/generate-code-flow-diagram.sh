@@ -65,7 +65,7 @@ sanitize_log="$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log"
     git diff --name-only "$(git merge-base HEAD "$BASE_TARGET" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || printf HEAD)"..HEAD 2>/dev/null || true
 } > "$prompt"
 
-if ! "$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh" \
+if ! python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-subprocess \
     --model "$MODEL" \
     --prompt-file "$prompt" \
     --output-file "$raw" \

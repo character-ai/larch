@@ -200,6 +200,18 @@ def test_changelog_excluded(tmp_path: Path) -> None:
     assert rc == 0
 
 
+def test_protected_plugin_manifest_excluded(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = "scripts/old-helper.sh"
+    _ = _add_file(repo, ".claude-plugin/plugin.json", f'{{"description": "{retired}"}}\n')
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
 def test_manifest_self_reference_ignored(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/old-helper.sh"

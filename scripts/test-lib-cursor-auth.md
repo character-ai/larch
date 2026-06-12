@@ -1,6 +1,6 @@
 # test-lib-cursor-auth.sh
 
-Hermetic regression harness for `scripts/lib-cursor-auth.sh` and `scripts/cursor-auth-flags.sh`. Pins:
+Hermetic regression harness for `scripts/lib-cursor-auth.sh` and `python/cli.py agent cursor-auth-preflight`. Pins:
 
 - `cursor_auth_export_env` normalizes `CURSOR_API_KEY` for empty / whitespace-only / single-line / leading-or-trailing-whitespace key values without building auth argv.
 - `cursor_auth_preflight` returns 0 when `CURSOR_API_KEY` non-empty (regardless of platform), 0 on non-Darwin (override via `LIB_CURSOR_AUTH_TEST_UNAME=Linux`), 0 on Darwin when the mocked keychain return code is 0, and 2 on Darwin when retries exhaust with mocked failures.
@@ -9,12 +9,12 @@ Hermetic regression harness for `scripts/lib-cursor-auth.sh` and `scripts/cursor
 - `cursor_launcher_setup_auth_argv` calls the pre-read before env export, so a mocked Darwin token becomes the inherited `CURSOR_API_KEY`.
 - `LIB_CURSOR_AUTH_TEST_*` overrides are silently ignored when `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1` is NOT set (production cannot bypass Darwin preflight by setting one stray env var).
 - `cursor_auth_preflight` stderr message contains the documented anchors: caller identity prefix, `docs/installation-and-setup.md` pointer, and both remediation suggestions (`export CURSOR_API_KEY=...` and `security delete-generic-password -a cursor-user`).
-- `scripts/cursor-auth-flags.sh` acts as a preflight gate and emits no argv flags.
+- `python/cli.py agent cursor-auth-preflight` acts as a preflight gate and emits no argv flags.
 
 ## Producer / runtime references
 
 - `scripts/lib-cursor-auth.sh` (producer) and `scripts/lib-cursor-auth.md` (sibling contract).
-- `scripts/cursor-auth-flags.sh` (line-per-element emitter) and `scripts/cursor-auth-flags.md` (sibling contract).
+- `python/cli.py agent cursor-auth-preflight` (line-per-element emitter) and `python/agents.py` (sibling contract).
 
 ## Makefile wiring
 

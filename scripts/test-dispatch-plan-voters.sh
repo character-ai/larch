@@ -100,7 +100,7 @@ cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_ROOT_STUB/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_ROOT_STUB/scripts/lib-scope-anchor-handoff.sh"
 chmod +x "$PLUGIN_ROOT_STUB/python/cli.py"
 
-cat > "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh" <<'STUB'
+cat > "$PLUGIN_ROOT_STUB/python/cli.py agent launch-claude-review" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 OUTPUT=""
@@ -131,7 +131,7 @@ esac
 printf '0\n' > "${OUTPUT}.done"
 exit 0
 STUB
-chmod +x "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh"
+chmod +x "$PLUGIN_ROOT_STUB/python/cli.py agent launch-claude-review"
 
 cat > "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh" <<'STUB'
 #!/usr/bin/env bash

@@ -18,7 +18,7 @@ def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
 
 
 def test_clean_and_allowlisted_launcher(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "scripts/launch-codex-exec.sh", "#!/bin/bash", "codex exec --full-auto -C . hi")
+    write(tmp_path / "python/cli.py agent launch-codex-exec", "#!/bin/bash", "codex exec --full-auto -C . hi")
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
 

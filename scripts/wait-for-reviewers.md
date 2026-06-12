@@ -1,6 +1,6 @@
 # scripts/wait-for-reviewers.md — contract
 
-`scripts/wait-for-reviewers.sh` polls the `.done` sentinel files emitted by `scripts/run-external-agent.sh` and reports per-reviewer completion / timeout on stdout in a machine-parseable shape. Stderr carries human-readable progress (dot ticks, per-minute status lines, final summary). The script always exits `0` for normal operation — including the all-timed-out case — so callers must inspect stdout (`DONE <idx> <basename>: exit=<code>` vs `TIMEOUT <idx> <basename>`) to drive their own fallback logic. Exit `1` is reserved for usage errors (missing sentinel arguments, bad `--timeout`, bad `WAIT_FOR_REVIEWERS_POLL_INTERVAL`).
+`scripts/wait-for-reviewers.sh` polls the `.done` sentinel files emitted by `python/cli.py agent run-external-agent` and reports per-reviewer completion / timeout on stdout in a machine-parseable shape. Stderr carries human-readable progress (dot ticks, per-minute status lines, final summary). The script always exits `0` for normal operation — including the all-timed-out case — so callers must inspect stdout (`DONE <idx> <basename>: exit=<code>` vs `TIMEOUT <idx> <basename>`) to drive their own fallback logic. Exit `1` is reserved for usage errors (missing sentinel arguments, bad `--timeout`, bad `WAIT_FOR_REVIEWERS_POLL_INTERVAL`).
 
 ## Callers
 

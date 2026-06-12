@@ -71,7 +71,7 @@ and the active design token ledger.
 - `scripts/launch-claude-drafter.sh` — claude-side equivalent; keep status KV
   contract identical so SKILL.md Step 2b can use either launcher
 - `scripts/parse-drafter-output.py` — shared sentinel parser called by both launchers
-- `scripts/launch-codex-exec.sh` — inner launcher; argv changes affect this wrapper
+- `python/cli.py agent launch-codex-exec` — inner launcher; argv changes affect this wrapper
 - `skills/design/SKILL.md` — Step 2b drafter dispatch block
 - `docs/configuration-and-permissions.md` — `LARCH_DESIGN_DRAFTER` env var docs
 - `python/timing.py TIMING_TASK_KINDS_ALLOWED` — `codex-plan-draft` kind registration

@@ -98,7 +98,7 @@ VOTER_1_PATH="$DESIGN_TMPDIR/claude-vote-output.txt"
 # and the Codex+Cursor waterfall launches immediately — no serial gate between
 # the Claude lane and the external lanes (same structure as
 # dispatch-code-voters.sh).
-"$SCRIPT_DIR/launch-claude-review.sh" \
+python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-review \
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
     --mode description \
@@ -185,7 +185,7 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
         python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$_issues_log" \
             --site "dispatch-plan-voters.sh voter1" \
-            --tool "launch-claude-review.sh (claude plan voter)" \
+            --tool "agent launch-claude-review (claude plan voter)" \
             --exit-code "$voter1_rc" \
             --status-label "$_status_label" \
             --category Warnings \
