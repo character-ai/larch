@@ -36,7 +36,8 @@ LAUNCHER_PREFIX = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
 EXPECTED_OLD = 5
 EXPECTED_NEW = 32
 
-def normalized_logical_command(body):
+def old_logical_commands(body):
+    commands = []
     parts = []
     for _, raw in body:
         stripped = raw.strip()
@@ -50,8 +51,14 @@ def normalized_logical_command(body):
             continue
         if stripped.endswith('\\'):
             stripped = stripped[:-1].rstrip()
+            parts.append(stripped)
+            continue
         parts.append(stripped)
-    return ' '.join(parts)
+        commands.append(' '.join(parts))
+        parts = []
+    if parts:
+        commands.append(' '.join(parts))
+    return commands
 
 def old_target_kind(cmd):
     if 'scripts/extract-closes-issue-from-pr.sh' in cmd:
@@ -75,7 +82,9 @@ def has_awk(body):
 def nonblank_lines(body):
     return [(ln, raw) for ln, raw in body if raw.strip()]
 
-def validate_old(start, end, body, cmd, kind):
+def validate_old(start, end, body, commands, cmd, kind):
+    if len(commands) != 1:
+        errors.append(f'fence {start}-{end}: old-shape {kind} must have exactly one logical command, found {len(commands)}')
     if not has_guard(body):
         errors.append(f'fence {start}-{end}: old-shape {kind} missing canonical plugin-root.env guard')
     awk = has_awk(body)
@@ -135,11 +144,12 @@ for start, end, body in fences:
         if 'session read-key' in raw:
             errors.append(f'fence {start}-{end}: inline session read-key is not allowed')
             break
-    cmd = normalized_logical_command(body)
+    commands = old_logical_commands(body)
+    cmd = ' '.join(commands)
     kind = old_target_kind(cmd)
     if kind:
         old_count += 1
-        validate_old(start, end, body, cmd, kind)
+        validate_old(start, end, body, commands, cmd, kind)
     else:
         new_count += 1
         validate_new(start, end, body)

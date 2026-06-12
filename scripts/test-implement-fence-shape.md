@@ -9,6 +9,7 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
   - the two Preflight `python/cli.py plan-block read` fences, which remain guard-only;
   - Step 0 initial bootstrap;
   - dirty-tree recovery resume.
+- Old-shape pre-bootstrap fences must contain exactly one logical command after the guard, allowed awk fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.
 - Post-Step-0 fences call `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative .sh|.py target> ...`.
 - Launcher targets must be repo-relative and must not contain `..`.
