@@ -993,11 +993,15 @@ def _filtered_envelope(text: str, *, resume: bool) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _routing_file_trusted(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
 def _restore_resume_coder(data: dict[str, str], routing_file: Path, tmpdir: str) -> None:
     if data.get("coder"):
         return
     sources: list[Path] = []
-    if routing_file.exists():
+    if routing_file.exists() and _routing_file_trusted(routing_file):
         sources.append(routing_file)
     sources.extend((Path(tmpdir) / "session-env.sh", Path(tmpdir) / "run-flags.sh"))
     for path in sources:
@@ -1131,6 +1135,81 @@ def _envelope_text(data: dict[str, str]) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+_GATE_STDERR_KV_PREFIXES: tuple[str, ...] = (
+    "DEGRADED=",
+    "BOTH_DOWN=",
+    "CODEX_STATE=",
+    "CURSOR_STATE=",
+    "PRESENCE_INPUT_EMPTY=",
+)
+
+
+def _parent_invocation_non_interactive() -> bool:
+    pid = os.getppid()
+    visited: set[int] = set()
+    for _ in range(8):
+        if pid <= 1 or pid in visited:
+            break
+        visited.add(pid)
+        comm = subprocess.run(
+            ["ps", "-o", "comm=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if comm.returncode == 0:
+            comm_name = comm.stdout.strip().lower()
+            if comm_name in {"cron", "crond"} or "cron" in comm_name:
+                return True
+        args = subprocess.run(
+            ["ps", "-o", "args=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if args.returncode == 0:
+            args_line = args.stdout.strip()
+            if args_line:
+                lower = args_line.lower()
+                if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
+                    return True
+        ppid = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if ppid.returncode != 0:
+            break
+        try:
+            pid = int(ppid.stdout.strip())
+        except ValueError:
+            break
+    return False
+
+
+def _relay_gate_stderr(stderr: str, *, force_all: bool = False) -> None:
+    if not stderr.strip():
+        return
+    if force_all:
+        for line in stderr.splitlines():
+            if line.strip():
+                _err(line)
+        return
+    for line in stderr.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped in {"DEGRADED_EXPLANATION_BEGIN", "DEGRADED_EXPLANATION_END"}:
+            continue
+        if any(stripped.startswith(prefix) for prefix in _GATE_STDERR_KV_PREFIXES):
+            continue
+        _err(line)
+
+
 def _resolve_non_interactive(
     explicit: str,
     env: Mapping[str, str] | None = None,
@@ -1138,14 +1217,16 @@ def _resolve_non_interactive(
     if explicit in {"true", "false"}:
         return explicit == "true"
     runtime = env or os.environ
-    for key in ("LARCH_SKILL_NON_INTERACTIVE", "LARCH_AUTONOMOUS_LOOP", "LARCH_EVAL_RUN"):
+    for key in ("LARCH_SKILL_NON_INTERACTIVE", "LARCH_AUTONOMOUS_LOOP", "LARCH_EVAL_RUN", "LARCH_CRON"):
         if runtime.get(key, "") == "true":
             return True
     if runtime.get("CI", "").lower() in {"1", "true", "yes"}:
         return True
     if runtime.get("GITHUB_ACTIONS", "").lower() in {"1", "true", "yes"}:
         return True
-    return runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}
+    if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
+        return True
+    return _parent_invocation_non_interactive()
 
 
 def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
@@ -1307,7 +1388,12 @@ def _run_absorbed_continue_tail(
     )
     if gate.returncode != 0:
         return ContinueTailResult(contract_failure=True, step_failed="absorbed-degraded-gate")
-    gate_routing, explanation_lines, explanation_text = _parse_gate_output(gate.stdout + gate.stderr)
+    gate_text = gate.stdout + gate.stderr
+    gate_routing, explanation_lines, explanation_text = _parse_gate_output(gate_text)
+    _relay_gate_stderr(
+        gate.stderr,
+        force_all=gate_routing.get("PRESENCE_INPUT_EMPTY") == "true",
+    )
     both_down_seen = "BOTH_DOWN" in gate_routing
     both_down = gate_routing.get("BOTH_DOWN", "")
     degraded = gate_routing.get("DEGRADED", "false") == "true"
@@ -1439,16 +1525,20 @@ def invoke_main(argv: list[str]) -> int:
         return 1
     envelope = _filtered_envelope(out, resume=args.mode == "resume")
     routing_file = Path(tmpdir) / "bootstrap-routing.env"
-    if args.mode == "resume" and routing_file.is_file() and not routing_file.is_symlink():
+    routing_trusted = _routing_file_trusted(routing_file)
+    if args.mode == "resume" and routing_trusted:
         envelope = _preserve_resume_routing(envelope, routing_file)
     data = _parse_env_lines(envelope)
     if args.mode == "resume":
         _restore_resume_coder(data, routing_file, tmpdir)
-    tail = _run_absorbed_continue_tail(
-        data,
-        opts=opts,
-        non_interactive=_resolve_non_interactive(non_interactive, env),
-    )
+    if routing_file.exists() and not routing_trusted:
+        tail = ContinueTailResult()
+    else:
+        tail = _run_absorbed_continue_tail(
+            data,
+            opts=opts,
+            non_interactive=_resolve_non_interactive(non_interactive, env),
+        )
     if tail.contract_failure:
         _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
         _invoke_error(tail.step_failed or "absorbed-continue-tail", "", tmpdir)

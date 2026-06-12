@@ -562,6 +562,7 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
     assert (tmp_path / "bootstrap-routing.env").is_dir()
 
 
+@pytest.mark.usefixtures("gate_and_probe")
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     plan = tmp_path / "plan.txt"
@@ -1102,10 +1103,108 @@ def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> Non
     _ = target.write_text("coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
     routing = tmp_path / "bootstrap-routing.env"
     routing.symlink_to(target)
+    _ = (tmp_path / "session-env.sh").write_text("coder=codex\n", encoding="utf-8")
     data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
     bootstrap._restore_resume_coder(data, routing, str(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert data["coder"] == "cursor"
-    assert data["coder_fallback"] == "true"
+    assert data["coder"] == "codex"
+    assert "coder_fallback" not in data
+
+
+def test_resolve_non_interactive_detects_larch_cron_env() -> None:
+    assert bootstrap._resolve_non_interactive("", {"LARCH_CRON": "true"})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_non_interactive_detects_parent_claude_p(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
+    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(), "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=bootstrap._resolve_non_interactive(""),  # pyright: ignore[reportPrivateUsage]
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("ROUTE") == "continue"
+
+
+def test_invoke_absorbed_degraded_gate_relays_presence_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    gate_stderr = (
+        "agent degraded-tools-gate: ERROR: --codex-present resolved empty "
+        "(caller rehydration bug — read presence keys from the durable session-env file, "
+        "not ambient shell state); treating as down (fail-safe)\n"
+    )
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(
+                ["cli", *args],
+                0,
+                "DEGRADED=true\nBOTH_DOWN=true\nPRESENCE_INPUT_EMPTY=true\n"
+                "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
+                gate_stderr,
+            )
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    assert "--codex-present resolved empty" in capsys.readouterr().err
+
+
+def test_invoke_resume_skips_absorbed_tail_for_symlinked_routing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    target = tmp_path / "routing-target.env"
+    _ = target.write_text(f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n", encoding="utf-8")
+    (tmp_path / "bootstrap-routing.env").symlink_to(target)
+    gate_called = False
+
+    def fake_cli(*args: str, **_kwargs):
+        nonlocal gate_called
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            gate_called = True
+        return subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), "")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    assert not gate_called
+    assert "ROUTE=" not in capsys.readouterr().out
 
 
 def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1117,7 +1216,8 @@ def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.Mon
     assert bootstrap._resolve_non_interactive("", {"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
 
 
-def test_resolve_non_interactive_defaults_interactive_without_explicit_signal() -> None:
+def test_resolve_non_interactive_defaults_interactive_without_explicit_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: False)
     assert not bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
 
 
