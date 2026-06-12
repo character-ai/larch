@@ -276,6 +276,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/ship-pr.sh|scripts/ship-pr.md|scripts/test-ship-pr-rebase.sh|scripts/test-ship-pr-rebase.md)
+                append_target_once test-ship-pr-rebase
+                ;;
+        esac
+        case "$f" in
             scripts/lib-external-launcher-common.sh|scripts/lib-external-launcher-common.md|scripts/test-lib-external-launcher-common.sh|scripts/test-lib-external-launcher-common.md)
                 append_target_once test-lib-external-launcher-common
                 ;;

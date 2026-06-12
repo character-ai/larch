@@ -216,4 +216,180 @@ set -e
 grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
     && fail "(F) legacy --resume-phase step8b_rebase must not die_usage (got rc=$legacy_rc)"
 
-echo "PASS: test-ship-pr-rebase.sh — CI-fix rebase structural pins, fork postbump guard, legacy resume, and resume guard hold (A-F, D2)"
+# ---------------------------------------------------------------------------
+# (G) CI-fix vendor waterfall ingests failed-tier sidecars before rollback.
+# ---------------------------------------------------------------------------
+(
+    set -euo pipefail
+    CASE_DIR="$TMPROOT/sidecar-waterfall"
+    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl"
+    # shellcheck source=scripts/ship-pr.sh
+    source "$SHIP_PR"
+    SCRIPT_DIR="$CASE_DIR/scripts"
+    IMPLEMENT_TMPDIR="$CASE_DIR/impl"
+    STATE_FILE="$CASE_DIR/state"
+    CALL_LOG="$CASE_DIR/calls.log"
+    : >"$STATE_FILE"
+    : >"$CALL_LOG"
+
+    cat >"$SCRIPT_DIR/launch-codex-ci.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '%s\n' 'TOOL=codex' 'INPUT=1' 'OUTPUT=2' 'TOTAL=3' 'RAW=codex_ci_fix' > "${out}.token-record"
+printf 'LAUNCHER_EXIT=1\nTOKEN_RECORD=%s\n' "${out}.token-record"
+EOF
+    chmod +x "$SCRIPT_DIR/launch-codex-ci.sh"
+    cat >"$SCRIPT_DIR/launch-cursor-ci.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '%s\n' 'TOOL=cursor' 'INPUT=4' 'OUTPUT=5' 'TOTAL=9' 'RAW=cursor_ci_fix' > "${out}.token-record"
+printf 'LAUNCHER_EXIT=0\nTOKEN_RECORD=%s\n' "${out}.token-record"
+EOF
+    chmod +x "$SCRIPT_DIR/launch-cursor-ci.sh"
+
+    python3() {
+        local verb="" input=""
+        case " $* " in
+            *" append-record "*) verb=append-record ;;
+            *" record-vendor-sidecar "*) verb=record-vendor-sidecar ;;
+        esac
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --input) input=$2; shift 2 ;;
+                *) shift ;;
+            esac
+        done
+        printf '%s|%s|%s\n' "$verb" "$input" "${IMPLEMENT_TMPDIR:-}" >>"$CALL_LOG"
+        return 0
+    }
+    git() {
+        case "${1:-} ${2:-}" in
+            "rev-parse HEAD") printf '%s\n' "not-a-real-head" ;;
+            *) return 0 ;;
+        esac
+    }
+    read_state() {
+        case "$1" in
+            REPO) printf '%s\n' "owner/repo" ;;
+            *) printf '\n' ;;
+        esac
+    }
+    resolve_plan_file() { return 0; }
+    failure_capture_path() { printf '%s/failure-%s-%s.log\n' "$CASE_DIR" "$1" "$RANDOM"; }
+    record_failure() { printf 'RECORD|%s|%s\n' "$2" "$3" >>"$CALL_LOG"; }
+    capture_tracked_dirty_paths() { return 0; }
+    capture_untracked_dirty_paths() { return 0; }
+    _ci_fix_rollback() { printf 'ROLLBACK\n' >>"$CALL_LOG"; }
+    _surface_ci_stderr_tail() { return 0; }
+    ship_pr_read_launcher_failure_class() { printf '%s\n' health; }
+    _verify_failed_jobs_locally() { return 0; }
+    _stage_and_push_ci_fixes() { printf 'STAGE|%s\n' "$2" >>"$CALL_LOG"; return 0; }
+    larch_err() { return 0; }
+
+    run_ci_fix_vendor ci-merge run-1 "" 1 ""
+    codex_append_line=$(grep -n 'append-record|.*\.codex\.token-record' "$CALL_LOG" | cut -d: -f1)
+    codex_vendor_line=$(grep -n 'record-vendor-sidecar|.*\.codex\.token-record' "$CALL_LOG" | cut -d: -f1)
+    rollback_line=$(grep -n '^ROLLBACK$' "$CALL_LOG" | cut -d: -f1)
+    [[ -n "$codex_append_line" && -n "$codex_vendor_line" && -n "$rollback_line" ]] \
+        || fail "(G) expected codex append/vendor ingest before rollback; log=$(cat "$CALL_LOG")"
+    [[ "$codex_append_line" -lt "$rollback_line" && "$codex_vendor_line" -lt "$rollback_line" ]] \
+        || fail "(G) codex sidecar ingest must happen before rollback; log=$(cat "$CALL_LOG")"
+    [[ "$(grep -c 'append-record|.*\.codex\.token-record' "$CALL_LOG")" -eq 1 ]] \
+        || fail "(G) codex append-record should run once; log=$(cat "$CALL_LOG")"
+    [[ "$(grep -c 'record-vendor-sidecar|.*\.codex\.token-record' "$CALL_LOG")" -eq 1 ]] \
+        || fail "(G) codex record-vendor-sidecar should run once; log=$(cat "$CALL_LOG")"
+    [[ "$(grep -c 'append-record|.*\.cursor\.token-record' "$CALL_LOG")" -eq 1 ]] \
+        || fail "(G) cursor append-record should run once; log=$(cat "$CALL_LOG")"
+    [[ "$(grep -c 'record-vendor-sidecar|.*\.cursor\.token-record|'"$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
+        || fail "(G) cursor vendor ingest should export IMPLEMENT_TMPDIR; log=$(cat "$CALL_LOG")"
+)
+
+# ---------------------------------------------------------------------------
+# (H) Stage-and-push CI fixes ingests the winning sidecar once.
+# ---------------------------------------------------------------------------
+(
+    set -euo pipefail
+    CASE_DIR="$TMPROOT/sidecar-stage"
+    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl"
+    # shellcheck source=scripts/ship-pr.sh
+    source "$SHIP_PR"
+    SCRIPT_DIR="$CASE_DIR/scripts"
+    IMPLEMENT_TMPDIR="$CASE_DIR/impl"
+    STATE_FILE="$CASE_DIR/state"
+    CALL_LOG="$CASE_DIR/calls.log"
+    TOKEN_RECORD="$CASE_DIR/winner.token-record"
+    : >"$STATE_FILE"
+    : >"$CALL_LOG"
+    printf '%s\n' 'TOOL=cursor' 'INPUT=4' 'OUTPUT=5' 'TOTAL=9' 'RAW=cursor_ci_fix' > "$TOKEN_RECORD"
+
+    cat >"$SCRIPT_DIR/ci-behind-count.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'BEHIND_COUNT=0\n'
+EOF
+    chmod +x "$SCRIPT_DIR/ci-behind-count.sh"
+    cat >"$SCRIPT_DIR/git-push.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$SCRIPT_DIR/git-push.sh"
+
+    python3() {
+        local verb="" input=""
+        case " $* " in
+            *" append-record "*) verb=append-record ;;
+            *" record-vendor-sidecar "*) verb=record-vendor-sidecar ;;
+            *) return 0 ;;
+        esac
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --input) input=$2; shift 2 ;;
+                *) shift ;;
+            esac
+        done
+        printf '%s|%s|%s\n' "$verb" "$input" "${IMPLEMENT_TMPDIR:-}" >>"$CALL_LOG"
+        return 0
+    }
+    git() {
+        case "${1:-} ${2:-}" in
+            "rev-parse HEAD") printf '%040d\n' 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    read_state() {
+        case "$1" in
+            FORKED_TARGET) printf '%s\n' false ;;
+            *) printf '\n' ;;
+        esac
+    }
+    failure_capture_path() { printf '%s/failure-%s-%s.log\n' "$CASE_DIR" "$1" "$RANDOM"; }
+    record_failure() { printf 'RECORD|%s|%s\n' "$2" "$3" >>"$CALL_LOG"; }
+    capture_tracked_dirty_paths() { return 0; }
+    capture_untracked_dirty_paths() { return 0; }
+    run_checks_with_lint_fix_loop() { LAST_LINT_FIX_DELTA_PATHS_FILE=""; return 0; }
+    _commit_ci_fix_stage_paths() { return 0; }
+    _ci_fix_pending_clear() { CI_FIX_REBASE_PENDING=false; }
+
+    CI_FIX_REBASE_PENDING=false
+    SHIP_PR_INGESTED_TOKEN_RECORDS=()
+    _stage_and_push_ci_fixes ci-initial "$TOKEN_RECORD" step10 ""
+    [[ "$(grep -c "append-record|$TOKEN_RECORD" "$CALL_LOG")" -eq 1 ]] \
+        || fail "(H) stage append-record should run once; log=$(cat "$CALL_LOG")"
+    [[ "$(grep -c "record-vendor-sidecar|$TOKEN_RECORD|$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
+        || fail "(H) stage vendor ingest should run once with IMPLEMENT_TMPDIR; log=$(cat "$CALL_LOG")"
+)
+
+echo "PASS: test-ship-pr-rebase.sh — CI-fix rebase structural pins, fork postbump guard, legacy resume, sidecar ingest, and resume guard hold (A-H, D2)"
