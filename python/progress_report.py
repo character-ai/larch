@@ -286,7 +286,7 @@ def _all_round_dirs_inflight(rounds_root: Path) -> bool:
     for round_dir in dirs:
         meta_path = round_dir / "round-meta.json"
         try:
-            meta_path.lstat()
+            _ = meta_path.lstat()
             return False
         except FileNotFoundError:
             continue
