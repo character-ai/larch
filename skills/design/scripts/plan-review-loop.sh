@@ -1928,7 +1928,7 @@ if [[ "$ACCEPTED_COUNT" -eq 0 \
     && "${ALL_SLOTS_DROPPED:-false}" != "true" ]]; then
     LOOP_STATUS=zero-findings-degraded-panel
     LOOP_REASON=zero-findings-degraded-panel
-elif [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 ]]; then
+elif [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 && "${LOOP_REASON:-}" != ballot-items-lost* ]]; then
     LOOP_STATUS=degraded-empty-collector
     LOOP_REASON=degraded-empty-collector
     DEGRADED_PANEL=1
