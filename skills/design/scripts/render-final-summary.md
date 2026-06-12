@@ -6,7 +6,7 @@
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
 then composes `review-findings-full.jsonl`, renders the best-effort Review Phase Detail appendix when `plan-review/` exists, invokes `scripts/render-run-summary.sh --skill design`, and (post-publish
 phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
-via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
+via `python3 python/cli.py tracking-issue upsert-summary` **internally** (SKILL.md references only
 this helper).
 
 ## Callers (twelve)

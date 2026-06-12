@@ -703,7 +703,7 @@ args=(upsert-summary --issue "$ISSUE" --marker "<!-- larch:final-summary v1 runi
 [ -z "$REPO" ] || args+=(--repo "$REPO")
 out_file="$IMPLEMENT_TMPDIR/write-final-report.out"
 err_file="$IMPLEMENT_TMPDIR/write-final-report.err"
-if "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" "${args[@]}" >"$out_file" 2>"$err_file"; then
+if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$out_file" 2>"$err_file"; then
     emit_kv_out COMMENT_URL "$(awk -F= '$1=="COMMENT_URL"{print substr($0,index($0,"=")+1); exit}' "$out_file")"
     emit_kv_out STATUS ok
     exit 0

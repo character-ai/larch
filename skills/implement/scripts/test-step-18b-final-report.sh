@@ -73,6 +73,15 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
         raise SystemExit(_token_report_stub())
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
+        args = sys.argv[3:]
+        if "--content-file" in args:
+            src = Path(args[args.index("--content-file") + 1])
+            dst = os.environ.get("TRACKING_CONTENT_LOG", "")
+            if dst:
+                Path(dst).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        print("COMMENT_URL=https://example.test/comment/int")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -267,6 +276,15 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "token" and sys.argv[2] == "report":
         raise SystemExit(_token_report_stub())
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
+        args = sys.argv[3:]
+        if "--content-file" in args:
+            src = Path(args[args.index("--content-file") + 1])
+            dst = os.environ.get("TRACKING_CONTENT_LOG", "")
+            if dst:
+                Path(dst).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        print("COMMENT_URL=https://example.test/comment/int")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -295,12 +313,6 @@ cp "$REPO_ROOT/python/report_tokens_cost.py" "$int_plugin/python/report_tokens_c
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
 chmod +x "$int_plugin/python/cli.py" "$int_plugin/python/stubs/session/read-key" \
   "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/python/report_tokens_cost.py"
-cat >"$int_plugin/scripts/tracking-issue-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
-printf 'COMMENT_URL=https://example.test/comment/int\n'
-STUB
-chmod +x "$int_plugin/scripts/tracking-issue-summary.sh"
 cp "$SOURCE_HELPER" "$int_impl/step-18b-final-report.sh"
 cp "$REPO_ROOT/skills/implement/scripts/write-final-report.sh" "$int_impl/write-final-report.sh"
 chmod +x "$int_impl/step-18b-final-report.sh" "$int_impl/write-final-report.sh"

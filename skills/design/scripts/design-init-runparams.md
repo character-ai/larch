@@ -17,13 +17,13 @@
 | `--brainstorm-requested true\|false` | yes | Includes title-prefix auto-enable |
 | `--approve-requested true\|false` | yes | Public `--per-round-approval` (restores per-round Gate B prompt) |
 | `--skip-approve-requested true\|false` | yes | Public `--skip-approve`/`-s` (auto-approves Step 1d.7 outline and Gate C final plan) |
-| `--repo OWNER/REPO` | no | Forwarded for `tracking-issue-write.sh` rename |
+| `--repo OWNER/REPO` | no | Forwarded for `python3 python/cli.py tracking-issue` rename |
 
 ## Responsibilities
 
 1. Tier map: SIMPLE → `sketch_budget=0`, `workflow_path=SIMPLE`; HARD → `sketch_budget=3`, `workflow_path=HARD`; `source=caller-forwarded`.
 2. **Single** `write-design-current-env.sh` **before** `[DESIGNING]` rename; child diagnostics preserve quiet mode with the same `[ "${LARCH_QUIET_PID:-}" = "$$" ]` / FD 4 bridge (`>/dev/null 2>&4` only under quiet, `>/dev/null` otherwise); non-zero → detailed `larch_err` banner, `INIT_STATUS=env-refresh-failed`, exit `1`.
-3. `tracking-issue-write.sh rename --state designing` with `${REPO:+--repo}`; rename failure → `WARN=`.
+3. `python3 python/cli.py tracking-issue rename --state designing` with `${REPO:+--repo}`; rename failure → `WARN=`.
 4. `write-run-params.sh` → `run-params.json`; non-zero → detailed `larch_err` contract-drift banner including `contract drift`, `aborting before silent tier downgrade`, and `bash python/test_session_env.py`, then `INIT_STATUS=contract-drift`, exit `1`.
 5. Full router-flag jq-merge block (guard, `mktemp` paths, filter, `mv`, `run-log append-failure` on jq failure, both warning strings). The guard and jq filter cover `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` so any router flag survives subshell boundaries (`$merge_p` / `$merge_b` / `$merge_a` / `$merge_s` OR-merge arms).
 

@@ -329,12 +329,11 @@ STUB
 install_real_diagrams_helper() {
     local root=$1
     cp "$REPO_ROOT/python/cli.py" "$root/python/cli.py"
-    cp "$REPO_ROOT/scripts/tracking-issue-summary.sh" "$root/scripts/tracking-issue-summary.sh"
     : # redact + mermaid sanitize are handled by the copied Python CLI
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
         "$root/python/cli.py" \
-        "$root/scripts/tracking-issue-summary.sh"
+        "$root/python/cli.py"
 }
 
 install_diagrams_gh_stub() {
@@ -495,7 +494,7 @@ assert_call_order "$CASE_DIR/calls.log" "python/cli.py diagrams upsert" "rebase-
 assert_call_order "$CASE_DIR/calls.log" "rebase-checkpoint-probe.sh" "flush-execution-issues.sh" "green rebase before flush"
 assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/code-flow-section.md" "green writes expected code flow section"
 assert_contains "python/cli.py diagrams upsert --issue 42 --repo owner/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
-assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "green does not call tracking summary directly"
+assert_not_contains "tracking-issue upsert-summary" "$(cat "$CASE_DIR/calls.log")" "green does not call tracking summary directly"
 
 new_case architecture-env-ignored
 printf '## Architecture Diagram\n\nstale\n' > "$CASE_DIR/architecture.md"

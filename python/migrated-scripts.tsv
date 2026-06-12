@@ -535,3 +535,15 @@ scripts/test-fetch-combinable-issues-filter.sh	#3689
 .claude/skills/analyze-issues/scripts/test-analyze.sh	#3689
 .claude/skills/analyze-issues/scripts/test-analyze.md	#3689
 .claude/skills/analyze-issues/scripts/test-fixture.json	#3689
+scripts/tracking-issue-read.sh	#3927
+scripts/tracking-issue-read.md	#3927
+scripts/test-tracking-issue-read-sentinel.sh	#3927
+scripts/test-tracking-issue-read-sentinel.md	#3927
+scripts/tracking-issue-write.sh	#3927
+scripts/tracking-issue-write.md	#3927
+scripts/test-tracking-issue-write.sh	#3927
+scripts/test-tracking-issue-write.md	#3927
+scripts/tracking-issue-summary.sh	#3927
+scripts/tracking-issue-summary.md	#3927
+scripts/test-tracking-issue-summary.sh	#3927
+scripts/test-tracking-issue-summary.md	#3927

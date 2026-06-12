@@ -133,15 +133,14 @@ cat >"$FAKE_PLUGIN/python/cli.py" <<STUB
 import os, subprocess, sys
 if sys.argv[1:3] == ["session", "write-design-env"]:
     raise SystemExit(0)
+if sys.argv[1:3] == ["tracking-issue", "rename"]:
+    if os.environ.get("LARCH_TEST_RENAME_FAIL") == "1":
+        raise SystemExit(1)
+    print("RENAMED=true")
+    raise SystemExit(0)
 raise SystemExit(subprocess.call(["$PYTHON_BIN", "$REPO_ROOT/python/cli.py", *sys.argv[1:]]))
 STUB
 chmod +x "$FAKE_PLUGIN/python/cli.py"
-cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' 'RENAMED=true'
-exit 0
-STUB
-chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 
 run_design_init() {
   local dtmp="$1" partition="$2" brainstorm="$3" extra_path="${4:-}" approve="${5:-false}" skip_approve="${6:-false}"
@@ -205,30 +204,19 @@ jq -e '.partition_requested == true and .skip_approve_requested == true' "$OUT8C
   || fail "case8c: skip_approve OR-merge regressed; got $(cat "$OUT8C")"
 
 # Case 9: rename failure is best-effort; run-params still written.
-cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 1
-STUB
-chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 D9="$TMPROOT/driver9"
 set +e
-out9=$(run_design_init "$D9" false false 2>&1)
+out9=$(LARCH_TEST_RENAME_FAIL=1 run_design_init "$D9" false false 2>&1)
 rc9=$?
 set -e
 [[ "$rc9" -eq 0 ]] || fail "case9: rename-fail best-effort rc=$rc9 out=$out9"
 [[ -f "$D9/run-params.json" ]] || fail "case9: missing run-params.json after rename failure"
 printf '%s\n' "$out9" | grep -Fq 'WARN=' \
   || fail "case9: missing rename WARN on stdout"
-printf '%s\n' "$out9" | grep -Fq 'rename failed (tracking-issue-write.sh)' \
+printf '%s\n' "$out9" | grep -Fq 'rename failed (python3 python/cli.py tracking-issue rename)' \
   || fail "case9: rename WARN text drifted"
 
 # Case 10: jq merge failure appends to execution-issues.md via production driver.
-cat >"$STUB_SCRIPTS/tracking-issue-write.sh" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' 'RENAMED=true'
-exit 0
-STUB
-chmod +x "$STUB_SCRIPTS/tracking-issue-write.sh"
 JQ_STUB="$TMPROOT/jq-stub-bin"
 mkdir -p "$JQ_STUB"
 cat >"$JQ_STUB/jq" <<STUB
@@ -371,6 +359,11 @@ cat >"$FAKE_RESUME_PLUGIN/python/cli.py" <<STUB
 #!/usr/bin/env python3
 import os, subprocess, sys
 if sys.argv[1:3] == ["session", "write-design-env"]:
+    raise SystemExit(0)
+if sys.argv[1:3] == ["tracking-issue", "rename"]:
+    if os.environ.get("LARCH_TEST_RENAME_FAIL") == "1":
+        raise SystemExit(1)
+    print("RENAMED=true")
     raise SystemExit(0)
 raise SystemExit(subprocess.call(["$PYTHON_BIN", "$REPO_ROOT/python/cli.py", *sys.argv[1:]]))
 STUB

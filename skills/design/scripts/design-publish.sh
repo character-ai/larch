@@ -434,7 +434,7 @@ fi
 
 if [[ -n "$SESSION_ID" ]]; then
     _rename_seen=false
-    if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
+    if _rename_out=$(python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
         RENAMED=""
         NEW_TITLE=""
         while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
@@ -445,7 +445,7 @@ if [[ -n "$SESSION_ID" ]]; then
             esac
         done <<<"${_rename_out:-}"
         if [[ "$_rename_seen" != true ]]; then
-            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
+            add_warn "**⚠ 5c: python3 python/cli.py tracking-issue rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
         fi
     else
         RENAMED=false
@@ -460,7 +460,7 @@ if [[ -n "$SESSION_ID" ]]; then
                 _diagram_detail="diagram upsert ran without UPSERT_STATUS"
             fi
         fi
-        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan block was written; ${_diagram_detail}; the issue title was not updated. Rename manually with gh issue edit or tracking-issue-write.sh, or drop the lifecycle prefix before re-running /design.**"
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (python3 python/cli.py tracking-issue rename); plan block was written; ${_diagram_detail}; the issue title was not updated. Rename manually with gh issue edit or python3 python/cli.py tracking-issue rename, or drop the lifecycle prefix before re-running /design.**"
     fi
 fi
 

@@ -1,6 +1,6 @@
 # Summary Comment Template
 
-**Consumer**: `skills/implement/SKILL.md` — when posting slim marker-keyed tracking-issue comments via `scripts/tracking-issue-summary.sh`.
+**Consumer**: `skills/implement/SKILL.md` — when posting slim marker-keyed tracking-issue comments via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary`.
 
 **Contract**: Tracking issue comments use one marker per comment:
 

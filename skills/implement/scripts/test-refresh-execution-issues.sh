@@ -18,19 +18,27 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cat > "$plugin/python/cli.py" <<'STUB'
-#!/usr/bin/env bash
-if [ "$1 $2" = "plugin read-version" ]; then
-  printf 'LARCH_PLUGIN_VERSION=1.2.3\n'
-  exit 0
-fi
-exit 2
+#!/usr/bin/env python3
+import os
+import shutil
+import sys
+
+if sys.argv[1:3] == ["plugin", "read-version"]:
+    print("LARCH_PLUGIN_VERSION=1.2.3")
+    raise SystemExit(0)
+if sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
+    args = sys.argv[3:]
+    log = os.environ.get("TRACKING_ARGS_LOG")
+    if log:
+        with open(log, "w", encoding="utf-8") as handle:
+            handle.write(" ".join(args) + "\n")
+    if "--content-file" in args:
+        shutil.copyfile(args[args.index("--content-file") + 1], os.environ["TRACKING_CONTENT_LOG"])
+    print("COMMENT_URL=https://example.test/comment/2")
+    raise SystemExit(0)
+raise SystemExit(2)
 STUB
-cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
-printf 'COMMENT_URL=https://example.test/comment/2\n'
-STUB
-chmod +x "$plugin/python/cli.py" "$plugin/scripts/tracking-issue-summary.sh"
+chmod +x "$plugin/python/cli.py"
 
 # Happy path: IMPLEMENT_TMPDIR with parent-issue.md and session-env.sh
 impl_dir="$TMP_ROOT/impl"; mkdir -p "$impl_dir"
