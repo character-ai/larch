@@ -1341,7 +1341,10 @@ _implement_round_body() {
     [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" && ! -L "$IMPLEMENT_TMPDIR" ]] || { larch_err "review-and-fix.sh: --implement-tmpdir must name a directory"; exit 2; }
     [[ -n "$SESSION_ENV_PATH" ]] || SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
-    [[ -x "${RUN_EXTERNAL_AGENT_CMD[@]}" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
+    { command -v "${RUN_EXTERNAL_AGENT_CMD[0]}" >/dev/null 2>&1 && [[ -f "${RUN_EXTERNAL_AGENT_CMD[1]}" ]]; } || {
+        larch_err "review-and-fix.sh: run-external-agent command unavailable: ${RUN_EXTERNAL_AGENT_CMD[*]}"
+        exit 2
+    }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)

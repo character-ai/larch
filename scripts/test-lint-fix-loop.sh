@@ -573,8 +573,10 @@ EOF
 
 run_case() {
     local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}" target_args_file="${7:-}"
+    local fixture_python
     local rc=0 out
     local extra_args=()
+    fixture_python="$(dirname "$fixture_scripts")/python"
     if [[ -n "$target_args_file" ]]; then
         extra_args=(--target-cmd-args-file "$target_args_file")
     fi

@@ -1,4 +1,4 @@
-"""Reject raw codex exec call sites without shared auth wiring."""
+"""Reject raw Codex CLI dispatch call sites without shared auth wiring."""
 
 from __future__ import annotations
 
