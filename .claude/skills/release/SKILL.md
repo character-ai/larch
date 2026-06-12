@@ -79,7 +79,7 @@ On **`--dry-run`**: do not invoke `rebase-push.sh`; continue to Step 2.
 
 ```bash
 PREPARE_DIR="$(mktemp -d)"
-prepare_out=$("python3 "$PWD/python/cli.py" release prepare" \
+prepare_out=$(python3 "$PWD/python/cli.py" release prepare \
   --repo "$REPO" \
   ${BUMP_OVERRIDE:+--bump "$BUMP_OVERRIDE"} \
   --out-dir "$PREPARE_DIR")
@@ -115,7 +115,7 @@ NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
 RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
-python/cli.py redact tmpdir-paths < "$NOTES_FILE" | python/cli.py redact secrets > "$REDACTED_NOTES_FILE"
+python3 "$PWD/python/cli.py" redact tmpdir-paths < "$NOTES_FILE" | python3 "$PWD/python/cli.py" redact secrets > "$REDACTED_NOTES_FILE"
 mkdir -p "$RECOVERY_NOTES_DIR"
 cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
 ```

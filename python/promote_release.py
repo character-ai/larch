@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 
 import logging_util
 import proc
@@ -21,44 +20,43 @@ def _repo_args(repo: str | None) -> list[str]:
 
 
 def _err(msg: str) -> int:
-    print(msg, file=sys.stderr)
+    if not msg.startswith("ERROR="):
+        msg = "ERROR=" + msg.removeprefix("ERROR: ").removeprefix("ERROR=")
+    logging_util.diagnostic(msg)
     return 1
 
 
 def promote_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="promote-release.sh")
     parser = argparse.ArgumentParser(prog="cli.py release promote")
     parser.add_argument("version")
     parser.add_argument("--repo")
     args = parser.parse_args(argv)
     if args.repo and not _REPO_RE.fullmatch(args.repo):
-        print(f"ERROR: invalid --repo value: {args.repo}", file=sys.stderr)
-        return 2
+        return _err(f"invalid --repo value: {args.repo}") + 1
     if not _SEMVER_RE.fullmatch(args.version):
-        print(f"ERROR: invalid semver format: {args.version} (expected X.Y.Z)", file=sys.stderr)
-        return 2
+        return _err(f"invalid semver format: {args.version} (expected X.Y.Z)") + 1
+    logging_util.quiet_init(argv0="promote-release.sh")
     tag = f"v{args.version}"
     repo_args = _repo_args(args.repo)
     if proc.run(["gh", "release", "view", tag, *repo_args]).returncode != 0:
-        print(f"ERROR: release {tag} not found.", file=sys.stderr)
-        return 1
+        return _err(f"release {tag} not found.")
     cur = proc.run([
         "gh", "release", "list", *repo_args, "--json", "tagName,isLatest", "--jq",
         'map(select(.isLatest)) | .[0].tagName // ""',
     ])
     if cur.returncode != 0:
-        return 1
+        return _err(cur.stderr or "gh release list failed")
     if cur.stdout.strip() == tag:
         pre = proc.run(["gh", "release", "view", tag, *repo_args, "--json", "isPrerelease", "--jq", ".isPrerelease"])
         if pre.stdout.strip() == "true":
             if proc.run(["gh", "release", "edit", tag, *repo_args, "--prerelease=false"]).returncode != 0:
-                return 1
+                return _err(f"gh release edit {tag} failed")
             logging_util.emit(f"{tag} is already the latest release; cleared pre-release flag.")
         else:
             logging_util.emit(f"{tag} is already the latest release.")
         return 0
     if proc.run(["gh", "release", "edit", tag, *repo_args, "--latest", "--prerelease=false"]).returncode != 0:
-        return 1
+        return _err(f"gh release edit {tag} failed")
     logging_util.emit(f"Promoted {tag} to latest release.")
     return 0
 

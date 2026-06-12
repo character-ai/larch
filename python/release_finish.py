@@ -15,7 +15,6 @@ import time
 from pathlib import Path
 
 import proc
-import promote_release
 import redact
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -99,6 +98,10 @@ def _redacted_notes(notes_file: Path) -> Path:
     handle.write(text)
     handle.close()
     return Path(handle.name)
+
+
+def _promote_release(version: str, repo: str, root: Path) -> proc.CommandResult:
+    return proc.run([sys.executable, str(root / "python/cli.py"), "release", "promote", version, "--repo", repo], cwd=str(root))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -187,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             if _gh("release", "create", tag, "--repo", args.repo, "--title", tag, "--notes-file", str(redacted_notes)).returncode != 0:
                 return 1
             action = "create"
-        if promote_release.promote_main([args.version, "--repo", args.repo]) != 0:
+        if _promote_release(args.version, args.repo, root).returncode != 0:
             return _e("ERROR=promote-release-failed")
         print(f"RELEASE_ACTION={action}")
         print(f"TARGET_OID={target}")

@@ -111,6 +111,40 @@ def _load_json(text: str, default: object) -> object:
         return default
 
 
+def _clean_reason(text: str) -> str:
+    return re.sub(r"[\x00-\x1f\x7f]", " ", text).strip()
+
+
+def _redact_remote_url(url: str) -> str:
+    return re.sub(r"(?<=//)[^/@]+@", "<redacted>@", url)
+
+
+def _git_commit(ref: str) -> str:
+    return proc.run(["git", "rev-parse", "--verify", f"{ref}^{{commit}}"]).stdout.strip()
+
+
+def _run_dir_invalid(canon: Path, skill: str) -> str:
+    parts = canon.parts
+    for idx, part in enumerate(parts):
+        if part != "larch-logs":
+            continue
+        if idx + 1 >= len(parts):
+            return f"run-dir must live under larch-logs/{skill}: {canon}"
+        found_skill = parts[idx + 1]
+        if found_skill in {"design", "implement"}:
+            if found_skill != skill:
+                return f"run-dir must live under larch-logs/{skill} for --skill={skill}: {canon}"
+            if len(parts) == idx + 2:
+                return f"run-dir resolves to skill log root instead of a specific run: {canon}"
+            return ""
+    return ""
+
+
+def _round_number(path: Path) -> int | None:
+    m = re.fullmatch(r"round-([0-9]+)", path.name)
+    return int(m.group(1)) if m else None
+
+
 def _merged_prs(repo: str) -> list[dict[str, object]] | None:
     owner, name = repo.split("/", 1)
     page = 1
@@ -194,7 +228,9 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
     if not verbal or verbal == "since last audit":
         implicit = "true" if not verbal else "false"
         res = proc.run(["gh", "issue", "list", "--state", "all", "--limit", "100000", "--label", "audit-report", "--repo", args.repo, "--json", "number,title,createdAt"])
-        prior_list = _load_json(res.stdout, []) if res.returncode == 0 else []
+        if res.returncode != 0:
+            return _kv_error(f"gh issue list failed while resolving prior audit-report issue for --skill={args.skill}")
+        prior_list = _load_json(res.stdout, [])
         if not isinstance(prior_list, list) or not prior_list:
             return _kv_error(f"no prior audit-report issue found for --skill={args.skill}")
         prior_list = sorted([x for x in prior_list if isinstance(x, dict)], key=lambda x: str(x.get("createdAt") or ""), reverse=True)
@@ -207,10 +243,11 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
             return _kv_error(f"no prior audit-report issue found for --skill={args.skill}")
         body_res = proc.run(["gh", "issue", "view", prior_num, "--repo", args.repo, "--json", "body"])
         body = ""
-        if body_res.returncode == 0:
-            body_obj = _load_json(body_res.stdout, {})
-            if isinstance(body_obj, dict):
-                body = str(body_obj.get("body") or "")
+        if body_res.returncode != 0:
+            return _kv_error(f"gh issue view failed for prior audit-report #{prior_num}")
+        body_obj = _load_json(body_res.stdout, {})
+        if isinstance(body_obj, dict):
+            body = str(body_obj.get("body") or "")
         m = re.search(r"audited_pr_range:[\s\S]*?\n\s*last:\s*['\"]?([0-9]+)['\"]?", body)
         if not m:
             return _kv_error(f"prior audit-report #{prior_num} has malformed or missing frontmatter (audited_pr_range.last)")
@@ -280,6 +317,14 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if branch == "main" and proc.run(["git", "pull", "--ff-only", "origin", "main"]).returncode != 0:
         print("PREFLIGHT_OK=false\nREASON=git pull --ff-only origin main failed (working tree may be dirty or branch is not ff-only)")
         return 0
+    main_oid = _git_commit("main")
+    origin_oid = _git_commit("origin/main")
+    if not main_oid or not origin_oid:
+        print("PREFLIGHT_OK=false\nREASON=local main or origin/main is not resolvable")
+        return 0
+    if main_oid != origin_oid:
+        print("PREFLIGHT_OK=false\nREASON=local main is stale or diverged from origin/main")
+        return 0
     if proc.run(["git", "status", "--porcelain"]).stdout.strip():
         print("PREFLIGHT_OK=false\nREASON=working tree is dirty")
         return 0
@@ -293,7 +338,9 @@ def preflight_main(argv: list[str] | None = None) -> int:
     remote_repo = rem_match.group(1) if rem_match else ""
     gh_repo = gh_url.removeprefix("https://github.com/")
     if not remote_repo or not gh_repo:
-        print(f"PREFLIGHT_OK=false\nREASON=could not determine repo identity (remote={remote_url} gh={gh_url})")
+        safe_remote = _redact_remote_url(remote_url) if remote_url else "<empty>"
+        safe_gh = _redact_remote_url(gh_url) if gh_url else "<empty>"
+        print(f"PREFLIGHT_OK=false\nREASON=could not determine repo identity (remote={safe_remote} gh={safe_gh})")
         return 0
     if remote_repo != gh_repo:
         print(f"PREFLIGHT_OK=false\nREASON=repo mismatch: normalized_remote_origin={remote_repo} gh_repo_identity={gh_repo} (expected clone to match gh repo view {args.repo})")
@@ -535,16 +582,10 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         _json_line({"scan": "run-dir-missing", "pr": pr, "incomplete": True, "result": "error", "detail": f"run-dir not found: {args.run_dir}"})
         return 1
     canon = run_dir.resolve()
-    skill_root = (Path("larch-logs") / args.skill).resolve() if (Path("larch-logs") / args.skill).exists() else None
-    if "larch-logs" in canon.parts and skill_root:
-        if canon == skill_root:
-            _json_line({"scan": "run-dir-invalid", "pr": pr, "incomplete": True, "result": "error", "detail": f"run-dir resolves to skill log root instead of a specific run: {args.run_dir}"})
-            return 1
-        try:
-            canon.relative_to(skill_root)
-        except ValueError:
-            _json_line({"scan": "run-dir-invalid", "pr": pr, "incomplete": True, "result": "error", "detail": f"run-dir must live under the selected skill log root ({skill_root}): {args.run_dir}"})
-            return 1
+    invalid = _run_dir_invalid(canon, args.skill)
+    if invalid:
+        _json_line({"scan": "run-dir-invalid", "pr": pr, "incomplete": True, "result": "error", "detail": invalid})
+        return 1
     scans = Path(args.scans_tsv)
     if not scans.is_file():
         _json_line({"scan": "scans-registry", "pr": pr, "result": "error", "detail": f"scans-tsv not found: {args.scans_tsv}"})
@@ -604,7 +645,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                 else: chans.append("UNKNOWN")
             obj={"scan":name,"pr":pr,"result":"pass" if not files else "informational","count":len(files),"parsed_files":parsed,"channels":dict(sorted(Counter(chans).items()))}
         elif name == "codex-round1-adherence":
-            found=sum(1 for f in run_dir.glob("round-*/panel-manifest.ndjson") if int(re.search(r"[0-9]+$", f.parent.name).group(0))>=2 and '"tool":"codex"' in f.read_text(encoding="utf-8", errors="replace").replace('"tool": "codex"','"tool":"codex"'))
+            found=sum(1 for f in run_dir.glob("round-*/panel-manifest.ndjson") if (_round_number(f.parent) or 0)>=2 and '"tool":"codex"' in f.read_text(encoding="utf-8", errors="replace").replace('"tool": "codex"','"tool":"codex"'))
             obj={"scan":name,"pr":pr,"result":"pass" if found==0 else "fail"};
             if found: obj["rounds_with_codex"] = found
         elif name == "codex-generalist-waste":
@@ -713,9 +754,23 @@ def close_priors_main(argv: list[str] | None = None) -> int:
     p=argparse.ArgumentParser(prog="cli.py audit-runs close-priors"); p.add_argument("--skill",required=True); p.add_argument("--new-issue-number",required=True); p.add_argument("--repo",default="character-ai/larch"); args=p.parse_args(argv)
     if not _validate_skill(args.skill,"audit-close-priors.sh"): return 1
     res=proc.run(["gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo",args.repo,"--json","number,title"])
-    arr=_load_json(res.stdout,[]) if res.returncode==0 else None
+    if res.returncode != 0:
+        reason = _clean_reason(res.stderr or res.stdout or "gh issue list failed")
+        print(f"ISSUE_LIST_FAILED=true\nREASON={reason}")
+        return 1
+    arr=_load_json(res.stdout,[])
     if not isinstance(arr,list): print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON"); return 1
-    body=Path(tempfile.NamedTemporaryFile("w",delete=False).name); body.write_text(f"Superseded by #{args.new_issue_number}",encoding="utf-8")
+    body: Path | None = None
+    try:
+        handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
+        try:
+            handle.write(f"Superseded by #{args.new_issue_number}")
+            body = Path(handle.name)
+        finally:
+            handle.close()
+    except OSError as exc:
+        print(f"BODY_FILE_FAILED=true\nREASON={_clean_reason(str(exc))}")
+        return 1
     try:
         for issue in arr:
             if not isinstance(issue,dict): continue
@@ -724,5 +779,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
             if proc.run(["gh","issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
             if proc.run(["gh","issue","close",num,"--repo",args.repo]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
             print(f"CLOSED_NUMBER={num}")
-    finally: body.unlink(missing_ok=True)
+    finally:
+        if body is not None:
+            body.unlink(missing_ok=True)
     return 0

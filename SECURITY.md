@@ -87,6 +87,8 @@ Larch is a Claude Code plugin that runs within Claude Code's permission boundary
 
 **Python ship-pr driver (default; `LARCH_SHIP_PR_IMPL=bash` opts out)**: The Python driver is a runtime boundary equivalent to `scripts/ship-pr.sh`, not a trusted consumer of model text. It emits a single JSON result envelope on stdout, including crash paths, and redacts free-text diagnostic fields before stdout or JSONL journaling. State files remain line-oriented `KEY=value` data; embedded newlines are rejected before write so untrusted titles, URLs, or diagnostics cannot spoof additional state keys. `ship-pr-state.sh` writes reject symlinked destination/temp paths and use an exclusive same-directory temp file before atomic replace so a same-UID symlink swap cannot redirect the write. Run-log and final-summary refresh subprocess failures fail closed before PR creation or terminal report updates instead of silently carrying stale placeholder fields.
 
+**Python audit / issue-analysis helpers**: `analyze-issues fetch` and `combine-issues fetch` write raw issue JSON with mode `0600`, including temp files under shared tmp roots, because issue bodies can contain private operational details. Audit preflight diagnostics redact URL userinfo from remote identity failures before printing, so HTTPS remotes with embedded credentials are not copied into stdout, logs, or report bodies. These helpers still treat GitHub issue bodies, titles, labels, and review findings as untrusted data; callers must preserve the existing redaction and structured-output boundaries before publication.
+
 ### Plan-review scope-anchor pipeline
 
 Plan-review scope anchoring has two distinct surfaces:

@@ -10,12 +10,13 @@ import json
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import proc
 import redact
 
-_BUSY_RE = re.compile(r"^\[(DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s")
+_BUSY_RE = re.compile(r"^\[(DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS|LOCKED)\]\s")
 _OOS_RE = re.compile(r"^\[OOS\]\s")
 
 
@@ -62,6 +63,7 @@ def fetch_main(argv: list[str] | None = None) -> int:
         elif not _BUSY_RE.match(title):
             out.append(issue)
     handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="combine-issues-", dir="/tmp", delete=False)
+    Path(handle.name).chmod(0o600)
     json.dump(out, handle)
     handle.write("\n")
     handle.close()
@@ -73,6 +75,18 @@ def fetch_main(argv: list[str] | None = None) -> int:
 def _parse_issue_number(text: str) -> str:
     nums = re.findall(r"/issues/([0-9]+)", text)
     return nums[-1] if nums else ""
+
+
+def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
+    result: proc.CommandResult | None = None
+    for attempt in range(attempts):
+        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", f"Combined into #{combined}"])
+        if result.returncode == 0:
+            return result
+        if attempt + 1 < attempts:
+            time.sleep(1)
+    assert result is not None
+    return result
 
 
 def apply_main(argv: list[str] | None = None) -> int:
@@ -113,7 +127,7 @@ def apply_main(argv: list[str] | None = None) -> int:
         closed = 0
         warnings = []
         for issue in issues:
-            res = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", f"Combined into #{combined}"])
+            res = _close_issue_with_retry(issue, repo, combined)
             if res.returncode == 0:
                 closed += 1
             else:

@@ -21,12 +21,12 @@ plugin="$TMP_ROOT/plugin"
 mkdir -p "$plugin/scripts" "$plugin/python"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cat > "$plugin/python/cli.py" <<'STUB'
-#!/usr/bin/env bash
-if [ "$1 $2" = "plugin read-version" ]; then
-  printf 'LARCH_PLUGIN_VERSION=9.9.9\n'
-  exit 0
-fi
-exit 2
+#!/usr/bin/env python3
+import sys
+if sys.argv[1:3] == ["plugin", "read-version"]:
+    print("LARCH_PLUGIN_VERSION=9.9.9")
+    raise SystemExit(0)
+raise SystemExit(2)
 STUB
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -92,6 +92,17 @@ set -e
 if [ "$rc" -eq 2 ]; then pass 'invalid emergency flag exits 2'; else fail 'invalid emergency flag exits 2'; fi
 assert_contains 'POSTED=false' "$bad" 'invalid emergency flag emits envelope'
 assert_contains 'ERROR=--emergency-requested must be true or false' "$bad" 'invalid emergency flag emits validation error'
+
+cat > "$plugin/python/cli.py" <<'STUB'
+#!/usr/bin/env python3
+import sys
+raise SystemExit(2)
+STUB
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-verfail.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-verfail.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir")
+assert_contains 'POSTED=true' "$out" 'version read failure still posts'
+assert_contains "Larch version: \`unknown\`" "$(cat "$TMP_ROOT/content-verfail.md")" 'version read failure falls back to unknown'
 
 # Missing --implement-tmpdir
 set +e

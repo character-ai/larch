@@ -36,7 +36,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 After parsing and validating `--skill` into `$SKILL`:
 
 ```bash
-PREFLIGHT_OUT=$(bash "python3 "$PWD/python/cli.py" audit-runs preflight" \
+PREFLIGHT_OUT=$(python3 "$PWD/python/cli.py" audit-runs preflight \
   --skill "$SKILL" --repo "<owner/name>" [--allow-concurrent])
 ```
 
@@ -45,7 +45,7 @@ Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false
 ## Verbal-Description Resolution
 
 ```bash
-RESOLVE_OUT=$(bash "python3 "$PWD/python/cli.py" audit-runs resolve-prs" \
+RESOLVE_OUT=$(python3 "$PWD/python/cli.py" audit-runs resolve-prs \
   --skill "$SKILL" --repo "<owner/name>" [--verbal-description "<verbal-description>"])
 ```
 
@@ -84,7 +84,7 @@ Implement currently uses the full table below. Design currently uses only `cache
 
 ```bash
 # Map each PR to its run-log directory
-RUN_MAP_TSV=$(bash "python3 "$PWD/python/cli.py" audit-runs map-runs" \
+RUN_MAP_TSV=$(python3 "$PWD/python/cli.py" audit-runs map-runs \
   --skill "$SKILL" --pr-list "$PR_LIST" --repo "<owner/name>")
 # TSV: pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
 ```
@@ -92,7 +92,7 @@ RUN_MAP_TSV=$(bash "python3 "$PWD/python/cli.py" audit-runs map-runs" \
 Then for each PR row in the TSV:
 
 ```bash
-bash "python3 "$PWD/python/cli.py" audit-runs scan-run" \
+python3 "$PWD/python/cli.py" audit-runs scan-run \
   --skill "$SKILL" \
   --run-dir "larch-logs/$SKILL/<RUN_ID>" \
   --pr <PR_NUM> \
@@ -201,11 +201,11 @@ Always file an audit report after the scan, EXCEPT when the scope is `since last
 ### Title Format
 
 ```bash
-PACIFIC_OUT=$(bash "python3 "$PWD/python/cli.py" audit-runs pacific-timestamp")
+PACIFIC_OUT=$(python3 "$PWD/python/cli.py" audit-runs pacific-timestamp)
 PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=//p')
 # → PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
 
-TITLE_OUT=$(bash "python3 "$PWD/python/cli.py" audit-runs title" \
+TITLE_OUT=$(python3 "$PWD/python/cli.py" audit-runs title \
   --skill "$SKILL" --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
 # stdout is KV-shaped: each line is `KEY=value`. The title script prints `TITLE=...` (not a bare title string).
 TITLE=$(printf '%s\n' "$TITLE_OUT" | sed -n 's/^TITLE=//p')
@@ -233,7 +233,7 @@ python3 "$PWD/python/cli.py" issue create-one \
 Before composing the report body, run `python/cli.py audit-runs compute-counters` to get cumulative totals:
 
 ```bash
-COUNTERS_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/python/cli.py audit-runs compute-counters" \
+COUNTERS_OUT=$(python3 "$PWD/python/cli.py" audit-runs compute-counters \
   --scan-results-dir "$TMPDIR" \
   [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
 ```
@@ -310,7 +310,7 @@ cumulative_counters:
 After the new audit report is filed:
 
 ```bash
-bash "$PWD/python/cli.py audit-runs close-priors" \
+python3 "$PWD/python/cli.py" audit-runs close-priors \
   --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
 ```
 
@@ -362,17 +362,17 @@ audit-close-priors.sh --skill $SKILL → close prior audit-report issues for thi
 
 ## Scripts
 
-- `.claude/skills/audit-runs/scripts/python/audit_runs.py title matching helpers` (contract: `audit-title-matcher.md`) — per-skill audit-report title matching
-- `.claude/skills/audit-runs/scripts/python/cli.py audit-runs preflight` (contract: `audit-preflight.md`) — git fetch/pull, repo-identity, concurrency guard
-- `.claude/skills/audit-runs/scripts/python/cli.py audit-runs resolve-prs` (contract: `audit-resolve-prs.md`) — verbal-description → PR_LIST
-- `.claude/skills/audit-runs/scripts/python/cli.py audit-runs map-runs` (contract: `audit-map-runs.md`) — PR → run-log directory mapping (TSV)
-- `.claude/skills/audit-runs/scripts/python/cli.py audit-runs scan-run` (contract: `audit-scan-run.md`) — all scans against one run-log dir; NDJSON output
-- `.claude/skills/audit-runs/scripts/python/cli.py audit-runs compute-counters` (contract: `audit-compute-counters.md`) — sum scan deltas + prior totals; KV output
+- `python/audit_runs.py title matching helpers` (contract: `audit-title-matcher.md`) — per-skill audit-report title matching
+- `python/cli.py audit-runs preflight` (contract: `audit-preflight.md`) — git fetch/pull, repo-identity, concurrency guard
+- `python/cli.py audit-runs resolve-prs` (contract: `audit-resolve-prs.md`) — verbal-description → PR_LIST
+- `python/cli.py audit-runs map-runs` (contract: `audit-map-runs.md`) — PR → run-log directory mapping (TSV)
+- `python/cli.py audit-runs scan-run` (contract: `audit-scan-run.md`) — all scans against one run-log dir; NDJSON output
+- `python/cli.py audit-runs compute-counters` (contract: `audit-compute-counters.md`) — sum scan deltas + prior totals; KV output
 - `python/cli.py audit-runs pacific-timestamp` (contract: `python/cli.py audit-runs pacific-timestamp`) — portable Pacific timestamp
 - `python/cli.py audit-runs title` (contract: `python/cli.py audit-runs title`) — generate report title string
 - `python/cli.py audit-runs close-priors` (contract: `audit-close-priors.md`) — close prior audit-report issues
 - `python/test_audit_runs.py` (contract: `python/test_audit_runs.py`) — offline unit test harness
-- `.claude/skills/audit-runs/scripts/test-python/audit_runs.py title matching helpers` — offline harness for `python/audit_runs.py title matching helpers` (invoked from `test-audit-runs.sh`)
+- `python/test_audit_runs.py title matching helpers` — offline harness for `python/audit_runs.py title matching helpers`
 
 ## Anti-patterns
 

@@ -719,8 +719,10 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     output = Path(args.output)
     tmp = output.with_name(output.name + f".tmp.{os.getpid()}")
+    old_umask = os.umask(0o077)
     try:
         with tmp.open("w", encoding="utf-8") as handle:
+            tmp.chmod(0o600)
             res = subprocess.run([
                 "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
                 "--json", "number,title,state,createdAt,closedAt,body,labels,closedByPullRequestsReferences",
@@ -730,8 +732,10 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
             tmp.unlink(missing_ok=True)
             return 1
         tmp.replace(output)
+        output.chmod(0o600)
         return 0
     finally:
+        os.umask(old_umask)
         tmp.unlink(missing_ok=True)
 
 

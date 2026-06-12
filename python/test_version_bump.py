@@ -405,6 +405,27 @@ def test_classify_added_skill_minor(tmp_path: Path) -> None:
     assert result.bump_type == "MINOR"
 
 
+def test_classify_explicit_head_uses_compare_ref_not_worktree_head(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "rev-parse", "v1.2.2^{commit}"): CommandResult(("git", "rev-parse", "v1.2.2^{commit}"), 0, "base-sha\n", "", 0.01),
+            ("git", "rev-parse", "origin/main^{commit}"): CommandResult(("git", "rev-parse", "origin/main^{commit}"), 0, "head-sha\n", "", 0.01),
+            ("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"): CommandResult(("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"), 0, '{"version":"1.2.3"}\n', "", 0.01),
+            ("git", "rev-parse", "head-sha"): CommandResult(("git", "rev-parse", "head-sha"), 0, "head-sha\n", "", 0.01),
+            ("git", "log", "-1", "--format=%s", "head-sha"): CommandResult(("git", "log", "-1", "--format=%s", "head-sha"), 0, "Add new skill\n", "", 0.01),
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "head-sha"): CommandResult(("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "head-sha"), 0, "skills/new/SKILL.md\n", "", 0.01),
+            ("git", "diff", "-M", "--name-status", "base-sha", "head-sha", "--", "skills", "agents"): CommandResult(("git", "diff", "-M", "--name-status", "base-sha", "head-sha", "--", "skills", "agents"), 0, "A\tskills/new/SKILL.md\n", "", 0.01),
+        },
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo), base_ref="v1.2.2", head_ref="origin/main")
+    assert result.current_version == "1.2.3"
+    assert result.bump_type == "MINOR"
+
+
 def test_classify_diff_failure_raises_ship_error(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     plugin = repo / ".claude-plugin"

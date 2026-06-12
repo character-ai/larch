@@ -17,6 +17,7 @@ from errors import ShipError
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _PR_SUFFIX_RE = re.compile(r"\(#([0-9]+)\)$")
+_git_cwd: str | None = None
 
 
 def _emit_error(token: str, *diagnostics: str, extra: list[str] | None = None) -> int:
@@ -40,7 +41,7 @@ def _gh_json(argv: list[str]) -> object | None:
 
 
 def _git(*argv: str) -> proc.CommandResult:
-    return proc.run(["git", *argv])
+    return proc.run(["git", *argv], cwd=_git_cwd)
 
 
 def _git_stdout(*argv: str) -> str:
@@ -103,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     repo_root = Path(__file__).resolve().parents[1]
+    global _git_cwd  # noqa: PLW0603
+    _git_cwd = str(repo_root)
     if _origin_repo(repo_root) != args.repo:
         return _emit_error("origin-repo-mismatch", f"origin does not match --repo ({args.repo})")
     releases = _gh_json(["release", "list", "--repo", args.repo, "--json", "tagName,isLatest", "--limit", "100"])

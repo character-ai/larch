@@ -61,7 +61,7 @@ def count_non_security_oos_blocks(path: Path) -> int:
             continue
         if in_block:
             lower = line.lower().replace("`", "").replace("*", "")
-            if re.match(r"^[ \t-]*focus[- \t]*area[ \t]*[:=][ \t]*security([- \t:[:alnum:]_]*)([ \t]|$|\(|#|\.|,)", lower):
+            if re.match(r"^[ \t-]*focus[- \t]*area[ \t]*[:=][ \t]*security([- \t:A-Za-z0-9_]*)([ \t]|$|\(|#|\.|,)", lower):
                 security = True
     if in_block and not security:
         count += 1
