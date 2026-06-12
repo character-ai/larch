@@ -29,7 +29,11 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # Hermetic seams (default to the verified production launchers / validator).
 VALIDATE_PLAN_SH="${LARCH_AUTOFIX_VALIDATE_PLAN_SH:-$SCRIPT_DIR/validate-plan.sh}"
 PY_CLI="${LARCH_AUTOFIX_PY_CLI:-$PLUGIN_ROOT/python/cli.py}"
-LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
+if [[ -n "${LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH:-}" ]]; then
+    LAUNCH_CODEX_EXEC_CMD=("$LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH")
+else
+    LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
+fi
 RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
 GATE_B_DEDUP_PLAN_SH="${LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH:-$SCRIPT_DIR/gate-b-dedup-plan.sh}"
 # Full per-vendor dispatch override: when set, replaces the real launcher path so

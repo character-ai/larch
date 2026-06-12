@@ -151,7 +151,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     } >"$_generic_prompt"
     rm -f "$_tail_src"
     set +e
-    python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review \
+    "${DECOMPOSE_GENERIC_LAUNCH_CMD[@]}" \
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \
@@ -227,6 +227,11 @@ for _a in "${_archetypes[@]}"; do
 done
 
 WATERFALL_SH="${DECOMPOSE_PANEL_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+if [[ -n "${LARCH_TEST_LAUNCH_CLAUDE_REVIEW:-}" ]]; then
+    DECOMPOSE_GENERIC_LAUNCH_CMD=("$LARCH_TEST_LAUNCH_CLAUDE_REVIEW")
+else
+    DECOMPOSE_GENERIC_LAUNCH_CMD=(python3 "$PLUGIN_ROOT/python/cli.py" agent launch-claude-review)
+fi
 
 _wf_extra=(--feature-file "$FEATURE_FILE" --timeout "$TIMEOUT")
 if [[ "$MODE" == "plan" ]]; then
