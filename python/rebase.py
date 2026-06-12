@@ -201,7 +201,7 @@ def make_conflict_launch_fn(
         )
         if tier in {"codex", "cursor"}:
             implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
-            agents.ingest_launcher_token_sidecar(
+            _ = agents.ingest_launcher_token_sidecar(
                 runner,
                 launcher_stdout=result.stdout + result.stderr,
                 output=output,

@@ -1060,7 +1060,7 @@ def _make_default_launch_fn(
         )
         combined = result.stdout + result.stderr
         if tier in {"codex", "cursor"}:
-            agents.ingest_launcher_token_sidecar(
+            _ = agents.ingest_launcher_token_sidecar(
                 runner,
                 launcher_stdout=combined,
                 output=tier_out,

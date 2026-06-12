@@ -134,7 +134,7 @@ def ingest_launcher_token_sidecar(
         return False
     root = Path(plugin_root) if plugin_root is not None else Path(__file__).resolve().parents[1]
     cli = root / "python" / "cli.py"
-    runner.run(
+    _ = runner.run(
         [
             "python3",
             str(cli),
@@ -150,7 +150,7 @@ def ingest_launcher_token_sidecar(
     if implement_tmpdir is not None:
         env = dict(os.environ)
         env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-        runner.run(
+        _ = runner.run(
             [
                 "python3",
                 str(cli),
