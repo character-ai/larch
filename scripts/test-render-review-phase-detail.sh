@@ -370,7 +370,7 @@ if echo '"2023-11-14T22:18:20Z"' | jq -e 'fromdateiso8601 | numbers' >/dev/null 
     if grep -Fq -- "\$$exp_cont" "$CONT_OUT"; then
         fail "implement round Cost must exclude design-only token-ledger record (exp excluded \$$exp_cont)"
     fi
-    grep -Fq -- '| **Total** | **1** | **1** | **0** | **0** | **1m 40s** | **$0.00** | **2** |' "$CONT_OUT" \
+    grep -Fq -- "| **Total** | **1** | **1** | **0** | **0** | **1m 40s** | **\$0.00** | **2** |" "$CONT_OUT" \
         || fail "Total cost must exclude design-only token record: $(grep -F 'Total' "$CONT_OUT" || true)"
     pass 'skill-window contamination: table Time/Cost ignore other-skill round rows'
 else
