@@ -167,6 +167,27 @@ $case_dir/scout-coder-manifest.json
 --run-id
 run-xyz" "dynamic-archetypes forwarded on unified argv"
 
+echo "=== round 1 scout manifest ignored without eligibility marker ==="
+case_dir="$TMP/round1-no-scout-marker"
+make_tmpdir "$case_dir" round1-no-scout-marker false true "run-xyz" 2
+printf '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}\n' >"$case_dir/scout-coder-manifest.json"
+argv_file="$TMP/round1-no-scout-marker.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
+assert_not_contains "$(cat "$argv_file")" "--pre-scouted-manifest" "round 1 without eligibility marker omits pre-scouted manifest"
+assert_contains "$(cat "$argv_file")" "--dynamic-archetypes
+0" "round 1 without eligibility marker forces dynamic-archetypes 0"
+
+echo "=== mav apply never forwards pre-scouted manifest ==="
+case_dir="$TMP/mav-no-scout"
+make_tmpdir "$case_dir" mav-no-scout false true "run-xyz" 2
+printf 'eligible\n' >"$case_dir/step2-external-scout-eligible.txt"
+printf '### FINDING_1: Example\n' >"$case_dir/accepted-findings.md"
+argv_file="$TMP/mav-no-scout.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --mode mav-apply --round-num 1 --findings-file "$case_dir/accepted-findings.md" >/dev/null
+assert_not_contains "$(cat "$argv_file")" "--pre-scouted-manifest" "mav apply omits pre-scouted manifest"
+assert_contains "$(cat "$argv_file")" "--dynamic-archetypes
+2" "mav apply keeps session dynamic cap"
+
 echo "=== degraded prior rounds do not extend hard round cap ==="
 case_dir="$TMP/degraded-cap"
 make_tmpdir "$case_dir" degraded-cap true false

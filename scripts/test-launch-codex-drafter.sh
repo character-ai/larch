@@ -71,6 +71,33 @@ case "${LARCH_TEST_CODEX_MODE:-ok}" in
         printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
         exit 0
         ;;
+    scout-valid)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' 'Detailed body' 'diff_lines: 7' 'LARCH_PLAN_END' \
+            'LARCH_SCOUT_BEGIN' \
+            '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}' \
+            'LARCH_SCOUT_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
+    scout-malformed)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' 'Detailed body' 'diff_lines: 7' 'LARCH_PLAN_END' \
+            'LARCH_SCOUT_BEGIN' '{not json' 'LARCH_SCOUT_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
+    scout-in-plan)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' \
+            '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"literal } brace and { brace inside string"}]}' \
+            'diff_lines: 9' 'LARCH_PLAN_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
     *)
         [[ -n "$out" ]] || exit 9
         printf '%s\n' \
@@ -196,6 +223,22 @@ LARCH_TEST_CODEX_MODE=no-summary run_drafter "$d4" "$d4/status.txt" >/dev/null
 command grep -Fq 'SUMMARY_WRITTEN=false' "$d4/status.txt" || fail "summary optional status missing"
 [[ ! -e "$d4/plan-summary.md" ]] || fail "summary should not be written when no summary sentinels exist"
 command grep -Fq 'Body mentions LARCH_PLAN_BEGIN without sentinel line.' "$d4/plan.txt" || fail "delimiter name in prose was not preserved"
+
+LARCH_TEST_CODEX_MODE=scout-valid run_drafter "$d4" "$d4/status-scout-valid.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-valid.txt" || fail "valid scout status missing"
+[[ "$(jq -r '.archetypes | length' "$d4/scout-plan-manifest.json")" == "1" ]] || fail "valid scout manifest not written"
+
+rm -f "$d4/scout-plan-manifest.json"
+LARCH_TEST_CODEX_MODE=scout-malformed run_drafter "$d4" "$d4/status-scout-malformed.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=false' "$d4/status-scout-malformed.txt" || fail "malformed scout should not be written"
+command grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$d4/status-scout-malformed.txt" || fail "malformed scout fail reason missing"
+
+set +e
+LARCH_TEST_CODEX_MODE=scout-in-plan run_drafter "$d4" "$d4/status-scout-in-plan.txt" >/dev/null 2>"$TMPROOT/scout-in-plan.err"
+scout_in_plan_rc=$?
+set -e
+[[ "$scout_in_plan_rc" -eq 99 ]] || fail "standalone scout manifest inside plan should exit 99"
+command grep -Fq 'REASON=DELIMITER_EXTRACTION_INVALID' "$d4/status-scout-in-plan.txt" || fail "standalone scout manifest missing delimiter invalid reason"
 
 d5="$TMPROOT/d5"
 mkdir -p "$d5"

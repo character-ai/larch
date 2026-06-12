@@ -343,7 +343,9 @@ normalize_scout_manifest() {
           or has_unsafe_plan_delimiter
           or test("\n")
           or test("(?m)^---$");
-        reduce .archetypes[]? as $a
+        if ((.archetypes | type) != "array") then
+          error("invalid_archetypes_shape")
+        else reduce .archetypes[]? as $a
           ({seen:{}, archetypes:[], valid_total:0};
            ($a.name // "") as $name
            | if (($a | type) != "object") then .
@@ -377,6 +379,7 @@ normalize_scout_manifest() {
                  else . end
              end)
         | {archetypes}
+        end
     ' "$input" > "$tmp"; then
         rm -f "$tmp"
         return 1

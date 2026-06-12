@@ -151,7 +151,9 @@ filter_and_cap_manifest() {
         or has_unsafe_plan_delimiter
         or test("\n")
         or test("(?m)^---$");
-      reduce .archetypes[]? as $a
+      if ((.archetypes | type) != "array") then
+        error("invalid_archetypes_shape")
+      else reduce .archetypes[]? as $a
         ({seen:{}, archetypes:[], warns:[], valid_total:0};
          ($a.name // "") as $name
          | if (($a | type) != "object") then
@@ -198,6 +200,7 @@ filter_and_cap_manifest() {
           .warns += ["validated archetypes exceed max cap: \(.valid_total) > \($cap); truncating"]
         else . end
       | {archetypes, warns}
+      end
     ' "$input" >"$tmp"; then
         rm -f "$tmp" "$warnings_file"
         return 1

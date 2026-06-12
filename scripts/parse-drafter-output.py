@@ -65,36 +65,20 @@ def remove_scout_candidate():
 
 
 def plan_contains_standalone_scout_manifest(plan_text):
+    decoder = json.JSONDecoder()
     in_fence = False
-    candidate = []
-    depth = 0
-    capture = False
+    unfenced_lines = []
     for line in plan_text.splitlines():
         if re.match(r'^\s*```', line):
             in_fence = not in_fence
             continue
         if in_fence:
             continue
-        stripped = line.strip()
-        if not capture:
-            if not stripped.startswith('{'):
-                continue
-            candidate = [line]
-            depth = stripped.count('{') - stripped.count('}')
-            capture = True
-            if depth > 0:
-                continue
-        else:
-            candidate.append(line)
-            depth += stripped.count('{') - stripped.count('}')
-            if depth > 0:
-                continue
-        blob = '\n'.join(candidate).strip()
-        capture = False
-        candidate = []
-        depth = 0
+        unfenced_lines.append(line)
+    unfenced_text = '\n'.join(unfenced_lines)
+    for match in re.finditer(r'\{', unfenced_text):
         try:
-            parsed = json.loads(blob)
+            parsed, _ = decoder.raw_decode(unfenced_text, match.start())
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict) and isinstance(parsed.get('archetypes'), list):
