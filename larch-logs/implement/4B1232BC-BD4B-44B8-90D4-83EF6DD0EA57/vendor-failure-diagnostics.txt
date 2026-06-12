@@ -866,6 +866,18 @@ exit-code: 1
 exit-code: 1
 ===== diag =====
 {"is_error":true,"result":"backend failed"}
+===== CI fix cursor-ci =====
+exit-code: 143
+Stall detected: channel=stdout time_since_last_progress=180s
+--- stall ps snapshot (target pid=4545) ---
+  PID  %CPU ELAPSED STAT
+ 4545   0.0   03:00 S   
+--- stall ps snapshot (direct children of target; no argv) ---
+  PID  %CPU ELAPSED STAT
+ 9823   1.2   02:49 S   
+  PID  %CPU ELAPSED STAT
+74619   0.0   00:09 S   
+
 ===== ci fixer cursor-ci =====
 exit-code: 2
 ===== diag =====
