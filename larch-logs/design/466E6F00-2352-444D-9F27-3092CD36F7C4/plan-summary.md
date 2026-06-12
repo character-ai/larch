@@ -1,0 +1,1 @@
+Centralize post-Step-0 `/implement` Bash rehydration in `$IMPLEMENT_TMPDIR/larch-run.sh`, collapse post-Step-0 `SKILL.md` fences to one-line launcher calls, and update the fence harness plus sibling docs.

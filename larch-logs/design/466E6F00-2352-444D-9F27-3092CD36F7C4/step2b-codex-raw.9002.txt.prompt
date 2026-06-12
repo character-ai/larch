@@ -1,0 +1,194 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+Trusted resolved design_classification: SIMPLE
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES_CLASSIFIED_SIMPLE, draft from direct codebase/doc inspection without fabricating sketch agreement; if exactly NO_SKETCHES_DEGRADED_HARD, preserve HARD thoroughness without fabricating sketch agreement.
+- Read discussion-round1.md when present for scope boundaries and hard constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation only when it does not conflict with binding dialectic resolutions or explicit user refusals.
+- Read dialectic-resolutions.md when present and branch on Disposition: voted — follow Resolution and address antithesis; fallback-to-synthesis / bucket-skipped / over-cap — synthesis stands, note Why reason, do not fabricate antithesis-engagement prose.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# /implement: collapse Bash-fence rehydration preludes via a session launcher script
+
+**Problem.** Every post-Step-0 Bash fence in `skills/implement/SKILL.md` repeats the multi-line `CLAUDE_PLUGIN_ROOT` rehydration prelude (source guard plus, at some sites, the `LARCH_CLAUDE_PLUGIN_ROOT` awk fallback). The repetition bloats the always-loaded skill body and invites copy drift between fences.
+
+**Proposal.**
+
+- Step 0 (`scripts/implement-bootstrap.sh`) writes an executable `$IMPLEMENT_TMPDIR/larch-run.sh` next to `plugin-root.env`. The launcher sources `plugin-root.env`, falls back to the `LARCH_CLAUDE_PLUGIN_ROOT` awk extract from `session-env.sh` when the sibling is absent, exports `IMPLEMENT_TMPDIR` and `CLAUDE_PLUGIN_ROOT`, then execs `"$CLAUDE_PLUGIN_ROOT/$1"` with the remaining argv.
+- Every post-Step-0 fence in SKILL.md becomes one line, for example: `bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-16.sh`.
+- Pre-bootstrap sites (Preflight, Step 0 initial invocation, legacy resume) keep the existing source-guard shape.
+- `implement-bootstrap.sh --resume-plan-tail` emits the launcher on legacy tmpdirs the same way it emits `plugin-root.env`.
+
+**Acceptance.**
+
+- Post-Step-0 fences collapse to one line each; `scripts/test-implement-fence-shape.sh` pins the new shape.
+- Bash 3.2 portable; no behavior change to any wrapped script.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES_CLASSIFIED_SIMPLE
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Pre-bootstrap boundary
+- **Question**: Which fences are pre-bootstrap and keep the old shape?
+- **Resolution**: Explicitly: structured-invocation-pin (line 104), Preflight fences (lines 188-198), Step 0 initial bootstrap (line 241), dirty-tree recovery resume (line 283). Post-Step-0 starts at the degraded-tools gate (line 263) and continues through all later steps.
+- **Source**: codebase (SKILL.md prose at line 122 names "Preflight, Step 0 initial invocation, legacy resume" plus "structured-invocation pin")
+
+## Decision 2: larch-run.sh behavior
+- **Question**: Exact behavior of larch-run.sh.
+- **Resolution**: Sources plugin-root.env (guarded on CLAUDE_PLUGIN_ROOT being unset), falls back to awk extract from session-env.sh, exports CLAUDE_PLUGIN_ROOT and IMPLEMENT_TMPDIR, then execs "$CLAUDE_PLUGIN_ROOT/$1" with remaining args. Bash 3.2 portable (use `script=$1; shift; exec ... "$@"` pattern).
+- **Source**: feature description
+
+## Decision 3: Test shape acceptance
+- **Question**: How does test-implement-fence-shape.sh handle two coexisting fence shapes?
+- **Resolution**: Both shapes are valid. Old shape: canonical guard present + "$CLAUDE_PLUGIN_ROOT/..." call. New shape: `bash "$IMPLEMENT_TMPDIR/larch-run.sh" ...` call, no guard required. Test accepts either.
+- **Source**: codebase (test logic + proposal)
+
+## Decision 4: SKILL.md prose update
+- **Question**: Does the "Bash block prelude" prose at lines 112-123 need updating?
+- **Resolution**: Yes. The prose currently says every post-Step-0 fence must use the canonical guard. It must be updated to describe the new larch-run.sh shape as the standard post-Step-0 pattern.
+- **Source**: codebase derivation
+
+3 decisions resolved.
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Eliminate per-fence `CLAUDE_PLUGIN_ROOT` rehydration boilerplate from all post-Step-0 SKILL.md fences.
+- Centralize rehydration into a single `larch-run.sh` launcher emitted by Step 0 bootstrap.
+- Update the structural fence-shape harness to pin the new single-line form.
+
+### Non-goals
+- No changes to the behavior of any wrapped script.
+- No changes to pre-bootstrap fences (Preflight, Step 0 initial, dirty-tree recovery, structured-invocation pin).
+- No changes to session-env.sh or plugin-root.env write semantics.
+
+### Approach sketch
+- Add `emit_larch_run_sh()` to `scripts/implement-bootstrap.sh`; call it after `plugin-root.env` is written in `phase_infra()` and in the `--resume-plan-tail` path.
+- `larch-run.sh` sources `plugin-root.env` (guarded), falls back to awk extract, exports `CLAUDE_PLUGIN_ROOT` and `IMPLEMENT_TMPDIR`, then execs `"$CLAUDE_PLUGIN_ROOT/$1" "$@"` (Bash 3.2 `shift`-based).
+- Update SKILL.md: collapse ~30 post-Step-0 fences to `bash "$IMPLEMENT_TMPDIR/larch-run.sh" &lt;rel-script-path&gt;`. Update "Bash block prelude" prose.
+- Update `scripts/test-implement-fence-shape.sh` to accept both old shape (guard + `$CLAUDE_PLUGIN_ROOT/...`) and new shape (`bash "$IMPLEMENT_TMPDIR/larch-run.sh" ...`).
+
+### Surfaces in scope
+- `scripts/implement-bootstrap.sh`
+- `skills/implement/SKILL.md`
+- `scripts/test-implement-fence-shape.sh`
+- `scripts/implement-bootstrap.md` (sibling doc update)
+- `scripts/test-implement-fence-shape.md` (sibling doc update)
+- New file: `$IMPLEMENT_TMPDIR/larch-run.sh` (runtime artifact, not committed)
+
+### Open questions
+- None.
+
+</design_outline>
