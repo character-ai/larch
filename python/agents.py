@@ -11,6 +11,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -768,8 +769,8 @@ def parse_codex_usage_file(events_file: str | Path) -> UsageTotals:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError("malformed usage event") from exc
+        except json.JSONDecodeError:
+            continue
         if not isinstance(obj, dict):
             continue
         selected = _has_tokenish(_dig(obj, "msg", "usage")) or _has_tokenish(_dig(obj, "usage")) or (obj.get("type") == "token_usage" and _has_tokenish(obj))
@@ -1135,6 +1136,7 @@ def run_external_agent(
 
     exit_code = 99
     proc_obj: subprocess.Popen[bytes] | None = None
+    _old_sigterm: object = None
     try:
         if tool in {"codex", "cursor"}:
             healthy, health_diag = _external_health_gate(tool)
@@ -1190,6 +1192,11 @@ def run_external_agent(
             for handle in handles:
                 handle.close()
 
+        def _on_sigterm(signum: int, _frame: object) -> None:
+            _terminate_child_processes_first(proc_obj.pid)
+            raise SystemExit(128 + signum)
+
+        _old_sigterm = signal.signal(signal.SIGTERM, _on_sigterm)
         poll_interval = float(os.environ.get("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "10") or "10")
         start = time.monotonic()
         last_progress_time = start
@@ -1257,6 +1264,9 @@ def run_external_agent(
             _err(f"✓ {tool} agent: completed (exit code 0, output {size} bytes)")
         return RunExternalAgentResult(exit_code, output_path)
     finally:
+        if _old_sigterm is not None:
+            with contextlib.suppress(OSError, ValueError):
+                signal.signal(signal.SIGTERM, _old_sigterm)
         if proc_obj is not None and proc_obj.poll() is None:
             proc_obj.terminate()
             with contextlib.suppress(Exception):
