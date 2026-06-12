@@ -57,7 +57,7 @@ if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
         create)
             printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
             ;;
-        dedup|comment-fail|tier-b-accept|tier-b-unsafe|tier-b-sensitive)
+        dedup|comment-fail|comment-no-url|tier-b-accept|tier-b-unsafe|tier-b-sensitive)
             printf '{"number":7,"body":"contains <!-- larch-stall:signature=%s --> marker","pull_request":null}\n' "$GH_MARKER_HASH"
             ;;
         page2)
@@ -85,6 +85,10 @@ if [ "$1" = api ] && [ "${2:-}" = --method ]; then
     if [ "${GH_STUB_CASE:-}" = comment-fail ]; then
         echo comment failed >&2
         exit 1
+    fi
+    if [ "${GH_STUB_CASE:-}" = comment-no-url ]; then
+        printf '%s\n' '{}'
+        exit 0
     fi
     printf '%s\n' '{"html_url":"https://github.com/owner/repo/issues/7#issuecomment-99"}'
     exit 0
@@ -155,6 +159,12 @@ dir=$(make_case comment-fail)
 GH_STUB_CASE=comment-fail; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: comment failure falls back"
 not_contains "$dir/gh.log" 'issue create' "dedup: comment failure does not create duplicate"
+
+dir=$(make_case comment-no-url)
+GH_STUB_CASE=comment-no-url; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: comment success without URL falls back"
+assert_eq comment-url-missing "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out")" "dedup: missing comment URL reason"
+not_contains "$dir/out" 'FILE_FAILURE_REPORT_URL=' "dedup: missing comment URL omits URL"
 
 dir=$(make_case create-fail)
 GH_STUB_CASE=create-fail; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'

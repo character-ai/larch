@@ -77,6 +77,7 @@ run_reject missing-repository
 run_reject non-github 'https://example.com/character-ai/larch'
 run_reject malformed-owner '../larch'
 run_reject malformed-repo 'character-ai/../larch'
+run_reject trailing-newline $'https://github.com/character-ai/larch\n'
 run_reject newline-injection $'https://github.com/character-ai/larch\nother/repo'
 
 if [ "$FAIL" -ne 0 ]; then

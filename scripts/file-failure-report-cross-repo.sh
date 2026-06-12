@@ -47,7 +47,7 @@ normalize_issue_url() {
 }
 
 comment_url_from_json() {
-    python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("html_url", ""))' 2>/dev/null || true
+    python3 -c 'import json,re,sys; data=json.load(sys.stdin); url=data.get("html_url", ""); print(url if isinstance(url, str) and re.fullmatch(r"https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+#issuecomment-[0-9]+", url) else "")' 2>/dev/null || true
 }
 
 lookup_open_issue() {
@@ -204,6 +204,10 @@ with open(sys.argv[2], "w", encoding="utf-8") as fh:
 PY
     if gh api --method POST "repos/$repo/issues/$issue_number/comments" --input "$comment_json" >"$comment_out" 2>"$comment_err"; then
         comment_url=$(comment_url_from_json <"$comment_out")
+        if [ -z "$comment_url" ]; then
+            status_fallback comment-url-missing
+            exit 0
+        fi
         emit_kv FILE_FAILURE_REPORT_STATUS dedup-comment
         emit_kv FILE_FAILURE_REPORT_URL "$comment_url"
         exit 0

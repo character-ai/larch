@@ -266,6 +266,17 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/resolve-upstream-larch-repo.sh|scripts/resolve-upstream-larch-repo.md|scripts/test-resolve-upstream-larch-repo.sh|scripts/test-resolve-upstream-larch-repo.md)
+                append_target_once test-resolve-upstream-larch-repo
+                ;;
+            scripts/file-failure-report-cross-repo.sh|scripts/file-failure-report-cross-repo.md|scripts/test-file-failure-report-cross-repo.sh|scripts/test-file-failure-report-cross-repo.md)
+                append_target_once test-file-failure-report-cross-repo
+                ;;
+            skills/implement/scripts/stall-recovery-report.sh|skills/implement/scripts/stall-recovery-report.md|skills/implement/scripts/stall-recovery-report-allowlists.tsv|skills/implement/scripts/test-stall-recovery-report.sh|skills/implement/scripts/test-stall-recovery-report.md|skills/implement/references/stall-recovery.md)
+                append_target_once test-stall-recovery-report
+                ;;
+        esac
+        case "$f" in
             scripts/ship-pr.sh|scripts/ship-pr.md|scripts/test-ship-pr-rebase.sh|scripts/test-ship-pr-rebase.md)
                 append_target_once test-ship-pr-rebase
                 ;;

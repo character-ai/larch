@@ -75,7 +75,7 @@ Tier A files through `/larch:issue --input-file ... --no-dedup` after full-outpu
 
 Tier A applies only when `is-larch-dev-clone` is true and `FORKED_TARGET=false`. It bypasses TSV allowlists and redacts the full public issue input, including headings. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after redaction.
 
-Tier B covers consumer repos and forked runs. It prints through chat only. It uses allowlisted machine fields plus bounded root-cause prose. Bounded prose and title validation reject client repo names, branch names, paths, PR URLs, plan text, issue text, state-file client values, evidence-log values, attempts, ledger, fallback evidence, record-failure markers, run-log pointers, and prompt-state supplement tokens. Allowlisted larch operational terms are exempt.
+Tier B covers consumer repos and forked runs. It files or comments in the resolved upstream larch repository on success, and prints through chat only on fallback or dry-run. It uses allowlisted machine fields plus bounded root-cause prose. Bounded prose and title validation reject client repo names, branch names, paths, PR URLs, plan text, issue text, state-file client values, evidence-log values, attempts, ledger, fallback evidence, record-failure markers, run-log pointers, and prompt-state supplement tokens. Allowlisted larch operational terms are exempt.
 
 ## Root-cause finding schema
 

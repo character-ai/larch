@@ -24,10 +24,10 @@ repo = data.get("repository")
 if not isinstance(repo, str) or not repo.strip():
     print("resolve-upstream-larch-repo: repository metadata missing", file=sys.stderr)
     sys.exit(1)
-repo = repo.strip()
 if any(ch in repo for ch in "\r\n\t"):
     print("resolve-upstream-larch-repo: repository metadata must be single-value", file=sys.stderr)
     sys.exit(1)
+repo = repo.strip()
 if ".." in repo or repo.startswith("/"):
     print("resolve-upstream-larch-repo: repository metadata is malformed", file=sys.stderr)
     sys.exit(1)
