@@ -17,6 +17,7 @@ UPSTREAM_REPO_ARG=""
 RUN_ID_ARG=""
 CALLER_ENV_ARG=""
 SESSION_ENV_ARG=""
+NON_INTERACTIVE_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode) [ $# -ge 2 ] || { printf '%s
@@ -105,25 +106,14 @@ case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; e
 [ -n "$CALLER_ENV_ARG" ] && CALLER_ENV_PATH="$CALLER_ENV_ARG"
 [ -n "$SESSION_ENV_ARG" ] && SESSION_ENV_PATH="$SESSION_ENV_ARG"
 _non_interactive=false
-case "$NON_INTERACTIVE_ARG" in true|false) _non_interactive="$NON_INTERACTIVE_ARG" ;; esac
-if [ "$_non_interactive" != true ]; then
-    case "${LARCH_SKILL_NON_INTERACTIVE:-}" in true) _non_interactive=true ;; esac
-fi
-if [ "$_non_interactive" != true ]; then
-    case "${LARCH_AUTONOMOUS_LOOP:-}" in true) _non_interactive=true ;; esac
-fi
-if [ "$_non_interactive" != true ]; then
-    case "${LARCH_EVAL_RUN:-}" in true) _non_interactive=true ;; esac
-fi
-if [ "$_non_interactive" != true ]; then
-    case "${CI:-}" in true|1|yes|YES) _non_interactive=true ;; esac
-fi
-if [ "$_non_interactive" != true ]; then
-    case "${GITHUB_ACTIONS:-}" in true|1) _non_interactive=true ;; esac
-fi
-if [ "$_non_interactive" != true ]; then
-    case "${CLAUDE_CODE_SUBAGENT:-}" in true|1) _non_interactive=true ;; esac
-fi
+case "$NON_INTERACTIVE_ARG" in
+    true) _non_interactive=true ;;
+    false) _non_interactive=false ;;
+    "")
+        _resolved=$(python3 "$PY_CLI" bootstrap resolve-non-interactive 2>/dev/null || printf '%s' false)
+        case "$_resolved" in true) _non_interactive=true ;; esac
+        ;;
+esac
 rehydrate_plugin_root
 read_run_flag_key() {
     local key=$1 default_value=$2 file

@@ -1084,7 +1084,12 @@ def _envelope_text(data: dict[str, str]) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
-def _resolve_non_interactive(explicit: str, env: Mapping[str, str] | None = None) -> bool:
+def _resolve_non_interactive(
+    explicit: str,
+    env: Mapping[str, str] | None = None,
+    *,
+    stdin_is_tty: bool | None = None,
+) -> bool:
     if explicit in {"true", "false"}:
         return explicit == "true"
     runtime = env or os.environ
@@ -1095,7 +1100,32 @@ def _resolve_non_interactive(explicit: str, env: Mapping[str, str] | None = None
         return True
     if runtime.get("GITHUB_ACTIONS", "").lower() in {"1", "true", "yes"}:
         return True
-    return runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}
+    if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
+        return True
+    is_tty = stdin_is_tty if stdin_is_tty is not None else sys.stdin.isatty()
+    return not is_tty
+
+
+def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="bootstrap resolve-non-interactive", add_help=True)
+    parser.add_argument("--explicit", default="", choices=["", "true", "false"])
+    args = parser.parse_args(argv)
+    print("true" if _resolve_non_interactive(args.explicit) else "false")
+    return 0
+
+
+def _resolve_probe_cwd() -> Path:
+    result = subprocess.run(  # noqa: S603
+        ["git", "rev-parse", "--show-toplevel"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        top = result.stdout.strip()
+        if top:
+            return Path(top)
+    return _REPO_ROOT
 
 
 def _continue_predicate(data: dict[str, str]) -> bool:
@@ -1145,6 +1175,14 @@ def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
     for line in text.splitlines():
         if not line.strip():
             continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            if _is_advisory_stdout_key(key):
+                advisory.append(f"{key}={value}")
+                continue
+            if key in ROUTING_KEYS:
+                routing[key] = value
+                continue
         for token in line.split():
             if "=" not in token:
                 continue
@@ -1177,7 +1215,7 @@ def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, 
     result = _run(
         [str(probe), "1.r", "plan materialization", "--forked-target", forked_target if forked_target in {"true", "false"} else "false"],
         env=env,
-        cwd=str(_REPO_ROOT),
+        cwd=str(_resolve_probe_cwd()),
     )
     routing, advisory = _parse_probe_stdout(result.stdout)
     routing["REBASE_RC"] = str(result.returncode)
@@ -1215,9 +1253,9 @@ def _run_absorbed_continue_tail(
         "--skill",
         "implement",
         "--codex-present",
-        st.codex_present or "false",
+        st.codex_present,
         "--cursor-present",
-        st.cursor_present or "false",
+        st.cursor_present,
         "--codex-binary-found",
         st.codex_binary_found or "unknown",
         "--cursor-binary-found",
@@ -1251,19 +1289,24 @@ def _run_absorbed_continue_tail(
         if not both_down_seen:
             if non_interactive:
                 return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            for line in explanation_lines:
+                _err(line)
             prompt_required = True
             run_probe = False
         elif both_down == "false":
             if not sentinel_exists:
                 for line in explanation_lines:
                     _err(line)
+                if non_interactive:
+                    _log_degraded_explanation(st, explanation_text)
                 _write_degraded_sentinel(tmpdir)
         elif both_down == "true":
             if non_interactive:
-                for line in explanation_lines:
-                    _err(line)
-                _log_degraded_explanation(st, explanation_text)
-                _write_degraded_sentinel(tmpdir)
+                if not sentinel_exists:
+                    for line in explanation_lines:
+                        _err(line)
+                    _log_degraded_explanation(st, explanation_text)
+                    _write_degraded_sentinel(tmpdir)
             elif sentinel_exists:
                 pass
             else:
@@ -1274,6 +1317,8 @@ def _run_absorbed_continue_tail(
         else:
             if non_interactive:
                 return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            for line in explanation_lines:
+                _err(line)
             prompt_required = True
             run_probe = False
     advisory: list[str] = []
