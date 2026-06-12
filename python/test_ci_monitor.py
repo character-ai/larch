@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from pathlib import Path
 
@@ -191,6 +191,54 @@ def test_default_launch_fn_ingests_external_token_sidecar(
     assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
     assert ingest_calls[0]["cwd"] == str(tmp_path)
     assert isinstance(ingest_calls[0]["seen"], set)
+
+
+def test_default_launch_fn_dedups_repeated_external_token_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    token_record = tmp_path / "codex.token-record"
+    monkeypatch.setattr(ci_monitor, "_implement_tmpdir", lambda: str(tmp_path))
+
+    def fake_build_launch_argv(tier: str, **_kwargs: object) -> list[str]:
+        return ["launch", tier]
+
+    monkeypatch.setattr(ci_monitor.agents, "build_launch_argv", fake_build_launch_argv)
+    seen_ids: list[int] = []
+    ingested: list[str] = []
+
+    def fake_ingest(_runner: RecordingRunner, **kwargs: object) -> bool:
+        seen_obj = kwargs["seen"]
+        assert isinstance(seen_obj, set)
+        seen = cast("set[str]", seen_obj)
+        seen_ids.append(id(seen))
+        path = str(token_record)
+        if path in seen:
+            return False
+        seen.add(path)
+        ingested.append(path)
+        return True
+
+    monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
+    runner.responses[("launch", "codex")] = _cr(
+        ("launch", "codex"),
+        stdout=f"LAUNCHER_EXIT=1\nTOKEN_RECORD={token_record}\n",
+    )
+    launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        run_id="run",
+        repo="owner/repo",
+        plan_file=None,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+    _ = launch_fn("codex")
+    _ = launch_fn("codex")
+    assert ingested == [str(token_record)]
+    assert len(set(seen_ids)) == 1
 
 
 @pytest.mark.parametrize(

@@ -141,10 +141,12 @@ command grep -Fq 'instructions =' "$TMPROOT/codex-config.toml" || fail "instruct
 [[ -f "$out1.done" ]] || fail ".done missing"
 [[ -f "$out1.dirty-tree" ]] || fail ".dirty-tree missing"
 [[ ! -e "$out1.stderr-tail" ]] || fail "success should not keep stderr-tail"
+command grep -Fxq 'MODEL=gpt-5.5' "$out1.token-record" || fail "success token-record model missing"
 
 outside_prompt="$TMPROOT/outside-prompt.txt"
 printf 'outside\n' > "$outside_prompt"
 out2="$d1/status-invalid-prompt.txt"
+printf 'STALE_TOKEN_RECORD\n' > "$out2.token-record"
 set +e
 PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 \
     IMPLEMENT_TMPDIR="" SESSION_ENV_PATH="" LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0 \
@@ -155,6 +157,7 @@ set -e
 [[ "$invalid_prompt_rc" -eq 2 ]] || fail "invalid prompt should exit 2"
 [[ -f "$out2.dirty-tree" ]] || fail "post-canonicalization failure missing dirty-tree"
 command grep -Fq 'MODE=prelaunch' "$out2.dirty-tree" || fail "prelaunch dirty-tree mode missing"
+[[ ! -e "$out2.token-record" ]] || fail "prelaunch failure should clear stale token-record"
 
 d3="$TMPROOT/d3"
 mkdir -p "$d3"

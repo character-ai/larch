@@ -79,8 +79,48 @@ EOF
     else
         fail "no-usage cursor output leaves token-record empty"
     fi
+
+    usage_bin="$TMPDIR_BASE/usage-bin"
+    mkdir -p "$usage_bin"
+    cat > "$usage_bin/cursor" <<'EOF'
+#!/usr/bin/env bash
+printf '{"result":"done","usage":{"inputTokens":4,"outputTokens":5,"cacheReadTokens":6,"cacheWriteTokens":7}}\n'
+EOF
+    chmod +x "$usage_bin/cursor"
+    OUT_USAGE="$TMPDIR_BASE/usage-output"
+    (cd "$REPO_ROOT" && PATH="$usage_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        IMPLEMENT_TMPDIR="$TMPDIR_BASE" CURSOR_API_KEY=test_key LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+        LARCH_CURSOR_MODEL=cursor-fixture-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+        bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role fix --output "$OUT_USAGE" \
+            --run-id r-usage --repo owner/repo --timeout 30) >/dev/null 2>&1 || true
+    if grep -Fxq 'TOOL=cursor' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'INPUT=4' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'OUTPUT=5' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'CACHE_READ=6' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'CACHE_CREATE=7' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'TOTAL=22' "${OUT_USAGE}.token-record" \
+        && grep -Fxq 'MODEL=cursor-fixture-model' "${OUT_USAGE}.token-record"; then
+        ok "usage cursor output writes token-record with model"
+    else
+        fail "usage cursor output writes token-record with model: $(cat "${OUT_USAGE}.token-record" 2>/dev/null)"
+    fi
 else
     ok "no-usage cursor token-record fixture skipped without jq"
+fi
+
+OUT_STALE_CURSOR_MODEL_FAIL="$TMPDIR_BASE/cursor-stale-model-fail"
+printf 'STALE_TOKEN_RECORD\n' > "${OUT_STALE_CURSOR_MODEL_FAIL}.token-record"
+set +e
+(cd "$REPO_ROOT" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CURSOR_MODEL=" " \
+    bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role fix --output "$OUT_STALE_CURSOR_MODEL_FAIL" \
+        --run-id r-stale --repo owner/repo --timeout 30) >/dev/null 2>&1
+cursor_model_fail_rc=$?
+set -e
+if [[ "$cursor_model_fail_rc" -ne 0 && ! -s "${OUT_STALE_CURSOR_MODEL_FAIL}.token-record" ]]; then
+    ok "model preflight failure clears stale cursor token-record"
+else
+    fail "model preflight failure should clear stale cursor token-record: rc=$cursor_model_fail_rc token-record=$(cat "${OUT_STALE_CURSOR_MODEL_FAIL}.token-record" 2>/dev/null)"
 fi
 
 stall_env() {

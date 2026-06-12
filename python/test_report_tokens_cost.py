@@ -7,7 +7,8 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from proc import CommandResult
 from report_tokens_cost import (
@@ -22,9 +23,6 @@ from report_tokens_cost import (
     token_cost_main,
 )
 from report_tokens_models import RunRecord, VendorTotals
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _calls() -> list[list[str]]:
@@ -309,6 +307,44 @@ def test_env_rate_alias_precedence() -> None:
     assert env_rate(("NEW", "OLD"), 0.1, environ=env) == 2.5
     assert env_rate(("BAD", "OLD"), 0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
     assert env_rate(("BAD", "ZERO", "NEG", "OLD"), 0.1, environ={"BAD": "no", "ZERO": "0", "NEG": "-1", "OLD": "4"}) == 4.0
+
+
+@pytest.mark.parametrize(
+    ("field_name", "aliases"),
+    [
+        ("claude_input", ("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT")),
+        ("claude_cache_read", ("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ")),
+        (
+            "claude_cache_create_5m",
+            (
+                "LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M",
+                "LARCH_RATE_CLAUDE_CACHE_CREATE",
+                "LARCH_RATE_CLAUDE_CACHE_CREATE_5M",
+            ),
+        ),
+        ("claude_cache_create_1h", ("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H")),
+        ("claude_output", ("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT")),
+        ("codex_input", ("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT")),
+        (
+            "codex_cached_input",
+            ("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"),
+        ),
+        ("codex_output", ("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT")),
+        ("cursor_input", ("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT")),
+        ("cursor_cache_read", ("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ")),
+        ("cursor_output", ("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT")),
+        (
+            "claude_blended",
+            ("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"),
+        ),
+        ("codex_blended", ("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE")),
+        ("cursor_blended", ("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE")),
+    ],
+)
+def test_display_rates_alias_ladder(field_name: str, aliases: tuple[str, ...]) -> None:
+    for idx, alias in enumerate(aliases, start=1):
+        env = {alias: str(40 + idx)}
+        assert getattr(display_rates(environ=env), field_name) == 40 + idx
 
 
 def test_codex_and_cursor_blended_defaults_derive_from_fleet_mix() -> None:

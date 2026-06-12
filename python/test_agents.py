@@ -130,6 +130,41 @@ def test_ingest_launcher_token_sidecar_runs_vendor_ingest_after_append_failure(t
     assert len(runner.calls) == 2
 
 
+def test_ingest_launcher_token_sidecar_retries_append_only_after_vendor_partial_success(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    seen: set[str] = set()
+    runner = TokenIngestRunner(returncodes=(2, 0, 0))
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert f"{sidecar}:append" not in seen
+    assert f"{sidecar}:vendor" in seen
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert [call[0][3] for call in runner.calls] == [
+        "append-record",
+        "record-vendor-sidecar",
+        "append-record",
+    ]
+    assert str(sidecar) in seen
+
+
 def test_ingest_launcher_token_sidecar_returns_false_when_both_ingests_fail(tmp_path: Path) -> None:
     output = tmp_path / "codex.out"
     _ = Path(f"{output}.token-record").write_text(
@@ -175,7 +210,7 @@ def test_ingest_launcher_token_sidecar_marks_seen_after_full_success(tmp_path: P
     assert str(sidecar) in seen
 
 
-def test_ingest_launcher_token_sidecar_does_not_mark_seen_after_partial_failure(tmp_path: Path) -> None:
+def test_ingest_launcher_token_sidecar_retries_only_missing_leg_after_partial_failure(tmp_path: Path) -> None:
     output = tmp_path / "codex.out"
     sidecar = Path(f"{output}.token-record")
     _ = sidecar.write_text(
@@ -193,7 +228,8 @@ def test_ingest_launcher_token_sidecar_does_not_mark_seen_after_partial_failure(
         implement_tmpdir=tmp_path,
         seen=seen,
     ) is True
-    assert str(sidecar) not in seen
+    assert f"{sidecar}:append" in seen
+    assert f"{sidecar}:vendor" not in seen
     assert agents.ingest_launcher_token_sidecar(
         runner,
         launcher_stdout="",
@@ -202,7 +238,10 @@ def test_ingest_launcher_token_sidecar_does_not_mark_seen_after_partial_failure(
         implement_tmpdir=tmp_path,
         seen=seen,
     ) is True
-    assert len(runner.calls) == 4
+    assert len(runner.calls) == 3
+    assert runner.calls[0][0][3] == "append-record"
+    assert runner.calls[1][0][3] == "record-vendor-sidecar"
+    assert runner.calls[2][0][3] == "record-vendor-sidecar"
     assert str(sidecar) in seen
 
 
