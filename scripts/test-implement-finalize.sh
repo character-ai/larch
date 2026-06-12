@@ -187,6 +187,16 @@ def main() -> None:
             for arg in sys.argv[2:]:
                 handle.write(f"{arg}\n")
         raise SystemExit(0)
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["tracking-issue", "rename"]:
+        with open(root.parent / "rename-argv.txt", "a", encoding="utf-8") as handle:
+            handle.write("\n".join(sys.argv[3:]) + "\n")
+        if os.environ.get("STUB_RENAME_FAILED", "false") == "true":
+            print("FAILED=true")
+            print("ERROR=stub failure")
+            raise SystemExit(2)
+        print("RENAMED=true")
+        print("NEW_TITLE=stub")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] in {"session", "verify"}:
         stub = root / "stubs" / sys.argv[1] / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
@@ -213,19 +223,7 @@ echo "COMMIT_HASH=${STUB_COMMIT_HASH:-abc1234}"
 echo "COMMIT_MESSAGE=${STUB_COMMIT_MESSAGE:-Implement finalizer (#123)}"
 exit "${STUB_VERIFY_RC:-0}"
 STUB
-chmod +x "$SANDBOX/python/stubs/verify/main"
-    cat > "$SANDBOX/scripts/tracking-issue-write.sh" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$@" >> "$SANDBOX/rename-argv.txt"
-if [ "\${STUB_RENAME_FAILED:-false}" = "true" ]; then
-  echo "FAILED=true"
-  echo "ERROR=stub failure"
-  exit 2
-fi
-echo "RENAMED=true"
-echo "NEW_TITLE=stub"
-exit 0
-STUB
+    chmod +x "$SANDBOX/python/stubs/verify/main"
     cat > "$SANDBOX/python/stubs/session/cleanup-tmpdir" <<STUB
 #!/usr/bin/env bash
 dir=""

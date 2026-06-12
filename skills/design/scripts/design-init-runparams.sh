@@ -198,7 +198,7 @@ if [[ "${_wdce_rc:-0}" -ne 0 ]]; then
 fi
 
 # 3. [DESIGNING] rename (best-effort; run-params write follows)
-if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"}); then
+if _rename_out=$(python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"}); then
     _rename_seen=false
     while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
         case "$_rename_line" in
@@ -207,10 +207,10 @@ if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "
         esac
     done <<<"${_rename_out:-}"
     if [[ "$_rename_seen" != true ]]; then
-        add_warn "**⚠ 0b: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
+        add_warn "**⚠ 0b: python3 python/cli.py tracking-issue rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
     fi
 else
-    add_warn "**⚠ 0b: [DESIGNING] rename failed (tracking-issue-write.sh); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
+    add_warn "**⚠ 0b: [DESIGNING] rename failed (python3 python/cli.py tracking-issue rename); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
 fi
 
 # 4. write-run-params.sh

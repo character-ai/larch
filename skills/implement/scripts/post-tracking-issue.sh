@@ -109,7 +109,7 @@ err_file="$IMPLEMENT_TMPDIR/post-tracking-issue.err"
 args=(upsert-summary --issue "$ISSUE" --marker "$marker" --content-file "$summary")
 [ -z "$REPO" ] || args+=(--repo "$REPO")
 
-if "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" "${args[@]}" >"$out_file" 2>"$err_file"; then
+if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$out_file" 2>"$err_file"; then
     # When --issue-number was provided, write the sentinel now that the post
     # succeeded — co-locating the write with success so the sentinel is never
     # present without a confirmed metadata comment.

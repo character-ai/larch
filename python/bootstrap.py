@@ -415,7 +415,7 @@ def _phase_tracking(st: BootstrapState) -> None:
         return
     sentinel = Path(st.implement_tmpdir) / "parent-issue.md"
     if sentinel.is_file():
-        read = _run([str(_SCRIPTS / "tracking-issue-read.sh"), "--sentinel", str(sentinel)])
+        read = _cli("tracking-issue", "read", "--sentinel", str(sentinel))
         rkv = _parse_kv(read.stdout)
         if read.returncode == 0 and rkv.get("FAILED") != "true" and rkv.get("ADOPTED") == "true":
             issue = rkv.get("ISSUE_NUMBER", "")
@@ -486,7 +486,7 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         _tracking_bail(st, "invalid or empty run id")
         return False
     _write_base_session_env(st)
-    rename = _run([str(_SCRIPTS / "tracking-issue-write.sh"), "rename", "--issue", st.issue_number_resolved, "--state", "implementing"])
+    rename = _cli("tracking-issue", "rename", "--issue", st.issue_number_resolved, "--state", "implementing")
     if st.implement_tmpdir and (rename.returncode != 0 or _parse_kv(rename.stdout).get("FAILED") == "true"):
         text = "tracking rename failed\n" + rename.stdout + rename.stderr
         with contextlib.suppress(OSError):
@@ -731,21 +731,17 @@ def _upsert_plan_summary(st: BootstrapState) -> None:
         content.write_text(plan_text[:12000], encoding="utf-8")
     except OSError:
         return
-    args = [
-        str(_SCRIPTS / "tracking-issue-summary.sh"),
-        "upsert-summary",
-        "--issue",
-        issue,
-        "--marker",
-        f"<!-- larch:plan v1 runid={st.run_id} -->",
-        "--content-file",
-        str(content),
+    cli_args = [
+        "tracking-issue", "upsert-summary",
+        "--issue", issue,
+        "--marker", f"<!-- larch:plan v1 runid={st.run_id} -->",
+        "--content-file", str(content),
     ]
     if st.opts.forked_target == "true" and st.opts.upstream_repo:
-        args.extend(["--repo", st.opts.upstream_repo])
+        cli_args.extend(["--repo", st.opts.upstream_repo])
     elif st.repo:
-        args.extend(["--repo", st.repo])
-    _run(args)
+        cli_args.extend(["--repo", st.repo])
+    _cli(*cli_args)
 
 
 def _record_coder_fallback(st: BootstrapState, reason: str) -> None:

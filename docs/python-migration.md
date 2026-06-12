@@ -117,3 +117,10 @@ Override them per-run with environment variables documented in
 ## P4 dev-only skills migration
 
 Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfaces now live behind `python/cli.py`. `classify-bump.md` remains the release classification authority. Runtime hooks and runtime OOS gates remain bash. `.claude/skills/combine-issues/scripts/search-implementing-issue.sh` remains bash and out of scope. Audit scan OOS disposition lives in `python/oos_disposition.py`; git-log inline-triage fallback remains runtime-gate-only.
+
+## Decision log — F3e tracking issue lifecycle
+
+- Tracking issue read/write/summary helpers now live behind `python3 python/cli.py tracking-issue ...` verbs.
+- `tracking-issue read` preserves stdout failure envelopes for shell-level usage and validation failures; parser-level missing option values remain stderr-only.
+- Write-verb usage errors remain stderr-only. `tracking-issue upsert-summary` keeps non-usage failure envelopes on stderr so existing stderr capture files remain authoritative.
+- Retired shell helper paths are recorded in `python/migrated-scripts.tsv`; keep future prose on the Python CLI surface so `make lint-retired-scripts` stays path-clean.

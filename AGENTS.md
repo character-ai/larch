@@ -38,6 +38,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/topology.md` — generated consumer-doc topology projection
 - `docs/run-logs.md` — committed run-log directory structure, batch file reference, and tracking-issue comment contracts
 - `docs/issue-anchored-plan.md` — **LIVE** wire format for /design ↔ /implement handoff, clarification round-trip, and `/design` pause pointer. `/implement` Preflight enforces plan gates; `/design` writes the plan block and clarify responses.
+- `python/tracking_issue.py`, `python/test_tracking_issue.py`, `python/cli.py tracking-issue ...` — tracking issue read/write/summary lifecycle surface.
 - `python/cli.py plan-block read`, `python/cli.py named-block write --marker plan`, `python/cli.py clarify {state,comment-post,label}`, `python/test_issue_wire.py`, `python/test_clarify.py` — helpers and offline harnesses for that wire format.
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `docs/run-log-cli.md`, `docs/run-log-batches.md` — committed run-log CLI contract and batch table

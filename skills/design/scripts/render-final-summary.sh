@@ -635,13 +635,13 @@ if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ] && [ -s "$DESIGN_TMPDIR/final-summary.
     set +e
     ups_err="$(mktemp "${TMPDIR:-/tmp}/rfs-ups-err.XXXXXX")"
     if [ -n "$REPO" ]; then
-        "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" upsert-summary \
+        python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary \
             --issue "$ISSUE" \
             --marker "$marker" \
             --content-file "$DESIGN_TMPDIR/final-summary.md" \
             --repo "$REPO" 2>"$ups_err"
     else
-        "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" upsert-summary \
+        python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue upsert-summary \
             --issue "$ISSUE" \
             --marker "$marker" \
             --content-file "$DESIGN_TMPDIR/final-summary.md" 2>"$ups_err"
@@ -652,7 +652,7 @@ if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ] && [ -s "$DESIGN_TMPDIR/final-summary.
         python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5" \
-            --tool "tracking-issue-summary.sh upsert-summary" \
+            --tool "python3 python/cli.py tracking-issue upsert-summary" \
             --exit-code "$ups_rc" \
             --category Warnings \
             --redact \

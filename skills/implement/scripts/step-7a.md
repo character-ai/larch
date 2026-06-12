@@ -51,7 +51,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `run-log capture-transc
 - Step 7a writes `$IMPLEMENT_TMPDIR/code-flow-section.md` only when `generate-code-flow-diagram.sh` reports `STATUS=ok`. The file contains the `## Code Flow Diagram` section passed to `python/cli.py diagrams upsert`.
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `tracking-issue-summary.sh` directly and does not use a `runid=` marker for diagrams.
+- `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
 - Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
 - The helper does not write a `diagrams` larch-log batch.
 

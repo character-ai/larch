@@ -743,9 +743,9 @@ rename_issue() {
     fi
     set +e
     if [ -n "$repo" ]; then
-        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --repo "$repo")
+        out=$(python3 "$SCRIPT_DIR/../python/cli.py" tracking-issue rename --issue "$issue" --state "$state" --repo "$repo")
     else
-        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state")
+        out=$(python3 "$SCRIPT_DIR/../python/cli.py" tracking-issue rename --issue "$issue" --state "$state")
     fi
     rc=$?
     set +e

@@ -16,12 +16,11 @@ ALLOW=(
   docs/linting.md
   python/admission.py
   python/issue_wire.py
+  python/tracking_issue.py
+  scripts/test-fetch-combinable-issues-filter.sh
   python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
-  scripts/test-tracking-issue-write.sh
-  scripts/tracking-issue-write.md
-  scripts/tracking-issue-write.sh
   python/test_tracking_issue.py
 )
 

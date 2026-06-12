@@ -58,6 +58,18 @@ from pathlib import Path
 
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
+        if os.environ.get("TRACKING_FAIL", "false") == "true":
+            print(os.environ.get("TRACKING_ERR", "summary failed"), end="", file=sys.stderr)
+            raise SystemExit(int(os.environ.get("TRACKING_RC", "1")))
+        args = sys.argv[3:]
+        if "--content-file" in args:
+            src = Path(args[args.index("--content-file") + 1])
+            dst = os.environ.get("TRACKING_CONTENT_LOG", "")
+            if dst:
+                Path(dst).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        print("COMMENT_URL=https://example.test/comment/final")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
         if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
             print("manifest stub failure", file=sys.stderr)
@@ -99,16 +111,6 @@ exit 0
 SHIM
 chmod +x "$TMP_ROOT/bin/gh"
 export PATH="$TMP_ROOT/bin:$PATH"
-cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
-#!/usr/bin/env bash
-if [ "${TRACKING_FAIL:-false}" = "true" ]; then
-  printf '%s' "${TRACKING_ERR:-summary failed}" >&2
-  exit "${TRACKING_RC:-1}"
-fi
-while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
-printf 'COMMENT_URL=https://example.test/comment/final\n'
-STUB
-chmod +x "$plugin/scripts/tracking-issue-summary.sh"
 
 # Happy path: IMPLEMENT_TMPDIR with parent-issue.md, session-env.sh, ship-pr-state.sh
 impl_dir="$TMP_ROOT/impl"; mkdir -p "$impl_dir"
@@ -607,6 +609,18 @@ def _token_report_stub() -> int:
 
 def main() -> None:
     root = Path(__file__).resolve().parent
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["tracking-issue", "upsert-summary"]:
+        if os.environ.get("TRACKING_FAIL", "false") == "true":
+            print(os.environ.get("TRACKING_ERR", "summary failed"), end="", file=sys.stderr)
+            raise SystemExit(int(os.environ.get("TRACKING_RC", "1")))
+        args = sys.argv[3:]
+        if "--content-file" in args:
+            src = Path(args[args.index("--content-file") + 1])
+            dst = os.environ.get("TRACKING_CONTENT_LOG", "")
+            if dst:
+                Path(dst).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+        print("COMMENT_URL=https://example.test/comment/final")
+        raise SystemExit(0)
     if len(sys.argv) >= 3 and sys.argv[1] == "run-log" and sys.argv[2] == "manifest":
         if os.environ.get("LARCH_LOG_MANIFEST_FAIL", "") == "true":
             print("manifest stub failure", file=sys.stderr)
