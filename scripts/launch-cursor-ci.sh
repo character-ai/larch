@@ -114,7 +114,7 @@ esac
 MODEL_ARGS=()
 cursor_launcher_load_model_args
 RESOLVED_CURSOR_MODEL=""
-external_launcher_extract_cursor_model RESOLVED_CURSOR_MODEL "${MODEL_ARGS[@]}"
+external_launcher_extract_cursor_model RESOLVED_CURSOR_MODEL "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 cursor_launcher_setup_auth_argv
 
 PLAN_CONTEXT=""

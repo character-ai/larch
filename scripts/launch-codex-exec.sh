@@ -169,7 +169,7 @@ while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
 RESOLVED_CODEX_MODEL=""
-external_launcher_extract_codex_model RESOLVED_CODEX_MODEL "${MODEL_ARGS[@]}"
+external_launcher_extract_codex_model RESOLVED_CODEX_MODEL "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 
 PROJECT_KEY=${WORKDIR//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
