@@ -4,6 +4,8 @@
 
 **Contract**: Step 18a reports only terminal failures and escalation-success events. It never files or prints at first detection. `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempts, canonical escalation recording, normalized outcome reads, and report composition.
 
+**When to load**: MANDATORY before executing Step 18a stall recovery or Step 18a.5 escalation-success teardown. Load before changing stall recovery report composition, escalation recording, or normalized outcome handling.
+
 ## Canonical artifacts
 
 Use these `$IMPLEMENT_TMPDIR` paths for `/implement`:
