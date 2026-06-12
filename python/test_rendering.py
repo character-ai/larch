@@ -111,8 +111,8 @@ def test_generate_check_accepts_verb_registry(monkeypatch: pytest.MonkeyPatch) -
 
 def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
-    codex_text = rendering._implementer_text("codex")
-    cursor_text = rendering._implementer_text("cursor")
+    codex_text = rendering._implementer_text("codex")  # pyright: ignore[reportPrivateUsage]
+    cursor_text = rendering._implementer_text("cursor")  # pyright: ignore[reportPrivateUsage]
     assert "SCOUT_MANIFEST_PATH" in codex_text
     assert "optional best-effort" in codex_text
     assert "SCOUT_MANIFEST_PATH" in cursor_text
