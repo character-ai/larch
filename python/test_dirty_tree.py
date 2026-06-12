@@ -1,6 +1,8 @@
 # pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
+import os
+
 import dirty_tree
 
 
@@ -35,3 +37,12 @@ def test_bad_baseline_path_status_unknown() -> None:
     lines = dirty_tree.baseline(baseline_path="bad path")
     assert "STATUS=unknown" in lines
     assert "REASON=bad-baseline-path" in lines
+
+
+def test_checkpoint_main_disables_inherited_quiet(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    monkeypatch.setattr(dirty_tree, "checkpoint", lambda sidecar="": ["STATUS=clean", "MODE=checkpoint"])  # noqa: ARG005
+    assert dirty_tree.checkpoint_main([]) == 0
+    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+    assert "STATUS=clean" in capsys.readouterr().out

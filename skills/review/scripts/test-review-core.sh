@@ -566,6 +566,32 @@ run_core() {
     "$SCRIPT" "${args[@]}"
 }
 
+run_core_default_dirty_tree() {
+    local outdir="$1" pybin="$TMP/default-dirty-bin" real_py
+    real_py="$(command -v python3)"
+    mkdir -p "$pybin"
+    cat > "$pybin/python3" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == *"/python/cli.py" && "\${2:-}" == "dirty-tree" && "\${3:-}" == "checkpoint" ]]; then
+  printf 'STATUS=%s\nMODE=checkpoint\n' "\${TEST_CHECKPOINT_STATUS:-clean}"
+  printf '%s\n' "\$*" >> "$TMP/default-dirty-python3.argv"
+  exit 0
+fi
+exec "$real_py" "\$@"
+STUB
+    chmod +x "$pybin/python3"
+    local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
+    PATH="$pybin:$PATH" LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
+    REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
+    REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
+    REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
+    REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
+    REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/dispatch-voters.sh" \
+    "$SCRIPT" "${args[@]}"
+}
+
 run_core_flush() {
     local outdir="$1"
     local impl_tmp="$TMP/implement-flush-$$"
@@ -894,6 +920,12 @@ assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=dirty TEST_CHECKPOINT_STATUS=dirty run_core "$TMP/dirty")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'ANY_DIRTY=true' "$TMP/dirty/review-dirty-tree-summary.env"
+
+rm -f "$TMP/default-dirty-python3.argv"
+out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=dirty TEST_CHECKPOINT_STATUS=dirty run_core_default_dirty_tree "$TMP/default-dirty")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'python/cli.py dirty-tree checkpoint' "$TMP/default-dirty-python3.argv" || { echo "FAIL: default dirty-tree checkpoint path not invoked" >&2; exit 1; }
+grep -Fq 'RECOVERY_TAKEN=true' "$TMP/default-dirty/review-dirty-tree-summary.env"
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 TEST_ROUND_NUM=3 run_core "$TMP/round3")
 assert_contains "$out" 'SCOUT_STATUS=ok'

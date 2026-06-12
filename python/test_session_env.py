@@ -504,6 +504,39 @@ def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.Monk
     assert "REPO=git-owner/repo" in out.read_text(encoding="utf-8")
 
 
+def test_setup_runs_admission_preflight_without_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "session-env.sh"
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
+        calls.append(tuple(argv))
+        if len(argv) >= 3 and argv[-2:] == ["admission", "preflight"]:
+            return proc.CommandResult(tuple(argv), 0, "PREFLIGHT=ok\n", "", 0.0)
+        if argv and "check-stale-plugin.sh" in argv[0]:
+            return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        if argv and argv[0] == "gh":
+            return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
+        if argv and "github-remote-repo.sh" in argv[0]:
+            return proc.CommandResult(tuple(argv), 0, "owner/repo\n", "", 0.0)
+        if argv and argv[0] in {"codex", "cursor"}:
+            return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
+        return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(session_env.proc, "run", fake_run)
+    rc = session_env.setup_main(
+        [
+            "--prefix",
+            "pytest-",
+            "--skip-branch-check",
+            "--write-session-env",
+            str(out),
+        ],
+    )
+    assert rc == 0
+    assert any("admission" in call and "preflight" in call for call in calls)
+
+
 def test_read_classification_missing_and_invalid_paths(tmp_path: Path) -> None:
     missing = run_cli("read-classification", str(tmp_path / "missing.json"))
     assert missing.stdout == "HARD\n"

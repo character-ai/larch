@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
@@ -205,6 +206,16 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "entry-gate"): ("session_env", "entry_gate_main"),
 }
 
+_MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("bootstrap", "invoke"),
+    ("bootstrap", "parse-routing"),
+    ("admission", "gate"),
+    ("admission", "preflight"),
+    ("admission", "fork-env"),
+    ("dirty-tree", "baseline"),
+    ("dirty-tree", "checkpoint"),
+})
+
 
 def _version_supported(version_info: object) -> bool:
     return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
@@ -263,6 +274,8 @@ def main(argv: list[str] | None = None) -> int:
 
     module_name, func_name = _REGISTRY[key]
     rest_argv = args[2:]
+    if key in _MACHINE_STDOUT_KEYS:
+        os.environ["LARCH_QUIET_DISABLE"] = "1"
 
     try:
         module = importlib.import_module(module_name)

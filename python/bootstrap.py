@@ -63,7 +63,10 @@ def _err(message: str) -> None:
 
 
 def _run(argv: list[str], *, env: dict[str, str] | None = None, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, capture_output=True, text=True, errors="replace", env=env, cwd=cwd, check=False)
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, errors="replace", env=env, cwd=cwd, check=False)
+    except OSError as exc:
+        return subprocess.CompletedProcess(argv, 127, "", f"{exc}\n")
 
 
 def _cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -97,6 +100,10 @@ def _atomic_text(path: Path, text: str) -> None:
 def _read_key(path: Path, key: str, default: str = "") -> str:
     result = _cli("session", "read-key", "--file", str(path), "--key", key, "--default", default)
     return result.stdout.strip() if result.returncode == 0 else default
+
+
+def _single_line(value: str) -> str:
+    return re.sub(r"\s+", " ", value.replace("\r", " ").replace("\n", " ")).strip()
 
 
 @dataclass
@@ -178,6 +185,13 @@ class BootstrapState:
 
 
 def _write_base_session_env(st: BootstrapState) -> None:
+    prior_claude_source = st.read_session("LARCH_CLAUDE_SOURCE_FILE")
+    prior_auto_mode = st.read_session("LARCH_AUTO_MODE")
+    prior_dynamic_archetypes = st.read_session("LARCH_DYNAMIC_ARCHETYPES_MAX")
+    claude_source = prior_claude_source
+    claude_source_path = Path(st.implement_tmpdir) / "claude-source.env"
+    if not claude_source and claude_source_path.is_file():
+        claude_source = str(claude_source_path)
     args = [
         "session",
         "write-env",
@@ -204,12 +218,31 @@ def _write_base_session_env(st: BootstrapState) -> None:
         "--forked-target",
         st.opts.forked_target,
     ]
+    if claude_source:
+        args.extend(["--claude-source-file", claude_source])
+    if prior_auto_mode:
+        args.extend(["--auto-mode", prior_auto_mode])
+    if prior_dynamic_archetypes:
+        args.extend(["--dynamic-archetypes", prior_dynamic_archetypes])
     if _valid_run_id(st.run_id):
         args.extend(["--run-id", st.run_id])
     result = _cli(*args)
     if result.returncode != 0:
         st.emit_step_failed("write-session-env")
     _cli("session", "write-env", "--plugin-root-only", "--output", str(Path(st.implement_tmpdir) / "plugin-root.env"), "--value", str(_REPO_ROOT))
+
+
+def _write_claude_source_snapshot(st: BootstrapState) -> None:
+    if not st.implement_tmpdir:
+        return
+    target = Path(st.implement_tmpdir) / "claude-source.env"
+    if target.is_file() and target.stat().st_size > 0:
+        return
+    env = {**os.environ, "LARCH_TOKEN_SESSION_ID": st.session_id}
+    result = _cli("token", "claude-source", env=env)
+    if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
+        return
+    _atomic_text(target, result.stdout)
 
 
 def _persist_run_flags(st: BootstrapState) -> bool:
@@ -305,6 +338,7 @@ def _phase_infra(st: BootstrapState) -> None:
         if not st.session_id and (Path(st.implement_tmpdir) / "session-id").is_file():
             st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip()
         st.run_id = st.resolve_run_id()
+        _write_claude_source_snapshot(st)
         _write_base_session_env(st)
         _cli("token", "mark", "Step 0 — preflight")
         env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
@@ -342,6 +376,7 @@ def _phase_tracking(st: BootstrapState) -> None:
                 st.branch_selected = "branch-1-resume"
                 st.issue_number_resolved = issue
                 st.run_id = run_id
+                _perform_tracking_side_effects(st, write_sentinel=False)
                 return
         elif st.opts.resume_plan_tail:
             st.emit_step_failed("resume-plan-tail-sentinel")
@@ -371,25 +406,91 @@ def _phase_tracking(st: BootstrapState) -> None:
     st.branch_selected = "branch-2-adopt"
     st.issue_number_resolved = st.opts.issue_number
     st.run_id = st.resolve_run_id()
-    if _valid_run_id(st.run_id):
-        _write_base_session_env(st)
-    _run([str(_SCRIPTS / "tracking-issue-write.sh"), "rename", "--issue", st.issue_number_resolved, "--state", "implementing"])
-    _cli("run-log", "init", "--log-root", str(Path(st.implement_tmpdir) / "larch-logs"), "--skill", "implement", "--run-id", st.run_id, "--issue", st.issue_number_resolved)
-    _persist_run_flags(st)
+    _perform_tracking_side_effects(st, write_sentinel=True)
+
+
+def _tracking_bail(st: BootstrapState, detail: str, result: subprocess.CompletedProcess[str] | None = None) -> None:
+    st.stall_tracking = "true"
+    st.implement_bail_reason = "tracking-init-failed"
+    if st.implement_tmpdir:
+        text = detail + "\n"
+        if result is not None:
+            text += result.stdout
+            text += result.stderr
+        with contextlib.suppress(OSError):
+            (Path(st.implement_tmpdir) / "tracking-init-failed.stderr.log").write_text(text, encoding="utf-8")
+
+
+def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) -> bool:
+    if not _valid_issue(st.issue_number_resolved):
+        _tracking_bail(st, "invalid issue number")
+        return False
+    if not _valid_run_id(st.run_id):
+        _tracking_bail(st, "invalid or empty run id")
+        return False
+    _write_base_session_env(st)
+    rename = _run([str(_SCRIPTS / "tracking-issue-write.sh"), "rename", "--issue", st.issue_number_resolved, "--state", "implementing"])
+    if rename.returncode != 0 or _parse_kv(rename.stdout).get("FAILED") == "true":
+        _tracking_bail(st, "tracking rename failed", rename)
+        return False
+    init = _cli("run-log", "init", "--log-root", str(Path(st.implement_tmpdir) / "larch-logs"), "--skill", "implement", "--run-id", st.run_id, "--issue", st.issue_number_resolved)
+    if init.returncode != 0:
+        _tracking_bail(st, "run-log init failed", init)
+        return False
+    if not _persist_run_flags(st):
+        return False
     post_args = [str(_REPO_ROOT / "skills" / "implement" / "scripts" / "post-tracking-issue.sh"), "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--emergency-requested", st.opts.emergency_requested]
-    if st.branch_selected == "branch-2-adopt":
+    if write_sentinel:
         post_args.extend(["--issue-number", st.issue_number_resolved])
-    _run(post_args)
+    post = _run(post_args)
+    pkv = _parse_kv(post.stdout)
+    if post.returncode != 0:
+        st.deferred = "true"
+        return False
+    if pkv.get("POSTED") == "false":
+        st.deferred = "true"
+    return True
 
 
 def _append_emergency_bypass(st: BootstrapState) -> bool:
-    # Minimal port: consume once by copying the preflight bypass log into execution issues.
     if st.opts.emergency_requested != "true" or not st.opts.preflight_tmpdir:
         return True
     source = Path(st.opts.preflight_tmpdir) / "emergency-bypass.log"
     sentinel = Path(st.implement_tmpdir) / ".emergency-bypass-log-consumed"
-    if not source.is_file() or source.stat().st_size == 0 or sentinel.exists():
+    if not source.is_file() or sentinel.exists():
         return True
+    try:
+        text = source.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    expected_issue = st.issue_number_resolved or st.opts.issue_number
+    canonical = {"missing-plan", "malformed-plan", "missing-designed-prefix", "audit-refuse"}
+    valid = bool(text.strip())
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = re.fullmatch(r"BYPASS kind=([a-z-]+) issue=([0-9]+)", stripped)
+        if not match or match.group(1) not in canonical or match.group(2) != expected_issue:
+            valid = False
+            break
+    output_file = source
+    exit_code = "0"
+    status_label = "bypassed"
+    if not valid:
+        redacted = Path(st.implement_tmpdir) / "emergency-bypass.invalid-format.redacted.log"
+        try:
+            redacted.write_text(
+                "Invalid emergency bypass log redacted.\n"
+                f"EXPECTED_ISSUE={expected_issue}\n"
+                "EXIT_CODE=99\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            return False
+        output_file = redacted
+        exit_code = "99"
+        status_label = "invalid-format"
     result = _cli(
         "run-log",
         "append-failure",
@@ -400,13 +501,13 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
         "--tool",
         "/implement --emergency preflight",
         "--exit-code",
-        "0",
+        exit_code,
         "--category",
         "Warnings",
         "--output-file",
-        str(source),
+        str(output_file),
         "--status-label",
-        "bypassed",
+        status_label,
         "--redact",
     )
     if result.returncode != 0:
@@ -419,6 +520,8 @@ def _phase_plan(st: BootstrapState) -> None:
     st.plan_file = str(Path(st.implement_tmpdir) / "plan.txt")
     feature_file = Path(st.implement_tmpdir) / "feature-description.txt"
     if st.opts.resume_plan_tail:
+        if not _append_emergency_bypass(st):
+            st.emit_tmp_step_failed("emergency-bypass-log")
         _persist_run_flags(st)
     else:
         snapshot = Path(st.implement_tmpdir) / "untracked-baseline.z"
@@ -433,6 +536,12 @@ def _phase_plan(st: BootstrapState) -> None:
             (Path(st.implement_tmpdir) / "copy-plan.stderr.log").write_text(str(exc), encoding="utf-8")
             st.emit_tmp_step_failed("copy-plan")
         issue = st.issue_number_resolved or st.opts.issue_number
+        if st.opts.forked_target == "true" and not st.opts.upstream_repo:
+            (Path(st.implement_tmpdir) / "gh-issue-view.stderr.log").write_text(
+                "--forked requires UPSTREAM_REPO before gh issue view\n",
+                encoding="utf-8",
+            )
+            st.emit_tmp_step_failed("gh-issue-view")
         gh_args = ["gh", "issue", "view", issue, "--json", "title,body", "--template", "{{.title}}\n\n{{.body}}"]
         if st.opts.forked_target == "true" and st.opts.upstream_repo:
             gh_args[4:4] = ["--repo", st.opts.upstream_repo]
@@ -471,7 +580,107 @@ def _phase_plan(st: BootstrapState) -> None:
     goal = f"Implement issue #{issue}: {title or 'planned change'}."
     planlog = _run([str(_SCRIPTS / "run-step1-plan-log.sh"), "--implement-tmpdir", st.implement_tmpdir, "--goal-text", goal])
     (Path(st.implement_tmpdir) / "run-step1-plan-log.out").write_text(planlog.stdout, encoding="utf-8")
+    _publish_plan_review_tally(st)
+    _upsert_plan_summary(st)
     _err(f"→ step0: branch {st.branch_name} + plan logged")
+
+
+def _publish_plan_review_tally(st: BootstrapState) -> None:
+    if not _valid_run_id(st.run_id):
+        return
+    preflight = Path(st.opts.preflight_tmpdir) if st.opts.preflight_tmpdir else Path()
+    for candidate in (
+        preflight / "plan-review-tally.json",
+        preflight / "voting-tally.json",
+        Path(st.implement_tmpdir) / "plan-review-tally.json",
+    ):
+        if not candidate.is_file():
+            continue
+        _cli(
+            "run-log",
+            "write",
+            "--log-root",
+            str(Path(st.implement_tmpdir) / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            st.run_id,
+            "--batch",
+            "plan-review-tally",
+            "--input-file",
+            str(candidate),
+        )
+        return
+
+
+def _upsert_plan_summary(st: BootstrapState) -> None:
+    issue = st.issue_number_resolved or st.opts.issue_number
+    if not issue or not _valid_run_id(st.run_id) or not st.plan_file:
+        return
+    content = Path(st.implement_tmpdir) / "summary-plan.md"
+    try:
+        plan_text = Path(st.plan_file).read_text(encoding="utf-8", errors="replace")
+        content.write_text(plan_text[:12000], encoding="utf-8")
+    except OSError:
+        return
+    args = [
+        str(_SCRIPTS / "tracking-issue-summary.sh"),
+        "upsert-summary",
+        "--issue",
+        issue,
+        "--marker",
+        f"<!-- larch:plan v1 runid={st.run_id} -->",
+        "--content-file",
+        str(content),
+    ]
+    if st.opts.forked_target == "true" and st.opts.upstream_repo:
+        args.extend(["--repo", st.opts.upstream_repo])
+    elif st.repo:
+        args.extend(["--repo", st.repo])
+    _run(args)
+
+
+def _record_coder_fallback(st: BootstrapState, reason: str) -> None:
+    if st.coder_fallback != "true" or not st.implement_tmpdir:
+        return
+    warning = "**⚠ Cursor and Codex unavailable — implementing with main agent.**\n"
+    _err(warning.rstrip("\n"))
+    diag = Path(st.implement_tmpdir) / "coder-fallback-warning.txt"
+    with contextlib.suppress(OSError):
+        diag.write_text(f"{warning}REASON={reason}\n", encoding="utf-8")
+    if diag.is_file():
+        _cli(
+            "run-log",
+            "append-failure",
+            "--log",
+            str(Path(st.implement_tmpdir) / "execution-issues.md"),
+            "--site",
+            "implement-bootstrap coder-select",
+            "--tool",
+            "phase_coder_select",
+            "--exit-code",
+            "0",
+            "--category",
+            "Warnings",
+            "--output-file",
+            str(diag),
+            "--status-label",
+            "fallback",
+            "--redact",
+        )
+    if _valid_run_id(st.run_id):
+        _cli(
+            "run-log",
+            "manifest",
+            "--log-root",
+            str(Path(st.implement_tmpdir) / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            st.run_id,
+            "--field",
+            "coder_fallback=true",
+        )
 
 
 def _phase_coder(st: BootstrapState) -> None:
@@ -504,6 +713,8 @@ def _phase_coder(st: BootstrapState) -> None:
     else:
         st.coder = "claude"
         st.coder_fallback = "true"
+    if st.coder_fallback == "true":
+        _record_coder_fallback(st, "requested external coder unavailable")
     _err(f"→ step0: coder={st.coder}")
 
 
@@ -558,6 +769,12 @@ def run_bootstrap(opts: BootstrapOptions) -> int:
         return 0
     except BootstrapExit as exc:
         return exc.code
+    except Exception as exc:
+        _emit_kv("STEP_FAILED", "internal-error")
+        if st.implement_tmpdir:
+            with contextlib.suppress(OSError):
+                (Path(st.implement_tmpdir) / "bootstrap-internal-error.log").write_text(_single_line(str(exc)) + "\n", encoding="utf-8")
+        return BOOTSTRAP_CONTRACT_FAILURE
 
 
 def bootstrap_main(argv: list[str]) -> int:

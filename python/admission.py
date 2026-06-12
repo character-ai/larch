@@ -30,7 +30,10 @@ def _single_line(value: str) -> str:
 
 
 def _run(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, capture_output=True, text=True, errors="replace", env=env, check=False)
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, errors="replace", env=env, check=False)
+    except OSError as exc:
+        return subprocess.CompletedProcess(argv, 127, "", f"{exc}\n")
 
 
 def _normal_issue(value: str) -> int | None:
@@ -195,6 +198,7 @@ def _clean_tree() -> str:
 
 
 def preflight_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="admission preflight", add_help=False)
     parser.add_argument("--skip-branch-check", action="store_true")
     parser.add_argument("--skip-clean-check", action="store_true")
@@ -265,6 +269,7 @@ def _github_remote_repo(remote: str) -> tuple[int, str, str]:
 
 
 def fork_env_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="admission fork-env", add_help=True)
     parser.add_argument("--tmpdir", default="")
     try:

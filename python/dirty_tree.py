@@ -171,6 +171,7 @@ def baseline(*, baseline_path: str, sidecar: str = "") -> list[str]:
 
 
 def baseline_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="dirty-tree baseline")
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--sidecar", default="")
@@ -185,6 +186,7 @@ def baseline_main(argv: list[str]) -> int:
 
 
 def checkpoint_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="dirty-tree checkpoint")
     parser.add_argument("--sidecar", default="")
     try:
