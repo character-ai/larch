@@ -314,19 +314,26 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 
 [`python/report_tokens_cost.py`](../python/report_tokens_cost.py) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:
 
-- **`LARCH_CLAUDE_RATE_PER_M`** — Claude (per million total tokens). When unset, empty, zero, or malformed, falls back to **`LARCH_TOKEN_RATE_PER_M`** when that value is a positive decimal; otherwise a built-in Claude default (`6.00` USD per 1M total tokens) applies.
-- **`LARCH_CODEX_RATE_PER_M`** — Codex (per million total tokens). When unset, empty, zero, or malformed, a built-in default (`10.00` USD per 1M) applies.
-- **`LARCH_CURSOR_RATE_PER_M`** — Cursor (per million total tokens). When unset, empty, zero, or malformed, a built-in default (`10.00` USD per 1M) applies.
+- **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
+- **Codex bucket env vars**: `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
+- **Cursor bucket env vars**: `LARCH_CURSOR_INPUT_RATE_PER_M`, `LARCH_CURSOR_CACHE_READ_RATE_PER_M`, and `LARCH_CURSOR_OUTPUT_RATE_PER_M`.
+- **Blended compatibility env vars**: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, and `LARCH_CURSOR_RATE_PER_M`.
 
-`TOTAL_COST` in the rich summary always sums all three vendor lanes once defaults make every lane numeric.
+Per-bucket env vars win when bucketed counts are available. Blended env vars are compatibility fallbacks for aggregate-only records. `LARCH_TOKEN_RATE_PER_M` remains a legacy alias for Claude blended pricing when `LARCH_CLAUDE_RATE_PER_M` is unset. Older aliases such as `LARCH_RATE_CODEX_INPUT`, `LARCH_RATE_CODEX_CACHE_READ`, and `LARCH_RATE_CURSOR_AGGREGATE` still work.
 
 #### Default rates
 
-Built-in defaults are **conservative blended estimates per million total tokens**, not invoice-grade billing data. Operators with real billing visibility should set explicit rates via the env vars above; the displayed dollar amounts are for cost-awareness only.
+Default model basis:
 
-> **Note**: Default rates are conservative blended estimates per million total tokens, not invoice-grade billing data. Operators with real billing visibility should set their own rates via the env vars above. The displayed dollar amounts are for cost-awareness only.
+- **Codex**: `gpt-5.5`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
+- **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens.
+- **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
 
-Malformed env values (non-numeric strings, negatives, etc.) fall back to the defaults so a typo cannot silently produce `$0.00` for a lane.
+Codex and Cursor blended defaults derive from the documented fleet mix of 7% input, 92% cache read, and 1% output. Claude's blended fallback remains the existing aggregate fallback.
+
+These estimates are not invoices. Subscription plans can make marginal cost lower than API-equivalent rates. Fable 5 main-agent Claude traffic is not priced separately until per-record model pricing exists.
+
+Malformed env values, zero, and negative values fall through to the next alias or default so a typo cannot silently produce `$0.00` for a lane.
 
 ### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
 

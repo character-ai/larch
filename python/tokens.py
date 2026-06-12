@@ -35,6 +35,7 @@ class TokenRecord:
     output_tokens: int
     cache_read_tokens: int
     cache_create_tokens: int
+    model: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,7 @@ class TokenLedger:
         cache_create: int = 0,
         total: int = 0,
         raw: str = "",
+        model: str = "",
     ) -> None:
         if vendor == "claude":
             msg = "vendor 'claude' is reserved; use 'claude_sub' for spawned-process Claude"
@@ -112,6 +114,8 @@ class TokenLedger:
             "raw": raw,
             "ts": _timestamp_utc(),
         }
+        if model:
+            payload["model"] = model
         try:
             self._append(payload)
         except OSError as exc:
@@ -188,6 +192,7 @@ def normalize_sidecar(data: dict[str, Any], *, tool: str) -> TokenRecord | None:
         output_tokens=_int_field(data, "output_tokens"),
         cache_read_tokens=_int_field(data, "cache_read_tokens"),
         cache_create_tokens=_int_field(data, "cache_create_tokens"),
+        model=str(data.get("model") or ""),
     )
 
 
@@ -202,6 +207,8 @@ def append_token_record(path: Path, record: TokenRecord) -> None:
         "cache_read_tokens": record.cache_read_tokens,
         "cache_create_tokens": record.cache_create_tokens,
     }
+    if record.model:
+        payload["model"] = record.model
     with path.open("a", encoding="utf-8") as handle:
         _ = handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
@@ -521,6 +528,10 @@ def _vendor_rows(ledger_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             out[field] = _int_field(row, field)
         if out["total"] == 0:
             out["total"] = out["input"] + out["output"] + out["cache_read"] + out["cache_create"]
+        if row.get("raw"):
+            out["raw"] = str(row.get("raw"))
+        if row.get("model"):
+            out["model"] = str(row.get("model"))
         rows.append(out)
     return rows
 
@@ -886,16 +897,11 @@ def _validate_snapshot_replay(data: Mapping[str, str], *, env: Mapping[str, str]
     }
 
 
-def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -> None:
-    if not tmpdir.is_dir():
-        msg = "--tmpdir must exist"
-        raise ValueError(msg)
+def parse_token_record_sidecar(input_path: Path | None) -> dict[str, Any] | None:
     if input_path is None:
-        return
+        return None
     if not input_path.is_file() or input_path.stat().st_size == 0:
-        if not (tmpdir / "execution-issues.md").exists():
-            print(f"append token record: token sidecar absent: {input_path}", file=sys.stderr)
-        return
+        return None
     kv: dict[str, str] = {}
     for line in input_path.read_text(encoding="utf-8", errors="replace").splitlines():
         key, sep, value = line.partition("=")
@@ -907,6 +913,11 @@ def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -
     def uint_key(key: str) -> int:
         raw = kv.get(key, "")
         return int(raw) if _UINT_RE.fullmatch(raw) else 0
+    total = uint_key("TOTAL")
+    if total == 0:
+        total = uint_key("INPUT") + uint_key("OUTPUT") + uint_key("CACHE_READ") + uint_key("CACHE_CREATE")
+    if total == 0:
+        return None
     payload = {
         "tool": tool,
         "raw": kv.get("RAW") or f"{tool}_ci_fix",
@@ -914,10 +925,51 @@ def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -
         "output": uint_key("OUTPUT"),
         "cache_read": uint_key("CACHE_READ"),
         "cache_create": uint_key("CACHE_CREATE"),
-        "total": uint_key("TOTAL"),
+        "total": total,
     }
+    model = kv.get("MODEL", "")
+    if model:
+        payload["model"] = model
+    return payload
+
+
+def append_token_record_from_sidecar(*, input_path: Path | None, tmpdir: Path) -> None:
+    if not tmpdir.is_dir():
+        msg = "--tmpdir must exist"
+        raise ValueError(msg)
+    if input_path is None:
+        return
+    payload = parse_token_record_sidecar(input_path)
+    if payload is None:
+        if (not input_path.is_file() or input_path.stat().st_size == 0) and not (tmpdir / "execution-issues.md").exists():
+            print(f"append token record: token sidecar absent: {input_path}", file=sys.stderr)
+        return
     with (tmpdir / "token-report.ndjson").open("a", encoding="utf-8") as handle:
         _ = handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+
+
+def record_vendor_from_sidecar(*, input_path: Path | None, ledger: str | None = None) -> None:
+    payload = parse_token_record_sidecar(input_path)
+    if payload is None:
+        return
+    vendor = str(payload.get("tool") or "unknown")
+    if vendor == "claude":
+        vendor = "claude_sub"
+    if vendor not in {"codex", "cursor", "claude_sub"}:
+        return
+    ledger_path = resolve_token_ledger_path(ledger=ledger)
+    if ledger_path is None:
+        return
+    TokenLedger(ledger_path).record_vendor(
+        vendor,
+        input=_int_field(payload, "input"),
+        output=_int_field(payload, "output"),
+        cache_read=_int_field(payload, "cache_read"),
+        cache_create=_int_field(payload, "cache_create"),
+        total=_int_field(payload, "total"),
+        raw=str(payload.get("raw") or ""),
+        model=str(payload.get("model") or ""),
+    )
 
 
 @dataclass
@@ -1392,13 +1444,13 @@ def token_record_vendor_main(argv: list[str] | None = None) -> int:
         print("token record-vendor requires <vendor>", file=sys.stderr)
         return 1
     vendor = args[0]
-    vals: dict[str, Any] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "total": 0, "raw": ""}
+    vals: dict[str, Any] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "total": 0, "raw": "", "model": ""}
     for kv in args[1:]:
         key, sep, value = kv.partition("=")
         if not sep or key not in vals:
             print(f"token record-vendor: unknown argument: {kv}", file=sys.stderr)
             return 1
-        if key == "raw":
+        if key in {"raw", "model"}:
             vals[key] = value
         elif _UINT_RE.fullmatch(value):
             vals[key] = int(value)
@@ -1419,6 +1471,18 @@ def token_record_vendor_main(argv: list[str] | None = None) -> int:
             print(f"token record-vendor: {exc}", file=sys.stderr)
             return 1
         print(f"token record-vendor: write skipped: {exc}", file=sys.stderr)
+    return 0
+
+
+def token_record_vendor_sidecar_main(argv: list[str] | None = None) -> int:
+    args, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
+    opts = _flag_map(args)
+    try:
+        input_path = Path(opts["--input"]) if opts.get("--input") else None
+        record_vendor_from_sidecar(input_path=input_path, ledger=ledger_override)
+    except (KeyError, ValueError) as exc:
+        print(f"token record-vendor-sidecar: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 

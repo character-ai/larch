@@ -148,6 +148,7 @@ if grep -Fq '"input_tokens":1000' "${output}.events.jsonl" 2>/dev/null; then
         printf 'CACHE_READ=900\n'
         printf 'TOTAL=1050\n'
         printf 'RAW=codex_lint_fix\n'
+        printf 'MODEL=gpt-5.5\n'
     } >"${output}.token-record"
 elif [[ -s "${output}.events.jsonl" ]]; then
     printf 'parse-codex-usage.sh: failed to parse usage\n' >>"${output}.sidecar"
@@ -622,11 +623,14 @@ grep -Fq 'RAW=codex_lint_fix' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected codex_lint_fix token record"
 grep -Fq 'TOTAL=1050' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected token total"
-if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0A" >/dev/null; then
+if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' "$LEDGER0A" >/dev/null; then
     :
 else
     fail "case0a expected codex_lint_fix token ledger row"
 fi
+jq -e 'select(.tool=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' \
+    "$SESSION0A/token-report.ndjson" >/dev/null \
+    || fail "case0a expected codex_lint_fix token-report row"
 grep -Fxq -- '--add-dir' "$ARGV0A" || fail "case0a expected --add-dir routing"
 grep -Fq "$case0a_run_dir" "$ARGV0A" || fail "case0a expected run_dir add-dir path"
 repo0a_canon=$(cd "$REPO0A" && pwd -P)
@@ -718,6 +722,12 @@ case0b_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0b_out")
 [[ -s "$case0b_run_dir/codex.log.events.jsonl" ]] || fail "case0b expected codex.log.events.jsonl despite failure"
 grep -Fq 'RAW=codex_lint_fix' "$case0b_run_dir/codex.log.token-record" \
     || fail "case0b expected failed Codex token record"
+jq -s 'map(select(.tool=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")) | length == 1' \
+    "$SESSION0B/token-report.ndjson" >/dev/null \
+    || fail "case0b expected one failed Codex token-report row"
+jq -s 'map(select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")) | length == 1' \
+    "$LEDGER0B" >/dev/null \
+    || fail "case0b expected one failed Codex token ledger row"
 
 # Case 0b.1: launcher reports LAUNCHER_EXIT=1 while its wrapper exits 0;
 # run_codex must treat the launcher key as authoritative.

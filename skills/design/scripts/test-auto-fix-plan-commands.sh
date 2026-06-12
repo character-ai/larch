@@ -270,15 +270,18 @@ cat >"$CODEX_LAUNCHER_STUB" <<'STUB'
 # Stub for LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH.  Emits LAUNCHER_EXIT=N to
 # stdout (captured by auto-fix-plan-commands.sh into launcher_stdout).
 workdir=""
+output=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --workdir) workdir="$2"; shift 2 ;;
+    --output) output="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
 case "${AUTOFIX_CODEX_LAUNCHER_MODE:-}" in
   exit0-fix)
     printf 'plan body\nautofix fixed\ndiff_lines: 3\n' >"$workdir/plan.txt"
+    printf 'TOOL=codex\nINPUT=10\nOUTPUT=2\nCACHE_READ=30\nTOTAL=42\nRAW=codex_plan_autofix\nMODEL=gpt-5.5\n' >"${output}.token-record"
     printf 'LAUNCHER_EXIT=0\n'
     ;;
   exit1)
@@ -293,6 +296,7 @@ chmod +x "$CODEX_LAUNCHER_STUB"
 
 run_codex_seam() {
   local d="$1"; shift
+  CLAUDE_PLUGIN_ROOT="$ROOT" \
   LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH="$CODEX_LAUNCHER_STUB" \
   LARCH_AUTOFIX_VALIDATE_PLAN_SH="$VALIDATE_STUB" \
   "$SUBJECT" --design-tmpdir "$d" --plan-file "$d/plan.txt" "$@" 2>/dev/null
@@ -300,10 +304,19 @@ run_codex_seam() {
 
 # Case C10: LAUNCHER_EXIT=0 + plan fix → AUTOFIX_STATUS=ok.
 DC10="$TMP/dc10"; mk_design "$DC10"
-outC10=$(AUTOFIX_CODEX_LAUNCHER_MODE=exit0-fix run_codex_seam "$DC10" --codex-present true --cursor-present false)
+IC10="$TMP/ic10"; mkdir -p "$IC10"
+outC10=$(AUTOFIX_CODEX_LAUNCHER_MODE=exit0-fix IMPLEMENT_TMPDIR="$IC10" LARCH_TOKEN_SESSION_ID=autofix-c10 \
+  run_codex_seam "$DC10" --codex-present true --cursor-present false)
 [[ "$(kv "$outC10" AUTOFIX_STATUS)" == "ok" ]] || fail "caseC10 expected ok: $outC10"
 [[ "$(kv "$outC10" FIXED_BY)" == "codex" ]] || fail "caseC10 expected FIXED_BY=codex: $outC10"
 [[ "$(kv "$outC10" ATTEMPTS)" == "1" ]] || fail "caseC10 expected 1 attempt: $outC10"
+[[ -f "$DC10/token-report.ndjson" ]] || fail "caseC10 missing token-report.ndjson"
+[[ "$(grep -c 'codex_plan_autofix' "$DC10/token-report.ndjson")" = 1 ]] || fail 'caseC10 expected one codex_plan_autofix NDJSON row'
+ledger_count_c10=$(grep -h -c 'codex_plan_autofix' "$DC10"/larch-tokens-*.jsonl 2>/dev/null || true)
+[[ "$ledger_count_c10" = 1 ]] || fail 'caseC10 expected one active-ledger codex_plan_autofix row'
+if compgen -G "$IC10/larch-tokens-*.jsonl" >/dev/null; then
+  fail 'caseC10 active ledger must ignore inherited IMPLEMENT_TMPDIR'
+fi
 
 # Case C11: LAUNCHER_EXIT=1 → parsed_exit=1, dispatch fails → exhausted.
 DC11="$TMP/dc11"; mk_design "$DC11"

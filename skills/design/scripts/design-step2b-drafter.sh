@@ -125,6 +125,7 @@ rm -f "$DESIGN_TMPDIR/plan.txt" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.stderr" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.stderr-tail" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.failure-diag" \
+      "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.json" \
       "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
 if [[ -z "$_step2b_drafter_skip_reason" ]]; then
@@ -204,6 +205,17 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
 else
   # Use exit 2 to match launcher argv/config validation failures.
   _drafter_rc=2
+fi
+if [[ "$_step2b_drafter_vendor" == "codex" && -s "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" ]]; then
+  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token append-record \
+      --input "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" \
+      --tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1; then
+    printf '%s\n' "**⚠ 2b: codex drafter token-report append failed; continuing.**" >&2
+  fi
+  if ! env -u IMPLEMENT_TMPDIR DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
+      --input "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" >/dev/null 2>&1; then
+    printf '%s\n' "**⚠ 2b: codex drafter active-ledger token append failed; continuing.**" >&2
+  fi
 fi
 _plan_lines=0
 if [ -s "$DESIGN_TMPDIR/plan.txt" ]; then

@@ -114,6 +114,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("token", "lane-write"): ("tokens", "token_lane_write_main"),
     ("token", "lane-report"): ("tokens", "token_lane_report_main"),
     ("token", "append-record"): ("tokens", "token_append_record_main"),
+    ("token", "record-vendor-sidecar"): ("tokens", "token_record_vendor_sidecar_main"),
     ("token", "cost"): ("tokens", "token_cost_main"),
     ("token", "render-cost-line"): ("tokens", "token_render_cost_line_main"),
     ("token", "compute-pr-line-counts"): ("tokens", "compute_pr_line_counts_main"),

@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -750,6 +751,7 @@ def _build_codex_argv(
     run_dir: Path,
     repo_root: str,
     prompt_body: str,
+    model_args: tuple[str, ...] = (),
 ) -> list[str]:
     codex_wrapper_log = run_dir / "codex.wrapper.log"
     codex_log = run_dir / "codex.log"
@@ -773,12 +775,35 @@ def _build_codex_argv(
         str(run_dir),
         "--add-dir",
         repo_root,
+        *model_args,
         "--output-last-message",
         str(codex_log),
         "--json",
         "--",
         prompt_body,
     ]
+
+
+def _load_codex_model_args(*, scripts_dir: Path) -> tuple[str, ...]:
+    result = subprocess.run(
+        [str(scripts_dir / "agent-model-args.sh"), "--tool", "codex"],
+        cwd=str(scripts_dir.parent),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ()
+    return tuple(line for line in result.stdout.splitlines() if line)
+
+
+def _extract_arg_after(args: tuple[str, ...], flag: str) -> str:
+    prev = ""
+    for arg in args:
+        if prev == flag:
+            return arg
+        prev = arg
+    return ""
 
 
 def _load_cursor_launch_argv(
@@ -853,11 +878,14 @@ def _run_codex(
     repo_root: str,
     prompt_body: str,
 ) -> int:
+    model_args = _load_codex_model_args(scripts_dir=scripts_dir)
+    resolved_model = _extract_arg_after(model_args, "-m")
     argv = _build_codex_argv(
         run_external=run_external,
         run_dir=run_dir,
         repo_root=repo_root,
         prompt_body=prompt_body,
+        model_args=model_args,
     )
     codex_events = run_dir / "codex.events.jsonl"
     codex_wrapper_log = run_dir / "codex.wrapper.log"
@@ -894,7 +922,7 @@ def _run_codex(
         record = (
             "set -euo pipefail\n"
             'source "$1"\n'
-            'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" || true\n'
+            'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" "" "$5" || true\n'
         )
         _ = runner.run(
             [
@@ -906,6 +934,7 @@ def _run_codex(
                 str(plugin_root),
                 str(codex_events),
                 str(sidecar),
+                resolved_model,
             ],
             cwd=repo_root,
         )

@@ -106,6 +106,29 @@ if grep -Fq 'OUTER_LAUNCHER_KIND=codex-exec' "${OUT}.meta" && grep -Fq "OUTER_LA
 else
     fail "records codex-exec outer metadata"
 fi
+if grep -Fq "TOKEN_RECORD=${OUT}.token-record" "$TMPDIR_BASE/launcher.stdout" \
+    && grep -Fxq 'MODEL=gpt-5.5' "${OUT}.token-record"; then
+    ok "happy path emits codex token-record with model"
+else
+    fail "happy path emits codex token-record with model: stdout=$(cat "$TMPDIR_BASE/launcher.stdout" 2>/dev/null) token-record=$(cat "${OUT}.token-record" 2>/dev/null)"
+fi
+
+OUT_STALE_MODEL_FAIL="$TMPDIR_BASE/exec-stale-model-fail-out.txt"
+printf 'STALE_TOKEN_RECORD\n' > "${OUT_STALE_MODEL_FAIL}.token-record"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    LARCH_CODEX_MODEL=" " \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_STALE_MODEL_FAIL" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-stale-model-fail.stdout" 2>"$TMPDIR_BASE/launcher-stale-model-fail.stderr"
+stale_model_fail_rc=$?
+set -e
+if [[ "$stale_model_fail_rc" -eq 0 ]] && grep -Fq "TOKEN_RECORD=${OUT_STALE_MODEL_FAIL}.token-record" "$TMPDIR_BASE/launcher-stale-model-fail.stdout" \
+    && ! grep -Fq 'STALE_TOKEN_RECORD' "${OUT_STALE_MODEL_FAIL}.token-record"; then
+    ok "model preflight failure clears stale codex-exec token-record"
+else
+    fail "model preflight failure should clear stale codex-exec token-record: rc=$stale_model_fail_rc stdout=$(cat "$TMPDIR_BASE/launcher-stale-model-fail.stdout" 2>/dev/null) token-record=$(cat "${OUT_STALE_MODEL_FAIL}.token-record" 2>/dev/null)"
+fi
 
 OUT_ADD="$TMPDIR_BASE/exec-add-out.txt"
 set +e

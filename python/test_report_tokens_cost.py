@@ -7,14 +7,22 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from proc import CommandResult
-from report_tokens_cost import price_run, render_cost_line_main, token_cost_argv, token_cost_main
+from report_tokens_cost import (
+    CODEX_CURSOR_BLENDED_FLEET_MIX,
+    DEFAULT_VENDOR_MODEL,
+    display_rates,
+    env_rate,
+    price_run,
+    render_cost_line_main,
+    token_cost_argv,
+    token_cost_from_args,
+    token_cost_main,
+)
 from report_tokens_models import RunRecord, VendorTotals
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _calls() -> list[list[str]]:
@@ -57,6 +65,11 @@ def _record() -> RunRecord:
     )
 
 
+def _parsed_cost(argv: list[str], env: Mapping[str, str] | None = None) -> dict[str, str]:
+    out = token_cost_from_args(argv, env=env)
+    return dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
+
+
 def test_mixed_bucket_and_blended_argv() -> None:
     argv = token_cost_argv(_record(), plugin_root=Path("/repo"))
     assert "--claude-input-tokens" in argv
@@ -91,6 +104,7 @@ def test_price_run_uses_python_pricing() -> None:
 
 
 def test_python_pricing_includes_claude_sub_cost() -> None:
+    rates = display_rates(environ={})
     record = RunRecord(
         number=1,
         title="t",
@@ -105,8 +119,8 @@ def test_python_pricing_includes_claude_sub_cost() -> None:
         raw_report={"BUCKETS_claude_sub": {"input": 1_000_000}},
     )
     priced = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=record, plugin_root=Path.cwd().parent)
-    assert priced.claude_sub_cost == 5.00
-    assert priced.total_cost == 5.00
+    assert priced.claude_sub_cost == rates.claude_input
+    assert priced.total_cost == rates.claude_input
 
 
 def test_real_token_cost_override() -> None:
@@ -242,13 +256,15 @@ def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
     rc = token_cost_main(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
     assert rc == 0
     out = capsys.readouterr().out
     parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     assert parsed["CLAUDE_COST"] == "0.00"
-    assert parsed["CODEX_COST"] == "3.94"
-    assert parsed["TOTAL_COST"] == "3.94"
+    expected = f"{rates.codex_input + rates.codex_output:.2f}"
+    assert parsed["CODEX_COST"] == expected
+    assert parsed["TOTAL_COST"] == expected
     assert parsed["TOTAL_TOKENS"] == "2000000"
     assert out.strip().splitlines()[0].startswith("CLAUDE_COST=")
     assert out.strip().splitlines()[4].startswith("TOTAL_COST=")
@@ -261,3 +277,176 @@ def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixtu
     assert out.startswith("💰 Cost: TOTAL ~$")
     assert "Codex $" in out
     assert "Tokens:" in out
+
+
+def test_display_rates_shipped_defaults_snapshot() -> None:
+    assert DEFAULT_VENDOR_MODEL == {
+        "codex": "gpt-5.5",
+        "cursor": "composer-2.5",
+        "claude": "claude-opus-4-8",
+    }
+    rates = display_rates(environ={})
+    assert rates.codex_input == 5.00
+    assert rates.codex_cached_input == 0.50
+    assert rates.codex_output == 30.00
+    assert rates.cursor_input == 0.50
+    assert rates.cursor_cache_read == 0.20
+    assert rates.cursor_output == 2.50
+    assert rates.claude_input == 5.00
+    assert rates.claude_cache_read == 0.50
+    assert rates.claude_cache_create_5m == 6.25
+    assert rates.claude_cache_create_1h == 10.00
+    assert rates.claude_output == 25.00
+    assert rates.claude_blended == 0.80
+    assert rates.codex_blended == 1.11
+    assert abs(rates.cursor_blended - 0.244) < 0.000001
+
+
+def test_env_rate_alias_precedence() -> None:
+    env = {"OLD": "1.5", "NEW": "2.5"}
+    assert env_rate(("NEW", "OLD"), 0.1, environ=env) == 2.5
+    assert env_rate(("BAD", "OLD"), 0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
+    assert env_rate(("BAD", "ZERO", "NEG", "OLD"), 0.1, environ={"BAD": "no", "ZERO": "0", "NEG": "-1", "OLD": "4"}) == 4.0
+
+
+@pytest.mark.parametrize(
+    ("field_name", "aliases"),
+    [
+        ("claude_input", ("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT")),
+        ("claude_cache_read", ("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ")),
+        (
+            "claude_cache_create_5m",
+            (
+                "LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M",
+                "LARCH_RATE_CLAUDE_CACHE_CREATE",
+                "LARCH_RATE_CLAUDE_CACHE_CREATE_5M",
+            ),
+        ),
+        ("claude_cache_create_1h", ("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H")),
+        ("claude_output", ("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT")),
+        ("codex_input", ("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT")),
+        (
+            "codex_cached_input",
+            ("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"),
+        ),
+        ("codex_output", ("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT")),
+        ("cursor_input", ("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT")),
+        ("cursor_cache_read", ("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ")),
+        ("cursor_output", ("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT")),
+        (
+            "claude_blended",
+            ("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"),
+        ),
+        ("codex_blended", ("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE")),
+        ("cursor_blended", ("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE")),
+    ],
+)
+def test_display_rates_alias_ladder(field_name: str, aliases: tuple[str, ...]) -> None:
+    for idx, alias in enumerate(aliases, start=1):
+        env = {alias: str(40 + idx)}
+        assert getattr(display_rates(environ=env), field_name) == 40 + idx
+
+
+def test_codex_and_cursor_blended_defaults_derive_from_fleet_mix() -> None:
+    rates = display_rates(environ={})
+    assert CODEX_CURSOR_BLENDED_FLEET_MIX == {"input": 0.07, "cache_read": 0.92, "output": 0.01}
+    assert rates.codex_blended == (
+        rates.codex_input * CODEX_CURSOR_BLENDED_FLEET_MIX["input"]
+        + rates.codex_cached_input * CODEX_CURSOR_BLENDED_FLEET_MIX["cache_read"]
+        + rates.codex_output * CODEX_CURSOR_BLENDED_FLEET_MIX["output"]
+    )
+    assert rates.cursor_blended == (
+        rates.cursor_input * CODEX_CURSOR_BLENDED_FLEET_MIX["input"]
+        + rates.cursor_cache_read * CODEX_CURSOR_BLENDED_FLEET_MIX["cache_read"]
+        + rates.cursor_output * CODEX_CURSOR_BLENDED_FLEET_MIX["output"]
+    )
+
+
+def test_bucket_pricing_ignores_blended_override_ladder() -> None:
+    parsed = _parsed_cost(
+        [
+            "--claude-input-tokens", "1000000",
+            "--codex-input-tokens", "1000000",
+            "--cursor-input-tokens", "1000000",
+        ],
+        env={
+            "LARCH_TOKEN_RATE_PER_M": "99",
+            "LARCH_CLAUDE_RATE_PER_M": "88",
+            "LARCH_CODEX_RATE_PER_M": "77",
+            "LARCH_CURSOR_RATE_PER_M": "66",
+            "LARCH_CLAUDE_INPUT_RATE_PER_M": "11",
+            "LARCH_CODEX_INPUT_RATE_PER_M": "22",
+            "LARCH_CURSOR_INPUT_RATE_PER_M": "33",
+        },
+    )
+    assert parsed["CLAUDE_COST"] == "11.00"
+    assert parsed["CODEX_COST"] == "22.00"
+    assert parsed["CURSOR_COST"] == "33.00"
+
+
+def test_blended_pricing_override_ladder_uses_vendor_before_legacy_token_rate() -> None:
+    parsed = _parsed_cost(
+        ["--claude-tokens", "1000000", "--codex-tokens", "1000000", "--cursor-tokens", "1000000"],
+        env={
+            "LARCH_TOKEN_RATE_PER_M": "99",
+            "LARCH_CLAUDE_RATE_PER_M": "88",
+            "LARCH_CODEX_RATE_PER_M": "77",
+            "LARCH_CURSOR_RATE_PER_M": "66",
+        },
+    )
+    assert parsed["CLAUDE_COST"] == "88.00"
+    assert parsed["CODEX_COST"] == "77.00"
+    assert parsed["CURSOR_COST"] == "66.00"
+
+    legacy_claude = _parsed_cost(
+        ["--claude-tokens", "1000000", "--codex-tokens", "1000000"],
+        env={"LARCH_TOKEN_RATE_PER_M": "55", "LARCH_CODEX_RATE_PER_M": "44"},
+    )
+    assert legacy_claude["CLAUDE_COST"] == "55.00"
+    assert legacy_claude["CODEX_COST"] == "44.00"
+
+
+def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
+    rc = token_cost_main([
+        "--codex-input-tokens", "4580000",
+        "--codex-cached-input-tokens", "77100000",
+        "--codex-output-tokens", "475000",
+        "--cursor-input-tokens", "8000000",
+        "--cursor-cache-read-tokens", "89100000",
+        "--cursor-output-tokens", "425000",
+    ])
+    assert rc == 0
+    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    expected_codex = round(
+        ((4_580_000 / 1_000_000) * rates.codex_input)
+        + ((77_100_000 / 1_000_000) * rates.codex_cached_input)
+        + ((475_000 / 1_000_000) * rates.codex_output),
+        2,
+    )
+    expected_cursor = round(
+        ((8_000_000 / 1_000_000) * rates.cursor_input)
+        + ((89_100_000 / 1_000_000) * rates.cursor_cache_read)
+        + ((425_000 / 1_000_000) * rates.cursor_output),
+        2,
+    )
+    assert abs(float(parsed["CODEX_COST"]) - expected_codex) < 0.01
+    assert abs(float(parsed["CURSOR_COST"]) - expected_cursor) < 0.01
+
+
+def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in ("LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "LARCH_CURSOR_MODEL", "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
+        monkeypatch.delenv(key, raising=False)
+
+    def resolved(tool: str, flag: str) -> str:
+        result = subprocess.run(
+            [str(Path(__file__).resolve().parents[1] / "scripts" / "agent-model-args.sh"), "--tool", tool],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        args = result.stdout.splitlines()
+        return args[args.index(flag) + 1]
+
+    assert resolved("codex", "-m") == DEFAULT_VENDOR_MODEL["codex"]
+    assert resolved("cursor", "--model") == DEFAULT_VENDOR_MODEL["cursor"]

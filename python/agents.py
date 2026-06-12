@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import sys
 from pathlib import Path
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -96,6 +98,103 @@ def parse_launcher_exit_text(text: str) -> int:
             except ValueError:
                 return 0
     return 0
+
+
+def parse_token_record_text(text: str) -> str:
+    """Read TOKEN_RECORD= from launcher stdout; missing -> empty string."""
+    for line in text.splitlines():
+        if line.startswith("TOKEN_RECORD="):
+            return line.split("=", 1)[1].strip().strip("\r")
+    return ""
+
+
+def ingest_launcher_token_sidecar(
+    runner: Runner,
+    *,
+    launcher_stdout: str,
+    output: str | Path,
+    tmpdir: str | Path | None,
+    plugin_root: str | Path | None = None,
+    implement_tmpdir: str | Path | None = None,
+    seen: set[str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Best-effort, exactly-once ingestion for Codex/Cursor .token-record sidecars."""
+    token_record = parse_token_record_text(launcher_stdout)
+    if not token_record:
+        token_record = f"{output}.token-record"
+    path = Path(token_record)
+    key = str(path)
+    if seen is not None and key in seen:
+        return False
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    if tmpdir is None:
+        return False
+    root = Path(plugin_root) if plugin_root is not None else Path(__file__).resolve().parents[1]
+    cli = root / "python" / "cli.py"
+    append_key = f"{key}:append"
+    vendor_key = f"{key}:vendor"
+    append_ok = seen is not None and append_key in seen
+    append_attempted = not append_ok
+    append_succeeded_now = False
+    if append_attempted:
+        append_result = runner.run(
+            [
+                "python3",
+                str(cli),
+                "token",
+                "append-record",
+                "--input",
+                str(path),
+                "--tmpdir",
+                str(tmpdir),
+            ],
+            cwd=cwd,
+        )
+        append_ok = append_result.returncode == 0
+        append_succeeded_now = append_ok
+        if append_ok and seen is not None:
+            seen.add(append_key)
+        if not append_ok:
+            print(
+                f"token sidecar ingest: token append-record failed with exit {append_result.returncode}",
+                file=sys.stderr,
+            )
+    vendor_ok: bool | None = None
+    vendor_succeeded_now = False
+    if implement_tmpdir is not None:
+        vendor_ok = seen is not None and vendor_key in seen
+        if not vendor_ok:
+            env = dict(os.environ)
+            env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
+            vendor_result = runner.run(
+                [
+                    "python3",
+                    str(cli),
+                    "token",
+                    "record-vendor-sidecar",
+                    "--input",
+                    str(path),
+                ],
+                cwd=cwd,
+                env=env,
+            )
+            vendor_ok = vendor_result.returncode == 0
+            vendor_succeeded_now = vendor_ok
+            if vendor_ok and seen is not None:
+                seen.add(vendor_key)
+            if not vendor_ok:
+                print(
+                    f"token sidecar ingest: token record-vendor-sidecar failed with exit {vendor_result.returncode}",
+                    file=sys.stderr,
+                )
+    fully_ingested = append_ok and (vendor_ok is not False)
+    if seen is not None and fully_ingested:
+        seen.add(key)
+    if vendor_ok is None:
+        return append_succeeded_now
+    return append_succeeded_now or vendor_succeeded_now
 
 
 def read_launcher_exit(output_file: str | Path) -> int:

@@ -3,6 +3,7 @@
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
+export CLAUDE_PLUGIN_ROOT="$REPO"
 HELPER="$REPO/scripts/render-run-summary.sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }

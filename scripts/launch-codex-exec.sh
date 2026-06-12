@@ -55,6 +55,7 @@ write_preflight_bundle() {
     printf '%s\n' "$launcher_exit" > "${OUTPUT}.done" 2>/dev/null || true
     emit_kv LAUNCHER_EXIT "$launcher_exit"
     emit_kv OUTPUT "$OUTPUT"
+    emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
     exit 0
 }
 
@@ -86,6 +87,7 @@ done
 case "$TIMEOUT" in ''|*[!0-9]*|0) die "--timeout must be a positive integer" ;; esac
 case "$OUTPUT" in /*) ;; *) die "--output must be an absolute path" ;; esac
 validate_meta_scalar_path --output "$OUTPUT" || exit 2
+: > "${OUTPUT}.token-record" 2>/dev/null || true
 
 if [[ -n "$PROMPT" && -n "$PROMPT_FILE" ]]; then
     die "exactly one of --prompt or --prompt-file is required, not both"
@@ -166,6 +168,8 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
+RESOLVED_CODEX_MODEL=""
+external_launcher_extract_codex_model RESOLVED_CODEX_MODEL "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 
 PROJECT_KEY=${WORKDIR//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
@@ -177,7 +181,6 @@ TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
 SIDECAR_LOG="${OUTPUT}.sidecar"
 CODEX_EVENTS="${OUTPUT}.events.jsonl"
-: > "${OUTPUT}.token-record" 2>/dev/null || true
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
@@ -245,7 +248,7 @@ if [[ ! -s "$CODEX_EVENTS" ]]; then
     printf '{}\n' > "$CODEX_EVENTS"
 fi
 
-codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "$USAGE_LABEL" "${OUTPUT}.token-record"
+codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "$USAGE_LABEL" "${OUTPUT}.token-record" "$RESOLVED_CODEX_MODEL"
 
 _add_dirs_json="[]"
 if [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
@@ -271,4 +274,5 @@ codex_launcher_promote_inner_done "$OUTPUT"
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 emit_kv OUTPUT "$OUTPUT"
+emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
 exit 0

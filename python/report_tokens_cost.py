@@ -13,20 +13,51 @@ from collections.abc import Mapping
 from proc import Runner
 from report_tokens_models import DisplayRates, RunRecord, VendorName, VENDORS, VendorTotals, safe_int
 
-DEFAULT_CLAUDE_INPUT_RATE_PER_M = 5.00
-DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M = 0.50
-DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M = 6.25
-DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M = 10.00
-DEFAULT_CLAUDE_OUTPUT_RATE_PER_M = 25.00
-DEFAULT_CODEX_INPUT_RATE_PER_M = 0.44
-DEFAULT_CODEX_CACHED_INPUT_RATE_PER_M = 0.04
-DEFAULT_CODEX_OUTPUT_RATE_PER_M = 3.50
-DEFAULT_CURSOR_INPUT_RATE_PER_M = 1.25
-DEFAULT_CURSOR_CACHE_READ_RATE_PER_M = 0.25
-DEFAULT_CURSOR_OUTPUT_RATE_PER_M = 6.00
+DEFAULT_VENDOR_MODEL = {
+    "codex": "gpt-5.5",
+    "cursor": "composer-2.5",
+    "claude": "claude-opus-4-8",
+}
+
+# Pricing sources, verified as of 2026-06-11:
+# - OpenAI Codex pricing credits for gpt-5.5 at $0.04/credit.
+# - Cursor docs models-and-pricing composer-2.5 row.
+# - Anthropic Claude Opus 4.8 list-price buckets.
+DEFAULT_RATE_TABLE_PER_M = {
+    ("codex", "gpt-5.5"): {
+        "input": 5.00,
+        "cache_read": 0.50,
+        "output": 30.00,
+    },
+    ("cursor", "composer-2.5"): {
+        "input": 0.50,
+        "cache_read": 0.20,
+        "output": 2.50,
+    },
+    ("claude", "claude-opus-4-8"): {
+        "input": 5.00,
+        "cache_read": 0.50,
+        "cache_create_5m": 6.25,
+        "cache_create_1h": 10.00,
+        "output": 25.00,
+    },
+}
+
+CODEX_CURSOR_BLENDED_FLEET_MIX = {
+    "input": 0.07,
+    "cache_read": 0.92,
+    "output": 0.01,
+}
 DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
-DEFAULT_CODEX_BLENDED_PER_M = 2.00
-DEFAULT_CURSOR_BLENDED_PER_M = 1.50
+
+
+def _default_row(vendor: str) -> Mapping[str, float]:
+    return DEFAULT_RATE_TABLE_PER_M[(vendor, DEFAULT_VENDOR_MODEL[vendor])]
+
+
+def _blended_default(vendor: str) -> float:
+    row = _default_row(vendor)
+    return sum(row[key] * CODEX_CURSOR_BLENDED_FLEET_MIX[key] for key in CODEX_CURSOR_BLENDED_FLEET_MIX)
 
 
 @dataclass(frozen=True)
@@ -62,21 +93,24 @@ def env_rate(
 
 def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
     env = os.environ if environ is None else environ
+    claude = _default_row("claude")
+    codex = _default_row("codex")
+    cursor = _default_row("cursor")
     return DisplayRates(
-        claude_input=env_rate(("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), DEFAULT_CLAUDE_INPUT_RATE_PER_M, environ=env),
-        claude_cache_read=env_rate(("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M, environ=env),
-        claude_cache_create_5m=env_rate(("LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_RATE_CLAUDE_CACHE_CREATE_5M"), DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M, environ=env),
-        claude_cache_create_1h=env_rate(("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H"), DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M, environ=env),
-        claude_output=env_rate(("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT"), DEFAULT_CLAUDE_OUTPUT_RATE_PER_M, environ=env),
-        codex_input=env_rate(("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), DEFAULT_CODEX_INPUT_RATE_PER_M, environ=env),
-        codex_cached_input=env_rate(("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), DEFAULT_CODEX_CACHED_INPUT_RATE_PER_M, environ=env),
-        codex_output=env_rate(("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), DEFAULT_CODEX_OUTPUT_RATE_PER_M, environ=env),
-        cursor_input=env_rate(("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), DEFAULT_CURSOR_INPUT_RATE_PER_M, environ=env),
-        cursor_cache_read=env_rate(("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), DEFAULT_CURSOR_CACHE_READ_RATE_PER_M, environ=env),
-        cursor_output=env_rate(("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), DEFAULT_CURSOR_OUTPUT_RATE_PER_M, environ=env),
+        claude_input=env_rate(("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), claude["input"], environ=env),
+        claude_cache_read=env_rate(("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), claude["cache_read"], environ=env),
+        claude_cache_create_5m=env_rate(("LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_RATE_CLAUDE_CACHE_CREATE_5M"), claude["cache_create_5m"], environ=env),
+        claude_cache_create_1h=env_rate(("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H"), claude["cache_create_1h"], environ=env),
+        claude_output=env_rate(("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT"), claude["output"], environ=env),
+        codex_input=env_rate(("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), codex["input"], environ=env),
+        codex_cached_input=env_rate(("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), codex["cache_read"], environ=env),
+        codex_output=env_rate(("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), codex["output"], environ=env),
+        cursor_input=env_rate(("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), cursor["input"], environ=env),
+        cursor_cache_read=env_rate(("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), cursor["cache_read"], environ=env),
+        cursor_output=env_rate(("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), cursor["output"], environ=env),
         claude_blended=env_rate(("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
-        codex_blended=env_rate(("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), DEFAULT_CODEX_BLENDED_PER_M, environ=env),
-        cursor_blended=env_rate(("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), DEFAULT_CURSOR_BLENDED_PER_M, environ=env),
+        codex_blended=env_rate(("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), _blended_default("codex"), environ=env),
+        cursor_blended=env_rate(("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), _blended_default("cursor"), environ=env),
     )
 
 

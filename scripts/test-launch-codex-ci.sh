@@ -169,7 +169,8 @@ if grep -q '^TOOL=codex$' "${OUT_SUCCESS}.token-record" \
     && grep -q '^CACHE_READ=900$' "${OUT_SUCCESS}.token-record" \
     && grep -q '^OUTPUT=50$' "${OUT_SUCCESS}.token-record" \
     && grep -q '^TOTAL=1050$' "${OUT_SUCCESS}.token-record" \
-    && grep -q '^RAW=codex_ci_fix$' "${OUT_SUCCESS}.token-record"; then
+    && grep -q '^RAW=codex_ci_fix$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^MODEL=stub-model$' "${OUT_SUCCESS}.token-record"; then
     ok "runtime success writes per-bucket codex token-record"
 else
     fail "runtime success writes per-bucket codex token-record: $(cat "${OUT_SUCCESS}.token-record" 2>/dev/null)"
@@ -189,6 +190,20 @@ if grep -qx -- '--json' "$runtime_argv" 2>/dev/null; then
     ok "runtime success argv includes --json"
 else
     fail "runtime success argv includes --json: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+
+OUT_STALE_MODEL_FAIL="$TMPDIR_BASE/ci-runtime-stale-model-fail"
+printf 'STALE_TOKEN_RECORD\n' > "${OUT_STALE_MODEL_FAIL}.token-record"
+set +e
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=" " RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_STALE_MODEL_FAIL" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+model_fail_rc=$?
+set -e
+if [[ "$model_fail_rc" -ne 0 && ! -s "${OUT_STALE_MODEL_FAIL}.token-record" ]]; then
+    ok "model preflight failure clears stale codex token-record"
+else
+    fail "model preflight failure should clear stale codex token-record: rc=$model_fail_rc token-record=$(cat "${OUT_STALE_MODEL_FAIL}.token-record" 2>/dev/null)"
 fi
 
 if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtime_argv"     && ! grep -Fq 'sk-larch-ci-sentinel' "$runtime_argv"; then

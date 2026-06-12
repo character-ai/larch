@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 import agents
 import config
 from agents import LaunchFailure, TierAttempt
+from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB_COMMON = REPO_ROOT / "scripts" / "lib-external-launcher-common.sh"
@@ -39,6 +41,208 @@ def test_parse_launcher_exit_text() -> None:
     assert agents.parse_launcher_exit_text("noise\nLAUNCHER_EXIT=2\n") == 2
     assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n") == 0
     assert agents.parse_launcher_exit_text("") == 0
+
+
+def test_parse_token_record_text() -> None:
+    assert agents.parse_token_record_text("noise\nTOKEN_RECORD=/tmp/custom.token-record\n") == "/tmp/custom.token-record"
+    assert agents.parse_token_record_text("TOKEN_RECORD=\n") == ""
+
+
+class TokenIngestRunner:
+    def __init__(self, returncodes: Sequence[int] = (0, 0)) -> None:
+        self.returncodes = list(returncodes)
+        self.calls: list[tuple[tuple[str, ...], Mapping[str, str] | None]] = []
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,
+        check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
+    ) -> CommandResult:
+        self.calls.append((tuple(argv), None if env is None else dict(env)))
+        rc = self.returncodes.pop(0) if self.returncodes else 0
+        return CommandResult(tuple(argv), rc, "", "", 0.01)
+
+
+def test_ingest_launcher_token_sidecar_uses_token_record_and_exports_tmpdir(tmp_path: Path) -> None:
+    sidecar = tmp_path / "custom.token-record"
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\nMODEL=gpt-test\n",
+        encoding="utf-8",
+    )
+    seen: set[str] = set()
+    runner = TokenIngestRunner()
+    ok = agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout=f"LAUNCHER_EXIT=0\nTOKEN_RECORD={sidecar}\n",
+        output=tmp_path / "ignored.out",
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    )
+    assert ok is True
+    assert len(runner.calls) == 2
+    assert runner.calls[0][0][-4:] == ("--input", str(sidecar), "--tmpdir", str(tmp_path))
+    assert runner.calls[1][0][-2:] == ("--input", str(sidecar))
+    assert runner.calls[1][1] is not None
+    assert runner.calls[1][1]["IMPLEMENT_TMPDIR"] == str(tmp_path)
+
+    duplicate = agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout=f"TOKEN_RECORD={sidecar}\n",
+        output=tmp_path / "ignored.out",
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    )
+    assert duplicate is False
+    assert len(runner.calls) == 2
+
+
+def test_ingest_launcher_token_sidecar_defaults_to_output_sidecar(tmp_path: Path) -> None:
+    output = tmp_path / "cursor.out"
+    sidecar = Path(f"{output}.token-record")
+    _ = sidecar.write_text("TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n", encoding="utf-8")
+    runner = TokenIngestRunner()
+    assert agents.ingest_launcher_token_sidecar(runner, launcher_stdout="", output=output, tmpdir=tmp_path) is True
+    assert runner.calls[0][0][-4:] == ("--input", str(sidecar), "--tmpdir", str(tmp_path))
+
+
+def test_ingest_launcher_token_sidecar_runs_vendor_ingest_after_append_failure(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    _ = Path(f"{output}.token-record").write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    runner = TokenIngestRunner(returncodes=(2,))
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+    ) is True
+    assert len(runner.calls) == 2
+
+
+def test_ingest_launcher_token_sidecar_retries_append_only_after_vendor_partial_success(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    seen: set[str] = set()
+    runner = TokenIngestRunner(returncodes=(2, 0, 0))
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert f"{sidecar}:append" not in seen
+    assert f"{sidecar}:vendor" in seen
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert [call[0][3] for call in runner.calls] == [
+        "append-record",
+        "record-vendor-sidecar",
+        "append-record",
+    ]
+    assert str(sidecar) in seen
+
+
+def test_ingest_launcher_token_sidecar_returns_false_when_both_ingests_fail(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    _ = Path(f"{output}.token-record").write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    runner = TokenIngestRunner(returncodes=(2, 3))
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+    ) is False
+    assert len(runner.calls) == 2
+
+
+def test_ingest_launcher_token_sidecar_marks_seen_after_full_success(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    seen: set[str] = set()
+    runner = TokenIngestRunner()
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        seen=seen,
+    ) is False
+    assert str(sidecar) not in seen
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert str(sidecar) in seen
+
+
+def test_ingest_launcher_token_sidecar_retries_only_missing_leg_after_partial_failure(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    seen: set[str] = set()
+    runner = TokenIngestRunner(returncodes=(0, 3, 0, 0))
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert f"{sidecar}:append" in seen
+    assert f"{sidecar}:vendor" not in seen
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert len(runner.calls) == 3
+    assert runner.calls[0][0][3] == "append-record"
+    assert runner.calls[1][0][3] == "record-vendor-sidecar"
+    assert runner.calls[2][0][3] == "record-vendor-sidecar"
+    assert str(sidecar) in seen
 
 
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:

@@ -604,9 +604,17 @@ else
     fail "token-record sidecar content mismatch: $(cat "$RECORD_FILE" 2>/dev/null)"
 fi
 
+LARCH_TEST_PARSE_MODE=success \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_review" "$RECORD_FILE" "gpt-model-fixture"
+if grep -Fxq 'MODEL=gpt-model-fixture' "$RECORD_FILE" 2>/dev/null; then
+    pass
+else
+    fail "token-record sidecar model mismatch: $(cat "$RECORD_FILE" 2>/dev/null)"
+fi
+
 LARCH_TEST_PARSE_MODE=success LARCH_TEST_LEDGER_CALLS="$LEDGER_CALLS" \
-    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_ci_fix"
-if grep -Fqx 'record-vendor codex input=7 cache_read=3 output=2 total=12 raw=codex_ci_fix' "$LEDGER_CALLS" 2>/dev/null; then
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_ci_fix" "" "gpt-ledger-fixture"
+if grep -Fqx 'record-vendor codex input=7 cache_read=3 output=2 total=12 raw=codex_ci_fix model=gpt-ledger-fixture' "$LEDGER_CALLS" 2>/dev/null; then
     pass
 else
     fail "ledger mode args mismatch: $(cat "$LEDGER_CALLS" 2>/dev/null)"

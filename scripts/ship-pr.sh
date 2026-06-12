@@ -1512,6 +1512,29 @@ _run_post_rebase_verify_gates() {
     esac
 }
 
+SHIP_PR_INGESTED_TOKEN_RECORDS=()
+
+ship_pr_ingest_token_record_once() {
+    local phase="$1" token_record="$2" log_file="$3"
+    local _seen_token_record rc
+    [[ -n "$token_record" && -s "$token_record" ]] || return 0
+    for _seen_token_record in ${SHIP_PR_INGESTED_TOKEN_RECORDS[@]+"${SHIP_PR_INGESTED_TOKEN_RECORDS[@]}"}; do
+        if [[ "$_seen_token_record" == "$token_record" ]]; then
+            return 0
+        fi
+    done
+    python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
+        --input "$token_record" \
+        --tmpdir "$IMPLEMENT_TMPDIR" >>"$log_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$log_file" Warnings
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+        --input "$token_record" >>"$log_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "token record-vendor-sidecar" "$rc" "$log_file" Warnings
+    SHIP_PR_INGESTED_TOKEN_RECORDS+=("$token_record")
+}
+
 _stage_and_push_ci_fixes() {
     local phase=$1 token_record_input=${2:-} checks_site=${3:-} failed_jobs_tsv=${4:-}
     local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
@@ -1529,9 +1552,7 @@ _stage_and_push_ci_fixes() {
 
     if [ "$pending_retry" != true ]; then
         fail_file=$(failure_capture_path "$phase")
-        python3 "$SCRIPT_DIR/../python/cli.py" token append-record --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
-        rc=$?
-        [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$fail_file" Warnings
+        ship_pr_ingest_token_record_once "$phase" "$token_record_input" "$fail_file"
 
         vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
         vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
@@ -1629,12 +1650,13 @@ run_ci_fix_vendor() {
     local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc stage_rc
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
-    local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
+    local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher token_record
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
     local detail_log pre_refresh_head
     local tiers=(codex cursor claude) tier tier_idx offset waterfall_iter=0 first_tier
 
     larch_err "⚠ ship-pr: CI failed; dispatching fix"
+    SHIP_PR_INGESTED_TOKEN_RECORDS=()
 
     baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
     baseline_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-untracked.txt"
@@ -1692,6 +1714,11 @@ run_ci_fix_vendor() {
         wrapper_rc=$?
         launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ {print $2; exit}' "$fail_file")
         launcher_exit="${launcher_exit:-0}"
+        token_record=$(awk -F= '/^TOKEN_RECORD=/ { print substr($0, index($0, "=") + 1); exit }' "$fail_file" 2>/dev/null || true)
+        token_record="${token_record:-${tier_out}.token-record}"
+        if [[ "$tier" == "codex" || "$tier" == "cursor" ]]; then
+            ship_pr_ingest_token_record_once "$phase" "$token_record" "$fail_file"
+        fi
 
         if [ "$wrapper_rc" -eq 2 ]; then
             _surface_ci_stderr_tail "$tier_out"
@@ -2401,11 +2428,18 @@ recovery_waterfall_paths_delta_revert() {
     rm -f "$cur_tracked" "$cur_untracked"
 }
 
+ship_pr_ingest_recovery_token_record() {
+    local phase="$1" token_record="$2" log_file="$3"
+    ship_pr_ingest_token_record_once "$phase" "$token_record" "$log_file"
+}
+
 run_recovery_waterfall() {
     local wf_phase=$1 wf_role=$2 fail_log_path=$3 verify_kind=$4
     local pr_title=${5:-} pr_body=${6:-}
     local baseline_dir baseline_head cur_head wf_log tier_rc verify_rc
     local out output plan_file plan_args=() fl_arg=() run_id repo_r
+    local -a ingested_token_records=()
+    SHIP_PR_INGESTED_TOKEN_RECORDS=()
     baseline_dir=$(mktemp -d "${IMPLEMENT_TMPDIR}/recovery-wf.XXXXXX")
     wf_log="$baseline_dir/wf.log"
     git rev-parse HEAD > "$baseline_dir/head" 2>/dev/null || printf '\n' > "$baseline_dir/head"
@@ -2460,6 +2494,21 @@ run_recovery_waterfall() {
         esac
         launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ { print $2; exit }' "$launcher_stdout" 2>/dev/null || true)
         launcher_exit="${launcher_exit:-0}"
+        token_record=$(awk -F= '/^TOKEN_RECORD=/ { print substr($0, index($0, "=") + 1); exit }' "$launcher_stdout" 2>/dev/null || true)
+        token_record="${token_record:-${output}.token-record}"
+        if [[ "$tier" == "codex" || "$tier" == "cursor" ]]; then
+            _already_ingested=false
+            for _seen_token_record in "${ingested_token_records[@]}"; do
+                if [[ "$_seen_token_record" == "$token_record" ]]; then
+                    _already_ingested=true
+                    break
+                fi
+            done
+            if [[ "$_already_ingested" != true ]]; then
+                ship_pr_ingest_recovery_token_record "$wf_phase" "$token_record" "$wf_log"
+                ingested_token_records+=("$token_record")
+            fi
+        fi
         rm -f "$launcher_stdout"
         if [ "$tier_rc" -ne 0 ] || [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
             _surface_ci_stderr_tail "$output"
@@ -2852,6 +2901,13 @@ run_rebase_rebump() {
                 --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
             rc=$?
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "token append-record" "$rc" "$fail_file" Warnings
+            if [[ -s "${conflict_out}.token-record" ]]; then
+                fail_file=$(failure_capture_path conflict-resolution)
+                IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+                    --input "${conflict_out}.token-record" > "$fail_file" 2>&1
+                rc=$?
+                [ "$rc" -eq 0 ] || record_failure conflict-resolution "token record-vendor-sidecar" "$rc" "$fail_file" Warnings
+            fi
         fi
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the

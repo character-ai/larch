@@ -11,7 +11,7 @@ PYTHON ?= python3
 .PHONY: test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
-.PHONY: test-auto-fix-plan-commands test-gate-b-apply-mode
+.PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
 .PHONY: test-step-7a test-step-8-ship
@@ -110,7 +110,7 @@ test-harnesses-14: test-ship-pr-oos-pr-prep test-dispatch-plan-review-panel test
 
 test-harnesses-15: test-harness-shards-coverage test-dispatch-with-waterfall test-dispatch-panel-reuse test-write-final-report test-check-plan-size test-check-contains-pins test-create-pr test-implement-bootstrap-invoke test-review-and-fix-step5-starting-round test-token-tally test-token-cost-per-bucket test-lint-renderer-substitution-safety test-gh-run-logs test-lib-design-round-artifacts test-implement-positional-issue
 
-test-harnesses-16: test-design-log-publish test-launch-review-cursor-retry test-implement-finalize test-hook-anti-read-poll test-lib-cursor-auth test-harness-timer test-launch-claude-drafter test-larch-logs-manifest test-run-negotiation-round test-render-cost-line test-design-driver test-commit-review-fixes test-invoke-plan-validator test-external-tool-registry test-implement-anti-polling-rule test-anti-improvised-wakeup
+test-harnesses-16: test-design-step2b-drafter test-design-log-publish test-launch-review-cursor-retry test-implement-finalize test-hook-anti-read-poll test-lib-cursor-auth test-harness-timer test-launch-claude-drafter test-larch-logs-manifest test-run-negotiation-round test-render-cost-line test-design-driver test-commit-review-fixes test-invoke-plan-validator test-external-tool-registry test-implement-anti-polling-rule test-anti-improvised-wakeup
 
 test-harnesses-17: test-dispatch-code-voters-happy test-collect-agent-bash32 test-scout-dynamic-archetypes test-file-design-oos test-dispatch-code-voters-retry-codex-success test-release-prepare test-token-ledger test-design-structure test-cache-root-validation test-cache-key-discipline test-flush-vendor-failure-diagnostics test-research-structure test-emit-plan test-append-execution-issue test-alias-structure test-anti-halt
 
@@ -423,6 +423,9 @@ test-decompose-aggregator:
 
 test-decompose-file-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-file-issues.sh
+
+test-design-step2b-drafter:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
 
 test-design-driver:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-driver.sh

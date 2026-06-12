@@ -141,7 +141,7 @@ write_dirty_tree_sidecar() {
     [[ -z "$diff_file" ]] || rm -f "$diff_file"
 }
 
-rm -f "${OUTPUT_CANON}.stderr-tail" "${OUTPUT_CANON}.failure-diag"
+rm -f "${OUTPUT_CANON}.stderr-tail" "${OUTPUT_CANON}.failure-diag" "${OUTPUT_CANON}.token-record"
 write_status_file "ERROR" "false" 0 0 "false" "false" "prelaunch"
 
 DRAFTER_LAUNCHED=false
@@ -195,6 +195,9 @@ set -e
 
 LAUNCHER_EXIT=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$_launcher_stdout" 2>/dev/null || true)
 [[ -n "$LAUNCHER_EXIT" ]] || LAUNCHER_EXIT=1
+if [[ -s "${_codex_raw}.token-record" ]]; then
+    cp -p "${_codex_raw}.token-record" "${OUTPUT_CANON}.token-record" 2>/dev/null || true
+fi
 rm -f "$_launcher_stdout"
 
 if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
@@ -214,6 +217,7 @@ if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
     printf '%s\n' "${LAUNCHER_EXIT:-1}" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
     exit "${LAUNCHER_EXIT:-1}"
 fi
 
@@ -224,6 +228,7 @@ if [[ ! -s "$_codex_raw" ]]; then
     printf '%s\n' "1" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
     exit 1
 fi
 
@@ -237,6 +242,7 @@ then
     printf '%s\n' "99" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
     exit 99
 fi
 
@@ -264,4 +270,5 @@ printf '%s\n' "0" > "${OUTPUT_CANON}.done"
 
 emit_kv STATUS "OK"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
 exit 0

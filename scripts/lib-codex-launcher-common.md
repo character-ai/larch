@@ -9,7 +9,10 @@ The canonical bodies for `codex_launcher_promote_inner_done` (which promotes `${
 through [scripts/parse-codex-usage.md](parse-codex-usage.md), appends
 fail-closed parser diagnostics to the sidecar when parsing fails, and otherwise
 either writes a `TOOL=codex` token-record sidecar or records a `vendor=codex`
-ledger row depending on whether the optional fifth argument is present.
+ledger row depending on whether the optional fifth argument is present. The
+wrapper accepts the same optional positions as the shared helper:
+`[token_record_path] [model]`. Direct-ledger callers that need model provenance
+pass an empty fifth argument and the model as the sixth.
 
 ## Codex stdin contract
 

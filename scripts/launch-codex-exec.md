@@ -29,8 +29,10 @@ The launcher prepares a temp `CODEX_HOME`, applies the shared Codex auth setup, 
 - `${output}.sidecar` for launcher stderr / parser diagnostics
 - `${output}.prompt` for retry prompt replay
 - `${output}.meta` with `OUTER_LAUNCHER_KIND=codex-exec`, sandbox, effort, usage label, timing kind, and `OUTER_LAUNCHER_ADD_DIRS_JSON`
+- `${output}.token-record` for best-effort Codex token usage. The sidecar is cleared immediately after `--output` validation, before auth/model preflight can emit a stdout envelope. When model resolution succeeds, the sidecar includes `MODEL=<resolved Codex model>`.
 
 `--add-dir` metadata is serialized without relying on `jq`; if serialization cannot be represented safely without `jq`, the launcher logs a warning and records workdir-only retry metadata so replay does not write lossy `[]` metadata. After post-processing, `${output}.inner.done` is promoted to `${output}.done` and stdout emits `LAUNCHER_EXIT=<codex-exit>` plus `OUTPUT=<path>`.
+Stdout also emits `TOKEN_RECORD=<path>`. Callers own exactly-once ingestion into `token-report.ndjson` and any active token ledger.
 
 ## Harness
 

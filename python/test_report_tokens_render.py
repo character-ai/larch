@@ -6,6 +6,14 @@ from report_tokens_models import PhaseRow, RunRecord, VendorTotals
 from report_tokens_render import render, title_for_skill
 
 
+def _without_rates_section(body: str) -> str:
+    before, marker, after = body.partition("\n\n## Rates used for display/fallback\n\n")
+    if not marker:
+        return body
+    _rates, cache_marker, cache = after.partition("\n\nCache JSON:")
+    return before + cache_marker + cache
+
+
 def _record(workflow: str = "unknown") -> RunRecord:
     return RunRecord(
         number=7,
@@ -62,7 +70,7 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
         claude_sub_cost=record.claude_sub_cost,
     )
     body, _sections, cache = render("implement", (record,), temp_root=tmp_path)
-    normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
+    normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
     expected = Path("fixtures/report_tokens_implement_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 
@@ -111,7 +119,7 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
         claude_sub_cost=hard.claude_sub_cost,
     )
     body, _sections, cache = render("design", (simple, hard), temp_root=tmp_path)
-    normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
+    normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
     expected = Path("fixtures/report_tokens_design_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 

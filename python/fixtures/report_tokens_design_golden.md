@@ -68,10 +68,4 @@ Tracked total estimated cost: $13.00.
 - Cache-read tokens observed: 0; preserve prompt stability where cache hits are useful.
 - Treat dollar values as estimates; `python/report_tokens_cost.py` remains the pricing authority used for headline totals.
 
-## Rates used for display/fallback
-
-Claude: input 5.0/M, cache read 0.5/M, output 25.0/M.
-Codex: input 0.44/M, cached input 0.04/M, output 3.5/M.
-Cursor: input 1.25/M, cache read 0.25/M, output 6.0/M.
-
 Cache JSON: <CACHE>

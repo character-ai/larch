@@ -373,6 +373,8 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
+RESOLVED_CODEX_MODEL=""
+external_launcher_extract_codex_model RESOLVED_CODEX_MODEL "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 CODEX_AUTH_ARGS=()
 external_codex_auth_config_args CODEX_AUTH_ARGS
 
@@ -443,7 +445,7 @@ if [[ ! -s "$CODEX_EVENTS" ]]; then
     printf '{}\n' > "$CODEX_EVENTS"
 fi
 
-codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_implement"
+codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_implement" "" "$RESOLVED_CODEX_MODEL"
 emit_timing_record "$LAUNCHER_EXIT"
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
