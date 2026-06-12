@@ -302,6 +302,9 @@ run_direct_relevant_targets() {
                 append_target_once test-implement-bootstrap-invoke
                 append_target_once test-parse-bootstrap-routing-envelope
                 ;;
+            scripts/implement-preflight.sh|scripts/implement-preflight.md|scripts/test-implement-preflight.sh|scripts/test-implement-preflight.md)
+                append_target_once test-implement-preflight
+                ;;
             scripts/implement-finalize.sh|scripts/implement-finalize.md|scripts/test-implement-finalize.sh)
                 append_target_once test-implement-finalize
                 ;;

@@ -8,7 +8,7 @@ The harness stubs `gh` and `python3` and does not hit the network. It covers:
 
 - Emergency admission `missing-designed-prefix`.
 - Admission stdout parsed before rc branching.
-- Exact admission refusal templates.
+- Admission refusal first-line templates.
 - Parsed context echoes: `BLOCKERS=<value>` for `has-blockers`; `TITLE=<value>` for managed-prefix, report-title, and non-emergency missing-designed-prefix when parsed.
 - Exact malformed-plan non-emergency refusal with the parsed `MALFORMED=` reason.
 - Exact emergency warning strings through runtime stdout assertions.
