@@ -171,7 +171,8 @@ require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship'
 require(skill, 'git-current-branch.sh', 'post-dispatch branch assertion')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
-    '**Orchestrator contract — parse the wrapper stdout**',
+    '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
+    '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
     'REBASE_OUTCOME=conflict',
     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
     '**⚠ Rebase onto main failed unexpectedly',

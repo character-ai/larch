@@ -1173,7 +1173,7 @@ def test_invoke_absorbed_degraded_gate_relays_presence_stderr(
     assert "--codex-present resolved empty" in capsys.readouterr().err
 
 
-def test_invoke_resume_skips_absorbed_tail_for_symlinked_routing_file(
+def test_invoke_resume_runs_absorbed_tail_for_symlinked_routing_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1193,18 +1193,72 @@ def test_invoke_resume_skips_absorbed_tail_for_symlinked_routing_file(
             gate_called = True
         return subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), "")
 
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "rebase-checkpoint-probe.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
         print("RUN_ID=R1")
         print(f"PLAN_FILE={plan}")
         print("STALL_TRACKING=false")
+        print("coder=codex")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    assert gate_called
+    assert "ROUTE=continue" in capsys.readouterr().out
+
+
+def test_resolve_non_interactive_detects_autonomous_loop_in_parent_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(argv, **kwargs):
+        _ = kwargs
+        if len(argv) >= 3 and argv[2] == "args=":
+            return subprocess.CompletedProcess(argv, 0, "claude <<autonomous-loop-dynamic>> /implement 42", "")
+        if len(argv) >= 3 and argv[2] == "comm=":
+            return subprocess.CompletedProcess(argv, 0, "claude", "")
+        if len(argv) >= 3 and argv[2] == "ppid=":
+            return subprocess.CompletedProcess(argv, 0, "1", "")
+        return subprocess.CompletedProcess(argv, 1, "", "")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(list(args), 1, "", "agent degraded-tools-gate: presence parse failed")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        print("CODEX_PRESENT=true")
+        print("CURSOR_PRESENT=true")
         return 0
 
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
-    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
-    assert not gate_called
-    assert "ROUTE=" not in capsys.readouterr().out
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 2
+    captured = capsys.readouterr()
+    assert "STEP_FAILED=absorbed-degraded-gate" in captured.out
+    assert "presence parse failed" in captured.err
 
 
 def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -32,7 +32,8 @@ if skill.count("rebase-checkpoint-probe.sh 7.r 'commit (review)' --forked-target
 if 'BASE_ARGS=()' in skill:
     errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
-    '**Orchestrator contract — parse the wrapper stdout**',
+    '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
+    '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
     'REBASE_OUTCOME=conflict',
     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
     '**⚠ Rebase onto main failed unexpectedly',

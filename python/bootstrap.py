@@ -1120,6 +1120,9 @@ def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
         log = Path(implement_tmpdir) / ("copy-plan.stderr.log" if step_failed == "copy-plan" else "gh-issue-view.stderr.log")
         if log.is_file():
             sys.stderr.write(_redact_file(log, implement_tmpdir=implement_tmpdir))
+    if step_failed == "absorbed-degraded-gate" and out.strip():
+        detail = out if out.endswith("\n") else out + "\n"
+        sys.stderr.write(detail)
     print(messages.get(step_failed, f"**⚠ /implement Step 0 bootstrap failed at step={step_failed or 'unknown'}. Aborting.**"), file=sys.stderr)
 
 
@@ -1174,6 +1177,8 @@ def _parent_invocation_non_interactive() -> bool:
             args_line = args.stdout.strip()
             if args_line:
                 lower = args_line.lower()
+                if "<<autonomous-loop" in lower:
+                    return True
                 if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
                     return True
         ppid = subprocess.run(
@@ -1271,6 +1276,7 @@ class ContinueTailResult:
     advisory_lines: list[str] = field(default_factory=list)
     contract_failure: bool = False
     step_failed: str = ""
+    failure_detail: str = ""
 
 
 def _parse_gate_output(text: str) -> tuple[dict[str, str], list[str], str]:
@@ -1388,7 +1394,15 @@ def _run_absorbed_continue_tail(
         st.cursor_binary_found or "unknown",
     )
     if gate.returncode != 0:
-        return ContinueTailResult(contract_failure=True, step_failed="absorbed-degraded-gate")
+        gate_diag = (gate.stderr or "").strip()
+        if gate.stdout and gate.stdout.strip():
+            gate_diag = f"{gate_diag}\n{gate.stdout.strip()}".strip() if gate_diag else gate.stdout.strip()
+        detail = _redact_text(gate_diag, implement_tmpdir=tmpdir) if gate_diag else ""
+        return ContinueTailResult(
+            contract_failure=True,
+            step_failed="absorbed-degraded-gate",
+            failure_detail=detail,
+        )
     gate_text = gate.stdout + gate.stderr
     gate_routing, explanation_lines, explanation_text = _parse_gate_output(gate_text)
     _relay_gate_stderr(
@@ -1532,17 +1546,14 @@ def invoke_main(argv: list[str]) -> int:
     data = _parse_env_lines(envelope)
     if args.mode == "resume":
         _restore_resume_coder(data, routing_file, tmpdir)
-    if routing_file.exists() and not routing_trusted:
-        tail = ContinueTailResult()
-    else:
-        tail = _run_absorbed_continue_tail(
-            data,
-            opts=opts,
-            non_interactive=_resolve_non_interactive(non_interactive, env),
-        )
+    tail = _run_absorbed_continue_tail(
+        data,
+        opts=opts,
+        non_interactive=_resolve_non_interactive(non_interactive, env),
+    )
     if tail.contract_failure:
         _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
-        _invoke_error(tail.step_failed or "absorbed-continue-tail", "", tmpdir)
+        _invoke_error(tail.step_failed or "absorbed-continue-tail", tail.failure_detail, tmpdir)
         return 2
     for key, value in tail.routing.items():
         if value:
