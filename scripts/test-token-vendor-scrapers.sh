@@ -185,6 +185,7 @@ STUB_EOF
                 --transcript-path "$TR" \
                 --sidecar-log "$SC" \
                 --manifest-path "$MF" \
+                --scout-manifest-path "$(dirname "$MF")/scout-coder-manifest.json" \
                 --qa-pending-path "$QA" \
                 --plan-file "$LCI_SCRATCH/plan.md" \
                 --feature-file "$LCI_SCRATCH/feature.txt" \

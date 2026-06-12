@@ -81,6 +81,36 @@ case "${LARCH_TEST_CODEX_MODE:-ok}" in
         printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
         exit 0
         ;;
+    scout-over-cap)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' 'Detailed body' 'diff_lines: 7' 'LARCH_PLAN_END' \
+            'LARCH_SCOUT_BEGIN' \
+            '{"archetypes":[{"name":"api-a","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},{"name":"api-b","focus_area":"architecture","weight":1,"rationale":"r","prompt_body":"p"},{"name":"api-c","focus_area":"security","weight":1,"rationale":"r","prompt_body":"p"},{"name":"api-d","focus_area":"risk-integration","weight":1,"rationale":"r","prompt_body":"p"}]}' \
+            'LARCH_SCOUT_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
+    scout-duplicate)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' 'Detailed body' 'diff_lines: 7' 'LARCH_PLAN_END' \
+            'LARCH_SCOUT_BEGIN' \
+            '{"archetypes":[{"name":"api-a","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"first"},{"name":"api-a","focus_area":"architecture","weight":1,"rationale":"r","prompt_body":"duplicate"},{"name":"api-b","focus_area":"security","weight":1,"rationale":"r","prompt_body":"p"}]}' \
+            'LARCH_SCOUT_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
+    scout-reserved)
+        [[ -n "$out" ]] || exit 9
+        printf '%s\n' \
+            'LARCH_PLAN_BEGIN' '## Plan' 'Detailed body' 'diff_lines: 7' 'LARCH_PLAN_END' \
+            'LARCH_SCOUT_BEGIN' \
+            '{"archetypes":[{"name":"arch","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"reserved"},{"name":"api-z","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}' \
+            'LARCH_SCOUT_END' > "$out"
+        printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
+        exit 0
+        ;;
     scout-malformed)
         [[ -n "$out" ]] || exit 9
         printf '%s\n' \
@@ -227,6 +257,19 @@ command grep -Fq 'Body mentions LARCH_PLAN_BEGIN without sentinel line.' "$d4/pl
 LARCH_TEST_CODEX_MODE=scout-valid run_drafter "$d4" "$d4/status-scout-valid.txt" >/dev/null
 command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-valid.txt" || fail "valid scout status missing"
 [[ "$(jq -r '.archetypes | length' "$d4/scout-plan-manifest.json")" == "1" ]] || fail "valid scout manifest not written"
+
+LARCH_TEST_CODEX_MODE=scout-over-cap run_drafter "$d4" "$d4/status-scout-over-cap.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-over-cap.txt" || fail "over-cap scout status missing"
+[[ "$(jq -r '.archetypes | length' "$d4/scout-plan-manifest.json")" == "3" ]] || fail "over-cap scout manifest not truncated"
+[[ "$(jq -r '.archetypes | map(.name) | join(",")' "$d4/scout-plan-manifest.json")" == "api-a,api-b,api-c" ]] || fail "over-cap scout manifest order changed"
+
+LARCH_TEST_CODEX_MODE=scout-duplicate run_drafter "$d4" "$d4/status-scout-duplicate.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-duplicate.txt" || fail "duplicate scout status missing"
+[[ "$(jq -r '.archetypes | map(.name) | join(",")' "$d4/scout-plan-manifest.json")" == "api-a,api-b" ]] || fail "duplicate scout manifest not normalized"
+
+LARCH_TEST_CODEX_MODE=scout-reserved run_drafter "$d4" "$d4/status-scout-reserved.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-reserved.txt" || fail "reserved scout status missing"
+[[ "$(jq -r '.archetypes | map(.name) | join(",")' "$d4/scout-plan-manifest.json")" == "api-z" ]] || fail "reserved scout manifest not normalized"
 
 rm -f "$d4/scout-plan-manifest.json"
 LARCH_TEST_CODEX_MODE=scout-malformed run_drafter "$d4" "$d4/status-scout-malformed.txt" >/dev/null

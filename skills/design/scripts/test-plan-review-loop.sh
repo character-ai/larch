@@ -42,6 +42,24 @@ sorted_file_list() {
     )
 }
 
+seed_stale_scout_files() {
+    local dir="$1"
+    printf '{"archetypes":[{"name":"stale","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}\n' \
+        >"$dir/scout-plan-manifest.json"
+    printf '{"archetypes":[]}\n' >"$dir/scout-plan-manifest.json.candidate.stale"
+    printf '{"archetypes":[]}\n' >"$dir/scout-plan-manifest.json.filtered.stale"
+}
+
+assert_stale_scout_files_removed() {
+    local dir="$1" label="$2"
+    [[ ! -e "$dir/scout-plan-manifest.json" ]] || fail "$label: scout-plan-manifest.json was not removed"
+    compgen -G "$dir/scout-plan-manifest.json.candidate.*" >/dev/null \
+        && fail "$label: scout candidate temp files were not removed"
+    compgen -G "$dir/scout-plan-manifest.json.filtered.*" >/dev/null \
+        && fail "$label: scout filtered temp files were not removed"
+    return 0
+}
+
 bash -n "$PLR" || fail "bash -n plan-review-loop.sh failed"
 if grep -Fq '_rrc_file' "$PLR"; then
     fail "plan-review-loop.sh must not read review-round-count.txt"
@@ -122,6 +140,60 @@ ct_rc=$?
 set -e
 [[ "$ct_rc" -eq 2 ]] || fail "expected exit 2 for removed --convergence-threshold, got $ct_rc"
 printf '%s\n' "$ct_out" | grep -Fq 'unknown option' || fail "removed --convergence-threshold should fail via unknown option path"
+
+echo "=== postplan wrappers clear stale scout sidecars ==="
+POSTPLAN_ROOT="$TMP/postplan-root"
+mkdir -p "$POSTPLAN_ROOT/skills/design/scripts"
+cat >"$POSTPLAN_ROOT/skills/design/scripts/design-postplan-emit.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+dir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) dir="${2:?}"; shift 2 ;;
+        --with-plan-size|--snapshot-original) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$dir" ]] || exit 2
+case "${FAKE_POSTPLAN_RC:-0}" in
+    0)
+        printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
+        exit 0
+        ;;
+    10)
+        printf 'VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\n' >"$dir/.design-postplan-emit-result.env"
+        exit 10
+        ;;
+    *) exit "${FAKE_POSTPLAN_RC:-1}" ;;
+esac
+EOS
+chmod +x "$POSTPLAN_ROOT/skills/design/scripts/design-postplan-emit.sh"
+POSTPLAN_WRAPPER="$ROOT/skills/design/scripts/design-step2b-postplan.sh"
+for site in gate-b discussion-round2; do
+    d="$TMP/postplan-clear-$site"
+    mkdir -p "$d"
+    printf 'plan\n\ndiff_lines: 1\n' >"$d/plan.txt"
+    seed_stale_scout_files "$d"
+    DESIGN_TMPDIR="$d" CLAUDE_PLUGIN_ROOT="$POSTPLAN_ROOT" FAKE_POSTPLAN_RC=0 \
+        "$POSTPLAN_WRAPPER" --site "$site" >/dev/null
+    assert_stale_scout_files_removed "$d" "postplan site $site"
+done
+
+echo "=== inline retry clears stale drafter scout sidecars ==="
+DPOSTINLINE="$TMP/postplan-inline-retry"
+mkdir -p "$DPOSTINLINE"
+printf 'plan\n\ndiff_lines: 1\n' >"$DPOSTINLINE/plan.txt"
+printf 'drafter\n' >"$DPOSTINLINE/.step2b-plan-source"
+seed_stale_scout_files "$DPOSTINLINE"
+set +e
+post_inline_out=$(DESIGN_TMPDIR="$DPOSTINLINE" CLAUDE_PLUGIN_ROOT="$POSTPLAN_ROOT" FAKE_POSTPLAN_RC=10 \
+    "$POSTPLAN_WRAPPER")
+post_inline_rc=$?
+set -e
+[[ "$post_inline_rc" -eq 0 || "$post_inline_rc" -eq 1 ]] || fail "inline retry wrapper exited unexpectedly: $post_inline_rc"
+printf '%s\n' "$post_inline_out" | grep -q '^SCOUT_STALE_CLEARED=true$' || fail "inline retry should emit SCOUT_STALE_CLEARED"
+assert_stale_scout_files_removed "$DPOSTINLINE" "inline retry"
 
 write_scout() {
     cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
@@ -409,6 +481,35 @@ printf 'codex-plan-pragmatic\tcodex\tcollector-failure\tSTATUS=CODEX_USAGE_LIMIT
 printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\nDEGRADED_ROUND=true\nALL_SLOTS_DROPPED=true\nDROPPED_SLOTS_FILE=%s\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$DROPS" "$PATHS" "$PATHS"
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_waterfall_from_slots() {
+    cat >"$STUB/dispatch-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+slots_file=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file) slots_file="${2:?}"; shift 2 ;;
+        --codex-present|--cursor-present|--mode|--plan-file|--require-first-line-pattern|--timeout|--feature-file) shift 2 ;;
+        --no-fallback) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$slots_file" && -f "$slots_file" ]] || exit 2
+paths="${slots_file}.output-files"
+: >"$paths"
+while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -n "$row" ]] || continue
+    out=$(printf '%s' "$row" | jq -r '.output // empty')
+    [[ -n "$out" ]] || continue
+    mkdir -p "$(dirname "$out")"
+    printf '{"no_issues_found":true}\n' >"$out"
+    printf '%s\n' "$out" >>"$paths"
+done <"$slots_file"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nALL_SLOTS_DROPPED=false\nALL_OUTPUT_FILES_PATH=%s\n' "$paths"
+EOS
+    chmod +x "$STUB/dispatch-with-waterfall.sh"
 }
 
 write_dispatch_both_absent_generic() {
@@ -980,6 +1081,28 @@ run_loop() {
         "$@"
 }
 
+run_loop_real_panel() {
+    local d="$1"
+    shift
+    export CLAUDE_PLUGIN_ROOT="$ROOT"
+    export LARCH_QUIET_DISABLE=1
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$ROOT/skills/design/scripts/dispatch-plan-review-panel.sh"
+    export DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB/dispatch-with-waterfall.sh"
+    export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
+    export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
+    export LARCH_AGGREGATOR_DISABLED=1
+    bash "$PLR" \
+        --design-tmpdir "$d" \
+        --plan-file "$d/plan.txt" \
+        --feature-file "$d/feature-description.txt" \
+        --codex-present true \
+        --cursor-present true \
+        --round-num 1 \
+        "$@"
+}
+
 echo "=== collector stderr is forwarded and captured ==="
 DSTD="$TMP/collector-stderr"
 mkdir -p "$DSTD"
@@ -1061,6 +1184,47 @@ write_voters_three
 out0s=$(run_loop "$D0S")
 printf '%s\n' "$out0s" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for no_issues_found sentinel"
 printf '%s\n' "$out0s" | grep -vq '^WARN=plan-review-tsv:' || fail "no_issues_found sentinel must not emit plan-review-tsv WARN"
+
+echo "=== real panel dispatch: no scout manifest stays static-only ==="
+DSTAT="$TMP/static-only-panel"
+mkdir -p "$DSTAT"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSTAT/plan.txt"
+printf 'feat\n' >"$DSTAT/feature-description.txt"
+write_scout
+write_waterfall_from_slots
+write_collect empty
+write_voters_three
+out_static=$(run_loop_real_panel "$DSTAT")
+printf '%s\n' "$out_static" | grep -q '^DYNAMIC_SLOT_COUNT=0$' || fail "static-only dispatch should report zero dynamic slots"
+if jq -e 'select(.slot | startswith("dyn-"))' "$DSTAT/plan-review-slots.ndjson" >/dev/null; then
+    fail "static-only dispatch should not include dynamic plan-review slots"
+fi
+
+echo "=== real panel dispatch: scout manifest adds dynamic slots ==="
+DDYN="$TMP/dynamic-panel"
+mkdir -p "$DDYN"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDYN/plan.txt"
+printf 'feat\n' >"$DDYN/feature-description.txt"
+cat >"$DDYN/scout-plan-manifest.json" <<'JSON'
+{"archetypes":[
+  {"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"Focus on API contract drift."},
+  {"name":"risk-path","focus_area":"risk-integration","weight":1,"rationale":"r","prompt_body":"Focus on risk handoff paths."}
+]}
+JSON
+write_scout
+write_waterfall_from_slots
+write_collect empty
+write_voters_three
+out_dyn=$(run_loop_real_panel "$DDYN")
+printf '%s\n' "$out_dyn" | grep -q '^DYNAMIC_SLOT_COUNT=4$' || fail "dynamic dispatch should report cursor+codex scout slots"
+jq -e 'select(.slot == "dyn-cursor-plan-api-contract")' "$DDYN/plan-review-slots.ndjson" >/dev/null \
+    || fail "dynamic dispatch missing dyn-cursor api-contract slot"
+jq -e 'select(.slot == "dyn-codex-plan-api-contract")' "$DDYN/plan-review-slots.ndjson" >/dev/null \
+    || fail "dynamic dispatch missing dyn-codex api-contract slot"
+jq -e 'select(.slot == "dyn-cursor-plan-risk-path")' "$DDYN/plan-review-slots.ndjson" >/dev/null \
+    || fail "dynamic dispatch missing dyn-cursor risk-path slot"
+jq -e 'select(.slot == "dyn-codex-plan-risk-path")' "$DDYN/plan-review-slots.ndjson" >/dev/null \
+    || fail "dynamic dispatch missing dyn-codex risk-path slot"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"
