@@ -20,6 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB_COMMON = REPO_ROOT / "scripts" / "lib-external-launcher-common.sh"
 
 
+@pytest.fixture(autouse=True)
+def _clear_run_external_agent_inner_sentinel(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    monkeypatch.delenv("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", raising=False)
+
+
 def _bash_classify(*args: str) -> tuple[str, str]:
     script = f'source "{LIB_COMMON}"\nexternal_classify_launch_failure "$@"\n'
     proc = subprocess.run(

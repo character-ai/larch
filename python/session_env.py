@@ -250,6 +250,7 @@ def _atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: i
     fd: int | None = None
     try:
         fd = os.open(tmp, flags, mode)
+        os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             fd = None
             handle.write(text)
@@ -572,6 +573,49 @@ def _design_symlink_path(pid: str) -> Path:
     return home / ".cache" / "larch" / "sessions" / (f"current-design-env-{pid}.sh" if pid else "current-design-env.sh")
 
 
+def _design_run_path(pid: str) -> Path:
+    return Path.home() / ".cache" / "larch" / "sessions" / f"design-run-{pid}.sh"
+
+
+def _design_run_launcher_text(pid: str, plugin_root: str) -> str:
+    quoted_plugin_root = shlex.quote(plugin_root)
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -uo pipefail\n"
+        f"PLUGIN_ROOT={quoted_plugin_root}\n"
+        f'SESSION_ENV_PATH="$HOME/.cache/larch/sessions/current-design-env-{pid}.sh"\n'
+        f"CLAUDE_PID={pid}\n"
+        'if [ "$#" -lt 1 ]; then\n'
+        "  printf '%s\\n' 'ERROR=missing design wrapper script name' >&2\n"
+        "  exit 2\n"
+        "fi\n"
+        'script=$1\n'
+        "shift\n"
+        'case "$script" in\n'
+        '  ""|*/*|*..*)\n'
+        "    printf '%s\\n' 'ERROR=invalid design wrapper script name' >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
+        "esac\n"
+        'case "$script" in\n'
+        "  *.sh) ;;\n"
+        "  *)\n"
+        "    printf '%s\\n' 'ERROR=design wrapper script name must end in .sh' >&2\n"
+        "    exit 2\n"
+        "    ;;\n"
+        "esac\n"
+        'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"\n'
+        'exec "$PLUGIN_ROOT/skills/design/scripts/$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+    )
+
+
+def _write_design_run_sh(pid: str, plugin_root: str) -> None:
+    run_path = _design_run_path(pid)
+    run_path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_no_symlink_path_or_ancestors(run_path)
+    _atomic_write(run_path, _design_run_launcher_text(pid, plugin_root), mode=0o755)
+
+
 def _implement_pointer_path(pid: str) -> Path:
     return Path.home() / ".cache" / "larch" / "sessions" / f"current-implement-env-{pid}.sh"
 
@@ -644,6 +688,8 @@ def write_design_env_main(argv: list[str]) -> int:
         plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
         if plugin_root and not _validate_plugin_root_value(plugin_root):
             raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
+        if args.claude_pid and not plugin_root:
+            raise ValueError("Missing CLAUDE_PLUGIN_ROOT: required when --claude-pid is set")
         values: dict[str, str] = {
             "DESIGN_TMPDIR": args.design_tmpdir,
             "SESSION_TMPDIR": args.design_tmpdir,
@@ -707,6 +753,8 @@ def write_design_env_main(argv: list[str]) -> int:
             tmp_link.unlink()
         tmp_link.symlink_to(out_path)
         tmp_link.replace(symlink_path)
+        if args.claude_pid:
+            _write_design_run_sh(args.claude_pid, plugin_root)
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")

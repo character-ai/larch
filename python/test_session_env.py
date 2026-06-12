@@ -149,6 +149,209 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     link = home / ".cache" / "larch" / "sessions" / "current-design-env-12345.sh"
     assert link.is_symlink()
     assert link.readlink() == out
+    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
+    assert launcher.is_file()
+    launcher_text = launcher.read_text(encoding="utf-8")
+    assert launcher_text.startswith("#!/usr/bin/env bash\n")
+    assert launcher.stat().st_mode & 0o111
+    assert 'SESSION_ENV_PATH="$HOME/.cache/larch/sessions/current-design-env-12345.sh"' in launcher_text
+    assert 'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"' in launcher_text
+    assert '--session-env-path "$SESSION_ENV_PATH"' in launcher_text
+    assert '--claude-pid "$CLAUDE_PID"' in launcher_text
+    assert "skills/design/scripts/$script" in launcher_text
+
+
+def test_write_design_env_requires_plugin_root_with_claude_pid(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": ""}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert result.returncode == 1
+    assert "ERROR=" in result.stderr
+    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
+
+    invalid = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env={**env, "CLAUDE_PLUGIN_ROOT": "relative/plugin"},
+    )
+    assert invalid.returncode == 1
+    assert "ERROR=" in invalid.stderr
+    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
+
+
+def test_write_design_env_launcher_rejects_symlink_ancestor(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    cache = home / ".cache"
+    cache.mkdir(parents=True)
+    redirected = tmp_path / "redirected"
+    redirected.mkdir()
+    (cache / "larch").symlink_to(redirected)
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
+    )
+    assert result.returncode == 1
+    assert "ERROR=" in result.stderr
+    assert not (redirected / "sessions" / "design-run-12345.sh").exists()
+
+
+def test_write_design_env_legacy_pid_omission_does_not_create_launcher(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert (home / ".cache" / "larch" / "sessions" / "current-design-env.sh").is_symlink()
+    assert not (home / ".cache" / "larch" / "sessions" / "design-run-.sh").exists()
+
+
+def test_design_run_launcher_dispatches_wrapper(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    plugin_root = tmp_path / "plugin"
+    script_dir = plugin_root / "skills" / "design" / "scripts"
+    script_dir.mkdir(parents=True)
+    wrapper = script_dir / "fake-wrapper.sh"
+    wrapper.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'root=%s\\n' \"$CLAUDE_PLUGIN_ROOT\"\n"
+        "printf 'argv=%s\\n' \"$*\"\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
+    dispatch = subprocess.run(
+        [str(launcher), "fake-wrapper.sh", "--example", "value"],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert dispatch.returncode == 0, dispatch.stderr
+    assert f"root={plugin_root}\n" in dispatch.stdout
+    assert "argv=--session-env-path " in dispatch.stdout
+    assert "current-design-env-12345.sh --claude-pid 12345 --example value" in dispatch.stdout
+
+
+def test_design_run_launcher_rejects_invalid_script_names(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"}
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    launcher = home / ".cache" / "larch" / "sessions" / "design-run-12345.sh"
+    for args in ([], ["dir/script.sh"], ["../script.sh"], ["script.py"]):
+        bad = subprocess.run([str(launcher), *args], text=True, capture_output=True, env={**os.environ, "HOME": str(home)}, check=False)
+        assert bad.returncode == 2, args
+        assert "ERROR=" in bad.stderr
+
+
+def test_write_design_env_launcher_write_failure_is_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
+    real_atomic_write = session_env._atomic_write  # pyright: ignore[reportPrivateUsage]
+
+    def fake_atomic_write(path: Path, text: str, *, create_parent: bool = False, mode: int = 0o600) -> None:
+        if path.name == "design-run-12345.sh":
+            raise OSError("launcher write failed")
+        real_atomic_write(path, text, create_parent=create_parent, mode=mode)
+
+    monkeypatch.setattr(session_env, "_atomic_write", fake_atomic_write)
+    rc = session_env.write_design_env_main(
+        [
+            "--output",
+            str(out),
+            "--design-tmpdir",
+            str(design),
+            "--session-id",
+            "sid-1",
+            "--claude-pid",
+            "12345",
+        ]
+    )
+    assert rc == 1
+    assert not (home / ".cache" / "larch" / "sessions" / "design-run-12345.sh").exists()
 
 
 def test_write_run_params(tmp_path: Path) -> None:

@@ -796,12 +796,28 @@ def norm(p: str) -> str:
         return os.path.normpath(p)
 
 
+def phase_base_candidates(p: str):
+    candidates = {p}
+    base = os.path.basename(p)
+    parent = os.path.dirname(p)
+    for suffix in ("-phase2.txt", "-phase3.txt"):
+        if base.endswith(suffix):
+            candidates.add(os.path.join(parent, base[: -len(suffix)] + ".txt"))
+    for suffix in ("-phase2", "-phase3"):
+        if base.endswith(suffix):
+            candidates.add(os.path.join(parent, base[: -len(suffix)]))
+    return candidates
+
+
 def main() -> None:
     mp, rf = sys.argv[1], sys.argv[2]
     try:
         rfn = norm(rf)
     except OSError:
         rfn = rf
+    rf_candidates = phase_base_candidates(rf)
+    rfn_candidates = {norm(candidate) for candidate in rf_candidates}
+    rf_normpath_candidates = {os.path.normpath(candidate) for candidate in rf_candidates}
     try:
         with open(mp, encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -817,11 +833,17 @@ def main() -> None:
                 if not out or not slot:
                     continue
                 try:
-                    if rfn == norm(out) or rf == out or os.path.normpath(rf) == os.path.normpath(out):
+                    outn = norm(out)
+                    if (
+                        rfn == outn
+                        or outn in rfn_candidates
+                        or out in rf_candidates
+                        or os.path.normpath(out) in rf_normpath_candidates
+                    ):
                         print(slot)
                         return
                 except OSError:
-                    if rf == out:
+                    if rf == out or out in rf_candidates:
                         print(slot)
                         return
     except OSError:

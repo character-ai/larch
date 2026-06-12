@@ -272,7 +272,7 @@ out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
 [[ ! -e "$RESTORE/.pause-requested" ]] || fail "restored .pause-requested should be cleared after load"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should be deleted after successful restore"
-HOME="$TMP/home" "${WDCE[@]}" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
+HOME="$TMP/home" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "${WDCE[@]}" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
 
 echo "=== real git export-ignore snapshot restores ==="

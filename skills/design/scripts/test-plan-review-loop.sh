@@ -248,6 +248,37 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_phase2_slot() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+PLAN_FILE=""
+FEATURE_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
+        --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
+        --codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" && -n "$PLAN_FILE" && -n "$FEATURE_FILE" ]] || exit 2
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+PHASE2="$DESIGN_TMPDIR/cursor-plan-arch-output-phase2.txt"
+PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+: >"$PHASE2"
+: >"$PROMPT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$PHASE2" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=1\nPHASE2_RELAUNCH_COUNT=1\nCOMBINED_FALLBACK_COUNT=1\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 write_dispatch_combined_threshold() {
     cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -1332,6 +1363,27 @@ grep -Fq 'collector-failure' "$DDS/execution-issues.md" || fail "execution-issue
 grep -Fq 'Reviewing the plan against the repo' "$DDS/execution-issues.md" || fail "execution-issues.md must carry the offending snippet"
 printf '%s\n' "$outds" | grep -Fq 'per-slot reasons recorded in execution-issues.md' || fail "aggregate WARN must point at the per-slot records"
 printf '%s\n' "$outds" | grep -Fq 'dropped 2 slot(s)' || fail "aggregate WARN must report the dropped-slot count"
+
+echo "=== phase-2 fallback reviewer paths keep original slot attribution ==="
+DP2="$TMP/phase2-slot-attribution"
+mkdir -p "$DP2"
+printf 'plan\n' >"$DP2/plan.txt"
+printf 'feat\n' >"$DP2/feature-description.txt"
+write_scout
+write_dispatch_phase2_slot
+write_collect one
+write_voters_three
+set +e
+outp2=$(run_loop "$DP2")
+rcp2=$?
+set -e
+[[ "$rcp2" -eq 0 ]] || fail "phase-2 fallback attribution round should exit 0"
+grep -Fq -- '- **Reviewer(s)**: Cursor-Arch' "$DP2/findings-in-scope.pre-dedup.md" \
+    || fail "phase-2 fallback reviewer must map back to Cursor-Arch"
+if grep -Fq -- '- **Reviewer(s)**: unknown-slot' "$DP2/findings-in-scope.pre-dedup.md"; then
+    fail "phase-2 fallback reviewer must not be attributed as unknown-slot"
+fi
+printf '%s\n' "$outp2" | grep -q '^LOOP_STATUS=complete$' || fail "phase-2 fallback attribution should complete"
 
 echo "=== both-absent generic Claude path reaches zero-findings tally ==="
 D1G="$TMP/z1g"

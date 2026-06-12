@@ -64,12 +64,10 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` are known so later Bash blocks do not need to re-read argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every direct design wrapper from Step 1c onward MUST receive `--session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh"` and perform its source-env and pause-check contract internally** so those values survive into the new subshell and pause requests are honored at Bash boundaries:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` are known so later Bash blocks do not need to re-read argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` and writes `~/.cache/larch/sessions/design-run-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call; in normal `/design` orchestration this matches the Claude Code process for the session). Do not nest the Step 0 writer or launcher inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead. **After Step 0a, every Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`; the launcher supplies `--session-env-path` and `--claude-pid`, and wrappers own session rehydration plus pause checks.**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-prelude.sh
 ```
 
 **Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences — their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see **Kept preludes** row below.
@@ -210,7 +208,7 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 2. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
-3. **NEVER omit the pause-check line from surviving source-env Bash fences (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every surviving Bash fence from Step 1c through Step 6 that sources session env must include the pause-check line immediately after absorbed folded sentinel writes (when any) and before real work — **Phase 7 exception**: deleted standalone timing-only preludes for Steps 1c, 1d, and 1e are intentional; Step 1d.5 retains its prelude because brainstorm uses external Bash paths; Step 1d.7 retains a read-only `SKIP_APPROVE_REQUESTED` fence (no timing mark); Step 6 writes `step-6` **after** pause-check in the cleanup fence only. The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
+3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** pause/resume relies on wrappers self-terminating at the next Bash boundary; bypassing the launcher can silently drop a pause request or lose the baked current-env path. **How to apply:** every post-Step-0a Bash fence invokes `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" <wrapper>.sh ...`. The launcher supplies the source-env path and Claude PID. Wrappers own source-env and pause-check behavior internally, including folded sentinel ordering before real work and the Step 6 cleanup exception. The `scripts/test-design-structure.sh` harness enforces wrapper-internal ordering with `assert_wrapper_pause_before_work`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -241,16 +239,14 @@ If `session setup` exits non-zero, the block prints its captured stdout/stderr f
 
 **⚠ /design: session setup failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
-This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. The writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
+This writes `$DESIGN_TMPDIR/source-env.sh`, refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh`, and writes `~/.cache/larch/sessions/design-run-$PPID.sh` so later launcher fences resolve on every Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. The writer accepts a re-invocation to refresh keys.
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: source the durable design env written by `session write-design-env` (`$DESIGN_TMPDIR/source-env.sh`), then invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags defaulted to `false` and `--skill design`.
+**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` through the launcher. The wrapper rehydrates the durable design env, honors pause requests, then invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags defaulted to `false` and `--skill design`.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-degraded.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-degraded.sh
 ```
 
 Parse `STEP0_STATUS`, `DEGRADED`, and `BOTH_DOWN` from the wrapper stdout (ignore unrelated lines). Branch on `STEP0_STATUS` before any later Step 0 work:
@@ -259,9 +255,7 @@ Parse `STEP0_STATUS`, `DEGRADED`, and `BOTH_DOWN` from the wrapper stdout (ignor
 - **`needs-degraded-decision`** — the wrapper already printed the explanation block; fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-abort-cleanup.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-abort-cleanup.sh
 ```
 
 and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
@@ -276,10 +270,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the driver; `AskUserQuestion` gates stay here. After this route fence succeeds, the orchestrator reads `.design-route-result.env` again, emits `final-summary.md` when a cancel route produced a non-empty file, and then aborts unconditionally for those cancel routes. `cancel-pause-load` still aborts inside the fence.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-route.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --issue-number "${ISSUE_NUMBER:-}"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-route.sh --issue-number "${ISSUE_NUMBER:-}"
 ```
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` through `${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh` (file-first with KV-filtered stdout fallback) and source only allowlisted keys. Do not parse raw route stdout except as the helper fallback. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
@@ -296,9 +287,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md`. Before the terminal already-planned hygiene / **Final summary block** / exit **0**, write the contiguous completion prefix through `.completed/step-1d.5` (not only the non-contiguous `step-1d.5` marker):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-ap-continue.sh
 ```
 
    Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
@@ -306,9 +295,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`, and router-flag jq-merge.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-init.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0-init.sh
 ```
 
 ### Final summary block
@@ -320,10 +307,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-final-summary.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
 ```
 
 Wait for `<task-notification>` before reading `final-summary.md`, emitting the summary body, printing a cancellation line, or exiting.
@@ -339,9 +323,7 @@ Before plan drafting, run one codebase `Grep` pass for salient symbols from the 
 After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0c.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step0c.sh
 ```
 
 <!-- step:1c — Clarifying Questions -->
@@ -363,10 +345,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 <!-- step:1d.5 — Brainstorm Panel -->
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode entry
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d5.sh --mode entry
 ```
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (entry guard prints skip breadcrumbs when brainstorm is off or already complete; the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
@@ -374,10 +353,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 When Step 1d.5 finishes or is skipped by its entry guard, run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode complete
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d5.sh --mode complete
 ```
 
 before continuing to Step 1e.
@@ -385,9 +361,7 @@ before continuing to Step 1e.
 <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1d7.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1d7.sh
 ```
 
 Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. When `skip_approve_requested=true`, auto-approve the Step 1d.7 outline gate: check the entry guard from `references/design-outline.md` as usual (skip when `.outline-approved` exists per the guard), then — when the gate would fire — instead write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline — auto-approved (--skip-approve)`, and proceed to Step 2a **without** calling `AskUserQuestion`. When `skip_approve_requested=false`, proceed normally per `references/design-outline.md`.
@@ -401,9 +375,7 @@ Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Whe
 **Gate B(c) / Gate C(b) re-entry only** — when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step1e-reentry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step1e-reentry.sh
 ```
 
 Print: `> **🔶 /design 1e: gate A**`
@@ -424,9 +396,7 @@ Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or G
 ## Step 2a — Sentinel Artifact Prep
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2a.sh
 ```
 
 The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md` placeholder) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `collect-agent-results.sh`.
@@ -436,9 +406,7 @@ The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_
 Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-prelude.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-prelude.sh
 ```
 
 ### Step 2b drafter subprocess (attempt before inline drafting)
@@ -448,9 +416,7 @@ Try the drafter subprocess first. The inline plan-drafting instructions below re
 Use `timeout: 1800000` on the Bash tool call for this drafter subprocess fence.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-drafter.sh
 ```
 
 When the fence above prints `✅ 2b: drafter subprocess succeeded`, skip the inline drafting paragraph and continue at the terminal postplan fence. When it prints the fallback warning, continue with the inline plan drafting instructions below and ensure the inline-written `plan.txt` replaces the drafter attempt; `plan-summary.md` has already been removed so later previews cannot reuse a stale generated summary.
@@ -489,11 +455,7 @@ The drafter subprocess may also emit an optional post-plan scout block. The laun
 Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` seeds `$DESIGN_TMPDIR/drift-baseline.env` from the initial Step 2b plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers) before later revision paths can expand the plan. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --site step2b \
-  --snapshot-original
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-postplan.sh --site step2b --snapshot-original
 ```
 
 If the terminal postplan fence prints `**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**` or leaves `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-pending`, run the inline Step 2b drafting instructions once, replacing `plan.txt`, then re-run the terminal postplan fence above; do not invoke another drafter attempt during that retry. The sentinel `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done` prevents a second inline re-entry, so any later `_postplan_rc=10` follows the normal validator-failure path.
@@ -513,9 +475,7 @@ On `_postplan_rc=12`, the driver already printed the plan-size-trigger section. 
 1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
 2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b5.sh
 ```
 3. **Return-code handling**:
    - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SIZE_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=`, `DRIFT_TRIGGER_FIRED=`, `DRIFT_MULTIPLE=`, `DRIFT_PLAN_RATIO=`, `DRIFT_DIFF_RATIO=`, `BASELINE_PLAN_LINES=`, and `BASELINE_DIFF_LINES=`. Branch steps 4–7 below.
@@ -551,9 +511,7 @@ Print: `> **🔶 /design 3: plan review**`
 When control arrives from Gate A **Ready for review** (direct-to-Step-3) or other backward review re-entry, set `$DESIGN_TMPDIR/.step3-reentry` before entering this step. The Step 3 entry fence clears stale downstream sentinels, idempotently writes `.completed/step-1e`, and restores the direct-review bypass package only while that explicit re-entry marker is present; first-time Step 3 entry only sources env, honors pause, and records timing.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh
 ```
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `python3 python/cli.py timing mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
@@ -583,9 +541,7 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
 ```
 
 NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
@@ -624,10 +580,7 @@ If `TALLY_PLAN_REVIEW_STATUS` is `main-agent-vote-required`, preserve `SCOPE_ANC
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --starting-round "$STEP3_RESUME_ROUND"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"
 ```
 
 Use this fence for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
@@ -647,9 +600,7 @@ If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, or `panel-failed`
 Before every Gate-B-bypass jump to Step 3b, run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-gate-b-bypass.sh
 ```
 
 Parse `STEP3_STATE=` from the wrapper output and abort for non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass` until the partial sentinel state is repaired.
@@ -659,11 +610,7 @@ Parse `STEP3_STATE=` from the wrapper output and abort for non-zero rc or `STEP3
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --step3-review-loop-status "${STEP3_REVIEW_LOOP_STATUS:-}" \
-  --loop-status "${LOOP_STATUS:-}"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35.sh --step3-review-loop-status "${STEP3_REVIEW_LOOP_STATUS:-}" --loop-status "${LOOP_STATUS:-}"
 ```
 
 Print: `> **🔶 /design 3.5: gate B**`
@@ -684,20 +631,15 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 **Legacy heuristic multi-round continuation check (`--mode single` only)**: When `STEP3_REVIEW_LOOP_STATUS` is unset (legacy `--mode single` harness callers), after Gate B settles on any non-Switch-to-discussion-mode non-exiting path, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-continuation.sh --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` (contract: `skills/design/scripts/plan-review-continuation.md`) and parse only its `PLAN_REVIEW_CONTINUE*` KVs. Under `--per-round-approval`, the helper returns `PLAN_REVIEW_CONTINUE=false` with `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`; explicit operator approval never silently schedules another automatic review round. On `PLAN_REVIEW_CONTINUE=true`, clear `$DESIGN_TMPDIR/.step3-entry-plan-printed`, then run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-continuation-entry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-continuation-entry.sh
 ```
 
-Loop back through the Step 3 prelude before launching the next review: source `~/.cache/larch/sessions/current-design-env-$PPID.sh` when present, honor `$DESIGN_TMPDIR/.pause-requested` with `design-pause-save.sh`, then invoke the `design-step3-review.sh` wrapper fence (never `--no-preview`) with the same immediate-background contract as the Step 3 launch: set `run_in_background: true`, set `timeout: 21600000`, and wait for `<task-notification>` before parsing stdout or result files. Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
+Loop back through the launcher-only Step 3 resume fence before launching the next review. Invoke `design-step3-review.sh` through `design-run-$PPID.sh` (never `--no-preview`) with the same immediate-background contract as the Step 3 launch: set `run_in_background: true`, set `timeout: 21600000`, and wait for `<task-notification>` before parsing stdout or result files. The wrapper owns rehydration and pause checks. Normal `/design` runs use the script-internal loop; continuation is handled inside `review-design-step3-loop.sh` and must not be re-driven from Step 3.5.
 
 <!-- step:3b — Architecture Diagram -->
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode entry
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode entry
 ```
 
 Print: `> **🔶 /design 3b: arch diagram**`
@@ -709,19 +651,13 @@ Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR
 If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`, then run the branch-local skip fence below, then IMMEDIATELY run the Step 3b completion boundary below, then Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode skip
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode skip
 ```
 
 **Otherwise** (plan is architectural): before generation, sanitizer, or failure handling, run the architectural entry cleanup fence below, then generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --mode architectural
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode architectural
 ```
 
 **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
@@ -733,9 +669,7 @@ Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-con
 Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. The candidate file includes the `## Architecture Diagram` heading and mermaid fence. Validate it before promotion:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-sanitize.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-sanitize.sh
 ```
 
 On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`. Also print the promoted diagram under a `## Architecture Diagram` header with a mermaid code fence:
@@ -759,9 +693,7 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 At the Step 3b completion boundary, including the non-architectural skip path, run FINALIZE and write `step-3b` only after FINALIZE succeeds:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-complete.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-complete.sh
 ```
 
 <!-- step:4 — Rejected Plan Review Findings Report -->
@@ -769,9 +701,7 @@ At the Step 3b completion boundary, including the non-architectural skip path, r
 Print: `> **🔶 /design 4: rejected findings**`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step4.sh
 ```
 
 Print any rejected plan review findings:
@@ -798,9 +728,7 @@ Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the si
 **Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `emit-design-plan-preview.sh --variant gatec` (same threshold/outline/bold-note rules as Step 3).
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step4b.sh
 ```
 
 Before the Gate C `AskUserQuestion`, `design-step4b.sh` emits the Gate C preview and reads `skip_approve_requested` from `run-params.json` in the same wrapper call:
@@ -818,9 +746,7 @@ Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip
 Print: `> **🔶 /design 5: finalize**`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5.sh
 ```
 
 **Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + publish + rename).
@@ -837,9 +763,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-prepare.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-prepare.sh
 ```
    - On **non-zero** `_oos_prep_rc` (typically `oos-issue-cap.sh` failure — fatal for this sub-step): append the captured stderr via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5c** without invoking `/larch:issue`.
    - On **zero** exit: parse `FILE_DESIGN_OOS_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines).
@@ -853,9 +777,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
    - Capture **stdout only** from the Skill tool to `$DESIGN_TMPDIR/oos-issue.stdout.txt` (machine `ISSUE_*` / `ISSUES_*` lines — see `skills/issue/SKILL.md` Step 7). **This write is MANDATORY** regardless of how `/issue` was invoked. If the Skill tool returns output inline rather than writing it to a file automatically, the orchestrator MUST explicitly write it before calling `annotate`: `printf '%s\n' "$_issue_stdout" > "$DESIGN_TMPDIR/oos-issue.stdout.txt"`. The `annotate` step MUST NOT be skipped or reordered relative to this write — `oos-issues-created.md` is written only by `cmd_annotate`, and `render-final-summary.sh` reads OOS count exclusively from that file.
    - Run annotate and capture its stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`:
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh
 ```
    - On **exit 0**: parse annotate stdout for `FILE_DESIGN_OOS_STATUS=`. When the value is `annotate-skipped-empty-stdout`, parse `WARN=` from annotate stdout; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` (site `design Step 5b annotate-skip`, tool `file-design-oos.sh annotate`, category `Warnings`, exit code 0); print `**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**` and continue to Step 5c.
    - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt` (partial `/issue` failure): append under `Tool Failures` via `run-log append-failure` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5c** (per-block `Filed URL` lines are written only for successful items).
@@ -864,7 +786,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
      1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"` — do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
      2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
      3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
-     4. Re-run annotate: `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.sh" --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"`.
+     4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
 
 > **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → validate → redact → `design-publish.sh` publish tail) still must run.
 `.completed/step-5b` is written by the Step 5b prepare/annotate wrappers on every successful annotate path (exit 0: `annotate-complete`, `annotate-skipped-empty-stdout`, and the prepare skip paths); it is **not** written when `design-step5b-annotate.sh` exits non-zero (annotate failure).
@@ -883,9 +805,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 3. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including **Migration limit** for legacy `runid=` diagram comments) for the deterministic publish tail (composed-plan validation, redaction, plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
 ```
 
 Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6.
@@ -934,9 +854,7 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, th
 Print: `> **🔶 /design 6: cleanup**`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step6.sh
 ```
 
 Remove the session temp directory and all files within it. Run `session cleanup-tmpdir` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
@@ -950,15 +868,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, firs
 **Auto-repair (runs before the operator prompt).** Bind `_validator_target_file` to the file the failing validator pass targeted — `$DESIGN_TMPDIR/plan.txt` for Step 2b / Gate B / discussion-round2, `$DESIGN_TMPDIR/composed-plan.md` for Step 5c — then invoke `auto-fix-plan-commands.sh`, forwarding the Step 0 `$CODEX_PRESENT` / `$CURSOR_PRESENT` presence booleans and `$CODEX_AVAILABLE` / `$CURSOR_AVAILABLE` degraded-tool availability booleans. It spawns an available external vendor (Codex/Cursor) to edit the target file in place, re-validates, and alternates vendors across bounded attempts, capped to the number of available vendors so a single-vendor run is tried once. The helper rejects or restores non-target `$DESIGN_TMPDIR` mutations, fails on dirty-tree deltas in the consumer repository introduced by the vendor, preserves per-site validator evidence, restores target-file edits after failed attempts, and runs the optional-trailer snapshot/dedup guard for `plan.txt` on each attempt before the surrounding postplan fence is re-entered. See `auto-fix-plan-commands.md`.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-validator-autofix.sh" \
-  --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" \
-  --claude-pid "$PPID" \
-  --site "<SITE>" \
-  --validator-target-file "${_validator_target_file}" \
-  --validate-log-file "${VALIDATE_LOG_FILE}" \
-  --validate-defect-count "${VALIDATE_DEFECT_COUNT}" \
-  --validate-unsafe-token-count "${VALIDATE_UNSAFE_TOKEN_COUNT}" \
-  --validate-skipped-count "${VALIDATE_SKIPPED_COUNT}"
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-validator-autofix.sh --site "<SITE>" --validator-target-file "${_validator_target_file}" --validate-log-file "${VALIDATE_LOG_FILE}" --validate-defect-count "${VALIDATE_DEFECT_COUNT}" --validate-unsafe-token-count "${VALIDATE_UNSAFE_TOKEN_COUNT}" --validate-skipped-count "${VALIDATE_SKIPPED_COUNT}"
 ```
 
 Branch on `_autofix_status` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c`):
