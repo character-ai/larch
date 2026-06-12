@@ -33,8 +33,8 @@ grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
     || fail 'SKILL missing Gate B postapply resume continuation guard'
-grep -Fq 'Step 3 prelude before launching the next review' "$SKILL_MD" \
-    || fail 'SKILL missing auto-continuation Step 3 prelude contract'
+grep -Fq 'launcher-only Step 3 resume fence before launching the next review' "$SKILL_MD" \
+    || fail 'SKILL missing launcher-only auto-continuation Step 3 resume contract'
 # shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
 grep -Fq 'starting-round "$STEP3_RESUME_ROUND"' "$SKILL_MD" \
     || fail 'SKILL missing shared STEP3_RESUME_ROUND resume launch'
