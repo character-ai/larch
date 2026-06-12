@@ -840,10 +840,10 @@ def _phase_coder(st: BootstrapState) -> None:
         else:
             st.coder = "claude"
             st.coder_fallback = "true"
-    elif st.cursor_available == "true":
-        st.coder = "cursor"
     elif st.codex_available == "true":
         st.coder = "codex"
+    elif st.cursor_available == "true":
+        st.coder = "cursor"
     else:
         st.coder = "claude"
         st.coder_fallback = "true"

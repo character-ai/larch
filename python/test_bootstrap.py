@@ -593,7 +593,7 @@ def test_routing_parser_preserve_coder_on_resume(tmp_path, capsys) -> None:
         ("cursor", "true", "false", "codex", "", True),
         ("codex", "false", "true", "cursor", "", True),
         ("cursor", "false", "false", "claude", "true", True),
-        ("", "true", "true", "cursor", "", False),
+        ("", "true", "true", "codex", "", False),
         ("", "false", "true", "cursor", "", False),
         ("", "false", "false", "claude", "true", False),
     ],
