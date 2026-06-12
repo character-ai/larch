@@ -287,6 +287,45 @@ grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=6' <<< "$out"
 [[ -s "$TMP/hard-round2/codex-specialist-correctness-output.txt" ]]
 
+# Round 3+: Codex reviewer slots suppressed; only Cursor emitted.
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/simple-round3" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 3)
+grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 simple panel must have 3 static slots (Cursor only)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 simple panel SLOT_COUNT must be 3" >&2; exit 1; }
+[[ -s "$TMP/simple-round3/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must still emit cursor-specialist-correctness" >&2; exit 1; }
+[[ ! -e "$TMP/simple-round3/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must NOT emit codex-specialist-correctness" >&2; exit 1; }
+
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/hard-round3" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --round-num 3)
+grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 hard panel must have 3 static slots (Cursor only)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 hard panel SLOT_COUNT must be 3" >&2; exit 1; }
+[[ -s "$TMP/hard-round3/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must still emit cursor-specialist-correctness" >&2; exit 1; }
+[[ ! -e "$TMP/hard-round3/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must NOT emit codex-specialist-correctness" >&2; exit 1; }
+
+simple_round3_breadcrumbs_err="$TMP/simple-round3-breadcrumbs.stderr"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/simple-round3-breadcrumbs" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 3 2>"$simple_round3_breadcrumbs_err")
+grep -Fq '→ review: launching 3 reviewers (3 Cursor static, 0 Codex static, 0 dynamic)' "$simple_round3_breadcrumbs_err" \
+    || { echo "FAIL: round 3 launch breadcrumb must show 0 Codex static" >&2; exit 1; }
+
 fi  # end section: core (panels)
 
 if section_runs core-dynamic; then
@@ -518,6 +557,25 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 [[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
+
+# Round 3+: dynamic Codex slots suppressed; only Cursor dynamic slots emitted.
+seed_case_inputs "$TMP/dynamic-round3"
+export SCOUT_SCOUT_ARGV_LOG="$TMP/dynamic-round3/scout-argv.log"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/dynamic-round3/review.diff" \
+    --review-tmpdir "$TMP/dynamic-round3" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/dynamic-round3/plan.md" \
+    --dynamic-archetypes 3 \
+    --round-num 3)
+# Static: 3 Cursor only (no Codex); dynamic: 1 Cursor per archetype (no Codex twin).
+grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 3 static slots" >&2; exit 1; }
+# scout-valid4.json has 2 archetypes → 2 dynamic Cursor slots, 0 Codex twins.
+dynamic_count=$(grep -o '"tool":"codex"' "$TMP/dynamic-round3/panel-manifest.ndjson" | wc -l | awk '{print $1}')
+[[ "$dynamic_count" = "0" ]] || { echo "FAIL: round 3 panel manifest must have 0 codex tool entries (got $dynamic_count)" >&2; exit 1; }
 fi  # end section: core-dynamic
 
 if section_runs reuse; then

@@ -118,7 +118,7 @@ for name in "${static_specialists[@]}"; do
         queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
         static_cursor=$((static_cursor + 1))
     fi
-    if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+    if [[ "$CODEX_AVAILABLE" == "true" && ROUND_NUM -lt 3 ]]; then
         queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
         static_codex=$((static_codex + 1))
     fi
@@ -204,7 +204,7 @@ synthesize_dynamic_slots() {
                 >> "$manifest"
             DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         fi
-        if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+        if [[ "$CODEX_AVAILABLE" == "true" && ROUND_NUM -lt 3 ]]; then
             jq -cn \
                 --arg slot "dyn-$name-codex" \
                 --arg output "$REVIEW_TMPDIR/dyn-${name}-codex-output.txt" \
