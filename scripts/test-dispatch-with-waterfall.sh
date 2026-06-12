@@ -72,7 +72,7 @@ cat >/dev/null
 if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then
     exit 9
 fi
-printf 'claude ok\n'
+printf '{"type":"result","subtype":"success","is_error":false,"result":"claude ok","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\n'
 STUB
 cat > "$STUB_BIN/cp" <<'STUB'
 #!/usr/bin/env bash

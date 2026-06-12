@@ -765,12 +765,15 @@ def parse_codex_usage_file(events_file: str | Path) -> UsageTotals:
     total = UsageTotals(0, 0, 0)
     count = 0
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
+        if not stripped.startswith(("{", "[")):
+            continue  # skip non-JSON noise lines (e.g. wrapper banners)
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+        except json.JSONDecodeError as exc:
+            raise ValueError("malformed usage event") from exc
         if not isinstance(obj, dict):
             continue
         selected = _has_tokenish(_dig(obj, "msg", "usage")) or _has_tokenish(_dig(obj, "usage")) or (obj.get("type") == "token_usage" and _has_tokenish(obj))

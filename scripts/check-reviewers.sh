@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PY3="${LARCH_PYTHON3:-python3}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh" || { echo "check-reviewers.sh: failed to source lib-quiet.sh" >&2; exit 1; }
 larch_quiet_init
@@ -207,14 +208,14 @@ larch_run_one_cursor_probe() {
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
 
     _probe_model_args=()
-    if MODEL_ARGS_TMP=$(mktemp) && python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool cursor > "$MODEL_ARGS_TMP" 2>/dev/null; then
+    if MODEL_ARGS_TMP=$(mktemp) && "$_PY3" "$SCRIPT_DIR/../python/cli.py" agent model-args --tool cursor > "$MODEL_ARGS_TMP" 2>/dev/null; then
         while IFS= read -r _model_arg; do
             _probe_model_args+=("$_model_arg")
         done < "$MODEL_ARGS_TMP"
     fi
     [[ -n "${MODEL_ARGS_TMP:-}" ]] && rm -f "$MODEL_ARGS_TMP"
 
-    _probe_prompt=$({ python3 "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "Respond with OK"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || { rm -f "$probe_out"; return 1; }
+    _probe_prompt=$({ "$_PY3" "$SCRIPT_DIR/../python/cli.py" agent cursor-wrap-prompt "Respond with OK"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || { rm -f "$probe_out"; return 1; }
     _probe_prompt=${_probe_prompt%X}
 
     _SERIAL_LOCK=""
@@ -269,7 +270,7 @@ larch_run_one_codex_probe() {
     fi
 
     _probe_model_args=()
-    if model_args_tmp=$(mktemp) && python3 "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex --with-effort >"$model_args_tmp" 2>/dev/null; then
+    if model_args_tmp=$(mktemp) && "$_PY3" "$SCRIPT_DIR/../python/cli.py" agent model-args --tool codex --with-effort >"$model_args_tmp" 2>/dev/null; then
         while IFS= read -r _model_arg; do
             _probe_model_args+=("$_model_arg")
         done <"$model_args_tmp"
