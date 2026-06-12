@@ -263,7 +263,7 @@ python3 "$PWD/python/cli.py" combine-issues close-sources \
   --source-issues "<comma-separated eligible source issues>"
 ```
 
-Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse `WARNING=` lines from stderr. Treat partial closure as a warning path, not a hard stop. Reserve non-zero exit or `ERROR=` for argument and repository failures. Aggregate `CLOSED_ISSUES` from all invocations for the final source-closed tally. Keep ineligible, skipped, and failed-close source issues open. Summarize every source left open with the reason from `close-eligible` or the `WARNING=` text. Always continue to `oos-10`.
+Run every partitioned `close-sources` invocation. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse `WARNING=` lines from stderr. Treat partial closure as a warning path, not a hard stop. Reserve non-zero exit or `ERROR=` for argument and repository failures. Aggregate `CLOSED_ISSUES` from all invocations for the final source-closed tally. Keep ineligible, skipped, and failed-close source issues open. Summarize every source left open with the reason from `close-eligible` or the `WARNING=` text. Always continue to `oos-8`.
 
 <!-- step:oos-8 — Audit Open Issues -->
 

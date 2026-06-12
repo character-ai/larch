@@ -350,10 +350,15 @@ def test_plan_inherited_refresh_reclassifies_unknown_edge_and_allows_close(tmp_p
 
 def test_close_eligible_uses_write_decision_and_blocked_source_schemas(tmp_path: Path, capsys):
     plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
         "safe_edges": [{"edge": [100, 5], "source_issues": [1]}],
         "exception_edges": [{"edge": [6, 100], "source_issues": [1]}],
         "unknown_edges": [{"edge": [200, 9], "source_issues": [2]}],
-        "per_source_initial_eligibility": {"2": {"eligible": False, "reasons": ["dependency_read_failed"]}},
+        "per_source_initial_eligibility": {
+            "1": {"eligible": True, "reasons": []},
+            "2": {"eligible": False, "reasons": ["dependency_read_failed"]},
+            "3": {"eligible": True, "reasons": []},
+        },
     })
     writes = _write_json(tmp_path / "writes.json", {"write_results": [
         {"edge": [100, 5], "client_issue": 100, "blocker_issue": 5, "phase": "inherited_safe", "status": "written", "source_issues": [1]},
@@ -378,9 +383,11 @@ def test_close_eligible_uses_write_decision_and_blocked_source_schemas(tmp_path:
 
 def test_close_eligible_ignores_retried_safe_write_failure(tmp_path: Path, capsys):
     plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
         "safe_edges": [{"edge": [100, 5], "source_issues": [1]}],
         "exception_edges": [],
         "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
     })
     writes = _write_json(tmp_path / "writes.json", {"write_results": [
         {"edge": [100, 5], "phase": "inherited_safe", "status": "failed", "source_issues": [1]},
@@ -402,7 +409,13 @@ def test_close_eligible_ignores_retried_safe_write_failure(tmp_path: Path, capsy
 
 
 def test_close_eligible_marks_multi_host_sources_ineligible(tmp_path: Path, capsys):
-    plan = _write_json(tmp_path / "plan.json", {"safe_edges": [], "exception_edges": [], "unknown_edges": []})
+    plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
+        "safe_edges": [],
+        "exception_edges": [],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
+    })
     writes = _write_json(tmp_path / "writes.json", {"write_results": []})
     decisions = _write_json(tmp_path / "decisions.json", {"decisions": []})
     source_map = _write_json(tmp_path / "source-map.json", {"1": [100, 101]})
@@ -422,12 +435,18 @@ def test_close_eligible_marks_multi_host_sources_ineligible(tmp_path: Path, caps
 
 def test_close_eligible_fails_closed_for_missing_failed_and_unresolved_edges(tmp_path: Path, capsys):
     plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
         "safe_edges": [
             {"edge": [100, 5], "source_issues": [1]},
             {"edge": [200, 7], "source_issues": [2]},
         ],
         "exception_edges": [{"edge": [8, 300], "source_issues": [3]}],
         "unknown_edges": [],
+        "per_source_initial_eligibility": {
+            "1": {"eligible": True, "reasons": []},
+            "2": {"eligible": True, "reasons": []},
+            "3": {"eligible": True, "reasons": []},
+        },
     })
     writes = _write_json(tmp_path / "writes.json", {"write_results": [
         {"edge": [100, 5], "phase": "inherited_safe", "status": "failed", "source_issues": [1]},
@@ -454,9 +473,11 @@ def test_close_eligible_fails_closed_for_missing_failed_and_unresolved_edges(tmp
 
 def test_close_eligible_allows_approved_exception_with_successful_write(tmp_path: Path, capsys):
     plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
         "safe_edges": [],
         "exception_edges": [{"edge": [6, 100], "source_issues": [1]}],
         "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
     })
     writes = _write_json(tmp_path / "writes.json", {"write_results": [
         {"edge": [6, 100], "phase": "inherited_exception", "status": "written", "source_issues": [1]},
@@ -476,6 +497,77 @@ def test_close_eligible_allows_approved_exception_with_successful_write(tmp_path
     payload = json.loads(capsys.readouterr().out)
     assert payload["eligible_by_combined"] == {"100": [1]}
     assert payload["ineligible_sources"] == []
+
+
+def test_close_eligible_blocks_approved_exception_with_failed_write(tmp_path: Path, capsys):
+    plan = _write_json(tmp_path / "plan.json", {
+        "status": "ok",
+        "safe_edges": [],
+        "exception_edges": [{"edge": [6, 100], "source_issues": [1]}],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
+    })
+    writes = _write_json(tmp_path / "writes.json", {"write_results": [
+        {"edge": [6, 100], "phase": "inherited_exception", "status": "failed", "source_issues": [1]},
+    ]})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": [
+        {"edge": [6, 100], "decision": "approved", "phase": "inherited_exception", "source_issues": [1], "reason": "operator approved"},
+    ]})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["eligible_by_combined"] == {}
+    assert payload["ineligible_sources"] == [1]
+    assert "inherited_exception_write_failed:6:100" in payload["reasons"]["1"]
+
+
+def test_close_eligible_requires_ok_plan_status_and_initial_coverage(tmp_path: Path, capsys):
+    writes = _write_json(tmp_path / "writes.json", {"write_results": []})
+    decisions = _write_json(tmp_path / "decisions.json", {"decisions": []})
+    source_map = _write_json(tmp_path / "source-map.json", {"1": 100, "2": 200})
+    blocked = _write_json(tmp_path / "blocked.json", {"blocked_sources": []})
+
+    failed_plan = _write_json(tmp_path / "failed-plan.json", {
+        "status": "failed",
+        "safe_edges": [],
+        "exception_edges": [],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {
+            "1": {"eligible": True, "reasons": []},
+            "2": {"eligible": True, "reasons": []},
+        },
+    })
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", failed_plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 1
+    assert "status must be 'ok'" in capsys.readouterr().err
+
+    truncated_plan = _write_json(tmp_path / "truncated-plan.json", {
+        "status": "ok",
+        "safe_edges": [],
+        "exception_edges": [],
+        "unknown_edges": [],
+        "per_source_initial_eligibility": {"1": {"eligible": True, "reasons": []}},
+    })
+    assert combine_issues.close_eligible_main([
+        "--inherited-plan-file", truncated_plan,
+        "--write-results-file", writes,
+        "--exception-decisions-file", decisions,
+        "--source-to-combined-file", source_map,
+        "--blocked-sources-file", blocked,
+    ]) == 1
+    assert "missing per_source_initial_eligibility for source issues: 2" in capsys.readouterr().err
 
 
 def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, capsys):
@@ -536,6 +628,24 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
     assert "Skipped #1: source issue has busy title prefix" in captured.err
     close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
     assert close_calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--comment", "Combined into #99"]]
+
+
+def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
+    class CloseSourcesFailRunner:
+        def run(self, argv, **_kwargs):
+            if argv[:3] == ["gh", "issue", "close"]:
+                return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
+            return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+    monkeypatch.setattr(combine_issues.proc, "run", CloseSourcesFailRunner().run)
+    monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda _repo, _source: None)
+    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
+    assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1"]) == 0
+    captured = capsys.readouterr()
+    assert "WARNING=Failed to close #1:" in captured.err
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in captured.err
+    assert "CLOSED_ISSUES=0" in captured.out
+    assert "PARTIAL=true" in captured.out
 
 
 def test_list_open_uses_paginated_api_and_filters_pulls_and_closed(monkeypatch, capsys):

@@ -512,6 +512,21 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
         return _fail_json_error(str(exc))
     if not isinstance(plan, dict):
         return _fail_json_error("inherited plan must be an object")
+    if str(plan.get("status") or "") != "ok":
+        return _fail_json_error("inherited-plan-file: status must be 'ok'")
+    per_source_raw = plan.get("per_source_initial_eligibility")
+    if not isinstance(per_source_raw, dict):
+        return _fail_json_error("inherited-plan-file: per_source_initial_eligibility must be an object")
+    missing_initial_eligibility = [
+        source
+        for source in sorted(source_to_combined)
+        if not isinstance(per_source_raw.get(str(source)), dict)
+    ]
+    if missing_initial_eligibility:
+        return _fail_json_error(
+            "inherited-plan-file: missing per_source_initial_eligibility for source issues: "
+            + ",".join(str(source) for source in missing_initial_eligibility)
+        )
     if not isinstance(blocked_data, dict) or not isinstance(blocked_data.get("blocked_sources", []), list):
         return _fail_json_error("blocked-sources JSON must be an object with blocked_sources list")
 
@@ -524,7 +539,7 @@ def close_eligible_main(argv: list[str] | None = None) -> int:
                 blocked_sources.add(source)
                 reasons.setdefault(str(source), []).append(str(item.get("reason") or "blocked_source"))
 
-    per_source = plan.get("per_source_initial_eligibility", {}) if isinstance(plan.get("per_source_initial_eligibility", {}), dict) else {}
+    per_source = per_source_raw
     for raw_source, state in per_source.items():
         source = _positive_int_value(raw_source)
         if source is None or not isinstance(state, dict):
