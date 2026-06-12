@@ -8,6 +8,7 @@ Invariants:
 
 - Public output surfaces must not contain injected raw classifier-input sentinels.
 - `lint` must prove allowlist parity across TSV, code, and `stall-recovery-report.md`.
+- `lint` must prove bail-token rendering from `python/config.py`, not shell-script scraping.
 - Dry-run mode must not call `gh` or invoke `/larch:issue`.
 - Missing `ship-pr-state.sh` must still honor `session-env.sh` stall tracking when present, and must not exit 3.
 - Malformed, symlinked, or non-regular present `ship-pr-state.sh` are the
@@ -27,16 +28,17 @@ Case map:
 - Case 20 includes repeated-step6 terminal handling, the `issue-input-file` parse-input cross-check, production step-token preservation including `bump-branch-guard`, unsafe step-token sanitization to `unknown`, missing-log fallback, in-memory-only classification, lint-over-transient precedence, broader network wording, standalone-auth unrecoverable classification, and sentinel coverage for `NOTE=` / bail-reason-only public-surface inputs.
   Normalize fixtures in Case 20 pin:
   - create success: `NORMALIZED=true`, canonical `ISSUE_NUMBER` / `ISSUE_URL` written, and raw `ISSUE_1_*` source metadata omitted from `stall-recovery-issue.env`;
+  - embedded newline or carriage-return injection in issue metadata: `NORMALIZED=true` when canonical fields stay valid, injected keys are dropped, and no multi-line env output is written;
   - dedup success: duplicate canonical number and URL written;
   - mixed create plus invalid dedup URL: valid create URL retained instead of being overwritten by the invalid duplicate URL;
   - dedup without any valid URL: `NORMALIZED=false`, `REASON=issue-url-missing`, and stale env removal;
   - failed counters, per-item failure, non-zero `/issue` exit, missing exit code, and write failure: `NORMALIZED=false`, the expected `REASON` token, and stale env removal.
 - Case 21 covers exit-code boundaries, malformed and symlinked state rejection, rejection of out-of-tmpdir or symlinked classification/body/output files, and path-containment enforcement for `normalize-issue-env` (out-of-tmpdir `--issue-stdout-file` and `--output-file` each exit 1 with a clear stderr message).
-- Case 22 covers clear/seed durability: keyed and keyless clear paths, symlink and malformed guards, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.
+- Case 22 covers clear/seed durability: keyed and keyless clear paths, absent-layer skips, all durable stall layers, symlink and malformed guards, explicit in-memory false after recovery clear, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.
 
 The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns sanitized bail/step output and a non-`none` resume hint from the four-layer Step 18a evidence order.
 
 The generic `/issue --input-file` body-splitting footgun (OOS_2) is tracked in the #3550/#3547 family and is out of scope for this harness.
 
-- Case 23 covers the terminal-only rework seams: shared `normalize-outcome`, canonical escalation ledger recording, Tier B `compose-report`, root-caused escalation titles, prompt-state sensitive supplement rejection, and `operator-action` durable non-filing sentinel behavior.
+- Case 23 covers the terminal-only rework seams: shared `normalize-outcome`, canonical escalation ledger recording, Tier B `compose-report`, config-backed bail-token rendering, gated legacy surfaces, root-caused escalation titles, prompt-state sensitive supplement rejection, and `operator-action` durable non-filing sentinel behavior.
 - Case 24 covers public report dedup signatures, exact marker placement, Tier B dry-run, Tier B upstream filing through the cross-repo helper, bounded public comment payload selection, and helper output normalization for comment URLs.

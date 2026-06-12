@@ -22,7 +22,7 @@ CI_STATUS=pass|fail|pending|merged|NO_CHECKS
 BEHIND_COUNT=<N>
 CONFLICTED=<true|false>
 FAILED_RUN_ID=<id-or-empty>
-BAIL_REASON=<text-or-empty>
+BAIL_REASON=<token-or-empty>
 ITERATION=<N>
 ELAPSED=<seconds>
 ```
@@ -31,7 +31,7 @@ When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the e
 
 Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/conflict-resolution.md`) parse stdout. No `.done` sentinel is written in default mode.
 
-`--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. `CONFLICTED` is parsed from the `ci-status.sh` output block (defaulting to `false` when absent) and forwarded to `ci-decide.sh` as `--conflicted`. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
+`--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. `CONFLICTED` is parsed from the `ci-status.sh` output block (defaulting to `false` when absent) and forwarded to `ci-decide.sh` as `--conflicted`. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with `BAIL_REASON=no-ci-checks-observed`; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
 
 Progress output uses `larch_errf` on operator stderr, preserving printf
 semantics including no-newline dot progress on the two inline-progress callsites.

@@ -131,6 +131,69 @@ def test_attempt_cap_stalls() -> None:
         )
 
 
+def test_conflict_launch_missing_metadata_uses_wrapper_rc(tmp_path: Path) -> None:
+    runner = ScriptRunner(
+        [
+            ((rebase.agents.sys.executable,), _fail((rebase.agents.sys.executable,), code=7)),
+        ],
+    )
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="o/r",
+        run_id="run-1",
+        output_dir=tmp_path,
+    )
+    attempt = launch_fn("claude", "conflicted.txt")
+    assert attempt.wrapper_rc == 7
+    assert attempt.launcher_exit == 7
+
+
+def test_conflict_launch_captured_launcher_exit_wins_over_wrapper_rc(
+    tmp_path: Path,
+) -> None:
+    runner = ScriptRunner(
+        [
+            (
+                (rebase.agents.sys.executable,),
+                _fail(
+                    (rebase.agents.sys.executable,),
+                    stderr="LAUNCHER_EXIT=1\n",
+                    code=5,
+                ),
+            ),
+        ],
+    )
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="o/r",
+        run_id="run-1",
+        output_dir=tmp_path,
+    )
+    attempt = launch_fn("claude", "conflicted.txt")
+    assert attempt.wrapper_rc == 5
+    assert attempt.launcher_exit == 1
+
+
+def test_conflict_launch_done_sidecar_wins_over_wrapper_success(tmp_path: Path) -> None:
+    class DoneRunner(ScriptRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:
+            output = Path(argv[argv.index("--output") + 1])
+            _ = output.write_text("tool output\n", encoding="utf-8")
+            _ = output.with_suffix(output.suffix + ".done").write_text("4\n", encoding="utf-8")
+            self.calls.append(tuple(argv))
+            return _ok(argv)
+
+    launch_fn = rebase.make_conflict_launch_fn(
+        DoneRunner([]),
+        repo="o/r",
+        run_id="run-1",
+        output_dir=tmp_path,
+    )
+    attempt = launch_fn("claude", "conflicted.txt")
+    assert attempt.wrapper_rc == 0
+    assert attempt.launcher_exit == 4
+
+
 def test_detached_head_stalls() -> None:
     runner = ScriptRunner(
         [

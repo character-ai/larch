@@ -1,6 +1,6 @@
 # test-ci-wait.sh
 
-Offline regression harness for `scripts/ci-wait.sh`. Covers the poll-count budget, suspend-resilience (per-iteration delta guard), happy path, and genuine-timeout cases.
+Offline regression harness for `scripts/ci-wait.sh`. Covers the poll-count budget, suspend-resilience (per-iteration delta guard), happy path, genuine-timeout cases, and normalized CI wait bail tokens.
 
 ## Primary contract
 

@@ -268,10 +268,10 @@ write_noop_sleep_stub "$root"
 STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 30
 assert_rc "$root/.rc" 0 "genuine timeout: exits 0"
 assert_stdout_contains "$root" "ACTION=bail" "genuine timeout: ACTION=bail"
-if grep -q "Poll budget" "$root/.stdout"; then
-    ok "genuine timeout: BAIL_REASON contains Poll budget"
+if grep -q "BAIL_REASON=poll-budget-exhausted" "$root/.stdout"; then
+    ok "genuine timeout: BAIL_REASON=poll-budget-exhausted"
 else
-    fail "genuine timeout: expected BAIL_REASON containing Poll budget"
+    fail "genuine timeout: expected BAIL_REASON=poll-budget-exhausted"
     sed 's/^/    stdout: /' "$root/.stdout"
 fi
 call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)
@@ -363,6 +363,51 @@ assert_stdout_contains "$root" "CONFLICTED=true" "conflicted up-to-date: CONFLIC
 grep -Fq 'conflicted=true' "$root/.ci-decide-log" || fail "conflicted up-to-date: --conflicted true passed to ci-decide"
 grep -Fq 'behind=0' "$root/.ci-decide-log" || fail "conflicted up-to-date: --behind 0 passed to ci-decide"
 ok "conflicted up-to-date: ci-decide received conflicted=true with behind=0"
+
+
+# --- Case 12: repeated invalid ci-status output uses normalized stale token ---
+root=$(make_env invalid_status_stale)
+write_ci_decide_stub "$root"
+write_noop_sleep_stub "$root"
+cat > "$root/scripts/ci-status.sh" <<'SH'
+#!/usr/bin/env bash
+count_file="$(dirname "$0")/../.ci-status-count"
+count=$(cat "$count_file" 2>/dev/null || echo 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+printf 'BEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=\n'
+SH
+chmod +x "$root/scripts/ci-status.sh"
+run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "invalid status stale: exits 0"
+assert_stdout_contains "$root" "ACTION=bail" "invalid status stale: ACTION=bail"
+assert_stdout_contains "$root" "BAIL_REASON=ci-status-stale" "invalid status stale: normalized BAIL_REASON"
+
+# --- Case 13: NO_CHECKS uses normalized no-checks token ---
+root=$(make_env no_checks_token)
+write_ci_decide_stub "$root"
+cat > "$root/scripts/ci-status.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'CI_STATUS=NO_CHECKS\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=\n'
+SH
+chmod +x "$root/scripts/ci-status.sh"
+run_subject "$root" "$root/.rc" --timeout 60 --empty-checks-grace 30
+assert_rc "$root/.rc" 0 "NO_CHECKS token: exits 0"
+assert_stdout_contains "$root" "CI_STATUS=NO_CHECKS" "NO_CHECKS token: CI_STATUS emitted"
+assert_stdout_contains "$root" "BAIL_REASON=no-ci-checks-observed" "NO_CHECKS token: normalized BAIL_REASON"
+
+# --- Case 14: ci-decide failure uses normalized decide-error token ---
+root=$(make_env decide_error_token)
+write_ci_status_stub "$root"
+cat > "$root/scripts/ci-decide.sh" <<'SH'
+#!/usr/bin/env bash
+exit 9
+SH
+chmod +x "$root/scripts/ci-decide.sh"
+STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "decide error token: exits 0"
+assert_stdout_contains "$root" "ACTION=bail" "decide error token: ACTION=bail"
+assert_stdout_contains "$root" "BAIL_REASON=ci-decide-error" "decide error token: normalized BAIL_REASON"
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ci-wait: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

@@ -4,7 +4,7 @@ Hermetic offline harness for `scripts/lib-net.sh`.
 
 ## Scope
 
-- `is_transient_net_signature` positive and negative fixtures
+- `is_transient_net_signature` positive and negative fixtures, including `ci-status-stale`
 - `with_transient_retry` rc=0 short-circuit, transient rc!=0 retry (3 attempts), non-transient short-circuit, rc=0 envelope-predicate retry, and 2s/4s backoff via stubbed `sleep-seconds.sh`
 - `ship_pr_with_transient_retry` envelope exhaustion (rc=0 after retries but predicate still matches) invoking stubbed `exit_transient_net`
 

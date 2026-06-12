@@ -29,7 +29,7 @@
 #                    (write to <path>.tmp, then mv -f to <path>) and write the
 #                    numeric exit code to <path>.done on any trap-deliverable
 #                    exit path. When absent, default behavior (stdout output,
-#                    no sentinel) is byte-identical to today.
+#                    no sentinel) preserves the same KV shape as default stdout mode.
 #
 # Outputs (stdout when --output-file absent; otherwise the file at <path>):
 #   key=value — always all lines, in order:
@@ -41,7 +41,7 @@
 #   BEHIND_COUNT=<N>
 #   CONFLICTED=<true|false>
 #   FAILED_RUN_ID=<id>          (empty string if no failure)
-#   BAIL_REASON=<text>          (empty string if ACTION != bail)
+#   BAIL_REASON=<token>         (empty string if ACTION != bail)
 #   ITERATION=<N>               (final iteration count)
 #   ELAPSED=<N>                 (seconds elapsed)
 #
@@ -131,7 +131,7 @@ CI_STATUS="pending"
 BEHIND_COUNT="0"
 CONFLICTED="false"
 FAILED_RUN_ID=""
-BAIL_REASON="ci-wait.sh exited unexpectedly"
+BAIL_REASON="ci-wait-unexpected-exit"
 
 emit_output() {
     if [[ -n "$OUTPUT_FILE" ]]; then
@@ -149,7 +149,7 @@ emit_output() {
             printf 'ELAPSED=%s\n' "$SECONDS"
         } > "${OUTPUT_FILE}.tmp" && mv -f "${OUTPUT_FILE}.tmp" "$OUTPUT_FILE"
     else
-        # Default: stdout (byte-identical to the original behavior).
+        # Default: stdout with the same 8-key KV shape.
         emit_kv ACTION "$ACTION"
         emit_kv CI_STATUS "$CI_STATUS"
         emit_kv BEHIND_COUNT "$BEHIND_COUNT"
@@ -190,7 +190,7 @@ while true; do
     # Poll-count timeout (suspend-resilient)
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
-        BAIL_REASON="Poll budget (${MAX_POLLS} polls / ${TIMEOUT}s) exhausted"
+        BAIL_REASON="poll-budget-exhausted"
         larch_errf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
         exit 0
     fi
@@ -207,7 +207,7 @@ while true; do
         ci_failures=$((ci_failures + 1))
         if [[ "$ci_failures" -ge 3 ]]; then
             ACTION="bail"
-            BAIL_REASON="ci-status.sh returned no valid output 3 times consecutively"
+            BAIL_REASON="ci-status-stale"
             larch_errf "\n❌ ci-status.sh failed repeatedly\n"
             exit 0
         fi
@@ -224,7 +224,7 @@ while true; do
 
     if [[ "$CI_STATUS" == "NO_CHECKS" ]]; then
         ACTION="bail"
-        BAIL_REASON="No CI checks observed after ${EMPTY_CHECKS_GRACE}s grace"
+        BAIL_REASON="no-ci-checks-observed"
         larch_errf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
         exit 0
     fi
@@ -241,7 +241,7 @@ while true; do
 
     if [[ "$DECIDE_EXIT" -ne 0 ]]; then
         ACTION="bail"
-        BAIL_REASON="ci-decide.sh exited with error (code $DECIDE_EXIT)"
+        BAIL_REASON="ci-decide-error"
         larch_errf "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
         exit 0
     fi
@@ -250,6 +250,9 @@ while true; do
     BAIL_REASON=$(echo "$DECIDE_OUTPUT" | grep '^BAIL_REASON=' | head -1 | cut -d= -f2-)
     ACTION="${ACTION:-bail}"
     BAIL_REASON="${BAIL_REASON:-}"
+    if [[ "$ACTION" == "wait" ]] && [[ -z "$BAIL_REASON" ]]; then
+        BAIL_REASON="ci-wait-unexpected-exit"
+    fi
 
     # 3. If not wait, stop and return
     if [[ "$ACTION" != "wait" ]]; then

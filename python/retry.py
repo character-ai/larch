@@ -50,6 +50,8 @@ def is_transient_net_signature(text: str) -> bool:
         return True
     if "context deadline exceeded" in text:
         return True
+    if text == "ci-status-stale":
+        return True
     if "no valid output 3 times" in text:
         return True
     if (

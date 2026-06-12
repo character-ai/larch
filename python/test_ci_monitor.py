@@ -181,6 +181,29 @@ def test_default_launch_fn_prefers_done_sentinel_over_stdout_launcher_exit(
     assert attempt.launcher_exit == 1
 
 
+def test_default_launch_fn_missing_metadata_uses_wrapper_rc(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    runner = RecordingRunner()
+    runner.prefix_responses.append(((sys.executable,), _cr((sys.executable,), rc=7)))
+    logs = ci_monitor.LogCollectResult(text="", state="ready")
+    launch_fn = ci_monitor._make_default_launch_fn(
+        runner,
+        run_id="run-1",
+        repo="o/r",
+        plan_file=None,
+        logs=logs,
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+    attempt = launch_fn("claude")
+    assert attempt.wrapper_rc == 7
+    assert attempt.launcher_exit == 7
+
+
 def _status(
     *,
     status: str = "pass",
@@ -383,10 +406,10 @@ def test_decide_parity_table(
 @pytest.mark.parametrize(
     ("status", "iteration", "rebase_count", "fix_attempts", "expected_reason"),
     [
-        ("error", 0, 0, 0, "ci-status-error"),
-        ("pending", config.CI_MONITOR_MAX_ITERATIONS, 0, 0, "ci-timeout"),
-        ("pending", 0, config.CI_MONITOR_MAX_REBASES, 0, "ci-too-many-rebases"),
-        ("fail", 0, 0, config.CI_MONITOR_MAX_FIX_ATTEMPTS, "fix-attempts-exhausted"),
+        ("error", 0, 0, 0, config.CI_DECIDE_BAIL_STATUS_ERROR),
+        ("pending", config.CI_MONITOR_MAX_ITERATIONS, 0, 0, config.CI_DECIDE_BAIL_TIMEOUT),
+        ("pending", 0, config.CI_MONITOR_MAX_REBASES, 0, config.CI_DECIDE_BAIL_TOO_MANY_REBASES),
+        ("fail", 0, 0, config.CI_MONITOR_MAX_FIX_ATTEMPTS, config.CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED),
     ],
 )
 def test_decide_bail_reasons_match_ci_decide_tokens(
@@ -547,7 +570,31 @@ def test_poll_ci_budget_exhaustion_bails() -> None:
         sleep_fn=lambda _s: None,
     )
     assert decision.action == "bail"
-    assert "Poll budget" in (decision.bail_reason or "")
+    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
+
+
+def test_poll_ci_repeated_status_errors_use_stale_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
+        return ci_monitor.CiStatus(status="error", behind_count=0, failed_run_id=None)
+
+    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
+    _, decision = ci_monitor.poll_ci(
+        RecordingRunner(),
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=60.0,
+        sleep_fn=lambda _s: None,
+    )
+    assert decision.action == "bail"
+    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
 
 
 def test_poll_ci_emits_poll_breadcrumb_to_stderr(
@@ -2007,7 +2054,7 @@ def test_poll_ci_no_checks_bail() -> None:
     )
     assert decision.action == "bail"
     assert status.status == "NO_CHECKS"
-    assert "No CI checks" in (decision.bail_reason or "")
+    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
 
 
 # FINDING_15: run_ci_fix head-changed

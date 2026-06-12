@@ -262,58 +262,13 @@ emit_seeded_false_exit() {
     exit "${1:-1}"
 }
 
-cmd_clear_stall() {
-    local tmpdir=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
-            *) die_argv "unknown clear-stall option: $1" ;;
-        esac
-    done
-    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
-    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
-
-    local state="$tmpdir/ship-pr-state.sh"
-    if ship_pr_state_is_dangling_symlink "$tmpdir"; then
-        emit_kv CLEARED false
-        exit 3
-    fi
-    local dir base tmp tracking
-    dir=$(dirname "$state")
-    base=$(basename "$state")
-    if ! ship_pr_state_present "$tmpdir"; then
-        tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_cleared_false_exit 1
-        if ! printf 'STALL_TRACKING=false\nSTALL_STEP=\n' >"$tmp"; then
-            rm -f "$tmp"
-            emit_cleared_false_exit 1
-        fi
-        tracking=$(kv_get "$tmp" STALL_TRACKING "") || {
-            rm -f "$tmp"
-            emit_cleared_false_exit 1
-        }
-        if [ "$tracking" != false ]; then
-            rm -f "$tmp"
-            emit_cleared_false_exit 1
-        fi
-        mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-        tracking=$(kv_get "$state" STALL_TRACKING "") || emit_cleared_false_exit 1
-        if [ "$tracking" != false ]; then
-            emit_cleared_false_exit 1
-        fi
-        emit_kv CLEARED true
-        return 0
-    fi
-    if ! ship_pr_state_is_regular_file "$tmpdir"; then
-        emit_kv CLEARED false
-        exit 3
-    fi
-    if ! check_ship_pr_state_syntax "$state"; then
-        emit_kv CLEARED false
-        exit 3
-    fi
+clear_stall_layer_path() {
+    local path=$1 label=$2 dir base tmp tracking
+    dir=$(dirname "$path")
+    base=$(basename "$path")
     tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_cleared_false_exit 1
-    if ship_pr_state_has_keys "$state"; then
-        if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING false STALL_STEP "" >"$tmp"; then
+    if ship_pr_state_has_keys "$path"; then
+        if ! rewrite_ship_pr_state_keys "$path" STALL_TRACKING false STALL_STEP "" >"$tmp"; then
             rm -f "$tmp"
             emit_cleared_false_exit 1
         fi
@@ -327,15 +282,52 @@ cmd_clear_stall() {
         rm -f "$tmp"
         emit_cleared_false_exit 1
     }
-    if [ "$tracking" != false ]; then
+    if [ "$tracking" != false ] || ! grep -q '^STALL_STEP=$' "$tmp"; then
         rm -f "$tmp"
         emit_cleared_false_exit 1
     fi
-    mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-    tracking=$(kv_get "$state" STALL_TRACKING "") || emit_cleared_false_exit 1
-    if [ "$tracking" != false ]; then
+    mv -f "$tmp" "$path" || emit_cleared_false_exit 1
+    tracking=$(kv_get "$path" STALL_TRACKING "") || emit_cleared_false_exit 1
+    if [ "$tracking" != false ] || ! grep -q '^STALL_STEP=$' "$path"; then
+        larch_err "stall-recovery-report.sh: clear-stall post-write validation failed for $label"
         emit_cleared_false_exit 1
     fi
+}
+
+cmd_clear_stall() {
+    local tmpdir=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            *) die_argv "unknown clear-stall option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+
+    local label path present=false
+    for label in ship-pr-state.sh finalize-state.sh session-env.sh; do
+        path="$tmpdir/$label"
+        [ -e "$path" ] || continue
+        present=true
+        if [ -L "$path" ] || [ ! -f "$path" ] || [ ! -r "$path" ] || [ ! -w "$path" ]; then
+            emit_kv CLEARED false
+            exit 3
+        fi
+        if ! check_ship_pr_state_syntax "$path"; then
+            emit_kv CLEARED false
+            exit 3
+        fi
+    done
+    if [ "$present" != true ]; then
+        emit_kv CLEARED true
+        return 0
+    fi
+    for label in ship-pr-state.sh finalize-state.sh session-env.sh; do
+        path="$tmpdir/$label"
+        [ -e "$path" ] || continue
+        clear_stall_layer_path "$path" "$label"
+    done
     emit_kv CLEARED true
 }
 
@@ -651,9 +643,10 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
+        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|ci-local-unfixable|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|interactive-subprocess-unsupported|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|submodule-edit-required-out-of-scope|\
-        local-unfixable|checks-failed|checks-timeout|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required)
+        local-unfixable|checks-failed|checks-timeout|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required|\
+        poll-budget-exhausted|ci-wait-unexpected-exit|no-ci-checks-observed|ci-status-stale|ci-decide-error)
             printf '%s\n' "$1"
             ;;
         ci-local-unfixable:*)
@@ -1286,17 +1279,29 @@ cmd_normalize_issue_env() {
         emit_issue_env_false "filter-temp-failed" "$out_file"
         return 0
     }
-    if ! awk '
-        {
-            sub(/\r$/, "")
-            key = $0
-            sub(/=.*/, "", key)
-            if (key ~ /^ISSUES_(CREATED|FAILED|DEDUPLICATED)$/ ||
-                key ~ /^ISSUE_1_(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL)$/) {
-                print
-            }
-        }
-    ' "$issue_stdout" >"$filtered"; then
+    if ! python3 - "$issue_stdout" >"$filtered" <<'PY'; then
+import re
+import sys
+
+allowed = re.compile(
+    r"^(ISSUES_(CREATED|FAILED|DEDUPLICATED)|"
+    r"ISSUE_1_(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL))="
+)
+key_like = re.compile(r"^[A-Z][A-Z0-9_]*=")
+records: list[list[str]] = []
+with open(sys.argv[1], "rb") as handle:
+    text = handle.read().decode("utf-8", errors="replace")
+for raw in text.splitlines():
+    line = raw.replace("\r", " ")
+    if allowed.match(line):
+        key, value = line.split("=", 1)
+        records.append([key, value])
+    elif records and not key_like.match(line):
+        records[-1][1] += " " + line
+for key, value in records:
+    safe = " ".join(value.replace("\r", " ").replace("\n", " ").split())
+    print(f"{key}={safe}")
+PY
         rm -f "$filtered"
         emit_issue_env_false "filter-failed" "$out_file"
         return 0
@@ -2406,22 +2411,23 @@ tsv_allowlist_lines() {
 }
 
 runtime_bail_token_lines() {
-    {
-        awk -F'"' '/emit_kv BAIL_REASON "/ { print $2 }' "$SCRIPTS_DIR/ci-decide.sh"
-        python3 - <<PY
+    python3 - <<PY
 import sys
 sys.path.insert(0, "$PLUGIN_ROOT/python")
 import config
-for token in config.NEEDS_USER_REASON_TOKENS:
+for token in config.STALL_RECOVERY_BAIL_REASON_TOKENS:
     print(token)
 PY
-        printf '%s\n' design-flaw escalate all-vendors-failed
-    } | awk 'NF && !seen[$0]++ { print }'
 }
 
 lint_runtime_bail_tokens() {
-    local token safe compound_safe compound_bad
+    local token safe compound_safe compound_bad tokens
+    if ! tokens=$(runtime_bail_token_lines); then
+        larch_err "stall-recovery-report.sh: cannot import runtime bail tokens from python/config.py"
+        return 1
+    fi
     while IFS= read -r token || [ -n "$token" ]; do
+        [ -n "$token" ] || continue
         case "$token" in
             ci-local-unfixable)
                 compound_safe=$(safe_bail_reason_value "ci-local-unfixable:job_1,job-2")
@@ -2439,7 +2445,9 @@ lint_runtime_bail_tokens() {
                 fi
                 ;;
         esac
-    done < <(runtime_bail_token_lines)
+    done <<EOF
+$tokens
+EOF
 }
 
 cmd_lint() {

@@ -42,13 +42,15 @@ The helper keeps internal seams for a later `/design` profile. Do not add public
 4. **Do not file on first detection.** First detection only classifies, records attempts, and decides retry or terminal routing. The protected-path operator warning is allowed first-detection text; it names `.claude-plugin/plugin.json` only for `protected-path-edit-required-out-of-scope`.
 5. **Retry dispatch.** Respect the retry caps from `stall-recovery-report.md`. Record only branches that hand work to Main Claude. Do not record ordinary retries or reships. Dispatch by `RESUME_HINT`: `step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline; for protected-path stalls, Codex cannot edit the protected path. Continue through the normal current-run checks, commit, review, and ship sequence. `step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` (same immediate-background fence: `run_in_background: true`, `timeout: 21600000`); wait for `<task-notification>` before advancing. `step5-review` resumes Step 5 review and reaches Step 8 only through the normal current-run sequence.
 6. **Record prompt-side Main Claude handoffs before edits.** Call `record-escalation` before Step 18a inline `step2-impl` repair and before inline `step8-shippr` repair when Step 18a itself owns the repair. Stable owner tokens are `step2-impl` and `step8-shippr`.
-7. **Success after recovery.** Clear stall state with `clear-stall`. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
+7. **Success after recovery.** Run `stall-recovery-report.sh clear-stall --implement-tmpdir "$IMPLEMENT_TMPDIR"`. Proceed as recovery success only when it emits `CLEARED=true`. Treat prompt-side in-memory stall tracking as cleared for the next normalization call. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
 8. **Terminal failure.** Seed durable terminal stall state with `seed-terminal-state`. Main Claude must investigate before report composition and write `stall-recovery-root-cause.md`. If Tier B may be used, also write `stall-recovery-bounded-root-cause.md`, `stall-recovery-title.txt`, and `stall-recovery-sensitive-corpus.env`. Then call `compose-report --report-kind terminal-failure` exactly once. Tier A uses `--surface issue-input` as artifact composition only, then runs `dedup-tier-a-report` before `/larch:issue`. Tier B uses `--surface chat-print`; the helper resolves upstream larch, dedups, and files or comments unless dry-run is active. Write `stall-recovery-terminal-report.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
 9. **Operator action.** If the root-cause verdict is `operator-action`, compose-report writes the non-filing record and sentinel. Do not file or print a public report.
 
 ## Step 18a.5 escalation-success procedure
 
 Run this after the active stall gate and before Step 18b teardown.
+
+For ordinary success paths, do not run `clear-stall`. When a real later stall is active, do not run `clear-stall`. After an explicit recovery success with `CLEARED=true`, call `normalize-outcome` with `--in-memory-stall-tracking false`; otherwise preserve the ambient in-memory stall-tracking value.
 
 Skip when any predicate is true:
 

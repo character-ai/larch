@@ -211,7 +211,11 @@ def make_conflict_launch_fn(
                 seen=seen_token_records,
                 cwd=cwd,
             )
-        launcher_exit = agents.parse_launcher_exit_text(result.stdout)
+        launcher_exit = agents.resolve_launcher_exit(
+            result.stdout + result.stderr,
+            output_file=output,
+            process_rc=result.returncode,
+        )
         failure = agents.classify_launch_failure(
             launcher_exit,
             failure_log if failure_log.is_file() else None,
