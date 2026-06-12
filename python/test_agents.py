@@ -450,6 +450,67 @@ def test_cursor_auth_trims_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert agents.os.environ["CURSOR_API_KEY"] == "crsr_key"
 
 
+def test_cursor_auth_unsets_blank_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CURSOR_API_KEY", "  \t  ")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Linux")
+    verdict = agents.cursor_auth_preflight()
+    assert verdict.ok is True
+    assert "CURSOR_API_KEY" not in agents.os.environ
+
+
+def test_validate_conflict_files_rejects_unsafe_paths() -> None:
+    assert agents._validate_conflict_files_csv("src/a.py,docs/readme.md") == (True, "")  # pylint: disable=protected-access
+    for value in ("../x", "/tmp/x", "src/../x", "src//x", "src/a.py,"):
+        ok, _ = agents._validate_conflict_files_csv(value)  # pylint: disable=protected-access
+        assert ok is False
+
+
+def test_ci_failure_log_requires_implement_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    log = tmp_path / "outside.log"
+    _ = log.write_text("sk-testsecret0000000000000000\n", encoding="utf-8")
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    ok, _ = agents._validate_failure_log_path(log)  # pylint: disable=protected-access
+    assert ok is False
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    ok, _ = agents._validate_failure_log_path(log)  # pylint: disable=protected-access
+    assert ok is True
+    assert "sk-testsecret" not in agents._read_failure_context(str(log))  # pylint: disable=protected-access
+
+
+def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"review ok\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    prompt = tmp_path / "prompt.md"
+    secret_prompt = "secret prompt body"
+    _ = prompt.write_text(secret_prompt, encoding="utf-8")
+    output = tmp_path / "claude.out"
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
+    assert secret_prompt not in meta
+    assert "CMD_JSON=" in meta
+    assert output.read_text(encoding="utf-8") == "review ok"
+
+
 def test_degraded_tools_empty_presence_is_distinct_bug_signal() -> None:
     result = agents.degraded_tools_result(
         codex_binary_found="true",

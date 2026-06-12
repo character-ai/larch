@@ -102,9 +102,11 @@ Behavior:
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)
    immediately before each `run-external-agent.sh` call and release it
    asynchronously via `external_serial_lock_release_after`.
+   Test harnesses may override the shared runner path with
+   `LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE`.
    Test harnesses may override the Codex launcher path with
-   `LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH`; the default is
-   `$SOURCE_SCRIPTS/launch-codex-exec.sh`.
+   `LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE`; the default is
+   `python3 "$PY_CLI" agent launch-codex-exec`.
 6. Before dispatch, capture the tracked/untracked dirty-tree baseline, the
    current `HEAD`, and the symbolic branch name. After dispatch, unchanged
    `HEAD` follows the working-tree path: mechanically revert any `.gitmodules`

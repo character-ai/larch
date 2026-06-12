@@ -33,7 +33,13 @@ CHECKS_LOG=""
 TARGET_CMD_ARGS_FILE=""
 PY_CLI="${LINT_FIX_LOOP_PY_CLI:-$SCRIPT_DIR/../python/cli.py}"
 RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+if [[ -n "${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE:-}" ]]; then
+    RUN_EXTERNAL_AGENT_CMD=("$LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_CMD_OVERRIDE")
+fi
 LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
+if [[ -n "${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE:-}" ]]; then
+    LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD=("$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD_OVERRIDE")
+fi
 
 usage() {
     larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step5-self-review|step5-mav|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job --checks-log REDACTED_LOG_FILE [--target-cmd-args-file PATH]"

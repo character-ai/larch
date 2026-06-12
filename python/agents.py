@@ -403,7 +403,12 @@ def read_claude_model_main(argv: list[str] | None = None) -> int:
 
 
 def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> AuthVerdict:
-    key = os.environ.get("CURSOR_API_KEY", "").strip()
+    raw_key = os.environ.get("CURSOR_API_KEY", "")
+    key = raw_key.strip()
+    if not key or "\n" in raw_key or "\r" in raw_key:
+        os.environ.pop("CURSOR_API_KEY", None)
+    if "\n" in raw_key or "\r" in raw_key:
+        key = ""
     if key:
         os.environ["CURSOR_API_KEY"] = key
         return AuthVerdict(ok=True, rc=0)
@@ -1162,6 +1167,12 @@ def _record_usage_from_events(events: Path, sidecar: Path, label: str, token_rec
     )
 
 
+def _mirror_codex_quota_from_events(events: Path, sidecar: Path) -> None:
+    text = _read_text(events)
+    if text and _QUOTA_RE.search(text):
+        _append(sidecar, "codex-quota: usage limit / quota reported on the codex exec --json events stream\n")
+
+
 def _codex_env_key_enabled() -> bool:
     return bool(os.environ.get("OPENAI_API_KEY", "").strip())
 
@@ -1266,6 +1277,68 @@ def _trust_config_arg(workdir: str) -> str:
     return f'projects."{key}".trust_level="trusted"'
 
 
+def _auth_retry_limit() -> int:
+    raw = os.environ.get("LARCH_EXTERNAL_AUTH_RETRIES", "5")
+    return int(raw) if raw.isdigit() and int(raw) > 0 else 5
+
+
+@contextlib.contextmanager
+def _temporary_env(name: str, value: str):
+    old = os.environ.get(name)
+    os.environ[name] = value
+    try:
+        yield
+    finally:
+        if old is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = old
+
+
+def _promote_inner_done(output: Path) -> None:
+    inner = output.with_suffix(output.suffix + ".inner.done")
+    public = output.with_suffix(output.suffix + ".done")
+    if inner.is_file():
+        inner.replace(public)
+
+
+def _run_external_agent_with_auth_retries(
+    *,
+    tool: str,
+    output: Path,
+    timeout_seconds: int,
+    cmd: Sequence[str],
+    cwd: str | None = None,
+    capture_stdout_only: bool = False,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+) -> RunExternalAgentResult:
+    result: RunExternalAgentResult | None = None
+    for attempt in range(1, _auth_retry_limit() + 1):
+        with _temporary_env("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done"):
+            result = run_external_agent(
+                tool=tool,
+                output=str(output),
+                timeout_seconds=timeout_seconds,
+                cmd=cmd,
+                cwd=cwd,
+                capture_stdout_only=capture_stdout_only,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            )
+        if result.exit_code == 0 or attempt >= _auth_retry_limit():
+            return result
+        auth_paths = [
+            output.with_suffix(output.suffix + ".sidecar"),
+            output.with_suffix(output.suffix + ".diag"),
+            output.with_suffix(output.suffix + ".events.jsonl"),
+            output,
+        ]
+        if external_auth_verdict(tool, *auth_paths) != "auth":
+            return result
+    return result if result is not None else RunExternalAgentResult(99, output)
+
+
 def launch_codex_exec_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent launch-codex-exec")
@@ -1334,9 +1407,9 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         try:
             events = output.with_suffix(output.suffix + ".events.jsonl")
             sidecar = output.with_suffix(output.suffix + ".sidecar")
-            result = run_external_agent(
+            result = _run_external_agent_with_auth_retries(
                 tool="codex",
-                output=str(output),
+                output=output,
                 timeout_seconds=int(args.timeout, 10),
                 cmd=child,
                 cwd=str(workdir),
@@ -1353,6 +1426,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         events = output.with_suffix(output.suffix + ".events.jsonl")
         if not events.is_file() or events.stat().st_size == 0:
             _write(events, "{}\n")
+        _mirror_codex_quota_from_events(events, output.with_suffix(output.suffix + ".sidecar"))
         proc.run(
             [
                 sys.executable,
@@ -1394,10 +1468,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             )
             + "\n",
         )
-        inner = output.with_suffix(output.suffix + ".inner.done")
-        public = output.with_suffix(output.suffix + ".done")
-        if inner.is_file():
-            inner.replace(public)
+        _promote_inner_done(output)
     _emit_kv("LAUNCHER_EXIT", launcher_exit)
     _emit_kv("OUTPUT", str(output))
     return 0
@@ -1415,10 +1486,60 @@ def _validate_ci_args(args: argparse.Namespace) -> tuple[bool, int]:
     if args.plan_file and not Path(args.plan_file).is_absolute():
         _err("agent launch-ci: --plan-file must be an absolute path")
         return False, 2
-    if args.conflict_files and not re.fullmatch(r"[A-Za-z0-9._/,-]+", args.conflict_files):
-        _err("agent launch-ci: unsupported characters in conflict files")
-        return False, 2
+    if args.failure_log:
+        ok, msg = _validate_failure_log_path(Path(args.failure_log))
+        if not ok:
+            _err(f"agent launch-ci: {msg}")
+            return False, 2
+    if args.conflict_files:
+        ok, msg = _validate_conflict_files_csv(args.conflict_files)
+        if not ok:
+            _err(f"agent launch-ci: {msg}")
+            return False, 2
     return True, 0
+
+
+def _validate_conflict_files_csv(value: str) -> tuple[bool, str]:
+    if _CTRL_RE.search(value):
+        return False, "conflict files must not contain control characters"
+    for item in value.split(","):
+        if not item:
+            return False, "conflict files must not contain empty entries"
+        if "//" in item:
+            return False, "conflict files must be normalized repo-relative paths"
+        if not re.fullmatch(r"[A-Za-z0-9._/-]+", item):
+            return False, "unsupported characters in conflict files"
+        path = Path(item)
+        if path.is_absolute() or ".." in path.parts or "." in path.parts:
+            return False, "conflict files must be safe repo-relative paths"
+    return True, ""
+
+
+def _validate_failure_log_path(path: Path) -> tuple[bool, str]:
+    root_raw = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not root_raw:
+        return False, "--failure-log requires IMPLEMENT_TMPDIR"
+    try:
+        root = Path(root_raw).resolve(strict=True)
+        if not root.is_dir() or root.is_symlink():
+            return False, "IMPLEMENT_TMPDIR must resolve to a non-symlink directory"
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            return False, "--failure-log must be an absolute regular non-symlink file"
+        canon = path.resolve(strict=True)
+        if not _under(canon, root):
+            return False, "--failure-log must resolve under IMPLEMENT_TMPDIR"
+        if canon.stat().st_size > 1024 * 1024:
+            return False, "--failure-log exceeds 1 MB"
+    except OSError:
+        return False, "--failure-log validation failed"
+    return True, ""
+
+
+def _read_failure_context(path_text: str) -> str:
+    if not path_text:
+        return ""
+    text = _read_text(Path(path_text))[:20000]
+    return redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
 
 
 def _ci_parser(prog: str) -> argparse.ArgumentParser:
@@ -1438,7 +1559,7 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
 
 def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
     plan_context = _read_text(args.plan_file)[:20000] if args.plan_file else ""
-    failure_context = _read_text(args.failure_log)[:20000] if args.failure_log else ""
+    failure_context = _read_failure_context(args.failure_log)
     role_line = "resolve merge/rebase conflicts" if args.role == "resolve-conflict" else "fix larch /implement CI subwork"
     return (
         f"You are using {tool} to {role_line}.\n"
@@ -1466,48 +1587,109 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     prompt = _ci_prompt("Codex", args)
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
-    try:
-        model_args = list(resolve_model_args("codex", with_effort=True).argv)
-    except ValueError as exc:
-        _write(output, "")
-        _write(output.with_suffix(output.suffix + ".done"), "1\n")
-        _err(f"agent launch-codex-ci: {exc}")
-        _emit_launcher_result(output, 1)
-        return 0
     workdir = str(Path.cwd())
-    child = [
-        "codex",
-        "exec",
-        "--full-auto",
-        "-C",
-        workdir,
-        *model_args,
-        "-c",
-        _trust_config_arg(workdir),
-        *_codex_auth_args(),
-        "--output-last-message",
-        str(output),
-        "--json",
-        "--",
-        prompt,
-    ]
-    state = external_serial_lock_acquire("codex")
-    external_serial_lock_release_after(state)
-    result = run_external_agent(
-        tool="codex",
-        output=str(output),
-        timeout_seconds=int(args.timeout, 10),
-        cmd=child,
-        cwd=workdir,
-        stdout_path=output.with_suffix(output.suffix + ".events.jsonl"),
-        stderr_path=output.with_suffix(output.suffix + ".sidecar"),
-    )
+    start = time.time()
+    with tempfile.TemporaryDirectory(prefix="larch-codex-ci-home-") as home:
+        auth_rc, auth_msg = _prepare_codex_home(Path(home))
+        if auth_rc != 0:
+            reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
+            _write_preflight_bundle(output, args.timeout, auth_rc, reason)
+            return 0
+        try:
+            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+        except ValueError as exc:
+            _write_preflight_bundle(output, args.timeout, 1, f"model args failed: {exc}")
+            return 0
+        child = [
+            "codex",
+            "exec",
+            "--full-auto",
+            "-C",
+            workdir,
+            "--add-dir",
+            workdir,
+            *model_args,
+            "-c",
+            _trust_config_arg(workdir),
+            *_codex_auth_args(),
+            "--output-last-message",
+            str(output),
+            "--json",
+            "--",
+            prompt,
+        ]
+        env_old = os.environ.get("CODEX_HOME")
+        os.environ["CODEX_HOME"] = home
+        try:
+            state = external_serial_lock_acquire("codex")
+            external_serial_lock_release_after(state)
+            result = _run_external_agent_with_auth_retries(
+                tool="codex",
+                output=output,
+                timeout_seconds=int(args.timeout, 10),
+                cmd=child,
+                cwd=workdir,
+                stdout_path=output.with_suffix(output.suffix + ".events.jsonl"),
+                stderr_path=output.with_suffix(output.suffix + ".sidecar"),
+            )
+        finally:
+            if env_old is None:
+                os.environ.pop("CODEX_HOME", None)
+            else:
+                os.environ["CODEX_HOME"] = env_old
     events = output.with_suffix(output.suffix + ".events.jsonl")
-    if not events.is_file():
+    if not events.is_file() or events.stat().st_size == 0:
         _write(events, "{}\n")
+    _mirror_codex_quota_from_events(events, output.with_suffix(output.suffix + ".sidecar"))
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "codex",
+            "--task-kind",
+            args.timing_task_kind or "codex-ci",
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(time.time())),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(result.exit_code),
+            "--status",
+            "complete" if result.exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
     _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), "codex_ci_fix", output.with_suffix(output.suffix + ".token-record"))
+    _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    if result.exit_code == config.EXIT_TIMEOUT:
+        _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "codex", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
+    _promote_inner_done(output)
     _emit_launcher_result(output, result.exit_code)
     return 0
+
+
+def _record_cursor_usage_from_output(output: Path, label: str) -> None:
+    try:
+        obj = json.loads(_read_text(output))
+    except json.JSONDecodeError:
+        return
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if not isinstance(usage, dict):
+        return
+    input_tokens = int(usage.get("inputTokens") or usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("outputTokens") or usage.get("output_tokens") or 0)
+    cache_read = int(usage.get("cacheReadTokens") or usage.get("cache_read_input_tokens") or 0)
+    cache_create = int(usage.get("cacheWriteTokens") or usage.get("cache_creation_input_tokens") or 0)
+    total = input_tokens + output_tokens + cache_read + cache_create
+    _write(
+        output.with_suffix(output.suffix + ".token-record"),
+        f"TOOL=cursor\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={label}\n",
+    )
 
 
 def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
@@ -1534,11 +1716,18 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     user_cfg = Path.home() / ".cursor" / "cli-config.json"
     if user_cfg.is_file():
         shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
+    start = time.time()
     try:
         child = ["cursor", "agent", "-p", "--force", "--trust", *model_args, "--output-format", "json", "--workspace", str(Path.cwd()), prompt]
         state = external_serial_lock_acquire("cursor")
         external_serial_lock_release_after(state)
-        result = run_external_agent(tool="cursor", output=str(output), timeout_seconds=int(args.timeout, 10), cmd=child, capture_stdout_only=True)
+        result = _run_external_agent_with_auth_retries(
+            tool="cursor",
+            output=output,
+            timeout_seconds=int(args.timeout, 10),
+            cmd=child,
+            capture_stdout_only=True,
+        )
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
         if old_cfg is None:
@@ -1546,6 +1735,33 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         else:
             os.environ["CURSOR_CONFIG_DIR"] = old_cfg
     _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "cursor",
+            "--task-kind",
+            args.timing_task_kind or "cursor-ci",
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(time.time())),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(result.exit_code),
+            "--status",
+            "complete" if result.exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
+    _record_cursor_usage_from_output(output, "cursor_ci_fix")
+    if result.exit_code == config.EXIT_TIMEOUT:
+        _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "cursor", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
+    _promote_inner_done(output)
     _emit_launcher_result(output, result.exit_code)
     return 0
 
@@ -1606,6 +1822,47 @@ def _validate_context_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str
     return True, ""
 
 
+def _validate_claude_output(output: Path) -> tuple[Path | None, str]:
+    if not output.is_absolute() or _CTRL_RE.search(str(output)) or ".." in output.parts:
+        return None, "--output-file must be an absolute safe path"
+    if output.is_symlink():
+        return None, "--output-file must not be a symlink"
+    parent = output.parent
+    if not parent.is_dir() or parent.is_symlink():
+        return None, "--output-file parent must be an existing non-symlink directory"
+    try:
+        root = parent.resolve(strict=True)
+    except OSError:
+        return None, "--output-file parent validation failed"
+    return root, ""
+
+
+def _root_allowed_for_context(root: Path, session_root: Path) -> bool:
+    plugin = _plugin_root().resolve()
+    repo = Path.cwd().resolve()
+    return _under(root, session_root) or _under(root, plugin) or _under(root, repo)
+
+
+def _run_claude_with_stdin(cmd: Sequence[str], prompt: str, *, timeout: float, cwd: str) -> CommandResult:
+    start = time.time()
+    try:
+        proc_obj = subprocess.run(
+            list(cmd),
+            input=prompt,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            cwd=cwd,
+            check=False,
+        )
+        return CommandResult(tuple(cmd), proc_obj.returncode, proc_obj.stdout, proc_obj.stderr, time.time() - start)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "claude subprocess timed out\n")
+        return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.time() - start)
+
+
 def _render_context_files(paths: Sequence[Path], roots: Sequence[Path]) -> tuple[int, str, str]:
     if len(paths) > _MAX_CONTEXT_FILES:
         return 2, "", "too many context files"
@@ -1655,13 +1912,21 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     if not prompt_file.is_file() or prompt_file.is_symlink():
         _err("agent launch-claude-subprocess: invalid --prompt-file")
         return 2
-    roots = [_plugin_root(), output.parent.resolve()]
+    session_root, output_msg = _validate_claude_output(output)
+    if session_root is None:
+        _err(f"agent launch-claude-subprocess: {output_msg}")
+        return 2
+    roots = [_plugin_root(), session_root]
     for raw in args.allow_root:
         p = Path(raw)
-        if not p.is_dir():
-            _err("agent launch-claude-subprocess: --allow-root must be an existing directory")
+        if not p.is_dir() or p.is_symlink():
+            _err("agent launch-claude-subprocess: --allow-root must be an existing non-symlink directory")
             return 2
-        roots.append(p.resolve())
+        resolved = p.resolve()
+        if not _root_allowed_for_context(resolved, session_root):
+            _err("agent launch-claude-subprocess: --allow-root must resolve under the session root, plugin root, or repository")
+            return 2
+        roots.append(resolved)
     if args.read_tools:
         if not args.read_tools_add_dir:
             _err("agent launch-claude-subprocess: --read-tools-add-dir is required with --read-tools")
@@ -1670,7 +1935,11 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
         if not rt.is_dir() or rt.is_symlink():
             _err("agent launch-claude-subprocess: --read-tools-add-dir must be an existing non-symlink directory")
             return 2
-        roots.append(rt.resolve())
+        rt_resolved = rt.resolve()
+        if not _under(rt_resolved, session_root):
+            _err("agent launch-claude-subprocess: --read-tools-add-dir must resolve under the session root")
+            return 2
+        roots.append(rt_resolved)
     context_paths = [Path(p) for p in args.context_files]
     ctx_rc, context_text, ctx_msg = _render_context_files(context_paths, roots)
     if ctx_rc != 0:
@@ -1681,10 +1950,11 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     cmd = ["claude", "--print", "--output-format", "json", "--model", args.model]
     if args.read_tools:
         cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
-    cmd.append(full_prompt)
-    _write(output.with_suffix(output.suffix + ".meta"), f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nCMD_JSON={_json_array(cmd)}\n")
+    prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
+    _write(prompt_sidecar, full_prompt)
+    _write(output.with_suffix(output.suffix + ".meta"), f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nPROMPT_FILE={prompt_sidecar}\nCMD_JSON={_json_array(cmd)}\n")
     start = time.time()
-    result = proc.run(cmd, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    result = _run_claude_with_stdin(cmd, full_prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
     exit_code = result.returncode
     raw = result.stdout
     promoted = ""
@@ -1768,7 +2038,32 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         _write(temp_prompt, args.prompt)
         prompt_file = temp_prompt
     elif args.agent_file:
-        body = Path(args.agent_file).read_text(encoding="utf-8", errors="replace")
+        render_args = [
+            sys.executable,
+            str(_PY_CLI),
+            "render",
+            "specialist",
+            "--agent-file",
+            args.agent_file,
+            "--mode",
+            args.mode or "diff",
+        ]
+        if args.mode == "description":
+            render_args.extend(["--description-text", args.description_text, "--scope-files", args.scope_files])
+        else:
+            if args.diff_file:
+                render_args.extend(["--diff-file", args.diff_file])
+            if args.commit_count:
+                render_args.extend(["--commit-count", args.commit_count])
+        if args.plan_file:
+            render_args.extend(["--plan-file", args.plan_file])
+        if args.feature_file:
+            render_args.extend(["--feature-file", args.feature_file])
+        rendered = proc.run(render_args)
+        if rendered.returncode != 0:
+            _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")
+            return 2
+        body = rendered.stdout
         fd, temp_prompt = tempfile.mkstemp(prefix="larch-claude-review-agent-")
         os.close(fd)
         _write(temp_prompt, body)

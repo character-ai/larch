@@ -20,6 +20,7 @@ ALLOWED_SHELL_FILES = {
 ALLOWED_PYTHON_FILES = {"python/agents.py"}
 TRAILING_PRAGMA_RE = re.compile(r"\s#[^\"'`]*lint-codex-exec-auth:\s*ok(\s|$)[^\"'`]*$")
 CODEX_EXEC_RE = re.compile(r"(^|[^A-Za-z0-9_])[\"'\\]?codex[\"'\\]?\s+exec")
+PY_CODEX_EXEC_RE = re.compile(r"(['\"]codex['\"]\s*,\s*['\"]exec['\"]|['\"]codex\s+exec\b)")
 ENV_PREFIX_RE = re.compile(r"^([\s]*[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s*)+")
 
 
@@ -181,6 +182,25 @@ def scan_markdown_file(root: Path, rel: str) -> bool:
     return violation
 
 
+def scan_python_file(root: Path, rel: str) -> bool:
+    if rel in ALLOWED_PYTHON_FILES:
+        return False
+    path = root / rel
+    if not path.is_file() or path.is_symlink():
+        return False
+    violation = False
+    for nr, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if TRAILING_PRAGMA_RE.search(line) or re.match(r"^\s*#", line):
+            continue
+        if PY_CODEX_EXEC_RE.search(line):
+            print(
+                f"lint-codex-exec-auth: {rel}:{nr}: unwired Python Codex dispatch without auth wiring; use python3 python/cli.py agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>",
+                file=sys.stderr,
+            )
+            violation = True
+    return violation
+
+
 def main(argv: list[str] | None = None) -> int:
     parsed = _parse_args(argv if argv is not None else sys.argv[1:])
     if parsed is None:
@@ -195,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         if scan_shell_file(root, rel):
             violations += 1
     for rel in _python_files(root):
-        if rel not in ALLOWED_PYTHON_FILES and scan_shell_file(root, rel):
+        if scan_python_file(root, rel):
             violations += 1
     for rel in _markdown_files(root):
         if scan_markdown_file(root, rel):
