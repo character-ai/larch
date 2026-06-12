@@ -152,17 +152,27 @@ def _redact_gh_error(text: str) -> str:
     return redacted.replace("\n", " ").replace("\r", " ")[:500].strip() or "gh failure"
 
 
+def _kv_safe_text(value: object) -> str:
+    return str(value).strip().replace("\r", " ").replace("\n", " ")
+
+
 def _emit_kv(key: str, value: str) -> None:
-    logging_util.emit_kv(key, value)
+    logging_util.emit_kv(key, _kv_safe_text(value))
 
 
 def _emit_failure(message: str, *, stderr: bool = False) -> None:
+    safe_message = _kv_safe_text(message)
     if stderr:
         logging_util.diagnostic("FAILED=true")
-        logging_util.diagnostic(f"ERROR={message}")
+        logging_util.diagnostic(f"ERROR={safe_message}")
         return
     _emit_kv("FAILED", "true")
-    _emit_kv("ERROR", message)
+    _emit_kv("ERROR", safe_message)
+
+
+def _emit_unexpected_failure(exc: Exception, *, stderr: bool = False) -> int:
+    _emit_failure(_redact_gh_error(f"unexpected {type(exc).__name__}: {exc}"), stderr=stderr)
+    return 2
 
 
 def _resolve_repo_or_fail(runner: Runner, repo: str | None, *, cwd: str | None = None) -> str:
@@ -222,7 +232,7 @@ def _read_text_file(path: str, *, label: str, require_nonempty: bool) -> str:
     if not file_path.is_file():
         raise CliFailure(f"{label} file not found: {path}", 1)
     content = file_path.read_text(encoding="utf-8")
-    if require_nonempty and content == "":
+    if require_nonempty and content.strip() == "":
         raise CliFailure("empty body" if label == "body" else f"empty {label}", 1)
     return content
 
@@ -337,14 +347,17 @@ def rename(
     cwd: str | None = None,
 ) -> str:
     """Strip one lifecycle prefix and prepend the new state prefix."""
-    return rename_with_details(
-        runner,
-        issue,
-        state,
-        repo=repo,
-        current_title=current_title,
-        cwd=cwd,
-    ).new_title
+    try:
+        return rename_with_details(
+            runner,
+            issue,
+            state,
+            repo=repo,
+            current_title=current_title,
+            cwd=cwd,
+        ).new_title
+    except CliFailure as exc:
+        raise ShipError(exc.message) from exc
 
 
 def append_comment(
@@ -744,6 +757,8 @@ def read_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc)
 
 
 def _parse_with(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
@@ -773,6 +788,8 @@ def create_issue_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc)
 
 
 def append_comment_main(argv: list[str]) -> int:
@@ -804,6 +821,8 @@ def append_comment_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc)
 
 
 def _fetch_issue_title(runner: Runner, issue: str, *, repo: str, cwd: str | None = None) -> str:
@@ -838,6 +857,8 @@ def rename_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc)
 
 
 def mark_false_positive(
@@ -881,6 +902,8 @@ def mark_false_positive_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc)
 
 
 def _validate_marker_shape(marker: str) -> None:
@@ -977,3 +1000,5 @@ def upsert_summary_main(argv: list[str]) -> int:
     except CliFailure as exc:
         _emit_failure(exc.message, stderr=True)
         return exc.exit_code
+    except Exception as exc:
+        return _emit_unexpected_failure(exc, stderr=True)

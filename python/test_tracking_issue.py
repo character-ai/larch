@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,10 @@ from proc import CommandResult
 
 
 from test_support import RecordingRunner
+
+
+def _quiet_noop(*, argv0: str | None = None) -> None:
+    _ = argv0
 
 
 def test_link_pr_closes_appends() -> None:
@@ -214,6 +219,18 @@ def test_rename_raises_on_truncated_redaction(
         )
 
 
+def test_rename_public_adapter_wraps_cli_failure() -> None:
+    runner = RecordingRunner()
+    with pytest.raises(ShipError, match="invalid --state"):
+        _ = tracking_issue.rename(
+            runner,
+            "1",
+            "bogus",
+            repo="o/r",
+            current_title="[DESIGNING] title",
+        )
+
+
 def test_strip_lifecycle_prefix_strips_exactly_one() -> None:
     assert tracking_issue.strip_lifecycle_prefix("[PLANNED] [DONE] Work") == "[DONE] Work"
     assert tracking_issue.strip_lifecycle_prefix("Work") == "Work"
@@ -264,6 +281,147 @@ def test_read_issue_filters_marker_comments(
     assert rc == 0
     assert "metadata" not in content
     assert '<external_issue_comment id="2">' in content
+
+
+@pytest.mark.parametrize(
+    "marker_body",
+    [
+        "<!-- larch:lifecycle-marker:pr-opened -->\nskip",
+        "<!-- larch:diagrams v1 -->\nskip",
+        "<!-- larch:diagrams v1 runid=run1 -->\nskip",
+        "<!-- larch:plan v1 runid=run1 -->\nskip",
+        "<!-- larch:token-report v1 runid=run1 -->\nskip",
+        "<!-- larch:final-summary v1 runid=run1 -->\nskip",
+        "<!-- larch:implement-anchor v1 issue=1 -->\nskip",
+    ],
+)
+def test_read_issue_filters_all_managed_marker_families(
+    marker_body: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "api"), 0, "body", "", 0.01),
+            CommandResult(
+                ("gh", "api"),
+                0,
+                f'{{"id":1,"body":{json.dumps(marker_body)}}}\n{{"id":2,"body":"keep"}}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    rc = tracking_issue.read_main(["--issue", "9", "--repo", "o/r", "--out-dir", str(tmp_path)])
+    _ = capsys.readouterr()
+    content = (tmp_path / "task.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert "skip" not in content
+    assert '<external_issue_comment id="2">' in content
+
+
+def test_create_issue_cli_rejects_newline_only_body(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("\n\n", encoding="utf-8")
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.create_issue_main(["--title", "title", "--body-file", str(body), "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "ERROR=empty body" in out
+
+
+def test_append_comment_cli_rejects_newline_only_body(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("\r\n", encoding="utf-8")
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.append_comment_main(["--issue", "1", "--repo", "o/r", "--body-file", str(body)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "FAILED=true" in out
+    assert "ERROR=empty body" in out
+
+
+def test_create_issue_gh_stderr_redacts_token_in_failure_envelope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("body", encoding="utf-8")
+    secret = "ghp_" + "a" * 36
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "create"), 1, "", f"failed with {secret}", 0.01)],
+    )
+    monkeypatch.setattr(tracking_issue, "proc", runner)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.create_issue_main(["--title", "title", "--body-file", str(body), "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "FAILED=true" in out
+    assert secret not in out
+
+
+def test_cli_failure_newlines_emit_flat_failure_envelope(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> tracking_issue.CreateIssueOutput:
+        raise tracking_issue.CliFailure("line one\nline two", 2)
+
+    monkeypatch.setattr(tracking_issue, "_create_issue_cli", fail)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.create_issue_main(["--title", "title", "--body-file", "body.md", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert out == "FAILED=true\nERROR=line one line two\n"
+
+
+def test_create_issue_main_unexpected_exception_emits_failure_envelope(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> tracking_issue.CreateIssueOutput:
+        raise OSError("disk\nboom")
+
+    monkeypatch.setattr(tracking_issue, "_create_issue_cli", fail)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.create_issue_main(["--title", "title", "--body-file", "body.md", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert out == "FAILED=true\nERROR=unexpected OSError: disk boom\n"
+
+
+def test_upsert_summary_main_unexpected_exception_uses_stderr_envelope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = tmp_path / "summary.md"
+    content.write_text("body", encoding="utf-8")
+
+    def fail(*_args: object, **_kwargs: object) -> tracking_issue.UpsertSummaryOutput:
+        raise ValueError("bad\nvalue")
+
+    monkeypatch.setattr(tracking_issue, "_upsert_summary_cli", fail)
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", _quiet_noop)
+    rc = tracking_issue.upsert_summary_main(
+        ["--issue", "1", "--marker", "<!-- larch:plan v1 runid=run1 -->", "--content-file", str(content), "--repo", "o/r"]
+    )
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert captured.err == "FAILED=true\nERROR=unexpected ValueError: bad value\n"
 
 
 def test_append_comment_cli_requires_issuecomment_url(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
