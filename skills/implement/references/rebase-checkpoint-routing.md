@@ -4,6 +4,8 @@
 **Contract**: exit-code and stdout-KV routing for `scripts/rebase-checkpoint-probe.sh` and the Step 7a wrapper relay.
 **When to load**: **MANDATORY — READ ENTIRE FILE** before branching on any rebase checkpoint wrapper result.
 
+**Absorbed Step 1.r.** For checkpoint `1.r`, the orchestrator receives the rebase result from the Step 0 bootstrap envelope (`ROUTE=`, `REBASE_RC=`, and related keys), not a standalone probe process. Load this reference for Step 1.r only when `ROUTE` is `conflict`, `bail`, missing, or malformed. Do **not** treat missing `ROUTE` as rebase failure when `DEGRADED_PROMPT_REQUIRED=true`. Steps `4.r`, `7.r`, and `7a.r` still use direct foreground probe fences per the call-site registry below.
+
 **Orchestrator contract — parse the wrapper stdout** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
 
 1. Run the foreground `rebase-checkpoint-probe.sh` invocation and capture its stdout as the contract stream (stderr is normally empty; FINDING_1 combined-stream rules live in `scripts/rebase-checkpoint-probe.md`). For `7a.r`, the direct foreground call is `skills/implement/scripts/step-7a.sh`, which invokes the probe internally and re-emits the probe stdout before its final KV tail; the orchestrator must branch on the wrapper's process exit code plus the relayed `REBASE_*` keys, not on a separate probe fence.

@@ -705,10 +705,10 @@ test-implement-bootstrap:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
 
 test-implement-bootstrap-invoke:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper or absorbed_degraded or absorbed_1r or degraded_prompt_required or phantom_stdout'
 
 test-parse-bootstrap-routing-envelope:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser'
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser or degraded_prompt_required or phantom_stdout or absorbed_'
 
 test-flush-execution-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh

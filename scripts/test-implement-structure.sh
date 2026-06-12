@@ -91,7 +91,6 @@ forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exi
 
 launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
 for script in [
-    'skills/implement/scripts/step-0-degraded-gate.sh',
     'skills/implement/scripts/step-2-entry.sh --coder "$coder"',
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-entry.sh',
@@ -233,12 +232,19 @@ require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap 
 require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
 require('python/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
+forbid(skill, launcher + 'skills/implement/scripts/step-0-degraded-gate.sh', 'SKILL active flow must not call step-0-degraded-gate.sh')
+require('python/bootstrap.py', 'degraded-tools-gate', 'bootstrap absorbed degraded gate')
+require('python/bootstrap.py', 'rebase-checkpoint-probe.sh', 'bootstrap absorbed 1.r probe')
+require('python/bootstrap.py', 'DEGRADED_PROMPT_REQUIRED', 'bootstrap degraded prompt routing')
+require('python/bootstrap.py', 'REBASE_RC', 'bootstrap rebase rc synthesis')
+require('python/bootstrap.py', '_ADVISORY_STDOUT_PREFIXES', 'bootstrap phantom advisory allowlist')
+require(skill, 'DEGRADED_PROMPT_REQUIRED=true', 'SKILL degraded prompt route row')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',
     'read_session_key CODEX_PRESENT', 'read_session_key CURSOR_PRESENT',
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
-    require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate {needle}')
+    require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
 require('skills/implement/scripts/step-5-resume.sh', 'commit-review-fixes.sh" --stage-all || true', 'step-5-resume commit failure guard')
 require('skills/implement/scripts/step-5-resume.sh', 'run-step5-review.sh', 'step-5-resume review loop resume')
 require('scripts/ship-pr.sh', 'pr-create) advance_phase pr-prep; state_set RESUME_PHASE ""', 'ship-pr pr-create resume token consumption')

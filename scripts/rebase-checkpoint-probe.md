@@ -2,6 +2,8 @@
 
 Combined `/implement` **Rebase Checkpoint Macro** surface: one `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` invocation plus the post-rebase **Phantom Untracked Probe** (including the uniform `1.r-post-rebase` site).
 
+`/implement` Step 1.r may be invoked internally by Step 0 bootstrap (`python/bootstrap.py`); bootstrap synthesizes `REBASE_RC` from the probe process return code and relays routing KVs through the Step 0 stdout envelope.
+
 ## Argv
 
 ```

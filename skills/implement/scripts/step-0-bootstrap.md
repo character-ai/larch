@@ -1,6 +1,8 @@
 # step-0-bootstrap.sh
 
-Step 0 initial/resume bootstrap wrapper around python/cli.py bootstrap invoke. In fork mode, captures `python/cli.py admission fork-env` metadata into `CALLER_ENV_PATH`, `UPSTREAM_REPO`, and sibling fork variables before invoking bootstrap. Emits the parsed routing envelope and the progress prompt on initial bootstrap; resume uses --preserve-coder parsing.
+Step 0 initial/resume bootstrap wrapper around `python/cli.py bootstrap invoke`. In fork mode, captures `python/cli.py admission fork-env` metadata into `CALLER_ENV_PATH`, `UPSTREAM_REPO`, and sibling fork variables before invoking bootstrap. Emits the parsed routing envelope and the progress prompt on initial bootstrap; resume uses `--preserve-coder` parsing.
+
+The wrapper delegates the continue-tail (degraded-tools gate + checkpoint `1.r`) to `bootstrap invoke`. It forwards an explicit `--non-interactive true|false` computed from the canonical `/implement` non-interactive predicate (not `LARCH_SKILL_NON_INTERACTIVE` alone). Degraded explanation blocks emitted by Python on stderr remain operator-visible while stdout stays parseable.
 
 ## Caller
 
@@ -10,11 +12,14 @@ Step 0 initial/resume bootstrap wrapper around python/cli.py bootstrap invoke. I
 
 The wrapper relays the underlying helper stdout unchanged unless this file names explicit keys. Explicit keys are newline-delimited `KEY=value` records and must be token-scannable by the orchestrator.
 
+Continue-tail routing keys relayed on stdout include: `DEGRADED`, `BOTH_DOWN`, `CODEX_STATE`, `CURSOR_STATE`, `DEGRADED_PROMPT_REQUIRED`, `ROUTE`, `REBASE_RC`, `REBASE_OUTCOME`, `CONFLICT_FILES`, `REBASE_ERROR`, `SKIPPED_ALREADY_PUSHED`, `SKIPPED_ALREADY_FRESH`. Advisory `PHANTOM_*` keys may trail on stdout only; they are excluded from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`.
+
 ## Invariants
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- Resume mode restores prior `coder` / `coder_fallback` from a regular, non-symlinked `bootstrap-routing.env` before the absorbed tail runs inside `bootstrap invoke`.
 
 ## Edit-in-sync
 

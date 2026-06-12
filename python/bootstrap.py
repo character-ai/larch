@@ -13,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,7 +45,20 @@ ROUTING_KEYS: tuple[str, ...] = (
     "BRANCH_NAME",
     "BRANCH_ACTION",
     "SELF_REVIEW_REQUESTED",
+    "DEGRADED",
+    "BOTH_DOWN",
+    "CODEX_STATE",
+    "CURSOR_STATE",
+    "DEGRADED_PROMPT_REQUIRED",
+    "ROUTE",
+    "REBASE_RC",
+    "REBASE_OUTCOME",
+    "CONFLICT_FILES",
+    "REBASE_ERROR",
+    "SKIPPED_ALREADY_PUSHED",
+    "SKIPPED_ALREADY_FRESH",
 )
+_ADVISORY_STDOUT_PREFIXES: tuple[str, ...] = ("PHANTOM_",)
 _KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -158,6 +172,7 @@ class BootstrapOptions:
     resume_plan_tail: bool = False
     skip_codex_probe: bool = False
     skip_cursor_probe: bool = False
+    non_interactive: str = ""
 
 
 @dataclass
@@ -1060,6 +1075,217 @@ def _str_bool(value: str) -> str:
     return value if value in {"true", "false"} else ""
 
 
+def _is_advisory_stdout_key(key: str) -> bool:
+    return any(key.startswith(prefix) for prefix in _ADVISORY_STDOUT_PREFIXES)
+
+
+def _envelope_text(data: dict[str, str]) -> str:
+    lines = [f"{key}={data[key]}" for key in ROUTING_KEYS if data.get(key)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _resolve_non_interactive(explicit: str, env: Mapping[str, str] | None = None) -> bool:
+    if explicit in {"true", "false"}:
+        return explicit == "true"
+    runtime = env or os.environ
+    for key in ("LARCH_SKILL_NON_INTERACTIVE", "LARCH_AUTONOMOUS_LOOP", "LARCH_EVAL_RUN"):
+        if runtime.get(key, "") == "true":
+            return True
+    if runtime.get("CI", "").lower() in {"1", "true", "yes"}:
+        return True
+    if runtime.get("GITHUB_ACTIONS", "").lower() in {"1", "true", "yes"}:
+        return True
+    return runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}
+
+
+def _continue_predicate(data: dict[str, str]) -> bool:
+    if data.get("IMPLEMENT_BAIL_REASON"):
+        return False
+    if data.get("STALL_TRACKING") == "true":
+        return False
+    plan = data.get("PLAN_FILE", "")
+    if not plan or not Path(plan).is_file():
+        return False
+    return bool(data.get("coder"))
+
+
+@dataclass
+class ContinueTailResult:
+    routing: dict[str, str] = field(default_factory=dict)
+    advisory_lines: list[str] = field(default_factory=list)
+    contract_failure: bool = False
+    step_failed: str = ""
+
+
+def _parse_gate_output(text: str) -> tuple[dict[str, str], list[str], str]:
+    routing: dict[str, str] = {}
+    explanation: list[str] = []
+    in_explanation = False
+    for line in text.splitlines():
+        if line == "DEGRADED_EXPLANATION_BEGIN":
+            in_explanation = True
+            continue
+        if line == "DEGRADED_EXPLANATION_END":
+            in_explanation = False
+            continue
+        if in_explanation:
+            explanation.append(line)
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in {"DEGRADED", "BOTH_DOWN", "CODEX_STATE", "CURSOR_STATE", "PRESENCE_INPUT_EMPTY"}:
+            routing[key] = value
+    return routing, explanation, "\n".join(explanation).strip()
+
+
+def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
+    routing: dict[str, str] = {}
+    advisory: list[str] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        for token in line.split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            if _is_advisory_stdout_key(key):
+                advisory.append(f"{key}={value}")
+            elif key in ROUTING_KEYS:
+                routing[key] = value
+    return routing, advisory
+
+
+def _write_degraded_sentinel(implement_tmpdir: str) -> None:
+    with contextlib.suppress(OSError):
+        Path(implement_tmpdir, ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+
+
+def _log_degraded_explanation(st: BootstrapState, explanation: str) -> None:
+    if not st.implement_tmpdir or not explanation:
+        return
+    entry = (
+        "- **Step 0 degraded-tools gate (non-interactive)**:\n"
+        f"  {explanation.replace(chr(10), '  ' + chr(10))}\n"
+    )
+    _append_execution_issue_entry(Path(st.implement_tmpdir) / "execution-issues.md", "Warnings", entry)
+
+
+def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
+    probe = _SCRIPTS / "rebase-checkpoint-probe.sh"
+    env = {**os.environ, "IMPLEMENT_TMPDIR": st.implement_tmpdir}
+    result = _run(
+        [str(probe), "1.r", "plan materialization", "--forked-target", forked_target if forked_target in {"true", "false"} else "false"],
+        env=env,
+        cwd=str(_REPO_ROOT),
+    )
+    routing, advisory = _parse_probe_stdout(result.stdout)
+    routing["REBASE_RC"] = str(result.returncode)
+    route = routing.get("ROUTE", "")
+    if route not in {"continue", "conflict", "bail"}:
+        routing["ROUTE"] = "bail"
+        routing.setdefault("REBASE_OUTCOME", "failed")
+        error = _single_line(result.stderr or result.stdout or f"probe rc {result.returncode}")
+        routing["REBASE_ERROR"] = _redact_text(error, implement_tmpdir=st.implement_tmpdir)
+    return routing, advisory, result.returncode
+
+
+def _run_absorbed_continue_tail(
+  data: dict[str, str],
+  *,
+  opts: BootstrapOptions,
+  non_interactive: bool,
+) -> ContinueTailResult:
+    if not _continue_predicate(data):
+        return ContinueTailResult()
+    tmpdir = data.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return ContinueTailResult(contract_failure=True, step_failed="absorbed-continue-tail")
+    st = BootstrapState(opts, implement_tmpdir=tmpdir)
+    st.codex_present = data.get("CODEX_PRESENT", st.codex_present)
+    st.cursor_present = data.get("CURSOR_PRESENT", st.cursor_present)
+    st.codex_binary_found = data.get("CODEX_BINARY_FOUND", st.codex_binary_found)
+    st.cursor_binary_found = data.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+    forked_target = opts.forked_target if opts.forked_target in {"true", "false"} else "false"
+    sentinel = Path(tmpdir) / ".degraded-tools-gate-prompted"
+    sentinel_exists = sentinel.is_file()
+    gate = _cli(
+        "agent",
+        "degraded-tools-gate",
+        "--skill",
+        "implement",
+        "--codex-present",
+        st.codex_present or "false",
+        "--cursor-present",
+        st.cursor_present or "false",
+        "--codex-binary-found",
+        st.codex_binary_found or "unknown",
+        "--cursor-binary-found",
+        st.cursor_binary_found or "unknown",
+    )
+    if gate.returncode != 0:
+        return ContinueTailResult(contract_failure=True, step_failed="absorbed-degraded-gate")
+    gate_routing, explanation_lines, explanation_text = _parse_gate_output(gate.stdout + gate.stderr)
+    both_down_seen = "BOTH_DOWN" in gate_routing
+    both_down = gate_routing.get("BOTH_DOWN", "")
+    degraded = gate_routing.get("DEGRADED", "false") == "true"
+    routing: dict[str, str] = {
+        "DEGRADED": gate_routing.get("DEGRADED", "false"),
+        "CODEX_STATE": gate_routing.get("CODEX_STATE", ""),
+        "CURSOR_STATE": gate_routing.get("CURSOR_STATE", ""),
+        "DEGRADED_PROMPT_REQUIRED": "false",
+    }
+    if gate_routing.get("BOTH_DOWN") in {"true", "false"}:
+        routing["BOTH_DOWN"] = gate_routing["BOTH_DOWN"]
+    if gate_routing.get("PRESENCE_INPUT_EMPTY") == "true":
+        _append_execution_issue_entry(
+            Path(tmpdir) / "execution-issues.md",
+            "Warnings",
+            "- **Step 0 degraded-tools gate**: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)\n",
+        )
+    prompt_required = False
+    run_probe = True
+    if degraded:
+        if not explanation_text:
+            return ContinueTailResult(contract_failure=True, step_failed="absorbed-degraded-explanation-missing")
+        if not both_down_seen:
+            if non_interactive:
+                return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            prompt_required = True
+            run_probe = False
+        elif both_down == "false":
+            if not sentinel_exists:
+                for line in explanation_lines:
+                    _err(line)
+                _write_degraded_sentinel(tmpdir)
+        elif both_down == "true":
+            if non_interactive:
+                for line in explanation_lines:
+                    _err(line)
+                _log_degraded_explanation(st, explanation_text)
+                _write_degraded_sentinel(tmpdir)
+            elif sentinel_exists:
+                pass
+            else:
+                for line in explanation_lines:
+                    _err(line)
+                prompt_required = True
+                run_probe = False
+        else:
+            if non_interactive:
+                return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            prompt_required = True
+            run_probe = False
+    advisory: list[str] = []
+    if prompt_required and not non_interactive:
+        routing["DEGRADED_PROMPT_REQUIRED"] = "true"
+    elif run_probe:
+        probe_routing, probe_advisory, _probe_rc = _run_1r_probe(st, forked_target=forked_target)
+        routing.update({key: value for key, value in probe_routing.items() if value})
+        advisory.extend(probe_advisory)
+    return ContinueTailResult(routing=routing, advisory_lines=advisory)
+
+
 def invoke_main(argv: list[str]) -> int:
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="bootstrap invoke", add_help=True)
@@ -1073,6 +1299,7 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--caller-env", default="")
     parser.add_argument("--emergency-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--non-interactive", default="", choices=["", "true", "false"])
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -1086,6 +1313,7 @@ def invoke_main(argv: list[str]) -> int:
     run_id = args.run_id or env.get("RUN_ID", "")
     emergency = args.emergency_requested or _str_bool(env.get("emergency_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
+    non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
     coder = "" if args.mode == "resume" else (args.coder or env.get("coder", ""))
     if args.mode == "resume" and not env.get("IMPLEMENT_TMPDIR", ""):
         print("bootstrap invoke: --mode resume requires exported IMPLEMENT_TMPDIR", file=sys.stderr)
@@ -1102,6 +1330,7 @@ def invoke_main(argv: list[str]) -> int:
         preflight_tmpdir=preflight,
         coder_opt=coder if coder in {"claude", "codex", "cursor"} else "",
         resume_plan_tail=args.mode == "resume",
+        non_interactive=non_interactive,
     )
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -1119,23 +1348,43 @@ def invoke_main(argv: list[str]) -> int:
         return 1
     envelope = _filtered_envelope(out, resume=args.mode == "resume")
     routing_file = Path(tmpdir) / "bootstrap-routing.env"
+    if args.mode == "resume" and routing_file.is_file() and not routing_file.is_symlink():
+        envelope = _preserve_resume_routing(envelope, routing_file)
+    data = _parse_env_lines(envelope)
+    tail = _run_absorbed_continue_tail(
+        data,
+        opts=opts,
+        non_interactive=_resolve_non_interactive(non_interactive, env),
+    )
+    if tail.contract_failure:
+        _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
+        _invoke_error(tail.step_failed or "absorbed-continue-tail", "", tmpdir)
+        return 2
+    for key, value in tail.routing.items():
+        if value:
+            data[key] = value
+    envelope = _envelope_text(data)
+
+    def _emit_envelope() -> None:
+        sys.stdout.write(envelope)
+        for line in tail.advisory_lines:
+            sys.stdout.write(line + "\n")
+
     if routing_file.is_symlink():
         print("bootstrap invoke: refusing to overwrite symlinked bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
     if routing_file.exists() and not routing_file.is_file():
         print("bootstrap invoke: refusing to overwrite non-regular bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
-    if args.mode == "resume":
-        envelope = _preserve_resume_routing(envelope, routing_file)
     try:
         _atomic_text(routing_file, envelope)
     except OSError as exc:
         print(f"bootstrap invoke: could not write bootstrap-routing.env ({exc}); stdout envelope emitted", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
-    sys.stdout.write(envelope)
+    _emit_envelope()
     return 0
 
 
