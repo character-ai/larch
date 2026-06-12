@@ -32,12 +32,12 @@ assert_eq() {
 
 assert_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then pass "$label"; else fail "$label" "missing: $needle" "$haystack"; fi
+    if grep -qF -- "$needle" <<<"$haystack"; then pass "$label"; else fail "$label" "missing: $needle" "$haystack"; fi
 }
 
 assert_not_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then fail "$label" "unexpected: $needle" "$haystack"; else pass "$label"; fi
+    if grep -qF -- "$needle" <<<"$haystack"; then fail "$label" "unexpected: $needle" "$haystack"; else pass "$label"; fi
 }
 
 kv() {
