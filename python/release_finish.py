@@ -159,13 +159,26 @@ def main(argv: list[str] | None = None) -> int:
                 target = origin_main
             else:
                 return _e("ERROR=merge-commit-missing")
-        resolved = _git("rev-parse", "--verify", f"{target}^{{commit}}").returncode == 0
+        resolved = False
+        on_origin_main = False
+        for attempt in range(5):
+            if not _fetch_origin_main():
+                return 1
+            resolved = _git("rev-parse", "--verify", f"{target}^{{commit}}").returncode == 0
+            if not resolved:
+                _ = _git("fetch", "origin", target)
+                resolved = _git("rev-parse", "--verify", f"{target}^{{commit}}").returncode == 0
+            if resolved:
+                origin_main = _git("rev-parse", "origin/main^{commit}").stdout.strip()
+                target_oid = _git("rev-parse", f"{target}^{{commit}}").stdout.strip()
+                on_origin_main = _git("merge-base", "--is-ancestor", target, "origin/main").returncode == 0 or target_oid == origin_main
+                if on_origin_main:
+                    break
+            if attempt < 4:
+                time.sleep(2)
         if not resolved:
-            _ = _git("fetch", "origin", target)
-        if _git("rev-parse", "--verify", f"{target}^{{commit}}").returncode != 0:
             return _e("ERROR=fetch-failed: could not resolve TARGET_OID after fetch")
-        origin_main = _git("rev-parse", "origin/main^{commit}").stdout.strip()
-        if _git("merge-base", "--is-ancestor", target, "origin/main").returncode != 0 and _git("rev-parse", f"{target}^{{commit}}").stdout.strip() != origin_main:
+        if not on_origin_main:
             return _e("ERROR=target-oid-not-on-origin-main")
         at_version = _plugin_version_at(target)
         env_at = os.environ.get("LARCH_RELEASE_FINISH_AT_VERSION", "")

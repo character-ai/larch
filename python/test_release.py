@@ -38,11 +38,13 @@ def cr(argv, stdout="", stderr="", rc=0):
 
 
 class ReleaseFinishRunner:
-    def __init__(self, *, remote_tag: str = "", local_tag: str = "", release_exists: bool = True, merge_oid: str = "abc1234"):
+    def __init__(self, *, remote_tag: str = "", local_tag: str = "", release_exists: bool = True, merge_oid: str = "abc1234", unresolved_target_attempts: int = 0, ancestry_failures: int = 0):
         self.remote_tag = remote_tag
         self.local_tag = local_tag
         self.release_exists = release_exists
         self.merge_oid = merge_oid
+        self.unresolved_target_attempts = unresolved_target_attempts
+        self.ancestry_failures = ancestry_failures
         self.calls: list[list[str]] = []
 
     def run(self, argv, **_kwargs):
@@ -57,6 +59,9 @@ class ReleaseFinishRunner:
         if argv[:3] == ["git", "rev-parse", "--verify"]:
             target = argv[3]
             if target == "abc1234^{commit}":
+                if self.unresolved_target_attempts > 0:
+                    self.unresolved_target_attempts -= 1
+                    return cr(argv, rc=1)
                 return cr(argv, "abc1234\n")
             if target == "v1.2.3^{commit}" and self.local_tag:
                 return cr(argv, f"{self.local_tag}\n")
@@ -67,6 +72,9 @@ class ReleaseFinishRunner:
         if argv[:2] == ["git", "rev-parse"] and argv[2] == "abc1234^{commit}":
             return cr(argv, "abc1234\n")
         if argv[:3] == ["git", "merge-base", "--is-ancestor"]:
+            if self.ancestry_failures > 0:
+                self.ancestry_failures -= 1
+                return cr(argv, rc=1)
             return cr(argv)
         if argv[:3] == ["git", "ls-remote", "origin"]:
             return cr(argv, self.remote_tag)
@@ -125,6 +133,14 @@ def test_release_finish_falls_back_to_origin_main_when_merge_commit_missing(monk
     assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
     assert "TARGET_OID=abc1234" in capsys.readouterr().out
     assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5
+
+
+def test_release_finish_retries_until_target_reaches_origin_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = ReleaseFinishRunner(local_tag="abc1234", unresolved_target_attempts=2, ancestry_failures=1)
+    notes = _patch_release_finish(monkeypatch, tmp_path, runner)
+    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
+    assert "TARGET_OID=abc1234" in capsys.readouterr().out
+    assert sum(call[:3] == ["git", "fetch", "origin"] for call in runner.calls) > 2
 
 
 def test_release_finish_origin_repo_mismatch_blocks_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -194,6 +210,17 @@ def test_promote_validation_errors_exit_one(capsys: pytest.CaptureFixture[str]) 
     assert "ERROR=invalid --repo value" in capsys.readouterr().err
 
 
+def test_promote_checks_prerelease_probe_return_code_when_already_latest(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = QueueRunner([
+        cr(["gh"]),
+        cr(["gh"], "v1.2.3\n"),
+        cr(["gh"], stderr="auth failed", rc=1),
+    ])
+    monkeypatch.setattr(promote_release.proc, "run", runner.run)
+    assert promote_release.promote_main(["1.2.3", "--repo", "o/r"]) == 1
+    assert capsys.readouterr().err.startswith("ERROR=auth failed")
+
+
 def test_promote_latest_preserves_empty_boolean_fields(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
         cr(["gh"], json.dumps([{"tagName":"v1.2.3","publishedAt":"2026-01-01T00:00:00Z"}])),
@@ -207,6 +234,22 @@ def test_promote_latest_preserves_empty_boolean_fields(monkeypatch: pytest.Monke
     assert "RELEASE_WAS_LATEST=" in out
     assert "RELEASE_ALREADY_LATEST=false" in out
     assert any(call[:3] == ["gh", "release", "edit"] for call in runner.calls)
+
+
+def test_promote_latest_verification_failure_keeps_phase_kvs(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = QueueRunner([
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False,"publishedAt":"2026-01-01T00:00:00Z"}])),
+        cr(["gh"]),
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False}])),
+    ])
+    monkeypatch.setattr(promote_release.proc, "run", runner.run)
+    assert promote_release.promote_latest_main(["--repo", "o/r"]) == 1
+    captured = capsys.readouterr()
+    out = captured.out.splitlines()
+    assert "RELEASE_ALREADY_LATEST=false" in out
+    assert "RELEASE_IS_PRERELEASE=true" in out
+    assert "RELEASE_IS_LATEST=false" in out
+    assert captured.err.startswith("ERROR=Release v1.2.3 verification failed")
 
 
 def test_promote_latest_errors_are_error_kv_prefixed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

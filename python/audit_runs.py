@@ -21,7 +21,7 @@ import proc
 
 _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
-_DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F-]+)$")
+_DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})$")
 _TERMINAL_RE = re.compile(r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$")
 
 
@@ -248,7 +248,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
         body_obj = _load_json(body_res.stdout, {})
         if isinstance(body_obj, dict):
             body = str(body_obj.get("body") or "")
-        m = re.search(r"audited_pr_range:[\s\S]*?\n\s*last:\s*['\"]?([0-9]+)['\"]?", body)
+        m = re.search(r"audited_pr_range:[\s\S]*?\n\s*last:\s*['\"]?([0-9]+)['\"]?", _top_frontmatter(body))
         if not m:
             return _kv_error(f"prior audit-report #{prior_num} has malformed or missing frontmatter (audited_pr_range.last)")
         last_pr = m.group(1)
@@ -303,7 +303,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
 def preflight_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py audit-runs preflight")
     p.add_argument("--skill", required=True)
-    p.add_argument("--repo", required=True)
+    p.add_argument("--repo", default="character-ai/larch")
     p.add_argument("--allow-concurrent", action="store_true")
     args = p.parse_args(argv)
     if args.skill not in {"design", "implement"}:
@@ -497,9 +497,8 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
     if required is None or not required.is_file():
         return {"scan": "required-file-presence", "pr": pr, "result": "skip", "detail": "required-files-tsv not provided"}
     manifest = _read_json_file(run_dir / "manifest.json")
-    sr = manifest.get("steps_ran") if isinstance(manifest, dict) else {}
-    if not isinstance(sr, dict):
-        sr = {}
+    sr_raw = manifest.get("steps_ran") if isinstance(manifest, dict) else None
+    sr = sr_raw if isinstance(sr_raw, dict) else {}
     def has(rel: str) -> bool:
         if "*" in rel:
             return any(p.is_file() for p in run_dir.glob(rel))
@@ -507,7 +506,7 @@ def _scan_required(run_dir: Path, pr: int, required: Path | None) -> dict[str, o
     def steps_false(c: str) -> bool:
         return sr.get(c) is False
     def empty_steps() -> bool:
-        return not sr
+        return isinstance(manifest, dict) and (sr_raw is None or (isinstance(sr_raw, dict) and not sr_raw))
     def bail_signal() -> bool:
         fs = run_dir / "final-summary.md"
         if not fs.is_file():
@@ -580,6 +579,8 @@ def _category_string(row: dict[str, object]) -> str:
     cat = row.get("category")
     if cat is None:
         return ""
+    if isinstance(cat, (dict, list)):
+        return ""
     if isinstance(cat, bool):
         return "true" if cat else "false"
     return str(cat)
@@ -598,24 +599,42 @@ def _codex_generalist_timing_elapsed(run_dir: Path) -> int:
     report = _read_json_file(run_dir / "timing-report.json")
     if not isinstance(report, dict):
         return 0
+    def seconds_value(row: dict[str, object]) -> int | None:
+        seconds = row.get("max_seconds", row.get("average_seconds", row.get("duration_seconds", row.get("duration_s", row.get("elapsed_seconds")))))
+        try:
+            return int(float(seconds))
+        except (TypeError, ValueError):
+            return None
     rows = report.get("vendor_task_averages")
-    if not isinstance(rows, list):
-        return 0
     preferred: list[int] = []
     fallback: list[int] = []
-    for row in rows:
-        if not isinstance(row, dict) or row.get("vendor") != "codex":
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict) or row.get("vendor") != "codex":
+                continue
+            task = str(row.get("task_kind") or "")
+            elapsed = seconds_value(row)
+            if elapsed is None:
+                continue
+            if task in {"codex-review-generic", "codex-phase1-generic"}:
+                preferred.append(elapsed)
+            elif task == "codex-review":
+                fallback.append(elapsed)
+    for key in ("steps", "per_step"):
+        step_rows = report.get(key)
+        if not isinstance(step_rows, list):
             continue
-        task = str(row.get("task_kind") or "")
-        seconds = row.get("max_seconds", row.get("average_seconds"))
-        try:
-            elapsed = int(float(seconds))
-        except (TypeError, ValueError):
-            continue
-        if task == "codex-review-generic":
-            preferred.append(elapsed)
-        elif task == "codex-review":
-            fallback.append(elapsed)
+        for row in step_rows:
+            if not isinstance(row, dict):
+                continue
+            text = " ".join(str(row.get(k) or "").lower() for k in ("vendor", "task_kind", "task", "name", "step", "label"))
+            elapsed = seconds_value(row)
+            if elapsed is None:
+                continue
+            if "codex" in text and ("generalist" in text or "generic" in text):
+                preferred.append(elapsed)
+            elif "step 5" in text and "code review" in text:
+                fallback.append(elapsed)
     return max(preferred or fallback or [0])
 
 
@@ -724,7 +743,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                         elapsed=max(vals) if vals else 0
                     if not elapsed:
                         elapsed=_codex_generalist_timing_elapsed(run_dir)
-                    no_issues = rk in {"NO_ISSUES_FOUND", "NO_ISSUES_FOUND_TOO_THIN"}
+                    no_issues = rk == "NO_ISSUES_FOUND"
                     obj={"scan":name,"pr":pr,"result":"fail" if no_issues and elapsed > 120 else "pass","result_kind":rk,"elapsed_seconds":elapsed}
                     if obj["result"] == "fail": obj["detail"]="codex-generalist returned NO_ISSUES_FOUND after more than 120 seconds"
         elif name == "execution-issues-categories":
@@ -818,20 +837,25 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
     prior_body=Path(args.prior_frontmatter).read_text(encoding="utf-8") if args.prior_frontmatter and Path(args.prior_frontmatter).is_file() else ""
     prior=_top_frontmatter(prior_body)
     p_exon=_prior_value(prior,"exon_misclassifications"); p_mang=_prior_value(prior,"oos_categories_mangled"); p_clean=_prior_value(prior,"oos_categories_clean"); p_blank=_prior_value(prior,"oos_categories_blank"); p_ns=max(_prior_value(prior,"ns_retries_cursor_specialist"),_prior_value(prior,"ns_retries_cursor_specialist_launches")); p_ch=_prior_value(prior,"changelog_rebase_conflicts")
+    def num_or_zero(value: object) -> int:
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            return 0
     de=dm=dc=db=dn=dskip=dch=0; partial=False; files=0
     for f in d.glob("scan-results-*.ndjson"):
         files+=1; rows,_=_iter_ndjson(f)
         for r in rows:
-            if r.get("scan")=="exon-misclassification": de+=int(r.get("count") or 0)
-            elif r.get("scan")=="oos-category-mangle": dm+=int(r.get("count") or 0)
+            if r.get("scan")=="exon-misclassification": de+=num_or_zero(r.get("count"))
+            elif r.get("scan")=="oos-category-mangle": dm+=num_or_zero(r.get("count"))
             elif r.get("scan")=="category-stats":
                 if r.get("partial_data") is True: partial=True
                 if not (r.get("partial_data") is True and "review-findings-full.jsonl not found" in str(r.get("detail") or "")):
-                    dc+=int(r.get("canonical") or 0); db+=int(r.get("oos_blank") or 0)
+                    dc+=num_or_zero(r.get("canonical")); db+=num_or_zero(r.get("oos_blank"))
             elif r.get("scan")=="ns-retry-sidecars":
-                if r.get("result")=="fail": dn+=int(r.get("count") or 0)
+                if r.get("result")=="fail": dn+=num_or_zero(r.get("count"))
                 elif r.get("result")=="skip": dskip+=1
-            elif r.get("scan")=="changelog-rebase-conflicts": dch+=int(r.get("count") or 0)
+            elif r.get("scan")=="changelog-rebase-conflicts": dch+=num_or_zero(r.get("count"))
     for k,v in [("SCAN_FILES_FOUND",files),("EXON_MISCLASSIFICATIONS",p_exon+de),("EXON_DELTA",de),("OOS_CATEGORIES_MANGLED",p_mang+dm),("OOS_MANGLED_DELTA",dm),("OOS_CATEGORIES_CLEAN",p_clean+dc),("OOS_CLEAN_DELTA",dc),("OOS_CATEGORIES_BLANK",p_blank+db),("OOS_BLANK_DELTA",db),("NS_RETRIES_CURSOR_SPECIALIST",p_ns+dn),("NS_RETRIES_DELTA",dn),("NS_RETRIES_SKIPPED_RUNS",dskip),("CHANGELOG_REBASE_CONFLICTS",p_ch+dch),("CHANGELOG_DELTA",dch)]: print(f"{k}={v}")
     print(f"CATEGORY_STATS_PARTIAL={str(partial).lower()}")
     return 0

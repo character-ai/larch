@@ -132,3 +132,23 @@ def test_apply_create_and_close_wire_retries(monkeypatch, tmp_path: Path, capsys
     assert out["COMBINED_ISSUE"] == "99"
     assert out["CLOSED_ISSUES"] == "2"
     assert sum(c[:4] == ["gh", "issue", "close", "1"] for c in runner.calls) == 2
+
+
+def test_apply_close_warning_redacts_failed_close_stderr(monkeypatch, tmp_path: Path, capsys):
+    class CloseFailRunner:
+        def run(self, argv, **_kwargs):
+            if argv[:3] == ["gh", "issue", "create"]:
+                return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
+            if argv[:3] == ["gh", "issue", "close"]:
+                return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
+            return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+    body = tmp_path / "body.md"
+    body.write_text("Combined body\n", encoding="utf-8")
+    monkeypatch.setattr(combine_issues.proc, "run", CloseFailRunner().run)
+    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
+    assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", "1"]) == 0
+    captured = capsys.readouterr()
+    assert "WARNING=Failed to close #1:" in captured.err
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in captured.err
+    assert "CLOSED_ISSUES=0" in captured.out

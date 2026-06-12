@@ -48,6 +48,8 @@ def promote_main(argv: list[str] | None = None) -> int:
         return _err(cur.stderr or "gh release list failed")
     if cur.stdout.strip() == tag:
         pre = proc.run(["gh", "release", "view", tag, *repo_args, "--json", "isPrerelease", "--jq", ".isPrerelease"])
+        if pre.returncode != 0:
+            return _err(pre.stderr or f"gh release view {tag} failed")
         if pre.stdout.strip() == "true":
             if proc.run(["gh", "release", "edit", tag, *repo_args, "--prerelease=false"]).returncode != 0:
                 return _err(f"gh release edit {tag} failed")
