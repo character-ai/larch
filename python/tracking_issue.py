@@ -268,6 +268,8 @@ def _create_issue_cli(
 ) -> CreateIssueOutput:
     body = _read_text_file(body_file, label="body", require_nonempty=True)
     red_title = _redact_compose(title, context="tracking-issue title")
+    if red_title.strip() == "":
+        raise CliFailure("empty title", 1)
     red_body = _redact_compose(body, context="tracking-issue body")
     resolved = _resolve_repo_or_fail(runner, repo, cwd=cwd)
     result = gh.issue_create(
@@ -296,7 +298,7 @@ def _append_comment_cli(
     cwd: str | None = None,
 ) -> tuple[str, str]:
     _require_numeric_issue(issue)
-    if body == "":
+    if body.strip() == "":
         raise CliFailure("empty body", 1)
     if lifecycle_marker is not None:
         _validate_lifecycle_marker(lifecycle_marker)
