@@ -10,7 +10,12 @@ if [ "${LARCH_LIB_QUIET_LOADED:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 LARCH_LIB_QUIET_LOADED=1
-LARCH_LIB_QUIET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+LARCH_LIB_QUIET_SOURCE=${BASH_SOURCE[0]}
+case "$LARCH_LIB_QUIET_SOURCE" in
+    */*) LARCH_LIB_QUIET_DIR=${LARCH_LIB_QUIET_SOURCE%/*} ;;
+    *) LARCH_LIB_QUIET_DIR=. ;;
+esac
+LARCH_LIB_QUIET_DIR="$(cd "$LARCH_LIB_QUIET_DIR" && pwd -P)"
 
 larch_quiet_truthy() {
     case "${1:-}" in
@@ -68,7 +73,7 @@ larch_quiet_init() {
         *) log_dir="." ;;
     esac
     mkdir -p "$log_dir" 2>/dev/null || return 0
-    : > "$log_file" 2>/dev/null || return 0
+    { : > "$log_file"; } 2>/dev/null || return 0
 
     exec 3>&1
     exec 4>&2
