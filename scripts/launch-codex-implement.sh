@@ -19,6 +19,7 @@
 #     --sidecar-log      PATH    # where run-external-agent.sh chatter is captured
 #     --manifest-path    PATH    # where Codex must write manifest.json
 #     --qa-pending-path  PATH    # where Codex must write qa-pending.json on needs_qa
+#     --scout-manifest-path PATH # where Codex may write best-effort scout JSON
 #     --plan-file        PATH    # input: plan to implement
 #     --feature-file     PATH    # input: original feature description
 #     --agent-prompt     PATH    # input: agents/codex-implementer.md path
@@ -29,6 +30,7 @@
 #   LAUNCHER_EXIT=<int>            # exit code reported by run-external-agent.sh
 #   MANIFEST_WRITTEN=<true|false>  # whether manifest.json exists post-run
 #   QA_PENDING_WRITTEN=<true|false># whether qa-pending.json exists post-run
+#   SCOUT_MANIFEST_WRITTEN=<true|false>
 #   TRANSCRIPT=<path>              # path to Codex transcript on disk (sidecar)
 #   SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter log
 #
@@ -58,6 +60,7 @@ TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
 MANIFEST_PATH=""
 QA_PENDING_PATH=""
+SCOUT_MANIFEST_PATH=""
 PLAN_FILE=""
 FEATURE_FILE=""
 AGENT_PROMPT=""
@@ -72,6 +75,7 @@ while [[ $# -gt 0 ]]; do
         --sidecar-log)      SIDECAR_LOG="${2:?--sidecar-log requires a value}"; shift 2 ;;
         --manifest-path)    MANIFEST_PATH="${2:?--manifest-path requires a value}"; shift 2 ;;
         --qa-pending-path)  QA_PENDING_PATH="${2:?--qa-pending-path requires a value}"; shift 2 ;;
+        --scout-manifest-path) SCOUT_MANIFEST_PATH="${2:?--scout-manifest-path requires a value}"; shift 2 ;;
         --plan-file)        PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file)     FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
@@ -83,7 +87,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-for var in TRANSCRIPT_PATH SIDECAR_LOG MANIFEST_PATH QA_PENDING_PATH PLAN_FILE FEATURE_FILE AGENT_PROMPT TIMEOUT; do
+for var in TRANSCRIPT_PATH SIDECAR_LOG MANIFEST_PATH QA_PENDING_PATH SCOUT_MANIFEST_PATH PLAN_FILE FEATURE_FILE AGENT_PROMPT TIMEOUT; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
         larch_err "launch-codex-implement.sh: --$flag_lc is required"
@@ -122,6 +126,7 @@ _codex_canonical_existing_dir() {
 
 MANIFEST_DIR=$(dirname "$MANIFEST_PATH")
 QA_PENDING_DIR=$(dirname "$QA_PENDING_PATH")
+SCOUT_MANIFEST_DIR=$(dirname "$SCOUT_MANIFEST_PATH")
 TRANSCRIPT_DIR=$(dirname "$TRANSCRIPT_PATH")
 if [[ ! -d "$MANIFEST_DIR" ]]; then
     larch_err "launch-codex-implement.sh: session tmpdir does not exist: $MANIFEST_DIR"
@@ -129,6 +134,10 @@ if [[ ! -d "$MANIFEST_DIR" ]]; then
 fi
 if [[ ! -d "$QA_PENDING_DIR" ]]; then
     larch_err "launch-codex-implement.sh: session tmpdir does not exist: $QA_PENDING_DIR"
+    exit 2
+fi
+if [[ ! -d "$SCOUT_MANIFEST_DIR" ]]; then
+    larch_err "launch-codex-implement.sh: session tmpdir does not exist: $SCOUT_MANIFEST_DIR"
     exit 2
 fi
 if [[ ! -d "$TRANSCRIPT_DIR" ]]; then
@@ -145,6 +154,14 @@ QA_TMPDIR=$(_codex_canonical_existing_dir "$QA_PENDING_DIR") || {
 }
 if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
     larch_err "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)"
+    exit 2
+fi
+SCOUT_TMPDIR=$(_codex_canonical_existing_dir "$SCOUT_MANIFEST_DIR") || {
+    larch_err "launch-codex-implement.sh: --scout-manifest-path parent is not a directory: $SCOUT_MANIFEST_DIR"
+    exit 2
+}
+if [[ "$SESSION_TMPDIR" != "$SCOUT_TMPDIR" ]]; then
+    larch_err "launch-codex-implement.sh: --scout-manifest-path must share the parent directory with --manifest-path and --qa-pending-path (got: $SCOUT_TMPDIR vs $SESSION_TMPDIR)"
     exit 2
 fi
 TRANSCRIPT_PARENT=$(_codex_canonical_existing_dir "$TRANSCRIPT_DIR") || {
@@ -199,6 +216,7 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
         fi
         emit_kv LAUNCHER_EXIT 0
         emit_kv MANIFEST_WRITTEN false
+        emit_kv SCOUT_MANIFEST_WRITTEN false
         emit_kv STATUS cap_hit
         exit 0
     fi
@@ -331,6 +349,7 @@ if (( AUTH_PREP_RC != 0 )); then
     emit_kv LAUNCHER_EXIT "$AUTH_PREP_RC"
     emit_kv MANIFEST_WRITTEN false
     emit_kv QA_PENDING_WRITTEN false
+    emit_kv SCOUT_MANIFEST_WRITTEN false
     emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
     emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     exit 0
@@ -343,6 +362,7 @@ PROMPT="## This invocation's parameters
 - Original feature description: $FEATURE_FILE
 - Write manifest.json (atomically) at: $SESSION_TMPDIR/$(basename "$MANIFEST_PATH")
 - Write qa-pending.json (atomically, only if status=needs_qa) at: $SESSION_TMPDIR/$(basename "$QA_PENDING_PATH")
+- Optionally write best-effort scout JSON at: $SESSION_TMPDIR/$(basename "$SCOUT_MANIFEST_PATH")
 - Working directory: $PWD (this is the repo root for git operations)
 $RESUME_BLOCK
 
@@ -364,6 +384,7 @@ if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     emit_kv LAUNCHER_EXIT "$MODEL_ARGS_RC"
     emit_kv MANIFEST_WRITTEN false
     emit_kv QA_PENDING_WRITTEN false
+    emit_kv SCOUT_MANIFEST_WRITTEN false
     emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
     emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     exit 0
@@ -435,8 +456,10 @@ fi
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
+SCOUT_MANIFEST_WRITTEN=false
 if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
 if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
+if [[ -s "$SCOUT_MANIFEST_PATH" ]]; then SCOUT_MANIFEST_WRITTEN=true; fi
 
 # Preserve a parseable JSONL file even when the wrapper emitted no stdout
 # (for example, stderr-only auth failures). That keeps usage parsing in the
@@ -451,6 +474,7 @@ emit_timing_record "$LAUNCHER_EXIT"
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 emit_kv MANIFEST_WRITTEN "$MANIFEST_WRITTEN"
 emit_kv QA_PENDING_WRITTEN "$QA_PENDING_WRITTEN"
+emit_kv SCOUT_MANIFEST_WRITTEN "$SCOUT_MANIFEST_WRITTEN"
 emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
 emit_kv SIDECAR_LOG "$SIDECAR_LOG"
 exit 0

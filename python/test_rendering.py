@@ -109,6 +109,16 @@ def test_generate_check_accepts_verb_registry(monkeypatch: pytest.MonkeyPatch) -
     assert rendering.generate_check_main([]) == 0
 
 
+def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    codex_text = rendering._implementer_text("codex")  # pyright: ignore[reportPrivateUsage]
+    cursor_text = rendering._implementer_text("cursor")  # pyright: ignore[reportPrivateUsage]
+    assert "SCOUT_MANIFEST_PATH" in codex_text
+    assert "optional best-effort" in codex_text
+    assert "SCOUT_MANIFEST_PATH" in cursor_text
+    assert "optional best-effort" in cursor_text
+
+
 def test_topology_header_uses_python_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     target = tmp_path / "topology.md"

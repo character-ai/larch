@@ -3,9 +3,10 @@
 ## Purpose
 
 Read-only Codex plan drafter launcher for `/design` Step 2b. Wraps
-`python3 python/cli.py agent launch-codex-exec` with a read-only sandbox, passes the drafter prompt,
-and parses the `LARCH_PLAN_BEGIN/END` + `LARCH_SUMMARY_BEGIN/END` sentinel
-output into `plan.txt` and `plan-summary.md` under `$DESIGN_TMPDIR`.
+`launch-codex-exec.sh` with a read-only sandbox, passes the drafter prompt,
+and parses the `LARCH_PLAN_BEGIN/END`, optional `LARCH_SUMMARY_BEGIN/END`,
+and optional post-plan `LARCH_SCOUT_BEGIN/END` sentinel output into `plan.txt`,
+`plan-summary.md`, and `scout-plan-manifest.json` under `$DESIGN_TMPDIR`.
 
 Produces the same status KV contract as `launch-claude-drafter.sh` so the
 caller (`skills/design/SKILL.md` Step 2b) can handle both launchers
@@ -39,6 +40,8 @@ In `--output-file` (status KV file):
 - `PLAN_LINES=<N>`
 - `DIFF_LINES=<N>`
 - `SUMMARY_WRITTEN=true|false`
+- `SCOUT_WRITTEN=true|false`
+- `SCOUT_FAIL_REASON=<reason>` (when scout output is absent or rejected)
 - `DRAFTER_LAUNCHED=true|false`
 - `REASON=<token>` (on ERROR)
 
@@ -52,6 +55,8 @@ Side files written under `<output-file>.*`:
 Under `DESIGN_TMPDIR`:
 - `plan.txt` — extracted plan body ending with `diff_lines: N`
 - `plan-summary.md` — extracted summary (when present in output)
+- `scout-plan-manifest.json` — normalized optional scout manifest. Malformed
+  post-plan scout output is ignored and does not fail a valid plan.
 
 ## Implementation
 

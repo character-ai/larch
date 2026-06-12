@@ -80,7 +80,7 @@ export SCOUT_STUB_MANIFEST="$TMP/m3.json"
 export SCOUT_STUB_ARGV_LOG="$D1/argv.log"
 : >"$SCOUT_STUB_ARGV_LOG"
 cat >"$SCOUT_STUB_MANIFEST" <<'JSON'
-{"archetypes":[{"name":"x","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}
+{"archetypes":[{"name":"api-x","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}
 JSON
 "$WRAPPER" \
     --plan-file "$D1/plan.txt" \
@@ -175,5 +175,42 @@ JSON
 [[ "$(wc -l <"$DM/scout-plan-scope-files.txt" | tr -d ' ')" == "1" ]] || fail "expected one scope line"
 grep -Fxq 'skills/kept.sh' "$DM/scout-plan-scope-files.txt" || fail "malformed heading must not populate scope"
 ! grep -Fq 'ignored.md' "$DM/scout-plan-scope-files.txt" || fail "concatenated ###NEW must not yield ignored.md"
+
+echo "=== direct filter-manifest validates cap, reserved, duplicates, and invalid rows ==="
+DF="$TMP/filter-direct"
+mkdir -p "$DF"
+cat >"$DF/input.json" <<'JSON'
+{"archetypes":[
+  {"name":"arch","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"reserved"},
+  {"name":"api-a","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"first"},
+  {"name":"api-a","focus_area":"architecture","weight":2,"rationale":"r","prompt_body":"duplicate"},
+  {"name":"bad-focus","focus_area":"invalid","weight":1,"rationale":"r","prompt_body":"invalid"},
+  {"name":"api-b","focus_area":"risk-integration","weight":1,"rationale":"r","prompt_body":"second"},
+  {"name":"api-c","focus_area":"code-quality","weight":1,"rationale":"r","prompt_body":"third"}
+]}
+JSON
+"$WRAPPER" --filter-manifest "$DF/input.json" "$DF/output.json" --max-archetypes 2 >"$DF/out.env"
+grep -Fq 'SCOUT_STATUS=ok' "$DF/out.env" || fail "filter-direct status"
+grep -Fq 'WARN=reserved archetype name: arch' "$DF/out.env" || fail "filter-direct reserved warning"
+grep -Fq 'WARN=duplicate archetype name: api-a' "$DF/out.env" || fail "filter-direct duplicate warning"
+grep -Fq 'WARN=invalid focus_area for bad-focus' "$DF/out.env" || fail "filter-direct invalid row warning"
+grep -Fq 'WARN=validated archetypes exceed max cap: 3 > 2; truncating' "$DF/out.env" || fail "filter-direct cap warning"
+[[ "$(jq -r '.archetypes | length' "$DF/output.json")" == "2" ]] || fail "filter-direct cap count"
+[[ "$(jq -r '.archetypes[0].name' "$DF/output.json")" == "api-a" ]] || fail "filter-direct first valid row"
+[[ "$(jq -r '.archetypes[1].name' "$DF/output.json")" == "api-b" ]] || fail "filter-direct second valid row"
+
+echo "=== direct filter-manifest invalid JSON and non-array fail open to empty ==="
+FI="$TMP/filter-invalid"
+mkdir -p "$FI"
+printf '{not json\n' >"$FI/bad-json.json"
+"$WRAPPER" --filter-manifest "$FI/bad-json.json" "$FI/bad-json-out.json" --max-archetypes 3 >"$FI/bad-json.env"
+grep -Fq 'SCOUT_STATUS=parse-failed' "$FI/bad-json.env" || fail "filter invalid JSON status"
+[[ "$(jq -r '.archetypes | length' "$FI/bad-json-out.json")" == "0" ]] || fail "filter invalid JSON empty output"
+cat >"$FI/non-array.json" <<'JSON'
+{"archetypes":{"name":"api-a","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}}
+JSON
+"$WRAPPER" --filter-manifest "$FI/non-array.json" "$FI/non-array-out.json" --max-archetypes 3 >"$FI/non-array.env"
+grep -Fq 'SCOUT_STATUS=parse-failed' "$FI/non-array.env" || fail "filter non-array status"
+[[ "$(jq -r '.archetypes | length' "$FI/non-array-out.json")" == "0" ]] || fail "filter non-array empty output"
 
 echo "All scout-plan-archetypes-wrapper harness assertions passed."

@@ -32,6 +32,15 @@ case "${LARCH_TEST_CLAUDE_MODE:-ok}" in
     no-summary)
         jq -cn --arg result $'LARCH_PLAN_BEGIN\n## Plan\nBody mentions LARCH_PLAN_BEGIN without sentinel line.\ndiff_lines: 3\nLARCH_PLAN_END\n' '{result:$result,usage:{input_tokens:2,output_tokens:3,cache_read_input_tokens:4,cache_creation_input_tokens:5}}'
         ;;
+    scout-valid)
+        jq -cn --arg result $'LARCH_PLAN_BEGIN\n## Plan\nDetailed body\ndiff_lines: 7\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}\nLARCH_SCOUT_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
+        ;;
+    scout-malformed)
+        jq -cn --arg result $'LARCH_PLAN_BEGIN\n## Plan\nDetailed body\ndiff_lines: 7\nLARCH_PLAN_END\nLARCH_SCOUT_BEGIN\n{not json\nLARCH_SCOUT_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
+        ;;
+    scout-in-plan)
+        jq -cn --arg result $'LARCH_PLAN_BEGIN\n## Plan\n{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"literal } brace and { brace inside string"}]}\ndiff_lines: 9\nLARCH_PLAN_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
+        ;;
     bad-delim)
         jq -cn --arg result $'LARCH_PLAN_BEGIN\nbody\nLARCH_PLAN_BEGIN\ndiff_lines: 2\nLARCH_PLAN_END\n' '{result:$result,usage:{input_tokens:1,output_tokens:1}}'
         ;;
@@ -62,7 +71,7 @@ chmod +x "$STUB_BIN/git"
 
 run_drafter() {
     local d="$1" out="$2"
-    PATH="$STUB_BIN:$PATH" DESIGN_TMPDIR="$d" IMPLEMENT_TMPDIR="" SESSION_ENV_PATH="" \
+    PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$d" IMPLEMENT_TMPDIR="" SESSION_ENV_PATH="" \
         LARCH_QUIET_DISABLE=1 LARCH_TIMING_LEDGER="$TMPROOT/timing.tsv" \
         LARCH_TOKEN_LEDGER="$TMPROOT/tokens.jsonl" LARCH_TEST_CLAUDE_ARGV_LOG="$TMPROOT/claude.argv" "$SUBJECT" \
         --model "${3:-claude-fable-5}" \
@@ -158,6 +167,22 @@ LARCH_TEST_CLAUDE_MODE=no-summary run_drafter "$d4" "$d4/status.txt" >/dev/null
 command grep -Fq 'SUMMARY_WRITTEN=false' "$d4/status.txt" || fail "summary optional status missing"
 [[ ! -e "$d4/plan-summary.md" ]] || fail "summary should not be written when no summary sentinels exist"
 command grep -Fq 'Body mentions LARCH_PLAN_BEGIN without sentinel line.' "$d4/plan.txt" || fail "delimiter name in prose was not preserved"
+
+LARCH_TEST_CLAUDE_MODE=scout-valid run_drafter "$d4" "$d4/status-scout-valid.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=true' "$d4/status-scout-valid.txt" || fail "valid scout status missing"
+[[ "$(jq -r '.archetypes | length' "$d4/scout-plan-manifest.json")" == "1" ]] || fail "valid scout manifest not written"
+
+rm -f "$d4/scout-plan-manifest.json"
+LARCH_TEST_CLAUDE_MODE=scout-malformed run_drafter "$d4" "$d4/status-scout-malformed.txt" >/dev/null
+command grep -Fq 'SCOUT_WRITTEN=false' "$d4/status-scout-malformed.txt" || fail "malformed scout should not be written"
+command grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$d4/status-scout-malformed.txt" || fail "malformed scout fail reason missing"
+
+set +e
+LARCH_TEST_CLAUDE_MODE=scout-in-plan run_drafter "$d4" "$d4/status-scout-in-plan.txt" >/dev/null 2>"$TMPROOT/scout-in-plan.err"
+scout_in_plan_rc=$?
+set -e
+[[ "$scout_in_plan_rc" -eq 99 ]] || fail "standalone scout manifest inside plan should exit 99"
+command grep -Fq 'REASON=DELIMITER_EXTRACTION_INVALID' "$d4/status-scout-in-plan.txt" || fail "standalone scout manifest missing delimiter invalid reason"
 
 # Baseline delta cases.
 d5="$TMPROOT/d5"

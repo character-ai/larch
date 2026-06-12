@@ -53,6 +53,7 @@ M19. `schema_version` values other than `1` hard-bail with `manifest-schema-inva
 
 **Invariants**:
 - Tests run against the live dispatcher in the repo, not a copy.
+- Tests export `CLAUDE_PLUGIN_ROOT` to the repo root so dispatcher-spawned launchers and prompts come from the same working tree as the harness.
 - The Claude fallback branch short-circuits before plugin / git resolution and ignores empty Cursor presence input.
 - Scratch directory is created via `mktemp -d` and removed via `trap` on exit.
 

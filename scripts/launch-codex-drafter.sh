@@ -8,6 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-quiet.sh"
@@ -78,6 +79,8 @@ write_status_file() {
         printf 'PLAN_LINES=%s\n' "$plan_lines"
         printf 'DIFF_LINES=%s\n' "$diff_lines"
         printf 'SUMMARY_WRITTEN=%s\n' "$summary_written"
+        printf 'SCOUT_WRITTEN=%s\n' "${SCOUT_WRITTEN:-false}"
+        [[ -z "${SCOUT_FAIL_REASON:-}" ]] || printf 'SCOUT_FAIL_REASON=%s\n' "$SCOUT_FAIL_REASON"
         printf 'DRAFTER_LAUNCHED=%s\n' "$launched"
         [[ -z "$reason" ]] || printf 'REASON=%s\n' "$reason"
     } > "$tmp"
@@ -161,16 +164,22 @@ _codex_raw="${DESIGN_CANON}/step2b-codex-raw.$$.txt"
 _launcher_stdout="${DESIGN_CANON}/step2b-codex-launcher-stdout.$$.txt"
 _plan_tmp="${DESIGN_CANON}/plan.txt.tmp.$$"
 _summary_tmp="${DESIGN_CANON}/plan-summary.md.tmp.$$"
+_scout_candidate="${DESIGN_CANON}/scout-plan-manifest.json.candidate.$$"
+_scout_filtered="${DESIGN_CANON}/scout-plan-manifest.json.filtered.$$"
 _trusted_instructions="${DESIGN_CANON}/step2b-codex-trusted-instructions.$$.txt"
-rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
+rm -f "$_codex_raw" "$_launcher_stdout" "$_plan_tmp" "$_summary_tmp" "$_scout_candidate" "$_scout_filtered" "$_trusted_instructions"
 
 CODEX_DRAFTER_TRUSTED_INSTRUCTIONS=$(cat <<'EOF'
 STRICT CONSTRAINTS — your role is read-only plan drafting for /design Step 2b. Do not create, edit, delete, or overwrite repository or tmpdir files. The launcher enforces this with --sandbox read-only.
 
 OUTPUT CONTRACT — these requirements override any conflicting Codex user configuration or instructions:
 - Emit exactly one whole-line LARCH_PLAN_BEGIN and one whole-line LARCH_PLAN_END with a non-empty plan body between them.
-- Optionally emit zero or one balanced LARCH_SUMMARY_BEGIN/LARCH_SUMMARY_END pair (not nested inside the plan envelope).
+- Optionally emit zero or one balanced LARCH_SUMMARY_BEGIN/LARCH_SUMMARY_END pair before the plan envelope.
 - The plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally emit zero or one balanced LARCH_SCOUT_BEGIN/LARCH_SCOUT_END pair after LARCH_PLAN_END.
+- If emitted, the scout block must contain only compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
+- Malformed scout output after the plan is ignored by the launcher and must not affect a valid plan.
+- Scout sentinels before or inside the summary or plan are fatal format errors.
 - Return only the sentinel-delimited response format; do not omit required sentinels.
 EOF
 )
@@ -213,7 +222,7 @@ if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
         write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_CANON" || true
     fi
     unset _stderr_src
-    rm -f "$_codex_raw" "${_codex_raw}.sidecar" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
+    rm -f "$_codex_raw" "${_codex_raw}.sidecar" "$_plan_tmp" "$_summary_tmp" "$_scout_candidate" "$_scout_filtered" "$_trusted_instructions"
     printf '%s\n' "${LAUNCHER_EXIT:-1}" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -224,7 +233,7 @@ fi
 if [[ ! -s "$_codex_raw" ]]; then
     printf 'CODEX_EMPTY_OUTPUT\n' > "${OUTPUT_CANON}.failure-diag"
     write_status_file "ERROR" "false" 0 0 "false" "true" "CODEX_EMPTY_OUTPUT"
-    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_scout_candidate" "$_scout_filtered" "$_trusted_instructions"
     printf '%s\n' "1" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -232,13 +241,13 @@ if [[ ! -s "$_codex_raw" ]]; then
     exit 1
 fi
 
-if ! python3 "$SCRIPT_DIR/parse-drafter-output.py" "$_codex_raw" "$_plan_tmp" "$_summary_tmp" \
+if ! python3 "$SCRIPT_DIR/parse-drafter-output.py" "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_scout_candidate" \
         > "${OUTPUT_CANON}.parse" 2> "${OUTPUT_CANON}.failure-diag"
 then
     _parse_reason=$(cat "${OUTPUT_CANON}.failure-diag" 2>/dev/null || printf '%s' delimiter-extraction-failed)
     printf 'DELIMITER_EXTRACTION_INVALID\n%s\n' "$_parse_reason" > "${OUTPUT_CANON}.failure-diag"
     write_status_file "ERROR" "false" 0 0 "false" "true" "DELIMITER_EXTRACTION_INVALID"
-    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_trusted_instructions" "${OUTPUT_CANON}.parse"
+    rm -f "$_codex_raw" "$_plan_tmp" "$_summary_tmp" "$_scout_candidate" "$_scout_filtered" "$_trusted_instructions" "${OUTPUT_CANON}.parse"
     printf '%s\n' "99" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
@@ -249,13 +258,31 @@ fi
 PLAN_LINES=0
 DIFF_LINES=0
 SUMMARY_WRITTEN=false
+SCOUT_CANDIDATE_WRITTEN=false
+SCOUT_FAIL_REASON=""
 while IFS= read -r _parse_line || [[ -n "$_parse_line" ]]; do
     case "$_parse_line" in
         PLAN_LINES=*)   PLAN_LINES="${_parse_line#PLAN_LINES=}" ;;
         DIFF_LINES=*)   DIFF_LINES="${_parse_line#DIFF_LINES=}" ;;
         SUMMARY_WRITTEN=*) SUMMARY_WRITTEN="${_parse_line#SUMMARY_WRITTEN=}" ;;
+        SCOUT_CANDIDATE_WRITTEN=*) SCOUT_CANDIDATE_WRITTEN="${_parse_line#SCOUT_CANDIDATE_WRITTEN=}" ;;
+        SCOUT_FAIL_REASON=*) SCOUT_FAIL_REASON="${_parse_line#SCOUT_FAIL_REASON=}" ;;
     esac
 done < "${OUTPUT_CANON}.parse"
+
+SCOUT_WRITTEN=false
+if [[ "$SCOUT_CANDIDATE_WRITTEN" == "true" && -s "$_scout_candidate" ]]; then
+    _filter_out="$("$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh" --filter-manifest "$_scout_candidate" "$_scout_filtered" --max-archetypes 3 2>/dev/null || true)"
+    _filter_status=$(printf '%s\n' "$_filter_out" | awk -F= '$1=="SCOUT_STATUS"{print $2; exit}')
+    if [[ -s "$_scout_filtered" && "$_filter_status" != "parse-failed" ]] && jq -e '.archetypes | type == "array"' "$_scout_filtered" >/dev/null 2>&1; then
+        mv -f "$_scout_filtered" "$DESIGN_CANON/scout-plan-manifest.json"
+        SCOUT_WRITTEN=true
+        SCOUT_FAIL_REASON=""
+    else
+        SCOUT_FAIL_REASON="filter_failed"
+        rm -f "$_scout_filtered" "$DESIGN_CANON/scout-plan-manifest.json"
+    fi
+fi
 
 mv -f "$_plan_tmp" "$DESIGN_CANON/plan.txt"
 if [[ "$SUMMARY_WRITTEN" == "true" ]]; then
@@ -264,11 +291,13 @@ else
     rm -f "$_summary_tmp"
 fi
 
-rm -f "$_codex_raw" "$_trusted_instructions" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.stderr" "${OUTPUT_CANON}.stderr-tail"
+rm -f "$_codex_raw" "$_trusted_instructions" "$_scout_candidate" "$_scout_filtered" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.stderr" "${OUTPUT_CANON}.stderr-tail"
 write_status_file "OK" "true" "$PLAN_LINES" "$DIFF_LINES" "$SUMMARY_WRITTEN" "true" ""
 printf '%s\n' "0" > "${OUTPUT_CANON}.done"
 
 emit_kv STATUS "OK"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"
 emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+emit_kv SCOUT_WRITTEN "$SCOUT_WRITTEN"
+[[ -z "$SCOUT_FAIL_REASON" ]] || emit_kv SCOUT_FAIL_REASON "$SCOUT_FAIL_REASON"
 exit 0

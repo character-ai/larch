@@ -30,6 +30,15 @@ Derived sources:
 - `$IMPLEMENT_TMPDIR/session-id`: forwarded as `--run-id`.
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
 - `$IMPLEMENT_TMPDIR/session-env.sh`: forwarded as `--session-env-path`.
+- `$IMPLEMENT_TMPDIR/scout-coder-manifest.json`: forwarded as
+  `--pre-scouted-manifest` only when
+  `$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt` exists and mode is not
+  `mav-apply`.
+- `$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt`: the Step 5 pre-scout
+  eligibility marker. Missing marker forces `--dynamic-archetypes 0`, so
+  marker-absent runs and Claude fallback cannot launch the legacy scout.
+- `$IMPLEMENT_TMPDIR/step2-spawn-coder.txt`: remains the cross-coder tmpdir
+  guard and does not enable Step 5 dynamic review by itself.
 
 Progress hook marker:
 

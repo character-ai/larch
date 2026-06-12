@@ -107,6 +107,8 @@ write_status_file() {
         printf 'PLAN_LINES=%s\n' "$plan_lines"
         printf 'DIFF_LINES=%s\n' "$diff_lines"
         printf 'SUMMARY_WRITTEN=%s\n' "$summary_written"
+        printf 'SCOUT_WRITTEN=%s\n' "${SCOUT_WRITTEN:-false}"
+        [[ -z "${SCOUT_FAIL_REASON:-}" ]] || printf 'SCOUT_FAIL_REASON=%s\n' "$SCOUT_FAIL_REASON"
         printf 'DRAFTER_LAUNCHED=%s\n' "$launched"
         [[ -z "$reason" ]] || printf 'REASON=%s\n' "$reason"
     } > "$tmp"
@@ -224,7 +226,9 @@ json_tmp="${OUTPUT_CANON}.json.$$"
 result_tmp="${OUTPUT_CANON}.extract.$$"
 plan_tmp="${DESIGN_CANON}/plan.txt.tmp.$$"
 summary_tmp="${DESIGN_CANON}/plan-summary.md.tmp.$$"
-rm -f "$json_tmp" "$result_tmp" "$plan_tmp" "$summary_tmp"
+scout_candidate="${DESIGN_CANON}/scout-plan-manifest.json.candidate.$$"
+scout_filtered="${DESIGN_CANON}/scout-plan-manifest.json.filtered.$$"
+rm -f "$json_tmp" "$result_tmp" "$plan_tmp" "$summary_tmp" "$scout_candidate" "$scout_filtered"
 
 DRAFTER_LAUNCHED=true
 _claude_argv=(claude --model "$MODEL" --print --output-format json --add-dir "$REPO_ROOT" --allowedTools "Read,Glob,Grep,LS" --permission-mode plan)
@@ -263,7 +267,7 @@ if [[ "$exit_code" -eq 0 ]]; then
 fi
 
 if [[ "$exit_code" -eq 0 ]]; then
-    if ! python3 "$SCRIPT_DIR/parse-drafter-output.py" "$result_tmp" "$plan_tmp" "$summary_tmp" \
+    if ! python3 "$SCRIPT_DIR/parse-drafter-output.py" "$result_tmp" "$plan_tmp" "$summary_tmp" "$scout_candidate" \
             > "${OUTPUT_CANON}.parse" 2> "${OUTPUT_CANON}.failure-diag"; then
         parse_reason=$(cat "${OUTPUT_CANON}.failure-diag" 2>/dev/null || printf '%s' delimiter-extraction-failed)
         printf 'DELIMITER_EXTRACTION_INVALID\n%s\n' "$parse_reason" > "${OUTPUT_CANON}.failure-diag"
@@ -274,13 +278,30 @@ if [[ "$exit_code" -eq 0 ]]; then
         PLAN_LINES=0
         DIFF_LINES=0
         SUMMARY_WRITTEN=false
+        SCOUT_CANDIDATE_WRITTEN=false
+        SCOUT_FAIL_REASON=""
         while IFS= read -r _parse_line || [[ -n "$_parse_line" ]]; do
             case "$_parse_line" in
                 PLAN_LINES=*) PLAN_LINES="${_parse_line#PLAN_LINES=}" ;;
                 DIFF_LINES=*) DIFF_LINES="${_parse_line#DIFF_LINES=}" ;;
                 SUMMARY_WRITTEN=*) SUMMARY_WRITTEN="${_parse_line#SUMMARY_WRITTEN=}" ;;
+                SCOUT_CANDIDATE_WRITTEN=*) SCOUT_CANDIDATE_WRITTEN="${_parse_line#SCOUT_CANDIDATE_WRITTEN=}" ;;
+                SCOUT_FAIL_REASON=*) SCOUT_FAIL_REASON="${_parse_line#SCOUT_FAIL_REASON=}" ;;
             esac
         done < "${OUTPUT_CANON}.parse"
+        SCOUT_WRITTEN=false
+        if [[ "$SCOUT_CANDIDATE_WRITTEN" == "true" && -s "$scout_candidate" ]]; then
+            _filter_out="$("$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh" --filter-manifest "$scout_candidate" "$scout_filtered" --max-archetypes 3 2>/dev/null || true)"
+            _filter_status=$(printf '%s\n' "$_filter_out" | awk -F= '$1=="SCOUT_STATUS"{print $2; exit}')
+            if [[ -s "$scout_filtered" && "$_filter_status" != "parse-failed" ]] && jq -e '.archetypes | type == "array"' "$scout_filtered" >/dev/null 2>&1; then
+                mv -f "$scout_filtered" "$DESIGN_CANON/scout-plan-manifest.json"
+                SCOUT_WRITTEN=true
+                SCOUT_FAIL_REASON=""
+            else
+                SCOUT_FAIL_REASON="filter_failed"
+                rm -f "$scout_filtered" "$DESIGN_CANON/scout-plan-manifest.json"
+            fi
+        fi
         mv -f "$plan_tmp" "$DESIGN_CANON/plan.txt"
         if [[ "$SUMMARY_WRITTEN" == "true" ]]; then
             mv -f "$summary_tmp" "$DESIGN_CANON/plan-summary.md"
@@ -299,7 +320,7 @@ if [[ "$exit_code" -eq 0 ]]; then
     fi
 fi
 
-rm -f "$json_tmp" "$result_tmp" "$plan_tmp" "$summary_tmp" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.json" "${OUTPUT_CANON}.result"
+rm -f "$json_tmp" "$result_tmp" "$plan_tmp" "$summary_tmp" "$scout_candidate" "$scout_filtered" "${OUTPUT_CANON}.parse" "${OUTPUT_CANON}.json" "${OUTPUT_CANON}.result"
 if [[ "$exit_code" -ne 0 ]]; then
     if [[ -s "${OUTPUT_CANON}.stderr" ]]; then
         write_failed_agent_stderr_tail "${OUTPUT_CANON}.stderr" "$OUTPUT_CANON" || true
@@ -325,4 +346,6 @@ python3 "$SCRIPT_DIR/../python/cli.py" timing record-vendor-task \
 emit_kv STATUS "$status"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"
 emit_kv ELAPSED "$((END_S - START_S))"
+emit_kv SCOUT_WRITTEN "${SCOUT_WRITTEN:-false}"
+[[ -z "${SCOUT_FAIL_REASON:-}" ]] || emit_kv SCOUT_FAIL_REASON "$SCOUT_FAIL_REASON"
 exit "$exit_code"

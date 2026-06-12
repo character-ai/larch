@@ -10,6 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LAUNCHER="$REPO_ROOT/scripts/launch-codex-implement.sh"
 AGENT_PROMPT="$REPO_ROOT/agents/codex-implementer.md"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 
 [[ -x "$LAUNCHER" ]] || { echo "FAIL: launcher not executable: $LAUNCHER" >&2; exit 1; }
 [[ -f "$AGENT_PROMPT" ]] || { echo "FAIL: agent prompt missing: $AGENT_PROMPT" >&2; exit 1; }
@@ -119,6 +120,7 @@ EXIT=0
     --sidecar-log "$SCRATCH/t2-sidecar.log" \
     --manifest-path "$SCRATCH/t2-manifest.json" \
     --qa-pending-path "$SCRATCH/t2-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t2-qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -133,6 +135,7 @@ TIMEOUT_ZERO_OUTPUT="$SCRATCH/t2b-output.txt"
     --sidecar-log "$SCRATCH/t2b-sidecar.log" \
     --manifest-path "$SCRATCH/t2b-manifest.json" \
     --qa-pending-path "$SCRATCH/t2b-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t2b-qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -152,6 +155,7 @@ for timeout_value in 00 000; do
         --sidecar-log "$SCRATCH/t2-${timeout_value}-sidecar.log" \
         --manifest-path "$SCRATCH/t2-${timeout_value}-manifest.json" \
         --qa-pending-path "$SCRATCH/t2-${timeout_value}-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/t2-${timeout_value}-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -170,6 +174,7 @@ EXIT=0
     --sidecar-log "$SCRATCH/t3-sidecar.log" \
     --manifest-path "$SCRATCH/t3-manifest.json" \
     --qa-pending-path "$SCRATCH/t3-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t3-qa.json")/scout-coder-manifest.json" \
     --plan-file "$SCRATCH/missing-plan.md" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -187,6 +192,7 @@ EXIT=0
     --sidecar-log "$SCRATCH/t3a-sidecar.log" \
     --manifest-path "$SCRATCH/t3a-manifest.json" \
     --qa-pending-path "$SCRATCH/t3a-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t3a-qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$SCRATCH/missing-feature.txt" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -204,6 +210,7 @@ EXIT=0
     --sidecar-log "$SCRATCH/t3b-sidecar.log" \
     --manifest-path "$SCRATCH/t3b-manifest.json" \
     --qa-pending-path "$SCRATCH/t3b-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t3b-qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$SCRATCH/missing-agent-prompt.md" \
@@ -221,6 +228,7 @@ EXIT=0
     --sidecar-log "$SCRATCH/t3c-sidecar.log" \
     --manifest-path "$SCRATCH/t3c-manifest.json" \
     --qa-pending-path "$SCRATCH/t3c-qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t3c-qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -347,12 +355,13 @@ OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SIDECAR" \
         --manifest-path "$MANIFEST" \
         --qa-pending-path "$QA_PENDING" \
+        --scout-manifest-path "$(dirname "$QA_PENDING")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
 
-EXPECTED=$(printf 'LAUNCHER_EXIT=0\nMANIFEST_WRITTEN=true\nQA_PENDING_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$TRANSCRIPT" "$SIDECAR")
+EXPECTED=$(printf 'LAUNCHER_EXIT=0\nMANIFEST_WRITTEN=true\nQA_PENDING_WRITTEN=false\nSCOUT_MANIFEST_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$TRANSCRIPT" "$SIDECAR")
 if [[ "$OUT" == "$EXPECTED" ]]; then
     pass
 else
@@ -418,6 +427,7 @@ OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SCRATCH/sidecar-login-unset.log" \
         --manifest-path "$SCRATCH/manifest-login-unset.json" \
         --qa-pending-path "$SCRATCH/qa-login-unset.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/qa-login-unset.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -453,6 +463,7 @@ OUT_LOGIN_EMPTY=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SCRATCH/sidecar-login-empty.log" \
         --manifest-path "$SCRATCH/manifest-login-empty.json" \
         --qa-pending-path "$SCRATCH/qa-login-empty.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/qa-login-empty.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -496,6 +507,7 @@ AUTH_PREP_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$AUTH_PREP_SIDECAR" \
         --manifest-path "$SCRATCH/auth-prep-fail-manifest.json" \
         --qa-pending-path "$SCRATCH/auth-prep-fail-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/auth-prep-fail-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -541,6 +553,7 @@ LOCK_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SCRATCH/codex-lock-sidecar.log" \
         --manifest-path "$SCRATCH/codex-lock-manifest.json" \
         --qa-pending-path "$SCRATCH/codex-lock-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/codex-lock-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -571,6 +584,7 @@ RETRY_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SCRATCH/codex-retry-sidecar.log" \
         --manifest-path "$SCRATCH/codex-retry-manifest.json" \
         --qa-pending-path "$SCRATCH/codex-retry-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/codex-retry-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -628,6 +642,7 @@ FAIL_WITH_USAGE_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$FAIL_WITH_USAGE_SIDECAR" \
         --manifest-path "$FAIL_WITH_USAGE_MANIFEST" \
         --qa-pending-path "$FAIL_WITH_USAGE_QA" \
+        --scout-manifest-path "$(dirname "$FAIL_WITH_USAGE_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -669,6 +684,7 @@ AUTH_STDERR_ONLY_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$AUTH_STDERR_ONLY_SIDECAR" \
         --manifest-path "$AUTH_STDERR_ONLY_MANIFEST" \
         --qa-pending-path "$AUTH_STDERR_ONLY_QA" \
+        --scout-manifest-path "$(dirname "$AUTH_STDERR_ONLY_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -751,6 +767,7 @@ OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$RESUME_SIDECAR" \
         --manifest-path "$RESUME_MANIFEST" \
         --qa-pending-path "$RESUME_QA" \
+        --scout-manifest-path "$(dirname "$RESUME_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -794,12 +811,13 @@ OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$T9_SIDECAR" \
         --manifest-path "$T9_MANIFEST" \
         --qa-pending-path "$T9_QA" \
+        --scout-manifest-path "$(dirname "$T9_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 010)
 
-T9_EXPECTED=$(printf 'LAUNCHER_EXIT=0\nMANIFEST_WRITTEN=true\nQA_PENDING_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$T9_TRANSCRIPT" "$T9_SIDECAR")
+T9_EXPECTED=$(printf 'LAUNCHER_EXIT=0\nMANIFEST_WRITTEN=true\nQA_PENDING_WRITTEN=false\nSCOUT_MANIFEST_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$T9_TRANSCRIPT" "$T9_SIDECAR")
 if [[ "$OUT" == "$T9_EXPECTED" ]]; then
     pass
 else
@@ -822,6 +840,7 @@ MODEL_EXIT=0
         --sidecar-log "$MODEL_SIDECAR" \
         --manifest-path "$MODEL_MANIFEST" \
         --qa-pending-path "$MODEL_QA" \
+        --scout-manifest-path "$(dirname "$MODEL_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -863,6 +882,7 @@ cd "$REPO_ROOT" && \
         --sidecar-log "$TENV_SIDECAR" \
         --manifest-path "$TENV_MANIFEST" \
         --qa-pending-path "$TENV_QA" \
+        --scout-manifest-path "$(dirname "$TENV_QA")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -959,6 +979,7 @@ STUB_EOF
             --sidecar-log "$RV_SIDECAR" \
             --manifest-path "$RV_MANIFEST" \
             --qa-pending-path "$RV_QA" \
+            --scout-manifest-path "$(dirname "$RV_QA")/scout-coder-manifest.json" \
             --plan-file "$PLAN" \
             --feature-file "$FEATURE" \
             --agent-prompt "$AGENT_PROMPT" \
@@ -1011,6 +1032,7 @@ STUB_EOF
             --sidecar-log "$SCRATCH/rv-fail-sidecar.log" \
             --manifest-path "$RV_FAIL_MANIFEST" \
             --qa-pending-path "$SCRATCH/rv-fail-qa.json" \
+            --scout-manifest-path "$(dirname "$SCRATCH/rv-fail-qa.json")/scout-coder-manifest.json" \
             --plan-file "$PLAN" \
             --feature-file "$FEATURE" \
             --agent-prompt "$AGENT_PROMPT" \
@@ -1056,6 +1078,7 @@ STUB_EOF
             --sidecar-log "$RV_DRIFT_SIDECAR" \
             --manifest-path "$RV_DRIFT_MANIFEST" \
             --qa-pending-path "$SCRATCH/rv-drift-qa.json" \
+            --scout-manifest-path "$(dirname "$SCRATCH/rv-drift-qa.json")/scout-coder-manifest.json" \
             --plan-file "$PLAN" \
             --feature-file "$FEATURE" \
             --agent-prompt "$AGENT_PROMPT" \
@@ -1083,6 +1106,7 @@ mkdir -p "$SCRATCH/t11-other-parent"
     --sidecar-log "$SCRATCH/t11-sidecar.log" \
     --manifest-path "$SCRATCH/t11-manifest.json" \
     --qa-pending-path "$SCRATCH/t11-other-parent/qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t11-other-parent/qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -1099,6 +1123,7 @@ T11C_OUT="$SCRATCH/t11c-output.txt"
 "$LAUNCHER" \
     --manifest-path "$STEP2_OUT_DIR/manifest.json" \
     --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+    --scout-manifest-path "$(dirname "$STEP2_OUT_DIR/qa-pending.json")/scout-coder-manifest.json" \
     --transcript-path "$SCRATCH/wrong-dir-transcript.txt" \
     --sidecar-log "$SCRATCH/t11c-sidecar.log" \
     --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
@@ -1117,6 +1142,7 @@ IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
 "$LAUNCHER" \
     --manifest-path "$SCRATCH/codex-step2-out-symlink/manifest.json" \
     --qa-pending-path "$SCRATCH/codex-step2-out-symlink/qa-pending.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/codex-step2-out-symlink/qa-pending.json")/scout-coder-manifest.json" \
     --transcript-path "$SCRATCH/codex-step2-out-symlink/transcript.txt" \
     --sidecar-log "$SCRATCH/t11d-sidecar.log" \
     --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
@@ -1134,6 +1160,7 @@ IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
 "$LAUNCHER" \
     --manifest-path "$IMPLEMENT_TMPDIR_FIXTURE/manifest.json" \
     --qa-pending-path "$IMPLEMENT_TMPDIR_FIXTURE/qa-pending.json" \
+    --scout-manifest-path "$(dirname "$IMPLEMENT_TMPDIR_FIXTURE/qa-pending.json")/scout-coder-manifest.json" \
     --transcript-path "$IMPLEMENT_TMPDIR_FIXTURE/transcript.txt" \
     --sidecar-log "$SCRATCH/t11e-sidecar.log" \
     --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
@@ -1152,6 +1179,7 @@ T12_OUT="$SCRATCH/t12-output.txt"
     --sidecar-log "$SCRATCH/t12-sidecar.log" \
     --manifest-path "$SCRATCH/t12-missing-subdir/manifest.json" \
     --qa-pending-path "$SCRATCH/t12-missing-subdir/qa.json" \
+    --scout-manifest-path "$(dirname "$SCRATCH/t12-missing-subdir/qa.json")/scout-coder-manifest.json" \
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
@@ -1168,6 +1196,7 @@ T12B_OUT="$SCRATCH/t12b-output.txt"
 "$LAUNCHER" \
     --manifest-path "$STEP2_OUT_DIR/manifest.json" \
     --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+    --scout-manifest-path "$(dirname "$STEP2_OUT_DIR/qa-pending.json")/scout-coder-manifest.json" \
     --transcript-path "$SCRATCH/t12b-missing-transcript-subdir/transcript.txt" \
     --sidecar-log "$SCRATCH/t12b-sidecar.log" \
     --plan-file "$PLAN" \
@@ -1227,6 +1256,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$SCRATCH/cap-hit-codex-sidecar.log" \
         --manifest-path "$SCRATCH/cap-hit-codex-manifest.json" \
         --qa-pending-path "$SCRATCH/cap-hit-codex-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/cap-hit-codex-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -1286,6 +1316,7 @@ FAIL_STDERR_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$FAIL_STDERR_SIDECAR" \
         --manifest-path "$FAIL_STDERR_MANIFEST" \
         --qa-pending-path "$SCRATCH/fail-stderr-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/fail-stderr-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
@@ -1340,6 +1371,7 @@ MODEL_ARGS_OUT=$(cd "$REPO_ROOT" && \
         --sidecar-log "$MODEL_ARGS_SIDECAR" \
         --manifest-path "$SCRATCH/model-args-manifest.json" \
         --qa-pending-path "$SCRATCH/model-args-qa.json" \
+        --scout-manifest-path "$(dirname "$SCRATCH/model-args-qa.json")/scout-coder-manifest.json" \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \

@@ -19,6 +19,7 @@
 #     --sidecar-log      PATH    # where run-external-agent.sh chatter is captured
 #     --manifest-path    PATH    # where Cursor must write manifest.json
 #     --qa-pending-path  PATH    # where Cursor must write qa-pending.json on needs_qa
+#     --scout-manifest-path PATH # where Cursor may write best-effort scout JSON
 #     --plan-file        PATH    # input: plan to implement
 #     --feature-file     PATH    # input: original feature description
 #     --agent-prompt     PATH    # input: agents/cursor-implementer.md path
@@ -29,6 +30,7 @@
 #   LAUNCHER_EXIT=<int>            # exit code reported by run-external-agent.sh
 #   MANIFEST_WRITTEN=<true|false>  # whether manifest.json exists post-run
 #   QA_PENDING_WRITTEN=<true|false># whether qa-pending.json exists post-run
+#   SCOUT_MANIFEST_WRITTEN=<true|false>
 #   TRANSCRIPT=<path>              # path to Cursor transcript on disk (sidecar)
 #   SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter log
 #
@@ -58,6 +60,7 @@ TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
 MANIFEST_PATH=""
 QA_PENDING_PATH=""
+SCOUT_MANIFEST_PATH=""
 PLAN_FILE=""
 FEATURE_FILE=""
 AGENT_PROMPT=""
@@ -72,6 +75,7 @@ while [[ $# -gt 0 ]]; do
         --sidecar-log)      SIDECAR_LOG="${2:?--sidecar-log requires a value}"; shift 2 ;;
         --manifest-path)    MANIFEST_PATH="${2:?--manifest-path requires a value}"; shift 2 ;;
         --qa-pending-path)  QA_PENDING_PATH="${2:?--qa-pending-path requires a value}"; shift 2 ;;
+        --scout-manifest-path) SCOUT_MANIFEST_PATH="${2:?--scout-manifest-path requires a value}"; shift 2 ;;
         --plan-file)        PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file)     FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
@@ -83,7 +87,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-for var in TRANSCRIPT_PATH SIDECAR_LOG MANIFEST_PATH QA_PENDING_PATH PLAN_FILE FEATURE_FILE AGENT_PROMPT TIMEOUT; do
+for var in TRANSCRIPT_PATH SIDECAR_LOG MANIFEST_PATH QA_PENDING_PATH SCOUT_MANIFEST_PATH PLAN_FILE FEATURE_FILE AGENT_PROMPT TIMEOUT; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
         larch_err "launch-cursor-implement.sh: --$flag_lc is required"
@@ -94,6 +98,10 @@ done
 [[ -f "$PLAN_FILE" ]]    || { larch_err "launch-cursor-implement.sh: plan file not found: $PLAN_FILE"; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { larch_err "launch-cursor-implement.sh: feature file not found: $FEATURE_FILE"; exit 2; }
 [[ -f "$AGENT_PROMPT" ]] || { larch_err "launch-cursor-implement.sh: agent prompt not found: $AGENT_PROMPT"; exit 2; }
+if [[ "$(cd "$(dirname "$MANIFEST_PATH")" && pwd -P)" != "$(cd "$(dirname "$SCOUT_MANIFEST_PATH")" && pwd -P)" ]]; then
+    larch_err "launch-cursor-implement.sh: --scout-manifest-path must share the parent directory with --manifest-path"
+    exit 2
+fi
 if [[ -n "$ANSWERS_FILE" && ! -f "$ANSWERS_FILE" ]]; then
     larch_err "launch-cursor-implement.sh: --answers-file given but path does not exist: $ANSWERS_FILE"
     exit 2
@@ -138,6 +146,7 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
         fi
         emit_kv LAUNCHER_EXIT 0
         emit_kv MANIFEST_WRITTEN false
+        emit_kv SCOUT_MANIFEST_WRITTEN false
         emit_kv STATUS cap_hit
         exit 0
     fi
@@ -231,6 +240,7 @@ PROMPT="$(cat "$AGENT_PROMPT")
 - Original feature description: $FEATURE_FILE
 - Write manifest.json (atomically) at: $MANIFEST_PATH
 - Write qa-pending.json (atomically, only if status=needs_qa) at: $QA_PENDING_PATH
+- Optionally write best-effort scout JSON at: $SCOUT_MANIFEST_PATH
 - Working directory: $PWD (this is the repo root for git operations)
 $RESUME_BLOCK
 
@@ -251,6 +261,7 @@ if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     emit_kv LAUNCHER_EXIT "$MODEL_ARGS_RC"
     emit_kv MANIFEST_WRITTEN false
     emit_kv QA_PENDING_WRITTEN false
+    emit_kv SCOUT_MANIFEST_WRITTEN false
     emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
     emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     exit 0
@@ -274,6 +285,7 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
     emit_kv LAUNCHER_EXIT "$PREFLIGHT_RC"
     emit_kv MANIFEST_WRITTEN false
     emit_kv QA_PENDING_WRITTEN false
+    emit_kv SCOUT_MANIFEST_WRITTEN false
     emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
     emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     # Exit 0 keeps the launcher contract (LAUNCHER_EXIT is the failure
@@ -356,8 +368,10 @@ cursor_launcher_promote_inner_done "$TRANSCRIPT_PATH"
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
+SCOUT_MANIFEST_WRITTEN=false
 if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
 if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
+if [[ -s "$SCOUT_MANIFEST_PATH" ]]; then SCOUT_MANIFEST_WRITTEN=true; fi
 
 if [[ "$MANIFEST_WRITTEN" == true ]] && command -v jq >/dev/null 2>&1; then
     _manifest_status=$(jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_PATH" 2>/dev/null || true)
@@ -377,6 +391,7 @@ fi
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 emit_kv MANIFEST_WRITTEN "$MANIFEST_WRITTEN"
 emit_kv QA_PENDING_WRITTEN "$QA_PENDING_WRITTEN"
+emit_kv SCOUT_MANIFEST_WRITTEN "$SCOUT_MANIFEST_WRITTEN"
 emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
 emit_kv SIDECAR_LOG "$SIDECAR_LOG"
 exit 0

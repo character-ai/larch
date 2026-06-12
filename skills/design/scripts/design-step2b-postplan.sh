@@ -88,6 +88,11 @@ design_source_env_optional() {
 design_source_env_optional
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 _postplan_site="${SITE:-step2b}"
+if [[ "$_postplan_site" != "step2b" ]]; then
+  rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
+        "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
+        "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.*
+fi
 _postplan_args=(--design-tmpdir "$DESIGN_TMPDIR" --with-plan-size)
 case "$_postplan_site" in
   step2b|"") _postplan_args+=(--snapshot-original) ;;
@@ -148,6 +153,10 @@ case "${_postplan_rc:-1}" in
       printf 'true\n' > "$DESIGN_TMPDIR/.step2b-postplan-fallback-used"
       printf 'inline\n' > "$DESIGN_TMPDIR/.step2b-plan-source"
       rm -f "$DESIGN_TMPDIR/plan-summary.md"
+      rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
+            "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
+            "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.*
+      printf 'SCOUT_STALE_CLEARED=true\n'
       : > "$DESIGN_TMPDIR/.step2b-postplan-inline-retry-pending"
       printf '%s\n' "**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**"
     fi

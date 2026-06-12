@@ -49,7 +49,15 @@ Step 3 **may** extend the fixed static panel with up to 3 scout-proposed special
 
 ## Single-pass review
 
-`plan-review-loop.sh` runs exactly one review pass: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt`; when `--prune-round-num` is omitted it defaults to `--round-num`. The outer Step 3 driver (`run-step3-review.sh`) owns the flattened review-round cap of 5, passes the pending review-round number explicitly as `--prune-round-num`, and remains the sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
+`plan-review-loop.sh` runs exactly one review pass: panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt`; when `--prune-round-num` is omitted it defaults to `--round-num`. The outer Step 3 driver (`run-step3-review.sh`) owns the flattened review-round cap of 5, passes the pending review-round number explicitly as `--prune-round-num`, and remains the sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
+
+Dynamic plan-review archetypes are now produced by Step 2b as
+`$DESIGN_TMPDIR/scout-plan-manifest.json`. `scout-plan-archetypes-wrapper.sh`
+is retained as support code for `--filter-manifest`, which validates
+drafter-produced scout manifests with the same cap, reserved-slug, duplicate,
+and prompt-safety rules. Stale Step 2b scout manifests are removed whenever the
+plan is rewritten before Step 3, so inline fallback and post-rewrite reviews run
+static-only unless a fresh drafter run materializes a new manifest.
 
 Normal `/design` Step 3 calls the `design-step3-review.sh` wrapper once with `run_in_background: true` and `timeout: 21600000`; the wrapper runs `run-step3-review.sh --mode loop` internally. `run-step3-review.sh` sources `review-design-step3-loop.sh`, runs every review round internally, applies accepted findings through `revise-plan-with-waterfall.sh --patch-format file-replacement`, runs mechanical dedup/postplan, and emits `STEP3_REVIEW_LOOP_STATUS`. It returns to the main agent only for `main-agent-vote-required`, `main-agent-apply-required`, `per-round-approval-required`, or `postplan-operator-required`; every bail-out resumes the same round through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` after the `<task-notification>` wait, with a durable `.step3-round-N.phase` marker.
 

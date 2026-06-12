@@ -484,6 +484,8 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
+The drafter subprocess may also emit an optional post-plan scout block. The launcher validates, filters, caps, and materializes it as `$DESIGN_TMPDIR/scout-plan-manifest.json`. Invalid scout output after a valid plan is ignored. Misplaced scout sentinels inside the summary or plan are fatal, and `plan.txt` is never repaired or decontaminated to remove scout content.
+
 Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, plan-command validation, plan-size thresholds, and the write-once drift baseline are surfaced through one result contract and thin-fence exit codes. `--snapshot-original` seeds `$DESIGN_TMPDIR/drift-baseline.env` from the initial Step 2b plan-size computation (same `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys used by retained callers) before later revision paths can expand the plan. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
 
 ```bash

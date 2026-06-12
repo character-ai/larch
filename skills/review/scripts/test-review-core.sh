@@ -3,6 +3,7 @@
 
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
+unset IMPLEMENT_TMPDIR SESSION_ENV_PATH LARCH_EXECUTION_ISSUES_LOG 2>/dev/null || true
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
@@ -44,12 +45,14 @@ tmp=""
 panel="hard"
 round_num="1"
 prune_ledger=""
+pre_scouted=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
     --panel) panel="$2"; shift 2 ;;
     --round-num) round_num="$2"; shift 2 ;;
     --prune-ledger) prune_ledger="$2"; shift 2 ;;
+    --pre-scouted-manifest) pre_scouted="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
@@ -135,7 +138,7 @@ if [[ "${TEST_DROPPED_ARCHETYPE:-}" == "testing" ]]; then
 fi
 printf 'DISPATCH_OK=true\n'
 if [[ -n "${TEST_DISPATCH_ARGV_LOG:-}" ]]; then
-  printf 'round=%s\nprune_ledger=%s\n' "$round_num" "$prune_ledger" >> "$TEST_DISPATCH_ARGV_LOG"
+  printf 'round=%s\nprune_ledger=%s\npre_scouted=%s\n' "$round_num" "$prune_ledger" "$pre_scouted" >> "$TEST_DISPATCH_ARGV_LOG"
 fi
 if [[ "${TEST_FULL_STATIC_MANIFEST:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
@@ -555,6 +558,7 @@ run_core() {
     local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
     [[ -n "${TEST_PRUNE_LEDGER:-}" ]] && args+=(--prune-ledger "$TEST_PRUNE_LEDGER")
+    [[ -n "${TEST_PRE_SCOUTED_MANIFEST:-}" ]] && args+=(--pre-scouted-manifest "$TEST_PRE_SCOUTED_MANIFEST")
     LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
@@ -668,6 +672,17 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
 }
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 3 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 3' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
+
+pre_scouted_manifest="$TMP/pre-scouted-manifest.json"
+printf '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}\n' > "$pre_scouted_manifest"
+pre_scout_dispatch_log="$TMP/pre-scout-dispatch-argv.log"
+out=$(TEST_FINDINGS=0 TEST_PRE_SCOUTED_MANIFEST="$pre_scouted_manifest" TEST_SCOUT_STATUS=pre-scouted TEST_DYNAMIC_SLOTS=2 TEST_DISPATCH_ARGV_LOG="$pre_scout_dispatch_log" run_core "$TMP/pre-scout-zero")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+assert_contains "$out" 'SCOUT_STATUS=pre-scouted'
+assert_contains "$out" 'DYNAMIC_SLOTS=2'
+grep -Fq "pre_scouted=$pre_scouted_manifest" "$pre_scout_dispatch_log" || { echo "FAIL: review-core did not forward --pre-scouted-manifest" >&2; exit 1; }
+jq -e '.panel.scout_status == "pre-scouted" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 5' \
+    "$TMP/pre-scout-zero/review-summary.json" >/dev/null || { echo "FAIL: pre-scouted review-summary.json missing panel fields" >&2; cat "$TMP/pre-scout-zero/review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 run_core_flush "$TMP/zero-flush")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'

@@ -159,6 +159,11 @@ done
 [[ -d "$TMPDIR_ARG" ]] || { larch_err "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG"; exit 2; }
 TMPDIR_ARG=$(cd "$TMPDIR_ARG" && pwd -P)
 export IMPLEMENT_TMPDIR="$TMPDIR_ARG"
+SCOUT_CODER_MANIFEST="$TMPDIR_ARG/scout-coder-manifest.json"
+EXTERNAL_SCOUT_ELIGIBLE_MARKER="$TMPDIR_ARG/step2-external-scout-eligible.txt"
+clear_external_scout_state() {
+    rm -f "$SCOUT_CODER_MANIFEST" "$EXTERNAL_SCOUT_ELIGIBLE_MARKER" "$TMPDIR_ARG"/codex-step2-out/scout-coder-manifest.json 2>/dev/null || true
+}
 if [[ -s "$TMPDIR_ARG/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "$TMPDIR_ARG/session-id" 2>/dev/null || true)
     if [[ -n "$file_id" ]]; then
@@ -177,6 +182,7 @@ fi
 # git-free (claude_fallback may be invoked outside a git working tree, and it
 # needs no plugin assets).
 if [[ "$CODER" == "claude" ]]; then
+    clear_external_scout_state
     emit_kv STATUS claude_fallback
     emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0
@@ -198,6 +204,7 @@ fi
 # above. The gate runs only on the cursor path; codex/claude are unaffected
 # by the value of --cursor-present.
 if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT_ARG" != "true" ]]; then
+    clear_external_scout_state
     emit_kv STATUS claude_fallback
     emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0
@@ -212,6 +219,7 @@ REQUIRES_HEAD_UNCHANGED=false
 # it stays empty for coders that do not salvage (Cursor).
 WARN_NONZERO_EXIT_SALVAGE=false
 NONZERO_EXIT_WARN_TOKEN=""
+SCOUT_CODER_STATUS=""
 
 # ---------------------------------------------------------------------------
 # External implementer path. Set up paths inside $TMPDIR_ARG.
@@ -267,12 +275,14 @@ MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
 MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"
 QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
 TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
+LAUNCH_SCOUT_MANIFEST_PATH="$SCOUT_CODER_MANIFEST"
 if [[ "$CODER" == "codex" ]]; then
     STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
     mkdir -p "$STEP2_OUT_DIR"
     MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
     QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
     TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
+    LAUNCH_SCOUT_MANIFEST_PATH="$STEP2_OUT_DIR/scout-coder-manifest.json"
 fi
 SIDECAR_LOG="$TMPDIR_ARG/${TOOL_TAG}-impl.log"
 
@@ -467,6 +477,95 @@ manifest_on_disk_is_salvageable_complete() {
     ' "$MANIFEST_PATH" >/dev/null 2>&1
 }
 
+write_empty_coder_scout_manifest() {
+    local target="$1" tmp
+    mkdir -p "$(dirname "$target")"
+    tmp=$(mktemp "${target}.tmp.XXXXXX") || return 1
+    printf '{"archetypes":[]}\n' >"$tmp"
+    mv -f "$tmp" "$target"
+}
+
+normalize_coder_scout_manifest() {
+    local input="$1" output="$2" tmp
+    [[ -s "$input" ]] || return 1
+    tmp=$(mktemp "${output}.normalize.XXXXXX") || return 1
+    if ! jq -c '
+        def reserved:
+          ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
+           "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
+           "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
+        def has_unsafe_wrapper_tag:
+          (ascii_downcase
+           | contains("</scout_notes>")
+             or contains("</reviewer_feature_description>")
+             or contains("</plan_review_scope_anchor>")
+             or contains("</feature>"));
+        def has_unsafe_plan_delimiter:
+          test("<implementation_plan")
+          or test("<feature_description")
+          or test("<reviewer_feature_description")
+          or test("<plan_review_scope_anchor")
+          or test("<feature[ >]");
+        def has_unsafe_rationale:
+          has_unsafe_wrapper_tag
+          or has_unsafe_plan_delimiter
+          or test("\n")
+          or test("(?m)^---$");
+        reduce .archetypes[]? as $a
+          ({seen:{}, archetypes:[]};
+           ($a.name // "") as $name
+           | if (($a | type) != "object") then .
+             elif (($name | type) != "string") or (($name | test("^[a-z][a-z0-9-]{2,40}$")) | not) then .
+             elif (reserved | index($name)) then .
+             elif (.seen[$name] // false) then .
+             elif ((["code-quality","risk-integration","correctness","architecture","security"] | index($a.focus_area)) | not) then .
+             elif (($a.weight | type) != "number") or (($a.weight % 1) != 0) or ($a.weight < 1) or ($a.weight > 8) then .
+             elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then .
+             elif ($a.rationale | has_unsafe_rationale) then .
+             elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then .
+             elif (($a.prompt_body | test("(?m)^---$"))
+                   or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
+                   or ($a.prompt_body | has_unsafe_wrapper_tag)
+                   or ($a.prompt_body | has_unsafe_plan_delimiter)) then .
+             else
+               .seen[$name] = true
+               | if (.archetypes | length) < 3 then
+                   (if ($a.prompt_body | test("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly\\.?$"))
+                    then $a.prompt_body
+                    else ($a.prompt_body | rtrimstr(" ") | rtrimstr(".")) + " Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
+                    end) as $repaired_body
+                   | .archetypes += [{
+                     name:$name,
+                     focus_area:$a.focus_area,
+                     weight:($a.weight | floor),
+                     rationale:$a.rationale,
+                     prompt_body:$repaired_body
+                   }]
+                 else . end
+             end)
+        | {archetypes}
+    ' "$input" >"$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    mv -f "$tmp" "$output"
+}
+
+materialize_external_coder_scout() {
+    SCOUT_CODER_STATUS="ok"
+    if ! normalize_coder_scout_manifest "$LAUNCH_SCOUT_MANIFEST_PATH" "$SCOUT_CODER_MANIFEST"; then
+        write_empty_coder_scout_manifest "$SCOUT_CODER_MANIFEST" || true
+        SCOUT_CODER_STATUS="missing-or-invalid"
+    fi
+    printf 'eligible\n' >"${EXTERNAL_SCOUT_ELIGIBLE_MARKER}.tmp"
+    mv -f "${EXTERNAL_SCOUT_ELIGIBLE_MARKER}.tmp" "$EXTERNAL_SCOUT_ELIGIBLE_MARKER"
+    {
+        printf 'SCOUT_CODER_STATUS=%s\n' "$SCOUT_CODER_STATUS"
+        printf 'SCOUT_CODER_MANIFEST=%s\n' "$SCOUT_CODER_MANIFEST"
+    } >"$TMPDIR_ARG/step2-scout-coder-status.env.tmp"
+    mv -f "$TMPDIR_ARG/step2-scout-coder-status.env.tmp" "$TMPDIR_ARG/step2-scout-coder-status.env"
+}
+
 # Recovery preserves the pair invariant: STATUS=claude_fallback is the only
 # AUTH=allowed envelope, and RECOVERY_FROM/RECOVERY_PRIOR_TOOL/RECOVERY_PATHS_FILE
 # are an all-or-none triplet. It is commit-only recovery for a malformed
@@ -533,6 +632,7 @@ emit_manifest_invalid_or_recover() {
     emit_kv RECOVERY_FROM manifest-schema-invalid
     emit_kv RECOVERY_PRIOR_TOOL "$TOOL_TAG"
     emit_kv RECOVERY_PATHS_FILE "$RECOVERY_PATHS_FILE"
+    clear_external_scout_state
     exit 0
 }
 
@@ -643,7 +743,8 @@ if (( RESUME_COUNT > 5 )); then
 fi
 
 # Step 3: clean stale implementer outputs from prior invocations BEFORE launching.
-rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH" "$SIDECAR_LOG"
+rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH" "$SIDECAR_LOG" "$LAUNCH_SCOUT_MANIFEST_PATH"
+clear_external_scout_state
 
 # Recovery baseline: capture the pre-launch working tree once, before either
 # external implementer attempt. The malformed-manifest recovery path uses this
@@ -662,6 +763,7 @@ run_launcher() {
         --sidecar-log "$SIDECAR_LOG"
         --manifest-path "$MANIFEST_PATH"
         --qa-pending-path "$QA_PENDING_PATH"
+        --scout-manifest-path "$LAUNCH_SCOUT_MANIFEST_PATH"
         --plan-file "$PLAN_FILE"
         --feature-file "$FEATURE_FILE"
         --agent-prompt "$AGENT_PROMPT"
@@ -855,6 +957,7 @@ esac
 # bailed is passed through verbatim).
 if [[ "$STATUS" != "bailed" ]]; then
     run_post_implementer_safety_gates
+    materialize_external_coder_scout
 fi
 
 # Step 7: complete-only path-normalization check on manifest paths.
@@ -1149,6 +1252,8 @@ case "$STATUS" in
         emit_kv MANIFEST "$MANIFEST_PATH"
         emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
         emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        emit_kv SCOUT_CODER_MANIFEST "$SCOUT_CODER_MANIFEST"
+        emit_kv SCOUT_CODER_STATUS "${SCOUT_CODER_STATUS:-}"
         # Advisory salvage marker (issue #3383): the implementer exited non-zero
         # after writing this complete manifest and the dispatcher salvaged it.
         if [[ "$WARN_NONZERO_EXIT_SALVAGE" == "true" && -n "$NONZERO_EXIT_WARN_TOKEN" ]]; then
@@ -1163,6 +1268,8 @@ case "$STATUS" in
         emit_kv QA_PENDING "$QA_PENDING_PATH"
         emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
         emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        emit_kv SCOUT_CODER_MANIFEST "$SCOUT_CODER_MANIFEST"
+        emit_kv SCOUT_CODER_STATUS "${SCOUT_CODER_STATUS:-}"
         emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
         ;;
     bailed)

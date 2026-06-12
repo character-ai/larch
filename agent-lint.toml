@@ -352,6 +352,8 @@ exclude = [
   "scripts/launch-codex-drafter.md",
   "scripts/test-launch-codex-drafter.sh",
   "scripts/test-launch-codex-drafter.md",
+  "scripts/test-parse-drafter-output.sh",
+  "scripts/test-parse-drafter-output.md",
   "python/cli.py plugin read-version",
   # skills/implement/scripts/test-step2-dispatch.sh is the offline regression
   # harness for skills/implement/scripts/step2-implement.sh (the /implement

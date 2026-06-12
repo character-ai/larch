@@ -940,17 +940,22 @@ cat > "$TMP/review-core-capture-dynamic-stub.sh" <<'EOF_CORE_DYNAMIC'
 set -euo pipefail
 out=""
 dynamic=""
+pre_scouted=""
 round="1"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir) out="$2"; shift 2 ;;
     --dynamic-archetypes) dynamic="$2"; shift 2 ;;
+    --pre-scouted-manifest) pre_scouted="$2"; shift 2 ;;
     --round-num) round="$2"; shift 2 ;;
     *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
   esac
 done
 mkdir -p "$out"
-printf 'DYNAMIC_ARCHETYPES=%s\n' "$dynamic" > "${CAPTURE_DYNAMIC_FILE:?}"
+{
+  printf 'DYNAMIC_ARCHETYPES=%s\n' "$dynamic"
+  printf 'PRE_SCOUTED_MANIFEST=%s\n' "$pre_scouted"
+} > "${CAPTURE_DYNAMIC_FILE:?}"
 : > "$out/accepted-findings.md"
 : > "$out/rejected-findings.md"
 printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
@@ -980,6 +985,33 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "empty dynamic env expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "empty dynamic env status"
 grep -Fq 'DYNAMIC_ARCHETYPES=3' "$capture_dynamic" || fail "empty dynamic env should fall through to session-env dynamic cap"
+
+work_pre_scout_forward="$TMP/pre-scout-forward"
+make_work_repo "$work_pre_scout_forward"
+implement_tmp="$work_pre_scout_forward/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+pre_scouted_manifest="$implement_tmp/pre-scouted-manifest.json"
+printf '{"archetypes":[]}\n' > "$pre_scouted_manifest"
+capture_dynamic="$TMP/review-core-pre-scouted.env"
+set +e
+out=$(
+    cd "$work_pre_scout_forward" && \
+    CAPTURE_DYNAMIC_FILE="$capture_dynamic" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-capture-dynamic-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id pre-scout-forward-run \
+        --pre-scouted-manifest "$pre_scouted_manifest" --dynamic-archetypes 0
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "pre-scout forward expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "pre-scout forward status"
+grep -Fxq 'DYNAMIC_ARCHETYPES=0' "$capture_dynamic" || fail "review-and-fix should preserve dynamic-archetypes 0"
+grep -Fxq "PRE_SCOUTED_MANIFEST=$pre_scouted_manifest" "$capture_dynamic" || fail "review-and-fix should forward --pre-scouted-manifest"
 
 work_no_changes="$TMP/no-changes"
 make_work_repo "$work_no_changes"
