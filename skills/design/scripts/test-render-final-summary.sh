@@ -36,6 +36,9 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'missing Cost bullet'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing sentinel'
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
+grep -Fq -- '## Review Phase Detail' "$D/final-summary.md" || fail 'no-plan-review final summary missing Review Phase Detail'
+grep -Fq -- 'No review rounds completed.' "$D/final-summary.md" || fail 'no-plan-review final summary missing no-round message'
+grep -Fq -- '## Review Phase Detail' "$std" || fail 'no-plan-review stdout missing Review Phase Detail'
 # Plan review line must report non-zero when accepted-plan-findings.md has FINDING_ blocks.
 if grep -Fq -- '- **Plan review**: 0 findings' "$D/final-summary.md"; then
     fail 'plan review line must not show 0 findings when accepted-plan-findings.md has accepted blocks'
@@ -733,6 +736,8 @@ cat >"$RPD_D/plan-review/round-1/round-meta.json" <<'JSON'
 JSON
 printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700000065\t65\t2\t1\t1\t-\n' \
     >"$RPD_D/timing-ledger.tsv"
+printf 'v1\tvendor\t1700000010\timplement\t-\tclaude\treview\t1700000010\t1700000060\t50\tclaude-plan-generic-output.txt\t0\tcomplete\n' \
+    >>"$RPD_D/timing-ledger.tsv"
 std_rpd="$TMP/std-review-phase-detail.log"
 DESIGN_TMPDIR="$RPD_D" ISSUE_NUMBER="" SESSION_ID="RUN-RPD" \
     "$SUBJECT" --outcome approved --post-publish-only >"$std_rpd" 2>/dev/null
@@ -744,6 +749,14 @@ grep -Fq -- '1. claude_sub/claude-plan-generic — 2' "$RPD_D/final-summary.md" 
     || fail "Review Phase Detail top reviewer wrong: $(grep -F 'claude' "$RPD_D/final-summary.md" || true)"
 grep -Fq -- '**Reviewer slot failures**: 1' "$RPD_D/final-summary.md" \
     || fail 'Review Phase Detail missing collector failure count'
+grep -Fq -- '### Round 1 reviewer timing' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing reviewer timing heading'
+grep -Fq -- '```mermaid' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing Mermaid fence'
+grep -Fq -- 'dateFormat X' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing dateFormat X'
+grep -Fq -- 'axisFormat %H:%M:%S' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing hour axisFormat'
 grep -Fq -- '## Review Phase Detail' "$std_rpd" || fail 'stdout missing Review Phase Detail section'
 pass 'post-publish appends Review Phase Detail from plan-review rounds'
 

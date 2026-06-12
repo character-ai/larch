@@ -90,7 +90,7 @@ renderer omits those flags and the bullet shows `N/A`.
 
 Before composing the note appendix, the script runs
 [`scripts/render-review-phase-detail.sh`](../../../scripts/render-review-phase-detail.md)
-with `--rounds-root "$IMPLEMENT_TMPDIR"`,
+with `--rounds-root "$run_dir"`,
 `--findings-file "$run_dir/review-findings-full.jsonl"`,
 `--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, the resolved
 `--token-ledger "$IMPLEMENT_TMPDIR/larch-tokens-<hash>.jsonl"` (globbed; omitted
@@ -100,20 +100,27 @@ the existing notes), so the section lands in the `--note-lines-file` appendix th
 `render-run-summary.sh` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
 
 The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
-time, cost, reviewers launched), a Total row, the top reviewers by suggestions
-accepted (`vendor/archetype`), and a failed-reviewer-slot breakdown. The Cost
-column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
+time, cost, reviewers launched), a Total row, optional reviewer timing Mermaid
+Gantt charts, the top reviewers by suggestions accepted (`vendor/archetype`),
+and a failed-reviewer-slot breakdown. Final reports do not pass `--no-gantt`.
+Reviewer timing charts are included when timing data is available. The
+`--no-gantt` flag is reserved for terminal progress output so live progress stays
+plain text.
+
+The Cost column is the per-round **vendor** cost (Codex + Cursor + Claude subprocess),
 attributed by token-ledger timestamp window and priced via `python/report_tokens_cost.py`; it
 excludes main-agent Claude, so it is a distinct datum from (and less than) the
 single-source dollar-primary `- **Cost**:` line that `render-run-summary.sh` owns.
 
-The helper is best-effort and renders **nothing** when there were no panel review
-rounds (for example `--self-review` runs, where Step 5 does no panel review), so
-the note block is unchanged in that case; a render failure is swallowed
+The helper is best-effort. For a valid selected rounds root with zero completed
+rounds (for example `--self-review` runs, where Step 5 does no panel review), it
+renders `## Review Phase Detail` plus `No review rounds completed.`. A completed
+`round-meta.json` only outside the selected `--rounds-root` is still not counted
+as a completed round; the final report shows the no-completed-round message for
+that selected valid root. A render failure is swallowed
 (`|| : >"$review_detail_file"`) and never blocks the report. `/design`'s plan
-review uses a different data model (no per-round `round-meta.json`), so this
-injection is `/implement`-only — see the helper's `.md` for the `/design`
-follow-up.
+review uses the same shared renderer through its final summary helper; see the
+helper's `.md` for the `/design` contract.
 
 ## Token-data-missing primary path
 

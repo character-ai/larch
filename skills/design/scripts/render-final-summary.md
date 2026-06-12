@@ -4,8 +4,9 @@
 
 **Purpose**: `/design` terminal summary dispatcher. Gathers token/timing JSON,
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
-then composes `review-findings-full.jsonl`, renders the best-effort Review Phase Detail appendix when `plan-review/` exists, invokes `scripts/render-run-summary.sh --skill design`, and (post-publish
-phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
+then composes `review-findings-full.jsonl`, renders the best-effort Review Phase
+Detail appendix, invokes `scripts/render-run-summary.sh --skill design`, and
+(post-publish phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
 via `python3 python/cli.py tracking-issue upsert-summary` **internally** (SKILL.md references only
 this helper).
 
@@ -57,7 +58,21 @@ flags to the renderer.
 
 ## Review Phase Detail appendix
 
-Before invoking `render-run-summary.sh`, `invoke_render()` removes stale `review-phase-detail.md` and, when `$DESIGN_TMPDIR/plan-review` exists, removes stale `review-findings-full.jsonl`, calls `scripts/compose-review-findings.sh --design-artifacts-dir`, and then calls `scripts/render-review-phase-detail.sh --skill design` with `--rounds-root`, `--findings-file`, `--timing-ledger`, optional `--token-ledger`, and `--output`. Compose/render failures truncate the relevant intermediate and continue. The append check for `review-phase-detail.md` is outside the plan-review directory guard, so a valid non-empty intermediate can still be honored independently of the guard. The compose path owns cumulative `accepted-plan-findings-all.md` precedence, Gate B skipped-finding filtering, and reviewer-slot basename normalization. The new calls are best-effort and do not toggle global `errexit`.
+Before invoking `render-run-summary.sh`, `invoke_render()` removes stale
+`review-phase-detail.md`, prepares a valid rounds root, removes stale
+`review-findings-full.jsonl`, calls
+`scripts/compose-review-findings.sh --design-artifacts-dir`, and then calls
+`scripts/render-review-phase-detail.sh --skill design` with `--rounds-root`,
+`--findings-file`, `--timing-ledger`, optional `--token-ledger`, and `--output`.
+When `$DESIGN_TMPDIR/plan-review` is absent, it creates that directory as an
+empty rounds root so the shared renderer can emit `## Review Phase Detail` plus
+`No review rounds completed.`. If preparing that root fails, the helper keeps the
+prior best-effort empty behavior. Final summaries do not pass `--no-gantt`, so
+reviewer timing Gantt charts appear when timing data is available. Compose/render
+failures truncate the relevant intermediate and continue. The compose path owns
+cumulative `accepted-plan-findings-all.md` precedence, Gate B skipped-finding
+filtering, and reviewer-slot basename normalization. The calls are best-effort
+and do not toggle global `errexit`.
 
 ## Degraded render — fallback
 

@@ -23,6 +23,7 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 | `--token-ledger F` | no | `larch-tokens-<hash>.jsonl`; vendor token records (timestamp-windowed to each round) supply the per-round vendor Cost column. |
 | `--skill implement\|design` | no | Default `implement`; `design` renders the same table from design plan-review round artifacts. |
 | `--top-n N` | no | Top-reviewers cap (default `7`). |
+| `--no-gantt` | no | Suppress Mermaid reviewer timing charts only. Intended for terminal progress callers. |
 | `--output F` | no | Write the section to `F`; otherwise print to stdout. |
 
 ## Data sources (per round)
@@ -39,6 +40,13 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 - **Time** — `timing-ledger.tsv` `type=round` rows (`max(end_s) - min(start_s)` per
   round number, column 6). Renders `—` when no ledger / round timing is present
   (committed logs do not carry the ledger).
+- **Reviewer timing charts**: `timing-ledger.tsv` `type=vendor` rows provide
+  reviewer task windows. Column 8 is `start_s`; column 9 is `end_s`. Round
+  windows come from `type=round` rows. Vendor rows are selected by `$2 ==
+  "vendor"` plus overlap with the round window only. They are not filtered by
+  `$4` or `--skill`. Matching rows are clamped to the round window, normalized
+  to integer seconds since the round start, sorted by start, end, and label, and
+  capped at 25 tasks per round.
 - **Cost** — the per-round **vendor** cost (Codex + Cursor + Claude subprocess).
   Vendor token records from `--token-ledger` are attributed to a round by
   timestamp window (`jq fromdateiso8601` on each record's `ts` against the
@@ -51,6 +59,14 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
   the token ledger or per-round timing is unavailable, and `$0.00` when the
   ledger is present but no vendor records fall in the round's window. The Total
   row sums the per-round vendor costs.
+
+## Mermaid timing format
+
+Reviewer timing uses Mermaid `gantt` blocks with `dateFormat X` and
+`axisFormat %H:%M:%S`. Task lines use integer relative start and relative end
+seconds. They do not use a trailing `s` duration suffix. Task ids are
+deterministic ASCII-safe per-round ids such as `r1_t1`; labels are sanitized
+display text only and do not determine ids.
 
 ## Vendor/archetype attribution
 
@@ -68,11 +84,17 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 ## Output / exit codes
 
 - Renders the section to `--output` (or stdout) and exits `0`.
-- When there are no numeric `round-<N>/` dirs with a `round-meta.json` (e.g.
-  `--self-review` runs, or review skipped), it renders **nothing** (empty output)
-  and exits `0`, so the final report is unchanged.
-- Observability-only: missing `jq`, unreadable artifacts, or partial data
-  degrade gracefully and still exit `0`. Usage / bad-argument errors exit `2`.
+- Omitted `--rounds-root` remains a usage error and exits `2`.
+- Valid readable roots with zero completed rounds render `## Review Phase Detail`
+  plus `No review rounds completed.`. Existing in-flight `round-<N>/`
+  directories without completed metadata use the same no-completed-round message.
+- Provided missing roots, unreadable roots, missing `jq`, unreadable artifacts, or
+  partial data degrade gracefully and still exit `0` with empty or partial output.
+- Gantt charts appear after the table and before `**Top reviewers**` unless
+  `--no-gantt` is passed. Missing timing ledgers mean no charts. Rounds without
+  usable round windows omit that round chart. A usable round window with no
+  overlapping vendor rows renders a short no-task note under that round timing
+  heading.
 
 ## `/design` scope
 
@@ -87,7 +109,9 @@ block's `TOOL` plus archetype from the `REVIEWER_FILE` basename.
 
 - `skills/implement/scripts/write-final-report.sh` and
   `skills/implement/scripts/write-final-report.md`.
+- `skills/implement/scripts/test-write-final-report.sh`.
 - `skills/design/scripts/render-final-summary.sh` and
   `skills/design/scripts/render-final-summary.md`.
+- `python/progress_report.py` and `python/test_progress_report.py`.
 - `scripts/test-render-review-phase-detail.sh` (+ `.md`) and the Makefile target /
   shard registration.

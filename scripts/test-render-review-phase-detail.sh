@@ -48,9 +48,14 @@ cat >"$ROOT/review-findings-full.jsonl" <<'JSON'
 {"id":"FINDING_5","outcome":"accepted","reviewer_slots":["cursor-specialist-correctness-output.txt"],"round_num":"2"}
 JSON
 
-# timing ledger: round 1 = 300s (5m), round 2 = 120s (2m).
-printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000300\t300\t2\t1\t2\t-\n' >"$ROOT/timing-ledger.tsv"
-printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001120\t120\t3\t0\t0\t-\n' >>"$ROOT/timing-ledger.tsv"
+# timing ledger: round 1 = 300s (5m), round 2 = 120s (2m), plus vendor tasks.
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000300\t300\t2\t1\t2\t-\n'
+    printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001120\t120\t3\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000010\timplement\t-\tcursor\treview\t1700000000\t1700000120\t120\tcursor-specialist-structure-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000020\timplement\t-\tcodex\treview\t1700000060\t1700000200\t140\tReviewer:Unsafe,Name-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700001010\timplement\t-\tcursor\treview\t1700001010\t1700001100\t90\tcursor-specialist-correctness-output.txt\t0\tcomplete\n'
+} >"$ROOT/timing-ledger.tsv"
 
 OUT="$WORK/section.md"
 "$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" \
@@ -85,6 +90,40 @@ if grep -Fq -- '💰' "$OUT"; then fail 'output must not contain the dollar-prim
 grep -Fq -- 'per-round vendor cost' "$OUT" || fail 'missing vendor-cost footnote'
 pass 'no-token-ledger cost cells are em dashes; footnote present'
 
+# --- Test 5b: reviewer timing Gantt charts render after table and before top reviewers ---
+total_line=$(grep -nF '| **Total** |' "$OUT" | head -1 | cut -d: -f1 || true)
+gantt_line=$(grep -nF '### Round 1 reviewer timing' "$OUT" | head -1 | cut -d: -f1 || true)
+top_line=$(grep -nF '**Top reviewers**' "$OUT" | head -1 | cut -d: -f1 || true)
+[[ -n "$total_line" && -n "$gantt_line" && -n "$top_line" && "$total_line" -lt "$gantt_line" && "$gantt_line" -lt "$top_line" ]] \
+    || fail 'Gantt chart must render after Total row and before Top reviewers'
+grep -Fq -- '```mermaid' "$OUT" || fail 'Gantt chart missing Mermaid fence'
+grep -Fq -- 'gantt' "$OUT" || fail 'Gantt chart missing gantt directive'
+grep -Fq -- 'dateFormat X' "$OUT" || fail 'Gantt chart missing dateFormat X'
+grep -Fq -- 'axisFormat %H:%M:%S' "$OUT" || fail 'Gantt chart missing hour axisFormat'
+if grep -Fq -- 'axisFormat %M:%S' "$OUT"; then fail 'Gantt chart must not use minute-wrapping axisFormat'; fi
+grep -Eq ':[^,]+, [0-9]+, [0-9]+$' "$OUT" || fail 'Gantt task line must use start and end fields'
+grep -Eq ':[^,]+, [1-9][0-9]*, [0-9]+$' "$OUT" || fail 'Gantt fixture must include nonzero task start'
+if grep -Eq ':[^,]+, [0-9]+, [0-9]+s$' "$OUT"; then fail 'Gantt task line must not use duration suffix'; fi
+grep -Fq -- 'cursor/structure :r1_t1' "$OUT" || fail 'Gantt label must use slot_map when available'
+grep -Fq -- 'unknown/reviewer -unsafe name :r1_t2' "$OUT" || fail 'Gantt fallback label must render sanitized unsafe punctuation'
+grep -Fq -- 'cursor/correctness :r2_t1' "$OUT" || fail 'Gantt must render round 2 task'
+grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'Gantt must render round 2 heading'
+if grep -Eq '^[[:space:]]+.*[:,].*:r[0-9]+_t[0-9]+,' "$OUT"; then
+    fail 'Gantt labels must not contain unsafe colon/comma punctuation'
+fi
+r1_ids=$(grep -Eo 'r1_t[0-9]+' "$OUT" | sort | uniq | wc -l | tr -d ' ')
+r1_task_lines=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$OUT" || true)
+[ "$r1_ids" -eq "$r1_task_lines" ] || fail 'Gantt ids must be deterministic and unique per round'
+pass 'reviewer timing Gantt charts render with safe labels and ids'
+
+NO_GANTT_OUT="$WORK/no-gantt.md"
+"$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" \
+    --timing-ledger "$ROOT/timing-ledger.tsv" --skill implement --no-gantt --output "$NO_GANTT_OUT"
+grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 5m 00s | — | 6 |' "$NO_GANTT_OUT" || fail '--no-gantt must keep table rows'
+if grep -Fq -- '```mermaid' "$NO_GANTT_OUT"; then fail '--no-gantt must suppress Mermaid fences'; fi
+if grep -Fq -- '### Round 1 reviewer timing' "$NO_GANTT_OUT"; then fail '--no-gantt must suppress timing headings'; fi
+pass '--no-gantt suppresses charts only'
+
 # --- Test 6: singular "reviewer" schema fallback ---
 OLD="$WORK/old"
 mkdir -p "$OLD/round-1"
@@ -101,13 +140,24 @@ grep -Fq -- 'cursor/edge-cases — 1' "$OUT_OLD" || fail "singular reviewer fall
 grep -Fq -- '| 1 | 1 | 1 | 0 | 0 | — | — | 2 |' "$OUT_OLD" || fail "old-schema row wrong: $(grep -F '| 1 |' "$OUT_OLD" || true)"
 pass 'singular reviewer fallback + missing-timing em dash'
 
-# --- Test 7: no rounds -> empty output, exit 0 ---
+# --- Test 7: no completed rounds -> explicit no-round message, exit 0 ---
 EMPTY="$WORK/empty"
 mkdir -p "$EMPTY"
 EOUT="$WORK/empty.md"
 "$HELPER" --rounds-root "$EMPTY" --skill implement --output "$EOUT"
-[ ! -s "$EOUT" ] || fail 'no-rounds case must produce empty output'
-pass 'no rounds -> empty output'
+[ -s "$EOUT" ] || fail 'no-rounds case must produce non-empty output'
+grep -Fq -- '## Review Phase Detail' "$EOUT" || fail 'no-rounds case missing section heading'
+grep -Fq -- 'No review rounds completed.' "$EOUT" || fail 'no-rounds case missing no-completed-rounds message'
+pass 'no completed rounds -> no-round message'
+
+INFLIGHT="$WORK/inflight"
+mkdir -p "$INFLIGHT/round-1"
+: >"$INFLIGHT/round-1/panel-manifest.ndjson"
+IOUT="$WORK/inflight.md"
+"$HELPER" --rounds-root "$INFLIGHT" --skill implement --output "$IOUT"
+[ -s "$IOUT" ] || fail 'in-flight-only case must produce non-empty output'
+grep -Fq -- 'No review rounds completed.' "$IOUT" || fail 'in-flight-only case missing no-completed-rounds message'
+pass 'in-flight round dirs only -> no-round message'
 
 # --- Test 8: usage errors exit 2 ---
 rc=0; "$HELPER" --skill implement >/dev/null 2>&1 || rc=$?
@@ -190,6 +240,7 @@ cat >"$DR/review-findings-full.jsonl" <<'JSON'
 {"id":"FINDING_D2","outcome":"accepted","reviewer_slots":["claude-plan-generic-output.txt"],"round_num":""}
 JSON
 printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700000065\t65\t2\t1\t1\t-\n' >"$DR/timing-ledger.tsv"
+printf 'v1\tvendor\t1700000010\timplement\t-\tclaude\treview\t1700000010\t1700000060\t50\tclaude-plan-generic-output.txt\t0\tcomplete\n' >>"$DR/timing-ledger.tsv"
 DOUT="$WORK/design-section.md"
 "$HELPER" --rounds-root "$DR" --findings-file "$DR/review-findings-full.jsonl" \
     --timing-ledger "$DR/timing-ledger.tsv" --skill design --output "$DOUT"
@@ -201,7 +252,43 @@ grep -Fq -- '1. claude_sub/claude-plan-generic — 2' "$DOUT" \
 grep -Fq -- '**Reviewer slot failures**: 1' "$DOUT" || fail 'design collector placeholder failure count missing'
 grep -Fq -- '- unknown/collector-failure-1: 1' "$DOUT" \
     || fail "design collector placeholder failure attribution wrong: $(grep -F 'collector-failure' "$DOUT" || true)"
-pass 'design skill fixture renders counts, attribution, and collector failures'
+grep -Fq -- '### Round 1 reviewer timing' "$DOUT" || fail 'design skill fixture missing reviewer timing despite vendor skill mismatch'
+grep -Fq -- 'claude_sub/claude-plan-generic :r1_t1' "$DOUT" || fail 'design skill fixture must join vendor row to slot_map despite vendor skill mismatch'
+pass 'design skill fixture renders counts, attribution, collector failures, and timing'
+
+CAP="$WORK/cap-run"
+mkdir -p "$CAP/round-1"
+cat >"$CAP/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":30}}}
+JSON
+printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700001000\t1000\t0\t0\t0\t-\n' >"$CAP/timing-ledger.tsv"
+for i in $(seq 1 30); do
+    start=$((1700000000 + i))
+    end=$((start + 10))
+    printf 'v1\tvendor\t%s\timplement\t-\tcodex\treview\t%s\t%s\t10\tcodex-specialist-cap-%02d-output.txt\t0\tcomplete\n' "$start" "$start" "$end" "$i" >>"$CAP/timing-ledger.tsv"
+done
+CAP_OUT="$WORK/cap.md"
+"$HELPER" --rounds-root "$CAP" --timing-ledger "$CAP/timing-ledger.tsv" --skill implement --output "$CAP_OUT"
+cap_tasks=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$CAP_OUT" || true)
+[ "$cap_tasks" -eq 25 ] || fail "Gantt task cap must render 25 tasks (got $cap_tasks)"
+pass 'Gantt task cap limits each round to 25 tasks'
+
+MAL="$WORK/malformed-run"
+mkdir -p "$MAL/round-1"
+cat >"$MAL/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"1","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":1}}}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000100\t100\t1\t0\t0\t-\n'
+    printf 'malformed\n'
+    printf 'v1\tvendor\tbad\timplement\t-\tcodex\treview\tbad\trow\t0\tbad-output.txt\t0\tcomplete\n'
+} >"$MAL/timing-ledger.tsv"
+MAL_OUT="$WORK/malformed.md"
+"$HELPER" --rounds-root "$MAL" --timing-ledger "$MAL/timing-ledger.tsv" --skill implement --output "$MAL_OUT" \
+    || fail 'malformed timing rows must not fail rendering'
+grep -Fq -- '| 1 | 1 | 1 | 0 | 0 | 1m 40s | — | 1 |' "$MAL_OUT" || fail 'malformed timing rows must keep the table'
+grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$MAL_OUT" || fail 'malformed timing rows should render no-task note'
+pass 'malformed timing rows are best-effort'
 
 ROUND_META="$REPO/scripts/write-design-round-meta.sh"
 TSV_SEC="$WORK/tsv-fallback-security-oos"

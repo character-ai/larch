@@ -32,10 +32,11 @@ TOKEN_LEDGER=""
 SKILL="implement"
 OUTPUT=""
 TOP_N=7
+GANTT_ENABLED=1
 
 usage() {
     printf '%s\n' \
-        "Usage: render-review-phase-detail.sh --rounds-root DIR [--findings-file F] [--timing-ledger F] [--token-ledger F] [--skill implement|design] [--top-n N] [--output F]" >&2
+        "Usage: render-review-phase-detail.sh --rounds-root DIR [--findings-file F] [--timing-ledger F] [--token-ledger F] [--skill implement|design] [--top-n N] [--no-gantt] [--output F]" >&2
 }
 
 while [ $# -gt 0 ]; do
@@ -46,6 +47,7 @@ while [ $# -gt 0 ]; do
         --token-ledger) [ $# -ge 2 ] || { usage; exit 2; }; TOKEN_LEDGER=$2; shift 2 ;;
         --skill) [ $# -ge 2 ] || { usage; exit 2; }; SKILL=$2; shift 2 ;;
         --top-n) [ $# -ge 2 ] || { usage; exit 2; }; TOP_N=$2; shift 2 ;;
+        --no-gantt) GANTT_ENABLED=0; shift ;;
         --output) [ $# -ge 2 ] || { usage; exit 2; }; OUTPUT=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 2 ;;
@@ -64,7 +66,7 @@ finalize_empty() {
 
 # Without jq we cannot parse the JSON artifacts; degrade to no section.
 command -v jq >/dev/null 2>&1 || finalize_empty
-[ -d "$ROUNDS_ROOT" ] || finalize_empty
+[ -d "$ROUNDS_ROOT" ] && [ -r "$ROUNDS_ROOT" ] && [ -x "$ROUNDS_ROOT" ] || finalize_empty
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/review-phase-detail.XXXXXX")" || finalize_empty
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -81,7 +83,19 @@ for d in "$ROUNDS_ROOT"/round-*/; do
     printf '%s\n' "$rn"
 done | sort -n >"$rounds_list"
 
-[ -s "$rounds_list" ] || finalize_empty
+if [ ! -s "$rounds_list" ]; then
+    no_rounds_out="$WORK_DIR/no-rounds.md"
+    {
+        printf '## Review Phase Detail\n\n'
+        printf 'No review rounds completed.\n'
+    } >"$no_rounds_out"
+    if [ -n "$OUTPUT" ]; then
+        cp "$no_rounds_out" "$OUTPUT"
+    else
+        cat "$no_rounds_out"
+    fi
+    exit 0
+fi
 
 # ---- awk library: derive "vendor/archetype" from a reviewer output basename ----
 # Used only as a fallback when the panel-manifest map has no entry (older logs
@@ -194,6 +208,8 @@ round_vendor_cost() {
 # ---- per-round rows + running totals ----
 rows_file="$WORK_DIR/rows.txt"
 : >"$rows_file"
+round_windows_file="$WORK_DIR/round-windows.tsv"
+: >"$round_windows_file"
 t_sug=0 t_acc=0 t_oosp=0 t_oosa=0 t_rev=0 t_secs=0 any_time=0
 while IFS= read -r rn; do
     meta="$ROUNDS_ROOT/round-$rn/round-meta.json"
@@ -238,6 +254,7 @@ while IFS= read -r rn; do
     secs=""
     if [ -n "$rstart" ] && [ -n "$rend" ] && [ "$rend" -gt "$rstart" ]; then
         secs=$((rend - rstart))
+        printf '%s\t%s\t%s\n' "$rn" "$rstart" "$rend" >>"$round_windows_file"
     fi
 
     cost_disp="$(round_vendor_cost "$rstart" "$rend")"
@@ -339,6 +356,81 @@ AWK
     case "$fail_total" in ''|*[!0-9]*) fail_total=0 ;; esac
 fi
 
+# ---- reviewer timing charts (best-effort Mermaid Gantt) ----
+gantt_file="$WORK_DIR/gantt.md"
+: >"$gantt_file"
+if [ "$GANTT_ENABLED" -eq 1 ] && [ -n "$TIMING_LEDGER" ] && [ -f "$TIMING_LEDGER" ] && [ -s "$round_windows_file" ]; then
+    gantt_awk="$WORK_DIR/gantt.awk"
+    cat >"$gantt_awk" <<'AWK'
+function isint(v) { return v ~ /^[0-9]+$/ }
+function trim(v) { sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v); return v }
+function clean_label(v) {
+    gsub(/:/, " -", v)
+    gsub(/,/, " ", v)
+    gsub(/[\t\r\n]/, " ", v)
+    gsub(/[^A-Za-z0-9 _\/.-]/, " ", v)
+    gsub(/[[:space:]][[:space:]]+/, " ", v)
+    v = trim(v)
+    if (length(v) > 60) v = substr(v, 1, 60)
+    v = trim(v)
+    if (v == "") v = "reviewer"
+    return v
+}
+function base(path,    n, parts) {
+    n = split(path, parts, "/")
+    return parts[n]
+}
+function label_for(out, vendor, kind,    bn, val) {
+    bn = base(out)
+    if (bn in m) return clean_label(m[bn])
+    if (bn != "" && bn != "-") {
+        val = derive(bn)
+        if (val != "" && val != "unknown/-") return clean_label(val)
+    }
+    return clean_label(vendor "/" kind)
+}
+FILENAME==mapf { m[$1]=$2; next }
+$2=="vendor" && NF >= 9 && isint($8) && isint($9) {
+    vs = $8 + 0
+    ve = $9 + 0
+    if (ve <= rstart || vs >= rend) next
+    cs = (vs < rstart ? rstart : vs)
+    ce = (ve > rend ? rend : ve)
+    if (ce <= cs) next
+    label = label_for((NF >= 11 ? $11 : ""), $6, $7)
+    printf "%d\t%d\t%s\n", cs - rstart, ce - rstart, label
+}
+AWK
+    while IFS=$'\t' read -r gw_rn gw_start gw_end; do
+        case "$gw_rn" in ''|*[!0-9]*) continue ;; esac
+        case "$gw_start" in ''|*[!0-9]*) continue ;; esac
+        case "$gw_end" in ''|*[!0-9]*) continue ;; esac
+        tasks_file="$WORK_DIR/gantt-round-$gw_rn.tsv"
+        awk -F'\t' -v mapf="$slot_map" -v rstart="$gw_start" -v rend="$gw_end" \
+            -f "$derive_awk" -f "$gantt_awk" "$slot_map" "$TIMING_LEDGER" 2>/dev/null \
+            | sort -n -k1,1 -k2,2 -k3,3 | head -n 25 >"$tasks_file" || : >"$tasks_file"
+        {
+            printf '### Round %s reviewer timing\n\n' "$gw_rn"
+            if [ -s "$tasks_file" ]; then
+                printf '```mermaid\n'
+                printf 'gantt\n'
+                printf '    title Round %s reviewer timing\n' "$gw_rn"
+                printf '    dateFormat X\n'
+                printf '    axisFormat %%H:%%M:%%S\n'
+                printf '    section Reviewers\n'
+                seq=0
+                while IFS=$'\t' read -r rel_start rel_end rel_label; do
+                    seq=$((seq + 1))
+                    printf '    %s :r%s_t%s, %s, %s\n' "$rel_label" "$gw_rn" "$seq" "$rel_start" "$rel_end"
+                done <"$tasks_file"
+                printf '```\n\n'
+            else
+                printf 'No reviewer timing tasks overlapped this round.\n\n'
+            fi
+        } >>"$gantt_file"
+    done <"$round_windows_file"
+fi
+
 # ---- render the section ----
 out="$WORK_DIR/section.md"
 {
@@ -349,6 +441,10 @@ out="$WORK_DIR/section.md"
     printf '| **Total** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** |\n' \
         "$t_sug" "$t_acc" "$t_oosp" "$t_oosa" "$total_time" "$total_cost" "$t_rev"
     printf '\n'
+
+    if [ -s "$gantt_file" ]; then
+        cat "$gantt_file"
+    fi
 
     printf '**Top reviewers** (by suggestions accepted, whole run):\n'
     if [ -s "$top_file" ]; then
