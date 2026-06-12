@@ -252,16 +252,18 @@ if command -v jq >/dev/null 2>&1 && [ -f "$OUTPUT" ]; then
     read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$OUTPUT" 2>/dev/null || echo "0 0 0 0") || true
     if [[ "$INP" =~ ^[0-9]+$ && "$OUT" =~ ^[0-9]+$ && "$CR" =~ ^[0-9]+$ && "$CW" =~ ^[0-9]+$ ]]; then
         TOTAL=$((INP + OUT + CR + CW))
-        {
-            printf 'TOOL=cursor\n'
-            printf 'INPUT=%s\n' "$INP"
-            printf 'OUTPUT=%s\n' "$OUT"
-            printf 'CACHE_READ=%s\n' "$CR"
-            printf 'CACHE_CREATE=%s\n' "$CW"
-            printf 'TOTAL=%s\n' "$TOTAL"
-            printf 'RAW=cursor_ci_fix\n'
-            [[ -z "$RESOLVED_CURSOR_MODEL" ]] || printf 'MODEL=%s\n' "$RESOLVED_CURSOR_MODEL"
-        } > "${OUTPUT}.token-record"
+        if [[ "$TOTAL" -gt 0 ]]; then
+            {
+                printf 'TOOL=cursor\n'
+                printf 'INPUT=%s\n' "$INP"
+                printf 'OUTPUT=%s\n' "$OUT"
+                printf 'CACHE_READ=%s\n' "$CR"
+                printf 'CACHE_CREATE=%s\n' "$CW"
+                printf 'TOTAL=%s\n' "$TOTAL"
+                printf 'RAW=cursor_ci_fix\n'
+                [[ -z "$RESOLVED_CURSOR_MODEL" ]] || printf 'MODEL=%s\n' "$RESOLVED_CURSOR_MODEL"
+            } > "${OUTPUT}.token-record"
+        fi
     fi
 fi
 

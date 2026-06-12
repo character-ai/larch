@@ -60,6 +60,29 @@ EOF
 python3 "$REPO_ROOT/python/cli.py" token append-record --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
 if grep -q '"tool":"cursor"' "$TMPDIR_BASE/token-report.ndjson"; then ok "append-token-record normalizes cursor sidecar"; else fail "append-token-record normalizes cursor sidecar"; fi
 
+if command -v jq >/dev/null 2>&1; then
+    no_usage_bin="$TMPDIR_BASE/no-usage-bin"
+    mkdir -p "$no_usage_bin"
+    cat > "$no_usage_bin/cursor" <<'EOF'
+#!/usr/bin/env bash
+printf '{"result":"done"}\n'
+EOF
+    chmod +x "$no_usage_bin/cursor"
+    OUT_NO_USAGE="$TMPDIR_BASE/no-usage-output"
+    (cd "$REPO_ROOT" && PATH="$no_usage_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        IMPLEMENT_TMPDIR="$TMPDIR_BASE" CURSOR_API_KEY=test_key LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+        RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+        bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role fix --output "$OUT_NO_USAGE" \
+            --run-id r-no-usage --repo owner/repo --timeout 30) >/dev/null 2>&1 || true
+    if [[ ! -s "${OUT_NO_USAGE}.token-record" ]]; then
+        ok "no-usage cursor output leaves token-record empty"
+    else
+        fail "no-usage cursor output leaves token-record empty"
+    fi
+else
+    ok "no-usage cursor token-record fixture skipped without jq"
+fi
+
 stall_env() {
     export CURSOR_API_KEY=test_key
     export LARCH_LIB_CURSOR_AUTH_TEST_MODE=1

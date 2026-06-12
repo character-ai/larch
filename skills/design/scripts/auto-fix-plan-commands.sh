@@ -418,7 +418,7 @@ ingest_codex_autofix_sidecar() {
         --tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1; then
         larch_err "⚠ auto-fix [$SITE]: token-report append failed for Codex sidecar"
     fi
-    if ! DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
+    if ! env -u IMPLEMENT_TMPDIR DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
         --input "$token_record" >/dev/null 2>&1; then
         larch_err "⚠ auto-fix [$SITE]: active-ledger append failed for Codex sidecar"
     fi

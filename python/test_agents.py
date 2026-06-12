@@ -113,15 +113,97 @@ def test_ingest_launcher_token_sidecar_defaults_to_output_sidecar(tmp_path: Path
     assert runner.calls[0][0][-4:] == ("--input", str(sidecar), "--tmpdir", str(tmp_path))
 
 
-def test_ingest_launcher_token_sidecar_returns_false_on_cli_failure(tmp_path: Path) -> None:
+def test_ingest_launcher_token_sidecar_runs_vendor_ingest_after_append_failure(tmp_path: Path) -> None:
     output = tmp_path / "codex.out"
     _ = Path(f"{output}.token-record").write_text(
         "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
         encoding="utf-8",
     )
     runner = TokenIngestRunner(returncodes=(2,))
-    assert agents.ingest_launcher_token_sidecar(runner, launcher_stdout="", output=output, tmpdir=tmp_path, implement_tmpdir=tmp_path) is False
-    assert len(runner.calls) == 1
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+    ) is True
+    assert len(runner.calls) == 2
+
+
+def test_ingest_launcher_token_sidecar_returns_false_when_both_ingests_fail(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    _ = Path(f"{output}.token-record").write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    runner = TokenIngestRunner(returncodes=(2, 3))
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+    ) is False
+    assert len(runner.calls) == 2
+
+
+def test_ingest_launcher_token_sidecar_marks_seen_after_full_success(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    seen: set[str] = set()
+    runner = TokenIngestRunner()
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        seen=seen,
+    ) is False
+    assert str(sidecar) not in seen
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert str(sidecar) in seen
+
+
+def test_ingest_launcher_token_sidecar_does_not_mark_seen_after_partial_failure(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    sidecar = Path(f"{output}.token-record")
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
+        encoding="utf-8",
+    )
+    seen: set[str] = set()
+    runner = TokenIngestRunner(returncodes=(0, 3, 0, 0))
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert str(sidecar) not in seen
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="",
+        output=output,
+        tmpdir=tmp_path,
+        implement_tmpdir=tmp_path,
+        seen=seen,
+    ) is True
+    assert len(runner.calls) == 4
+    assert str(sidecar) in seen
 
 
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:

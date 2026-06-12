@@ -425,6 +425,45 @@ setup_parse_codex_usage_repo() {
     )
 }
 
+setup_launch_cursor_ci_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b launch-cursor-ci-change
+        mkdir -p scripts
+        printf '%s\n' "# launch cursor ci" > scripts/launch-cursor-ci.sh
+        git add scripts/launch-cursor-ci.sh
+        git commit -q -m "touch launch cursor ci"
+    )
+}
+
+setup_launch_codex_exec_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b launch-codex-exec-change
+        mkdir -p scripts
+        printf '%s\n' "# launch codex exec" > scripts/launch-codex-exec.sh
+        git add scripts/launch-codex-exec.sh
+        git commit -q -m "touch launch codex exec"
+    )
+}
+
+setup_autofix_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b autofix-change
+        mkdir -p skills/design/scripts
+        printf '%s\n' "# auto fix plan commands" > skills/design/scripts/auto-fix-plan-commands.sh
+        git add skills/design/scripts/auto-fix-plan-commands.sh
+        git commit -q -m "touch auto fix plan commands"
+    )
+}
+
 setup_report_tokens_wrapper_repo() {
     local dir="$1"
     setup_git_repo "$dir"
@@ -536,7 +575,38 @@ setup_parse_codex_usage_repo "$REPO_3J"
 make_stub_dir "$STUB_3J" present absent
 run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
 assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j: routes parse codex usage harness" "$RUN_OUT" "test-parse-codex-usage"
+assert_stdout_contains "3j: routes vendor scraper harness" "$RUN_OUT" "test-token-vendor-scrapers"
 assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+
+echo "=== Section 3j1: sidecar launcher routing ==="
+
+REPO_3J1A="$TMPROOT/repo-launch-cursor-ci"
+STUB_3J1A="$TMPROOT/stub-launch-cursor-ci"
+setup_launch_cursor_ci_repo "$REPO_3J1A"
+make_stub_dir "$STUB_3J1A" present absent
+run_checks "$REPO_3J1A" "$(controlled_path "$STUB_3J1A")"
+assert_exit_eq "3j1a: launch-cursor-ci change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1a: routes cursor CI harness" "$RUN_OUT" "test-launch-cursor-ci"
+assert_stdout_contains "3j1a: routes vendor scraper harness" "$RUN_OUT" "test-token-vendor-scrapers"
+
+REPO_3J1B="$TMPROOT/repo-launch-codex-exec"
+STUB_3J1B="$TMPROOT/stub-launch-codex-exec"
+setup_launch_codex_exec_repo "$REPO_3J1B"
+make_stub_dir "$STUB_3J1B" present absent
+run_checks "$REPO_3J1B" "$(controlled_path "$STUB_3J1B")"
+assert_exit_eq "3j1b: launch-codex-exec change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1b: routes codex exec harness" "$RUN_OUT" "test-launch-codex-exec"
+assert_stdout_contains "3j1b: routes parse codex usage harness" "$RUN_OUT" "test-parse-codex-usage"
+assert_stdout_contains "3j1b: routes vendor scraper harness" "$RUN_OUT" "test-token-vendor-scrapers"
+
+REPO_3J1C="$TMPROOT/repo-autofix"
+STUB_3J1C="$TMPROOT/stub-autofix"
+setup_autofix_repo "$REPO_3J1C"
+make_stub_dir "$STUB_3J1C" present absent
+run_checks "$REPO_3J1C" "$(controlled_path "$STUB_3J1C")"
+assert_exit_eq "3j1c: auto-fix change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1c: routes auto-fix harness" "$RUN_OUT" "test-auto-fix-plan-commands"
 
 echo "=== Section 3j2: report-tokens SKILL.md routing ==="
 

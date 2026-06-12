@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
 import os
+import re
 import sys
 from pathlib import Path
 from collections.abc import Callable, Sequence
@@ -125,10 +125,8 @@ def ingest_launcher_token_sidecar(
         token_record = f"{output}.token-record"
     path = Path(token_record)
     key = str(path)
-    if seen is not None:
-        if key in seen:
-            return False
-        seen.add(key)
+    if seen is not None and key in seen:
+        return False
     if not path.is_file() or path.stat().st_size == 0:
         return False
     if tmpdir is None:
@@ -148,12 +146,13 @@ def ingest_launcher_token_sidecar(
         ],
         cwd=cwd,
     )
-    if append_result.returncode != 0:
+    append_ok = append_result.returncode == 0
+    if not append_ok:
         print(
             f"token sidecar ingest: token append-record failed with exit {append_result.returncode}",
             file=sys.stderr,
         )
-        return False
+    vendor_ok: bool | None = None
     if implement_tmpdir is not None:
         env = dict(os.environ)
         env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
@@ -169,13 +168,18 @@ def ingest_launcher_token_sidecar(
             cwd=cwd,
             env=env,
         )
-        if vendor_result.returncode != 0:
+        vendor_ok = vendor_result.returncode == 0
+        if not vendor_ok:
             print(
                 f"token sidecar ingest: token record-vendor-sidecar failed with exit {vendor_result.returncode}",
                 file=sys.stderr,
             )
-            return False
-    return True
+    fully_ingested = append_ok and (vendor_ok is not False)
+    if seen is not None and fully_ingested:
+        seen.add(key)
+    if vendor_ok is None:
+        return append_ok
+    return append_ok or vendor_ok
 
 
 def read_launcher_exit(output_file: str | Path) -> int:
