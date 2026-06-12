@@ -78,7 +78,7 @@ heading, with one blank line on each side, and emits
 `<!-- larch:run-summary v=1 -->` marker. The heading remains the first
 non-empty line so first-line outcome parsers in
 `python/cli.py run-log verify-completeness` and
-`.claude/skills/audit-runs/scripts/audit-scan-run.sh` keep anchoring on the
+`python/cli.py audit-runs scan-run` keep anchoring on the
 terminal outcome. Fallback still exits 0, and Warning recording through
 `run-log append-failure` is unchanged; the banner says "execution issues"
 without a filename because design tmpdirs use `execution-issues.md` while

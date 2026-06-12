@@ -1,8 +1,8 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
 """Tests for version_bump.py."""
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -41,8 +41,6 @@ class ProcRunner:
             stderr=stderr,
         )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-CLASSIFY_SH = REPO_ROOT / ".claude/skills/release/scripts/classify-bump.sh"
 
 
 @dataclass
@@ -160,30 +158,6 @@ def test_apply_unmerged_returns_not_stalled() -> None:
 
 
 
-
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_none_on_head_bump(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    plugin = repo / ".claude-plugin/plugin.json"
-    _ = plugin.write_text('{"version":"1.2.3"}\n', encoding="utf-8")
-    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
-
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    runner = ProcRunner()
-    py = version_bump.classify_bump(runner, cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE")
-    assert py.new_version == bash_kv.get("NEW_VERSION")
 
 
 
@@ -320,50 +294,6 @@ def test_classify_deleted_skill_major(tmp_path: Path) -> None:
     assert any("Deleted" in reason for reason in result.major_reasons)
 
 
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_deleted_skill_major(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    skill = repo / "skills/base/SKILL.md"
-    _ = subprocess.run(["git", "rm", "-q", str(skill.relative_to(repo))], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "remove base skill"], cwd=repo, check=True)
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MAJOR"
-    assert py.new_version == bash_kv.get("NEW_VERSION")
-
-
-@pytest.mark.skipif(
-    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
-    reason="classify-bump.sh or bash unavailable",
-)
-def test_parity_classify_added_skill_minor(tmp_path: Path) -> None:
-    repo = _init_bump_repo(tmp_path)
-    skill = repo / "skills/new-skill/SKILL.md"
-    _ = skill.parent.mkdir(parents=True)
-    _ = skill.write_text("---\nname: new-skill\n---\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", skill], cwd=repo, check=True)
-    _ = subprocess.run(["git", "commit", "-q", "-m", "add skill"], cwd=repo, check=True)
-    bash = subprocess.run(
-        ["bash", str(CLASSIFY_SH)],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
-    bash_kv = _parse_kv(bash.stdout)
-    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MINOR"
-    assert py.new_version == bash_kv.get("NEW_VERSION")
 
 
 
@@ -473,6 +403,42 @@ def test_classify_added_skill_minor(tmp_path: Path) -> None:
     runner = _classify_stub(name_status="A\tskills/new/SKILL.md\n")
     result = version_bump.classify_bump(runner, cwd=str(repo))
     assert result.bump_type == "MINOR"
+
+
+def test_classify_explicit_head_uses_compare_ref_not_worktree_head(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "rev-parse", "v1.2.2^{commit}"): CommandResult(("git", "rev-parse", "v1.2.2^{commit}"), 0, "base-sha\n", "", 0.01),
+            ("git", "rev-parse", "origin/main^{commit}"): CommandResult(("git", "rev-parse", "origin/main^{commit}"), 0, "head-sha\n", "", 0.01),
+            ("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"): CommandResult(("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"), 0, '{"version":"1.2.3"}\n', "", 0.01),
+            ("git", "rev-parse", "head-sha"): CommandResult(("git", "rev-parse", "head-sha"), 0, "head-sha\n", "", 0.01),
+            ("git", "log", "-1", "--format=%s", "head-sha"): CommandResult(("git", "log", "-1", "--format=%s", "head-sha"), 0, "Add new skill\n", "", 0.01),
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "head-sha"): CommandResult(("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "head-sha"), 0, "skills/new/SKILL.md\n", "", 0.01),
+            ("git", "diff", "-M", "--name-status", "base-sha", "head-sha", "--", "skills", "agents"): CommandResult(("git", "diff", "-M", "--name-status", "base-sha", "head-sha", "--", "skills", "agents"), 0, "A\tskills/new/SKILL.md\n", "", 0.01),
+        },
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo), base_ref="v1.2.2", head_ref="origin/main")
+    assert result.current_version == "1.2.3"
+    assert result.bump_type == "MINOR"
+
+
+def test_classify_explicit_head_rejects_worktree_version_mismatch(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.2.4"}\n', encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "rev-parse", "origin/main^{commit}"): CommandResult(("git", "rev-parse", "origin/main^{commit}"), 0, "head-sha\n", "", 0.01),
+            ("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"): CommandResult(("git", "show", f"head-sha:{config.PLUGIN_JSON_PATH}"), 0, '{"version":"1.2.3"}\n', "", 0.01),
+        },
+    )
+    with pytest.raises(ShipError, match=r"worktree plugin\.json version"):
+        _ = version_bump.classify_bump(runner, cwd=str(repo), head_ref="origin/main")
 
 
 def test_classify_diff_failure_raises_ship_error(tmp_path: Path) -> None:

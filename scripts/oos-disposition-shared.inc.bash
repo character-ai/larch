@@ -1,7 +1,7 @@
 # Shared helpers for OOS disposition gate and audit oos-silent-drop scan.
 # shellcheck shell=bash
 # Dotted from `scripts/oos-disposition-gate.sh` (via repo `scripts/`) and
-# `.claude/skills/audit-runs/scripts/audit-scan-run.sh` — single contract
+# `python/cli.py audit-runs scan-run` — single contract
 # surface for URL / rejection counting helpers.
 
 # Count GitHub issue URLs on github.com, or on $GH_HOST when set for

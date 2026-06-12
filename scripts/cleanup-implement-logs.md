@@ -64,6 +64,6 @@ No automated harness — the script is a one-shot cleanup tool.
 Verification steps are in the issue body (#3709):
 
 - `/report-tokens --skill=implement` scans clean after the PR.
-- `audit-scan-run.sh --skill implement` passes on a sample of surviving dirs.
+- `python/cli.py audit-runs scan-run --skill implement` passes on a sample of surviving dirs.
 - `bash scripts/relevant-checks.sh` passes.
 - Spot-check one multi-round run: chain intact, re-rendered transcript parses.

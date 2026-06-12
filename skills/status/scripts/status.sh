@@ -21,7 +21,7 @@ larch_quiet_init
 
 # Read plugin version (best-effort; always emits a value)
 LARCH_PLUGIN_VERSION="unknown"
-_ver_out=$("$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null || true)
+_ver_out=$(python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null || true)
 if [ -n "$_ver_out" ]; then
     _v=$(printf '%s\n' "$_ver_out" | awk -F= '/^LARCH_PLUGIN_VERSION=/{print substr($0, index($0,"=")+1); exit}')
     [ -n "$_v" ] && LARCH_PLUGIN_VERSION="$_v"

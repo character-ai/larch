@@ -17,7 +17,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 Call the coordinator with any forwarded flags via the Bash tool:
 
 ```bash
-$PWD/.claude/skills/analyze-issues/scripts/run-analysis.sh [flags]
+python3 "$PWD/python/cli.py" analyze-issues run [flags]
 ```
 
 The coordinator fetches issues, analyzes the local JSON dump, and prints the assembled report to stdout. Do not parse, format, branch, or perform the analysis in the main agent.
@@ -30,16 +30,17 @@ Flags:
 - `--categories=auto|default`: category mode. Default: `default`.
 - `--lenient`: forwarded to `analyze.py`. Suppresses the >5% non-dict or malformed-number abort in `load_issues` so a corrupted dump still produces a partial report. Per-element stderr `WARN load_issues: ...` lines are still emitted; this flag only disables the threshold check.
 
-The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. See `scripts/run-analysis.md` for the full contract.
+The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. The live coordinator contract is covered by `python/analyze_issues.py` and `python/test_analyze_issues.py`.
 
 ## Implementation
 
-Logic lives in `scripts/`. SKILL.md is a thin coordinator. Per-script contracts are documented beside each file:
+Logic lives in the Python runtime modules. SKILL.md is a thin coordinator.
 
-- `scripts/run-analysis.sh` (contract: `scripts/run-analysis.md`) — top-level coordinator. Parses flags, detects the repo, chains the fetch and the analyzer.
-- `scripts/fetch-issues.sh` (contract: `scripts/fetch-issues.md`) — wraps the single `gh issue list` shell-out.
-- `scripts/analyze.py` (contract: `scripts/analyze.md`) — main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, executive summary).
-- `scripts/render-chart.py` (contract: `scripts/render-chart.md`) — cumulative-growth ASCII chart helper imported by `analyze.py`.
+- `python/cli.py analyze-issues run`: top-level coordinator. Parses flags, detects the repo, chains the fetch and the analyzer.
+- `python/cli.py analyze-issues fetch`: wraps the single `gh issue list` shell-out.
+- `python/analyze_issues.py`: main analyzer (categories, coverage, growth, patterns, waste signatures, reviewer/persona effectiveness, executive summary).
+- `python/render_chart.py`: cumulative-growth ASCII chart helper imported by `python/analyze_issues.py`.
+- `python/test_analyze_issues.py`: offline regression coverage for the coordinator, fetch, analyzer, and chart behavior.
 
 ## Anti-patterns
 

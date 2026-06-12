@@ -113,3 +113,7 @@ Override them per-run with environment variables documented in
 - Payload-routing parity is intentional: `render voter`, `render plan-review`, and `render debate-retry` write prompt/KV payloads directly to stdout; the other verbs initialize quiet-mode and emit machine KVs through the contract stream.
 - Generated artifact headers name the Python CLI regeneration command. `scripts/generators.tsv` now registers `generate <verb>` rows and `python3 python/cli.py generate check` runs the drift walker in-process.
 - Bash subprocess boundaries retained for this slice are `classify-diff-mode.sh` (default diff-mode classifier) and `run-log append-entry` (Mermaid warning append). Bash helper libraries retained for remaining shell consumers are not part of this retirement.
+
+## P4 dev-only skills migration
+
+Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfaces now live behind `python/cli.py`. `classify-bump.md` remains the release classification authority. Runtime hooks and runtime OOS gates remain bash. `.claude/skills/combine-issues/scripts/search-implementing-issue.sh` remains bash and out of scope. Audit scan OOS disposition lives in `python/oos_disposition.py`; git-log inline-triage fallback remains runtime-gate-only.

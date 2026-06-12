@@ -32,7 +32,7 @@ read_kv() {
 }
 
 read_plugin_version() {
-    "$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}'
+    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}'
 }
 
 IMPLEMENT_TMPDIR=""
