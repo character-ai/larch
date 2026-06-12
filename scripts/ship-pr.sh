@@ -183,7 +183,6 @@ exit_ship_pr_internal_lint_fix_handoff() {
         *) detail_log="" ;;
     esac
     state_set_many BAIL_REASON ship-pr-internal-lint-fix BAIL_FAILURE_DETAIL_LOG "$detail_log" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
-    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$detail_log"
     exit 3
 }
 
@@ -879,6 +878,7 @@ run_checks_phase() {
                     local detail_log
                     detail_log=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=/ { print substr($0, index($0,"=")+1); exit }')
                     [ -n "$detail_log" ] || detail_log=$redacted_log
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix ci-initial "$detail_log"
                     exit_ship_pr_internal_lint_fix_handoff ci-initial "$detail_log"
                 fi
                 break
@@ -991,7 +991,10 @@ run_checks_with_lint_fix_loop() {
             fail_file=$(failure_capture_path "$phase")
             record_failure "$phase" "lint-fix-loop.sh" "${_RCC_LAST_FIX_RC:-1}" "$fail_file" "$fail_category"
             if [ "$_RCC_STATUS" = main-agent-required ]; then
-                exit_ship_pr_internal_lint_fix_handoff "$phase" "$(rcc_main_agent_required_detail_log)"
+                local _mardl
+                _mardl=$(rcc_main_agent_required_detail_log)
+                emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl"
+                exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl"
             fi
             return 1
             ;;
@@ -1943,7 +1946,10 @@ _verify_failed_jobs_locally() {
                 ;;
             main-agent-required|dispatch-failed|exhausted|no-changes-stale)
                 if [ "$_RCC_STATUS" = main-agent-required ]; then
-                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$(rcc_main_agent_required_detail_log)"
+                    local _mardl2
+                    _mardl2=$(rcc_main_agent_required_detail_log)
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl2"
+                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl2"
                 fi
                 unfixable+=("$job_token")
                 ;;
@@ -2048,7 +2054,10 @@ run_per_job_local_fix_loop() {
                 ;;
             main-agent-required|dispatch-failed|exhausted)
                 if [ "$_RCC_STATUS" = main-agent-required ]; then
-                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$(rcc_main_agent_required_detail_log)"
+                    local _mardl3
+                    _mardl3=$(rcc_main_agent_required_detail_log)
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl3"
+                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl3"
                 fi
                 return 1
                 ;;
