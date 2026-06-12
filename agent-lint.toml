@@ -439,8 +439,6 @@ exclude = [
   "scripts/pre-commit-bash-syntax.sh",
   "scripts/pre-commit-bash-syntax.md",
   "scripts/test-sessionstart-health.sh",
-  # audit-preflight is called by audit-runs helper scripts; not from SKILL.md directly.
-  ".claude/skills/audit-runs/scripts/audit-preflight.sh",
   # scripts/test-effort-prose.sh is the regression harness for prompt-source
   # max-effort prose drift. Referenced only from Makefile (test-effort-prose
   # target), docs/linting.md, and scripts/test-effort-prose.md (sibling
