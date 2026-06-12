@@ -1115,8 +1115,11 @@ def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
 
 
 def _resolve_probe_cwd() -> Path:
-    result = subprocess.run(  # noqa: S603
-        ["git", "rev-parse", "--show-toplevel"],
+    git = shutil.which("git")
+    if git is None:
+        return _REPO_ROOT
+    result = subprocess.run(
+        [git, "rev-parse", "--show-toplevel"],
         text=True,
         capture_output=True,
         check=False,

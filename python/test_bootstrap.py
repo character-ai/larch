@@ -1183,7 +1183,7 @@ def test_invoke_absorbed_degraded_gate_missing_presence_keys_passed_through(tmp_
 def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[list[str]] = []
 
-    def fake_run(argv, **kwargs):
+    def fake_run(argv, **_kwargs):
         captured.append(list(argv))
         return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
 
@@ -1205,10 +1205,11 @@ def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_pat
 def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     consumer = tmp_path / "consumer"
     _ = consumer.mkdir()
-    subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)  # noqa: S603
+    subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)
     captured_cwd: list[str | None] = []
 
     def fake_run(argv, *, env=None, cwd=None):
+        _ = env
         captured_cwd.append(cwd)
         return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
 
