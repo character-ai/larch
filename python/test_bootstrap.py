@@ -564,6 +564,9 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
 
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     (tmp_path / "bootstrap-routing.env").write_text(
         f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\ncoder_fallback=true\n",
         encoding="utf-8",
@@ -572,7 +575,8 @@ def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypat
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
         print("RUN_ID=R1")
-        print(f"PLAN_FILE={tmp_path / 'plan.txt'}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
         return 0
 
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
@@ -781,6 +785,7 @@ def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkey
 def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
     plan = tmp_path / "plan.txt"
     _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     data = {
         "IMPLEMENT_TMPDIR": str(tmp_path),
         "IMPLEMENT_BAIL_REASON": "",
@@ -1046,6 +1051,7 @@ def test_invoke_absorbed_1r_synthesizes_rebase_rc_from_process_status(tmp_path: 
 def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     plan = tmp_path / "plan.txt"
     _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
@@ -1080,6 +1086,28 @@ def test_continue_predicate_skips_on_bail(tmp_path: Path) -> None:
     assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_continue_predicate_skips_on_repo_unavailable(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path, REPO_UNAVAILABLE="true")
+    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_continue_predicate_skips_without_feature_description(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path)
+    (tmp_path / "feature-description.txt").unlink()
+    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> None:
+    target = tmp_path / "routing-target.env"
+    target.write_text(f"coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
+    routing = tmp_path / "bootstrap-routing.env"
+    routing.symlink_to(target)
+    data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
+    bootstrap._restore_resume_coder(data, routing, str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert data["coder"] == "cursor"
+    assert data["coder_fallback"] == "true"
+
+
 def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_EVAL_RUN", raising=False)
     assert bootstrap._resolve_non_interactive("true")  # pyright: ignore[reportPrivateUsage]
@@ -1089,8 +1117,8 @@ def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.Mon
     assert bootstrap._resolve_non_interactive("", {"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
 
 
-def test_resolve_non_interactive_detects_non_tty_stdin() -> None:
-    assert bootstrap._resolve_non_interactive("", stdin_is_tty=False)  # pyright: ignore[reportPrivateUsage]
+def test_resolve_non_interactive_defaults_interactive_without_explicit_signal() -> None:
+    assert not bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_parse_probe_stdout_preserves_spaced_rebase_error() -> None:
@@ -1231,6 +1259,7 @@ def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: 
 def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     plan = tmp_path / "plan.txt"
     _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     monkeypatch.setattr(
         bootstrap,
         "_cli",

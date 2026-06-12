@@ -993,6 +993,53 @@ def _filtered_envelope(text: str, *, resume: bool) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _restore_resume_coder(data: dict[str, str], routing_file: Path, tmpdir: str) -> None:
+    if data.get("coder"):
+        return
+    sources: list[Path] = []
+    if routing_file.exists():
+        sources.append(routing_file)
+    sources.extend((Path(tmpdir) / "session-env.sh", Path(tmpdir) / "run-flags.sh"))
+    for path in sources:
+        if not path.is_file():
+            continue
+        try:
+            prior = _parse_env_lines(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        for key in ("coder", "coder_fallback"):
+            if prior.get(key) and not data.get(key):
+                data[key] = prior[key]
+        if data.get("coder"):
+            return
+    for path in (Path(tmpdir) / "session-env.sh", Path(tmpdir) / "run-flags.sh"):
+        if not path.is_file():
+            continue
+        if not data.get("coder"):
+            value = _read_key(path, "coder", "")
+            if value in {"claude", "codex", "cursor"}:
+                data["coder"] = value
+        if not data.get("coder_fallback"):
+            value = _read_key(path, "coder_fallback", "")
+            if value:
+                data["coder_fallback"] = value
+        if data.get("coder"):
+            return
+
+
+def _step2_blockers(data: dict[str, str]) -> bool:
+    if data.get("REPO_UNAVAILABLE") == "true":
+        return True
+    plan = data.get("PLAN_FILE", "")
+    if not plan or not Path(plan).is_file():
+        return True
+    tmpdir = data.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return False
+    tmp = Path(tmpdir)
+    return not (tmp / "plan.txt").is_file() or not (tmp / "feature-description.txt").is_file()
+
+
 def _preserve_resume_routing(envelope: str, routing_file: Path) -> str:
     if not routing_file.is_file() or routing_file.is_symlink():
         return envelope
@@ -1087,8 +1134,6 @@ def _envelope_text(data: dict[str, str]) -> str:
 def _resolve_non_interactive(
     explicit: str,
     env: Mapping[str, str] | None = None,
-    *,
-    stdin_is_tty: bool | None = None,
 ) -> bool:
     if explicit in {"true", "false"}:
         return explicit == "true"
@@ -1102,8 +1147,7 @@ def _resolve_non_interactive(
         return True
     if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
         return True
-    is_tty = stdin_is_tty if stdin_is_tty is not None else sys.stdin.isatty()
-    return not is_tty
+    return False
 
 
 def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
@@ -1136,8 +1180,7 @@ def _continue_predicate(data: dict[str, str]) -> bool:
         return False
     if data.get("STALL_TRACKING") == "true":
         return False
-    plan = data.get("PLAN_FILE", "")
-    if not plan or not Path(plan).is_file():
+    if _step2_blockers(data):
         return False
     return bool(data.get("coder"))
 
@@ -1330,6 +1373,8 @@ def _run_absorbed_continue_tail(
     elif run_probe:
         probe_routing, probe_advisory, _probe_rc = _run_1r_probe(st, forked_target=forked_target)
         routing.update({key: value for key, value in probe_routing.items() if value})
+        if _step2_blockers({**data, **routing}):
+            routing.pop("ROUTE", None)
         advisory.extend(probe_advisory)
     return ContinueTailResult(routing=routing, advisory_lines=advisory)
 
@@ -1399,6 +1444,8 @@ def invoke_main(argv: list[str]) -> int:
     if args.mode == "resume" and routing_file.is_file() and not routing_file.is_symlink():
         envelope = _preserve_resume_routing(envelope, routing_file)
     data = _parse_env_lines(envelope)
+    if args.mode == "resume":
+        _restore_resume_coder(data, routing_file, tmpdir)
     tail = _run_absorbed_continue_tail(
         data,
         opts=opts,

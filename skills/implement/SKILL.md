@@ -141,7 +141,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
-**Conditional routing reference**: after each checkpoint wrapper returns, parse the probe process rc and `ROUTE=continue|conflict|bail` from the captured stdout. Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md` when the process rc is non-zero, when rc is `0` with `ROUTE=conflict` or `ROUTE=bail`, or when `ROUTE` is missing or malformed. Skip that reference only when the process rc is `0` and `ROUTE=continue`. Do not use `REBASE_OUTCOME` as a substitute for the process rc plus `ROUTE=continue` skip predicate.
+**Conditional routing reference**: for absorbed checkpoint `1.r`, branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope — **not** on `step-0-bootstrap.sh` wrapper process exit code (bootstrap may return exit `0` while `ROUTE=conflict` and `REBASE_RC=1`). Never re-invoke the `1.r` probe prompt-side. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper returns, parse the probe process rc and `ROUTE=continue|conflict|bail` from the captured stdout. Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md` when the checkpoint-specific signal is conflict, bail, missing, or malformed `ROUTE`. Skip that reference only on a clean `ROUTE=continue` path. Do not use `REBASE_OUTCOME` as a substitute for the checkpoint-specific skip predicate.
 
 ## Flags
 
@@ -271,6 +271,7 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 
 | Condition | Routing |
 |---|---|
+| `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 | `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, non-empty `coder`, and `ROUTE=continue` | Proceed directly to Step 2 with `--coder "$coder"`. |
 | `DEGRADED_PROMPT_REQUIRED=true` | Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0), fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**). On **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and rerun `step-0-bootstrap.sh --mode resume`. On **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. |
 | `ROUTE=conflict` or `ROUTE=bail` | **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. Parse `REBASE_RC` and synthesized rebase routing KVs from the Step 0 envelope (not a standalone probe process). |
@@ -279,7 +280,6 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 | `IMPLEMENT_BAIL_REASON=adopted-issue-closed` or `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
-| `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
 **Absorbed continue tail.** On the continue path (`IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, readable `PLAN_FILE`, non-empty `coder`), `python/cli.py bootstrap invoke` runs the degraded-tools gate and checkpoint `1.r` internally and folds their KVs into the Step 0 stdout envelope. `step-0-bootstrap.sh` forwards an explicit `--non-interactive true|false` computed from the canonical predicate in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` (subagents, `claude -p`, cron, eval, autonomous runs, and `<<autonomous-loop>>` are non-interactive; do not rely on `LARCH_SKILL_NON_INTERACTIVE` alone). Non-interactive bootstrap logs degraded state to `$IMPLEMENT_TMPDIR/execution-issues.md` and continues to 1.r instead of emitting `DEGRADED_PROMPT_REQUIRED=true`. Advisory `PHANTOM_*` KVs trail on Step 0 stdout only; they are not written to `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. Do not use `CODEX_STATE` or `CURSOR_STATE` as the operator explanation when the full degraded explanation block was relayed on stderr.
 
