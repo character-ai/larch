@@ -110,8 +110,8 @@ suppress = [
 # non-ASCII bytes inside dynamic awk regex contexts (closes #3134).
 # scripts/test-lint-awk-multibyte-regex.sh is its black-box harness.
 #
-# scripts/test-parse-bootstrap-routing-envelope.sh is the regression harness for
-# scripts/parse-bootstrap-routing-envelope.sh (Makefile
+# python/test_bootstrap.py is the regression harness for
+# python/cli.py bootstrap parse-routing (Makefile
 # `test-parse-bootstrap-routing-envelope`). The parser is structurally invoked
 # from skills/implement/SKILL.md, while the harness is Makefile-only.
 # is the offline regression harness for the public fork-setup coordinator. It
@@ -294,6 +294,14 @@ exclude = [
   "scripts/test-compose-plan-goals-test.md",
   "scripts/test-run-step1-plan-log.sh",
   "scripts/test-run-step1-plan-log.md",
+  # Python bootstrap invokes these Step 0 shell helpers through subprocess;
+  # agent-lint does not follow Python-to-Bash edges.
+  "scripts/create-branch.sh",
+  "scripts/create-branch.md",
+  "scripts/run-step1-plan-log.sh",
+  "scripts/run-step1-plan-log.md",
+  "scripts/tracking-issue-summary.sh",
+  "scripts/tracking-issue-summary.md",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of scripts/run-step5-review.sh.
   "scripts/test-run-step5-review.sh",
@@ -437,23 +445,23 @@ exclude = [
   "scripts/pre-commit-bash-syntax.sh",
   "scripts/pre-commit-bash-syntax.md",
   "scripts/test-sessionstart-health.sh",
+  # audit-preflight is called by audit-runs helper scripts; not from SKILL.md directly.
+  ".claude/skills/audit-runs/scripts/audit-preflight.sh",
   # scripts/test-effort-prose.sh is the regression harness for prompt-source
   # max-effort prose drift. Referenced only from Makefile (test-effort-prose
   # target), docs/linting.md, and scripts/test-effort-prose.md (sibling
   # contract), matching the same Makefile-only pattern as other test-* harnesses.
   "scripts/test-effort-prose.sh",
   "scripts/test-effort-prose.md",
-  # python/session_env.py invokes scripts/preflight.sh through proc.Runner for session setup.
-  "scripts/preflight.sh",
-  "scripts/preflight.md",
-  # scripts/test-preflight-args.sh is the regression harness for
-  # scripts/preflight.sh flag semantics and stalled-run sentinel clearing.
+  # python/session_env.py invokes python/cli.py admission preflight through proc.Runner for session setup.
+  "python/admission.py",
+  # python/test_admission.py is the regression harness for
+  # python/cli.py admission preflight flag semantics and stalled-run sentinel clearing.
   # Referenced only from Makefile (test-preflight-args target) and
-  # scripts/test-preflight-args.md (sibling contract), matching the same
+  # python/test_admission.py (sibling contract), matching the same
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
-  "scripts/test-preflight-args.sh",
-  "scripts/test-preflight-args.md",
-  # python/session_env.py invokes these preflight dependencies through scripts/preflight.sh.
+  "python/test_admission.py",
+  # python/session_env.py invokes these preflight dependencies through python/cli.py admission preflight.
   "scripts/check-clean-tree.sh",
   "scripts/check-clean-tree.md",
   "scripts/check-main-sync.sh",
@@ -509,7 +517,7 @@ exclude = [
   "scripts/test-check-stale-plugin.md",
   # python/cli.py session cleanup-tmpdir's invoke-time audit log. Referenced only from
   # (sibling contract), matching the same Makefile-only pattern as
-  # scripts/test-preflight-args.sh above.
+  # python/test_admission.py above.
   # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
   # (make py-test), matching the Makefile-only harness pattern above.
   # python/cli.py session entry-gate. Referenced only from Makefile
@@ -680,10 +688,10 @@ exclude = [
   # Makefile (test-lib-external-launcher-common target) and
   # scripts/test-lib-external-launcher-common.md (sibling contract).
   "scripts/test-lib-external-launcher-common.sh",
-  # scripts/test-check-mid-run-dirty-tree.sh is the regression harness for the
+  # python/test_dirty_tree.py is the regression harness for the
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
-  "scripts/test-check-mid-run-dirty-tree.sh",
+  "python/test_dirty_tree.py",
   # scripts/rebase-checkpoint-probe.sh — combined /implement rebase checkpoint +
   # post-rebase phantom probe; invoked only from skills/implement/SKILL.md
   # foreground fences (G004 does not follow markdown invocations).
@@ -840,8 +848,8 @@ exclude = [
   "scripts/lint-awk-multibyte-regex.md",
   "scripts/test-lint-awk-multibyte-regex.sh",
   "scripts/test-lint-awk-multibyte-regex.md",
-  "scripts/test-parse-bootstrap-routing-envelope.sh",
-  "scripts/test-implement-admission.sh",
+  "python/test_bootstrap.py",
+  "python/test_admission.py",
   # scripts/test-fetch-combinable-issues-filter.sh — jq filter parity for
   # .claude/skills/combine-issues/scripts/fetch-combinable-issues.sh (Makefile
   # test-fetch-combinable-issues-filter).
@@ -1207,7 +1215,7 @@ exclude = [
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
   # editing the sibling .sh). Excluded from S030/orphaned-skill-files.
-  "scripts/implement-admission.md",
+  "python/admission.py",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/implement/scripts/check-review-changes.md",
@@ -1225,8 +1233,8 @@ exclude = [
   # by generated implementer prompts, not an invokable agent with frontmatter.
   "agents/_implementer-base.md",
   "scripts/test-launch-review.md",
-  "scripts/check-mid-run-dirty-tree.md",
-  "scripts/test-check-mid-run-dirty-tree.md",
+  "python/dirty_tree.py",
+  "python/test_dirty_tree.py",
   "scripts/check-phantom-dirty.md",
   "scripts/test-check-phantom-dirty.md",
   "scripts/check-clean-tree.md",
@@ -1337,7 +1345,7 @@ exclude = [
   "scripts/test-finalize-sanity-check.sh",
   "scripts/test-finalize-sanity-check.md",
   # scripts/github-remote-repo.sh is the one-URL/one-remote-name parser used
-  # by scripts/implement-fork-env.sh (forked-target-only pre-Step-0 helper)
+  # by python/cli.py admission fork-env (forked-target-only pre-Step-0 helper)
   # via shell variable indirection: `"$HELPER_ROOT/scripts/github-remote-repo.sh"`.
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
@@ -1364,13 +1372,12 @@ exclude = [
   # for python/cli.py session read-classification (the /design tier reader).
   # docs/linting.md, python/session_env.py (session read-classification), and the sibling
   # Makefile-only pattern as the other test-* harnesses above.
-  # scripts/test-implement-fork-env.sh is the offline regression harness for
-  # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
+  # python/test_admission.py is the offline regression harness for
+  # python/cli.py admission fork-env (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile
   # (test-implement-fork-env target) and the sibling contract
-  # scripts/test-implement-fork-env.md.
-  "scripts/test-implement-fork-env.sh",
-  "scripts/test-implement-fork-env.md",
+  # python/test_admission.py.
+  "python/test_admission.py",
   # scripts/test-create-pr.sh is the offline PATH-stub regression harness
   # asserting --repo threading into every gh pr view/create/edit invocation
   # in scripts/create-pr.sh. Referenced only from Makefile (test-create-pr

@@ -14,11 +14,10 @@ ALLOW=(
   .claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
   SECURITY.md
   docs/linting.md
-  scripts/implement-admission.md
-  scripts/implement-admission.sh
+  python/admission.py
   python/issue_wire.py
   scripts/test-fetch-combinable-issues-filter.sh
-  scripts/test-implement-admission.sh
+  python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   scripts/test-tracking-issue-write.sh

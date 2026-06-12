@@ -21,9 +21,9 @@ PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/col
 PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
 PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
 PLAN_REVIEW_PRUNE_NITS_SH="${LARCH_PLAN_REVIEW_PRUNE_NITS_SH:-$PLUGIN_ROOT/skills/review/scripts/prune-nit-findings.sh}"
-SCOPE_MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
-if [[ ! -x "$SCOPE_MARKER_HELPER" ]]; then
-    SCOPE_MARKER_HELPER="$REPO_ROOT/scripts/check-scope-reduction-marker.sh"
+SCOPE_MARKER_HELPER="$PLUGIN_ROOT/python/cli.py"
+if [[ ! -f "$SCOPE_MARKER_HELPER" ]]; then
+    SCOPE_MARKER_HELPER="$REPO_ROOT/python/cli.py"
 fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -1095,7 +1095,7 @@ if [[ "$_paths_readable" -eq 1 ]]; then
     fi
 fi
 
-_dirty_out=$("$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh" --mode checkpoint || true)
+_dirty_out=$(python3 "$PLUGIN_ROOT/python/cli.py" dirty-tree checkpoint || true)
 if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty_out"; then
     printf '%s\n' "$_dirty_out" > "$DESIGN_TMPDIR/dirty-tree-detected.env" || true
     emit_kv WARN "plan-review-collection: dirty tree detected"
@@ -1287,7 +1287,7 @@ def is_tagged(block):
         fh.write(block)
         name = fh.name
     try:
-        proc = subprocess.run([helper, "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.run([sys.executable, helper, "dirty-tree", "scope-marker", "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if proc.returncode == 0:
             return True
         if proc.returncode == 1:
@@ -1495,7 +1495,7 @@ def blocks(path):
 def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
     try:
-        rc=subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        rc=subprocess.run([sys.executable, helper, 'dirty-tree', 'scope-marker', '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         if rc == 0:
             return True
         if rc == 1:
@@ -1708,7 +1708,7 @@ done <<< "$_voter_raw"
 
 printf '%s\n' "$_voter_raw"
 
-_dirty2=$("$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh" --mode checkpoint || true)
+_dirty2=$(python3 "$PLUGIN_ROOT/python/cli.py" dirty-tree checkpoint || true)
 if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty2"; then
     printf '%s\n' "$_dirty2" > "$DESIGN_TMPDIR/dirty-tree-detected.env" || true
     emit_kv WARN "plan-review-voters: dirty tree detected"

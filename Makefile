@@ -196,7 +196,7 @@ test-issue-query:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_issue_query.py -x -q
 
 test-implement-admission:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-admission.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'gate'
 
 test-anti-improvised-wakeup:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-anti-improvised-wakeup.sh
@@ -209,7 +209,7 @@ test-sessionstart:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-sessionstart-health.sh
 
 test-preflight-args:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-preflight-args.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'preflight'
 
 test-check-clean-tree:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-clean-tree.sh
@@ -220,7 +220,7 @@ test-check-main-sync:
 
 
 test-check-scope-reduction-marker:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-scope-reduction-marker.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'scope_check or scope_marker'
 
 test-plan-review-scope-anchor:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-scope-anchor.sh
@@ -689,13 +689,13 @@ test-implement-finalize:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-finalize.sh
 
 test-implement-bootstrap:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-bootstrap.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'write_base_session_env or tracking or emergency_bypass or resume_plan_tail or forked_plan or run_bootstrap or phase_coder'
 
 test-implement-bootstrap-invoke:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-implement-bootstrap-invoke.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'invoke or cli_bootstrap or step0_wrapper'
 
 test-parse-bootstrap-routing-envelope:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-parse-bootstrap-routing-envelope.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_bootstrap.py -x -q -k 'filtered_envelope or parse_routing or routing_parser'
 
 test-flush-execution-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
@@ -941,7 +941,7 @@ test-check-review-changes:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-check-review-changes.sh
 
 test-check-mid-run-dirty-tree:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-mid-run-dirty-tree.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'baseline or checkpoint'
 
 test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
@@ -1013,7 +1013,7 @@ test-github-remote-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-github-remote-repo.sh
 
 test-implement-fork-env:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-fork-env.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_admission.py -x -q -k 'fork_env'
 
 test-create-pr:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-create-pr.sh

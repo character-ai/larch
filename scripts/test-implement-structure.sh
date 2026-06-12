@@ -96,7 +96,7 @@ require('skills/implement/scripts/step-0-bootstrap.sh', 'CALLER_ENV_PATH=*) CALL
 require('skills/implement/scripts/step-0-bootstrap.sh', 'UPSTREAM_REPO=*) UPSTREAM_REPO=', 'step-0 fork metadata upstream parse')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'preflight-tmpdir.env', 'step-0 preflight tmpdir resume persistence')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'read_session_key FORKED_TARGET', 'step-0 resume fork metadata rehydration')
-require('scripts/implement-bootstrap.sh', 'preflight-tmpdir.env', 'bootstrap preflight tmpdir persistence')
+require('python/bootstrap.py', 'preflight-tmpdir.env', 'bootstrap preflight tmpdir persistence')
 require('skills/implement/scripts/step-8-ship.sh', 'read_state_key', 'step-8 ship state rehydration')
 require('skills/implement/scripts/step-8-ship.sh', 'sys.version_info >= (3, 11)', 'step-8 python 3.11 guard')
 require('skills/implement/scripts/step-8-ship.sh', '"outcome":"STALLED"', 'step-8 stalled JSON stdout')
@@ -186,7 +186,7 @@ if conflict_ref.is_file():
 require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
 require(skill, 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
-require('skills/implement/scripts/step-0-bootstrap.sh', '--preserve-coder', 'step-0 resume preserve-coder')
+require('python/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
 for needle in [
     'degraded-tools-gate.sh', '--codex-present', '--cursor-present',
     'read_session_key CODEX_PRESENT', 'read_session_key CURSOR_PRESENT',

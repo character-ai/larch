@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`scripts/check-clean-tree.sh` is the shared working-tree cleanliness predicate for preflight gates. It centralizes the `git status --porcelain` probe used by `scripts/preflight.sh` and the pre-lock guard in `skills/fix-issue/scripts/find-lock-issue.sh`.
+`scripts/check-clean-tree.sh` is the shared working-tree cleanliness predicate for preflight gates. It centralizes the `git status --porcelain` probe used by `python/cli.py admission preflight` and the pre-lock guard in `skills/fix-issue/scripts/find-lock-issue.sh`.
 
 ## Interface
 
@@ -40,7 +40,7 @@ The `DIRTY_OUT` and `PROBE_ERROR` values collapse newlines, carriage returns, an
 
 ## Primary Callers
 
-- `scripts/preflight.sh` calls `--fail-closed` (with `|| true` to preserve `set -e` compatibility); the awk-based CLEAN extraction then treats an empty result as "could not determine cleanliness" and exits 2.
+- `python/cli.py admission preflight` calls `--fail-closed` (with `|| true` to preserve `set -e` compatibility); the awk-based CLEAN extraction then treats an empty result as "could not determine cleanliness" and exits 2.
 - `skills/fix-issue/scripts/find-lock-issue.sh` calls `--fail-closed` immediately before issue-lock acquisition, so dirty trees abort before `GO` deletion, `IN PROGRESS` comments, or title renames.
 
 ## Test Harness
@@ -61,6 +61,6 @@ bash scripts/test-check-clean-tree.sh
 
 ## Edit-in-sync
 
-When changing this helper's stdout contract, update both callers, `scripts/preflight.md`, `skills/fix-issue/scripts/find-lock-issue.md`, and `scripts/test-check-clean-tree.sh` in the same PR.
+When changing this helper's stdout contract, update both callers, `python/admission.py`, `skills/fix-issue/scripts/find-lock-issue.md`, and `scripts/test-check-clean-tree.sh` in the same PR.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

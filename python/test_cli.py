@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -112,11 +113,11 @@ def test_systemexit_propagates_unchanged() -> None:
 
 
 def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
-    # Verify cli.py top-level imports only argparse, importlib, and sys.
+    # Verify cli.py top-level imports only lightweight dispatcher modules.
     source = CLI_PATH.read_text(encoding="utf-8")
     lines = [ln.strip() for ln in source.splitlines() if ln.startswith(("import ", "from "))]
     top_imports = [ln for ln in lines if not ln.startswith("#") and not ln.startswith("from __future__")]
-    allowed = {"import argparse", "import importlib", "import sys"}
+    allowed = {"import argparse", "import importlib", "import os", "import sys"}
     for imp in top_imports:
         assert imp in allowed, f"Unexpected top-level import in cli.py: {imp!r}"
 
@@ -139,6 +140,16 @@ def test_all_registry_targets_resolve_to_callable_mains() -> None:
         module = importlib.import_module(module_name)
         target = getattr(module, func_name, None)
         assert callable(target), f"{domain} {verb} -> {module_name}.{func_name}"
+
+
+def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"dirty_tree": MagicMock(checkpoint_main=mock_main)}):
+        rc = cli.main(["dirty-tree", "checkpoint"])
+    assert rc == 0
+    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
 
 # ---------------------------------------------------------------------------

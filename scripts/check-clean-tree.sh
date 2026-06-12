@@ -2,7 +2,7 @@
 # check-clean-tree.sh — Cleanliness predicate for working-tree gates.
 #
 # Default behavior is fail-open: a failing `git status --porcelain` is
-# reported as clean, preserving preflight.sh's historical behavior. With
+# reported as clean, preserving python/cli.py admission preflight's historical behavior. With
 # --fail-closed, a failing probe emits CLEAN=unknown and exits 1.
 #
 # Usage:

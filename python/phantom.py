@@ -48,17 +48,23 @@ def _baseline_dirty_probe(
     *,
     cwd: str | None,
 ) -> tuple[str, str, str]:
-    """Delegate to check-mid-run-dirty-tree.sh --mode baseline (bash parity)."""
-    script = str(_REPO_ROOT / "scripts" / "check-mid-run-dirty-tree.sh")
+    """Run dirty-tree baseline detection."""
     result = runner.run(
-        [script, "--mode", "baseline", "--baseline", baseline_file],
+        [
+            "python3",
+            str(_REPO_ROOT / "python" / "cli.py"),
+            "dirty-tree",
+            "baseline",
+            "--baseline",
+            baseline_file,
+        ],
         cwd=cwd,
     )
     if result.returncode != 0:
-        return "unknown", "check-mid-run-dirty-tree-failed", ""
+        return "unknown", "dirty-tree-baseline-failed", ""
     output = result.stdout
     if not output.strip():
-        return "unknown", "check-mid-run-dirty-tree-failed", ""
+        return "unknown", "dirty-tree-baseline-failed", ""
 
     fields = _parse_kv_output(output)
     status = fields.get("STATUS", "")

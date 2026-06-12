@@ -14,7 +14,7 @@ On any branch other than `main` the check is a no-op (exits 0 with `SYNC_STATUS=
 check-main-sync.sh
 ```
 
-No flags. Callers are responsible for fetching `origin/main` before invoking this script when an up-to-date comparison is needed (e.g. `preflight.sh` fetches before calling this; `find-lock-issue.sh` calls this without fetching, relying on the locally-cached `origin/main` ref). **`find-lock-issue` on `main` when `origin/main` exists**: if `check-main-sync.sh` exits 2 with `SYNC_STATUS=probe-error`, refresh with `git fetch origin main` before retrying — the pre-lock path fail-closes that case so a stale or flaky `origin/main` comparison cannot silently authorize a lock. When `origin/main` is not configured locally, the pre-lock path may still fail-open on probe-error (missing-remote / harness checkouts).
+No flags. Callers are responsible for fetching `origin/main` before invoking this script when an up-to-date comparison is needed (e.g. `python/cli.py admission preflight` fetches before calling this; `find-lock-issue.sh` calls this without fetching, relying on the locally-cached `origin/main` ref). **`find-lock-issue` on `main` when `origin/main` exists**: if `check-main-sync.sh` exits 2 with `SYNC_STATUS=probe-error`, refresh with `git fetch origin main` before retrying — the pre-lock path fail-closes that case so a stale or flaky `origin/main` comparison cannot silently authorize a lock. When `origin/main` is not configured locally, the pre-lock path may still fail-open on probe-error (missing-remote / harness checkouts).
 
 ## Output Contract
 
@@ -72,12 +72,12 @@ ERROR=<summary>
 
 ## Primary Callers
 
-- `scripts/preflight.sh` calls this immediately after `git fetch origin main` and before `git rebase origin/main`. Fetching ensures the comparison uses the current upstream state. Exit 1 maps to `PREFLIGHT=fail` + exit 3. Exit 2 with `SYNC_STATUS=probe-error` is fail-open (run continues); other non-zero exits map to `PREFLIGHT=fail` + exit 3.
+- `python/cli.py admission preflight` calls this immediately after `git fetch origin main` and before `git rebase origin/main`. Fetching ensures the comparison uses the current upstream state. Exit 1 maps to `PREFLIGHT=fail` + exit 3. Exit 2 with `SYNC_STATUS=probe-error` is fail-open (run continues); other non-zero exits map to `PREFLIGHT=fail` + exit 3.
 - `skills/fix-issue/scripts/find-lock-issue.sh` calls this inside `_pre_lock_clean_tree_and_main_sync_gate` after the working-tree cleanliness probe passes. No fetch is performed — the locally-cached `origin/main` ref is used. Exit 1 (`SYNC_STATUS=blocked`) maps to `ELIGIBLE=false` + exit 2, aborting before any GitHub mutation. Exit 2 with `SYNC_STATUS=probe-error` is **fail-closed** when `origin/main` resolves locally (operators should `git fetch origin main` and retry) and **fail-open** when `origin/main` is absent (harness / missing-remote checkouts). Any other non-zero exit aborts with `ELIGIBLE=false` + exit 2.
 
 ## Relationship to local-cleanup.sh
 
-The orphan-drop logic in `local-cleanup.sh` Step 3 is the post-merge counterpart of this check. Both use the same criteria (`chore(larch-logs): flush *` commit subjects + `larch-logs/`-only file paths) to identify safe-to-drop flush commits. `check-main-sync.sh` runs pre-fetch (on the `find-lock-issue.sh` path) or post-fetch (on the `preflight.sh` path), before a squash-merge can interfere with the diff.
+The orphan-drop logic in `local-cleanup.sh` Step 3 is the post-merge counterpart of this check. Both use the same criteria (`chore(larch-logs): flush *` commit subjects + `larch-logs/`-only file paths) to identify safe-to-drop flush commits. `check-main-sync.sh` runs pre-fetch (on the `find-lock-issue.sh` path) or post-fetch (on the `python/cli.py admission preflight` path), before a squash-merge can interfere with the diff.
 
 ## Test Harness
 
@@ -93,4 +93,4 @@ bash scripts/test-check-main-sync.sh
 
 ## Edit-in-sync
 
-When changing this script's stdout contract, update both callers (`scripts/preflight.sh`, `skills/fix-issue/scripts/find-lock-issue.sh`), their companion `.md` files, and `scripts/test-check-main-sync.sh` in the same PR.
+When changing this script's stdout contract, update both callers (`python/cli.py admission preflight`, `skills/fix-issue/scripts/find-lock-issue.sh`), their companion `.md` files, and `scripts/test-check-main-sync.sh` in the same PR.

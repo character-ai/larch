@@ -5,8 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
-BOOTSTRAP_SH="$REPO_ROOT/scripts/implement-bootstrap.sh"
-BOOTSTRAP_MD="$REPO_ROOT/scripts/implement-bootstrap.md"
+BOOTSTRAP_SH="$REPO_ROOT/python/bootstrap.py"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 
 fail() {
@@ -31,31 +30,23 @@ assert_not_contains() {
 }
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
-assert_contains "$BOOTSTRAP_MD" 'Codex → Cursor → Claude' "implement waterfall"
+assert_contains "$BOOTSTRAP_SH" 'elif st.codex_available == "true"' "implicit codex-first waterfall"
+assert_contains "$BOOTSTRAP_SH" 'elif st.cursor_available == "true"' "implicit cursor fallback waterfall"
+assert_contains "$BOOTSTRAP_SH" 'st.coder = "claude"' "claude terminal waterfall"
 assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 bootstrap invoke wrapper"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
-assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} runtime probe failed' "explicit runtime unavailable waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} binary not found' "explicit binary not found waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '${requested_binary_key} could not be determined' "explicit binary-found undetermined waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" 'Waterfalling to ${alt_caps} → Claude' "explicit-coder waterfalls instead of bailing (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '${alt_caps} also unavailable — falling back to Claude implementer' "explicit-coder claude terminal tier (#3207)"
 assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
-assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "script-side waterfall order not duplicated in SKILL.md"
+assert_contains "$BOOTSTRAP_SH" 'st.opts.coder_opt == "cursor"' "explicit cursor branch"
+assert_contains "$BOOTSTRAP_SH" 'st.opts.coder_opt == "codex"' "explicit codex branch"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
-assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Cursor implementer' "codex-to-cursor warning"
-assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Claude implementer' "cursor-to-claude warning"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '[ -z "${PLAN_FILE:-}" ]' "missing-plan empty PLAN_FILE guard"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '[ ! -f "${PLAN_FILE:-/nonexistent}" ]' "missing-plan unreadable PLAN_FILE guard"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '[ ! -f "${IMPLEMENT_TMPDIR:-/nonexistent}/feature-description.txt" ]' "missing-plan feature-description guard"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
-assert_contains "$BOOTSTRAP_MD" 'REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself' "missing-plan skip authority"
 assert_contains "$IMPLEMENT_SKILL" 'does not route the implementer' "diff_lines informational non-routing clause"
 
 assert_contains "$DESIGN_SKILL" 'diff_lines: <N>' "design plan diff_lines"

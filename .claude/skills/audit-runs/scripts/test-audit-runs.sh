@@ -357,7 +357,7 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
 # The skill uses the prefix pattern ^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]
 # (timestamp before the word "Report" inside the bracket). The generic
-# `has_report_prefix` in `scripts/implement-admission.sh` (see `/implement`
+# `has_report_prefix` in `python/cli.py admission gate` (see `/implement`
 # Preflight in `skills/implement/SKILL.md`) also matches this broad `[... Report]`
 # family; the `audit-report` label remains a separate admission gate there.
 # ---------------------------------------------------------------------------
@@ -385,7 +385,7 @@ assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
 assert_equal "$result" "pickable" "[14g] legacy [Run Logs Audit Report ...] title remains pickable because self-exclusion requires Report immediately before ] (label guard is primary)"
 
-# Test 14e: implement-admission.sh has_report_prefix matches the audit report title
+# Test 14e: python/cli.py admission gate has_report_prefix matches the audit report title
 # (space before "report]" inside the bracket); label-based exclusion is still primary.
 title_matches_has_report_prefix() {
     local title="$1"

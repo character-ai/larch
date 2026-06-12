@@ -6,7 +6,7 @@
 - Always exits 0 — callers must never abort on snapshot failure
 - On any *operation* failure (git / sort / mv), removes both temp file and output file so `check-review-changes.sh` sees `UNTRACKED_BASELINE=missing` (issue #651 guard)
 - Unknown CLI flags and missing `--output` log a diagnostic to stderr and exit 0 *without* touching `$OUTPUT` — argument-parsing errors must not delete user-controlled paths
-- Default output is sorted and newline-delimited for `check-review-changes.sh`; `--nul` switches to sorted NUL-delimited output for `check-mid-run-dirty-tree.sh`
+- Default output is sorted and newline-delimited for `check-review-changes.sh`; `--nul` switches to sorted NUL-delimited output for `python/cli.py dirty-tree`
 - Uses `set -o pipefail` so `git ls-files` failures propagate through the pipe
 - Atomic write via temp file + `mv -f`
 
@@ -17,4 +17,4 @@
 - `skills/implement/SKILL.md` Step 5 pre-review snapshot
 - `scripts/launch-review.sh --tool cursor` and `scripts/launch-review.sh --tool codex` pre-launch dirty-tree baselines
 
-**Edit-in-sync**: `skills/implement/scripts/check-review-changes.sh` (newline-delimited consumer), `scripts/check-mid-run-dirty-tree.sh` (NUL-delimited consumer), and the review launchers.
+**Edit-in-sync**: `skills/implement/scripts/check-review-changes.sh` (newline-delimited consumer), `python/cli.py dirty-tree` (NUL-delimited consumer), and the review launchers.

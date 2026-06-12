@@ -157,9 +157,9 @@ assert_contains "$out" "plan file not found at conventional path" "step1 emits c
 [[ ! -f "$compose_argv" ]] || fail "compose helper should not run when plan.txt missing"
 
 echo "=== issue-anchored Step 1 plan copy contract (bootstrap pin) ==="
-# Phase 3: plan copy moved from SKILL.md prompt-side into phase_plan_materialize in implement-bootstrap.sh
-if ! grep -qF 'plan-from-issue.txt' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
-  || ! grep -qF 'plan.txt' "$REPO_ROOT/scripts/implement-bootstrap.sh"; then
+# Phase 3: plan copy moved from SKILL.md prompt-side into phase_plan_materialize in python/bootstrap.py
+if ! grep -qF 'plan-from-issue.txt' "$REPO_ROOT/python/bootstrap.py" \
+  || ! grep -qF 'plan.txt' "$REPO_ROOT/python/bootstrap.py"; then
   fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
 fi
 
