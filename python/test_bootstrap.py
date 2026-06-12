@@ -155,13 +155,13 @@ def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -
 def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, monkeypatch, capsys) -> None:
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        if "tracking-issue-read.sh" in str(argv[0]):
-            return subprocess.CompletedProcess(argv, 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    def fake_cli(*args: str, env=None):
+        _ = env
+        if args[:2] == ("tracking-issue", "read"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="tracking"),
         implement_tmpdir=str(tmp_path),
@@ -178,18 +178,13 @@ def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
-    def fake_run(argv, *, env=None, cwd=None):
-        _ = env, cwd
-        if "tracking-issue-read.sh" in str(argv[0]):
-            return subprocess.CompletedProcess(argv, 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
     def fake_cli(*args: str, env=None):
         _ = env
+        if args[:2] == ("tracking-issue", "read"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
         calls.append(args)
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
@@ -705,9 +700,6 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
 
     def fake_run(argv, *, env=None, cwd=None):
         _ = env, cwd
-        if "tracking-issue-write.sh" in str(argv[0]):
-            calls.append(("rename",))
-            return subprocess.CompletedProcess(argv, 1, "FAILED=true\n", "rename failed\n")
         if "post-tracking-issue.sh" in str(argv[0]):
             calls.append(("post",))
             return subprocess.CompletedProcess(argv, 0, "POSTED=true\n", "")
@@ -715,6 +707,9 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
 
     def fake_cli(*args: str, env=None):
         _ = env
+        if args[:2] == ("tracking-issue", "rename"):
+            calls.append(("rename",))
+            return subprocess.CompletedProcess(["cli", *args], 1, "FAILED=true\n", "rename failed\n")
         calls.append(args)
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 

@@ -300,8 +300,6 @@ exclude = [
   "scripts/create-branch.md",
   "scripts/run-step1-plan-log.sh",
   "scripts/run-step1-plan-log.md",
-  "scripts/tracking-issue-summary.sh",
-  "scripts/tracking-issue-summary.md",
   # Step 5 launcher harness is Makefile-only; runtime reachability is through
   # the SKILL.md invocation of scripts/run-step5-review.sh.
   "scripts/test-run-step5-review.sh",
