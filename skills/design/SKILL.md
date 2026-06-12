@@ -586,7 +586,7 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
   --claude-pid "$PPID"
 ```
 
-Wait for `<task-notification>` before parsing stdout or reading `.step3-review-result.env`.
+NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
@@ -628,7 +628,7 @@ If `TALLY_PLAN_REVIEW_STATUS` is `main-agent-vote-required`, preserve `SCOPE_ANC
   --starting-round "$STEP3_RESUME_ROUND"
 ```
 
-Use this fence for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. Wait for `<task-notification>` before parsing stdout or reading `.step3-review-result.env`.
+Use this fence for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `revise-plan-with-waterfall.sh`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `design-postplan-emit.sh` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
 
