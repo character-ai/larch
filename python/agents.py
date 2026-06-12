@@ -60,6 +60,7 @@ _PY_CLI = _PLUGIN_ROOT / "python" / "cli.py"
 _CURSOR_AUTH_MAX_ATTEMPTS = 3
 _MAX_CONTEXT_FILES = 20
 _MAX_CLAUDE_TIMEOUT = 1800
+_DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,12 @@ def _append(path: str | Path, text: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as handle:
         _ = handle.write(text)
+
+
+def _parse_positive_or_zero_int(value: str) -> int | None:
+    if value.isdigit():
+        return int(value, 10)
+    return None
 
 
 def _is_positive_int(value: str) -> bool:
@@ -450,6 +457,41 @@ def cursor_auth_preflight(*, caller: str = "agent cursor-auth-preflight") -> Aut
         "    (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login"
     )
     return AuthVerdict(ok=False, rc=2, message=msg)
+
+
+def cursor_preread_service_token() -> None:
+    raw_key = os.environ.get("CURSOR_API_KEY", "")
+    key = raw_key.strip()
+    if key:
+        return
+    uname_out = os.environ.get("LIB_CURSOR_AUTH_TEST_UNAME", "") if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1" else ""
+    if not uname_out:
+        uname_out = platform.system() or "unknown"
+    if uname_out != "Darwin":
+        return
+    if os.environ.get("LARCH_LIB_CURSOR_AUTH_TEST_MODE") == "1":
+        token = os.environ.get("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "")
+    else:
+        result = subprocess.run(
+            [shutil.which("security") or "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        token = result.stdout if result.returncode == 0 else ""
+    if token:
+        os.environ["CURSOR_API_KEY"] = token
+
+
+def cursor_auth_export_env() -> None:
+    raw_key = os.environ.get("CURSOR_API_KEY", "")
+    key = raw_key.strip()
+    if "\n" in key or "\r" in key:
+        os.environ.pop("CURSOR_API_KEY", None)
+    elif key:
+        os.environ["CURSOR_API_KEY"] = key
+    else:
+        os.environ.pop("CURSOR_API_KEY", None)
 
 
 def cursor_auth_preflight_main(argv: list[str] | None = None) -> int:
@@ -804,10 +846,39 @@ def _compose_failure_diag(output: Path, *, sink: str = "") -> None:
         _write(carrier, redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(sections)))[:16384])
 
 
-def _health_gate_timeout() -> int:
+def _read_session_key(path: Path, key: str) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if "\r" in text:
+        return ""
+    prefix = f"{key}="
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):]
+    return ""
+
+
+def _health_gate_timeout() -> int | None:
     raw = os.environ.get("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "")
-    if raw.isdigit():
-        return int(raw, 10)
+    parsed = _parse_positive_or_zero_int(raw)
+    if parsed is not None:
+        return parsed or None
+    session_paths = [
+        os.environ.get("SESSION_ENV_PATH", ""),
+        str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "session-env.sh") if os.environ.get("IMPLEMENT_TMPDIR") else "",
+    ]
+    for candidate_path in session_paths:
+        if not candidate_path:
+            continue
+        parsed = _parse_positive_or_zero_int(
+            _read_session_key(Path(candidate_path), "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT")
+        )
+        if parsed is not None:
+            return parsed or None
     return config.EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC
 
 
@@ -815,7 +886,7 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
     if tool not in {"codex", "cursor"}:
         return True, ""
     timeout = _health_gate_timeout()
-    if timeout == 0:
+    if timeout is None:
         return True, ""
     helper = _plugin_root() / "scripts" / "check-reviewers.sh"
     if not helper.is_file():
@@ -858,6 +929,124 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
     return False, f"probe output: {last_stdout[:500]}; probe stderr: {last_stderr[:300]}"
 
 
+def _cursor_ci_stall_sidecar_dir(output_file: Path) -> Path | None:
+    for parent in [output_file.parent, *output_file.parents]:
+        if re.fullmatch(r"round-[0-9]+", parent.name):
+            return parent
+    impl = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if impl:
+        candidate = Path(impl) / "round-1"
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            return None
+    return None
+
+
+def _git_status_excerpt(root: Path) -> str:
+    result = proc.run(["git", "-C", str(root), "status", "--porcelain"], timeout=3, check=False)
+    text = result.stdout if result.returncode == 0 else ""
+    return redact.redact_tmpdir_paths(redact.redact_secrets_only(text[:32000]))
+
+
+def _tree_latest_mtime(root: Path) -> float:
+    latest = 0.0
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            if ".git" in dirnames:
+                dirnames.remove(".git")
+            for name in filenames:
+                try:
+                    latest = max(latest, (Path(dirpath) / name).stat().st_mtime)
+                except OSError:
+                    continue
+    except OSError:
+        return latest
+    return latest
+
+
+def _stall_channel_progress(channel: str, output_file: Path, last_marker: float) -> tuple[bool, float]:
+    if channel == "stdout":
+        size = float(output_file.stat().st_size) if output_file.is_file() else 0.0
+        return size != last_marker, size
+    if channel.startswith("tree:"):
+        marker = _tree_latest_mtime(Path(channel.split(":", 1)[1]))
+        return marker != last_marker, marker
+    if channel.startswith("file:"):
+        path = Path(channel.split(":", 1)[1])
+        if path.is_file():
+            stat = path.stat()
+            marker = float(stat.st_size) + stat.st_mtime
+        else:
+            marker = 0.0
+        return marker != last_marker, marker
+    return False, last_marker
+
+
+def _terminate_child_processes_first(pid: int) -> None:
+    try:
+        children = proc.run(["pgrep", "-P", str(pid)], check=False)
+    except OSError:
+        children = CommandResult(("pgrep", "-P", str(pid)), 1, "", "", 0.0)
+    child_pids = [line.strip() for line in children.stdout.splitlines() if line.strip().isdigit()]
+    for child_pid in child_pids:
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.kill(int(child_pid), 15)
+    with contextlib.suppress(OSError, ProcessLookupError):
+        os.kill(pid, 15)
+    time.sleep(2)
+    for child_pid in child_pids:
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.kill(int(child_pid), 9)
+    with contextlib.suppress(OSError, ProcessLookupError):
+        os.kill(pid, 9)
+
+
+def _write_cursor_ci_stall_artifacts(
+    *,
+    output_file: Path,
+    diag: Path,
+    channel: str,
+    pid: int,
+    elapsed: int,
+) -> None:
+    try:
+        ps = proc.run(["ps", "-p", str(pid), "-o", "pid,pcpu,etime,stat"], check=False).stdout
+    except OSError:
+        ps = ""
+    ps_text = ps or "(target not found)\n"
+    _append(
+        diag,
+        f"Stall detected: channel={channel} time_since_last_progress={elapsed}s\n"
+        "--- stall ps snapshot (target pid="
+        f"{pid}) ---\n{ps_text}",
+    )
+    root = Path.cwd()
+    if channel.startswith("tree:"):
+        root = Path(channel.split(":", 1)[1])
+    payload = {
+        "tool": "cursor",
+        "channel": channel,
+        "pid": pid,
+        "time_since_last_progress": elapsed,
+        "capture_phase": "pre_sigterm",
+        "git_state": {"status_porcelain": _git_status_excerpt(root)},
+        "last_transcript_lines": (
+            _tail_redacted(output_file, lines=50, cap=8000)
+            + "\n"
+            + _tail_redacted(diag, lines=50, cap=8000)
+        ).splitlines()[-110:],
+    }
+    text = json.dumps(payload, ensure_ascii=False) + "\n"
+    _write(output_file.with_suffix(output_file.suffix + ".stall.json"), text)
+    sidecar_dir = _cursor_ci_stall_sidecar_dir(output_file)
+    if sidecar_dir is not None:
+        name = f"cursor-ci-stall-{int(time.time())}-{pid}.json"
+        with contextlib.suppress(OSError):
+            _write(sidecar_dir / name, text)
+
+
 def run_external_agent(
     *,
     tool: str,
@@ -870,6 +1059,8 @@ def run_external_agent(
     cwd: str | None = None,
     stdout_path: str | Path | None = None,
     stderr_path: str | Path | None = None,
+    stall_channel: str = "",
+    stall_threshold_seconds: int = 0,
 ) -> RunExternalAgentResult:
     output_path = Path(output)
     diag = output_path.with_suffix(output_path.suffix + ".diag")
@@ -951,6 +1142,8 @@ def run_external_agent(
 
         poll_interval = float(os.environ.get("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "10") or "10")
         start = time.monotonic()
+        last_progress_time = start
+        _, stall_marker = _stall_channel_progress(stall_channel, output_path, -1.0) if stall_channel else (False, 0.0)
         last_progress_minute = 0
         while True:
             try:
@@ -958,6 +1151,26 @@ def run_external_agent(
                 break
             except subprocess.TimeoutExpired:
                 elapsed = time.monotonic() - start
+                if stall_channel and stall_threshold_seconds > 0:
+                    progressed, new_marker = _stall_channel_progress(stall_channel, output_path, stall_marker)
+                    if progressed:
+                        stall_marker = new_marker
+                        last_progress_time = time.monotonic()
+                    stall_elapsed = int(time.monotonic() - last_progress_time)
+                    if stall_elapsed >= stall_threshold_seconds:
+                        _write_cursor_ci_stall_artifacts(
+                            output_file=output_path,
+                            diag=diag,
+                            channel=stall_channel,
+                            pid=proc_obj.pid,
+                            elapsed=stall_elapsed,
+                        )
+                        _err(f"⚠ {tool} agent: STALLED after {stall_elapsed}s without progress, killing")
+                        _terminate_child_processes_first(proc_obj.pid)
+                        with contextlib.suppress(Exception):
+                            proc_obj.wait(timeout=1)
+                        exit_code = config.EXIT_TIMEOUT
+                        break
                 if elapsed >= timeout_seconds:
                     _err(f"⚠ {tool} agent: TIMED OUT after {timeout_seconds // 60} minutes, killing")
                     proc_obj.terminate()
@@ -1260,7 +1473,7 @@ def _prepare_codex_home(home_dir: Path, *, trusted_instructions_file: str = "") 
     return 0, ""
 
 
-def _write_preflight_bundle(output: Path, timeout: str, launcher_exit: int, failure_reason: str) -> None:
+def _write_preflight_bundle(output: Path, timeout: str, launcher_exit: int, failure_reason: str, *, tool: str = "codex") -> None:
     _write(output, "")
     _write(output.with_suffix(output.suffix + ".diag"), f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n")
     _write(
@@ -1269,6 +1482,9 @@ def _write_preflight_bundle(output: Path, timeout: str, launcher_exit: int, fail
     )
     _write(output.with_suffix(output.suffix + ".done"), f"{launcher_exit}\n")
     _emit_kv("LAUNCHER_EXIT", launcher_exit)
+    failure = classify_launch_failure(launcher_exit, output.with_suffix(output.suffix + ".diag"), binary_present=True, tool=tool, output_file=output)
+    _emit_kv("LAUNCHER_FAILURE_CLASS", failure.failure_class)
+    _emit_kv("LAUNCHER_FAILURE_REASON", failure.reason or failure_reason)
     _emit_kv("OUTPUT", str(output))
 
 
@@ -1312,10 +1528,14 @@ def _run_external_agent_with_auth_retries(
     capture_stdout_only: bool = False,
     stdout_path: Path | None = None,
     stderr_path: Path | None = None,
+    stall_channel: str = "",
+    stall_threshold_seconds: int = 0,
 ) -> RunExternalAgentResult:
     result: RunExternalAgentResult | None = None
     for attempt in range(1, _auth_retry_limit() + 1):
         with _temporary_env("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".inner.done"):
+            state = external_serial_lock_acquire(tool)
+            external_serial_lock_release_after(state)
             result = run_external_agent(
                 tool=tool,
                 output=str(output),
@@ -1325,6 +1545,8 @@ def _run_external_agent_with_auth_retries(
                 capture_stdout_only=capture_stdout_only,
                 stdout_path=stdout_path,
                 stderr_path=stderr_path,
+                stall_channel=stall_channel,
+                stall_threshold_seconds=stall_threshold_seconds,
             )
         if result.exit_code == 0 or attempt >= _auth_retry_limit():
             return result
@@ -1401,8 +1623,6 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         ]
         env_old = os.environ.get("CODEX_HOME")
         os.environ["CODEX_HOME"] = home
-        state = external_serial_lock_acquire("codex")
-        external_serial_lock_release_after(state)
         start = time.time()
         try:
             events = output.with_suffix(output.suffix + ".events.jsonl")
@@ -1572,8 +1792,25 @@ def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
     )
 
 
-def _emit_launcher_result(output: Path, launcher_exit: int) -> None:
+def _emit_ci_launcher_result(output: Path, launcher_exit: int, *, tool: str, binary_present: bool = True) -> None:
+    sidecars = [
+        output.with_suffix(output.suffix + ".sidecar"),
+        output.with_suffix(output.suffix + ".diag"),
+        output.with_suffix(output.suffix + ".stderr"),
+    ]
+    sidecar = next((path for path in sidecars if path.is_file() and path.stat().st_size > 0), sidecars[0])
+    auth = external_auth_verdict(tool, *sidecars, output)
+    failure = classify_launch_failure(
+        launcher_exit,
+        sidecar,
+        auth_verdict=auth,
+        binary_present=binary_present,
+        tool=tool,
+        output_file=output,
+    )
     _emit_kv("LAUNCHER_EXIT", launcher_exit)
+    _emit_kv("LAUNCHER_FAILURE_CLASS", failure.failure_class)
+    _emit_kv("LAUNCHER_FAILURE_REASON", failure.reason)
     _emit_kv("OUTPUT", str(output))
 
 
@@ -1621,8 +1858,6 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         env_old = os.environ.get("CODEX_HOME")
         os.environ["CODEX_HOME"] = home
         try:
-            state = external_serial_lock_acquire("codex")
-            external_serial_lock_release_after(state)
             result = _run_external_agent_with_auth_retries(
                 tool="codex",
                 output=output,
@@ -1669,7 +1904,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "codex", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
-    _emit_launcher_result(output, result.exit_code)
+    _emit_ci_launcher_result(output, result.exit_code, tool="codex")
     return 0
 
 
@@ -1704,8 +1939,10 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         _err(verdict.message)
         _write(Path(args.output), "")
         _write(Path(args.output).with_suffix(Path(args.output).suffix + ".done"), f"{verdict.rc}\n")
-        _emit_launcher_result(Path(args.output), verdict.rc)
+        _emit_ci_launcher_result(Path(args.output), verdict.rc, tool="cursor")
         return 0
+    cursor_preread_service_token()
+    cursor_auth_export_env()
     output = Path(args.output)
     prompt = f" /max-mode on. Prompt: {_ci_prompt('Cursor', args)}"
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
@@ -1719,14 +1956,14 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     start = time.time()
     try:
         child = ["cursor", "agent", "-p", "--force", "--trust", *model_args, "--output-format", "json", "--workspace", str(Path.cwd()), prompt]
-        state = external_serial_lock_acquire("cursor")
-        external_serial_lock_release_after(state)
         result = _run_external_agent_with_auth_retries(
             tool="cursor",
             output=output,
             timeout_seconds=int(args.timeout, 10),
             cmd=child,
             capture_stdout_only=True,
+            stall_channel="stdout" if args.role == "fix" else f"tree:{Path.cwd()}",
+            stall_threshold_seconds=_parse_positive_or_zero_int(os.environ.get("LARCH_CURSOR_CI_STALL_THRESHOLD", "")) or _DEFAULT_CURSOR_CI_STALL_THRESHOLD,
         )
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
@@ -1762,7 +1999,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "cursor", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
-    _emit_launcher_result(output, result.exit_code)
+    _emit_ci_launcher_result(output, result.exit_code, tool="cursor")
     return 0
 
 
@@ -1776,8 +2013,8 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     prompt = _ci_prompt("Claude", args)
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
-    child = ["claude", "--print", "--output-format", "json", "--model", args.model, prompt]
-    result = proc.run(child, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    child = ["claude", "--print", "--output-format", "json", "--model", args.model]
+    result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
     exit_code = result.returncode
     if result.stdout:
         try:
@@ -1791,7 +2028,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     if result.stderr:
         _write(output.with_suffix(output.suffix + ".diag"), result.stderr)
     _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
-    _emit_launcher_result(output, exit_code)
+    _emit_ci_launcher_result(output, exit_code, tool="claude")
     return 0
 
 
@@ -1819,6 +2056,19 @@ def _validate_context_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str
         return False, "context file outside allowed roots"
     if canon.stat().st_size > 1024 * 1024:
         return False, "context file exceeds 1 MB"
+    return True, ""
+
+
+def _validate_prompt_file(path: Path, roots: Sequence[Path]) -> tuple[bool, str]:
+    if ".." in path.parts or _CTRL_RE.search(str(path)):
+        return False, "prompt file path contains unsupported characters"
+    if path.is_symlink():
+        return False, "prompt file must not be a symlink"
+    if not path.is_file():
+        return False, "prompt file missing"
+    canon = _canonical(path)
+    if not any(_under(canon, root) for root in roots):
+        return False, "prompt file outside allowed roots"
     return True, ""
 
 
@@ -1861,6 +2111,46 @@ def _run_claude_with_stdin(cmd: Sequence[str], prompt: str, *, timeout: float, c
         stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "claude subprocess timed out\n")
         return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.time() - start)
+
+
+def _claude_token_raw(timing_task_kind: str) -> str:
+    if "draft" in timing_task_kind:
+        return "claude_draft"
+    if "scout" in timing_task_kind:
+        return "claude_scout"
+    if "voter" in timing_task_kind:
+        return "claude_vote"
+    return "claude_review"
+
+
+def _record_claude_sub_usage(obj: dict[str, object], raw: str) -> None:
+    usage = obj.get("usage")
+    if not isinstance(usage, dict):
+        return
+    try:
+        input_tokens = _num(usage.get("input_tokens") or usage.get("inputTokens") or 0)
+        output_tokens = _num(usage.get("output_tokens") or usage.get("outputTokens") or 0)
+        cache_read = _num(usage.get("cache_read_input_tokens") or usage.get("cacheReadTokens") or 0)
+        cache_create = _num(usage.get("cache_creation_input_tokens") or usage.get("cacheWriteTokens") or 0)
+    except ValueError:
+        return
+    total = input_tokens + output_tokens + cache_read + cache_create
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "token",
+            "record-vendor",
+            "claude_sub",
+            f"input={input_tokens}",
+            f"output={output_tokens}",
+            f"cache_read={cache_read}",
+            f"cache_create={cache_create}",
+            f"total={total}",
+            f"raw={raw}",
+        ],
+        check=False,
+    )
 
 
 def _render_context_files(paths: Sequence[Path], roots: Sequence[Path]) -> tuple[int, str, str]:
@@ -1917,6 +2207,10 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
         _err(f"agent launch-claude-subprocess: {output_msg}")
         return 2
     roots = [_plugin_root(), session_root]
+    prompt_ok, prompt_msg = _validate_prompt_file(prompt_file, roots)
+    if not prompt_ok:
+        _err(f"agent launch-claude-subprocess: {prompt_msg}")
+        return 2
     for raw in args.allow_root:
         p = Path(raw)
         if not p.is_dir() or p.is_symlink():
@@ -1951,6 +2245,9 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     if args.read_tools:
         cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
     prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
+    for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
+        with contextlib.suppress(FileNotFoundError):
+            stale.unlink()
     _write(prompt_sidecar, full_prompt)
     _write(output.with_suffix(output.suffix + ".meta"), f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nPROMPT_FILE={prompt_sidecar}\nCMD_JSON={_json_array(cmd)}\n")
     start = time.time()
@@ -1966,6 +2263,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             if isinstance(value, str) and value:
                 promoted = value
                 status = "complete"
+                _record_claude_sub_usage(obj, _claude_token_raw(args.timing_task_kind))
             else:
                 exit_code = 1
                 promoted = "CLAUDE_SUBPROCESS_EMPTY_RESULT"
@@ -1976,9 +2274,18 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
         promoted = raw
     _write(output, promoted)
     if result.stderr:
-        _write(output.with_suffix(output.suffix + ".diag"), result.stderr)
+        _write(output.with_suffix(output.suffix + ".stderr"), result.stderr)
     _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
-    _write(output.with_suffix(output.suffix + ".dirty-tree"), "STATUS=unknown\n")
+    if exit_code != 0:
+        stderr_file = output.with_suffix(output.suffix + ".stderr")
+        if stderr_file.is_file() and stderr_file.stat().st_size > 0:
+            _write_stderr_tail(stderr_file, output)
+        _compose_failure_diag(output, sink=str(stderr_file))
+    else:
+        for stale in (output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
+            with contextlib.suppress(FileNotFoundError):
+                stale.unlink()
+    _write(output.with_suffix(output.suffix + ".dirty-tree"), "STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n")
     proc.run(
         [
             sys.executable,
@@ -2032,8 +2339,10 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         return 2
     model = args.model or (os.environ.get("LARCH_VOTER_MODEL", "claude-sonnet-4-6") if args.role == "voter" else "claude-sonnet-4-6")
     temp_prompt = ""
+    prompt_tmpdir = Path(args.output).parent
+    prompt_tmpdir.mkdir(parents=True, exist_ok=True)
     if args.prompt is not None:
-        fd, temp_prompt = tempfile.mkstemp(prefix="larch-claude-review-prompt-")
+        fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-prompt-", dir=str(prompt_tmpdir))
         os.close(fd)
         _write(temp_prompt, args.prompt)
         prompt_file = temp_prompt
@@ -2064,7 +2373,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
             _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")
             return 2
         body = rendered.stdout
-        fd, temp_prompt = tempfile.mkstemp(prefix="larch-claude-review-agent-")
+        fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-agent-", dir=str(prompt_tmpdir))
         os.close(fd)
         _write(temp_prompt, body)
         prompt_file = temp_prompt

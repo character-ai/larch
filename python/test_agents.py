@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,6 @@ import pytest
 import agents
 import config
 from agents import LaunchFailure, TierAttempt
-from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB_COMMON = REPO_ROOT / "scripts" / "lib-external-launcher-common.sh"
@@ -42,208 +41,6 @@ def test_parse_launcher_exit_text() -> None:
     assert agents.parse_launcher_exit_text("noise\nLAUNCHER_EXIT=2\n") == 2
     assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n") == 0
     assert agents.parse_launcher_exit_text("") == 0
-
-
-def test_parse_token_record_text() -> None:
-    assert agents.parse_token_record_text("noise\nTOKEN_RECORD=/tmp/custom.token-record\n") == "/tmp/custom.token-record"
-    assert agents.parse_token_record_text("TOKEN_RECORD=\n") == ""
-
-
-class TokenIngestRunner:
-    def __init__(self, returncodes: Sequence[int] = (0, 0)) -> None:
-        self.returncodes = list(returncodes)
-        self.calls: list[tuple[tuple[str, ...], Mapping[str, str] | None]] = []
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append((tuple(argv), None if env is None else dict(env)))
-        rc = self.returncodes.pop(0) if self.returncodes else 0
-        return CommandResult(tuple(argv), rc, "", "", 0.01)
-
-
-def test_ingest_launcher_token_sidecar_uses_token_record_and_exports_tmpdir(tmp_path: Path) -> None:
-    sidecar = tmp_path / "custom.token-record"
-    _ = sidecar.write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\nMODEL=gpt-test\n",
-        encoding="utf-8",
-    )
-    seen: set[str] = set()
-    runner = TokenIngestRunner()
-    ok = agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout=f"LAUNCHER_EXIT=0\nTOKEN_RECORD={sidecar}\n",
-        output=tmp_path / "ignored.out",
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    )
-    assert ok is True
-    assert len(runner.calls) == 2
-    assert runner.calls[0][0][-4:] == ("--input", str(sidecar), "--tmpdir", str(tmp_path))
-    assert runner.calls[1][0][-2:] == ("--input", str(sidecar))
-    assert runner.calls[1][1] is not None
-    assert runner.calls[1][1]["IMPLEMENT_TMPDIR"] == str(tmp_path)
-
-    duplicate = agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout=f"TOKEN_RECORD={sidecar}\n",
-        output=tmp_path / "ignored.out",
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    )
-    assert duplicate is False
-    assert len(runner.calls) == 2
-
-
-def test_ingest_launcher_token_sidecar_defaults_to_output_sidecar(tmp_path: Path) -> None:
-    output = tmp_path / "cursor.out"
-    sidecar = Path(f"{output}.token-record")
-    _ = sidecar.write_text("TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n", encoding="utf-8")
-    runner = TokenIngestRunner()
-    assert agents.ingest_launcher_token_sidecar(runner, launcher_stdout="", output=output, tmpdir=tmp_path) is True
-    assert runner.calls[0][0][-4:] == ("--input", str(sidecar), "--tmpdir", str(tmp_path))
-
-
-def test_ingest_launcher_token_sidecar_runs_vendor_ingest_after_append_failure(tmp_path: Path) -> None:
-    output = tmp_path / "codex.out"
-    _ = Path(f"{output}.token-record").write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
-        encoding="utf-8",
-    )
-    runner = TokenIngestRunner(returncodes=(2,))
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-    ) is True
-    assert len(runner.calls) == 2
-
-
-def test_ingest_launcher_token_sidecar_retries_append_only_after_vendor_partial_success(tmp_path: Path) -> None:
-    output = tmp_path / "codex.out"
-    sidecar = Path(f"{output}.token-record")
-    _ = sidecar.write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
-        encoding="utf-8",
-    )
-    seen: set[str] = set()
-    runner = TokenIngestRunner(returncodes=(2, 0, 0))
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    ) is True
-    assert f"{sidecar}:append" not in seen
-    assert f"{sidecar}:vendor" in seen
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    ) is True
-    assert [call[0][3] for call in runner.calls] == [
-        "append-record",
-        "record-vendor-sidecar",
-        "append-record",
-    ]
-    assert str(sidecar) in seen
-
-
-def test_ingest_launcher_token_sidecar_returns_false_when_both_ingests_fail(tmp_path: Path) -> None:
-    output = tmp_path / "codex.out"
-    _ = Path(f"{output}.token-record").write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
-        encoding="utf-8",
-    )
-    runner = TokenIngestRunner(returncodes=(2, 3))
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-    ) is False
-    assert len(runner.calls) == 2
-
-
-def test_ingest_launcher_token_sidecar_marks_seen_after_full_success(tmp_path: Path) -> None:
-    output = tmp_path / "codex.out"
-    sidecar = Path(f"{output}.token-record")
-    seen: set[str] = set()
-    runner = TokenIngestRunner()
-
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        seen=seen,
-    ) is False
-    assert str(sidecar) not in seen
-    _ = sidecar.write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
-        encoding="utf-8",
-    )
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        seen=seen,
-    ) is True
-    assert str(sidecar) in seen
-
-
-def test_ingest_launcher_token_sidecar_retries_only_missing_leg_after_partial_failure(tmp_path: Path) -> None:
-    output = tmp_path / "codex.out"
-    sidecar = Path(f"{output}.token-record")
-    _ = sidecar.write_text(
-        "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_ci_fix\n",
-        encoding="utf-8",
-    )
-    seen: set[str] = set()
-    runner = TokenIngestRunner(returncodes=(0, 3, 0, 0))
-
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    ) is True
-    assert f"{sidecar}:append" in seen
-    assert f"{sidecar}:vendor" not in seen
-    assert agents.ingest_launcher_token_sidecar(
-        runner,
-        launcher_stdout="",
-        output=output,
-        tmpdir=tmp_path,
-        implement_tmpdir=tmp_path,
-        seen=seen,
-    ) is True
-    assert len(runner.calls) == 3
-    assert runner.calls[0][0][3] == "append-record"
-    assert runner.calls[1][0][3] == "record-vendor-sidecar"
-    assert runner.calls[2][0][3] == "record-vendor-sidecar"
-    assert str(sidecar) in seen
 
 
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:
@@ -559,6 +356,250 @@ def test_run_external_agent_missing_child_is_post_validation_failure(tmp_path: P
     assert output.with_suffix(output.suffix + ".diag").is_file()
     assert output.with_suffix(output.suffix + ".failure-diag").is_file()
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "127\n"
+
+
+def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = agents.run_external_agent_main(
+        [
+            "--tool",
+            "claude",
+            "--output",
+            str(tmp_path / "out.txt"),
+            "--timeout",
+            "0",
+            "--",
+            sys.executable,
+            "-c",
+            "print('should not run')",
+        ],
+    )
+    assert rc == 1
+    assert "--timeout must be a positive integer" in capsys.readouterr().err
+
+
+def test_health_gate_timeout_resolves_session_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", raising=False)
+    session = tmp_path / "session-env.sh"
+    _ = session.write_text("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0\n", encoding="utf-8")
+    monkeypatch.setenv("SESSION_ENV_PATH", str(session))
+    assert agents._health_gate_timeout() is None  # pylint: disable=protected-access
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "5")
+    assert agents._health_gate_timeout() == 5  # pylint: disable=protected-access
+
+
+def test_health_gate_fail_open_on_unparseable_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    helper = tmp_path / "scripts" / "check-reviewers.sh"
+    helper.parent.mkdir()
+    _ = helper.write_text("#!/usr/bin/env bash\nprintf 'unexpected\\n'\n", encoding="utf-8")
+    helper.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
+    assert agents._external_health_gate("cursor") == (True, "")  # pylint: disable=protected-access
+
+
+def test_cursor_auth_prereads_darwin_keychain_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CURSOR_API_KEY", "")
+    monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "0")
+    monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "  crsr_from_keychain  ")
+    assert agents.cursor_auth_preflight(caller="test").ok is True
+    agents.cursor_preread_service_token()
+    agents.cursor_auth_export_env()
+    assert agents.os.environ["CURSOR_API_KEY"] == "crsr_from_keychain"
+
+
+def test_auth_retries_acquire_serial_lock_each_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    output = tmp_path / "cursor.out"
+    calls: list[str] = []
+
+    def fake_run_external_agent(**kwargs: object) -> agents.RunExternalAgentResult:
+        calls.append("run")
+        output_arg = kwargs["output"]
+        if not isinstance(output_arg, (str, Path)):
+            raise TypeError("output must be a path")
+        output_path = Path(output_arg)
+        _ = output_path.write_text("", encoding="utf-8")
+        _ = Path(str(output_path) + ".diag").write_text("authentication failed\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(1, output_path)
+
+    def fake_lock(tool: str) -> agents.SerialLockState:
+        calls.append(f"lock:{tool}")
+        return agents.SerialLockState(None)
+
+    def fake_release(_state: agents.SerialLockState) -> None:
+        calls.append("release")
+
+    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 2)
+    monkeypatch.setattr(agents, "external_serial_lock_acquire", fake_lock)
+    monkeypatch.setattr(agents, "external_serial_lock_release_after", fake_release)
+    result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
+        tool="cursor",
+        output=output,
+        timeout_seconds=5,
+        cmd=["cursor"],
+    )
+    assert result.exit_code == 1
+    assert calls == ["lock:cursor", "release", "run", "lock:cursor", "release", "run"]
+
+
+def test_render_context_files_redacts_and_xml_escapes(tmp_path: Path) -> None:
+    ctx = tmp_path / "ctx<&>.txt"
+    secret = "sk-" + "A" * 24
+    _ = ctx.write_text(f"<tag>{secret}</tag>\n", encoding="utf-8")
+    rc, rendered, msg = agents._render_context_files([ctx], [tmp_path])  # pylint: disable=protected-access
+    assert (rc, msg) == (0, "")
+    assert secret not in rendered
+    assert "&lt;tag&gt;" in rendered
+    assert 'path="' in rendered
+    assert "&lt;" in rendered
+    assert "&amp;" in rendered
+
+
+def test_degraded_tools_gate_flag_precedence_and_both_down(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CODEX_PRESENT", "true")
+    rc = agents.degraded_tools_gate_main(
+        [
+            "--codex-binary-found",
+            "false",
+            "--codex-present",
+            "false",
+            "--cursor-binary-found",
+            "false",
+            "--cursor-present",
+            "false",
+            "--skill",
+            "implement",
+        ],
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DEGRADED=true" in out
+    assert "BOTH_DOWN=true" in out
+    assert "CODEX_STATE=binary-missing" in out
+
+
+def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    stdin_log = tmp_path / "stdin.log"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        'cat > "$CLAUDE_STDIN_LOG"\n'
+        "printf '%s\\n' '{\"result\":\"fixed\"}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    monkeypatch.setenv("CLAUDE_STDIN_LOG", str(stdin_log))
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    assert "You are using Claude" not in argv_log.read_text(encoding="utf-8")
+    assert "You are using Claude" in stdin_log.read_text(encoding="utf-8")
+    assert output.read_text(encoding="utf-8") == "fixed"
+
+
+def test_launch_claude_subprocess_rejects_prompt_file_outside_safe_roots(tmp_path: Path) -> None:
+    prompt = tmp_path / "outside" / "prompt.md"
+    prompt.parent.mkdir()
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    session = tmp_path / "session"
+    session.mkdir()
+    output = session / "out.txt"
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 2
+
+
+def test_launch_claude_subprocess_failure_sidecars_and_clean_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        "printf 'boom\\n' >&2\n"
+        "exit 3\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 3
+    assert "boom" in output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8")
+    assert output.with_suffix(output.suffix + ".failure-diag").is_file()
+    assert "STATUS=clean" in output.with_suffix(output.suffix + ".dirty-tree").read_text(encoding="utf-8")
+
+
+def test_cursor_ci_stall_monitor_writes_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nsleep 10\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CURSOR_API_KEY", "crsr_test")
+    monkeypatch.setenv("RUN_EXTERNAL_AGENT_POLL_INTERVAL", "0.05")
+    monkeypatch.setenv("LARCH_CURSOR_CI_STALL_THRESHOLD", "1")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "0")
+    output = tmp_path / "round-1" / "cursor-ci.out"
+    output.parent.mkdir()
+    rc = agents.launch_cursor_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    assert output.with_suffix(output.suffix + ".stall.json").is_file()
+    assert any(output.parent.glob("cursor-ci-stall-*.json"))
 
 
 def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:

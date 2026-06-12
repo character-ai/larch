@@ -57,9 +57,38 @@ make_wait_barrier_plugin_root() {
     cat > "$root/python/cli.py" <<STUB_RENDER
 import os
 import sys
+import time
+from pathlib import Path
 REAL_CLI = '$REPO_ROOT/python/cli.py'
 if sys.argv[1:2] == ["voting"]:
     os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
+if sys.argv[1:3] == ["agent", "launch-claude-review"]:
+    output = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] in ("--output", "--output-file"):
+            output = args[i + 1]
+            i += 2
+        elif args[i] in ("--prompt-file", "--mode", "--role", "--timeout", "--timing-task-kind", "--diff-file", "--plan-file"):
+            i += 2
+        else:
+            i += 1
+    if not output:
+        raise SystemExit(2)
+    if os.environ.get("CLAUDE_STUB_MODE") == "wait_for_marker":
+        marker = os.environ["CLAUDE_STUB_WAIT_MARKER"]
+        for _ in range(100):
+            if Path(marker).is_file():
+                break
+            time.sleep(0.1)
+        if not Path(marker).is_file():
+            raise SystemExit(1)
+        Path(output).write_text("FINDING_1: YES\\nOOS_1: NO -- claude parallel ok\\n", encoding="utf-8")
+    else:
+        Path(output).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
+    Path(output + ".done").write_text("0\\n", encoding="utf-8")
+    raise SystemExit(0)
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -135,9 +164,36 @@ make_voter1_delayed_done_plugin_root() {
     cat > "$root/python/cli.py" <<STUB_RENDER
 import os
 import sys
+import subprocess
+from pathlib import Path
 REAL_CLI = '$REPO_ROOT/python/cli.py'
 if sys.argv[1:2] == ["voting"]:
     os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
+if sys.argv[1:3] == ["agent", "launch-claude-review"]:
+    output = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] in ("--output", "--output-file"):
+            output = args[i + 1]
+            i += 2
+        elif args[i] in ("--prompt-file", "--mode", "--role", "--timeout", "--timing-task-kind", "--diff-file", "--plan-file"):
+            i += 2
+        else:
+            i += 1
+    if not output:
+        raise SystemExit(2)
+    Path(output).write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\\n", encoding="utf-8")
+    if os.environ.get("LARCH_VOTER1_DONE_MODE", "delayed") != "missing":
+        delay = os.environ.get("LARCH_VOTER1_DONE_DELAY", "1")
+        subprocess.Popen([
+            sys.executable,
+            "-c",
+            "import pathlib,sys,time; time.sleep(float(sys.argv[1])); pathlib.Path(sys.argv[2]).write_text('0\\\\n', encoding='utf-8')",
+            delay,
+            output + ".done",
+        ])
+    raise SystemExit(0)
 if sys.argv[1:3] != ["render", "voter"]:
     print(f"unexpected cli args: {sys.argv[1:]}", file=sys.stderr)
     raise SystemExit(2)
@@ -145,27 +201,6 @@ print("stub voter prompt")
 print("Read the ballot from this path: /stub/ballot")
 STUB_RENDER
     chmod +x "$root/python/cli.py"
-    cat > "$root/python/cli.py agent launch-claude-review" <<'STUB_CLAUDE'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --output|--output-file) output="${2:?}"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-[[ -n "$output" ]] || exit 2
-printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$output"
-if [[ "${LARCH_VOTER1_DONE_MODE:-delayed}" != "missing" ]]; then
-    (
-        sleep "${LARCH_VOTER1_DONE_DELAY:-1}"
-        printf '0\n' > "${output}.done"
-    ) >/dev/null 2>&1 &
-fi
-exit 0
-STUB_CLAUDE
-    chmod +x "$root/python/cli.py agent launch-claude-review"
     cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -294,10 +329,10 @@ case "${CLAUDE_STUB_MODE:-ok}" in
       _i=$((_i + 1))
     done
     [[ -f "${CLAUDE_STUB_WAIT_MARKER}" ]] || exit 1
-    printf 'FINDING_1: YES\n'
+    printf '%s\n' '{"result":"FINDING_1: YES\n","usage":{"input_tokens":1,"output_tokens":1}}'
     exit 0 ;;
   fail_nonempty)
-    printf 'stub voter output for diag test\n'
+    printf '%s\n' '{"result":"stub voter output for diag test\n","usage":{"input_tokens":1,"output_tokens":1}}'
     exit 7 ;;
   fail)
     printf 'stub claude failure\n' >&2
@@ -309,9 +344,9 @@ case "${CLAUDE_STUB_MODE:-ok}" in
     count=$((count + 1))
     printf '%s\n' "$count" > "$count_file"
     if [[ "$count" -eq 1 ]]; then
-      printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
+      printf '%s\n' '{"result":"I reviewed the ballot and here is my narrative instead of votes.\n","usage":{"input_tokens":1,"output_tokens":1}}'
     else
-      printf 'FINDING_1: YES\n'
+      printf '%s\n' '{"result":"FINDING_1: YES\n","usage":{"input_tokens":1,"output_tokens":1}}'
     fi
     exit 0 ;;
   parse_retry_fail)
@@ -320,10 +355,10 @@ case "${CLAUDE_STUB_MODE:-ok}" in
     [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
     count=$((count + 1))
     printf '%s\n' "$count" > "$count_file"
-    printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
+    printf '%s\n' '{"result":"I reviewed the ballot and here is my narrative instead of votes.\n","usage":{"input_tokens":1,"output_tokens":1}}'
     exit 0 ;;
 esac
-printf 'FINDING_1: YES\n'
+printf '%s\n' '{"result":"FINDING_1: YES\n","usage":{"input_tokens":1,"output_tokens":1}}'
 STUB
 chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
@@ -420,8 +455,8 @@ out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=empty LARCH_EXECUTION_ISSUES_LOG="
 grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
 grep -Fq 'VOTER_1_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
-grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
-grep -Fq 'voter1_rc=99' "$issues_log"
+grep -Fq 'agent launch-claude-review (claude voter) failed (exit ' "$issues_log"
+grep -Fq 'voter1_rc=' "$issues_log"
 
 require_voter_paths_file_nonempty "happy-empty-voter1" "$out"
 
@@ -801,7 +836,7 @@ require_voter_paths_file_nonempty "edge-oos-retry" "$out"
         || { echo "FAIL: regression3 prod-shape — local claude diag file not written" >&2; exit 1; }
     grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
         || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
-    grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$prod_issues" \
+    grep -Fq 'agent launch-claude-review (voter parse-rate check)' "$prod_issues" \
         || { echo "FAIL: regression3 prod-shape — claude tool label missing from issues-log" >&2; exit 1; }
     require_voter_paths_file_nonempty "edge-prod-claude" "$out"
 )

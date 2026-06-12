@@ -112,7 +112,7 @@ cursor_prompt=$(make_voter_prompt_file cursor)
 # (its `.done` sentinel stays launcher-owned per #2973, so the wait barrier below
 # still arbitrates completion) and the Codex+Cursor waterfall launches
 # immediately — no serial gate between the Claude lane and the external lanes.
-python3 "$SCRIPT_DIR/../python/cli.py" agent launch-claude-review \
+python3 "$CLI" agent launch-claude-review \
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
     --mode "$mode" \

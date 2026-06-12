@@ -720,8 +720,10 @@ launch_outer_retry_or_mark() {
             _launcher_base=$(basename "$META_OUTER_LAUNCHER")
             case "$_launcher_base" in
                 launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh"; _outer_launcher_kind="review" ;;
+                launch-codex-exec.sh) _outer_launcher_kind="codex-exec" ;;
                 *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh or agent launch-codex-exec"; return 1 ;;
             esac
+            if [[ "$_outer_launcher_kind" != "codex-exec" ]]; then
             if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
                 mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
                 return 1
@@ -739,6 +741,7 @@ launch_outer_retry_or_mark() {
             if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
                 mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
                 return 1
+            fi
             fi
             ;;
     esac

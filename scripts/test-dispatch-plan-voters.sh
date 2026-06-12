@@ -88,50 +88,59 @@ chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
 PLUGIN_ROOT_STUB="$TMP/plugin-root"
 mkdir -p "$PLUGIN_ROOT_STUB/scripts" "$PLUGIN_ROOT_STUB/python" "$PLUGIN_ROOT_STUB/skills/shared"
-cat > "$PLUGIN_ROOT_STUB/python/cli.py" <<STUB_CLI
+cat > "$PLUGIN_ROOT_STUB/python/cli.py" <<'STUB_CLI'
 #!/usr/bin/env python3
 import os
 import sys
-os.execv(sys.executable, [sys.executable, "$REPO_ROOT/python/cli.py", *sys.argv[1:]])
+from pathlib import Path
+
+REAL_CLI = os.environ["PLAN_VOTER_REAL_CLI"]
+
+if sys.argv[1:3] == ["agent", "launch-claude-review"]:
+    output = ""
+    prompt_file = ""
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] in ("--output", "--output-file"):
+            output = args[i + 1]
+            i += 2
+        elif args[i] == "--prompt-file":
+            prompt_file = args[i + 1]
+            i += 2
+        elif args[i] in ("--mode", "--role", "--timeout", "--timing-task-kind", "--read-tools-add-dir"):
+            i += 2
+        else:
+            i += 1
+    if not output:
+        raise SystemExit(2)
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    mode = os.environ.get("LAUNCH_CLAUDE_REVIEW_STUB_MODE", os.environ.get("CLAUDE_STUB_MODE", "ok"))
+    if mode == "ok":
+        Path(output).write_text("FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n", encoding="utf-8")
+    elif mode == "fail":
+        raise SystemExit(99)
+    elif mode == "empty":
+        Path(output).write_text("", encoding="utf-8")
+    elif mode == "narrative_then_ok":
+        prompt = Path(prompt_file).read_text(encoding="utf-8", errors="replace") if prompt_file else ""
+        if "previous attempt produced narrative output" in prompt:
+            Path(output).write_text("FINDING_1: YES\nOOS_1: NO -- claude voter1 retry ok\n", encoding="utf-8")
+        else:
+            Path(output).write_text("Narrative output that should trigger retry.\n", encoding="utf-8")
+    else:
+        Path(output).write_text("FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n", encoding="utf-8")
+    Path(output + ".done").write_text("0\n", encoding="utf-8")
+    raise SystemExit(0)
+
+os.execv(sys.executable, [sys.executable, REAL_CLI, *sys.argv[1:]])
 STUB_CLI
 # python/cli.py render voter reads review-acceptance-rubric.md at $REPO_ROOT/skills/shared/
 cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_ROOT_STUB/skills/shared/review-acceptance-rubric.md"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_ROOT_STUB/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/lib-scope-anchor-handoff.sh" "$PLUGIN_ROOT_STUB/scripts/lib-scope-anchor-handoff.sh"
 chmod +x "$PLUGIN_ROOT_STUB/python/cli.py"
-
-cat > "$PLUGIN_ROOT_STUB/python/cli.py agent launch-claude-review" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-OUTPUT=""
-PROMPT_FILE=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --output|--output-file) OUTPUT="${2:?}"; shift 2 ;;
-        --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
-        --mode|--role|--timeout|--timing-task-kind) shift 2 ;;
-        *) shift ;;
-    esac
-done
-[[ -n "$OUTPUT" ]] || exit 2
-mkdir -p "$(dirname "$OUTPUT")"
-case "${LAUNCH_CLAUDE_REVIEW_STUB_MODE:-ok}" in
-    ok) printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n' > "$OUTPUT" ;;
-    fail) exit 99 ;;
-    empty) : > "$OUTPUT" ;;
-    narrative_then_ok)
-        if [[ -n "$PROMPT_FILE" ]] && grep -Fq 'previous attempt produced narrative output' "$PROMPT_FILE" 2>/dev/null; then
-            printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 retry ok\n' > "$OUTPUT"
-        else
-            printf 'Narrative output that should trigger retry.\n' > "$OUTPUT"
-        fi
-        ;;
-    *) printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n' > "$OUTPUT" ;;
-esac
-printf '0\n' > "${OUTPUT}.done"
-exit 0
-STUB
-chmod +x "$PLUGIN_ROOT_STUB/python/cli.py agent launch-claude-review"
+export PLAN_VOTER_REAL_CLI="$REPO_ROOT/python/cli.py"
 
 cat > "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh" <<'STUB'
 #!/usr/bin/env bash
