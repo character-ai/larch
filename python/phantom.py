@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from proc import Runner
-import dirty_tree
 
 
 @dataclass(frozen=True)
@@ -49,18 +48,21 @@ def _baseline_dirty_probe(
     *,
     cwd: str | None,
 ) -> tuple[str, str, str]:
-    """Run dirty-tree baseline detection in Python."""
-    _ = runner
-    old_cwd = Path.cwd()
-    try:
-        if cwd:
-            os.chdir(cwd)
-        output = "\n".join(dirty_tree.baseline(baseline_path=baseline_file)) + "\n"
-    except OSError:
+    """Run dirty-tree baseline detection."""
+    result = runner.run(
+        [
+            "python3",
+            str(_REPO_ROOT / "python" / "cli.py"),
+            "dirty-tree",
+            "baseline",
+            "--baseline",
+            baseline_file,
+        ],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
         return "unknown", "dirty-tree-baseline-failed", ""
-    finally:
-        if cwd:
-            os.chdir(old_cwd)
+    output = result.stdout
     if not output.strip():
         return "unknown", "dirty-tree-baseline-failed", ""
 
