@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,36 @@ def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, monke
     assert "STEP_FAILED=issue-number-required-for-resume" in capsys.readouterr().out
 
 
+def test_resume_plan_tail_matching_sentinel_skips_tracking_side_effects(tmp_path, monkeypatch) -> None:
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "tracking-issue-read.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        repo_unavailable="false",
+    )
+    bootstrap._phase_tracking(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.branch_selected == "branch-1-resume"
+    assert st.issue_number_resolved == "7"
+    assert st.run_id == "R1"
+    assert not any(call[:2] == ("run-log", "init") for call in calls)
+
+
 def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
@@ -186,6 +217,31 @@ def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, mon
     assert "--exit-code" in calls[0]
     assert "99" in calls[0]
     assert "invalid-format" in calls[0]
+
+
+def test_emergency_bypass_append_failure_falls_back_to_append_entry(tmp_path, monkeypatch) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    (preflight / "emergency-bypass.log").write_text("BYPASS kind=missing-plan issue=7\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        if args[:2] == ("run-log", "append-failure"):
+            return subprocess.CompletedProcess(["cli", *args], 2, "", "append failed\n")
+        return subprocess.CompletedProcess(["cli", *args], 0, "APPENDED=true\n", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", emergency_requested="true", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+    )
+    assert bootstrap._append_emergency_bypass(st)  # pyright: ignore[reportPrivateUsage]
+    assert (impl / ".emergency-bypass-log-consumed").exists()
+    assert any(call[:2] == ("run-log", "append-entry") for call in calls)
 
 
 def test_resume_plan_tail_appends_emergency_bypass_before_flags(tmp_path, monkeypatch) -> None:
@@ -371,6 +427,18 @@ def test_invoke_contract_failure_maps_to_exit_2(monkeypatch) -> None:
     assert bootstrap.invoke_main(["--mode", "initial"]) == 2
 
 
+def test_invoke_contract_failure_leaves_stdout_empty(monkeypatch, capsys) -> None:
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print("STEP_FAILED=session-setup")
+        return bootstrap.BOOTSTRAP_CONTRACT_FAILURE
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "STEP_FAILED=session-setup" in captured.err
+
+
 def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkeypatch, capsys) -> None:
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
@@ -388,6 +456,54 @@ def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkey
     assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
     assert "RUN_ID=R1" in captured.out
     assert "could not write bootstrap-routing.env" in captured.err
+
+
+def test_invoke_disables_inherited_quiet_routing(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+
+
+def test_invoke_refuses_symlinked_bootstrap_routing_env(tmp_path, monkeypatch, capsys) -> None:
+    target = tmp_path / "target.env"
+    target.write_text("prior\n", encoding="utf-8")
+    (tmp_path / "bootstrap-routing.env").symlink_to(target)
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    captured = capsys.readouterr()
+    assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "refusing to overwrite symlinked bootstrap-routing.env" in captured.err
+    assert target.read_text(encoding="utf-8") == "prior\n"
+
+
+def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch, capsys) -> None:
+    (tmp_path / "bootstrap-routing.env").mkdir()
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 0
+    captured = capsys.readouterr()
+    assert f"IMPLEMENT_TMPDIR={tmp_path}" in captured.out
+    assert "refusing to overwrite non-regular bootstrap-routing.env" in captured.err
+    assert (tmp_path / "bootstrap-routing.env").is_dir()
 
 
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
@@ -569,3 +685,38 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert ("run-log", "init", "--log-root", str(tmp_path / "larch-logs"), "--skill", "implement", "--run-id", "RUN1", "--issue", "7") in calls
     assert ("post",) in calls
     assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
+
+
+def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "create-branch.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        if args[:2] == ("session", "entry-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
+        if args[:2] == ("session", "setup"):
+            return subprocess.CompletedProcess(
+                ["cli", *args],
+                0,
+                f"SESSION_TMPDIR={tmp_path}\nSESSION_ID=R1\nREPO=owner/repo\nREPO_UNAVAILABLE=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n",
+                "",
+            )
+        if args[:2] == ("session", "write-implement-env"):
+            return subprocess.CompletedProcess(["cli", *args], 2, "", "pointer failed\n")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra"))
+    bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.implement_tmpdir == str(tmp_path)
+    assert "pointer failed" in (tmp_path / "write-implement-env-warning.log").read_text(encoding="utf-8")
+    assert any(call[:2] == ("run-log", "append-failure") for call in calls)

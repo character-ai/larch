@@ -345,7 +345,21 @@ def _phase_infra(st: BootstrapState) -> None:
         _cli("timing", "mark", "Step 0 — preflight", env=env)
     pid = os.environ.get("LARCH_CLAUDE_PID", "")
     if pid and st.implement_tmpdir:
-        _cli("session", "write-implement-env", "--claude-pid", pid, "--implement-tmpdir", st.implement_tmpdir, "--cwd", str(Path.cwd()))
+        pointer = _cli("session", "write-implement-env", "--claude-pid", pid, "--implement-tmpdir", st.implement_tmpdir, "--cwd", str(Path.cwd()))
+        if pointer.returncode != 0:
+            diag = Path(st.implement_tmpdir) / "write-implement-env-warning.log"
+            with contextlib.suppress(OSError):
+                diag.write_text(pointer.stdout + pointer.stderr, encoding="utf-8")
+            if diag.is_file():
+                _append_failure_with_entry_fallback(
+                    st,
+                    site="implement-bootstrap write-implement-env",
+                    tool="session write-implement-env",
+                    exit_code=str(pointer.returncode),
+                    category="Warnings",
+                    output_file=diag,
+                    status_label="failed",
+                )
     st.codex_available = "true" if st.codex_binary_found == "true" and st.codex_present == "true" else "false"
     st.cursor_available = "true" if st.cursor_binary_found == "true" and st.cursor_present == "true" else "false"
     _err(f"→ step0: infra ready (tmpdir={st.implement_tmpdir} session={st.session_id})")
@@ -378,6 +392,8 @@ def _phase_tracking(st: BootstrapState) -> None:
                 st.branch_selected = "branch-1-resume"
                 st.issue_number_resolved = issue
                 st.run_id = run_id
+                if st.opts.resume_plan_tail:
+                    return
                 _perform_tracking_side_effects(st, write_sentinel=False)
                 return
         elif st.opts.resume_plan_tail:
@@ -455,6 +471,65 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
     return True
 
 
+def _append_execution_issue_entry(log: Path, category: str, entry: str) -> subprocess.CompletedProcess[str]:
+    return _cli(
+        "run-log",
+        "append-entry",
+        "--log",
+        str(log),
+        "--category",
+        category,
+        "--entry",
+        entry,
+    )
+
+
+def _append_failure_with_entry_fallback(
+    st: BootstrapState,
+    *,
+    site: str,
+    tool: str,
+    exit_code: str,
+    category: str,
+    output_file: Path,
+    status_label: str,
+) -> bool:
+    log = Path(st.implement_tmpdir) / "execution-issues.md"
+    result = _cli(
+        "run-log",
+        "append-failure",
+        "--log",
+        str(log),
+        "--site",
+        site,
+        "--tool",
+        tool,
+        "--exit-code",
+        exit_code,
+        "--category",
+        category,
+        "--output-file",
+        str(output_file),
+        "--status-label",
+        status_label,
+        "--redact",
+    )
+    if result.returncode == 0:
+        return True
+    body = "no diagnostics captured"
+    with contextlib.suppress(OSError):
+        if output_file.is_file() and output_file.stat().st_size:
+            body = output_file.read_text(encoding="utf-8", errors="replace").rstrip() or body
+    body = _redact_text(body, implement_tmpdir=st.implement_tmpdir)
+    entry = (
+        f"- **Step {site} — {tool} {status_label} (exit {exit_code}; append-failure fallback)**:\n"
+        "  ```\n"
+        f"{body}\n"
+        "  ```\n"
+    )
+    return _append_execution_issue_entry(log, category, entry).returncode == 0
+
+
 def _append_emergency_bypass(st: BootstrapState) -> bool:
     if st.opts.emergency_requested != "true" or not st.opts.preflight_tmpdir:
         return True
@@ -494,26 +569,15 @@ def _append_emergency_bypass(st: BootstrapState) -> bool:
         output_file = redacted
         exit_code = "99"
         status_label = "invalid-format"
-    result = _cli(
-        "run-log",
-        "append-failure",
-        "--log",
-        str(Path(st.implement_tmpdir) / "execution-issues.md"),
-        "--site",
-        "implement-bootstrap emergency-bypass-log",
-        "--tool",
-        "/implement --emergency preflight",
-        "--exit-code",
-        exit_code,
-        "--category",
-        "Warnings",
-        "--output-file",
-        str(output_file),
-        "--status-label",
-        status_label,
-        "--redact",
-    )
-    if result.returncode != 0:
+    if not _append_failure_with_entry_fallback(
+        st,
+        site="implement-bootstrap emergency-bypass-log",
+        tool="/implement --emergency preflight",
+        exit_code=exit_code,
+        category="Warnings",
+        output_file=output_file,
+        status_label=status_label,
+    ):
         return False
     sentinel.write_text("", encoding="utf-8")
     return True
@@ -817,6 +881,7 @@ def run_bootstrap(opts: BootstrapOptions) -> int:
 
 
 def bootstrap_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="bootstrap internal", add_help=True)
     parser.add_argument("--up-to-phase", required=True, choices=["infra", "tracking", "plan", "coder", "all"])
     parser.add_argument("--caller-env", default="")
@@ -958,6 +1023,7 @@ def _str_bool(value: str) -> str:
 
 
 def invoke_main(argv: list[str]) -> int:
+    os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="bootstrap invoke", add_help=True)
     parser.add_argument("--mode", required=True, choices=["initial", "resume"])
     parser.add_argument("--issue-number", default="")

@@ -97,6 +97,56 @@ def test_preflight_skip_branch_skips_sync_and_rebase_but_fetches(monkeypatch) ->
     assert not any(call[:2] == ["git", "rebase"] for call in calls)
 
 
+def test_preflight_retries_transient_fetch_once(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(admission, "_transient_retry_sleeper", lambda _seconds: None)  # pyright: ignore[reportPrivateUsage]
+
+    def fake_run(argv, *, env=None):
+        _ = env
+        calls.append(list(argv))
+        if argv[:3] == ["git", "symbolic-ref", "--short"]:
+            return subprocess.CompletedProcess(argv, 0, "main\n", "")
+        if argv[:3] == ["git", "fetch", "origin"]:
+            fetch_count = sum(1 for call in calls if call[:3] == ["git", "fetch", "origin"])
+            if fetch_count == 1:
+                return subprocess.CompletedProcess(argv, 128, "", "fatal: unable to access: HTTP 502\n")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "check-main-sync.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, "SYNC_STATUS=ok\n", "")
+        if argv[:2] == ["git", "rebase"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if argv[:3] == ["git", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if argv[:3] == ["git", "rev-parse", "--git-path"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    assert admission.preflight_main([]) == 0
+    assert sum(1 for call in calls if call[:3] == ["git", "fetch", "origin"]) == 2
+
+
+def test_preflight_non_transient_fetch_failure_not_retried(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(admission, "_transient_retry_sleeper", lambda _seconds: None)  # pyright: ignore[reportPrivateUsage]
+
+    def fake_run(argv, *, env=None):
+        _ = env
+        calls.append(list(argv))
+        if argv[:3] == ["git", "symbolic-ref", "--short"]:
+            return subprocess.CompletedProcess(argv, 0, "main\n", "")
+        if argv[:3] == ["git", "fetch", "origin"]:
+            return subprocess.CompletedProcess(argv, 128, "", "fatal: couldn't find remote ref main\n")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    assert admission.preflight_main([]) == 3
+    assert "git fetch origin main failed" in capsys.readouterr().out
+    assert sum(1 for call in calls if call[:3] == ["git", "fetch", "origin"]) == 1
+
+
 def test_preflight_skip_clean_preserves_stalled_marker_when_status_dirty(monkeypatch, tmp_path) -> None:
     marker = tmp_path / "larch-stalled-run.txt"
     marker.write_text("stalled\n", encoding="utf-8")

@@ -43,10 +43,67 @@ def test_scope_check_out_of_scope(tmp_path, capsys) -> None:
     assert "README.md" in capsys.readouterr().err
 
 
+def test_scope_check_missing_inputs_returns_usage_error(tmp_path, capsys) -> None:
+    paths = tmp_path / "paths.z"
+    paths.write_bytes(b"python/dirty_tree.py\0")
+    assert dirty_tree.scope_check_main(["--plan-file", str(tmp_path / "missing.txt"), "--paths-file", str(paths)]) == 2
+    assert "plan file not found" in capsys.readouterr().err
+
+
+def test_scope_marker_main_present_from_file(tmp_path) -> None:
+    finding = tmp_path / "finding.md"
+    finding.write_text("### FINDING_1: [SCOPE-REDUCTION] trim scope\n", encoding="utf-8")
+    assert dirty_tree.scope_marker_main(["--file", str(finding)]) == 0
+
+
+def test_scope_marker_main_absent_from_stdin(monkeypatch) -> None:
+    class FakeStdin:
+        def read(self) -> str:
+            return "### FINDING_1: keep scope\n"
+
+    monkeypatch.setattr(dirty_tree.sys, "stdin", FakeStdin())
+    assert dirty_tree.scope_marker_main(["--file", "-"]) == 1
+
+
+def test_scope_marker_main_missing_file_returns_one(tmp_path) -> None:
+    assert dirty_tree.scope_marker_main(["--file", str(tmp_path / "missing.md")]) == 1
+
+
+def test_scope_marker_main_bad_argv_returns_two() -> None:
+    assert dirty_tree.scope_marker_main(["--bogus"]) == 2
+
+
 def test_bad_baseline_path_status_unknown() -> None:
     lines = dirty_tree.baseline(baseline_path="bad path")
     assert "STATUS=unknown" in lines
     assert "REASON=bad-baseline-path" in lines
+
+
+def test_baseline_rejects_bad_sidecar_path_without_writing(monkeypatch, tmp_path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+        calls.append(argv)
+        return 0, b""
+
+    monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
+    lines = dirty_tree.baseline(baseline_path=str(tmp_path / "baseline.z"), sidecar=str(tmp_path / "bad sidecar"))
+    assert "STATUS=unknown" in lines
+    assert "REASON=bad-sidecar-path" in lines
+    assert not calls
+    assert not (tmp_path / "bad sidecar").exists()
+
+
+def test_baseline_main_bad_sidecar_emits_reason_and_does_not_write(monkeypatch, tmp_path, capsys) -> None:
+    def fake_run_bytes(_argv: list[str]) -> tuple[int, bytes]:
+        return 0, b""
+
+    monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
+    sidecar = tmp_path / "bad sidecar"
+    assert dirty_tree.baseline_main(["--baseline", str(tmp_path / "baseline.z"), "--sidecar", str(sidecar)]) == 0
+    out = capsys.readouterr().out
+    assert "REASON=bad-sidecar-path" in out
+    assert not sidecar.exists()
 
 
 def test_checkpoint_dirty(monkeypatch) -> None:

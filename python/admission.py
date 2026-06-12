@@ -14,11 +14,13 @@ import tempfile
 from pathlib import Path
 
 import logging_util
+import retry
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _REPO_ROOT / "scripts"
 _PROBE_ERROR_EXIT = 2
 _TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch bootstrap tmpdirs.
+_transient_retry_sleeper = retry.default_sleeper
 
 
 def _emit_kv(key: str, value: str) -> None:
@@ -69,6 +71,14 @@ def _gh_issue_view(issue: int, repo: str) -> tuple[int, str]:
         return 0, first.stdout
     second = _run(argv)
     return second.returncode, second.stdout
+
+
+def _git_fetch_origin_main() -> subprocess.CompletedProcess[str]:
+    def attempt() -> tuple[subprocess.CompletedProcess[str], int, str]:
+        result = _run(["git", "fetch", "origin", "main", "--quiet"])
+        return result, result.returncode, result.stdout + result.stderr
+
+    return retry.with_transient_retry(attempt, sleeper=_transient_retry_sleeper).value
 
 
 def _atomic_text(path: Path, text: str) -> None:
@@ -240,7 +250,7 @@ def preflight_main(argv: list[str]) -> int:
             _emit_kv("PREFLIGHT", "fail")
             _emit_kv("PREFLIGHT_ERROR", "Could not determine working-tree cleanliness (helper produced no CLEAN= line).")
             return 2
-    fetch = _run(["git", "fetch", "origin", "main", "--quiet"])
+    fetch = _git_fetch_origin_main()
     if fetch.returncode != 0:
         _emit_kv("PREFLIGHT", "fail")
         _emit_kv("PREFLIGHT_ERROR", "git fetch origin main failed.")
