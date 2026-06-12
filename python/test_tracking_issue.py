@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -1003,6 +1004,37 @@ def test_tracking_issue_write_usage_visible_under_quiet(tmp_path: Path) -> None:
     assert result.stdout == ""
     assert "usage: tracking-issue append-comment" in result.stderr
     assert "the following arguments are required: --body-file" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "argv"),
+    [
+        (tracking_issue.create_issue_main, ["--title", "title"]),
+        (tracking_issue.append_comment_main, ["--issue", "1"]),
+        (tracking_issue.rename_main, ["--issue", "1"]),
+        (tracking_issue.mark_false_positive_main, []),
+        (tracking_issue.upsert_summary_main, ["--issue", "1"]),
+    ],
+)
+def test_tracking_issue_write_usage_initializes_quiet_before_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: Callable[[list[str]], int],
+    argv: list[str],
+) -> None:
+    events: list[str] = []
+
+    def fake_quiet_init(*, argv0: str | None = None) -> None:
+        events.append(f"quiet:{argv0 or ''}")
+
+    def fake_diagnostic(message: str) -> None:
+        events.append(f"diagnostic:{message.splitlines()[0] if message else ''}")
+
+    monkeypatch.setattr(tracking_issue.logging_util, "quiet_init", fake_quiet_init)
+    monkeypatch.setattr(tracking_issue.logging_util, "diagnostic", fake_diagnostic)
+
+    assert entrypoint(argv) == 1
+    assert events[0].startswith("quiet:")
+    assert any(event.startswith("diagnostic:usage: tracking-issue ") for event in events)
 
 
 @pytest.mark.parametrize(

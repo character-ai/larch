@@ -96,6 +96,11 @@ class CliFailure(Exception):
 
 
 class _Parser(argparse.ArgumentParser):
+    def _print_message(self, message: str, file: object | None = None) -> None:
+        _ = file
+        if message:
+            logging_util.diagnostic(message)
+
     def error(self, message: str) -> NoReturn:  # pragma: no cover - argparse calls exit
         self.print_usage(sys.stderr)
         self.exit(1, f"{self.prog}: error: {message}\n")
@@ -782,6 +787,7 @@ def _parse_with(parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Na
 
 
 def create_issue_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-create-issue")
     parser = _Parser(prog="tracking-issue create-issue")
     parser.add_argument("--title", required=True)
     parser.add_argument("--body-file", required=True)
@@ -789,7 +795,6 @@ def create_issue_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
-    logging_util.quiet_init(argv0="tracking-issue-create-issue")
     try:
         result = _create_issue_cli(proc, title=args.title, body_file=args.body_file, repo=args.repo)
         _emit_kv("ISSUE_NUMBER", result.issue_number)
@@ -806,6 +811,7 @@ def create_issue_main(argv: list[str]) -> int:
 
 
 def append_comment_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-append-comment")
     parser = _Parser(prog="tracking-issue append-comment")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--body-file", required=True)
@@ -814,7 +820,6 @@ def append_comment_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
-    logging_util.quiet_init(argv0="tracking-issue-append-comment")
     try:
         _require_numeric_issue(args.issue)
         if args.lifecycle_marker is not None:
@@ -852,6 +857,7 @@ def _fetch_issue_title(runner: Runner, issue: str, *, repo: str, cwd: str | None
 
 
 def rename_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-rename")
     parser = _Parser(prog="tracking-issue rename")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--state", required=True)
@@ -859,7 +865,6 @@ def rename_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
-    logging_util.quiet_init(argv0="tracking-issue-rename")
     try:
         _require_numeric_issue(args.issue)
         _validate_tracking_state(args.state)
@@ -900,13 +905,13 @@ def mark_false_positive(
 
 
 def mark_false_positive_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-mark-false-positive")
     parser = _Parser(prog="tracking-issue mark-false-positive")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--repo")
     args = _parse_with(parser, argv)
     if args is None:
         return 1
-    logging_util.quiet_init(argv0="tracking-issue-mark-false-positive")
     try:
         _require_numeric_issue(args.issue)
         repo = _resolve_repo_or_fail(proc, args.repo)
@@ -990,6 +995,7 @@ def _upsert_summary_cli(
 
 
 def upsert_summary_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="tracking-issue-upsert-summary")
     parser = _Parser(prog="tracking-issue upsert-summary")
     parser.add_argument("--issue", required=True)
     parser.add_argument("--marker", required=True)
@@ -999,7 +1005,6 @@ def upsert_summary_main(argv: list[str]) -> int:
     args = _parse_with(parser, argv)
     if args is None:
         return 1
-    logging_util.quiet_init(argv0="tracking-issue-upsert-summary")
     try:
         result = _upsert_summary_cli(
             proc,
