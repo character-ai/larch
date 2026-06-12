@@ -22,7 +22,7 @@ def _env_flag_enabled(name: str) -> bool:
 def _series(skill: Skill, records: tuple[RunRecord, ...]) -> list[dict[str, object]]:
     output: list[dict[str, object]] = []
     groups = workflow_groups(skill, records)
-    labels = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
+    labels = ["All runs"]
     for label in labels:
         by_day: dict[str, float] = defaultdict(float)
         for record in groups.get(label, []):

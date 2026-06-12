@@ -201,7 +201,7 @@ plan_review_out="$TMP/render-plan-review-prompt.txt"
 design_tmpdir="$TMP/design-tmpdir"
 mkdir -p "$design_tmpdir"
 cp "$plan_file" "$design_tmpdir/plan.txt"
-printf '{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}\n' > "$design_tmpdir/run-params.json"
+printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n' > "$design_tmpdir/run-params.json"
 python3 "$REPO_ROOT/python/cli.py" render plan-review \
     --archetype arch \
     --vendor codex \

@@ -917,12 +917,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
 
 def write_run_params_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-run-params", add_help=False)
-    parser.add_argument("--classification", default="")
     parser.add_argument("--output", default="")
-    parser.add_argument("--reason", default="")
-    parser.add_argument("--source", default="")
-    parser.add_argument("--sketch-budget", default="")
-    parser.add_argument("--workflow-path", default="")
     parser.add_argument("--partition-requested", default="")
     parser.add_argument("--brainstorm-requested", default="")
     parser.add_argument("--approve-requested", default="")
@@ -933,16 +928,8 @@ def write_run_params_main(argv: list[str]) -> int:
         return 2
     logging_util.quiet_init(argv0="write-run-params.sh")
     try:
-        if not args.classification:
-            raise ValueError("missing required flag: --classification")
         if not args.output:
             raise ValueError("missing required flag: --output")
-        if args.classification not in {"SIMPLE", "HARD"}:
-            raise ValueError(f"invalid --classification: {args.classification}")
-        if args.sketch_budget and args.sketch_budget not in {"0", "2", "3", "4"}:
-            raise ValueError(f"invalid --sketch-budget: {args.sketch_budget}")
-        if args.workflow_path and args.workflow_path not in {"SIMPLE", "HARD"}:
-            raise ValueError(f"invalid --workflow-path: {args.workflow_path}")
         for flag in ("partition_requested", "brainstorm_requested", "approve_requested", "skip_approve_requested"):
             cli_flag = f"--{flag.replace('_', '-')}"
             if cli_flag not in argv:
@@ -964,11 +951,6 @@ def write_run_params_main(argv: list[str]) -> int:
             raise OSError(f"output parent is not a writable directory: {out.parent}")
         payload = {
             "schema_version": 3,
-            "design_classification": args.classification,
-            "design_classification_reason": args.reason or None,
-            "design_classification_source": args.source or None,
-            "sketch_budget": int(args.sketch_budget) if args.sketch_budget else None,
-            "workflow_path": args.workflow_path or None,
             "partition_requested": args.partition_requested == "true",
             "brainstorm_requested": args.brainstorm_requested == "true",
             "approve_requested": args.approve_requested == "true",
@@ -980,58 +962,6 @@ def write_run_params_main(argv: list[str]) -> int:
     except (OSError, ValueError) as exc:
         _err(f"write-run-params.sh: {exc}")
         return 2
-
-
-def read_design_classification(path: Path | str) -> str:
-    """Resolve SIMPLE|HARD from run-params.json; default HARD."""
-    path_str = str(path)
-    target = Path(path)
-    if not path_str or path_str == "run-params.json" or not target.is_file():
-        return "HARD"
-    try:
-        value = json.loads(target.read_text(encoding="utf-8")).get("design_classification")
-        if value in {"SIMPLE", "HARD"}:
-            return value
-    except (OSError, json.JSONDecodeError, AttributeError):
-        pass
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return "HARD"
-    if re.search(r'"design_classification"\s*:\s*"SIMPLE"', text):
-        return "SIMPLE"
-    if re.search(r'"design_classification"\s*:\s*"HARD"', text):
-        return "HARD"
-    return "HARD"
-
-
-def read_classification_main(argv: list[str]) -> int:
-    path = argv[0] if argv else str(Path(os.environ.get("DESIGN_TMPDIR", "")) / "run-params.json")
-    def warn(msg: str) -> None:
-        print(f"**⚠ read-design-classification: {msg}; defaulting to HARD**", file=sys.stderr)
-    if not path or path == "run-params.json":
-        warn("run-params path not provided")
-        print("HARD")
-        return 0
-    target = Path(path)
-    if not target.is_file():
-        warn(f"run-params not readable: {path}")
-        print("HARD")
-        return 0
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        warn(f"run-params not readable: {path}")
-        print("HARD")
-        return 0
-    classification = read_design_classification(target)
-    if classification == "HARD" and not re.search(
-        r'"design_classification"\s*:\s*"(?:SIMPLE|HARD)"',
-        text,
-    ):
-        warn("design_classification missing or invalid")
-    print(classification)
-    return 0
 
 
 def restore_finalize_state_main(argv: list[str]) -> int:

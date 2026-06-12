@@ -51,7 +51,7 @@ LAST_FAILURES_FILE = REPO_ROOT / ".parallel-tests-last-failures.txt"
 LAST_OUTPUT_DIR = REPO_ROOT / ".parallel-tests-last-output"
 TIMINGS_FILE = REPO_ROOT / ".parallel-tests-timings.json"
 TIMING_LINE_RE = re.compile(r"^LARCH_HARNESS_TIMING\t([^\t]+)\t([0-9.]+)s\s*$")
-HARNESS_SHARD_RE = re.compile(r"^test-harnesses-\d+:\s*(.+)$")
+HARNESS_SLICE_RE = re.compile(r"^test-harnesses-\d+:\s*(.+)$")
 
 
 def load_timings() -> Dict[str, float]:
@@ -100,7 +100,7 @@ def _harness_targets_from_makefile() -> List[str]:
     targets: List[str] = []
     seen: set[str] = set()
     for line in makefile.read_text(encoding="utf-8").splitlines():
-        match = HARNESS_SHARD_RE.match(line)
+        match = HARNESS_SLICE_RE.match(line)
         if not match:
             continue
         for name in match.group(1).split():

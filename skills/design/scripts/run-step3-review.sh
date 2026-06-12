@@ -230,11 +230,10 @@ if [[ -s "$ROUND_COUNT_FILE" ]]; then
     esac
 fi
 
-_tier="$(python3 "$PLUGIN_ROOT/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json")"
 _round_cap=5
 
 if ((_round_count >= _round_cap)); then
-    emit "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**"
+    emit "**⚠ Step 3: review-round cap (${_round_cap}) reached; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**"
     emit '⏩ 3: plan review — cap reached; skipping'
     STEP3_REVIEW_CAP_REACHED=true
     STEP3_REVIEW_ROUND_NUM=""
@@ -267,51 +266,8 @@ else
             _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
         fi
         ROUND_NUM=1
-        _wp_round=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
-        if [[ -z "$_wp_round" ]]; then
-            _wp_round=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
-        fi
-        if [[ "$_wp_round" != HARD && "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+        if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             ROUND_NUM="$STEP3_REVIEW_ROUND_NUM"
-        fi
-        _snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
-        if [[ "$_wp_round" == HARD ]]; then
-            _cursor_out=$("$_snap_sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
-            while IFS= read -r _cline || [[ -n "$_cline" ]]; do
-                case "$_cline" in
-                    ROUND_CURSOR=*) ROUND_NUM="${_cline#ROUND_CURSOR=}" ;;
-                esac
-            done <<<"$_cursor_out"
-            if [[ -f "$DESIGN_TMPDIR/plan-after-round-${ROUND_NUM}.txt" ]]; then
-                _next_cursor=$((10#${ROUND_NUM} + 1))
-                if ! "$_snap_sh" \
-                    write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"; then
-                    emit '**⚠ Step 3: failed to advance plan-review round cursor; aborting before review launch.**'
-                    LOOP_STATUS=panel-failed
-                    TALLY_PLAN_REVIEW_STATUS=panel-failed
-                    phase_driver_write_result_env "$RESULT_ENV" \
-                        "LOOP_STATUS=${LOOP_STATUS:-}" \
-                        "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
-                        "STEP3_REVIEW_CAP_REACHED=${STEP3_REVIEW_CAP_REACHED:-false}" \
-                        "STEP3_REVIEW_ROUND_NUM=${STEP3_REVIEW_ROUND_NUM:-}" \
-                        "ROUND_NUM=${ROUND_NUM:-}" \
-                        "ACCEPTED_COUNT=${ACCEPTED_COUNT:-}" \
-                        "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-}" \
-                        "DEGRADED_PANEL=${DEGRADED_PANEL:-}" \
-                        "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
-                        "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
-                        "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
-                        "PANEL_PRUNED_EMPTY=${PANEL_PRUNED_EMPTY:-false}" \
-                        "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
-                    emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
-                    emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
-                    emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
-                    printf '%s\n' "${_step3_prior_round_count:-0}" >"$ROUND_COUNT_FILE"
-                    REVIEW_ROUND_COUNT="${_step3_prior_round_count:-0}"
-                    return 1
-                fi
-                ROUND_NUM=$_next_cursor
-            fi
         fi
         if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; then
             _pr_phys=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || _pr_phys=""

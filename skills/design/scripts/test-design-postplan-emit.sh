@@ -169,14 +169,13 @@ reset_env() {
 }
 
 setup_design_tmp() {
-    local d="$1" _legacy_budget="${2:-full}" workflow="${3:-SIMPLE}"
+    local d="$1" _legacy_budget="${2:-full}"
     mkdir -p "$d"
     printf '# Plan
 
 diff_lines: 12
 ' >"$d/plan.txt"
-    printf '{"workflow_path":"%s","design_classification":"%s"}
-' "$workflow" "$workflow" >"$d/run-params.json"
+    printf '{"brainstorm_requested":false}\n' >"$d/run-params.json"
     printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s
 ' "$FAKE_PLUGIN" >"$d/session-env.sh"
 }
@@ -210,141 +209,33 @@ write_small_plan() {
     printf '# Plan\n\ndiff_lines: 12\n' >"$d/plan.txt"
 }
 
-# 1 happy SIMPLE non-quick
+# 1 happy path non-quick
 D1="$TMP/happy-simple"
-setup_design_tmp "$D1" full SIMPLE
+setup_design_tmp "$D1" full
 set +e
 run_subject "$D1"
 rc=$?
 set -e
-assert_rc "happy SIMPLE" 0 "$rc"
+assert_rc "happy path" 0 "$rc"
 assert_file_kv "$D1/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS ok "happy status"
 assert_file_kv "$D1/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "happy snapshot suppressed"
 assert_file_kv "$D1/.design-postplan-emit-result.env" VALIDATE_STATUS ok "happy validator"
 assert_contains "$CALL_LOG" 'design-driver EMIT' "happy called EMIT"
 assert_contains "$CALL_LOG" 'validator' "happy called validator"
-
-# 2 initial HARD snapshot taken
-D2="$TMP/hard-snapshot"
-setup_design_tmp "$D2" full HARD
-set +e
-run_subject "$D2" --snapshot-original
-rc=$?
-set -e
-assert_rc "HARD snapshot" 0 "$rc"
-assert_file_kv "$D2/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "HARD snapshot taken"
-if [[ -f "$D2/plan.txt-original" ]]; then
-    pass "HARD original exists"
-else
-    fail "HARD original exists"
-fi
-
-# 2b idempotent snapshot: plan.txt-original already exists → preserved
-D2b="$TMP/hard-preserved"
-setup_design_tmp "$D2b" full HARD
-: >"$D2b/plan.txt-original"
-set +e
-run_subject "$D2b" --snapshot-original
-rc=$?
-set -e
-assert_rc "HARD snapshot preserved" 0 "$rc"
-assert_file_kv "$D2b/.design-postplan-emit-result.env" SNAPSHOT_STATUS preserved "HARD snapshot preserved"
-
-
-# 2c classification overrides legacy workflow_path for snapshots
-D2c="$TMP/classification-hard-legacy-simple"
-setup_design_tmp "$D2c" full SIMPLE
-printf '{"workflow_path":"SIMPLE","design_classification":"HARD"}
-' >"$D2c/run-params.json"
-set +e
-run_subject "$D2c" --snapshot-original
-rc=$?
-set -e
-assert_rc "classification HARD snapshot" 0 "$rc"
-assert_file_kv "$D2c/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "classification HARD snapshot taken"
-
-D2d="$TMP/classification-missing"
-setup_design_tmp "$D2d" full SIMPLE
-printf '{"workflow_path":"SIMPLE"}
-' >"$D2d/run-params.json"
-set +e
-run_subject "$D2d" --snapshot-original
-rc=$?
-set -e
-assert_rc "missing classification snapshot" 0 "$rc"
-assert_file_kv "$D2d/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "missing classification fails closed HARD snapshot"
-
-D2d_warn="$TMP/classification-warning-quiet"
-mkdir -p "$D2d_warn"
-printf '# Plan\n\ndiff_lines: 12\n' >"$D2d_warn/plan.txt"
-printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$D2d_warn/session-env.sh"
-reset_env
-set +e
-env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
-    bash "$SUBJECT" --design-tmpdir "$D2d_warn" >"$D2d_warn/stdout.txt" 2>"$D2d_warn/stderr.txt"
-rc=$?
-set -e
-export LARCH_QUIET_DISABLE=1
-assert_rc "classification warning quiet rc" 0 "$rc"
-assert_contains "$D2d_warn/stdout.txt" 'WARN=**⚠ read-design-classification: run-params not readable' "classification warning emits WARN in quiet mode"
-
-D2d_invalid_warn="$TMP/classification-invalid-quiet"
-mkdir -p "$D2d_invalid_warn"
-printf '# Plan\n\ndiff_lines: 12\n' >"$D2d_invalid_warn/plan.txt"
-printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$D2d_invalid_warn/session-env.sh"
-printf '{"workflow_path":"SIMPLE"}\n' >"$D2d_invalid_warn/run-params.json"
-reset_env
-set +e
-env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
-    bash "$SUBJECT" --design-tmpdir "$D2d_invalid_warn" >"$D2d_invalid_warn/stdout.txt" 2>"$D2d_invalid_warn/stderr.txt"
-rc=$?
-set -e
-export LARCH_QUIET_DISABLE=1
-assert_rc "classification invalid quiet rc" 0 "$rc"
-assert_contains "$D2d_invalid_warn/stdout.txt" 'WARN=**⚠ read-design-classification: design_classification missing or invalid' "invalid classification warning emits WARN in quiet mode"
-
-D2d_silent_nonzero="$TMP/classification-silent-nonzero"
-setup_design_tmp "$D2d_silent_nonzero" full SIMPLE
-cat >"$FAKE_PLUGIN/python/stubs/session/read-classification" <<'STUB'
-#!/usr/bin/env bash
-exit 9
-STUB
-chmod +x "$FAKE_PLUGIN/python/stubs/session/read-classification"
-set +e
-run_subject "$D2d_silent_nonzero" --snapshot-original
-rc=$?
-set -e
-assert_rc "classification silent nonzero rc" 0 "$rc"
-assert_contains "$D2d_silent_nonzero/stdout.txt" 'WARN=**⚠ read-design-classification: exited 9; defaulting design_classification to HARD.**' "classification silent nonzero emits synthetic WARN"
-assert_file_kv "$D2d_silent_nonzero/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "classification silent nonzero defaults HARD"
-rm -f "$FAKE_PLUGIN/python/stubs/session/read-classification"
-
-D2e="$TMP/classification-simple-legacy-hard"
-setup_design_tmp "$D2e" full HARD
-printf '{"workflow_path":"HARD","design_classification":"SIMPLE"}
-' >"$D2e/run-params.json"
-set +e
-run_subject "$D2e" --snapshot-original
-rc=$?
-set -e
-assert_rc "classification SIMPLE skip snapshot" 0 "$rc"
-assert_file_kv "$D2e/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-not-hard "classification SIMPLE skips snapshot"
-
-# 3 re-emit snapshot suppressed, even HARD
+# 3 snapshot always suppressed
 D3="$TMP/hard-suppressed"
-setup_design_tmp "$D3" full HARD
+setup_design_tmp "$D3" full
 set +e
 run_subject "$D3"
 rc=$?
 set -e
-assert_rc "HARD re-emit snapshot suppressed" 0 "$rc"
-assert_file_kv "$D3/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "HARD re-emit suppressed"
+assert_rc "re-emit snapshot suppressed" 0 "$rc"
+assert_file_kv "$D3/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "re-emit suppressed"
 
 # 4 legacy review_budget=quick is ignored; validator still runs
 D4="$TMP/legacy-quick-validates"
-setup_design_tmp "$D4" quick SIMPLE
-printf '{"review_budget":"quick","workflow_path":"SIMPLE","design_classification":"SIMPLE"}
-' >"$D4/run-params.json"
+setup_design_tmp "$D4" quick
+printf '{"review_budget":"quick","brainstorm_requested":false}\n' >"$D4/run-params.json"
 set +e
 run_subject "$D4"
 rc=$?
@@ -355,7 +246,7 @@ assert_contains "$CALL_LOG" 'validator' "legacy quick called validator"
 
 # 5 defects-found is success
 D5="$TMP/defects"
-setup_design_tmp "$D5" full SIMPLE
+setup_design_tmp "$D5" full
 reset_env
 export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
 set +e
@@ -368,7 +259,7 @@ assert_file_kv "$D5/.design-postplan-emit-result.env" VALIDATE_STATUS defects-fo
 
 # 6 missing diff lines
 D6="$TMP/missing-diff"
-setup_design_tmp "$D6" full SIMPLE
+setup_design_tmp "$D6" full
 reset_env
 export EMIT_STATUS_VALUE=missing-diff-lines
 set +e
@@ -381,7 +272,7 @@ assert_file_kv "$D6/.design-postplan-emit-result.env" VALIDATE_STATUS not-run "m
 
 # 7 snapshot failure
 D7="$TMP/snapshot-fail"
-setup_design_tmp "$D7" full HARD
+setup_design_tmp "$D7" full
 reset_env
 export SNAPSHOT_STUB_RC=1
 set +e
@@ -394,7 +285,7 @@ assert_file_kv "$D7/.design-postplan-emit-result.env" SNAPSHOT_STATUS failed "sn
 
 # 8 validator infra failure
 D8="$TMP/validator-fail"
-setup_design_tmp "$D8" full SIMPLE
+setup_design_tmp "$D8" full
 reset_env
 export VALIDATOR_STUB_RC=1
 set +e
@@ -406,7 +297,7 @@ assert_file_kv "$D8/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS valid
 
 # 8b validator exits 0 but emits no VALIDATE_STATUS → validate-driver-failed
 D8b="$TMP/validator-silent"
-setup_design_tmp "$D8b" full SIMPLE
+setup_design_tmp "$D8b" full
 reset_env
 export VALIDATOR_STUB_RC=0 VALIDATE_STATUS_VALUE=""
 # Suppress VALIDATE_STATUS emission from stub
@@ -456,7 +347,7 @@ pass "partial failures write mandatory KV matrix"
 
 # 11 pause before first internal step, export-format source-env issue
 D11="$TMP/pause"
-setup_design_tmp "$D11" full SIMPLE
+setup_design_tmp "$D11" full
 printf 'export ISSUE_NUMBER=77\nexport REPO=owner/name\n' >"$D11/source-env.sh"
 : >"$D11/.pause-requested"
 set +e
@@ -472,7 +363,7 @@ assert_file_kv "$D11/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paus
 
 # 11a explicit --repo overrides source-env repo
 D11a="$TMP/pause-explicit-repo"
-setup_design_tmp "$D11a" full SIMPLE
+setup_design_tmp "$D11a" full
 printf 'export ISSUE_NUMBER=78\nexport REPO=source/repo\n' >"$D11a/source-env.sh"
 : >"$D11a/.pause-requested"
 set +e
@@ -485,7 +376,7 @@ assert_contains "$CALL_LOG" '--repo source/repo' "pause source repo forwarded"
 
 # 11a.1 invalid source-env repo emits structured pause failure
 D11a_bad_source="$TMP/pause-invalid-source-repo"
-setup_design_tmp "$D11a_bad_source" full SIMPLE
+setup_design_tmp "$D11a_bad_source" full
 printf 'export ISSUE_NUMBER=79\nexport REPO=--bad/repo\n' >"$D11a_bad_source/source-env.sh"
 : >"$D11a_bad_source/.pause-requested"
 set +e
@@ -500,7 +391,7 @@ assert_not_contains "$CALL_LOG" 'pause-save' "pause invalid source repo skips pa
 
 # 11b empty/absent REPO omits --repo
 D11b="$TMP/pause-no-repo"
-setup_design_tmp "$D11b" full SIMPLE
+setup_design_tmp "$D11b" full
 printf 'export ISSUE_NUMBER=88\n' >"$D11b/source-env.sh"
 : >"$D11b/.pause-requested"
 set +e
@@ -513,7 +404,7 @@ assert_not_contains "$CALL_LOG" '--repo' "pause no repo omits repo flag"
 
 # 12 --force-validate is removed and rejected as unknown
 D12="$TMP/force-removed"
-setup_design_tmp "$D12" full SIMPLE
+setup_design_tmp "$D12" full
 set +e
 run_subject "$D12" --force-validate
 rc=$?
@@ -523,7 +414,7 @@ assert_not_exists_or_empty "$D12/.design-postplan-emit-result.env" "force valida
 
 # --- --with-plan-size merged mode ---
 D13="$TMP/merged-clean"
-setup_design_tmp "$D13" full SIMPLE
+setup_design_tmp "$D13" full
 set +e
 run_subject "$D13" --with-plan-size
 rc=$?
@@ -536,7 +427,7 @@ assert_not_contains "$D13/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged no stdout 
 assert_not_contains "$D13/stdout.txt" 'WARN=' "merged no WARN= leakage"
 
 D14="$TMP/merged-hard-body"
-setup_design_tmp "$D14" full SIMPLE
+setup_design_tmp "$D14" full
 {
     printf '# Plan\n'
     for _ in $(seq 1 5); do printf "### NEW: \`z%s.md\`\n" "$_"; done
@@ -548,11 +439,11 @@ run_subject "$D14" --with-plan-size
 rc=$?
 set -e
 assert_rc "merged hard body" 12 "$rc"
-assert_file_kv "$D14/.design-postplan-emit-result.env" HARD_TRIGGER_FIRED true "merged hard KV"
+assert_file_kv "$D14/.design-postplan-emit-result.env" SIZE_TRIGGER_FIRED true "merged hard KV"
 assert_contains "$D14/stdout.txt" '## Plan Size — Hard Trigger' "merged hard section"
 
 D15="$TMP/merged-hard-diff-added"
-setup_design_tmp "$D15" full SIMPLE
+setup_design_tmp "$D15" full
 {
     printf '# Plan\n'
     for _ in $(seq 1 5); do printf "### NEW: \`q%s.md\`\n" "$_"; done
@@ -567,7 +458,7 @@ set -e
 assert_rc "merged hard diff_added" 12 "$rc"
 
 D16="$TMP/merged-soft"
-setup_design_tmp "$D16" full SIMPLE
+setup_design_tmp "$D16" full
 {
     printf '# Plan\n'
     for _ in $(seq 1 5); do printf "### NEW: \`m%s.md\`\n" "$_"; done
@@ -584,7 +475,7 @@ assert_rc "merged soft advisory" 0 "$rc"
 assert_contains "$D16/stdout.txt" 'mechanical-churn advisory' "merged soft advisory display"
 
 D17="$TMP/merged-soft-hard"
-setup_design_tmp "$D17" full SIMPLE
+setup_design_tmp "$D17" full
 {
     printf '# Plan\n'
     for _ in $(seq 1 5); do printf "### NEW: \`z%s.md\`\n" "$_"; done
@@ -602,8 +493,8 @@ assert_contains "$D17/stdout.txt" 'mechanical-churn advisory' "merged soft+hard 
 assert_contains "$D17/stdout.txt" '## Plan Size — Hard Trigger' "merged soft+hard hard section"
 
 D18="$TMP/merged-partition"
-setup_design_tmp "$D18" full SIMPLE
-printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"SIMPLE","partition_requested":true}\n' >"$D18/run-params.json"
+setup_design_tmp "$D18" full
+printf '{"review_budget":"full","partition_requested":true}\n' >"$D18/run-params.json"
 write_small_plan "$D18"
 set +e
 run_subject "$D18" --with-plan-size
@@ -613,7 +504,7 @@ assert_rc "merged partition" 13 "$rc"
 assert_contains "$D18/stdout.txt" '## Plan Size — Partition requested' "merged partition section"
 
 D18b="$TMP/merged-partition-no-jq"
-setup_design_tmp "$D18b" full SIMPLE
+setup_design_tmp "$D18b" full
 printf '{"review_budget":"full","partition_requested":true}\n' >"$D18b/run-params.json"
 write_small_plan "$D18b"
 PATH_SAVE="$PATH"
@@ -626,7 +517,7 @@ PATH="$PATH_SAVE"
 assert_rc "merged partition no jq" 13 "$rc"
 
 D19="$TMP/merged-partition-hard"
-setup_design_tmp "$D19" full SIMPLE
+setup_design_tmp "$D19" full
 printf '{"review_budget":"full","partition_requested":true}\n' >"$D19/run-params.json"
 {
     printf '# Plan\n'
@@ -641,7 +532,7 @@ set -e
 assert_rc "merged partition+hard" 12 "$rc"
 
 D20="$TMP/merged-defects"
-setup_design_tmp "$D20" full SIMPLE
+setup_design_tmp "$D20" full
 reset_env
 export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
 set +e
@@ -653,7 +544,7 @@ assert_file_kv "$D20/.design-postplan-emit-result.env" VALIDATE_STATUS defects-f
 assert_file_kv "$D20/.design-postplan-emit-result.env" PLAN_SIZE_STATUS skipped-defects "merged defects skip plan-size"
 
 D21="$TMP/merged-pause"
-setup_design_tmp "$D21" full SIMPLE
+setup_design_tmp "$D21" full
 printf 'export ISSUE_NUMBER=99\n' >"$D21/source-env.sh"
 : >"$D21/.pause-requested"
 set +e
@@ -665,7 +556,7 @@ assert_not_contains "$CALL_LOG" 'pause-save' "merged pause no exec"
 assert_file_kv "$D21/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paused "merged pause status"
 
 D22="$TMP/merged-plan-size-rc2"
-setup_design_tmp "$D22" full SIMPLE
+setup_design_tmp "$D22" full
 printf 'x\n' >"$D22/plan.txt"
 set +e
 run_subject "$D22" --with-plan-size
@@ -677,7 +568,7 @@ assert_not_contains "$D22/stdout.txt" 'APPENDED=' "merged rc2 no APPENDED"
 [[ -f "$D22/check-plan-size.validation.log" ]] || fail "merged rc2 validation log"
 
 D23="$TMP/merged-quiet-nested"
-setup_design_tmp "$D23" full SIMPLE
+setup_design_tmp "$D23" full
 set +e
 run_subject_quiet_parent "$D23" --with-plan-size
 rc=$?
@@ -687,7 +578,7 @@ assert_rc "merged quiet parent" 0 "$rc"
 assert_file_kv "$D23/.design-postplan-emit-result.env" PLAN_SIZE_STATUS under-threshold "merged quiet parent env"
 
 D24="$TMP/merged-classification-warn"
-setup_design_tmp "$D24" full SIMPLE
+setup_design_tmp "$D24" full
 rm -f "$D24/run-params.json"
 set +e
 run_subject "$D24" --with-plan-size --snapshot-original
@@ -699,7 +590,7 @@ assert_not_contains "$D24/stdout.txt" 'WARN=' "merged classification no WARN="
 grep -Fq 'WARN=' "$D24/.design-postplan-emit-result.env" || fail "merged classification WARN in env"
 
 D25="$TMP/merged-missing-diff"
-setup_design_tmp "$D25" full SIMPLE
+setup_design_tmp "$D25" full
 reset_env
 export EMIT_STATUS_VALUE=missing-diff-lines
 set +e
@@ -710,7 +601,7 @@ assert_rc "merged missing diff" 1 "$rc"
 assert_contains "$D25/stdout.txt" 'missing a final diff_lines' "merged missing diff diagnostic"
 
 D26="$TMP/merged-result-env-refuse"
-setup_design_tmp "$D26" full SIMPLE
+setup_design_tmp "$D26" full
 ln -sf /tmp "$D26/.design-postplan-emit-result.env"
 set +e
 run_subject "$D26" --with-plan-size
@@ -735,7 +626,7 @@ printf 'APPENDED=false\nLOG=/tmp/leak\n'
 exit 7
 STUB
 chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
-setup_design_tmp "$D27" full SIMPLE
+setup_design_tmp "$D27" full
 set +e
 run_subject "$D27" --with-plan-size
 rc=$?
@@ -749,7 +640,7 @@ rm -f "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 
 D28="$TMP/merged-snapshot-failed-diagnostic"
-setup_design_tmp "$D28" full HARD
+setup_design_tmp "$D28" full
 reset_env
 export SNAPSHOT_STUB_RC=9
 set +e
@@ -761,7 +652,7 @@ assert_file_kv "$D28/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS snap
 assert_contains "$D28/stdout.txt" 'failed to snapshot plan.txt-original' "merged snapshot failed diagnostic"
 
 D29="$TMP/merged-validate-driver-failed-diagnostic"
-setup_design_tmp "$D29" full SIMPLE
+setup_design_tmp "$D29" full
 reset_env
 export VALIDATOR_STUB_RC=8 VALIDATOR_EMIT_STATUS_ON_FAIL=false
 set +e
@@ -773,7 +664,7 @@ assert_file_kv "$D29/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS vali
 assert_contains "$D29/stdout.txt" 'plan-command validator infrastructure failed' "merged validate driver failed diagnostic"
 
 D30="$TMP/drift-baseline-seed"
-setup_design_tmp "$D30" full HARD
+setup_design_tmp "$D30" full
 set +e
 run_subject "$D30" --with-plan-size --snapshot-original
 rc=$?
@@ -783,7 +674,7 @@ assert_file_kv "$D30/drift-baseline.env" BASELINE_PLAN_LINES 2 "drift baseline s
 assert_file_kv "$D30/drift-baseline.env" BASELINE_DIFF_LINES 12 "drift baseline seed diff lines"
 
 D31="$TMP/drift-baseline-preserved"
-setup_design_tmp "$D31" full HARD
+setup_design_tmp "$D31" full
 printf 'BASELINE_PLAN_LINES=5\nBASELINE_DIFF_LINES=6\n' >"$D31/drift-baseline.env"
 set +e
 run_subject "$D31" --with-plan-size --snapshot-original
@@ -794,7 +685,7 @@ assert_file_kv "$D31/drift-baseline.env" BASELINE_PLAN_LINES 5 "drift baseline p
 assert_file_kv "$D31/drift-baseline.env" BASELINE_DIFF_LINES 6 "drift baseline preserves diff lines"
 
 D32="$TMP/drift-trigger"
-setup_design_tmp "$D32" full HARD
+setup_design_tmp "$D32" full
 printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D32/drift-baseline.env"
 {
     printf '# Plan\n'
@@ -811,7 +702,7 @@ assert_not_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger no
 assert_contains "$D32/execution-issues.md" 'drift advisory' "drift trigger warning logged"
 
 D33="$TMP/drift-hard-precedence"
-setup_design_tmp "$D33" full HARD
+setup_design_tmp "$D33" full
 printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D33/drift-baseline.env"
 {
     printf '# Plan\n'
@@ -827,8 +718,8 @@ assert_file_kv "$D33/.design-postplan-emit-result.env" PLAN_SIZE_STATUS hard-tri
 assert_not_contains "$D33/stdout.txt" '## Plan Size — Drift' "drift hard precedence no drift section"
 
 D34="$TMP/drift-partition-precedence"
-setup_design_tmp "$D34" full SIMPLE
-printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"SIMPLE","partition_requested":true}\n' >"$D34/run-params.json"
+setup_design_tmp "$D34" full
+printf '{"review_budget":"full","partition_requested":true}\n' >"$D34/run-params.json"
 printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D34/drift-baseline.env"
 {
     printf '# Plan\n'
@@ -844,7 +735,7 @@ assert_file_kv "$D34/.design-postplan-emit-result.env" PLAN_SIZE_STATUS partitio
 assert_not_contains "$D34/stdout.txt" '## Plan Size — Drift' "drift partition precedence no drift section"
 
 D35="$TMP/defects-seed-drift-baseline"
-setup_design_tmp "$D35" full HARD
+setup_design_tmp "$D35" full
 reset_env
 export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
 set +e
@@ -856,7 +747,7 @@ assert_file_kv "$D35/drift-baseline.env" BASELINE_PLAN_LINES 2 "defects seed dri
 assert_file_kv "$D35/drift-baseline.env" BASELINE_DIFF_LINES 12 "defects seed drift baseline diff"
 
 D36="$TMP/defects-drift-trigger"
-setup_design_tmp "$D36" full HARD
+setup_design_tmp "$D36" full
 printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D36/drift-baseline.env"
 {
     printf '# Plan\n'

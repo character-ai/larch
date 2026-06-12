@@ -238,67 +238,6 @@ def test_render_specialist_cache_setup_failure_falls_back_uncached(
     assert "Structure, KISS, and Maintainability" in out
 
 
-def test_render_debate_retry_token_matrix(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    orig = tmp_path / "orig.txt"
-    prev = tmp_path / "prev.txt"
-    out = tmp_path / "retry.txt"
-    _ = orig.write_text("ORIGINAL_PROMPT_BODY_LINE_1\n", encoding="utf-8")
-    _ = prev.write_text("previous output stub\n", encoding="utf-8")
-    rc = rendering.render_debate_retry_main(
-        [
-            "--original-prompt-file",
-            str(orig),
-            "--previous-output-file",
-            str(prev),
-            "--failure-reason",
-            "missing_tag:claim,evidence",
-            "--retry-tool",
-            "cursor",
-            "--output",
-            str(out),
-        ],
-    )
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert "RENDERED=true" in captured.out
-    assert f"OUTPUT_FILE={out}" in captured.out
-    text = out.read_text(encoding="utf-8")
-    assert "ORIGINAL_PROMPT_BODY_LINE_1" in text
-    assert "missing_tag: claim,evidence" in text
-
-
-def test_render_debate_retry_claude_self_identify_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    orig = tmp_path / "orig.txt"
-    prev = tmp_path / "prev.txt"
-    out = tmp_path / "retry.txt"
-    _ = orig.write_text("prompt\n", encoding="utf-8")
-    _ = prev.write_text("prior\n", encoding="utf-8")
-    assert rendering.render_debate_retry_main(
-        [
-            "--original-prompt-file",
-            str(orig),
-            "--previous-output-file",
-            str(prev),
-            "--failure-reason",
-            "no_output",
-            "--retry-tool",
-            "claude",
-            "--output",
-            str(out),
-        ],
-    ) == 0
-    assert "Do not self-identify your underlying model in your output" in out.read_text(encoding="utf-8")
-
-
-def test_render_debate_retry_unknown_flag_exit_2(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    rc = rendering.render_debate_retry_main(["--not-a-flag"])
-    assert rc == 2
-    assert capsys.readouterr().err
-
-
 def test_mermaid_rejects_pipe_in_node_label(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     doc = tmp_path / "bad.mmd"
@@ -373,7 +312,7 @@ def test_render_plan_review_inlines_strunk_and_white_readability(
     plan = design_tmpdir / "plan.txt"
     _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
     _ = (design_tmpdir / "run-params.json").write_text(
-        '{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}\n',
+        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
         encoding="utf-8",
     )
     style = tmp_path / "readability-style.md"

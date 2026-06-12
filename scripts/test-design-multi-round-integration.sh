@@ -106,7 +106,7 @@ grep -q 'Accepted OOS' "$TMP/design/oos-accepted-design.md" || fail "accepted OO
 D2="$TMP/design-chain"
 mkdir -p "$D2"
 cat >"$D2/run-params.json" <<'EOF'
-{"schema_version":2,"design_classification":"HARD","workflow_path":"HARD","approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
+{"schema_version":3,"approve_requested":false,"partition_requested":false,"brainstorm_requested":false}
 EOF
 printf '## Plan\n\nDo thing better.\n\ndiff_lines: 3\n' >"$D2/plan.txt"
 printf 'feat\n' >"$D2/feature-description.txt"

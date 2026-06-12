@@ -18,7 +18,7 @@ Do not satisfy this case by calling `complete_design_steps … 3 3.5` or by manu
 
 ## Legacy compatibility coverage
 
-- Legacy SIMPLE snapshots with `.completed/step-2a` but no `.completed/step-2a.5` save/load at `STEP=2a.5`, then execute the Step 2a.5 compatibility repair and assert the missing marker is written.
+- Legacy Step 2a snapshots without `.completed/step-2a.5` are remapped to `STEP=2b` and the missing marker is written.
 - Legacy snapshots with `.completed/step-3b` but no `.completed/finalize` save/load at `STEP=4`, then execute the Step 4 FINALIZE compatibility guard and assert `.completed/finalize` is written.
 - FINALIZE failure coverage pins the operator-visible warning `**⚠ FINALIZE failed; repair the missing artifact before Step 5.**` and the non-zero exit path.
 

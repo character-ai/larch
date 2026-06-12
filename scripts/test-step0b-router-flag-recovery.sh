@@ -46,8 +46,8 @@ recovery_merge_if_needed() {
 }
 
 write_then_recover() {
-  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_approve="${6:-false}" r_skip_approve="${7:-false}"
-  if ! "${WRITER[@]}" --classification "$classification" \
+  local out="$1" _classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_approve="${6:-false}" r_skip_approve="${7:-false}"
+  if ! "${WRITER[@]}" \
       --partition-requested false --brainstorm-requested false \
       --output "$out" >/dev/null 2>&1; then
     return 1
@@ -58,28 +58,28 @@ write_then_recover() {
 
 # Case 1: successful write; partition argv merges true.
 OUT1="$TMPROOT/case1.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false --output "$OUT1" >/dev/null
 recovery_merge_if_needed "$OUT1" true false
 jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT1" >/dev/null \
   || fail "case1: partition argv merge produced $(cat "$OUT1")"
 
 # Case 3: stored partition=true; argv partition=false, brainstorm=true => OR-merge preserves partition.
 OUT3="$TMPROOT/case3.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested true --brainstorm-requested false --output "$OUT3" >/dev/null
+"${WRITER[@]}" --partition-requested true --brainstorm-requested false --output "$OUT3" >/dev/null
 recovery_merge_if_needed "$OUT3" false true
 jq -e '.partition_requested == true and .brainstorm_requested == true and (has("manual_gate_b") | not)' "$OUT3" >/dev/null \
   || fail "case3: partition OR-merge regressed; got $(cat "$OUT3")"
 
 # Case 3a: stored approve=true; argv approve=false with another true flag preserves approve.
 OUT3A="$TMPROOT/case3a.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --approve-requested true --output "$OUT3A" >/dev/null
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false --approve-requested true --output "$OUT3A" >/dev/null
 recovery_merge_if_needed "$OUT3A" true false false
 jq -e '.partition_requested == true and .brainstorm_requested == false and .approve_requested == true and (has("manual_gate_b") | not)' "$OUT3A" >/dev/null \
   || fail "case3a: approve OR-merge regressed; got $(cat "$OUT3A")"
 
 # Case 4: stored brainstorm=true; guard enters via partition argv true; brainstorm OR-merge preserves.
 OUT4="$TMPROOT/case4.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
+"${WRITER[@]}" --partition-requested false --brainstorm-requested true --output "$OUT4" >/dev/null
 recovery_merge_if_needed "$OUT4" true false
 jq -e '.brainstorm_requested == true and .partition_requested == true and .approve_requested == false and (has("manual_gate_b") | not)' "$OUT4" >/dev/null \
   || fail "case4: brainstorm OR-merge regressed; got $(cat "$OUT4")"
@@ -87,7 +87,7 @@ jq -e '.brainstorm_requested == true and .partition_requested == true and .appro
 # Case 5: all-false argv => outer guard short-circuits; file unchanged (false-branch no-op).
 # Proves the guard's false-branch is exercised so a loosened guard would fail this assertion.
 OUT5="$TMPROOT/case5.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false --output "$OUT5" >/dev/null
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false --output "$OUT5" >/dev/null
 before_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 recovery_merge_if_needed "$OUT5" false false
 after_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
@@ -104,9 +104,10 @@ warning_case6=$(recovery_merge_if_needed "$OUT6" true false)
 
 # Case 7: a failing writer aborts BEFORE recovery (#3161). Spy absence proves recovery never
 # ran; captured stdout proves the missing-file recovery warning was not emitted.
-OUT7="$TMPROOT/case7.json"; SPY7="$TMPROOT/case7-recovery-reached"; rm -f "$SPY7"
+# Writer fails because the output directory does not exist.
+OUT7="$TMPROOT/nonexistent-dir/case7.json"; SPY7="$TMPROOT/case7-recovery-reached"; rm -f "$SPY7"
 set +e
-out7_stdout=$(write_then_recover "$OUT7" BOGUS "$SPY7" true false 2>/dev/null)
+out7_stdout=$(write_then_recover "$OUT7" "" "$SPY7" true false 2>/dev/null)
 rc7=$?
 set -e
 [[ "$rc7" -ne 0 ]] || fail "case7: failing writer must abort before recovery; rc=$rc7"
@@ -117,7 +118,7 @@ set -e
 
 # Case 7b (positive control): a successful write reaches AND completes recovery.
 OUT7B="$TMPROOT/case7b.json"; SPY7B="$TMPROOT/case7b-recovery-reached"; rm -f "$SPY7B"
-set +e; write_then_recover "$OUT7B" SIMPLE "$SPY7B" true false; rc7b=$?; set -e
+set +e; write_then_recover "$OUT7B" "" "$SPY7B" true false; rc7b=$?; set -e
 [[ "$rc7b" -eq 0 ]] || fail "case7b: successful write_then_recover returned $rc7b"
 [[ -e "$SPY7B" ]] || fail "case7b: recovery did not complete after successful write (spy absent)"
 jq -e '.partition_requested == true' "$OUT7B" >/dev/null \
@@ -153,7 +154,6 @@ run_design_init() {
     --issue 42 \
     --session-id RUN-STEP0B-TEST \
     --claude-pid 424242 \
-    --classification SIMPLE \
     --partition-requested "$partition" \
     --brainstorm-requested "$brainstorm" \
     --approve-requested "$approve" \
@@ -197,7 +197,7 @@ jq -e '.skip_approve_requested == true and .approve_requested == false' "$D8B/ru
 
 # Case 8c (#3735): stored skip_approve=true; argv=false with another true flag preserves skip_approve.
 OUT8C="$TMPROOT/case8c.json"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false \
   --skip-approve-requested true --output "$OUT8C" >/dev/null
 recovery_merge_if_needed "$OUT8C" true false false false
 jq -e '.partition_requested == true and .skip_approve_requested == true' "$OUT8C" >/dev/null \
@@ -251,7 +251,7 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
-printf '%s\n' '{"schema_version":3,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}' >"$out"
+printf '%s\n' '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}' >"$out"
 printf 'RUN_PARAMS_WRITTEN=%s\n' "$out"
 exit 0
 STUB
@@ -287,7 +287,7 @@ Fixture
 diff_lines: 1
 <!-- larch:plan:end -->
 EOF_BODY12
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false \
   --approve-requested false --skip-approve-requested true --output "$D12/run-params.json" >/dev/null
 set +e
 route12_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$DESIGN_ROUTE" \
@@ -323,7 +323,7 @@ Fixture
 diff_lines: 1
 <!-- larch:plan:end -->
 EOF_BODY12B
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false \
   --approve-requested false --skip-approve-requested false --output "$D12B/run-params.json" >/dev/null
 set +e
 route12b_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$DESIGN_ROUTE" \
@@ -386,7 +386,7 @@ D13="$TMPROOT/route13"
 mkdir -p "$D13"
 BODY13="$D13/body.txt"
 printf '<!-- larch:design-pause:start -->\n' >"$BODY13"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false \
   --approve-requested false --skip-approve-requested false --output "$D13/run-params.json" >/dev/null
 set +e
 route13_out=$(CLAUDE_PLUGIN_ROOT="$FAKE_RESUME_PLUGIN" LARCH_TEST_PAUSE_STEP=3 \
@@ -415,7 +415,7 @@ D13B="$TMPROOT/route13b"
 mkdir -p "$D13B"
 BODY13B="$D13B/body.txt"
 printf '<!-- larch:design-pause:start -->\n' >"$BODY13B"
-"${WRITER[@]}" --classification SIMPLE --partition-requested false --brainstorm-requested false \
+"${WRITER[@]}" --partition-requested false --brainstorm-requested false \
   --approve-requested false --skip-approve-requested false --output "$D13B/run-params.json" >/dev/null
 set +e
 route13b_out=$(CLAUDE_PLUGIN_ROOT="$FAKE_RESUME_PLUGIN" LARCH_TEST_PAUSE_STEP=2b \

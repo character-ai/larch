@@ -10,13 +10,13 @@ usage() {
 }
 
 cleanup_tmpdir() {
-  if [[ -n "${TMPDIR_SHARDS:-}" && -d "$TMPDIR_SHARDS" ]]; then
-    rm -rf "$TMPDIR_SHARDS"
+  if [[ -n "${TMPDIR_SLICES:-}" && -d "$TMPDIR_SLICES" ]]; then
+    rm -rf "$TMPDIR_SLICES"
   fi
 }
 
 make_tmpdir() {
-  TMPDIR_SHARDS="$(mktemp -d "${TMPDIR:-/tmp}/test-harness-shards-coverage.XXXXXX")"
+  TMPDIR_SLICES="$(mktemp -d "${TMPDIR:-/tmp}/test-harness-shards-coverage.XXXXXX")"
   trap cleanup_tmpdir EXIT
 }
 
@@ -95,12 +95,12 @@ extract_shard_prereqs() {
   if [[ -n "$out_expected_shards" ]]; then
     : > "$out_expected_shards"
   fi
-  GUARD_SHARD_NAME=""
-  GUARD_SHARD_FIRST=""
-  GUARD_SHARD_COUNT=0
+  GUARD_SLICE_NAME=""
+  GUARD_SLICE_FIRST=""
+  GUARD_SLICE_COUNT=0
 
   if [[ -z "$discovered_shards" ]]; then
-    printf 'no test-harnesses-N rules declared in Makefile\n' >> "$MISSING_SHARD_RULES"
+    printf 'no test-harnesses-N rules declared in Makefile\n' >> "$MISSING_SLICE_RULES"
     return
   fi
 
@@ -113,7 +113,7 @@ extract_shard_prereqs() {
   for n in $discovered_shards; do
     count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
     if [[ "$count" != "1" ]]; then
-      printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SHARD_RULES"
+      printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SLICE_RULES"
       continue
     fi
 
@@ -132,10 +132,10 @@ extract_shard_prereqs() {
     done
 
     if (( contains_guard )); then
-      GUARD_SHARD_COUNT=$((GUARD_SHARD_COUNT + 1))
-      if [[ -z "$GUARD_SHARD_NAME" ]]; then
-        GUARD_SHARD_NAME="test-harnesses-$n"
-        GUARD_SHARD_FIRST="$first_prereq"
+      GUARD_SLICE_COUNT=$((GUARD_SLICE_COUNT + 1))
+      if [[ -z "$GUARD_SLICE_NAME" ]]; then
+        GUARD_SLICE_NAME="test-harnesses-$n"
+        GUARD_SLICE_FIRST="$first_prereq"
       fi
     fi
   done
@@ -165,27 +165,27 @@ extract_test_harnesses_prereqs() {
 validate_makefile() {
   local makefile="$1"
 
-  REPORT="$TMPDIR_SHARDS/report"
-  MISSING_SHARD_RULES="$TMPDIR_SHARDS/missing-shard-rules"
-  ROLLUP_DECL_ERRORS="$TMPDIR_SHARDS/rollup-decl-errors"
+  REPORT="$TMPDIR_SLICES/report"
+  MISSING_SLICE_RULES="$TMPDIR_SLICES/missing-shard-rules"
+  ROLLUP_DECL_ERRORS="$TMPDIR_SLICES/rollup-decl-errors"
   : > "$REPORT"
-  : > "$MISSING_SHARD_RULES"
+  : > "$MISSING_SLICE_RULES"
   : > "$ROLLUP_DECL_ERRORS"
 
-  local naming_violations="$TMPDIR_SHARDS/naming-violations"
-  local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
-  local individual="$TMPDIR_SHARDS/individual"
-  local shard_all="$TMPDIR_SHARDS/shard-all"
-  local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
-  local duplicates="$TMPDIR_SHARDS/duplicates"
-  local missing="$TMPDIR_SHARDS/missing"
-  local orphan="$TMPDIR_SHARDS/orphan"
-  local th_prereqs="$TMPDIR_SHARDS/th-prereqs-actual"
-  local th_prereqs_expected="$TMPDIR_SHARDS/th-prereqs-expected"
-  local th_prereqs_missing="$TMPDIR_SHARDS/th-prereqs-missing"
-  local th_prereqs_extra="$TMPDIR_SHARDS/th-prereqs-extra"
-  local phony="$TMPDIR_SHARDS/phony"
-  local phony_missing="$TMPDIR_SHARDS/phony-missing"
+  local naming_violations="$TMPDIR_SLICES/naming-violations"
+  local continuation_violations="$TMPDIR_SLICES/continuation-violations"
+  local individual="$TMPDIR_SLICES/individual"
+  local slice_all="$TMPDIR_SLICES/slice-all"
+  local slice_no_self="$TMPDIR_SLICES/slice-no-self"
+  local duplicates="$TMPDIR_SLICES/duplicates"
+  local missing="$TMPDIR_SLICES/missing"
+  local orphan="$TMPDIR_SLICES/orphan"
+  local th_prereqs="$TMPDIR_SLICES/th-prereqs-actual"
+  local th_prereqs_expected="$TMPDIR_SLICES/th-prereqs-expected"
+  local th_prereqs_missing="$TMPDIR_SLICES/th-prereqs-missing"
+  local th_prereqs_extra="$TMPDIR_SLICES/th-prereqs-extra"
+  local phony="$TMPDIR_SLICES/phony"
+  local phony_missing="$TMPDIR_SLICES/phony-missing"
 
   # Naming violation = any test-prefixed recipe target whose full name does
   # not match ^test-[a-z0-9-]+$. Carve-outs (aggregate roll-up, shards, coverage,
@@ -211,12 +211,12 @@ validate_makefile() {
   grep -nE "^test-harnesses-[0-9]+:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$th_prereqs_expected"
+  extract_shard_prereqs "$makefile" "$slice_all" "$th_prereqs_expected"
 
-  grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
-  sort "$shard_all" | uniq -d > "$duplicates"
-  comm -23 "$individual" "$shard_no_self" > "$missing"
-  comm -13 "$individual" "$shard_no_self" > "$orphan"
+  grep -Fxv 'test-harness-shards-coverage' "$slice_all" | sort -u > "$slice_no_self" || true
+  sort "$slice_all" | uniq -d > "$duplicates"
+  comm -23 "$individual" "$slice_no_self" > "$missing"
+  comm -13 "$individual" "$slice_no_self" > "$orphan"
 
   extract_test_harnesses_prereqs "$makefile" "$th_prereqs"
   # th_prereqs_expected was populated by extract_shard_prereqs above using the
@@ -260,7 +260,7 @@ validate_makefile() {
     printf 'test-harness-shards-coverage\n' >> "$phony_missing"
   fi
 
-  append_section "shard rule declaration errors" "!" "$MISSING_SHARD_RULES"
+  append_section "shard rule declaration errors" "!" "$MISSING_SLICE_RULES"
   append_section "harness recipe target uses non-standard naming - convention is lowercase-hyphenated. See scripts/test-harness-shards-coverage.md" "!" "$naming_violations"
   append_section "shard rule must be on a single physical line - see scripts/test-harness-shards-coverage.md" "!" "$continuation_violations"
   append_section "missing from shards" "-" "$missing"
@@ -271,15 +271,15 @@ validate_makefile() {
   append_section "test-harnesses aggregate has unexpected prerequisites" "+" "$th_prereqs_extra"
   append_section "missing from .PHONY" "-" "$phony_missing"
 
-  if ! grep -Fxq 'test-harness-shards-coverage' "$shard_all"; then
+  if ! grep -Fxq 'test-harness-shards-coverage' "$slice_all"; then
     {
       printf '@@ self-reference missing @@\n'
       printf -- '- test-harness-shards-coverage\n'
     } >> "$REPORT"
   fi
 
-  local guard_shard_name="${GUARD_SHARD_NAME:-test-harnesses-N}"
-  if [[ "${GUARD_SHARD_COUNT:-0}" == "1" && "${GUARD_SHARD_FIRST:-}" != "test-harness-shards-coverage" ]]; then
+  local guard_shard_name="${GUARD_SLICE_NAME:-test-harnesses-N}"
+  if [[ "${GUARD_SLICE_COUNT:-0}" == "1" && "${GUARD_SLICE_FIRST:-}" != "test-harness-shards-coverage" ]]; then
     {
       printf '@@ self-reference misplaced @@\n'
       printf '! test-harness-shards-coverage must be the first prerequisite of %s\n' "$guard_shard_name"
@@ -305,7 +305,7 @@ write_happy_fixture() {
   local path="$1"
 
   cat > "$path" <<'EOF'
-.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-alpha test-beta test-gamma test-delta test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag smoke-dialectic eval-research
+.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-alpha test-beta test-gamma test-delta test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag eval-research
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 test-harnesses-1: test-alpha
 test-harnesses-2: test-beta
@@ -328,8 +328,6 @@ test-eval-set-structure:
 	bash scripts/test-eval-set-structure.sh
 test-eval-research-baseline-flag:
 	bash scripts/test-eval-research-baseline-flag.sh
-smoke-dialectic:
-	bash scripts/dialectic-smoke-test.sh
 eval-research:
 	bash scripts/eval-research.sh
 EOF
@@ -339,8 +337,8 @@ run_self_case() {
   local name="$1"
   local expected_status="$2"
   local expected_stderr="$3"
-  local fixture="$TMPDIR_SHARDS/$name.mk"
-  local stderr_file="$TMPDIR_SHARDS/$name.stderr"
+  local fixture="$TMPDIR_SLICES/$name.mk"
+  local stderr_file="$TMPDIR_SLICES/$name.stderr"
   local status=0
 
   write_happy_fixture "$fixture"

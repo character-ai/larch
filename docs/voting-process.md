@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor) for SIMPLE and HARD. `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|

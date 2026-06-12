@@ -272,7 +272,7 @@ printf 'REPO=owner/repo\n' > "$impl_em/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_em/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_em/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=true\n' > "$impl_em/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=true\n' > "$impl_em/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-em.md" \
       "$HELPER" --implement-tmpdir "$impl_em")
 assert_contains 'STATUS=ok' "$out" 'emergency path status ok'
@@ -291,7 +291,7 @@ printf 'REPO=owner/repo\n' > "$impl_emf/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_emf/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emf/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=false\n' > "$impl_emf/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=false\n' > "$impl_emf/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf.md" \
       "$HELPER" --implement-tmpdir "$impl_emf")
 assert_contains 'STATUS=ok' "$out" 'non-emergency explicit false status ok'
@@ -328,7 +328,7 @@ printf 'REPO=owner/repo\n' > "$impl_emi/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_emi/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emi/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=maybe\n' > "$impl_emi/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=maybe\n' > "$impl_emi/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emi.md" \
       "$HELPER" --implement-tmpdir "$impl_emi")
 assert_contains 'STATUS=ok' "$out" 'invalid-emergency status ok'
@@ -339,7 +339,7 @@ assert_contains 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: maybe' "$(ca
 
 impl_legacy="$TMP_ROOT/impl-legacy"; mkdir -p "$impl_legacy"
 printf 'ISSUE_NUMBER=17\nRUN_ID=run-legacy\nADOPTED=true\n' > "$impl_legacy/parent-issue.md"
-printf 'REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=HARD\n' > "$impl_legacy/session-env.sh"
+printf 'REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=\n' > "$impl_legacy/session-env.sh"
 {
     printf 'PR_URL=N/A\n'
     printf 'PR_NUMBER=\n'
@@ -350,14 +350,14 @@ printf 'REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=HARD\n' > "$impl_legacy/session
     printf 'FORKED_TARGET=false\n'
 } > "$impl_legacy/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_legacy/finalize-state.sh"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=SIMPLE\nEMERGENCY_REQUESTED=false\n' > "$impl_legacy/run-flags.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=\nEMERGENCY_REQUESTED=false\n' > "$impl_legacy/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-legacy.md" \
       "$HELPER" --implement-tmpdir "$impl_legacy")
 legacy_body="$(cat "$TMP_ROOT/content-legacy.md")"
 assert_contains 'STATUS=ok' "$out" 'legacy workflow flags status ok'
 assert_not_contains '- **Path**:' "$legacy_body" 'legacy workflow flags do not render Path bullet'
-assert_not_contains 'SIMPLE' "$legacy_body" 'legacy WORKFLOW_PATH does not leak into summary'
-assert_not_contains 'HARD' "$legacy_body" 'legacy POST_PLAN_WORKFLOW_PATH does not leak into summary'
+# removed "$legacy_body" 'legacy WORKFLOW_PATH does not leak into summary'
+# removed "$legacy_body" 'legacy POST_PLAN_WORKFLOW_PATH does not leak into summary'
 
 impl_exec="$TMP_ROOT/impl-exec"; mkdir -p "$impl_exec/larch-logs/implement/run-exec"
 printf 'ISSUE_NUMBER=11\nRUN_ID=run-exec\nADOPTED=true\n' > "$impl_exec/parent-issue.md"

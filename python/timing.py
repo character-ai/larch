@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Mapping
 
-import gh
 import tokens
 
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
@@ -211,7 +210,6 @@ class TimingReport:
         env_map = os.environ if env is None else env
         now = int(env_map.get("LARCH_TEST_TIMING_NOW", str(int(time.time()))))
         threshold = _positive_int(env_map.get("LARCH_TIMING_OUTLIER_THRESHOLD_S"), 14400)
-        workflow = _workflow_path(self.ledger_path, env=env_map)
         per_step: list[dict[str, object]] = []
         total_duration = 0
         implement_marks = [mark for mark in marks if mark.skill == "implement"]
@@ -238,7 +236,6 @@ class TimingReport:
                         per_step.append(child_row)
         averages = _vendor_averages(vendors)
         return {
-            "workflow_path": workflow,
             "per_step": per_step,
             "total_seconds": max(0, total_duration),
             "total_hms": _hms(max(0, total_duration)),
@@ -474,21 +471,6 @@ def _positive_int(raw: str | None, default: int) -> int:
     return value if value > 0 else default
 
 
-def _workflow_path(ledger: Path, *, env: Mapping[str, str]) -> str:
-    skill = env.get("LARCH_TIMING_SKILL", "implement")
-    if skill != "design":
-        return "unknown"
-    candidates: list[Path] = []
-    if env.get("DESIGN_TMPDIR"):
-        candidates.append(Path(str(env["DESIGN_TMPDIR"])) / "run-params.json")
-    candidates.append(ledger.parent / "run-params.json")
-    for candidate in candidates:
-        if not candidate.is_file():
-            continue
-        workflow = gh.read_workflow_path(str(candidate))
-        if workflow in {"SIMPLE", "HARD"}:
-            return workflow
-    return "unknown"
 
 
 def _rounds_for(rounds: list[_Round], skill: str, step: str, start: int, end: int) -> list[dict[str, int]]:
@@ -558,9 +540,6 @@ def _vendor_counts_since(path: Path, start: int, *, use_end: bool = False) -> di
 
 def _render_markdown(data: dict[str, object]) -> str:
     lines: list[str] = []
-    workflow = data.get("workflow_path")
-    if workflow in {"SIMPLE", "HARD"}:
-        lines.extend([f"**Workflow path**: {workflow}", ""])
     lines.extend(["## Per-Step Durations", "", "| Skill | Step | Duration |", "| --- | --- | ---: |"])
     per_step_list: list[dict[str, Any]] = cast("list[dict[str, Any]]", data.get("per_step") or [])
     for r in per_step_list:

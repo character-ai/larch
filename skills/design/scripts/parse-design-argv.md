@@ -16,13 +16,12 @@ Any later/public `--output` token is not a supported `/design` flag and remains 
 
 ## Allowlist
 
-`skills/design/references/flags.md` is normative for the public flag allowlist and tier mapping. This parser implements only Step 0-pre validation and raw flag binding; Step 0b still maps `--hard` to `design_classification`.
+`skills/design/references/flags.md` is normative for the public flag allowlist and tier mapping. This parser implements only Step 0-pre validation and raw flag binding; Step 0b still maps  to `design_classification`.
 
 ## Machine output
 
 On success, stdout always contains exactly these nine uppercase KVs, one per line, including when `--output` is used:
 
-- `HARD_REQUESTED=true|false`
 - `PARTITION_REQUESTED=true|false`
 - `BRAINSTORM_REQUESTED=true|false`
 - `APPROVE_REQUESTED=true|false` (set by `--per-round-approval`)

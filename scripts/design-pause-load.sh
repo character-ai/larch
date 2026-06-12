@@ -153,7 +153,6 @@ esac
 RUN_ID=$(kv_get RUN_ID "$payload_tmp")
 STEP=$(kv_get STEP "$payload_tmp")
 SESSION_ID=$(kv_get SESSION_ID "$payload_tmp")
-TIER=$(kv_get TIER "$payload_tmp")
 BRAINSTORM_DONE=$(kv_get BRAINSTORM_DONE "$payload_tmp")
 BODY_HASH=$(kv_get BODY_HASH "$payload_tmp")
 LOG_RECOVERY_BRANCH=$(kv_get LOG_RECOVERY_BRANCH "$payload_tmp")
@@ -187,13 +186,6 @@ fi
 if [[ -n "$SESSION_ID" ]]; then
     validate_plain_value session-id "$SESSION_ID"
     [[ "$SESSION_ID" == "$RUN_ID" ]] || emit_load_fail "invalid-session-id"
-fi
-
-if [[ -n "$TIER" ]]; then
-    case "$TIER" in
-        SIMPLE|HARD|unknown) ;;
-        *) emit_load_fail "invalid-tier" ;;
-    esac
 fi
 
 if [[ -n "$BRAINSTORM_DONE" ]]; then
@@ -290,11 +282,6 @@ if [[ "$plan_required" == true ]]; then
     [[ -f "$restore_tmp/plan.txt" ]] || emit_load_fail "missing-restored-artifact"
 fi
 
-RESTORED_DESIGN_CLASSIFICATION=$(jq -r '.design_classification // empty' "$restore_tmp/run-params.json" 2>/dev/null) || RESTORED_DESIGN_CLASSIFICATION=""
-case "$RESTORED_DESIGN_CLASSIFICATION" in
-    SIMPLE|HARD) ;;
-    *) RESTORED_DESIGN_CLASSIFICATION=HARD ;;
-esac
 
 RESTORED_ISSUE=$(kv_get ISSUE_NUMBER "$restore_tmp/pause-state.txt")
 validate_plain_value restored-issue-number "$RESTORED_ISSUE"
@@ -339,7 +326,6 @@ emit_kv LOAD_OK true
 emit_kv STEP "$STEP"
 emit_kv SESSION_ID "${SESSION_ID:-$RUN_ID}"
 emit_kv RUN_ID "$RUN_ID"
-emit_kv TIER "${TIER:-unknown}"
 emit_kv BRAINSTORM_DONE "${BRAINSTORM_DONE:-false}"
 [[ -n "$CURRENT_REPO" ]] && emit_kv REPO "$CURRENT_REPO"
 [[ -n "$WARN_VALUE" ]] && emit_kv WARN "$WARN_VALUE"

@@ -66,7 +66,7 @@ branch by:
    `voting-tally.md` under `plan-review/` remain canonical.
    **Top-level dedup**: after computing the last round source directory, the
    top-level staging loop skips any file that is byte-identical (`cmp -s`) to
-   the final round's copy. SIMPLE-tier runs with no `plan-review/` keep all
+   the final round's copy. Runs with no `plan-review/` keep all
    top-level files.
    **`plan.txt` round-1-only / `plan.diff` rounds ≥ 2**: the round staging loop
    skips `plan.txt` for rounds ≥ 2. After the round staging loop, the publisher

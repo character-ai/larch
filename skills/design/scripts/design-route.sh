@@ -304,20 +304,18 @@ merge_router_flags() {
 }
 
 render_cancel_summary() {
-    local outcome="$1" mode="$2"
+    local outcome="$1"
     set +e
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
             "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
             --outcome "$outcome" \
-            --mode "$mode" \
             ${REPO:+--repo "$REPO"} \
             --post-publish-only >/dev/null 2>&4
     else
         DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
             "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
             --outcome "$outcome" \
-            --mode "$mode" \
             ${REPO:+--repo "$REPO"} \
             --post-publish-only >/dev/null
     fi
@@ -499,10 +497,6 @@ if [[ "$_marker_hit" == true ]]; then
     MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
     [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
     SUMMARY_MODE_STRING=N/A
-    if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-        SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
-    fi
-    [[ -n "$SUMMARY_MODE_STRING" ]] || SUMMARY_MODE_STRING=N/A
     emit_cancel_route_result
 fi
 

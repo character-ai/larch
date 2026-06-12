@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -171,7 +169,6 @@ _step0_parsed_cache_dir="${HOME}/.cache/larch/sessions"
 mkdir -p "$_step0_parsed_cache_dir"
 _step0_parsed_cache="$_step0_parsed_cache_dir/step0-parsed-${CLAUDE_PID}.env"
 {
-  printf '%s=%q\n' hard_requested "$hard_requested"
   printf '%s=%q\n' partition_requested "$partition_requested"
   printf '%s=%q\n' brainstorm_requested "$brainstorm_requested"
   printf '%s=%q\n' approve_requested "$approve_requested"
@@ -182,8 +179,7 @@ _step0_parsed_cache="$_step0_parsed_cache_dir/step0-parsed-${CLAUDE_PID}.env"
   printf '%s=%q\n' POSITIONAL_VALUE "$POSITIONAL_VALUE"
 } >"$_step0_parsed_cache"
 printf 'STEP0_PARSED_ENV_PATH=%s\n' "$_step0_parsed_cache"
-printf 'HARD_REQUESTED=%s\nPARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n' \
-  "$hard_requested" \
+printf 'PARTITION_REQUESTED=%s\nBRAINSTORM_REQUESTED=%s\nAPPROVE_REQUESTED=%s\nSKIP_APPROVE_REQUESTED=%s\nNO_DEDUP_REQUESTED=%s\nRUN_ID=%s\nPOSITIONAL_KIND=%s\nPOSITIONAL_VALUE=%s\n' \
   "$partition_requested" \
   "$brainstorm_requested" \
   "$approve_requested" \

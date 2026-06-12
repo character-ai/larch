@@ -28,7 +28,7 @@
 # Bypass case (#3) uses tri-state fingerprint matching: post-fix (exit 0 +
 # parseable deny JSON whose reason mentions "submodule") → PASS; legacy-buggy
 # (exit 0 + empty stdout) → KNOWN-FAIL, increments EXPECTED_FAIL (non-fatal);
-# anything else → HARD FAIL. Issue #150 has landed and removed the bypass —
+# anything else → FATAL FAIL. Issue #150 has landed and removed the bypass —
 # the fingerprint is retained as defense-in-depth against regressions.
 #
 # Scope note: NotebookEdit and Bash-mediated mutations are outside the current
@@ -248,7 +248,7 @@ assert_contains "$case2_reason" "sub" "[case 2] reason names submodule path"
 # Tri-state fingerprint (retained after #150 landed for defense-in-depth):
 # post-fix (RC=0, parseable deny JSON whose reason mentions "submodule") →
 # PASS. Legacy-buggy (RC=0, empty stdout) → KNOWN-FAIL, non-fatal,
-# EXPECTED_FAIL++. Anything else → HARD FAIL.
+# EXPECTED_FAIL++. Anything else → FATAL FAIL.
 echo ""
 echo "=== 3: Bypass — cwd inside submodule (fixed by #150) ==="
 # Simulate a real Claude Code session where CLAUDE_PROJECT_DIR is anchored to
@@ -277,7 +277,7 @@ elif (( legacy_match )); then
 else
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("[case 3] bypass — unexpected state: RC=$RC, stdout=$(printf %q "$HOOK_STDOUT")")
-    echo "  HARD FAIL: [case 3] bypass — neither post-fix (0, deny JSON with reason containing \"submodule\") nor legacy (0, empty stdout) fingerprint matched; RC=$RC, stdout=$(printf %q "$HOOK_STDOUT")" >&2
+    echo "  FATAL FAIL: [case 3] bypass — neither post-fix (0, deny JSON with reason containing \"submodule\") nor legacy (0, empty stdout) fingerprint matched; RC=$RC, stdout=$(printf %q "$HOOK_STDOUT")" >&2
 fi
 
 # --- Case 3b: Deny — broken CLAUDE_PROJECT_DIR, healthy $PWD ---------------

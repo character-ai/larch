@@ -60,19 +60,16 @@ def _aggregate(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         if costs:
             lines.append(f"| All runs | {len(costs)} | {_money(sum(costs))} | {_money(statistics.median(costs))} | {_money(statistics.mean(costs))} | {_money(max(costs))} |")
         return "\n".join(lines)
-    by_workflow: dict[str, list[RunRecord]] = defaultdict(list)
-    for record in records:
-        by_workflow[record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"].append(record)
+    costs = [record.total_cost for record in records]
     lines = [
-        "## Aggregate cost by workflow",
+        "## Aggregate cost",
         "",
-        "| Workflow | Runs | Total | Median | Mean | Max |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Runs | Total | Median | Mean | Max |",
+        "| ---: | ---: | ---: | ---: | ---: |",
     ]
-    for workflow in sorted(by_workflow):
-        costs = [record.total_cost for record in by_workflow[workflow]]
+    if costs:
         lines.append(
-            f"| {_md_cell(workflow)} | {len(costs)} | {_money(sum(costs))} | "
+            f"| {len(costs)} | {_money(sum(costs))} | "
             f"{_money(statistics.median(costs))} | {_money(statistics.mean(costs))} | {_money(max(costs))} |",
         )
     return "\n".join(lines)
@@ -103,22 +100,16 @@ def _top_runs(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         lines = [
             "## Top runs by estimated cost",
             "",
-            "| Issue | Workflow | Started | Total | Claude | Codex | Cursor | Claude (sub) |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            "| Issue | Started | Total | Claude | Codex | Cursor | Claude (sub) |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
         ]
     for record in sorted(records, key=lambda item: item.total_cost, reverse=True)[:10]:
         issue = f"[#{record.number}]({record.url})" if record.url else f"#{record.number}"
         pricing = "python-pricing" if record.priced_by_token_cost else "fallback"
-        if skill == "implement":
-            lines.append(
-                f"| {issue} | {_md_cell(_date(record.started_at) or 'unknown')} | "
-                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
-            )
-        else:
-            lines.append(
-                f"| {issue} | {_md_cell(record.workflow)} | {_md_cell(_date(record.started_at) or 'unknown')} | "
-                f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
-            )
+        lines.append(
+            f"| {issue} | {_md_cell(_date(record.started_at) or 'unknown')} | "
+            f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
+        )
     return "\n".join(lines)
 
 
@@ -142,24 +133,23 @@ def _phase_breakdown(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         for (vendor, step), values in sorted(by_phase_impl.items(), key=lambda item: item[1]["tokens"], reverse=True)[:20]:
             lines.append(f"| {_md_cell(vendor)} | {_md_cell(step)} | {values['runs']} | {values['tokens']:,} |")
         return "\n".join(lines)
-    by_phase: dict[tuple[str, str, str], dict[str, int]] = defaultdict(lambda: {"tokens": 0, "runs": 0})
-    seen: set[tuple[int, str, str, str]] = set()
+    by_phase: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"tokens": 0, "runs": 0})
+    seen: set[tuple[int, str, str]] = set()
     for record in records:
-        workflow = record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"
         for row in record.phase_rows:
-            key = (workflow, row.vendor, row.step)
+            key = (row.vendor, row.step)
             by_phase[key]["tokens"] += row.total
             seen.add((record.number, *key))
-    for _number, workflow, vendor, step in seen:
-        by_phase[(workflow, vendor, step)]["runs"] += 1
+    for _number, vendor, step in seen:
+        by_phase[(vendor, step)]["runs"] += 1
     lines = [
         "## Phase breakdown",
         "",
-        "| Workflow | Vendor | Phase | Runs | Tokens |",
-        "| --- | --- | --- | ---: | ---: |",
+        "| Vendor | Phase | Runs | Tokens |",
+        "| --- | --- | ---: | ---: |",
     ]
-    for (workflow, vendor, step), values in sorted(by_phase.items(), key=lambda item: item[1]["tokens"], reverse=True)[:20]:
-        lines.append(f"| {_md_cell(workflow)} | {_md_cell(vendor)} | {_md_cell(step)} | {values['runs']} | {values['tokens']:,} |")
+    for (vendor, step), values in sorted(by_phase.items(), key=lambda item: item[1]["tokens"], reverse=True)[:20]:
+        lines.append(f"| {_md_cell(vendor)} | {_md_cell(step)} | {values['runs']} | {values['tokens']:,} |")
     return "\n".join(lines)
 
 def _trend_table(title: str, records: list[RunRecord], attr: str) -> str:
@@ -194,11 +184,8 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
     groups = workflow_groups(skill, records)
     lines = ["## Per-day cost trends", ""]
     for group_name in sorted(groups):
-        if skill == "design":
-            lines.extend([f"### {group_name}", ""])
         for label, attr in labels:
-            table_title = label if skill == "implement" else f"{group_name} {label}"
-            lines.append(_trend_table(table_title, groups[group_name], attr))
+            lines.append(_trend_table(label, groups[group_name], attr))
             lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -234,7 +221,7 @@ def _cache_path(temp_root: Path | None) -> Path:
     return root / "report-cache.ndjson"
 
 
-def _write_cache(path: Path, skill: Skill, records: tuple[RunRecord, ...]) -> None:
+def _write_cache(path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -251,8 +238,6 @@ def _write_cache(path: Path, skill: Skill, records: tuple[RunRecord, ...]) -> No
                 "total_cost": record.total_cost,
                 "pricing_source": "python-pricing" if record.priced_by_token_cost else "python-blended-fallback",
             }
-            if skill == "design":
-                row["workflow"] = record.workflow
             _ = handle.write(json.dumps(row, sort_keys=True) + "\n")
     _ = tmp.replace(path)
 

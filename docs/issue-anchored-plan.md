@@ -292,7 +292,6 @@ out of scope:
 
 - Plan content quality (what constitutes a good plan beyond the Preflight rubric in `skills/implement/references/preflight-plan-audit.md`)
 - Audit judgment beyond the fixed Preflight rubric in `skills/implement/references/preflight-plan-audit.md` (orchestrator applies the rubric; no separate CLI)
-- Design tier selection (`--hard` public argv; default SIMPLE; sketch topology and internal flags per `skills/design/references/flags.md`)
 
 Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/preflight-plan-audit.md` (fixed Preflight rubric), and `skills/implement/SKILL.md` (Preflight orchestration + Step 0 plan materialization).
 

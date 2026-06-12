@@ -28,7 +28,7 @@ def _safe_name(label: str) -> str:
 
 
 def _validate_series(skill: str, series: object) -> list[dict[str, object]]:
-    expected = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
+    expected = ["All runs"] if skill == "implement" else ["All runs", "All runs"]
     if not isinstance(series, list):
         raise ValueError("plot input series must be a list")
     items = cast("list[object]", series)

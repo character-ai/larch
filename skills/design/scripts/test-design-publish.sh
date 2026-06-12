@@ -74,7 +74,7 @@ setup_design_tmp() {
     mkdir -p "$d/.completed"
     : >"$d/.completed/step-5b"
     printf '# plan\n' >"$d/composed-plan.md"
-    printf '{"design_classification":"SIMPLE"}\n' >"$d/run-params.json"
+    printf '{}\n' >"$d/run-params.json"
     printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$d/session-env.sh"
 }
 
@@ -169,7 +169,7 @@ elif cmd == ["timing", "report"]:
     step = {"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":False}
     if not no_rounds:
         step["rounds"] = [{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]
-    data = {"workflow_path":"SIMPLE","per_step":[step],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}
+    data = {"per_step":[step],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}
     with open(out, "w") as fh: fh.write(json.dumps(data) + "\n")
 elif cmd == ["redact", "secrets"]:
     rc = int(os.environ.get("REDACT_STUB_RC", "0"))

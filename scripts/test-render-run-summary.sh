@@ -374,8 +374,6 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --skill design \
     --outcome approved \
     --run-id RUN-D1 \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 2000000 \
@@ -420,8 +418,6 @@ pass 'design skill schema + cmp byte identity'
     --skill design \
     --outcome cancelled-clarify \
     --run-id RUN-D2 \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration 'N/A' \
     --claude-tokens 0 \
     --codex-tokens 0 \
@@ -457,8 +453,6 @@ pass 'design intermediate outcome'
     --skill design \
     --outcome publish-skipped \
     --run-id unknown \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration 'N/A' \
     --cost-unavailable \
     --issue-number 9 \
@@ -483,8 +477,6 @@ pass 'publish-skipped unknown run keeps logs N/A'
     --skill design \
     --outcome publish-skipped \
     --run-id RUN-D-SKIP \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration 'N/A' \
     --cost-unavailable \
     --issue-number 9 \
@@ -508,8 +500,6 @@ pass 'publish-skipped real run keeps logs N/A'
     --skill design \
     --outcome approved \
     --run-id RUN-D3 \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration 'N/A' \
     --cost-unavailable \
     --issue-number 9 \
@@ -532,8 +522,6 @@ pass 'approved real run-id logs fallback'
     --skill design \
     --outcome failed-publish \
     --run-id RUN-D4 \
-    --mode SIMPLE \
-    --workflow-path SIMPLE \
     --duration 'N/A' \
     --cost-unavailable \
     --issue-number 9 \

@@ -314,36 +314,36 @@ else
     drift_diff_ratio=inf
 fi
 
-hard_plan=0
-if (( plan_lines > 800 )); then hard_plan=1; fi
+size_plan=0
+if (( plan_lines > 800 )); then size_plan=1; fi
 
-hard_diff_raw=0
+size_diff_raw=0
 diff_basis="diff-lines"
 if [[ -n "$diff_added" ]]; then
-    if (( 10#$diff_added > 2000 )); then hard_diff_raw=1; fi
+    if (( 10#$diff_added > 2000 )); then size_diff_raw=1; fi
     diff_basis="diff-added"
 else
-    if (( 10#$diff_lines > 1500 )); then hard_diff_raw=1; fi
+    if (( 10#$diff_lines > 1500 )); then size_diff_raw=1; fi
 fi
 
 soft_advisory=0
-hard_diff=0
+size_diff=0
 if [[ "$mechanical_churn" == "true" ]]; then
-    if [[ "$hard_diff_raw" -eq 1 ]]; then soft_advisory=1; fi
+    if [[ "$size_diff_raw" -eq 1 ]]; then soft_advisory=1; fi
 else
-    hard_diff="$hard_diff_raw"
+    size_diff="$size_diff_raw"
 fi
 
-hard_trigger=0
-if [[ "$hard_plan" -eq 1 || "$hard_diff" -eq 1 ]]; then
-    hard_trigger=1
+size_trigger=0
+if [[ "$size_plan" -eq 1 || "$size_diff" -eq 1 ]]; then
+    size_trigger=1
 fi
 
 reasons=()
-if [[ "$hard_plan" -eq 1 ]]; then
+if [[ "$size_plan" -eq 1 ]]; then
     reasons+=("plan-body-lines")
 fi
-if [[ "$hard_diff" -eq 1 ]]; then
+if [[ "$size_diff" -eq 1 ]]; then
     reasons+=("$diff_basis")
 fi
 
@@ -361,10 +361,10 @@ emit_kv DRIFT_DIFF_RATIO "$drift_diff_ratio"
 emit_kv BASELINE_PLAN_LINES "$baseline_plan_display"
 emit_kv BASELINE_DIFF_LINES "$baseline_diff_display"
 
-if [[ "$hard_trigger" -eq 1 ]]; then
-    emit_kv HARD_TRIGGER_FIRED true
+if [[ "$size_trigger" -eq 1 ]]; then
+    emit_kv SIZE_TRIGGER_FIRED true
 else
-    emit_kv HARD_TRIGGER_FIRED false
+    emit_kv SIZE_TRIGGER_FIRED false
 fi
 
 emit_kv TRIGGER_REASONS "$TRIGGER_REASONS"

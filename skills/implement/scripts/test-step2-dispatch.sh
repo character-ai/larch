@@ -914,7 +914,7 @@ TMP15="$SCRATCH/test15"; mkdir -p "$TMP15"
 printf 'fresh-step2-15
 ' > "$TMP15/session-id"
 EXIT=0
-ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP15" --plan-file "$PLAN" --feature-file "$FEATURE"     --coder claude --workflow HARD 2>&1 >/dev/null) || EXIT=$?
+ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP15" --plan-file "$PLAN" --feature-file "$FEATURE"     --coder claude --workflow one-flow 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"unknown flag: --workflow"* ]]; then
     pass
 else

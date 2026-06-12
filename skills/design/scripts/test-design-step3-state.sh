@@ -77,7 +77,7 @@ out=$(run_action "$D4" direct-review-entry)
 [[ ! -f "$D4/oos-accepted-design.md" ]] || fail "direct-review entry left stale accepted OOS"
 [[ ! -f "$D4/.oos-accepted-design.prev.md" ]] || fail "direct-review entry left stale accepted OOS snapshot"
 [[ -f "$D4/.completed/step-1e" ]] || fail "direct-review entry missing step-1e"
-for step in 2a 2a.5 2b 2b.5; do
+for step in 2a 2b 2b.5; do
     [[ -f "$D4/.completed/step-$step" ]] || fail "direct-review entry missing step-$step"
 done
 for step in 3 3.5 3b 4 4b; do

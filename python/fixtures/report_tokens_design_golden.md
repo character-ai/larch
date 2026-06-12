@@ -3,12 +3,11 @@
 Analyzed 2 parseable runs.
 Tracked total estimated cost: $13.00.
 
-## Aggregate cost by workflow
+## Aggregate cost
 
-| Workflow | Runs | Total | Median | Mean | Max |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| HARD | 1 | $7.00 | $7.00 | $7.00 | $7.00 |
-| SIMPLE | 1 | $6.00 | $6.00 | $6.00 | $6.00 |
+| Runs | Total | Median | Mean | Max |
+| ---: | ---: | ---: | ---: | ---: |
+| 2 | $13.00 | $6.50 | $6.50 | $7.00 |
 
 ## Vendor breakdown
 
@@ -21,81 +20,47 @@ Tracked total estimated cost: $13.00.
 
 ## Top runs by estimated cost
 
-| Issue | Workflow | Started | Total | Claude | Codex | Cursor | Claude (sub) |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| [#8](https://example.invalid/HARD) | HARD | 2026-01-01 | $7.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
-| [#7](https://example.invalid/SIMPLE) | SIMPLE | 2026-01-01 | $6.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
+| Issue | Started | Total | Claude | Codex | Cursor | Claude (sub) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| [#8](https://example.invalid/2) | 2026-01-01 | $7.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
+| [#7](https://example.invalid/1) | 2026-01-01 | $6.00 (python-pricing) | $1.00 | $2.00 | $3.00 | $4.00 |
 
 ## Phase breakdown
 
-| Workflow | Vendor | Phase | Runs | Tokens |
-| --- | --- | --- | ---: | ---: |
+| Vendor | Phase | Runs | Tokens |
+| --- | --- | ---: | ---: |
 
 ## Per-day cost trends
 
-### HARD
-
-### HARD Total cost
+### Total cost
 
 | Date | Cost |
 | --- | ---: |
-| 2026-01-01 | $7.00 |
+| 2026-01-01 | $13.00 |
 
-### HARD Claude cost
-
-| Date | Cost |
-| --- | ---: |
-| 2026-01-01 | $1.00 |
-
-### HARD Codex cost
+### Claude cost
 
 | Date | Cost |
 | --- | ---: |
 | 2026-01-01 | $2.00 |
 
-### HARD Cursor cost
-
-| Date | Cost |
-| --- | ---: |
-| 2026-01-01 | $3.00 |
-
-### HARD Claude (subprocess) cost
+### Codex cost
 
 | Date | Cost |
 | --- | ---: |
 | 2026-01-01 | $4.00 |
 
-### SIMPLE
-
-### SIMPLE Total cost
+### Cursor cost
 
 | Date | Cost |
 | --- | ---: |
 | 2026-01-01 | $6.00 |
 
-### SIMPLE Claude cost
+### Claude (subprocess) cost
 
 | Date | Cost |
 | --- | ---: |
-| 2026-01-01 | $1.00 |
-
-### SIMPLE Codex cost
-
-| Date | Cost |
-| --- | ---: |
-| 2026-01-01 | $2.00 |
-
-### SIMPLE Cursor cost
-
-| Date | Cost |
-| --- | ---: |
-| 2026-01-01 | $3.00 |
-
-### SIMPLE Claude (subprocess) cost
-
-| Date | Cost |
-| --- | ---: |
-| 2026-01-01 | $4.00 |
+| 2026-01-01 | $8.00 |
 
 ## Cost-reduction suggestions
 

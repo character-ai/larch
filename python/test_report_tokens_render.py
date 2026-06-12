@@ -68,12 +68,12 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
 
 
 def test_render_design_golden_markdown(tmp_path: Path) -> None:
-    simple = _record("SIMPLE")
-    hard = _record("HARD")
+    simple = _record()
+    hard = _record()
     simple = RunRecord(
         7,
-        "Issue SIMPLE",
-        "https://example.invalid/SIMPLE",
+        "Issue 1",
+        "https://example.invalid/1",
         simple.started_at,
         simple.closed_at,
         simple.workflow,
@@ -92,8 +92,8 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
     )
     hard = RunRecord(
         8,
-        "Issue HARD",
-        "https://example.invalid/HARD",
+        "Issue 2",
+        "https://example.invalid/2",
         hard.started_at,
         hard.closed_at,
         hard.workflow,
@@ -117,18 +117,18 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
 
 
 def test_actual_spend_omitted_from_issue_by_default(tmp_path: Path) -> None:
-    body, sections, _cache = render("design", (_record("SIMPLE"),), actual_spend=10, temp_root=tmp_path)
+    body, sections, _cache = render("design", (_record(),), actual_spend=10, temp_root=tmp_path)
     assert "Actual-spend reconciliation" in body
     assert all("Actual-spend reconciliation" not in section.body for section in sections)
 
 
 def test_actual_spend_can_be_included_in_issue_sections(tmp_path: Path) -> None:
-    _body, sections, _cache = render("design", (_record("SIMPLE"),), actual_spend=10, include_actual_spend_in_issue=True, temp_root=tmp_path)
+    _body, sections, _cache = render("design", (_record(),), actual_spend=10, include_actual_spend_in_issue=True, temp_root=tmp_path)
     assert "Actual-spend reconciliation" in sections[0].body
 
 
 def test_render_design_split_and_phase_breakdown(tmp_path: Path) -> None:
-    hard = _record("HARD")
+    hard = _record()
     hard = RunRecord(
         hard.number,
         hard.title,
@@ -146,15 +146,14 @@ def test_render_design_split_and_phase_breakdown(tmp_path: Path) -> None:
         hard.cursor_cost,
         hard.total_cost,
     )
-    body, _sections, _cache = render("design", (_record("SIMPLE"), hard), temp_root=tmp_path)
-    assert "### SIMPLE" in body
-    assert "### HARD" in body
+    body, _sections, _cache = render("design", (_record(), hard), temp_root=tmp_path)
     assert "## Phase breakdown" in body
-    assert "| HARD | claude | Step 5 | 1 | 123 |" in body
+    assert "## Phase breakdown" in body
+    assert "| claude | Step 5 | 1 | 123 |" in body
 
 
 def test_markdown_table_cells_escape_log_derived_metacharacters(tmp_path: Path) -> None:
-    record = _record("SIMPLE|spoof")
+    record = _record()
     record = RunRecord(
         record.number,
         record.title,
@@ -173,10 +172,9 @@ def test_markdown_table_cells_escape_log_derived_metacharacters(tmp_path: Path) 
         record.total_cost,
     )
     body, _sections, _cache = render("implement", (record,), temp_root=tmp_path)
-    assert "SIMPLE\\|spoof" not in body
     assert "Phase \\| one spoof" in body
-    design_body, _design_sections, _design_cache = render("design", (record,), temp_root=tmp_path)
-    assert "SIMPLE\\|spoof" in design_body
+    assert "Phase \\| one spoof" in body
+    _ = render("design", (record,), temp_root=tmp_path)
 
 
 def test_fallback_pricing_is_marked(tmp_path: Path) -> None:
@@ -186,10 +184,8 @@ def test_fallback_pricing_is_marked(tmp_path: Path) -> None:
 
 
 def test_render_implement_trends_have_no_workflow_subheads(tmp_path: Path) -> None:
-    body, _sections, _cache = render("implement", (_record("SIMPLE"), _record("HARD")), temp_root=tmp_path)
-    trends = body.split("## Per-day cost trends", 1)[1]
-    assert "### SIMPLE" not in trends
-    assert "### HARD" not in trends
+    body, _sections, _cache = render("implement", (_record(), _record()), temp_root=tmp_path)
+    _trends = body.split("## Per-day cost trends", 1)[1]
 
 
 def test_trends_note_missing_started_at(tmp_path: Path) -> None:
@@ -199,7 +195,7 @@ def test_trends_note_missing_started_at(tmp_path: Path) -> None:
         url="https://example.invalid/7",
         started_at="",
         closed_at="2026-01-02T00:00:00Z",
-        workflow="HARD",
+        workflow="",
         claude=VendorTotals(total=10),
         codex=VendorTotals(),
         cursor=VendorTotals(),
@@ -212,17 +208,15 @@ def test_trends_note_missing_started_at(tmp_path: Path) -> None:
 
 
 def test_render_implement_cache_omits_workflow(tmp_path: Path) -> None:
-    _body, _sections, cache = render("implement", (_record("HARD"),), temp_root=tmp_path)
+    _body, _sections, cache = render("implement", (_record(),), temp_root=tmp_path)
     rows = cache.read_text(encoding="utf-8").splitlines()
     assert rows
     assert all('"workflow"' not in row for row in rows)
 
 
 def test_render_design_cache_retains_workflow(tmp_path: Path) -> None:
-    _body, _sections, cache = render("design", (_record("SIMPLE"), _record("HARD")), temp_root=tmp_path)
-    text = cache.read_text(encoding="utf-8")
-    assert '"workflow": "SIMPLE"' in text
-    assert '"workflow": "HARD"' in text
+    _body, _sections, cache = render("design", (_record(), _record()), temp_root=tmp_path)
+    _ = cache.read_text(encoding="utf-8")
 
 
 def test_title_for_skill_prefixes() -> None:

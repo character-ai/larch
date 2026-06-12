@@ -38,7 +38,7 @@ def test_plot_script_rejects_invalid_schema(tmp_path: Path) -> None:
     bad_payloads: list[dict[str, object]] = [
         {"version": 2, "skill": "implement", "series": [{"label": "All runs", "points": []}]},
         {"version": 1, "skill": "bogus", "series": [{"label": "All runs", "points": []}]},
-        {"version": 1, "skill": "design", "series": [{"label": "SIMPLE", "points": []}]},
+        {"version": 1, "skill": "design", "series": [{"label": "All runs", "points": []}]},
         {"version": 1, "skill": "implement", "series": [{"label": "All runs", "points": [{"date": "bad", "cost": 1.0}]}]},
         {"version": 1, "skill": "implement", "series": [{"label": "All runs", "points": [{"date": "2026-01-01", "cost": "1"}]}]},
     ]

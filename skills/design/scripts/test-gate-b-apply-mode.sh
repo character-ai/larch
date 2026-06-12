@@ -42,7 +42,7 @@ mk_design() {
   local d="$1" body_lines="${2:-20}" diff_lines="${3:-10}"
   mkdir -p "$d/.completed"
   : >"$d/.completed/step-2b"
-  "${WRITE_RUN_PARAMS[@]}" --classification HARD --partition-requested false --brainstorm-requested false \
+  "${WRITE_RUN_PARAMS[@]}" --partition-requested false --brainstorm-requested false \
     --approve-requested false --output "$d/run-params.json" >/dev/null
   {
     printf '%s\n' '# Plan'
@@ -62,7 +62,7 @@ mk_design "$D_AUTO"
 
 D_APPROVE="$TMP/approve"
 mk_design "$D_APPROVE"
-"${WRITE_RUN_PARAMS[@]}" --classification HARD --partition-requested false --brainstorm-requested false \
+"${WRITE_RUN_PARAMS[@]}" --partition-requested false --brainstorm-requested false \
   --approve-requested true --output "$D_APPROVE/run-params.json" >/dev/null
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
@@ -105,14 +105,14 @@ grep -Fq 'POSTPLAN_EMIT_STATUS=ok' "$D_APPLY/.design-postplan-emit-result.env" \
 
 # Gate B shared post-apply uses design-postplan-emit --with-plan-size, so safety
 # brakes still interrupt auto-apply when plan-size thresholds require it.
-D_HARD="$TMP/hard"
-mk_design "$D_HARD" 805 10
+D_LARGE="$TMP/hard"
+mk_design "$D_LARGE" 805 10
 set +e
-"$POSTPLAN" --design-tmpdir "$D_HARD" --with-plan-size >"$D_HARD/out.txt" 2>"$D_HARD/err.txt"
+"$POSTPLAN" --design-tmpdir "$D_LARGE" --with-plan-size >"$D_LARGE/out.txt" 2>"$D_LARGE/err.txt"
 rc=$?
 set -e
 [[ "$rc" -eq 12 ]] || fail "hard size brake expected rc 12, got $rc"
-grep -Fq 'PLAN_SIZE_STATUS=hard' "$D_HARD/.design-postplan-emit-result.env" \
+grep -Fq 'PLAN_SIZE_STATUS=plan-size-trigger' "$D_LARGE/.design-postplan-emit-result.env" \
   || fail 'hard size brake result env missing'
 
 D_DRIFT="$TMP/drift"

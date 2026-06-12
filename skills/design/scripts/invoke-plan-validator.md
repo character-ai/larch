@@ -7,4 +7,4 @@ Required environment:
 - `DESIGN_TMPDIR`
 - `CLAUDE_PLUGIN_ROOT`
 
-The helper runs on both SIMPLE and HARD. It does not read `run-params.json` and does not skip based on tier.
+The helper runs unconditionally. It does not read `run-params.json`.

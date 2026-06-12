@@ -93,7 +93,7 @@ Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the dur
 | Skill | Phase | Reviewers Used |
 |---|---|---|
 | `/design` | Plan review (normal mode) | Claude Code Reviewer subagent + [Codex](topology.md#design.plan_review.codex_archetypes) + [Cursor archetypes](topology.md#design.plan_review.cursor_archetypes): Architecture/Standards, Innovation/Exploration, Pragmatism/Safety, Requirements/Completeness (Voting Protocol). Fallback per Cursor archetype slot: Cursor → Codex (same archetype) → Claude subagent. Fallback per Codex archetype slot: Codex → Cursor (same archetype) → Claude subagent. |
-| `/design` | Plan review (SIMPLE and HARD) | Full 3-voter panel after external plan reviewers on both tiers. |
+| `/design` | Plan review | Full 3-voter panel after external plan reviewers. |
 | `/implement` | Phase 3 conflict review | [Round 1: Claude Code Reviewer subagent + Codex + Cursor; rounds 2+: Claude Code Reviewer subagent + Cursor](topology.md#implement.conflict_review.panel) |
 | `/research` | Validation | [Claude Code Reviewer subagent + Codex + Cursor](topology.md#research.validation_panel) (Negotiation Protocol). Claude Code Reviewer subagent fallbacks preserve the validation-panel shape. |
 

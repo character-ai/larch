@@ -1288,7 +1288,7 @@ def test_render_ledger_reports_writes_empty_timing_json(
 def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     design_tmp = tmp_path / "design"
     design_tmp.mkdir()
-    _ = (design_tmp / "run-params.json").write_text(json.dumps({"workflow_path": "SIMPLE"}), encoding="utf-8")
+    _ = (design_tmp / "run-params.json").write_text(json.dumps({}), encoding="utf-8")
     monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
     monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmp))
     state = tmp_path / "state.env"

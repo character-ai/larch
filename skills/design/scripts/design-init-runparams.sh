@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-init-runparams.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N --classification SIMPLE|HARD --partition-requested true|false --brainstorm-requested true|false --approve-requested true|false --skip-approve-requested true|false [--repo OWNER/REPO]'
+    larch_err 'Usage: design-init-runparams.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N --partition-requested true|false --brainstorm-requested true|false --approve-requested true|false --skip-approve-requested true|false [--repo OWNER/REPO]'
 }
 
 validate_plain_scalar() {
@@ -44,7 +44,6 @@ DESIGN_TMPDIR_ARG=""
 ISSUE=""
 SESSION_ID=""
 CLAUDE_PID=""
-CLASSIFICATION=""
 PARTITION_REQUESTED=""
 BRAINSTORM_REQUESTED=""
 APPROVE_REQUESTED=""
@@ -74,8 +73,6 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --classification)
-            [[ $# -ge 2 ]] || fail '--classification requires a value'
-            CLASSIFICATION="$2"
             shift 2
             ;;
         --partition-requested)
@@ -118,7 +115,6 @@ done
 [[ -n "$ISSUE" ]] || { usage; fail '--issue is required'; }
 [[ -n "$SESSION_ID" ]] || { usage; fail '--session-id is required'; }
 [[ -n "$CLAUDE_PID" ]] || { usage; fail '--claude-pid is required'; }
-[[ -n "$CLASSIFICATION" ]] || { usage; fail '--classification is required'; }
 
 case "$ISSUE" in
     '' | *[!0-9]*) fail '--issue must be a positive integer' ;;
@@ -126,10 +122,6 @@ esac
 [[ "$ISSUE" != "0" ]] || fail '--issue must be a positive integer'
 case "$CLAUDE_PID" in
     '' | *[!0-9]*) fail '--claude-pid must be a positive integer' ;;
-esac
-case "$CLASSIFICATION" in
-    SIMPLE | HARD) ;;
-    *) fail '--classification must be SIMPLE or HARD' ;;
 esac
 validate_bool_flag --partition-requested "$PARTITION_REQUESTED"
 validate_bool_flag --brainstorm-requested "$BRAINSTORM_REQUESTED"
@@ -149,23 +141,11 @@ RESULT_ENV="$DESIGN_TMPDIR/.design-init-runparams-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 INIT_STATUS=ok
 RENAMED=false
-DESIGN_CLASSIFICATION="$CLASSIFICATION"
 WARN_LINES=()
 
 add_warn() {
     WARN_LINES+=("$1")
 }
-
-if [[ "$CLASSIFICATION" == SIMPLE ]]; then
-    design_classification_reason='default tier: SIMPLE (no --hard)'
-    sketch_budget=0
-    workflow_path=SIMPLE
-else
-    design_classification_reason='argv tier: --hard'
-    sketch_budget=3
-    workflow_path=HARD
-fi
-design_classification_source=caller-forwarded
 
 # 2. Env refresh before rename
 _wdce_args=(
@@ -193,7 +173,7 @@ if [[ "${_wdce_rc:-0}" -ne 0 ]]; then
     phase_driver_write_result_env "$RESULT_ENV" \
         "INIT_STATUS=$INIT_STATUS" \
         "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
-        "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
+        || exit 1
     exit 1
 fi
 
@@ -215,23 +195,18 @@ fi
 
 # 4. write-run-params.sh
 if ! python3 "$PLUGIN_ROOT/python/cli.py" session write-run-params \
-    --classification "$CLASSIFICATION" \
-    --reason "$design_classification_reason" \
-    --source "$design_classification_source" \
-    --sketch-budget "$sketch_budget" \
-    --workflow-path "$workflow_path" \
     --partition-requested "$PARTITION_REQUESTED" \
     --brainstorm-requested "$BRAINSTORM_REQUESTED" \
     --approve-requested "$APPROVE_REQUESTED" \
     --skip-approve-requested "$SKIP_APPROVE_REQUESTED" \
     --output "$RUN_PARAMS_PATH"; then
     INIT_STATUS=contract-drift
-    larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`python -m pytest python/test_session_env.py\` to repro, then update either SKILL.md or the script to re-align.**"
+    larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before run-params write. Run \`python -m pytest python/test_session_env.py\` to repro.**"
     emit_kv INIT_STATUS contract-drift
     phase_driver_write_result_env "$RESULT_ENV" \
         "INIT_STATUS=contract-drift" \
         "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
-        "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
+        || exit 1
     exit 1
 fi
 
@@ -264,7 +239,6 @@ _init_kvs=(
     "INIT_STATUS=$INIT_STATUS"
     "RENAMED=$RENAMED"
     "RUN_PARAMS_PATH=$RUN_PARAMS_PATH"
-    "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION"
 )
 for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
     _init_kvs+=("WARN=$_warn")
@@ -275,7 +249,6 @@ fi
 emit_kv INIT_STATUS "$INIT_STATUS"
 emit_kv RENAMED "$RENAMED"
 emit_kv RUN_PARAMS_PATH "$RUN_PARAMS_PATH"
-emit_kv DESIGN_CLASSIFICATION "$DESIGN_CLASSIFICATION"
 for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
     emit_kv WARN "$_warn"
 done

@@ -25,7 +25,7 @@ grep -Fq 'including `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
 grep -Fq 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' "$SKILL_MD" \
     || fail 'SKILL missing tally-error non-consumption prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'review-round cap (${_round_cap}) reached for ${_tier}' "$ROOT/skills/design/scripts/run-step3-review.sh" \
+grep -Fq 'review-round cap (${_round_cap}) reached' "$ROOT/skills/design/scripts/run-step3-review.sh" \
     || fail 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/design/scripts/run-step3-review.sh" \
     || fail 'run-step3-review.sh missing symlinked plan-review cleanup warning'
@@ -33,8 +33,6 @@ grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
     || fail 'SKILL missing Gate B postapply resume continuation guard'
-grep -Fq 'snapshot-plan-round.sh write-after' "$SKILL_MD" \
-    || fail 'SKILL missing Gate B round snapshot handoff'
 grep -Fq 'Step 3 prelude before launching the next review' "$SKILL_MD" \
     || fail 'SKILL missing auto-continuation Step 3 prelude contract'
 # shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
@@ -63,11 +61,9 @@ TMPROOT="$(mktemp -d "${TMP_PARENT%/}/larch-step3-cap-test.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
 
 write_common_inputs() {
-    local dir="$1" classification="$2"
+    local dir="$1"
     mkdir -p "$dir"
-    cat >"$dir/run-params.json" <<EOF
-{"schema_version":2,"design_classification":"$classification","workflow_path":"$classification","partition_requested":false,"brainstorm_requested":false}
-EOF
+    printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n' >"$dir/run-params.json"
     printf '# Plan\n\ndiff_lines: 1\n' >"$dir/plan.txt"
     printf 'feature\n' >"$dir/feature-description.txt"
 }
@@ -95,14 +91,14 @@ run_driver() {
 
 echo "=== missing counter starts at round 1 ==="
 D1="$TMPROOT/round1"
-write_common_inputs "$D1" SIMPLE
+write_common_inputs "$D1"
 run_driver "$D1" "$(write_loop_stub "$D1" 'exit 0')" >/dev/null
 grep -Fq 'STEP3_REVIEW_CAP_REACHED=false' "$D1/.step3-review-cap.env" || fail 'expected cap false on first entry'
 grep -Fq 'STEP3_REVIEW_ROUND_NUM=1' "$D1/.step3-review-cap.env" || fail 'expected first entry round number 1'
 
 echo "=== cap reached bypasses loop ==="
 D2="$TMPROOT/cap-reached"
-write_common_inputs "$D2" SIMPLE
+write_common_inputs "$D2"
 printf '5\n' >"$D2/review-round-count.txt"
 printf 'stale accepted\n' >"$D2/accepted-plan-findings.md"
 printf 'stale tally\n' >"$D2/voting-tally.md"
@@ -117,7 +113,7 @@ printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected 
 
 echo "=== panel-failed consumes the pending round ==="
 D3="$TMPROOT/panel-failed"
-write_common_inputs "$D3" SIMPLE
+write_common_inputs "$D3"
 printf '1\n' >"$D3/review-round-count.txt"
 stub="$(write_loop_stub "$D3" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=panel-failed\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 1")"
 driver_out=$(run_driver "$D3" "$stub")
@@ -126,7 +122,7 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'expect
 
 echo "=== unrecognized loop status still consumes the pending round ==="
 D3B="$TMPROOT/unrecognized-status"
-write_common_inputs "$D3B" SIMPLE
+write_common_inputs "$D3B"
 printf '1\n' >"$D3B/review-round-count.txt"
 stub="$(write_loop_stub "$D3B" "printf 'LOOP_STATUS=weird-status\n'; exit 1")"
 driver_out=$(run_driver "$D3B" "$stub")
@@ -135,7 +131,7 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'invali
 
 echo "=== removed passive-summary statuses normalize to panel-failed ==="
 DP="$TMPROOT/removed-passive-summary"
-write_common_inputs "$DP" HARD
+write_common_inputs "$DP"
 mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
 printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
@@ -155,35 +151,10 @@ printf '%s\n' "$driver_out" | grep -q 'missing or invalid LOOP_STATUS' || fail '
 [[ -f "$DP/plan-review/round-2/new.txt" ]] || fail 'fresh round-2 artifact missing after second entry'
 
 echo "=== hard path advances round 2 after successful round-1 snapshot ==="
-DH="$TMPROOT/hard-round2"
-write_common_inputs "$DH" HARD
-printf '1\n' >"$DH/review-round-count.txt"
-printf '1\n' >"$DH/plan-review-round-cursor.txt"
-printf 'round1 snapshot\n' >"$DH/plan-after-round-1.txt"
-stub="$DH/round-num-stub.sh"
-cat >"$stub" <<'STUBEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-round_num=""
-dh="${RUN_STEP3_TEST_DH:?}"
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --round-num) round_num="${2:?}"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-printf '%s\n' "$round_num" >"$dh/round-num-seen.txt"
-printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
-STUBEOF
-chmod +x "$stub"
-driver_out=$(run_driver "$DH" "$stub")
-printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=complete' || fail 'hard round-2 path should still complete'
-[[ "$(cat "$DH/round-num-seen.txt")" == "2" ]] || fail 'hard round-2 path must pass --round-num 2 to plan-review-loop.sh'
-[[ "$(cat "$DH/plan-review-round-cursor.txt")" == "2" ]] || fail 'hard round-2 path must persist cursor 2 before launch'
 
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"
-write_common_inputs "$D4" HARD
+write_common_inputs "$D4"
 printf '2\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 driver_out=$(run_driver "$D4" "$stub")
@@ -192,14 +163,12 @@ printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=tally-error' || 
 
 echo "=== hard cap blocks the sixth review round ==="
 D5="$TMPROOT/hard-cap"
-write_common_inputs "$D5" HARD
+write_common_inputs "$D5"
 printf '5\n' >"$D5/review-round-count.txt"
 stub="$(write_loop_stub "$D5" 'exit 97')"
 run_driver "$D5" "$stub" >/dev/null
-grep -Fq 'STEP3_REVIEW_CAP_REACHED=true' "$D5/.step3-review-cap.env" || fail 'expected HARD cap reached env'
 driver_out=$(run_driver "$D5" "$stub")
-printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected HARD cap-reached loop status'
-[[ "$(cat "$D5/review-round-count.txt")" == "5" ]] || fail 'HARD cap path must leave counter unchanged'
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 
 run_continuation() {
     local design_tmpdir="$1" approve="$2"
@@ -208,7 +177,7 @@ run_continuation() {
 
 echo "=== continuation helper stops before cap cleanup ==="
 DCAP="$TMPROOT/continuation-cap"
-write_common_inputs "$DCAP" SIMPLE
+write_common_inputs "$DCAP"
 printf '5\n' >"$DCAP/review-round-count.txt"
 cat >"$DCAP/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Important
@@ -221,7 +190,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=cap-reached$' 
 
 echo "=== continuation helper honors explicit approve ==="
 DAPP="$TMPROOT/continuation-approve"
-write_common_inputs "$DAPP" SIMPLE
+write_common_inputs "$DAPP"
 printf '1\n' >"$DAPP/review-round-count.txt"
 cp "$DCAP/accepted-plan-findings.md" "$DAPP/accepted-plan-findings.md"
 cont_out=$(run_continuation "$DAPP" true)
@@ -230,7 +199,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=explicit-appro
 
 echo "=== continuation helper continues pruned-empty below cap ==="
 DPRUNE="$TMPROOT/continuation-pruned-empty"
-write_common_inputs "$DPRUNE" SIMPLE
+write_common_inputs "$DPRUNE"
 printf '3\n' >"$DPRUNE/review-round-count.txt"
 : >"$DPRUNE/accepted-plan-findings.md"
 printf 'PANEL_PRUNED_EMPTY=true\nDEGRADED_PANEL=0\nLOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty\n' >"$DPRUNE/.step3-review-result.env"
@@ -240,7 +209,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=pruned-empty$'
 
 echo "=== continuation helper stops pruned-empty at cap ==="
 DPRUNE_CAP="$TMPROOT/continuation-pruned-empty-cap"
-write_common_inputs "$DPRUNE_CAP" SIMPLE
+write_common_inputs "$DPRUNE_CAP"
 printf '5\n' >"$DPRUNE_CAP/review-round-count.txt"
 : >"$DPRUNE_CAP/accepted-plan-findings.md"
 printf 'PANEL_PRUNED_EMPTY=true\nDEGRADED_PANEL=0\nLOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty\n' >"$DPRUNE_CAP/.step3-review-result.env"
@@ -250,7 +219,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=cap-reached$' 
 
 echo "=== continuation helper recomputes high fallback from disk ==="
 DHIGH="$TMPROOT/continuation-high"
-write_common_inputs "$DHIGH" SIMPLE
+write_common_inputs "$DHIGH"
 printf '1\n' >"$DHIGH/review-round-count.txt"
 cat >"$DHIGH/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Missing contract
@@ -262,7 +231,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$
 
 echo "=== continuation helper recognizes structured important severity ==="
 DIMP="$TMPROOT/continuation-structured-important"
-write_common_inputs "$DIMP" SIMPLE
+write_common_inputs "$DIMP"
 printf '1\n' >"$DIMP/review-round-count.txt"
 cat >"$DIMP/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Important structured
@@ -273,9 +242,9 @@ cont_out=$(run_continuation "$DIMP" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured important should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured important reason missing'
 
-echo "=== continuation helper stops on small clean SIMPLE round ==="
+echo "=== continuation helper stops on small clean round ==="
 DSMALL="$TMPROOT/continuation-small-clean"
-write_common_inputs "$DSMALL" SIMPLE
+write_common_inputs "$DSMALL"
 printf '1\n' >"$DSMALL/review-round-count.txt"
 cat >"$DSMALL/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Latent cleanup
@@ -283,12 +252,12 @@ cat >"$DSMALL/accepted-plan-findings.md" <<'EOF'
 - **Concern**: small cleanup
 EOF
 cont_out=$(run_continuation "$DSMALL" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'small clean SIMPLE round should stop'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'small clean round should stop'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'small clean reason missing'
 
 echo "=== continuation helper continues on many non-nit findings ==="
 DNONNIT="$TMPROOT/continuation-non-nit"
-write_common_inputs "$DNONNIT" SIMPLE
+write_common_inputs "$DNONNIT"
 printf '1\n' >"$DNONNIT/review-round-count.txt"
 : >"$DNONNIT/accepted-plan-findings.md"
 for n in 1 2 3 4 5 6; do
@@ -303,55 +272,10 @@ cont_out=$(run_continuation "$DNONNIT" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'many non-nit findings should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=non-nit-accepted$' || fail 'non-nit reason missing'
 
-echo "=== continuation helper continues on first-round structural HARD ==="
-DSTRUCT="$TMPROOT/continuation-structural"
-write_common_inputs "$DSTRUCT" HARD
-printf '1\n' >"$DSTRUCT/review-round-count.txt"
-cat >"$DSTRUCT/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Latent structural
-- **Severity**: latent
-- **Concern**: structural follow-up
-EOF
-cont_out=$(run_continuation "$DSTRUCT" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'first-round structural HARD should continue'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=structural-or-large-change$' || fail 'structural reason missing'
-
-echo "=== continuation helper stops on nit-only structural HARD ==="
-DNIT="$TMPROOT/continuation-structural-nit"
-write_common_inputs "$DNIT" HARD
-printf '1\n' >"$DNIT/review-round-count.txt"
-cat >"$DNIT/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Nit structural
-- **Severity**: nit
-- **Concern**: spelling cleanup
-EOF
-cont_out=$(run_continuation "$DNIT" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'nit-only structural HARD should stop'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'nit-only structural reason should be small-clean'
-
-echo "=== continuation helper ignores stale workflow_path when design_classification is SIMPLE ==="
-DSTALE="$TMPROOT/continuation-stale-workflow"
-write_common_inputs "$DSTALE" SIMPLE
-printf '{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"HARD"}\n' >"$DSTALE/run-params.json"
-printf '1\n' >"$DSTALE/review-round-count.txt"
-cp "$DSMALL/accepted-plan-findings.md" "$DSTALE/accepted-plan-findings.md"
-cont_out=$(run_continuation "$DSTALE" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'stale workflow_path must not force structural continuation'
-printf '%s\n' "$cont_out" | grep -q '^STRUCTURAL_OR_LARGE_CHANGE=false$' || fail 'stale workflow_path should not mark structural'
-
-echo "=== continuation helper defaults invalid classification to HARD ==="
-DINVALID="$TMPROOT/continuation-invalid-classification"
-write_common_inputs "$DINVALID" SIMPLE
-printf '{"schema_version":2,"design_classification":"UNKNOWN","workflow_path":"SIMPLE"}\n' >"$DINVALID/run-params.json"
-printf '1\n' >"$DINVALID/review-round-count.txt"
-cp "$DSMALL/accepted-plan-findings.md" "$DINVALID/accepted-plan-findings.md"
-cont_out=$(run_continuation "$DINVALID" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'invalid classification should default HARD and continue'
-printf '%s\n' "$cont_out" | grep -q '^STRUCTURAL_OR_LARGE_CHANGE=true$' || fail 'invalid classification should mark structural'
 
 echo "=== continuation helper stops on degraded zero-findings ==="
 DDEG="$TMPROOT/continuation-degraded-zero"
-write_common_inputs "$DDEG" SIMPLE
+write_common_inputs "$DDEG"
 printf '1\n' >"$DDEG/review-round-count.txt"
 : >"$DDEG/accepted-plan-findings.md"
 printf 'DEGRADED_PANEL=1\n' >"$DDEG/.step3-review-result.env"
@@ -361,7 +285,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' 
 
 echo "=== continuation helper ignores stale degraded flag after successful retally ==="
 DDEG_STALE="$TMPROOT/continuation-degraded-stale-retally"
-write_common_inputs "$DDEG_STALE" SIMPLE
+write_common_inputs "$DDEG_STALE"
 printf '1\n' >"$DDEG_STALE/review-round-count.txt"
 : >"$DDEG_STALE/accepted-plan-findings.md"
 cat >"$DDEG_STALE/.step3-review-result.env" <<'EOF'
@@ -375,7 +299,7 @@ printf '%s\n' "$cont_out" | grep -q '^DEGRADED_PANEL=0$' || fail 'successful ret
 
 echo "=== chained continuation launches second review and preserves round-1 artifacts ==="
 DCHAIN="$TMPROOT/continuation-chain"
-write_common_inputs "$DCHAIN" HARD
+write_common_inputs "$DCHAIN"
 chain_stub="$DCHAIN/chain-loop-stub.sh"
 cat >"$chain_stub" <<'STUBEOF'
 #!/usr/bin/env bash
@@ -404,7 +328,6 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'chain
 state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DCHAIN" --auto-continuation-entry)
 printf '%s\n' "$state_out" | grep -q '^STEP3_STATE=auto-continuation-entry$' || fail 'chain auto-continuation state missing'
 printf 'round1 applied plan\n' >"$DCHAIN/plan-after-round-1.txt"
-CLAUDE_PLUGIN_ROOT="$ROOT" "$ROOT/skills/design/scripts/snapshot-plan-round.sh" write-cursor --design-tmpdir "$DCHAIN" --value 2 >/dev/null
 run_driver "$DCHAIN" "$chain_stub" >/dev/null
 [[ "$(cat "$DCHAIN/review-round-count.txt")" == "2" ]] || fail 'chain second review should consume round 2'
 [[ -f "$DCHAIN/plan-review/round-1/keep.txt" ]] || fail 'chain should preserve prior round artifact'

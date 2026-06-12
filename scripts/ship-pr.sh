@@ -1742,9 +1742,6 @@ _per_job_argv() {
         agnix)
             _PJA_ARGV=(make agnix)
             ;;
-        smoke-dialectic)
-            _PJA_ARGV=(make smoke-dialectic)
-            ;;
         agent-sync)
             _PJA_ARGV=(make agent-sync)
             ;;

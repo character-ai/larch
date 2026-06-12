@@ -27,7 +27,7 @@ class TimingRow:
     seconds: float
 
 
-_JOB_SHARD_RE = re.compile(r"test-harnesses \((\d+)\)")
+_JOB_SLICE_RE = re.compile(r"test-harnesses \((\d+)\)")
 _TIMING_SENTINEL = "LARCH_HARNESS_TIMING\t"
 _SECONDS_RE = re.compile(r"^(\d+(?:\.\d+)?)s$")
 
@@ -84,7 +84,7 @@ def parse_log(log: str, run_id: int) -> list[TimingRow]:
         # Job name is everything before the first tab
         first_tab = line.find("\t")
         job_name = line[:first_tab] if first_tab >= 0 else ""
-        shard_m = _JOB_SHARD_RE.search(job_name)
+        shard_m = _JOB_SLICE_RE.search(job_name)
         if not shard_m:
             continue
         shard = int(shard_m.group(1))

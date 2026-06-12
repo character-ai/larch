@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -134,11 +132,6 @@ design_source_env_optional() {
        printf '%s\n' "$POSITIONAL_VALUE" >"$DESIGN_TMPDIR/feature-description.txt"
      fi
    fi
-   if [[ "${hard_requested:-false}" == true ]]; then
-     design_classification=HARD
-   else
-     design_classification=SIMPLE
-   fi
    _init_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-init-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 0b: could not allocate design-init-runparams stdout capture; aborting /design**" >&2
      exit 1
@@ -150,7 +143,6 @@ design_source_env_optional() {
      --issue "$ISSUE_NUMBER" \
      --session-id "$SESSION_ID" \
      --claude-pid "$CLAUDE_PID" \
-     --classification "$design_classification" \
      --partition-requested "$partition_requested" \
      --brainstorm-requested "$brainstorm_requested" \
      --approve-requested "$approve_requested" \
@@ -182,7 +174,6 @@ design_source_env_optional() {
      --allow INIT_STATUS \
      --allow RENAMED \
      --allow RUN_PARAMS_PATH \
-     --allow DESIGN_CLASSIFICATION \
      --output "$_safe_init_env"
    _rre_rc=$?
    set -e

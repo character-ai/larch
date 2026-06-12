@@ -17,7 +17,7 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `skills/design/s
 - `plan-review-loop.sh` still runs one round per entry and reaches a terminal status without revising `plan.txt`
 - `round-summary.env` materialized under `plan-review/round-1/` with the per-entry terminal status
 - Automatic continuation chains `plan-review-continuation.sh`, `design-step3-state.sh --auto-continuation-entry`, and a second `run-step3-review.sh --no-preview` entry
-- Round 2 uses the HARD round cursor, consumes the shared review-round counter once, preserves round-1 artifacts, and defers Gate C while continuing
+- Round 2 uses the review round cursor, consumes the shared review-round counter once, preserves round-1 artifacts, and defers Gate C while continuing
 - Raw reviewer outputs remain excluded from `round-N/` snapshots
 - `findings-classification.tsv` survives terminal round snapshots
 - `design-log-publish.sh` publishes the same sorted `plan-review/` file list produced by the loop snapshot

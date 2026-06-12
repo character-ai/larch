@@ -230,9 +230,9 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 | PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |
 
-### SIMPLE-tier `/design` cost
+### `/design` cost
 
-`/design` (SIMPLE, the default) runs the full plan-review panel once per Step 3 entry; accepted findings auto-apply at Gate B by default, while `--per-round-approval` restores the explicit Gate B operator choices. `--skip-approve`/`-s` auto-approves the Step 1d.7 outline and Gate C final plan without prompting (no other prompts are skipped). Real-world runs can still take tens of minutes because the external panel and voting run before Gate B; the Step 3 review-run counter caps Gate C re-entries separately at the cap of `5` (both tiers). See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the remaining env var contracts.
+`/design` runs the full plan-review panel once per Step 3 entry; accepted findings auto-apply at Gate B by default, while `--per-round-approval` restores the explicit Gate B operator choices. `--skip-approve`/`-s` auto-approves the Step 1d.7 outline and Gate C final plan without prompting (no other prompts are skipped). Real-world runs can still take tens of minutes because the external panel and voting run before Gate B; the Step 3 review-run counter caps Gate C re-entries separately at the cap of `5`. See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the remaining env var contracts.
 
 ## `scripts/relevant-checks.sh` — required consumer contract
 

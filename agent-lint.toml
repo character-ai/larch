@@ -593,7 +593,7 @@ exclude = [
   "scripts/lib-finalize-state-keys.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
-  # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+  # Referenced from skills/shared/voting-protocol.md,
   # skills/research/references/validation-phase.md via process substitution
   # (`< <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")`); agent-lint
   # does not follow markdown-template invocations.
@@ -640,6 +640,10 @@ exclude = [
   # directives only, which agent-lint does not follow.
   "scripts/lib-failed-agent-stderr-tail.sh",
   "scripts/test-lib-failed-agent-stderr-tail.sh",
+  # scripts/check-reviewers.sh is the health-probe script for external reviewer
+  # availability. It is invoked from lib-external-launcher-common.sh and other
+  # shell callers; structured SKILL.md invocation is indirect.
+  "scripts/check-reviewers.sh",
   # scripts/test-check-reviewers.sh is the regression harness for
   # scripts/check-reviewers.sh probe acceptance logic. Referenced only from
   # Makefile (test-check-reviewers target) and scripts/test-check-reviewers.md
@@ -1028,12 +1032,6 @@ exclude = [
   # (test-render-specialist-prompt target) and
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-python/cli.py render specialist",
-  # scripts/test-python/cli.py render debate-retry is the regression harness for
-  # python/cli.py render debate-retry (dialectic waterfall corrective prompts).
-  # The renderer is referenced from skills/design/references/dialectic-execution.md
-  # and skills/shared/dialectic-protocol.md; the harness is Makefile-only
-  # (test-render-debate-retry-prompt target) plus sibling .md.
-  "scripts/test-python/cli.py render debate-retry",
   # scripts/test-design-log-publish.sh exercises design-log-publish.sh
   # (Makefile test-design-log-publish target + sibling .md). Same
   # and skills/design/scripts/test-design-pause-resume.sh is its Makefile-only

@@ -408,7 +408,7 @@ jobs:
           BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
           gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
 
-  # agent-sync, trufflehog, and smoke-dialectic consolidated into one job.
+
   # fetch-depth: 0 is required by trufflehog; the other steps are unaffected.
   agent-sync:
     runs-on: ubuntu-latest
@@ -546,7 +546,7 @@ jobs:
           path: ./
           extra_args: --only-verified
       - name: Run dialectic smoke test
-        # Invokes scripts/dialectic-smoke-test.sh directly; the `make smoke-dialectic`
+        
         # target is equivalent and exists for local developer convenience.
         run: bash scripts/dialectic-smoke-test.sh
 

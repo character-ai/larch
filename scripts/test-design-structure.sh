@@ -13,8 +13,6 @@ FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
-DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
-DIALPROTO_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -154,9 +152,7 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'degraded-tools-gate.sh" --skill design' 'Step 0 degraded wrapper missing gate call'
   contains "$SCRIPT_DIR/design-step0-route.sh" '.design-route-result.env' 'Step 0 route wrapper missing route result env read'
   contains "$SCRIPT_DIR/design-step0-init.sh" '.design-init-runparams-result.env' 'Step 0 init wrapper missing init result env read'
-  contains "$SCRIPT_DIR/design-step2a.sh" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'Step 2a wrapper missing SIMPLE sentinel write'
-  contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'collect-agent-results.sh' 'Step 2a.3 wrapper missing collector call'
-  contains "$SCRIPT_DIR/design-step2a3-collect.sh" '--timeout 1260' 'Step 2a.3 wrapper missing collector timeout'
+  contains "$SCRIPT_DIR/design-step2a.sh" 'NO_SKETCHES' 'Step 2a wrapper missing NO_SKETCHES sentinel write'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-postplan-emit.sh' 'Step 2b postplan wrapper missing postplan driver'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--fallback-input "$_plan_review_stdout_file"' 'Step 3 review wrapper missing stdout fallback'
   contains "$SCRIPT_DIR/design-step3-review.sh" '--starting-round "$STARTING_ROUND"' 'Step 3 review wrapper missing starting-round forwarding'
@@ -180,7 +176,6 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step0-degraded.sh" 'design_source_env_optional' 'Step 0 degraded wrapper must rehydrate before DESIGN_TMPDIR validation'
   contains "$SCRIPT_DIR/design-step-validator-autofix.sh" '--validator-target-file' 'Validator autofix wrapper missing CLI target-file arg'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '_postplan_site' 'Step 2b postplan wrapper missing site-aware snapshot branch'
-  contains "$SCRIPT_DIR/design-step2a3-collect.sh" '_collect_paths' 'Step 2a.3 collector wrapper missing launched-slot path assembly'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'pause-requested' 'Step 3b entry wrapper missing pause-check before skip/architectural mutations'
   contains "$SCRIPT_DIR/design-step1d5.sh" 'complete' 'Step 1d.5 wrapper missing complete mode sentinel write'
   contains "$SCRIPT_DIR/design-step4b.sh" 'step-4' 'Step 4b wrapper missing step-4 sentinel write'
@@ -191,7 +186,6 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step6-prelude.sh" 'PUBLISH_OK' 'Step 6 prelude wrapper missing publish gate before step-5d'
   contains "$SCRIPT_DIR/design-step0-route.sh" 'gh issue view' 'Step 0 route wrapper missing issue fetch'
   contains "$SCRIPT_DIR/design-step0-route.sh" 'POSITIONAL_KIND' 'Step 0 route wrapper missing positional issue binding'
-  contains "$SCRIPT_DIR/design-step0-init.sh" 'design_classification=HARD' 'Step 0 init wrapper missing HARD classification derivation'
   contains "$SCRIPT_DIR/design-step0-parse.sh" '%q' 'Step 0 parse wrapper missing shell-quoted parsed env persistence'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_RC=' 'Step 2b postplan wrapper missing POSTPLAN_RC emit'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'POSTPLAN_STATUS=' 'Step 2b postplan wrapper missing POSTPLAN_STATUS emit'
@@ -329,9 +323,6 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-degraded.sh" '.degraded-tools-gate-prompted' 'Step 0 degraded wrapper missing prompted sentinel write'
   contains "$SCRIPT_DIR/design-step0-init.sh" 'feature-description.txt' 'Step 0 init wrapper missing feature-description write'
   contains "$SCRIPT_DIR/design-step0-route.sh" "printf 'ROUTE=%s" 'Step 0 route wrapper missing ROUTE stdout emit'
-  contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'sketch-launched-paths.txt' 'Step 2a.3 collector missing launched-path sidecar read'
-  contains "$SCRIPT_DIR/design-step2a2-record-launches.sh" 'sketch-launched-paths.txt' 'Step 2a.2 record-launches wrapper missing launched-path sidecar write'
-  contains "$SCRIPT_DIR/design-step2a3-collect.sh" 'sketch-launched-paths.txt missing' 'Step 2a.3 collector missing launched-path sidecar requirement'
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" 'VALIDATE_STATUS=' 'Step 2b postplan wrapper missing VALIDATE_STATUS emit on rc 10'
   contains "$SCRIPT_DIR/design-step0-route.sh" 'design-pause-save.sh' 'Step 0 route wrapper missing pause-check'
   contains "$SCRIPT_DIR/design-step0-init.sh" 'design-pause-save.sh' 'Step 0 init wrapper missing pause-check'
@@ -348,7 +339,6 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step3-entry.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 3 combined entry wrapper missing stale pause-save sentinel clear'
   contains "$SCRIPT_DIR/design-step4b.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 4b combined wrapper missing stale pause-save sentinel clear'
   contains "$SCRIPT_DIR/design-step6.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 6 combined wrapper missing stale pause-save sentinel clear'
-  contains "$SCRIPT_DIR/design-step2a-zero-sketch.sh" 'NO_SKETCHES_DEGRADED_HARD' 'Step 2a zero-sketch wrapper missing degraded synthesis sentinel'
 }
 
 assert_gate_b_bypass_branch_sentinels() {
@@ -370,7 +360,6 @@ assert_wrapper_pause_before_work() {
   for entry in \
     'design-step0-route.sh:gh issue view' \
     'design-step0-init.sh:design-init-runparams.sh' \
-    'design-step2a3-collect.sh:collect-agent-results.sh' \
     'design-step3-entry-state.sh:design-step3-state.sh' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped'
@@ -522,14 +511,9 @@ assert_wrapper_fence_ordering() {
   first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'design-step3-state.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
-  wrapper='design-step2a3-collect.sh'
-  first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  second_line=$(grep -nF 'collect-agent-results.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  (( first_line < second_line )) || fail "$wrapper must pause-check before collect"
+
   wrapper='design-step2a-zero-sketch.sh'
-  first_line=$(grep -nF 'NO_SKETCHES_DEGRADED_HARD' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  second_line=$(grep -nF '.completed/step-2a' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  (( first_line < second_line )) || fail "$wrapper must write degraded artifacts before step-2a sentinel"
+
   wrapper='design-step4b.sh'
   first_line=$(grep -nF 'design-step4b-read.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'step-4' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
@@ -569,8 +553,6 @@ assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
 assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$SKILL_MD" "SKILL.md" || fail "(3119) SKILL.md still has removed Family-B fence tokens"
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$BRAINSTORM_MD" "brainstorm.md" || fail "(3119) brainstorm.md still has removed Family-B fence tokens"
-python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$DIALEXEC_MD" "dialectic-execution.md" || fail "(3119) dialectic-execution.md still has removed Family-B fence tokens"
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$PLAN_REVIEW_MD" "plan-review.md" || fail "(3119) plan-review.md still has removed Family-B fence tokens"
-python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$DIALPROTO_MD" "dialectic-protocol.md" || fail "(3119) dialectic-protocol.md still has removed Family-B fence tokens"
 
 printf 'ok - design SKILL uses wrapper-only Bash fences\n'

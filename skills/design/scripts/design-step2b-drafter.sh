@@ -136,18 +136,15 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
   else
     rm -f "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
   fi
-  _resolved_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
   {
     printf '%s\n\n' 'You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.'
-    printf 'Trusted resolved design_classification: %s\n\n' "$_resolved_design_classification"
     printf '%s\n' 'You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.'
     printf '\n%s\n' 'Drafting requirements to follow:'
-    printf '%s\n' '- Apply SIMPLE tier by minimizing scope; apply HARD tier by surfacing edge cases, failure modes, invariants, and downstream consumers.'
-    printf '%s\n' '- Read approach-synthesis.txt: if it is exactly NO_SKETCHES_CLASSIFIED_SIMPLE, draft from direct codebase/doc inspection without fabricating sketch agreement; if exactly NO_SKETCHES_DEGRADED_HARD, preserve HARD thoroughness without fabricating sketch agreement.'
-    printf '%s\n' '- Read discussion-round1.md when present for scope boundaries and hard constraints.'
+    printf '%s\n' '- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.'
+    printf '%s\n' '- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating sketch agreement.'
+    printf '%s\n' '- Read discussion-round1.md when present for scope boundaries and strict constraints.'
     printf '%s\n' '- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.'
-    printf '%s\n' '- Read brainstorm.md when present as additive ideation only when it does not conflict with binding dialectic resolutions or explicit user refusals.'
-    printf '%s\n' '- Read dialectic-resolutions.md when present and branch on Disposition: voted — follow Resolution and address antithesis; fallback-to-synthesis / bucket-skipped / over-cap — synthesis stands, note Why reason, do not fabricate antithesis-engagement prose.'
+    printf '%s\n' '- Read brainstorm.md when present as additive ideation context for plan drafting.'
     printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).'
     printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.'
     printf '%s\n' '- The final plan body must end with a whole-line diff_lines: <N> trailer.'

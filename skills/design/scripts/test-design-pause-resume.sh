@@ -226,7 +226,7 @@ make_design_tmpdir() {
   printf 'export SESSION_ID=RUNPAUSE1\n' >"$d/source-env.sh"
   printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$d/manifest.json"
   printf 'plan\n' >"$d/plan.txt"
-  printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
+  printf '{"brainstorm_requested":false}\n' >"$d/run-params.json"
   printf 'v1\tmark\t10\tdesign\tdesign Step 3 — plan review\t-\t-\t-\t-\t-\t-\t-\t-\n' >"$d/timing-ledger.tsv"
   DESIGN_TMPDIR="$d" LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$d/timing-ledger.tsv" \
     python3 "$REPO_ROOT/python/cli.py" timing record-round \
@@ -286,7 +286,7 @@ ln -sf "$STUB/gh" "$GH_ONLY/gh"
 printf '%s\n' 'larch-logs/ export-ignore' >"$EXPORT_REPO/.gitattributes"
 mkdir -p "$EXPORT_REPO/larch-logs/design/RUNEXPORT1/.completed"
 printf '%s\n' '{"run_id":"RUNEXPORT1","issue_number":"9"}' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/manifest.json"
-printf '%s\n' '{"design_classification":"SIMPLE","brainstorm_requested":false}' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/run-params.json"
+printf '%s\n' '{"brainstorm_requested":false}' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/run-params.json"
 printf '%s\n' 'ISSUE_NUMBER=9' 'RUN_ID=RUNEXPORT1' 'REPO=owner/repo' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/pause-state.txt"
 printf '%s\n' 'plan export-ignore' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/plan.txt"
 : >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/.completed/step-1c"
@@ -365,33 +365,33 @@ out_registry=$(bash "$SAVE" --design-tmpdir "$DESIGN_REGISTRY" --issue 9 --repo 
 out_registry_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-registry" --issue 9 --repo owner/repo)
 [[ "$out_registry_load" == *"LOAD_OK=true"* && "$out_registry_load" == *"STEP=1d"* ]] || fail "registry-order load mismatch: $out_registry_load"
 
-echo "=== legacy SIMPLE Step 2a marker resumes at Step 2a.5 ==="
-DESIGN_LEGACY_SIMPLE="$TMP/design-legacy-simple-2a"
-make_design_tmpdir "$DESIGN_LEGACY_SIMPLE"
-complete_design_steps "$DESIGN_LEGACY_SIMPLE" 1c 1d 1d.5 1d.7 1e 2a
+echo "=== legacy Step 2a marker resumes at Step 2b ==="
+DESIGN_LEGACY_2A="$TMP/design-legacy-simple-2a"
+make_design_tmpdir "$DESIGN_LEGACY_2A"
+complete_design_steps "$DESIGN_LEGACY_2A" 1c 1d 1d.5 1d.7 1e 2a
 printf 'issue body legacy simple 2a\n' >"$BODY_FILE"
-out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_SIMPLE" --issue 9 --repo owner/repo)
-[[ "$out_legacy_simple_2a" == *"PAUSE_OK=true"* && "$out_legacy_simple_2a" == *"STEP=2a.5"* ]] || fail "old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard: $out_legacy_simple_2a"
+out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_2A" --issue 9 --repo owner/repo)
+[[ "$out_legacy_simple_2a" == *"PAUSE_OK=true"* && "$out_legacy_simple_2a" == *"STEP=2b"* ]] || fail "old Step 2a state should resume at Step 2b compatibility guard: $out_legacy_simple_2a"
 out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-simple-2a" --issue 9 --repo owner/repo)
-[[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
-DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
-if [ "$_design_classification" = SIMPLE ]; then
+[[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2b"* ]] || fail "old step-2a-only load mismatch: $out_legacy_simple_2a_load"
+DESIGN_TMPDIR="$DESIGN_LEGACY_2A" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+
+if true; then
   _simple_artifacts_ok=true
-  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
   _simple_artifact_conflict=false
-  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
     set -e
-    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_SKETCHES" > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
     : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
     mkdir -p "$DESIGN_TMPDIR/.completed"
@@ -403,41 +403,41 @@ if [ "$_design_classification" = SIMPLE ]; then
   fi
 fi
 '
-[[ -f "$DESIGN_LEGACY_SIMPLE/.completed/step-2a.5" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not write marker"
-[[ "$(cat "$DESIGN_LEGACY_SIMPLE/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair approach sentinel"
-[[ "$(cat "$DESIGN_LEGACY_SIMPLE/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair contested sentinel"
-[[ -f "$DESIGN_LEGACY_SIMPLE/dialectic-resolutions.md" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair dialectic sentinel"
+[[ -f "$DESIGN_LEGACY_2A/.completed/step-2a" ]] || fail "old step-2a-only compatibility guard did not write step-2a marker"
+[[ "$(cat "$DESIGN_LEGACY_2A/approach-synthesis.txt")" == "NO_SKETCHES" ]] || fail "step-2a-only compatibility guard did not repair approach sentinel"
+[[ "$(cat "$DESIGN_LEGACY_2A/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "step-2a-only compatibility guard did not repair contested sentinel"
+[[ -f "$DESIGN_LEGACY_2A/dialectic-resolutions.md" ]] || fail "step-2a-only compatibility guard did not repair dialectic sentinel"
 
-echo "=== SIMPLE Step 2a.5 marker-only repair ==="
-DESIGN_SIMPLE_MARKER_ONLY="$TMP/design-simple-marker-only"
-make_design_tmpdir "$DESIGN_SIMPLE_MARKER_ONLY"
-complete_design_steps "$DESIGN_SIMPLE_MARKER_ONLY" 1c 1d 1d.5 1d.7 1e 2a
-printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt"
-printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_MARKER_ONLY/contested-decisions.md"
-: >"$DESIGN_SIMPLE_MARKER_ONLY/dialectic-resolutions.md"
+echo "=== Step 2a marker-only repair ==="
+DESIGN_MARKER_ONLY="$TMP/design-simple-marker-only"
+make_design_tmpdir "$DESIGN_MARKER_ONLY"
+complete_design_steps "$DESIGN_MARKER_ONLY" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES' >"$DESIGN_MARKER_ONLY/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_MARKER_ONLY/contested-decisions.md"
+: >"$DESIGN_MARKER_ONLY/dialectic-resolutions.md"
 printf 'issue body simple marker-only\n' >"$BODY_FILE"
-out_simple_marker_only=$(bash "$SAVE" --design-tmpdir "$DESIGN_SIMPLE_MARKER_ONLY" --issue 9 --repo owner/repo)
-[[ "$out_simple_marker_only" == *"PAUSE_OK=true"* && "$out_simple_marker_only" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only fixture should resume at Step 2a.5: $out_simple_marker_only"
-out_simple_marker_only_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-simple-marker-only" --issue 9 --repo owner/repo)
-[[ "$out_simple_marker_only_load" == *"LOAD_OK=true"* && "$out_simple_marker_only_load" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only load mismatch: $out_simple_marker_only_load"
-DESIGN_TMPDIR="$DESIGN_SIMPLE_MARKER_ONLY" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
-if [ "$_design_classification" = SIMPLE ]; then
+out_marker_only=$(bash "$SAVE" --design-tmpdir "$DESIGN_MARKER_ONLY" --issue 9 --repo owner/repo)
+[[ "$out_marker_only" == *"PAUSE_OK=true"* && "$out_marker_only" == *"STEP=2b"* ]] || fail "marker-only fixture should resume at Step 2b: $out_marker_only"
+out_marker_only_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-simple-marker-only" --issue 9 --repo owner/repo)
+[[ "$out_marker_only_load" == *"LOAD_OK=true"* && "$out_marker_only_load" == *"STEP=2b"* ]] || fail "marker-only load mismatch: $out_marker_only_load"
+DESIGN_TMPDIR="$DESIGN_MARKER_ONLY" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+
+if true; then
   _simple_artifacts_ok=true
-  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
   _simple_artifact_conflict=false
-  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
     set -e
-    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_SKETCHES" > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
     : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
     mkdir -p "$DESIGN_TMPDIR/.completed"
@@ -449,55 +449,55 @@ if [ "$_design_classification" = SIMPLE ]; then
   fi
 fi
 '
-[[ -f "$DESIGN_SIMPLE_MARKER_ONLY/.completed/step-2a.5" ]] || fail "SIMPLE marker-only repair did not write Step 2a.5 marker"
-[[ "$(cat "$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "SIMPLE marker-only repair changed approach sentinel"
+[[ -f "$DESIGN_MARKER_ONLY/.completed/step-2a" ]] || fail "marker-only repair did not write step-2a marker"
+[[ "$(cat "$DESIGN_MARKER_ONLY/approach-synthesis.txt")" == "NO_SKETCHES" ]] || fail "marker-only repair changed approach sentinel"
 
-echo "=== SIMPLE Step 2a.5 refuses non-sentinel artifacts ==="
-DESIGN_SIMPLE_CONFLICT="$TMP/design-simple-conflict"
-make_design_tmpdir "$DESIGN_SIMPLE_CONFLICT"
-complete_design_steps "$DESIGN_SIMPLE_CONFLICT" 1c 1d 1d.5 1d.7 1e 2a
-printf '%s\n' 'real sketch synthesis' >"$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt"
-printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_CONFLICT/contested-decisions.md"
-: >"$DESIGN_SIMPLE_CONFLICT/dialectic-resolutions.md"
+echo "=== Step 2a sentinel repair refuses non-sentinel artifacts ==="
+DESIGN_CONFLICT="$TMP/design-simple-conflict"
+make_design_tmpdir "$DESIGN_CONFLICT"
+complete_design_steps "$DESIGN_CONFLICT" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'real sketch synthesis' >"$DESIGN_CONFLICT/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_CONFLICT/contested-decisions.md"
+: >"$DESIGN_CONFLICT/dialectic-resolutions.md"
 set +e
-out_simple_conflict=$(DESIGN_TMPDIR="$DESIGN_SIMPLE_CONFLICT" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
-if [ "$_design_classification" = SIMPLE ]; then
+out_conflict=$(DESIGN_TMPDIR="$DESIGN_CONFLICT" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+
+if true; then
   _simple_artifacts_ok=true
-  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
   _simple_artifact_conflict=false
-  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
 fi
 ' 2>&1)
-rc_simple_conflict=$?
+rc_conflict=$?
 set -e
-[[ "$rc_simple_conflict" -ne 0 ]] || fail "SIMPLE conflict repair should exit non-zero"
-[[ "$out_simple_conflict" == *"SIMPLE sentinel repair refused"* ]] || fail "SIMPLE conflict warning missing: $out_simple_conflict"
-[[ "$(cat "$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt")" == "real sketch synthesis" ]] || fail "SIMPLE conflict repair clobbered non-sentinel synthesis"
+[[ "$rc_conflict" -ne 0 ]] || fail "conflict repair should exit non-zero"
+[[ "$out_conflict" == *"sentinel repair refused"* ]] || fail "conflict warning missing: $out_conflict"
+[[ "$(cat "$DESIGN_CONFLICT/approach-synthesis.txt")" == "real sketch synthesis" ]] || fail "conflict repair clobbered non-sentinel synthesis"
 
-echo "=== HARD zero-sketch sentinel layout does not take SIMPLE marker repair ==="
-DESIGN_HARD_SENTINEL="$TMP/design-hard-sentinel"
-make_design_tmpdir "$DESIGN_HARD_SENTINEL"
-printf '{"design_classification":"HARD","brainstorm_requested":false}\n' >"$DESIGN_HARD_SENTINEL/run-params.json"
-complete_design_steps "$DESIGN_HARD_SENTINEL" 1c 1d 1d.5 1d.7 1e 2a
-printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_HARD_SENTINEL/approach-synthesis.txt"
-printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_HARD_SENTINEL/contested-decisions.md"
-: >"$DESIGN_HARD_SENTINEL/dialectic-resolutions.md"
-DESIGN_TMPDIR="$DESIGN_HARD_SENTINEL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
-_design_classification="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
-if [ "$_design_classification" = SIMPLE ]; then
+echo "=== NO_SKETCHES sentinel already present; no repair needed ==="
+DESIGN_SENTINEL_OK="$TMP/design-hard-sentinel"
+make_design_tmpdir "$DESIGN_SENTINEL_OK"
+printf '{"brainstorm_requested":false}\n' >"$DESIGN_SENTINEL_OK/run-params.json"
+complete_design_steps "$DESIGN_SENTINEL_OK" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES' >"$DESIGN_SENTINEL_OK/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SENTINEL_OK/contested-decisions.md"
+: >"$DESIGN_SENTINEL_OK/dialectic-resolutions.md"
+DESIGN_TMPDIR="$DESIGN_SENTINEL_OK" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+
+if true; then
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 fi
 '
-[[ ! -f "$DESIGN_HARD_SENTINEL/.completed/step-2a.5" ]] || fail "HARD sentinel layout must not take SIMPLE marker-only repair"
+[[ -f "$DESIGN_SENTINEL_OK/.completed/step-2a" ]] || fail "sentinel-present run should write step-2a marker"
 
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"
@@ -939,22 +939,22 @@ out_restored_repo=$(bash "$LOAD" --design-tmpdir "$TMP/restored-repo" --issue 9 
 [[ "$out_restored_repo" == *"ERROR=restored-repo-mismatch"* ]] || fail "restored repo mismatch failed open: $out_restored_repo"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored repo mismatch should delete marker"
 
-LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
-rm -rf "$LEGACY_HARD"
-mkdir -p "$LEGACY_HARD/.completed"
-printf 'plan\n' >"$LEGACY_HARD/plan.txt"
-printf '{"design_classification":"HARD"}\n' >"$LEGACY_HARD/run-params.json"
-printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$LEGACY_HARD/manifest.json"
-printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\n' >"$LEGACY_HARD/pause-state.txt"
-: >"$LEGACY_HARD/.completed/step-3"
-: >"$LEGACY_HARD/.completed/step-3.5"
+LEGACY_3B="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+rm -rf "$LEGACY_3B"
+mkdir -p "$LEGACY_3B/.completed"
+printf 'plan\n' >"$LEGACY_3B/plan.txt"
+printf '{}\n' >"$LEGACY_3B/run-params.json"
+printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$LEGACY_3B/manifest.json"
+printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\n' >"$LEGACY_3B/pause-state.txt"
+: >"$LEGACY_3B/.completed/step-3"
+: >"$LEGACY_3B/.completed/step-3.5"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3b\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_legacy_3b=$(bash "$LOAD" --design-tmpdir "$TMP/legacy-3b" --issue 9 --repo owner/repo)
-[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3b"* ]] || fail "legacy HARD STEP=3b with step-3.5 should resume at 3b: $out_legacy_3b"
+[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3b"* ]] || fail "legacy STEP=3b with step-3.5 should resume at 3b: $out_legacy_3b"
 
-printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nTIER=SIMPLE\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_valid_marker=$(bash "$LOAD" --design-tmpdir "$TMP/valid-marker-fields" --issue 9 --repo owner/repo)
-[[ "$out_valid_marker" == *"LOAD_OK=true"* && "$out_valid_marker" == *"SESSION_ID=RUNPAUSE1"* && "$out_valid_marker" == *"TIER=SIMPLE"* && "$out_valid_marker" == *"BRAINSTORM_DONE=true"* ]] \
+[[ "$out_valid_marker" == *"LOAD_OK=true"* && "$out_valid_marker" == *"SESSION_ID=RUNPAUSE1"* && "$out_valid_marker" == *"BRAINSTORM_DONE=true"* ]] \
   || fail "valid marker fields mismatch: $out_valid_marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=OTHER\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_session=$(bash "$LOAD" --design-tmpdir "$TMP/bad-session" --issue 9 --repo owner/repo)
@@ -1114,7 +1114,7 @@ done
 echo "=== no-brainstorm Step 2a entry repairs step-1d.5 before pause-save ==="
 DESIGN_NO_BRAIN="$TMP/design-no-brainstorm"
 make_design_tmpdir "$DESIGN_NO_BRAIN"
-printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$DESIGN_NO_BRAIN/run-params.json"
+printf '{"brainstorm_requested":false}\n' >"$DESIGN_NO_BRAIN/run-params.json"
 complete_design_steps "$DESIGN_NO_BRAIN" 0c 1c 1d 1d.7
 [[ ! -f "$DESIGN_NO_BRAIN/.completed/step-1d.5" ]] || fail "no-brainstorm precondition unexpectedly has step-1d.5"
 DESIGN_TMPDIR="$DESIGN_NO_BRAIN" bash -euo pipefail -c '
@@ -1149,7 +1149,7 @@ out_no_brain_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_NO_BRAIN" --issue 9 -
 echo "=== jq-less brainstorm Step 2a entry preserves missing step-1d.5 ==="
 DESIGN_JQLESS_BRAIN="$TMP/design-jqless-brainstorm"
 make_design_tmpdir "$DESIGN_JQLESS_BRAIN"
-printf '{"design_classification":"SIMPLE","brainstorm_requested":true}\n' >"$DESIGN_JQLESS_BRAIN/run-params.json"
+printf '{"brainstorm_requested":true}\n' >"$DESIGN_JQLESS_BRAIN/run-params.json"
 complete_design_steps "$DESIGN_JQLESS_BRAIN" 0c 1c 1d 1d.7
 JQLESS_BIN="$TMP/jqless-bin"
 mkdir -p "$JQLESS_BIN"
@@ -1314,7 +1314,7 @@ out_postplan_pause_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_POSTPLAN_PAUSE"
 echo "=== already-planned Q&A-only writes contiguous prefix through step-1d.5 ==="
 DESIGN_QA_ONLY="$TMP/design-qa-only"
 make_design_tmpdir "$DESIGN_QA_ONLY"
-printf '{"design_classification":"SIMPLE","brainstorm_requested":true}\n' >"$DESIGN_QA_ONLY/run-params.json"
+printf '{"brainstorm_requested":true}\n' >"$DESIGN_QA_ONLY/run-params.json"
 complete_design_steps "$DESIGN_QA_ONLY" 0c
 [[ ! -f "$DESIGN_QA_ONLY/.completed/step-1c" ]] || fail "Q&A-only precondition unexpectedly has step-1c"
 DESIGN_TMPDIR="$DESIGN_QA_ONLY" bash -euo pipefail -c '
