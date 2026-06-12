@@ -573,14 +573,15 @@ cp "$REPO_ROOT/python/"*.py "$PLUGIN_JSONL/python/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
 cp "$REPO_ROOT/skills/shared/review-acceptance-rubric.md" "$PLUGIN_JSONL/skills/shared/"
 chmod +x "$PLUGIN_JSONL/python/cli.py"
-cat >"$PLUGIN_JSONL/python/cli.py agent launch-claude-review" <<'JSONL_STUB'
+CLAUDE_REVIEW_STUB_JSONL="$PLUGIN_JSONL/scripts/claude-review-jsonl-stub.sh"
+cat >"$CLAUDE_REVIEW_STUB_JSONL" <<'JSONL_STUB'
 #!/usr/bin/env bash
 OUTPUT="" PROMPT_FILE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) OUTPUT="${2:?}"; shift 2 ;;
         --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
-        --mode|--timeout|--timing-task-kind|--plan-file|--feature-file) shift 2 ;;
+        --mode|--timeout|--timing-task-kind|--plan-file|--feature-file|--model) shift 2 ;;
         *) shift ;;
     esac
 done
@@ -592,9 +593,10 @@ cat >"$PLUGIN_JSONL/scripts/validate-research-output.sh" <<'VALIDATE_STUB'
 #!/usr/bin/env bash
 exit 0
 VALIDATE_STUB
-chmod +x "$PLUGIN_JSONL/python/cli.py agent launch-claude-review"
+chmod +x "$CLAUDE_REVIEW_STUB_JSONL"
 chmod +x "$PLUGIN_JSONL/scripts/validate-research-output.sh"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    LARCH_TEST_LAUNCH_CLAUDE_REVIEW="$CLAUDE_REVIEW_STUB_JSONL" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_JSONL" \
     "$PANEL" \
     --design-tmpdir "$D12" \

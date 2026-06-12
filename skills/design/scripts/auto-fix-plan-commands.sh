@@ -34,7 +34,11 @@ if [[ -n "${LARCH_AUTOFIX_LAUNCH_CODEX_EXEC_SH:-}" ]]; then
 else
     LAUNCH_CODEX_EXEC_CMD=(python3 "$PY_CLI" agent launch-codex-exec)
 fi
-RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+if [[ -n "${LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH:-}" ]]; then
+    RUN_EXTERNAL_AGENT_CMD=("$LARCH_AUTOFIX_RUN_EXTERNAL_AGENT_SH")
+else
+    RUN_EXTERNAL_AGENT_CMD=(python3 "$PY_CLI" agent run-external-agent)
+fi
 GATE_B_DEDUP_PLAN_SH="${LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH:-$SCRIPT_DIR/gate-b-dedup-plan.sh}"
 # Full per-vendor dispatch override: when set, replaces the real launcher path so
 # the offline harness can simulate a vendor edit deterministically.
