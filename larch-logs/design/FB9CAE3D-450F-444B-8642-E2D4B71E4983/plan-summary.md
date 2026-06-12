@@ -1,0 +1,1 @@
+Implement OOS-only dependency carry-forward by deferring source closure, fetching native dependency edges, inheriting deduped edges onto combined issues, auditing open issues, gating OOS exceptions, and emitting a dependency summary.
