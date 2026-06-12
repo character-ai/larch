@@ -302,16 +302,16 @@ compose_coder_prompt() {
 
 run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
-    # #3994: the review-fix coder waterfall is Codex → Cursor (consistent with
-    # all other fixer roles; the Claude tier lives in the caller via
+    # #4062: the review-fix coder waterfall is Cursor → Codex (Cursor is the
+    # default fixer; the Claude tier lives in the caller via
     # CODER_STATUS=main-agent-required).
-    if run_coder_dispatch_codex "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
-        return 0
-    fi
     if run_coder_dispatch_cursor "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
         return 0
     fi
-    larch_err "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+    if run_coder_dispatch_codex "$round_dir" "$prompt_body" "$tool_log" "$tool_stdout"; then
+        return 0
+    fi
+    larch_err "⚠ review-and-fix: coder dispatch failed (both cursor and codex)"
     return 1
 }
 

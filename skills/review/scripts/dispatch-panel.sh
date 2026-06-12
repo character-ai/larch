@@ -86,11 +86,11 @@ esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
-# Codex reviewer slots: rounds 1-2 always (status quo); round 3+ only as
-# replacement when Cursor is unavailable (#4060).
+# Codex specialist slots: round 1 only; round 2+ only as replacement when
+# Cursor is unavailable (#4062).
 codex_slots_enabled="false"
 if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-    if (( ROUND_NUM < 3 )) || [[ "$CURSOR_AVAILABLE" != "true" ]]; then
+    if (( ROUND_NUM < 2 )) || [[ "$CURSOR_AVAILABLE" != "true" ]]; then
         codex_slots_enabled="true"
     fi
 fi
@@ -135,6 +135,18 @@ for name in "${static_specialists[@]}"; do
         static_cursor=$((static_cursor + 1))
     fi
 done
+
+# Generic Codex reviewer on rounds 2+: one slot when Codex is available and
+# Cursor is available (specialists suppressed from round 2 onward; #4062).
+# Cursor-unavailable rounds use codex_slots_enabled to run Codex specialists
+# instead; do not double-add a generic slot in that case.
+if [[ "$CODEX_AVAILABLE" == "true" && "$CURSOR_AVAILABLE" == "true" ]] && (( ROUND_NUM >= 2 )); then
+    printf '{"slot":"codex-generic","tool":"codex","output":"%s","agent":"%s"}\n' \
+        "$REVIEW_TMPDIR/codex-generic-output.txt" \
+        "$PLUGIN_ROOT/agents/code-reviewer.md" >> "$manifest"
+    static_slot_count=$((static_slot_count + 1))
+    static_codex=$((static_codex + 1))
+fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
     classifier_out=$("$CLASSIFY_DIFF_MODE_SH" "$DIFF_FILE" 2>/dev/null || true)
@@ -562,9 +574,9 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_wat
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
 [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
-# --no-fallback only in rounds 1-2 with both vendors (peer rows cover each
-# other). In round 3+ Codex slots are suppressed (#4060), so keep normal
-# fallback: a failed Cursor slot may backfill via Codex or Claude.
+# --no-fallback only in round 1 with both vendors (peer specialist rows cover
+# each other). In round 2+ Codex specialist slots are suppressed (#4062), so
+# keep normal fallback: a failed Cursor slot may backfill via Codex or Claude.
 if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" && "$codex_slots_enabled" == "true" ]]; then
     waterfall_args+=(--no-fallback)
 fi

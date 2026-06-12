@@ -891,8 +891,8 @@ fi
 grep -Fq 'agent parse-codex-usage:' "$implement_tmp/round-1/coder-codex.sidecar" \
     || fail "codex bad-usage telemetry sidecar should capture parse diagnostics"
 
-# #3994 codex-first order: a FAILED codex tier (first in the waterfall) must
-# still contribute usage telemetry before the cursor tier and main-agent handoff.
+# #4062 cursor-first order: a FAILED codex tier (second in the waterfall) must
+# still contribute usage telemetry after the cursor tier and before main-agent handoff.
 work_codex_fallback_telemetry="$TMP/codex-failed-telemetry"
 make_work_repo "$work_codex_fallback_telemetry"
 implement_tmp="$work_codex_fallback_telemetry/implement"
@@ -1256,7 +1256,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 0 (#3207 main-agent handoff) got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=coder-main-agent-required' <<< "$out" || fail "all-fail early breadcrumb status (#3207)"
-grep -Fq 'coder dispatch failed (both codex and cursor)' <<< "$out" || fail "all-fail early breadcrumb warning"
+grep -Fq 'coder dispatch failed (both cursor and codex)' <<< "$out" || fail "all-fail early breadcrumb warning"
 
 work_sub="$TMP/submodule-violation"
 make_work_repo "$work_sub"
@@ -1998,8 +1998,8 @@ else
 fi
 
 # --- Codex auth-prep failure (login mode): no codex argv, no temp-home survivors ---
-# #3994 codex-first order: codex runs first; its auth-prep failure path is
-# exercised on the first tier, then cursor fails (all-fail), so dispatch hands
+# #4062 cursor-first order: cursor runs first (all-fail), then codex runs; its
+# auth-prep failure path is exercised on the second tier, so dispatch hands
 # off to the main agent.
 work_rf_auth_prep_fail="$TMP/rf-codex-auth-prep-fail"
 make_work_repo "$work_rf_auth_prep_fail"
@@ -2096,8 +2096,8 @@ grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$rf_login_
 pass "rf codex login fallback with fixture auth"
 
 # --- Codex env-key dispatch failure breadcrumb and temp-home cleanup ---
-# #3994 codex-first order: codex runs first; its env-key dispatch failure path
-# is exercised, then cursor fails (all-fail), so dispatch hands off to the main agent.
+# #4062 cursor-first order: cursor runs first (all-fail), then codex runs; its
+# env-key dispatch failure path is exercised, so dispatch hands off to the main agent.
 work_rf_env_key_fail="$TMP/rf-codex-env-key-dispatch-fail"
 make_work_repo "$work_rf_env_key_fail"
 rf_env_key_impl="$work_rf_env_key_fail/implement"

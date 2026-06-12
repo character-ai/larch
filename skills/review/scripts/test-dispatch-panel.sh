@@ -263,6 +263,7 @@ grep -Fq 'SLOT_COUNT=6' <<< "$out"
 [[ -s "$TMP/hard/cursor-specialist-correctness-output.txt" ]]
 [[ -s "$TMP/hard/codex-specialist-correctness-output.txt" ]]
 
+# Round 2+: Codex specialist slots suppressed; Cursor specialists + 1 generic Codex (#4062).
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple-round2" \
@@ -271,9 +272,11 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel simple \
     --plan-file "$plan_file" \
     --round-num 2)
-grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
-grep -Fq 'SLOT_COUNT=6' <<< "$out"
-[[ -s "$TMP/simple-round2/codex-specialist-correctness-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 2 simple panel must have 4 static slots (3 Cursor + 1 generic Codex)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 2 simple panel SLOT_COUNT must be 4" >&2; exit 1; }
+[[ -s "$TMP/simple-round2/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 2 must still emit cursor-specialist-correctness" >&2; exit 1; }
+[[ ! -e "$TMP/simple-round2/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 2 must NOT emit codex-specialist-correctness" >&2; exit 1; }
+[[ -s "$TMP/simple-round2/codex-generic-output.txt" ]] || { echo "FAIL: round 2 must emit codex-generic-output.txt" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -283,11 +286,13 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$plan_file" \
     --round-num 2)
-grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
-grep -Fq 'SLOT_COUNT=6' <<< "$out"
-[[ -s "$TMP/hard-round2/codex-specialist-correctness-output.txt" ]]
+grep -Fq 'STATIC_SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 2 hard panel must have 4 static slots (3 Cursor + 1 generic Codex)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 2 hard panel SLOT_COUNT must be 4" >&2; exit 1; }
+[[ -s "$TMP/hard-round2/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 2 hard must still emit cursor-specialist-correctness" >&2; exit 1; }
+[[ ! -e "$TMP/hard-round2/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 2 hard must NOT emit codex-specialist-correctness" >&2; exit 1; }
+[[ -s "$TMP/hard-round2/codex-generic-output.txt" ]] || { echo "FAIL: round 2 hard must emit codex-generic-output.txt" >&2; exit 1; }
 
-# Round 3+: Codex reviewer slots suppressed; only Cursor emitted.
+# Round 3+: same as round 2 — Codex specialists suppressed; 1 generic Codex added.
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple-round3" \
@@ -296,10 +301,11 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel simple \
     --plan-file "$plan_file" \
     --round-num 3)
-grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 simple panel must have 3 static slots (Cursor only)" >&2; exit 1; }
-grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 simple panel SLOT_COUNT must be 3" >&2; exit 1; }
+grep -Fq 'STATIC_SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 3 simple panel must have 4 static slots (3 Cursor + 1 generic Codex)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 3 simple panel SLOT_COUNT must be 4" >&2; exit 1; }
 [[ -s "$TMP/simple-round3/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must still emit cursor-specialist-correctness" >&2; exit 1; }
 [[ ! -e "$TMP/simple-round3/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must NOT emit codex-specialist-correctness" >&2; exit 1; }
+[[ -s "$TMP/simple-round3/codex-generic-output.txt" ]] || { echo "FAIL: round 3 must emit codex-generic-output.txt" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -309,10 +315,11 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$plan_file" \
     --round-num 3)
-grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 hard panel must have 3 static slots (Cursor only)" >&2; exit 1; }
-grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 hard panel SLOT_COUNT must be 3" >&2; exit 1; }
+grep -Fq 'STATIC_SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 3 hard panel must have 4 static slots (3 Cursor + 1 generic Codex)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 3 hard panel SLOT_COUNT must be 4" >&2; exit 1; }
 [[ -s "$TMP/hard-round3/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must still emit cursor-specialist-correctness" >&2; exit 1; }
 [[ ! -e "$TMP/hard-round3/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 must NOT emit codex-specialist-correctness" >&2; exit 1; }
+[[ -s "$TMP/hard-round3/codex-generic-output.txt" ]] || { echo "FAIL: round 3 hard must emit codex-generic-output.txt" >&2; exit 1; }
 
 simple_round3_breadcrumbs_err="$TMP/simple-round3-breadcrumbs.stderr"
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
@@ -323,10 +330,10 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel simple \
     --plan-file "$plan_file" \
     --round-num 3 2>"$simple_round3_breadcrumbs_err")
-grep -Fq '→ review: launching 3 reviewers (3 Cursor static, 0 Codex static, 0 dynamic)' "$simple_round3_breadcrumbs_err" \
-    || { echo "FAIL: round 3 launch breadcrumb must show 0 Codex static" >&2; exit 1; }
+grep -Fq '→ review: launching 4 reviewers (3 Cursor static, 1 Codex static, 0 dynamic)' "$simple_round3_breadcrumbs_err" \
+    || { echo "FAIL: round 3 launch breadcrumb must show 1 Codex static (generic)" >&2; exit 1; }
 
-# Round 3+, Cursor unavailable: Codex runs as the replacement panel (#4060).
+# Round 2+, Cursor unavailable: Codex runs as the replacement panel (#4062).
 round3_replacement_err="$TMP/round3-replacement.stderr"
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -343,8 +350,19 @@ grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 Cursor-down panel SL
 grep -Fq '→ review: launching 3 reviewers (0 Cursor static, 3 Codex static, 0 dynamic)' "$round3_replacement_err" \
     || { echo "FAIL: round 3 Cursor-down launch breadcrumb must show 0 Cursor static, 3 Codex static" >&2; exit 1; }
 
-# Round-aware --no-fallback: round 2 both-vendor keeps it; round 3+ both-vendor
-# omits it so a failed Cursor slot can backfill via Codex or Claude (#4060).
+# Round-aware --no-fallback: round 1 both-vendor keeps it; round 2+ both-vendor
+# omits it so a failed Cursor slot can backfill via Codex or Claude (#4062).
+round1_fallback_argv="$TMP/round1-both-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round1_fallback_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-round1" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 1)
+grep -Fq -- '--no-fallback' "$round1_fallback_argv" || { echo "FAIL: round 1 both-vendor dispatch must pass --no-fallback" >&2; exit 1; }
+
 round2_fallback_argv="$TMP/round2-both-waterfall.argv"
 out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round2_fallback_argv" "$SCRIPT" \
     --mode diff \
@@ -354,7 +372,10 @@ out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATE
     --panel simple \
     --plan-file "$plan_file" \
     --round-num 2)
-grep -Fq -- '--no-fallback' "$round2_fallback_argv" || { echo "FAIL: round 2 both-vendor dispatch must pass --no-fallback" >&2; exit 1; }
+if grep -Fq -- '--no-fallback' "$round2_fallback_argv"; then
+    echo "FAIL: round 2 both-vendor dispatch must omit --no-fallback" >&2
+    exit 1
+fi
 
 round3_fallback_argv="$TMP/round3-both-waterfall.argv"
 out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round3_fallback_argv" "$SCRIPT" \
