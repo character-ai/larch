@@ -2793,6 +2793,47 @@ def launch_tier(
 LaunchFn = Callable[[str], TierAttempt]
 
 
+def ingest_launcher_token_sidecar(
+    runner: Runner,
+    *,
+    launcher_stdout: str,
+    output: object = None,
+    tmpdir: str | None = None,
+    implement_tmpdir: str | None = None,
+    seen: set[str],
+    cwd: str | None = None,
+) -> bool:
+    """Ingest a TOKEN_RECORD sidecar from launcher stdout into the token ledger.
+
+    Calls ``token append-record`` once per unique path (tracked via ``seen``),
+    then calls ``token record-vendor-sidecar`` on every invocation so that
+    partial-failure retries still record vendor usage.
+    """
+    _ = output
+    token_record: str | None = None
+    for line in launcher_stdout.splitlines():
+        if line.startswith("TOKEN_RECORD="):
+            token_record = line.split("=", 1)[1].strip()
+            break
+    if not token_record:
+        return False
+    effective_tmpdir = tmpdir if tmpdir is not None else implement_tmpdir
+    if token_record not in seen:
+        seen.add(token_record)
+        if effective_tmpdir:
+            runner.run(
+                [sys.executable, str(_PY_CLI), "token", "append-record",
+                 "--tmpdir", effective_tmpdir, "--input", token_record],
+                cwd=cwd,
+            )
+    runner.run(
+        [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar",
+         "--input", token_record],
+        cwd=cwd,
+    )
+    return True
+
+
 def run_waterfall(
     tiers: Sequence[str],
     launch_fn: LaunchFn,

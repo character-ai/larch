@@ -1050,6 +1050,7 @@ def _make_default_launch_fn(
             failure_log_paths.append(failure_log_path)
     prefix = output_dir or implement_tmpdir or tempfile.gettempdir()
     safe_plan = _resolve_plan_file(plan_file)
+    seen_token_records: set[str] = set()
 
     def launch_fn(tier: str) -> TierAttempt:
         tier_out = str(Path(prefix) / f"ci-fix-{tier}.out")
@@ -1069,6 +1070,15 @@ def _make_default_launch_fn(
             cwd=cwd,
         )
         combined = result.stdout + result.stderr
+        _ = agents.ingest_launcher_token_sidecar(
+            runner,
+            launcher_stdout=combined,
+            output=tier_out,
+            tmpdir=implement_tmpdir,
+            implement_tmpdir=implement_tmpdir,
+            seen=seen_token_records,
+            cwd=cwd,
+        )
         launcher_exit = _resolve_launcher_exit(combined=combined, output=tier_out)
         failure = agents.classify_launch_failure(
             launcher_exit,
