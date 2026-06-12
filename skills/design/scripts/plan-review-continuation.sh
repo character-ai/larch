@@ -168,20 +168,20 @@ REASON=small-clean
 if [[ "$TALLY_PLAN_REVIEW_STATUS" == ok && "$LOOP_STATUS" == complete ]]; then
     DEGRADED_PANEL=0
 fi
-if [[ "$APPROVE_REQUESTED" == true ]]; then
-    REASON=explicit-approve
-elif (( REVIEW_ROUND_COUNT >= ROUND_CAP )); then
-    REASON=cap-reached
-elif [[ "$PANEL_PRUNED_EMPTY" == true ]]; then
-    CONTINUE=true
-    REASON=pruned-empty
-elif [[ "$STEP3_REASON" == ballot-items-lost \
+if [[ "$STEP3_REASON" == ballot-items-lost* \
     && "$ACCEPTED_COUNT" -eq 0 \
     && "$DEGRADED_PANEL" -ne 0 \
     && "$TALLY_PLAN_REVIEW_STATUS" == ok \
     && "$LOOP_STATUS" == zero-findings-degraded-panel ]]; then
     CONTINUE=true
     REASON=ballot-items-lost
+elif [[ "$APPROVE_REQUESTED" == true ]]; then
+    REASON=explicit-approve
+elif (( REVIEW_ROUND_COUNT >= ROUND_CAP )); then
+    REASON=cap-reached
+elif [[ "$PANEL_PRUNED_EMPTY" == true ]]; then
+    CONTINUE=true
+    REASON=pruned-empty
 elif (( DEGRADED_PANEL != 0 && ACCEPTED_COUNT > 0 )); then
     CONTINUE=true
     REASON=degraded-panel

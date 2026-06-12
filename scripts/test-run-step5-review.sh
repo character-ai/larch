@@ -131,8 +131,6 @@ false
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
---dynamic-archetypes
-0
 --run-id
 run-xyz" "conventional plan path resolved argv"
 
@@ -140,6 +138,7 @@ echo "=== unified Step 5 argv (round 1, dynamic-archetypes) ==="
 case_dir="$TMP/hard"
 make_tmpdir "$case_dir" round1-dynamic-archetypes false true "run-xyz" 2
 printf 'eligible\n' >"$case_dir/step2-external-scout-eligible.txt"
+printf 'SCOUT_CODER_STATUS=ok\n' >"$case_dir/step2-scout-coder-status.env"
 argv_file="$TMP/hard.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
 assert_file_equals "$argv_file" "--implement-tmpdir
@@ -167,17 +166,17 @@ $case_dir/scout-coder-manifest.json
 --run-id
 run-xyz" "dynamic-archetypes forwarded on unified argv"
 
-echo "=== round 1 marker with empty scout manifest still forwards pre-scout path ==="
+echo "=== round 1 marker with empty scout manifest omits pre-scout path ==="
 case_dir="$TMP/round1-empty-scout"
 make_tmpdir "$case_dir" round1-empty-scout false true "run-xyz" 2
 printf 'eligible\n' >"$case_dir/step2-external-scout-eligible.txt"
+printf 'SCOUT_CODER_STATUS=missing-or-invalid\n' >"$case_dir/step2-scout-coder-status.env"
 : >"$case_dir/scout-coder-manifest.json"
 argv_file="$TMP/round1-empty-scout.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
-assert_contains "$(cat "$argv_file")" "--pre-scouted-manifest
-$case_dir/scout-coder-manifest.json" "round 1 marker with empty scout manifest forwards pre-scout path"
+assert_not_contains "$(cat "$argv_file")" "--pre-scouted-manifest" "round 1 empty scout manifest omits pre-scout path"
 assert_contains "$(cat "$argv_file")" "--dynamic-archetypes
-2" "round 1 marker with empty scout manifest keeps dynamic cap"
+2" "round 1 empty scout manifest keeps dynamic cap"
 
 echo "=== round 1 scout manifest ignored without eligibility marker ==="
 case_dir="$TMP/round1-no-scout-marker"
@@ -186,8 +185,8 @@ printf '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight
 argv_file="$TMP/round1-no-scout-marker.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
 assert_not_contains "$(cat "$argv_file")" "--pre-scouted-manifest" "round 1 without eligibility marker omits pre-scouted manifest"
-assert_contains "$(cat "$argv_file")" "--dynamic-archetypes
-0" "round 1 without eligibility marker forces dynamic-archetypes 0"
+assert_not_contains "$(cat "$argv_file")" "--dynamic-archetypes
+0" "round 1 without eligibility marker does not force dynamic-archetypes 0"
 
 echo "=== step2-spawn-coder.txt alone does not make scout eligible ==="
 case_dir="$TMP/spawn-coder-no-scout-marker"
@@ -197,8 +196,8 @@ printf '{"archetypes":[{"name":"api-contract","focus_area":"correctness","weight
 argv_file="$TMP/spawn-coder-no-scout-marker.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
 assert_not_contains "$(cat "$argv_file")" "--pre-scouted-manifest" "spawn-coder only omits pre-scouted manifest"
-assert_contains "$(cat "$argv_file")" "--dynamic-archetypes
-0" "spawn-coder only forces dynamic-archetypes 0"
+assert_not_contains "$(cat "$argv_file")" "--dynamic-archetypes
+0" "spawn-coder only does not force dynamic-archetypes 0"
 
 echo "=== mav apply never forwards pre-scouted manifest ==="
 case_dir="$TMP/mav-no-scout"
