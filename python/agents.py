@@ -2087,7 +2087,10 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         ],
         check=False,
     )
-    _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), "codex_ci_fix", output.with_suffix(output.suffix + ".token-record"))
+    _token_record_path = output.with_suffix(output.suffix + ".token-record")
+    _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), "codex_ci_fix", _token_record_path)
+    if _token_record_path.is_file():
+        _emit_kv("TOKEN_RECORD", str(_token_record_path))
     _append(output.with_suffix(output.suffix + ".meta"), f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={output}.prompt\nOUTER_LAUNCHER_WORKDIR={Path.cwd()}\n")
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "codex", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
@@ -2201,6 +2204,9 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     _record_cursor_usage_from_output(output, "cursor_ci_fix")
+    _cursor_token_record = output.with_suffix(output.suffix + ".token-record")
+    if _cursor_token_record.is_file():
+        _emit_kv("TOKEN_RECORD", str(_cursor_token_record))
     if result.exit_code == config.EXIT_TIMEOUT and not output.with_suffix(output.suffix + ".stall.json").is_file():
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "cursor", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
