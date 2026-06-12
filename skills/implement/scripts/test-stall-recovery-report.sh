@@ -1519,6 +1519,8 @@ chmod 644 "$dir/stall-recovery-escalation-ledger.tsv"
 assert_eq false "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation routes non-writable canonical ledger to fallback"
 assert_eq true "$(kv ESCALATION_FALLBACK_WRITTEN "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation writes fallback for non-writable canonical ledger"
 assert_contains 'RECORD_ESCALATION_FAILED=true' "$(cat "$dir/stall-recovery-escalation-record-failure.env")" "23: record-escalation writes marker on canonical ledger write failure"
+assert_eq true "$(read_session_key --file "$dir/stall-recovery-escalation-record-failure.env" --key RECORD_ESCALATION_FAILED --default "")" "23: record-escalation marker is parseable KV"
+assert_eq canonical-ledger-not-writable "$(read_session_key --file "$dir/stall-recovery-escalation-record-failure.env" --key REASON --default "")" "23: record-escalation marker reason is parseable KV"
 run_capture "$SANDBOX/case23-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
 assert_eq 0 "$RC" "23: compose-report Tier B exits 0"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.out")" "23: compose-report prints Tier B"
@@ -1557,6 +1559,15 @@ run_capture "$SANDBOX/case23-ledger-only-compose.out" "$SCRIPT" compose-report -
 assert_eq 0 "$RC" "23: escalation-success composes without classification"
 assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-ledger-only-compose.out")" "23: ledger-only report prints"
 assert_not_contains "Failure class | \`unrecoverable\`" "$(cat "$dir/out.md")" "23: ledger-only success report does not claim unrecoverable failure"
+
+dir=$(make_tmp case23-ledger-zero-attempts)
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-ledger-zero-attempts-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site ship-pr --trigger first-fixer-non-health --step 8 --phase ci-initial --dispatcher ship-pr --exit-code 3
+run_capture "$SANDBOX/case23-ledger-zero-attempts-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success initializes missing attempts"
+assert_eq 0 "$(kv attempt_count "$dir/stall-recovery-attempts.env")" "23: escalation-success zero-attempt file is parseable KV"
 
 dir=$(make_tmp case23-tool-failure-only)
 cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
@@ -1768,6 +1779,8 @@ if [ -f "$dir/stall-recovery-operator-action.env" ]; then
 else
     fail "23: operator-action sentinel missing"
 fi
+assert_eq true "$(read_session_key --file "$dir/stall-recovery-operator-action.env" --key STALL_RECOVERY_OPERATOR_ACTION --default "")" "23: operator-action sentinel is parseable KV"
+assert_eq operator-action "$(read_session_key --file "$dir/stall-recovery-operator-action-record.md" --key VERDICT --default "")" "23: operator-action record is parseable KV"
 
 dir=$(make_tmp case23-issue-input-status)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"

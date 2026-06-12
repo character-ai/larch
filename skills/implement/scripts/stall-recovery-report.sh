@@ -1406,7 +1406,9 @@ write_record_escalation_tool_failure() {
 write_record_failure_marker() {
     local tmpdir=$1 marker=$2 reason=$3
     validate_tmpdir_write_file "$tmpdir" "$marker" "--record-failure-marker" false >/dev/null 2>&1 || return 1
-    atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true\nREASON=$reason\n"
+    atomic_write_text "$marker" "RECORD_ESCALATION_FAILED=true
+REASON=$reason
+"
 }
 
 record_escalation_degraded_evidence() {
@@ -1992,7 +1994,10 @@ DISPATCHER=unknown
         validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1
     else
         validate_tmpdir_write_file "$tmpdir" "$attempts_file" "--attempts-file" false || exit 1
-        atomic_write_text "$attempts_file" "version=1\ncreated_utc=$(now_utc)\nattempt_count=0\n" || exit 1
+        atomic_write_text "$attempts_file" "version=1
+created_utc=$(now_utc)
+attempt_count=0
+" || exit 1
     fi
     validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
     validate_optional_tmpdir_read_file "$tmpdir" "$ledger" "--escalation-ledger-file" || exit 1
@@ -2011,8 +2016,12 @@ DISPATCHER=unknown
     verdict=$(parse_root_cause_file "$root_file" verdict "")
     summary=$(parse_root_cause_file "$root_file" summary "")
     if [ "$verdict" = operator-action ]; then
-        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_RECORD" "REPORT_KIND=$kind\nVERDICT=operator-action\nROOT_CAUSE_FILE=$root_file\n" || true
-        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_SENTINEL" "STALL_RECOVERY_OPERATOR_ACTION=true\n" || true
+        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_RECORD" "REPORT_KIND=$kind
+VERDICT=operator-action
+ROOT_CAUSE_FILE=$root_file
+" || true
+        atomic_write_text "$tmpdir/$DEFAULT_OPERATOR_ACTION_SENTINEL" "STALL_RECOVERY_OPERATOR_ACTION=true
+" || true
         emit_kv STALL_RECOVERY_REPORT_KIND "$kind"
         emit_kv STALL_RECOVERY_REPORT_STATUS skipped_operator_action
         emit_kv STALL_RECOVERY_REPORT_TIER skipped
