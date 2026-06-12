@@ -73,6 +73,27 @@ Failed with exit code 124. Output size: 0 bytes.
 exit-code: 1
 ===== diag =====
 {"is_error":true,"result":"backend failed"}
+===== review Step 2 codex-review =====
+exit-code: 7
+===== sidecar =====
+❌ codex agent: FAILED (exit code 7, output 0 bytes)
+===== diag =====
+Failed with exit code 7. Output size: 0 bytes.
+
+===== review Step 2 codex-review =====
+exit-code: 7
+===== sidecar =====
+❌ codex agent: FAILED (exit code 7, output 0 bytes)
+===== diag =====
+Failed with exit code 7. Output size: 0 bytes.
+
+===== review Step 2 cursor-review =====
+exit-code: 8
+===== sidecar =====
+❌ cursor agent: FAILED (exit code 8, output 0 bytes)
+===== diag =====
+Failed with exit code 8. Output size: 0 bytes.
+
 ===== ci fixer codex-ci =====
 exit-code: 127
 STATUS=FAILED
@@ -127,6 +148,13 @@ FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:c
 exit-code: 1
 ===== diag =====
 {"result":""}
+===== review Step 2 cursor-review =====
+exit-code: 8
+===== sidecar =====
+❌ cursor agent: FAILED (exit code 8, output 0 bytes)
+===== diag =====
+Failed with exit code 8. Output size: 0 bytes.
+
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -144,6 +172,13 @@ not-json
 exit-code: 1
 STATUS=FAILED
 FAILURE_REASON=model args failed: LARCH_CURSOR_MODEL must not contain POSIX [[:cntrl:]] characters
+===== review Step 2 codex-review =====
+exit-code: 7
+===== sidecar =====
+❌ codex agent: FAILED (exit code 7, output 0 bytes)
+===== diag =====
+Failed with exit code 7. Output size: 0 bytes.
+
 ===== ci fixer cursor-ci =====
 exit-code: 124
 ===== diag =====
@@ -292,3 +327,10 @@ agent launch-cursor-ci: cursor-auth-preflight failed.
   To fix, choose one:
     (a) export CURSOR_API_KEY=<your-cursor-api-key>
     (b) security delete-generic-password -a cursor-user 2>/dev/null; cursor login
+===== review Step 2 codex-review =====
+exit-code: 7
+===== sidecar =====
+❌ codex agent: FAILED (exit code 7, output 0 bytes)
+===== diag =====
+Failed with exit code 7. Output size: 0 bytes.
+
