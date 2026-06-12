@@ -1871,6 +1871,120 @@ run_capture "$SANDBOX/case23-normalize-forked-ci-failed.out" "$SCRIPT" normalize
 assert_eq forked-dry-run "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: normalize-outcome preserves forked outcome"
 assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: forked dry-run succeeds without CI_PASSED"
 
+dir=$(make_tmp case24-public-signature)
+cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=dispatch-failure
+FAILURE_SIGNATURE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+STALL_STEP=2
+PHASE=implementation
+BAIL_REASON=wrapper-validation-failure
+EXIT_CODE=4
+MATCHED_CLASSIFIER_PATTERN=dispatch-output
+DISPATCHER=codex
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=dispatcher envelope regression
+
+The dispatcher returned a malformed envelope in the retry path.
+EOF
+cp "$dir/stall-recovery-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-issue-input.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/issue.md"
+assert_eq 0 "$RC" "24: non-legacy issue-input composition exits 0"
+assert_eq "" "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-issue-input.out")" "24: issue-input composition emits no branchable status"
+assert_eq a123f505e4cef146b80a49ca0a4a93e0a3ea2c123a59ba471c6e6e056116d038 "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" "24: public signature golden vector"
+assert_contains '<!-- larch-stall:signature=a123f505e4cef146b80a49ca0a4a93e0a3ea2c123a59ba471c6e6e056116d038 -->' "$(cat "$dir/issue.md")" "24: Tier A artifact includes public marker"
+assert_not_contains 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$(cat "$dir/issue.md")" "24: public marker does not use retry failure signature"
+
+dir2=$(make_tmp case24-public-signature-stability)
+cp "$dir/stall-recovery-classification.env" "$dir2/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir2/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir2/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir2/stall-recovery-bounded-root-cause.md"
+printf 'RUN_ID=run-specific-id
+BRANCH_NAME=feature/specific-branch
+' >"$dir2/session-env.sh"
+run_capture "$SANDBOX/case24-stability.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir2" --report-kind terminal-failure --surface issue-input --output-file "$dir2/issue.md"
+assert_eq "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-stability.out")" "24: terminal public signature ignores repo/run fields"
+
+dir=$(make_tmp case24-tier-b-dry-run)
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-dry-run.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-dry-run.out")" "24: Tier B dry-run emits dry-run status"
+assert_contains '<!-- larch-stall:signature=' "$(cat "$dir/chat.md")" "24: Tier B artifact includes public marker"
+
+dir=$(make_tmp case24-tier-b-file)
+mkdir -p "$dir/bin"
+cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    printf '%s\n' 'https://github.com/character-ai/larch/issues/99'
+    exit 0
+fi
+exit 9
+EOF
+chmod +x "$dir/bin/gh"
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-file.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq filed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-file.out")" "24: Tier B create success emits filed"
+assert_eq https://github.com/character-ai/larch/issues/99 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-tier-b-file.out")" "24: Tier B create success emits URL"
+assert_contains 'issue create -R character-ai/larch --title' "$(cat "$dir/gh.log")" "24: Tier B passes title to cross-repo filer"
+assert_contains "stall-recovery-bounded-root-cause-public.md" "$(cat "$dir/gh.log")" "24: Tier B passes bounded root-cause slice"
+assert_not_contains "stall-recovery-root-cause.md" "$(cat "$dir/gh.log")" "24: Tier B does not pass raw root-cause file"
+
+dir=$(make_tmp case24-normalize-comment-url)
+cat >"$dir/file.env" <<'EOF'
+FILE_FAILURE_REPORT_STATUS=dedup-comment
+FILE_FAILURE_REPORT_URL=https://github.com/owner/repo/issues/7#issuecomment-99
+EOF
+run_capture "$SANDBOX/case24-normalize-comment-url.out" "$SCRIPT" normalize-file-failure-report-env --implement-tmpdir "$dir" --file-failure-report-env "$dir/file.env"
+assert_eq dedup-comment "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-normalize-comment-url.out")" "24: helper status maps dedup-comment"
+assert_eq https://github.com/owner/repo/issues/7#issuecomment-99 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-normalize-comment-url.out")" "24: helper URL maps canonical URL"
+assert_eq "" "$(kv STALL_RECOVERY_REPORT_ISSUE_URL "$SANDBOX/case24-normalize-comment-url.out")" "24: comment URL does not populate issue URL alias"
+
+dir=$(make_tmp case24-escalation-signature-a)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=step5\ttrigger=main-agent-required\tstep=5\tphase=review\n' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case24-escalation-signature-a.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/chat.md"
+dir2=$(make_tmp case24-escalation-signature-b)
+cp "$dir/stall-recovery-classification.env" "$dir2/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir2/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir2/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir2/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir2/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=ship-pr\ttrigger=main-agent-required\tstep=5\tphase=review\n' >"$dir2/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case24-escalation-signature-b.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir2" --report-kind escalation-success --surface chat-print --output-file "$dir2/chat.md"
+if [ "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-a.out")" != "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-b.out")" ]; then
+    pass "24: escalation public signature changes with sanitized site"
+else
+    fail "24: escalation public signature changes with sanitized site"
+fi
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

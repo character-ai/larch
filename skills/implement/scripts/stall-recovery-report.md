@@ -20,6 +20,8 @@ The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
 - root-cause finding: `stall-recovery-root-cause.md`
 - bounded root-cause finding: `stall-recovery-bounded-root-cause.md`
 - root-caused title: `stall-recovery-title.txt`
+- Tier A dedup slices: `stall-recovery-tier-a-attempts.md`, `stall-recovery-tier-a-escalation.md`, `stall-recovery-tier-a-root-cause.md`
+- Tier B dedup slices: `stall-recovery-bounded-attempts.md`, `stall-recovery-bounded-escalation-summary.md`, `stall-recovery-bounded-root-cause-public.md`
 
 These names are internal constants so `/design` can later parameterize the same engine without forking it. Public generic profile flags such as `--profile generic`, `--artifact-prefix`, state-file overrides, vocabulary overrides, and generic ledger overrides are deferred to #3992.
 
@@ -32,6 +34,9 @@ These names are internal constants so `/design` can later parameterize the same 
 - `record-escalation --implement-tmpdir <path> --site <token> --trigger <token> --step <token> --phase <token> [--dispatcher <token>] [--exit-code <n>] [--failure-detail-log <path>]` appends one canonical ledger row. The canonical ledger path is always `stall-recovery-escalation-ledger.tsv`. Invalid, outside-tmpdir, symlinked, non-regular, or malformed paths fail closed. Append failures write fallback evidence or the record-failure marker and add a tagged `record-escalation` Tool Failure when possible.
 - `normalize-outcome --implement-tmpdir <path>` is the shared final-outcome API used by `write-final-report.sh` and Step 18a.5. It emits `IMPLEMENT_NORMALIZED_OUTCOME=<token>`, `IMPLEMENT_OUTCOME_SUCCEEDED=true|false`, stall-tracking layer diagnostics, and the state fields used in the decision.
 - `compose-report --report-kind terminal-failure|escalation-success --surface issue-input|chat-print ...` is the single public report-rendering API. It writes Tier A issue input or Tier B chat-print output and emits normalized report env fields.
+- `dedup-tier-a-report --implement-tmpdir <path>` runs the normalized Tier A exact-signature dedup pre-pass against the same current repository that `/larch:issue` will use.
+- `normalize-file-failure-report-env ...` maps cross-repo helper `FILE_FAILURE_REPORT_*` output to canonical `STALL_RECOVERY_REPORT_*` output.
+- `validate-tier-b-public-file ...` reuses the Tier B sensitive-token rejection path for bounded public comment bodies.
 - `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns.
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
 - `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles.
@@ -80,9 +85,11 @@ summary=<single-line safe summary>
 
 ## Tier behavior
 
-Tier A is a larch dev clone with `FORKED_TARGET=false`. Tier A uses `issue-input`, bypasses TSV field allowlists, and redacts secrets from the complete public heading and body. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after secret redaction.
+Tier A is a larch dev clone with `FORKED_TARGET=false`. Tier A uses `issue-input`, bypasses TSV field allowlists, and redacts secrets from the complete public heading and body. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after secret redaction. Tier A files in the current larch repository through `/larch:issue`, but first runs exact-signature dedup against that same current repository.
 
-Tier B covers consumer repos and forked runs. Tier B writes `chat-print` only. It renders allowlisted machine fields plus validated bounded root-cause prose. `compose-report` requires `stall-recovery-sensitive-corpus.env` for Tier B and rejects bounded prose, titles, and chat-print output that contain excluded client-bearing values or raw evidence text. Allowlisted larch operational enums and machine fields are exempt, including step tokens, phase tokens, site tokens, trigger tokens, bail tokens, dispatcher names, `lint-fix-loop`, `ship-pr`, and `main-agent-required`.
+Tier B covers consumer repos and forked runs. Tier B writes the sanitized `chat-print` artifact, resolves the upstream larch repository from `.claude-plugin/plugin.json`, then files or comments in that upstream repository through `scripts/file-failure-report-cross-repo.sh`. It renders allowlisted machine fields plus validated bounded root-cause prose. `compose-report` requires `stall-recovery-sensitive-corpus.env` for Tier B and rejects bounded prose, titles, chat-print output, and public dedup comment bodies that contain excluded client-bearing values or raw evidence text. Allowlisted larch operational enums and machine fields are exempt, including step tokens, phase tokens, site tokens, trigger tokens, bail tokens, dispatcher names, `lint-fix-loop`, `ship-pr`, and `main-agent-required`.
+
+Consumer and forked runs file Tier B reports on the public upstream larch repository under the operator's GitHub identity. If repo resolution, lookup, auth, network, create, or comment posting fails, the helper emits `STALL_RECOVERY_REPORT_STATUS=fallback-print-required` and preserves `stall-recovery-chat-print.md` for manual filing.
 
 Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
 
@@ -101,6 +108,42 @@ Escalation-success reports use:
 ```
 
 Explicit title text comes from `stall-recovery-title.txt`. If it is unsafe, composition falls back to the validated root-cause summary. If neither is safe, composition fails closed and requires a rewrite. The full heading and body are redacted after composition.
+
+## Public report dedup signature
+
+Retry failure signatures and public report dedup signatures are separate. `FAILURE_SIGNATURE` remains private retry state. Public issue dedup uses `REPORT_DEDUP_SIGNATURE` only in this marker:
+
+```text
+<!-- larch-stall:signature=<64-hex> -->
+```
+
+The canonical seed grammar is:
+
+- version line `larch-stall-report-dedup-v1`
+- UTF-8 text with LF endings and a final newline
+- fixed field order by report kind
+- each field line encoded as `key<TAB>byte_length<TAB>value`
+- SHA-256, lowercase 64-hex output
+
+Terminal-failure seeds include only `report_kind`, `failure_class`, `step`, `phase`, and `safe_bail_token`. Escalation-success seeds include those fields plus sanitized `escalation_site` and `escalation_trigger` from the same first ledger or fallback row used in the title. The seed excludes dispatcher, matched classifier, evidence digests, paths, branches, run IDs, raw state, raw logs, and `skill=implement`. Skill-aware hashing is deferred to the `/design` port.
+
+Tier A places the marker immediately after the `###` title line so `/larch:issue` preserves it. Tier B places the marker near the top of `stall-recovery-chat-print.md`. The final Tier B body is validated after marker insertion and before cross-repo filing.
+
+## Filing and status normalization
+
+`scripts/file-failure-report-cross-repo.sh` fetches all open issues with bodies, ignores pull requests, exact-matches the public marker, and comments `+1 occurrence` on duplicates. Tier B uses the same helper for create and comment paths. Tier A uses it only through `dedup-tier-a-report`; after `no-match` or `lookup-failed-open`, callers continue to `/larch:issue --input-file ... --no-dedup`.
+
+Helper output maps to canonical status:
+
+- `filed` to `STALL_RECOVERY_REPORT_STATUS=filed`
+- `dry-run` to `STALL_RECOVERY_REPORT_STATUS=dry-run`
+- `dedup-comment`, `no-match`, `fallback-print-required`, and `lookup-failed-open` pass through
+
+`STALL_RECOVERY_REPORT_URL` is the canonical URL for notices. `STALL_RECOVERY_REPORT_ISSUE_URL` and `STALL_RECOVERY_REPORT_ISSUE_NUMBER` are compatibility aliases only for issue URLs. Dedup-comment URLs do not populate issue URL aliases.
+
+Dry-run is local-only. It skips Tier A dedup, `/larch:issue`, upstream resolution, and cross-repo filing, then emits `STALL_RECOVERY_REPORT_STATUS=dry-run`.
+
+Tier B dedup comments may include only bounded public slices: bounded attempts, allowlisted escalation site/trigger summaries, and bounded root-cause prose. Tier B callers must not pass raw ledgers, raw root-cause files, full report bodies, raw logs, paths, branches, or run IDs to the comment path.
 
 ## Surface Allowlists
 
@@ -146,4 +189,4 @@ For `same-cause-repeat`, the orchestrator uses the alternate strategy immediatel
 
 ## Dry run
 
-`LARCH_STALL_RECOVERY_DRY_RUN=1` makes report composition write local artifacts and emit `DRY_RUN_DECISION=true`. Callers must skip `/larch:issue` when dry-run is true.
+`LARCH_STALL_RECOVERY_DRY_RUN=1` makes report composition write local artifacts and emit `DRY_RUN_DECISION=true`. Callers must skip `/larch:issue`, Tier A dedup, upstream resolution, and cross-repo filing when dry-run is true.
