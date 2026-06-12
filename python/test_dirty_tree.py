@@ -92,6 +92,26 @@ def test_baseline_missing_with_untracked_is_ambiguous(monkeypatch, tmp_path) -> 
     assert "REASON=baseline-missing-untracked-ambiguous" in lines
 
 
+def test_baseline_missing_with_untracked_still_writes_tracked_sidecar(monkeypatch, tmp_path) -> None:
+    def fake_run_bytes(argv: list[str]) -> tuple[int, bytes]:
+        if argv[:4] == ["git", "diff", "--name-only", "--cached"]:
+            return 0, b"python/test_dirty_tree.py\0"
+        if argv[:3] == ["git", "diff", "--name-only"]:
+            return 0, b"python/dirty_tree.py\0"
+        if argv[:2] == ["git", "ls-files"]:
+            return 0, b"new.txt\0"
+        return 0, b""
+
+    monkeypatch.setattr(dirty_tree, "_run_bytes", fake_run_bytes)  # pyright: ignore[reportPrivateUsage]
+    sidecar = tmp_path / "dirty-sidecar"
+    lines = dirty_tree.baseline(baseline_path=str(tmp_path / "missing.z"), sidecar=str(sidecar))
+    tracked = sidecar.with_name(sidecar.name + ".tracked-paths")
+    assert "STATUS=unknown" in lines
+    assert "REASON=baseline-missing-untracked-ambiguous" in lines
+    assert f"TRACKED_PATHS_FILE={tracked}" in lines
+    assert tracked.read_bytes() == b"python/dirty_tree.py\0python/test_dirty_tree.py\0"
+
+
 def test_baseline_dirty_writes_sidecar_paths(monkeypatch, tmp_path) -> None:
     baseline = tmp_path / "baseline.z"
     baseline.write_bytes(b"old.txt\0")

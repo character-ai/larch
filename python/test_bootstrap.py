@@ -141,6 +141,28 @@ def test_tracking_helper_failure_stalls_before_sentinel(tmp_path, monkeypatch) -
     assert not (tmp_path / "parent-issue.md").exists()
 
 
+def test_tracking_parent_sentinel_requires_explicit_issue_number(tmp_path, monkeypatch, capsys) -> None:
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=R1\n", encoding="utf-8")
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "tracking-issue-read.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, "ADOPTED=true\nISSUE_NUMBER=7\nRUN_ID=R1\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="tracking"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        repo_unavailable="false",
+    )
+    with pytest.raises(bootstrap.BootstrapExit) as exc_info:
+        bootstrap._phase_tracking(st)  # pyright: ignore[reportPrivateUsage]
+    assert exc_info.value.code == 2
+    assert "STEP_FAILED=issue-number-required-for-resume" in capsys.readouterr().out
+
+
 def test_emergency_bypass_validates_issue_and_consumes_invalid_log(tmp_path, monkeypatch) -> None:
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
@@ -368,6 +390,29 @@ def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkey
     assert "could not write bootstrap-routing.env" in captured.err
 
 
+def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    (tmp_path / "bootstrap-routing.env").write_text(
+        f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\ncoder_fallback=true\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        print(f"PLAN_FILE={tmp_path / 'plan.txt'}")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    out = capsys.readouterr().out
+    stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
+    assert "coder=codex" in out
+    assert "coder_fallback=true" in out
+    assert "coder=codex" in stored
+    assert "coder_fallback=true" in stored
+
+
 def test_routing_parser_preserve_coder_on_resume(tmp_path, capsys) -> None:
     tmpdir = tmp_path / "impl"
     tmpdir.mkdir()
@@ -426,6 +471,68 @@ def test_phase_coder_selection_matrix(
     assert st.coder_fallback == expected_fallback
     assert bool(explicit_warnings) is expected_explicit_warning
     assert bool(fallback_reasons) is (expected_fallback == "true")
+
+
+def test_phase_coder_emergency_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
+    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    explicit_warnings: list[tuple[str, str]] = []
+    fallback_reasons: list[str] = []
+    monkeypatch.setattr(
+        bootstrap,
+        "_record_explicit_coder_unavailable",
+        lambda _st, req, selected: explicit_warnings.append((req, selected)),
+    )  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda _st, reason: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", emergency_requested="true"),
+        implement_tmpdir=str(tmp_path),
+        repo_unavailable="false",
+        plan_file=str(tmp_path / "plan.txt"),
+        codex_available="true",
+        cursor_available="true",
+    )
+    bootstrap._phase_coder(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.coder == "claude"
+    assert st.coder_fallback == ""
+    assert not explicit_warnings
+    assert not fallback_reasons
+
+
+@pytest.mark.parametrize(
+    ("step_failed", "log_name"),
+    [
+        ("copy-plan", "copy-plan.stderr.log"),
+        ("gh-issue-view", "gh-issue-view.stderr.log"),
+    ],
+)
+def test_invoke_error_redacts_step_logs(tmp_path, capsys, step_failed: str, log_name: str) -> None:
+    impl = tmp_path / "claude-implement-larch8-AbC123"
+    impl.mkdir()
+    token = "ghp_" + ("A" * 24)
+    (impl / log_name).write_text(f"{impl}/secret.txt token {token}\n", encoding="utf-8")
+    bootstrap._invoke_error(step_failed, f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED={step_failed}\n", str(impl))  # pyright: ignore[reportPrivateUsage]
+    err = capsys.readouterr().err
+    assert token not in err
+    assert str(impl) not in err
+    assert "<TMPDIR>" in err
+
+
+def test_invoke_error_redaction_failure_uses_fixed_diagnostic(tmp_path, monkeypatch, capsys) -> None:
+    impl = tmp_path / "claude-implement-larch8-AbC123"
+    impl.mkdir()
+    token = "ghp_" + ("A" * 24)
+    (impl / "copy-plan.stderr.log").write_text(f"{impl}/secret.txt token {token}\n", encoding="utf-8")
+
+    def fail_run(*args, **_kwargs):
+        return subprocess.CompletedProcess(args[0], 1, "", "failed\n")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fail_run)
+    bootstrap._invoke_error("copy-plan", f"IMPLEMENT_TMPDIR={impl}\nSTEP_FAILED=copy-plan\n", str(impl))  # pyright: ignore[reportPrivateUsage]
+    err = capsys.readouterr().err
+    assert "diagnostic redaction failed" in err
+    assert token not in err
+    assert str(impl) not in err
 
 
 def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> None:

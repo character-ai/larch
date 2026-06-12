@@ -372,6 +372,8 @@ def _phase_tracking(st: BootstrapState) -> None:
                     st.emit_step_failed("resume-plan-tail-sentinel")
                 with contextlib.suppress(OSError):
                     sentinel.unlink()
+            elif not st.opts.issue_number:
+                st.emit_step_failed("issue-number-required-for-resume")
             elif _valid_issue(issue) and _valid_run_id(run_id):
                 st.branch_selected = "branch-1-resume"
                 st.issue_number_resolved = issue
@@ -874,6 +876,25 @@ def _filtered_envelope(text: str, *, resume: bool) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _preserve_resume_routing(envelope: str, routing_file: Path) -> str:
+    if not routing_file.is_file() or routing_file.is_symlink():
+        return envelope
+    try:
+        prior = _parse_env_lines(routing_file.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return envelope
+    data = _parse_env_lines(envelope)
+    changed = False
+    for key in ("coder", "coder_fallback"):
+        if not data.get(key) and prior.get(key):
+            data[key] = prior[key]
+            changed = True
+    if not changed:
+        return envelope
+    lines = [f"{key}={data[key]}" for key in ROUTING_KEYS if data.get(key)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def _redact_text(text: str, *, implement_tmpdir: str = "") -> str:
     current = text
     # The CLI redactors are stdin filters. If either filter fails, prefer a
@@ -1002,6 +1023,8 @@ def invoke_main(argv: list[str]) -> int:
         print("bootstrap invoke: refusing to overwrite non-regular bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
         sys.stdout.write(envelope)
         return 0
+    if args.mode == "resume":
+        envelope = _preserve_resume_routing(envelope, routing_file)
     try:
         _atomic_text(routing_file, envelope)
     except OSError as exc:

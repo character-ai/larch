@@ -117,6 +117,17 @@ def baseline(*, baseline_path: str, sidecar: str = "") -> list[str]:
     current_untracked_set = _split_nul(current_untracked)
     baseline_file = Path(baseline_path)
     baseline_state = "present" if baseline_file.is_file() else "missing"
+    prefix = sidecar or str(Path(tempfile.gettempdir()) / f"larch-mid-run-dirty-tree.{os.getpid()}")
+    tracked_paths_file = ""
+    if tracked:
+        tracked_paths_file = prefix + ".tracked-paths"
+        if not _write_atomic(Path(tracked_paths_file), b"\0".join(tracked) + b"\0"):
+            return _result_lines(
+                status="unknown",
+                mode="baseline",
+                reason="tracked-paths-write-failed",
+                baseline_state=baseline_state,
+            )
     new_untracked: list[bytes] = []
     if baseline_state == "present":
         try:
@@ -135,20 +146,10 @@ def baseline(*, baseline_path: str, sidecar: str = "") -> list[str]:
             mode="baseline",
             reason="baseline-missing-untracked-ambiguous",
             baseline_state=baseline_state,
+            tracked_paths_file=tracked_paths_file,
         )
 
-    prefix = sidecar or str(Path(tempfile.gettempdir()) / f"larch-mid-run-dirty-tree.{os.getpid()}")
-    tracked_paths_file = ""
     new_untracked_paths_file = ""
-    if tracked:
-        tracked_paths_file = prefix + ".tracked-paths"
-        if not _write_atomic(Path(tracked_paths_file), b"\0".join(tracked) + b"\0"):
-            return _result_lines(
-                status="unknown",
-                mode="baseline",
-                reason="tracked-paths-write-failed",
-                baseline_state=baseline_state,
-            )
     if new_untracked:
         new_untracked_paths_file = prefix + ".new-untracked-paths"
         if not _write_atomic(Path(new_untracked_paths_file), b"\0".join(new_untracked) + b"\0"):
