@@ -1995,3 +1995,29 @@ def test_run_relevant_checks_marks_step6_ledger(
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)
+
+def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = StubRunner()
+    checks_log = tmp_path / "checks.log"
+    checks_log.write_text("lint failed\n", encoding="utf-8")
+    run_parent = tmp_path / "lint-fix-loop"
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step5-self-review",
+        checks_log=str(checks_log),
+        repo_root=str(repo),
+        codex_present=False,
+        cursor_present=False,
+        run_parent=str(run_parent),
+        allowed_tmpdir=str(tmp_path),
+    )
+    assert outcome.status == "main-agent-required"
+    assert outcome.ledger_ready is True
+    assert outcome.ledger_site == "step5-self-review"
+    assert outcome.ledger_trigger == "main-agent-required"
+    assert outcome.ledger_step == "5"
+    assert outcome.ledger_phase == "review"
+    assert outcome.ledger_dispatcher == "lint-fix-loop"
+    assert outcome.ledger_failure_detail_log == str(checks_log)

@@ -2526,3 +2526,23 @@ def test_oos_check_no_signal_when_no_accepted_oos_files(
 
     assert result.outcome is Outcome.STALLED
     assert "past-oos-check" in result.detail
+
+def test_needs_user_ship_result_includes_ledger_ready_keys() -> None:
+    result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED))
+    data = result.to_json_dict()
+    assert data["ledger_ready"] is True
+    assert data["ledger_site"] == "ship-pr"
+    assert data["ledger_trigger"] == config.NEEDS_USER_CI_FIX_EXHAUSTED
+    assert data["ledger_step"] == "8"
+    assert data["ledger_phase"] == "ci-merge"
+    assert data["ledger_dispatcher"] == "ship-pr"
+    assert data["ledger_exit_code"] == config.EXIT_NEEDS_USER_INPUT
+    assert "ledger_failure_detail_log" in data
+
+def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
+    detail = f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:job_1,job-2"
+    result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, detail))
+    data = result.to_json_dict()
+    assert data["needs_user_reason"] == detail
+    assert data["ledger_ready"] is True
+    assert data["ledger_trigger"] == detail

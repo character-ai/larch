@@ -1464,6 +1464,81 @@ assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-awk-metachar.out")" "22: seed-
 assert_eq review "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
 assert_eq 5 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
 
+
+# New terminal-only / escalation-success reporting seams.
+dir=$(make_tmp case23-normalize)
+printf 'STALL_TRACKING=false
+MERGE_RESULT=already_merged
+' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case23-normalize.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
+assert_eq force-merged-externally "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize.out")" "23: normalize-outcome maps already_merged"
+assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize.out")" "23: normalize-outcome success allowlist accepts force-merged"
+printf 'STALL_TRACKING=true
+' >"$dir/finalize-state.sh"
+run_capture "$SANDBOX/case23-normalize-stall.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
+assert_eq stalled "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-stall.out")" "23: normalize-outcome any stall layer wins"
+assert_eq false "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-stall.out")" "23: normalize-outcome rejects active stall"
+
+dir=$(make_tmp case23-compose)
+cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=lint-failure
+FAILURE_SIGNATURE=abcdef
+STALL_STEP=5
+PHASE=review
+BAIL_REASON=wrapper-validation-failure
+EXIT_CODE=1
+MATCHED_CLASSIFIER_PATTERN=lint-output
+DISPATCHER=codex
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop missed retry path
+
+Observation: stall-recovery-escalation-ledger.tsv shows a handoff.
+EOF
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop missed retry path
+
+Bounded larch-only finding.
+EOF
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+assert_eq true "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record.out")" "23: record-escalation writes canonical ledger"
+run_capture "$SANDBOX/case23-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: compose-report Tier B exits 0"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.out")" "23: compose-report prints Tier B"
+assert_contains '[Bug] /implement escalation: lint fix loop missed retry path' "$(cat "$dir/out.md")" "23: compose-report root-caused title"
+assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
+
+dir=$(make_tmp case23-operator)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env" 2>/dev/null || cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=unrecoverable
+STALL_STEP=8
+PHASE=ci-initial
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=operator-action
+confidence=medium
+summary=operator stopped the run
+
+Observation: operator action.
+EOF
+run_capture "$SANDBOX/case23-operator.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq skipped_operator_action "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-operator.out")" "23: operator-action skips filing"
+[ -f "$dir/stall-recovery-operator-action.env" ] && pass "23: operator-action sentinel written" || fail "23: operator-action sentinel missing"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

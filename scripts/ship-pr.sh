@@ -1258,8 +1258,26 @@ record_ci_counters() {
 
 needs_user_bail_reason() {
     case "$1" in
-        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|first-fixer-non-health) return 0 ;;
+        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|first-fixer-non-health|ci-fix-exhausted|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix) return 0 ;;
         *) return 1 ;;
+    esac
+}
+
+emit_ship_pr_ledger_ready() {
+    local reason=$1 phase=${2:-ci-merge} detail_log=${3:-}
+    case "$reason" in
+        ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
+            printf 'SHIP_PR_LEDGER_READY=true\n'
+            printf 'SHIP_PR_LEDGER_SITE=ship-pr\n'
+            printf 'SHIP_PR_LEDGER_TRIGGER=%s\n' "$reason"
+            printf 'SHIP_PR_LEDGER_STEP=8\n'
+            printf 'SHIP_PR_LEDGER_PHASE=%s\n' "$phase"
+            printf 'SHIP_PR_LEDGER_DISPATCHER=ship-pr\n'
+            printf 'SHIP_PR_LEDGER_EXIT_CODE=3\n'
+            case "$detail_log" in
+                "$IMPLEMENT_TMPDIR"/*) printf 'SHIP_PR_LEDGER_FAILURE_DETAIL_LOG=%s\n' "$detail_log" ;;
+            esac
+            ;;
     esac
 }
 
@@ -2933,6 +2951,7 @@ EOF
                 if ! is_autonomous_exit3_bail_reason "$bail_reason"; then
                     state_set BAIL_NEEDS_USER_INPUT true
                 fi
+                emit_ship_pr_ledger_ready "$bail_reason" "$phase" "$(kv_value BAIL_FAILURE_DETAIL_LOG "$out")"
                 exit 3
             fi
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12d)"

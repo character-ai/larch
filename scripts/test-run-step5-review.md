@@ -15,3 +15,5 @@ Coverage:
 - Downstream stdout remains visible to the caller for Step 5 parsing.
 
 Update alongside `scripts/run-step5-review.sh`.
+
+- Ledger regression coverage asserts stdout preservation, canonical recording for `coder-main-agent-required`, fallback fail-open behavior, exact `STEP5_REVIEW_LEDGER_*` emission for MAV, and no duplicate prompt-side records.

@@ -205,3 +205,9 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 ## Edit In Sync
 
 When changing phase names, exit-code meaning, helper stdout parsing, state keys, or rebase behavior, update `skills/implement/SKILL.md`, `python/test_session_env.py`, `scripts/test-implement-structure.sh`, `skills/implement/references/conflict-resolution.md`, and this file together. Script edits also follow `.claude/rules/script-md-siblings.md`: keep sibling `.md` files in sync with behavior changes.
+
+## Escalation ledger-ready handoffs
+
+Bash `ship-pr.sh` emits ledger-ready data for opt-in handoffs that return work to Main Claude: CI-fix exhaustion, first-fixer non-health, local unfixable, and ship-pr-internal lint-fix `main-agent-required`. The orchestrator records once before Main Claude edits. The script does not append the escalation ledger directly.
+
+For ship-pr-internal lint-fix `main-agent-required`, the helper returns before `run_recovery_waterfall` or other CI-fix edits and leaves stall tracking false before Step 8+ resumes. Terminal failures absorb any ship-pr ledger evidence into the terminal report.

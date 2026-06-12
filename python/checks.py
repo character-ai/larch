@@ -25,6 +25,8 @@ from proc import CommandResult, Runner
 _SITE_LABELS: Final[dict[str, str]] = {
     "step3": "Step 3",
     "step5": "Step 5",
+    "step5-self-review": "Step 5",
+    "step5-mav": "Step 5",
     "step6": "Step 6",
     "ship-pr-ci-initial": "ship-pr CI initial",
     "ship-pr-ci-merge": "ship-pr CI merge",
@@ -59,6 +61,14 @@ class FixOutcome:
     commit_sha: str | None
     head_changed: bool
     coder_tool: str | None
+    ledger_ready: bool = False
+    ledger_site: str = ""
+    ledger_trigger: str = ""
+    ledger_step: str = ""
+    ledger_phase: str = ""
+    ledger_dispatcher: str = ""
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log: str = ""
 
 
 @dataclass
@@ -1111,6 +1121,14 @@ def run_lint_fix(
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
+            ledger_ready=True,
+            ledger_site=site,
+            ledger_trigger="main-agent-required",
+            ledger_step="5" if site.startswith("step5") else ("6" if site == "step6" else ("3" if site == "step3" else "8")),
+            ledger_phase="review" if site.startswith("step5") else ("checks" if site in {"step3", "step6"} else "ci-merge"),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=0,
+            ledger_failure_detail_log=str(log_path),
         )
     cwd = repo_root
     site_label = _site_label(site)
@@ -1174,6 +1192,14 @@ def run_lint_fix(
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
+            ledger_ready=True,
+            ledger_site=site,
+            ledger_trigger="main-agent-required",
+            ledger_step="5" if site.startswith("step5") else ("6" if site == "step6" else ("3" if site == "step3" else "8")),
+            ledger_phase="review" if site.startswith("step5") else ("checks" if site in {"step3", "step6"} else "ci-merge"),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(log_path),
         )
     try:
         current_head = git.rev_parse(runner, "HEAD", cwd=cwd)

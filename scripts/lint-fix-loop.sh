@@ -35,7 +35,41 @@ RUN_EXTERNAL_AGENT_SH="${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH:-$SCRIPT_DIR/run-ex
 LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH:-$SCRIPT_DIR/launch-codex-exec.sh}"
 
 usage() {
-    larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job --checks-log REDACTED_LOG_FILE [--target-cmd-args-file PATH]"
+    larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step5-self-review|step5-mav|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job --checks-log REDACTED_LOG_FILE [--target-cmd-args-file PATH]"
+}
+
+lint_fix_ledger_step() {
+    case "$SITE" in
+        step3) printf '3\n' ;;
+        step5|step5-self-review|step5-mav) printf '5\n' ;;
+        step6) printf '6\n' ;;
+        ship-pr-ci-*) printf '8\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+lint_fix_ledger_phase() {
+    case "$SITE" in
+        step3|step6) printf 'checks\n' ;;
+        step5|step5-self-review|step5-mav) printf 'review\n' ;;
+        ship-pr-ci-initial) printf 'ci-initial\n' ;;
+        ship-pr-ci-merge|ship-pr-ci-per-job) printf 'ci-merge\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+emit_lint_fix_ledger_ready() {
+    local trigger=${1:-main-agent-required} exit_code=${2:-0}
+    emit_kv LINT_FIX_LEDGER_READY true
+    emit_kv LINT_FIX_LEDGER_SITE "$SITE"
+    emit_kv LINT_FIX_LEDGER_TRIGGER "$trigger"
+    emit_kv LINT_FIX_LEDGER_STEP "$(lint_fix_ledger_step)"
+    emit_kv LINT_FIX_LEDGER_PHASE "$(lint_fix_ledger_phase)"
+    emit_kv LINT_FIX_LEDGER_DISPATCHER lint-fix-loop
+    emit_kv LINT_FIX_LEDGER_EXIT_CODE "$exit_code"
+    case "${CHECKS_LOG:-}" in
+        "$IMPLEMENT_TMPDIR"/*) emit_kv LINT_FIX_LEDGER_FAILURE_DETAIL_LOG "$CHECKS_LOG" ;;
+    esac
 }
 
 fail_status() {
@@ -478,12 +512,12 @@ done
 }
 case "$SITE" in
     step3) SITE_LABEL="Step 3" ;;
-    step5) SITE_LABEL="Step 5" ;;
+    step5|step5-self-review|step5-mav) SITE_LABEL="Step 5" ;;
     step6) SITE_LABEL="Step 6" ;;
     ship-pr-ci-initial) SITE_LABEL="ship-pr CI initial" ;;
     ship-pr-ci-merge) SITE_LABEL="ship-pr CI merge" ;;
     ship-pr-ci-per-job) SITE_LABEL="ship-pr CI per-job" ;;
-    *) larch_err "lint-fix-loop.sh: --site must be step3, step5, step6, ship-pr-ci-initial, ship-pr-ci-merge, or ship-pr-ci-per-job"; exit 2 ;;
+    *) larch_err "lint-fix-loop.sh: --site must be step3, step5, step5-self-review, step5-mav, step6, ship-pr-ci-initial, ship-pr-ci-merge, or ship-pr-ci-per-job"; exit 2 ;;
 esac
 if [[ "$SITE" == "ship-pr-ci-per-job" ]]; then
     [[ -n "$TARGET_CMD_ARGS_FILE" && -f "$TARGET_CMD_ARGS_FILE" && ! -L "$TARGET_CMD_ARGS_FILE" ]] || {
@@ -516,6 +550,7 @@ case "$CURSOR_PRESENT" in true|false) ;; *) CURSOR_PRESENT=false ;; esac
 if [[ "$CODEX_PRESENT" != "true" && "$CURSOR_PRESENT" != "true" ]]; then
     emit_kv LINT_FIX_STATUS main-agent-required
     emit_kv LINT_FIX_SITE "$SITE"
+    emit_lint_fix_ledger_ready main-agent-required 0
     exit 0
 fi
 
@@ -575,6 +610,7 @@ else
     emit_kv LINT_FIX_STATUS main-agent-required
     emit_kv FAILURE_REASON dispatch-failed
     emit_kv LINT_FIX_SITE "$SITE"
+    emit_lint_fix_ledger_ready main-agent-required 1
     emit_kv LINT_FIX_RUN_DIR "$run_dir"
     if [[ -n "$_LINT_FIX_STDERR_TAIL_STEM" ]]; then
         emit_kv STDERR_TAIL_PATH "$_LINT_FIX_STDERR_TAIL_STEM"

@@ -48,3 +48,18 @@ Exceptions: none. Missing, empty, or unreadable `$IMPLEMENT_TMPDIR/plan.txt` (or
 Harness: `scripts/test-run-step5-review.sh`.
 
 Loop resumes with `--starting-round > 1` emit a timing-only `Step 5 — code review` mark before invoking `review-and-fix.sh`, re-establishing a Step 5 interval without writing token-ledger telemetry.
+
+## Escalation ledger behavior
+
+`run-step5-review.sh` preserves the child review KV stream while detecting `STEP5_REVIEW_STATUS`. For `coder-main-agent-required`, the wrapper owns the canonical `record-escalation` call before returning control to Main Claude. Ledger write failures fail open through fallback evidence or a tagged `record-escalation` Tool Failure.
+
+For `main-agent-vote-required`, the wrapper emits prompt-side ledger-ready fields and does not record directly:
+
+- `STEP5_REVIEW_LEDGER_READY=true`
+- `STEP5_REVIEW_LEDGER_SITE=step5-mav`
+- `STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required`
+- `STEP5_REVIEW_LEDGER_STEP=5`
+- `STEP5_REVIEW_LEDGER_PHASE=review`
+- `STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review`
+- `STEP5_REVIEW_LEDGER_EXIT_CODE=<n>`
+- `STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG=<path>` when available

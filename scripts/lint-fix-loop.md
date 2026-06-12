@@ -160,3 +160,18 @@ Harness: `scripts/test-lint-fix-loop.sh`.
 `--site ship-pr-ci-per-job`.
 
 The submodule-prohibition prompt block is extracted into `scripts/lib-submodule-prohibition.sh`; its harness is `scripts/test-lib-submodule-prohibition.sh`.
+
+## Escalation ledger-ready fields
+
+On `LINT_FIX_STATUS=main-agent-required`, the helper emits optional ledger-ready fields for the prompt-side orchestrator to record once before Main Claude edits:
+
+- `LINT_FIX_LEDGER_READY=true`
+- `LINT_FIX_LEDGER_SITE=<token>`
+- `LINT_FIX_LEDGER_TRIGGER=<token>`
+- `LINT_FIX_LEDGER_STEP=<token>`
+- `LINT_FIX_LEDGER_PHASE=<token>`
+- `LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop`
+- `LINT_FIX_LEDGER_EXIT_CODE=<n>`
+- `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=<path>` when the redacted checks log is under `$IMPLEMENT_TMPDIR`
+
+Plain `failed`, `applied`, and `no-changes` do not emit ledger-ready fields. The helper never calls `record-escalation` directly. Step 5 sites include `step5-self-review` and `step5-mav`; existing consumers ignore these optional keys.

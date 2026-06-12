@@ -232,4 +232,41 @@ REVIEW_AND_FIX_ARGS+=(--run-id "$RUN_ID")
 
 LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark --if-latest-differs "Step 5 — code review" || true
 
-"$REVIEW_AND_FIX_SH" "${REVIEW_AND_FIX_ARGS[@]}"
+review_stdout="$IMPLEMENT_TMPDIR/run-step5-review.stdout.$$"
+review_stderr="$IMPLEMENT_TMPDIR/run-step5-review.stderr.$$"
+set +e
+"$REVIEW_AND_FIX_SH" "${REVIEW_AND_FIX_ARGS[@]}" >"$review_stdout" 2>"$review_stderr"
+review_rc=$?
+set -e
+cat "$review_stdout"
+cat "$review_stderr" >&2
+review_status="$(awk -F= '$1=="STEP5_REVIEW_STATUS"{print $2; exit}' "$review_stdout" 2>/dev/null || true)"
+record_helper="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+case "$review_status" in
+    coder-main-agent-required)
+        if [[ -x "$record_helper" ]]; then
+            "$record_helper" record-escalation \
+                --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+                --site step5 \
+                --trigger coder-main-agent-required \
+                --step 5 \
+                --phase review \
+                --dispatcher run-step5-review \
+                --exit-code "$review_rc" \
+                --failure-detail-log "$review_stderr" || true
+        fi
+        ;;
+    main-agent-vote-required)
+        printf 'STEP5_REVIEW_LEDGER_READY=true\n'
+        printf 'STEP5_REVIEW_LEDGER_SITE=step5-mav\n'
+        printf 'STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required\n'
+        printf 'STEP5_REVIEW_LEDGER_STEP=5\n'
+        printf 'STEP5_REVIEW_LEDGER_PHASE=review\n'
+        printf 'STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review\n'
+        printf 'STEP5_REVIEW_LEDGER_EXIT_CODE=%s\n' "$review_rc"
+        if [[ -s "$review_stderr" ]]; then
+            printf 'STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG=%s\n' "$review_stderr"
+        fi
+        ;;
+esac
+exit "$review_rc"

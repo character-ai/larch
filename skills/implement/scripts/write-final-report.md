@@ -6,9 +6,9 @@ The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scri
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 
-These nine values are the complete set emitted for `/implement` runs (computed in `write-final-report.sh` from `ship-pr-state.sh`, `finalize-state.sh`, and related inputs). The harness `test-write-final-report.sh` is expected to stay aligned with this list.
+These values are emitted by the shared `stall-recovery-report.sh normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
 
-1. `stalled` — `STALL_TRACKING=true` in ship-pr state (or finalize state when ship-pr left it false).
+1. `stalled` — any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run` — `FORKED_TARGET=true`.
 3. `design-only` — `DESIGN_ONLY_DONE=true`.
 4. `merged` — `MERGE_RESULT` is `merged` or `admin_merged`.
