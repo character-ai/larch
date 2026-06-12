@@ -342,3 +342,28 @@ def test_release_prepare_unmatched_commit_fails(monkeypatch: pytest.MonkeyPatch,
     out = capsys.readouterr().out
     assert "UNMATCHED_COMMITS=def" in out
     assert "ERROR=unmatched-commits" in out
+
+
+def test_release_prepare_no_unique_latest_emits_latest_count(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: "o/r")
+    monkeypatch.setattr(release_prepare, "_gh_json", lambda _argv: [{"tagName": "v1.2.3", "isLatest": True}, {"tagName": "v1.2.4", "isLatest": True}])
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out == ["ERROR=no-unique-latest-release", "LATEST_COUNT=2"]
+
+
+def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[1]
+    runner = ReleasePrepareRunner(repo_root)
+    pr_view = {
+        "number": 12,
+        "title": "Feature title",
+        "labels": [{"name": "enhancement"}, {"name": "release-note"}],
+        "author": {"login": "alice"},
+        "url": "https://github.com/o/r/pull/12",
+    }
+    _prepare_common(monkeypatch, runner, pr_view=pr_view)
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
+        "12\tFeature title\tenhancement,release-note\talice\thttps://github.com/o/r/pull/12"
+    ]

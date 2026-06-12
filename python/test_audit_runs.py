@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,31 @@ from proc import CommandResult
 def test_title_contiguous(capsys):
     assert audit_runs.title_main(["--skill", "implement", "--pr-list", "3,1,2", "--timestamp", "T"]) == 0
     assert capsys.readouterr().out.strip() == "TITLE=[Implement Run Logs Audit T Report] PRs #1-#3"
+
+
+def test_pacific_timestamp_main_emits_pacific_source(capsys):
+    assert audit_runs.pacific_timestamp_main([]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["PACIFIC_TIMESTAMP_SOURCE"] == "tz_america_los_angeles"
+    assert re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}-0[78]:00", out["PACIFIC_TIMESTAMP"])
+
+
+def test_pacific_timestamp_main_utc_fallback(monkeypatch, capsys):
+    def missing_zone(_name):
+        raise audit_runs.ZoneInfoNotFoundError("missing tzdata")
+
+    monkeypatch.setattr(audit_runs, "ZoneInfo", missing_zone)
+    assert audit_runs.pacific_timestamp_main([]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["PACIFIC_TIMESTAMP_SOURCE"] == "utc_fallback"
+    assert re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}Z", out["PACIFIC_TIMESTAMP"])
+
+
+def test_pacific_timestamp_main_rejects_unknown_argv(capsys):
+    assert audit_runs.pacific_timestamp_main(["--bogus"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unexpected argument" in captured.err
 
 
 def test_scan_run_rejects_skill_root(tmp_path: Path, capsys):
@@ -348,6 +374,55 @@ def test_scan_codex_generalist_waste_fails_slow_no_issues(tmp_path: Path, capsys
     row = json.loads(capsys.readouterr().out.splitlines()[0])
     assert row["result"] == "fail"
     assert row["elapsed_seconds"] == 121
+
+
+def test_scan_codex_generalist_waste_uses_timing_report_fallback(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    round1 = run / "round-1"
+    round1.mkdir(parents=True)
+    (round1 / "round-meta.json").write_text(json.dumps({
+        "reviewer_signals": [{"output_basename": "codex-generalist-output.txt", "result_kind": "NO_ISSUES_FOUND"}],
+    }), encoding="utf-8")
+    (run / "timing-report.json").write_text(json.dumps({
+        "vendor_task_averages": [
+            {"vendor": "codex", "task_kind": "codex-review-generic", "max_seconds": 121},
+        ],
+    }), encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\ncodex-generalist-waste\tjson\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "fail"
+    assert row["elapsed_seconds"] == 121
+
+
+def test_scan_run_malformed_review_findings_category_stats_is_partial(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    good = json.dumps({"id":"FINDING_1","outcome":"accepted","phase":"plan-review","category":"not-canonical"})
+    (run / "review-findings-full.jsonl").write_text(f"{good}\n{{not json\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    stats = next(row for row in rows if row["scan"] == "category-stats")
+    assert stats["partial_data"] is True
+    assert stats["partial_reason"] == "malformed_review_findings_jsonl"
+    assert stats["detail"] == "jq failed (category-stats): parse error"
+    assert stats["mangled"] == 0
+
+
+def test_oos_silent_drop_malformed_oos_issues_ndjson_reports_error(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "oos-accepted-main-agent.md").write_text("### OOS_1: thing\n- **Focus area**: correctness\n", encoding="utf-8")
+    (run / "oos-issues.ndjson").write_text("{not json\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-silent-drop\tfile\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+    assert row["result"] == "error"
+    assert row["detail"] == "jq parse failure while reading oos-issues.ndjson for rejected-OOS markers"
 
 
 def test_scan_required_bail_and_step9a1_gating(tmp_path: Path, capsys):

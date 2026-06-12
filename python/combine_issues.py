@@ -122,11 +122,11 @@ def apply_main(argv: list[str] | None = None) -> int:
     try:
         create = proc.run(["gh", "issue", "create", "--repo", repo, "--title", red_title, "--body-file", red_body.name])
         if create.returncode != 0:
-            print(f"ERROR=Failed to create combined issue: {create.stderr or create.stdout}", file=sys.stderr)
+            print("ERROR=Failed to create combined issue (gh output withheld)", file=sys.stderr)
             return 1
         combined = _parse_issue_number(create.stdout + create.stderr)
         if not combined:
-            print(f"ERROR=Could not parse issue number from gh output: {create.stdout + create.stderr}", file=sys.stderr)
+            print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
             return 1
         closed = 0
         warnings = []

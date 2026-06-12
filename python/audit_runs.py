@@ -594,6 +594,31 @@ def _mangled_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     return out
 
 
+def _codex_generalist_timing_elapsed(run_dir: Path) -> int:
+    report = _read_json_file(run_dir / "timing-report.json")
+    if not isinstance(report, dict):
+        return 0
+    rows = report.get("vendor_task_averages")
+    if not isinstance(rows, list):
+        return 0
+    preferred: list[int] = []
+    fallback: list[int] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("vendor") != "codex":
+            continue
+        task = str(row.get("task_kind") or "")
+        seconds = row.get("max_seconds", row.get("average_seconds"))
+        try:
+            elapsed = int(float(seconds))
+        except (TypeError, ValueError):
+            continue
+        if task == "codex-review-generic":
+            preferred.append(elapsed)
+        elif task == "codex-review":
+            fallback.append(elapsed)
+    return max(preferred or fallback or [0])
+
+
 def scan_run_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py audit-runs scan-run")
     p.add_argument("--skill", required=True)
@@ -697,6 +722,8 @@ def scan_run_main(argv: list[str] | None = None) -> int:
                         codex_log=str(logs.get("codex") or "") if isinstance(logs, dict) else ""
                         vals=[int(x) for x in re.findall(r"([0-9]+)s elapsed", codex_log)]
                         elapsed=max(vals) if vals else 0
+                    if not elapsed:
+                        elapsed=_codex_generalist_timing_elapsed(run_dir)
                     no_issues = rk in {"NO_ISSUES_FOUND", "NO_ISSUES_FOUND_TOO_THIN"}
                     obj={"scan":name,"pr":pr,"result":"fail" if no_issues and elapsed > 120 else "pass","result_kind":rk,"elapsed_seconds":elapsed}
                     if obj["result"] == "fail": obj["detail"]="codex-generalist returned NO_ISSUES_FOUND after more than 120 seconds"
@@ -748,8 +775,11 @@ def scan_run_main(argv: list[str] | None = None) -> int:
         _json_line(obj)
     # category-stats
     if (run_dir/"review-findings-full.jsonl").is_file():
-        mangled=mangled_cache if mangled_cache is not None else _mangled_rows(rows)
-        _json_line({"scan":"category-stats","pr":pr,"partial_data":jsonl_err,"canonical":sum(1 for r in rows if _category_string(r) in _CANONICAL),"blank":sum(1 for r in rows if not _category_string(r)),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not _category_string(r)),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not _category_string(r))})
+        if jsonl_err:
+            _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"malformed_review_findings_jsonl","detail":"jq failed (category-stats): parse error","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
+        else:
+            mangled=mangled_cache if mangled_cache is not None else _mangled_rows(rows)
+            _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"canonical":sum(1 for r in rows if _category_string(r) in _CANONICAL),"blank":sum(1 for r in rows if not _category_string(r)),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not _category_string(r)),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not _category_string(r))})
     else:
         if args.skill=="design": _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"skip_reason":"design_run_has_no_review_findings_jsonl","detail":"design runs intentionally omit review-findings-full.jsonl","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
         else: _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"missing_review_findings_jsonl","detail":"review-findings-full.jsonl not found","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})

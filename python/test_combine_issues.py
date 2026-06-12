@@ -88,6 +88,38 @@ class ApplyRunner:
         return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
 
 
+class FailingCreateRunner:
+    def __init__(self, result: CommandResult):
+        self.result = result
+
+    def run(self, argv, **_kwargs):
+        if argv[:3] == ["gh", "issue", "create"]:
+            return self.result
+        return CommandResult(tuple(argv), 0, '{"nameWithOwner":"o/r"}', "", 0.01)
+
+
+def test_apply_create_failure_withholds_gh_output(monkeypatch, tmp_path: Path, capsys):
+    body = tmp_path / "body.md"
+    body.write_text("Combined body with secret-token\n", encoding="utf-8")
+    runner = FailingCreateRunner(CommandResult(("gh",), 1, "stdout secret-token", "stderr secret-token", 0.01))
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
+    assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", "1"]) == 1
+    err = capsys.readouterr().err
+    assert "output withheld" in err
+    assert "secret-token" not in err
+
+
+def test_apply_create_parse_failure_withholds_gh_output(monkeypatch, tmp_path: Path, capsys):
+    body = tmp_path / "body.md"
+    body.write_text("Combined body\n", encoding="utf-8")
+    runner = FailingCreateRunner(CommandResult(("gh",), 0, "created secret-token but no url", "", 0.01))
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
+    assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", "1"]) == 1
+    err = capsys.readouterr().err
+    assert "output withheld" in err
+    assert "secret-token" not in err
+
+
 def test_apply_create_and_close_wire_retries(monkeypatch, tmp_path: Path, capsys):
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")

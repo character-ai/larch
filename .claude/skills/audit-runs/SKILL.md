@@ -53,7 +53,7 @@ Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, 
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans-$SKILL.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON string escaping for NDJSON payloads is implemented in `python/audit_runs.py JSON emission helpers` (sourced by `python/cli.py audit-runs scan-run` and `test-audit-runs.sh`). The plan-review / accepted / non-canonical-category filter shared by `oos-category-mangle` and `category-stats` lives in `python/audit_runs.py category filters` (invoked via `jq -f` from `python/cli.py audit-runs scan-run`). **Adding a scan** requires coordinated updates: (1) a new `scans-$SKILL.tsv` row in the relevant per-skill registry, (2) a matching `case` branch (and scan function) in `python/cli.py audit-runs scan-run`, (3) any counter wiring in `python/cli.py audit-runs compute-counters` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` title regex used by the audit-report writer; the pre-lock `scripts/check-main-sync.sh` probe uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must `git fetch origin main` before locking — same freshness requirement as the audit-report title migration (treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect).
+The scan list is externalized in `.claude/skills/audit-runs/scans-$SKILL.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON emission, category filtering, and scan implementations live in `python/audit_runs.py` behind `python/cli.py audit-runs scan-run`; offline coverage lives in `python/test_audit_runs.py`. **Adding a scan** requires coordinated updates: (1) a new `scans-$SKILL.tsv` row in the relevant per-skill registry, (2) matching `python/audit_runs.py` scan-run logic, (3) any counter wiring in `python/audit_runs.py` `compute_counters_main` when the scan feeds cumulative totals, (4) this `SKILL.md` scan table if the operator-facing baseline changes, and (5) hermetic `python/test_audit_runs.py` coverage for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update. Routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` title regex used by the audit-report writer; the pre-lock `scripts/check-main-sync.sh` probe uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must `git fetch origin main` before locking. This is the same freshness requirement as the audit-report title migration. Treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect.
 
 Read the registry at runtime:
 ```bash
@@ -238,11 +238,11 @@ COUNTERS_OUT=$(python3 "$PWD/python/cli.py" audit-runs compute-counters \
   [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
 ```
 
-Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR’s `category-stats` line has `partial_data: true` — missing JSONL, or jq/mangled aggregate unavailable; `OOS_*_DELTA` for clean/blank omit category-stats only for the missing-file case per `audit-compute-counters.md`). Contract: `audit-compute-counters.md`.
+Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL`. `CATEGORY_STATS_PARTIAL=true` when any PR’s `category-stats` line has `partial_data: true`: missing JSONL, or malformed/mangled aggregate unavailable. `OOS_*_DELTA` for clean/blank omit category-stats only for the missing-file case. Contract: `python/cli.py audit-runs compute-counters`.
 
 ### Frontmatter (YAML block between `---` markers at top of body)
 
-`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `audit-pacific-timestamp.sh` resolves `America/Los_Angeles` (`PACIFIC_TIMESTAMP_SOURCE=tz_america_los_angeles`). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the script’s last-resort fallback when Pacific resolution fails (`PACIFIC_TIMESTAMP_SOURCE=utc_fallback`; same shape as `audit-pacific-timestamp.sh` may emit). Populate `cumulative_counters` from `python/cli.py audit-runs compute-counters` output keys below.
+`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `python/cli.py audit-runs pacific-timestamp` resolves `America/Los_Angeles` (`PACIFIC_TIMESTAMP_SOURCE=tz_america_los_angeles`). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the CLI’s last-resort fallback when Pacific resolution fails (`PACIFIC_TIMESTAMP_SOURCE=utc_fallback`; same shape as `python/cli.py audit-runs pacific-timestamp` may emit). Populate `cumulative_counters` from `python/cli.py audit-runs compute-counters` output keys below.
 
 ```yaml
 audit_schema_version: 1
@@ -314,9 +314,9 @@ python3 "$PWD/python/cli.py" audit-runs close-priors \
   --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
 ```
 
-Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line (see `audit-close-priors.md`). If `gh issue list` fails up front, the script prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If temporary `--body-file` setup fails before the comment loop, the script prints `BODY_FILE_FAILED=true` plus `REASON=...` and exits non-zero. After any `audit-close-priors.sh` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `BODY_FILE_FAILED=` even when the exit code is `0` — do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
+Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line. If `gh issue list` fails up front, the CLI prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If temporary `--body-file` setup fails before the comment loop, the CLI prints `BODY_FILE_FAILED=true` plus `REASON=...` and exits non-zero. After any `python/cli.py audit-runs close-priors` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `BODY_FILE_FAILED=` even when the exit code is `0`. Do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
 
-Contract: `audit-close-priors.md`.
+Contract: `python/cli.py audit-runs close-priors`.
 
 ## Output to chat
 
@@ -344,34 +344,34 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 ```
 parse --skill (design|implement) → $SKILL; fail-fast if missing/invalid
 python/cli.py audit-runs preflight --skill $SKILL → PREFLIGHT_OK / fail-fast
-python/cli.py audit-runs resolve-prs --skill $SKILL → full stdout KV contract (see `audit-resolve-prs.md`)
+python/cli.py audit-runs resolve-prs --skill $SKILL → full stdout KV contract
 python/cli.py audit-runs map-runs --skill $SKILL → run-map.tsv
 for each PR:
   python/cli.py audit-runs scan-run --skill $SKILL → scan-results-NNNN.ndjson
 python/cli.py audit-runs compute-counters    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
 [LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
-audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
-audit-title.sh --skill $SKILL → TITLE
+python/cli.py audit-runs pacific-timestamp → PACIFIC_TIMESTAMP (extract from stdout KV)
+python/cli.py audit-runs title --skill $SKILL → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 issue create-one                → file audit report
-audit-close-priors.sh --skill $SKILL → close prior audit-report issues for this skill
+python/cli.py audit-runs close-priors --skill $SKILL → close prior audit-report issues for this skill
 [LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
 [LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
 ```
 
 ## Scripts
 
-- `python/audit_runs.py title matching helpers` (contract: `audit-title-matcher.md`) — per-skill audit-report title matching
-- `python/cli.py audit-runs preflight` (contract: `audit-preflight.md`) — git fetch/pull, repo-identity, concurrency guard
-- `python/cli.py audit-runs resolve-prs` (contract: `audit-resolve-prs.md`) — verbal-description → PR_LIST
-- `python/cli.py audit-runs map-runs` (contract: `audit-map-runs.md`) — PR → run-log directory mapping (TSV)
-- `python/cli.py audit-runs scan-run` (contract: `audit-scan-run.md`) — all scans against one run-log dir; NDJSON output
-- `python/cli.py audit-runs compute-counters` (contract: `audit-compute-counters.md`) — sum scan deltas + prior totals; KV output
-- `python/cli.py audit-runs pacific-timestamp` (contract: `python/cli.py audit-runs pacific-timestamp`) — portable Pacific timestamp
-- `python/cli.py audit-runs title` (contract: `python/cli.py audit-runs title`) — generate report title string
-- `python/cli.py audit-runs close-priors` (contract: `audit-close-priors.md`) — close prior audit-report issues
-- `python/test_audit_runs.py` (contract: `python/test_audit_runs.py`) — offline unit test harness
+- `python/audit_runs.py title matching helpers`: per-skill audit-report title matching
+- `python/cli.py audit-runs preflight`: git fetch/pull, repo-identity, concurrency guard
+- `python/cli.py audit-runs resolve-prs`: verbal-description → PR_LIST
+- `python/cli.py audit-runs map-runs`: PR → run-log directory mapping (TSV)
+- `python/cli.py audit-runs scan-run`: all scans against one run-log dir; NDJSON output
+- `python/cli.py audit-runs compute-counters`: sum scan deltas + prior totals; KV output
+- `python/cli.py audit-runs pacific-timestamp`: portable Pacific timestamp
+- `python/cli.py audit-runs title`: generate report title string
+- `python/cli.py audit-runs close-priors`: close prior audit-report issues
+- `python/test_audit_runs.py`: offline unit test harness
 - `python/test_audit_runs.py title matching helpers` — offline harness for `python/audit_runs.py title matching helpers`
 
 ## Anti-patterns
