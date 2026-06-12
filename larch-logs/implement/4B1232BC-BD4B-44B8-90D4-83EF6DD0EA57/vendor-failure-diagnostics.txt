@@ -1223,6 +1223,18 @@ exit-code: 1
 exit-code: 127
 STATUS=FAILED
 FAILURE_REASON=codex binary missing
+===== CI fix cursor-ci =====
+exit-code: 143
+Stall detected: channel=stdout time_since_last_progress=181s
+--- stall ps snapshot (target pid=67510) ---
+  PID  %CPU ELAPSED STAT
+67510   0.1   03:01 S   
+--- stall ps snapshot (direct children of target; no argv) ---
+  PID  %CPU ELAPSED STAT
+59825   0.0   00:00 S   
+  PID  %CPU ELAPSED STAT
+67665   0.0   03:00 S   
+
 ===== ci fixer claude-ci =====
 exit-code: 1
 ===== diag =====
