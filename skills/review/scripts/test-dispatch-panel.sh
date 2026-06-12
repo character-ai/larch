@@ -51,7 +51,7 @@ STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 cat >/dev/null
-printf 'claude review\n'
+printf '{"type":"result","subtype":"success","is_error":false,"result":"claude review\n","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\n'
 STUB
 chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
