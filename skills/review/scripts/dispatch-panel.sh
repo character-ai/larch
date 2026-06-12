@@ -86,6 +86,14 @@ esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
+# Codex reviewer slots: rounds 1-2 always (status quo); round 3+ only as
+# replacement when Cursor is unavailable (#4060).
+codex_slots_enabled="false"
+if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+    if (( ROUND_NUM < 3 )) || [[ "$CURSOR_AVAILABLE" != "true" ]]; then
+        codex_slots_enabled="true"
+    fi
+fi
 mkdir -p "$REVIEW_TMPDIR"
 
 manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
@@ -118,7 +126,7 @@ for name in "${static_specialists[@]}"; do
         queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
         static_cursor=$((static_cursor + 1))
     fi
-    if [[ "$CODEX_AVAILABLE" == "true" && ROUND_NUM -lt 3 ]]; then
+    if [[ "$codex_slots_enabled" == "true" ]]; then
         queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
         static_codex=$((static_codex + 1))
     fi
@@ -204,7 +212,7 @@ synthesize_dynamic_slots() {
                 >> "$manifest"
             DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
         fi
-        if [[ "$CODEX_AVAILABLE" == "true" && ROUND_NUM -lt 3 ]]; then
+        if [[ "$codex_slots_enabled" == "true" ]]; then
             jq -cn \
                 --arg slot "dyn-$name-codex" \
                 --arg output "$REVIEW_TMPDIR/dyn-${name}-codex-output.txt" \
@@ -554,7 +562,10 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_wat
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
 [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
-if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" ]]; then
+# --no-fallback only in rounds 1-2 with both vendors (peer rows cover each
+# other). In round 3+ Codex slots are suppressed (#4060), so keep normal
+# fallback: a failed Cursor slot may backfill via Codex or Claude.
+if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" && "$codex_slots_enabled" == "true" ]]; then
     waterfall_args+=(--no-fallback)
 fi
 

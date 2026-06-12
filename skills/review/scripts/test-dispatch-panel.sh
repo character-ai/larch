@@ -326,6 +326,50 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq '→ review: launching 3 reviewers (3 Cursor static, 0 Codex static, 0 dynamic)' "$simple_round3_breadcrumbs_err" \
     || { echo "FAIL: round 3 launch breadcrumb must show 0 Codex static" >&2; exit 1; }
 
+# Round 3+, Cursor unavailable: Codex runs as the replacement panel (#4060).
+round3_replacement_err="$TMP/round3-replacement.stderr"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/round3-replacement" \
+    --codex-available true \
+    --cursor-available false \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 3 2>"$round3_replacement_err")
+grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 Cursor-down panel must have 3 static slots (Codex replacement)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 Cursor-down panel SLOT_COUNT must be 3" >&2; exit 1; }
+[[ -s "$TMP/round3-replacement/codex-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 Cursor-down must emit codex-specialist-correctness (replacement panel)" >&2; exit 1; }
+[[ ! -e "$TMP/round3-replacement/cursor-specialist-correctness-output.txt" ]] || { echo "FAIL: round 3 Cursor-down must NOT emit cursor-specialist-correctness" >&2; exit 1; }
+grep -Fq '→ review: launching 3 reviewers (0 Cursor static, 3 Codex static, 0 dynamic)' "$round3_replacement_err" \
+    || { echo "FAIL: round 3 Cursor-down launch breadcrumb must show 0 Cursor static, 3 Codex static" >&2; exit 1; }
+
+# Round-aware --no-fallback: round 2 both-vendor keeps it; round 3+ both-vendor
+# omits it so a failed Cursor slot can backfill via Codex or Claude (#4060).
+round2_fallback_argv="$TMP/round2-both-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round2_fallback_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-round2" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 2)
+grep -Fq -- '--no-fallback' "$round2_fallback_argv" || { echo "FAIL: round 2 both-vendor dispatch must pass --no-fallback" >&2; exit 1; }
+
+round3_fallback_argv="$TMP/round3-both-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$round3_fallback_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-round3" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 3)
+if grep -Fq -- '--no-fallback' "$round3_fallback_argv"; then
+    echo "FAIL: round 3 both-vendor dispatch must omit --no-fallback" >&2
+    exit 1
+fi
+
 fi  # end section: core (panels)
 
 if section_runs core-dynamic; then
@@ -578,6 +622,26 @@ grep -Fq 'SLOT_COUNT=6' <<< "$out" || { echo "FAIL: round 3 dynamic test SLOT_CO
 # scout-valid4.json is capped to 3 archetypes: 3 dynamic Cursor slots, 0 Codex twins.
 codex_count=$(jq -s '[.[] | select(.tool == "codex")] | length' "$TMP/dynamic-round3/panel-manifest.ndjson")
 [[ "$codex_count" = "0" ]] || { echo "FAIL: round 3 panel manifest must have 0 codex tool entries (got $codex_count)" >&2; exit 1; }
+
+# Round 3+, Cursor unavailable: Codex dynamic slots act as the replacement (#4060).
+seed_case_inputs "$TMP/dynamic-round3-replacement"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/dynamic-round3-replacement/review.diff" \
+    --review-tmpdir "$TMP/dynamic-round3-replacement" \
+    --codex-available true \
+    --cursor-available false \
+    --panel hard \
+    --plan-file "$TMP/dynamic-round3-replacement/plan.md" \
+    --dynamic-archetypes 3 \
+    --round-num 3)
+grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 Cursor-down dynamic test must have 3 static slots (Codex replacement)" >&2; exit 1; }
+grep -Fq 'DYNAMIC_SLOTS=3' <<< "$out" || { echo "FAIL: round 3 Cursor-down dynamic test must have 3 dynamic slots (Codex replacement)" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=6' <<< "$out" || { echo "FAIL: round 3 Cursor-down dynamic test SLOT_COUNT must be 6" >&2; exit 1; }
+codex_count=$(jq -s '[.[] | select(.tool == "codex")] | length' "$TMP/dynamic-round3-replacement/panel-manifest.ndjson")
+[[ "$codex_count" = "6" ]] || { echo "FAIL: round 3 Cursor-down panel manifest must have 6 codex tool entries (got $codex_count)" >&2; exit 1; }
+cursor_count=$(jq -s '[.[] | select(.tool == "cursor")] | length' "$TMP/dynamic-round3-replacement/panel-manifest.ndjson")
+[[ "$cursor_count" = "0" ]] || { echo "FAIL: round 3 Cursor-down panel manifest must have 0 cursor tool entries (got $cursor_count)" >&2; exit 1; }
 fi  # end section: core-dynamic
 
 if section_runs reuse; then
