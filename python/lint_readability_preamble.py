@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
 EXTERNAL_STYLE_LINE = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW_STYLE_LINE = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
-SKETCH_STYLE_LINE = "Style requirements: <READABILITY_STYLE>."
-SKETCH_ESCAPED_RE = re.compile(r'\\nStyle requirements: <READABILITY_STYLE>\."`$')
 ORCHESTRATOR_STYLE_ANCHOR = "readability-style.md`.**"
 MANIFEST_COLUMN_COUNT = 5
 
@@ -46,14 +43,6 @@ def _manifest_rows(manifest: Path) -> tuple[int, list[tuple[str, str, str, str, 
             return 2, []
         rows.append((path, variant, expected_count, prompt_kind, step_markers))
     return 0, rows
-
-
-def count_sketch_style_lines(text: str) -> int:
-    count = 0
-    for line in text.splitlines():
-        if line == SKETCH_STYLE_LINE or SKETCH_ESCAPED_RE.search(line):
-            count += 1
-    return count
 
 
 def check_step_placement(text: str, rel_path: str, step_markers: str) -> bool:
@@ -132,8 +121,6 @@ def main(argv: list[str] | None = None) -> int:
             if variant == "external-prompt":
                 if (prompt_kind or "standard") == "plan-review":
                     count = _count_exact(text, PLAN_REVIEW_STYLE_LINE)
-                elif (prompt_kind or "standard") == "sketch":
-                    count = count_sketch_style_lines(text)
                 else:
                     count = _count_exact(text, EXTERNAL_STYLE_LINE)
                 if count == expected_count:

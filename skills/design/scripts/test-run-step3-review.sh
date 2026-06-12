@@ -79,6 +79,7 @@ EOF
 write_loop_stub() {
     local dir="$1" body="$2"
     local stub="$dir/plan-review-loop-stub.sh"
+    mkdir -p "$dir"
     cat >"$stub" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -88,7 +89,19 @@ EOF
     printf '%s\n' "$stub"
 }
 
-launcher_env=(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
+launcher_env=(env -u LARCH_QUIET_LOG_FILE -u IMPLEMENT_TMPDIR -u SESSION_ENV_PATH -u REVIEW_TMPDIR -u LARCH_TIMING_LEDGER LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
+
+for case_dir in \
+    default-mode loop-validation preview preview-nonheader preview-nonheader-exit1 \
+    preview-exact-missing preview-missing-repair preview-two-call preview-bare-missing \
+    no-preview cap cap-cleanup symlink-round bad-count persist tally loop-tally \
+    degraded panel weird revision-failed-rc main-agent-rc stale file-precedence \
+    invalid-cap-real integration-seam breadcrumb-rounds scope-preference stale-implement \
+    scope-ok scope-desync scope-stale-tally-error scope-bad scope-outside scope-empty \
+    scope-recover symlink-inner symlink-outer symlink-outer-cap mark-skipped-entry \
+    mark-no-duplicate; do
+    mkdir -p "$TMP/$case_dir"
+done
 
 echo "=== missing --design-tmpdir ==="
 set +e
@@ -586,40 +599,6 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
 assert_contains "$out" 'LOOP_STATUS=main-agent-vote-required' 'main-agent-vote-required preserved on rc 1'
 grep -Fq 'LOOP_STATUS=main-agent-vote-required' "$D6C/.step3-review-result.env" || fail 'result env main-agent-vote-required'
 
-D10="$TMP/cursor-fail"
-printf '1\n' >"$D10/plan-review-round-cursor.txt"
-printf 'plan snapshot\n' >"$D10/plan-after-round-1.txt"
-snap_stub="$D10/snapshot-plan-round-stub.sh"
-cat >"$snap_stub" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-case "${1:-}" in
-    read-cursor) printf 'ROUND_CURSOR=1\n'; exit 0 ;;
-    write-cursor) exit 1 ;;
-    *) exit 0 ;;
-esac
-EOF
-chmod +x "$snap_stub"
-loop_stub="$(write_loop_stub "$D10" 'exit 97')"
-set +e
-out="$("${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" \
-    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
-    --design-tmpdir "$D10")"
-rc=$?
-set -e
-if [[ "$rc" -eq 1 ]]; then
-    pass 'write-cursor failure exit 1'
-else
-    fail "write-cursor failure rc=$rc"
-fi
-assert_contains "$out" 'LOOP_STATUS=panel-failed' 'write-cursor failure panel-failed'
-grep -Fq 'LOOP_STATUS=panel-failed' "$D10/.step3-review-result.env" || fail 'result env panel-failed on cursor failure'
-if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "0" ]]; then
-    pass 'write-cursor failure rolls back review-round-count'
-else
-    fail 'write-cursor failure should roll back review-round-count to 0'
-fi
-
 echo "=== stale inner result env ignored after launcher failure ==="
 D7="$TMP/stale"
 cat >"$D7/.step3-plan-review-result.env" <<'EOF'
@@ -826,19 +805,6 @@ fi
 assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached symlinked outer stdout LOOP_STATUS'
 assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'cap-reached symlinked outer stdout tally'
 [[ -L "$D12B/.step3-review-result.env" ]] || fail 'cap-reached symlinked outer must remain a symlink'
-
-"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-
-cat >"$snap_stub" <<'EOF'
-#!/usr/bin/env bash
-case "${1:-}" in
-    read-cursor) printf 'ROUND_CURSOR=2\n'; exit 0 ;;
-    write-cursor) exit 0 ;;
-    *) exit 0 ;;
-esac
-EOF
-chmod +x "$snap_stub"
-"${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
 
 echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \

@@ -1,6 +1,6 @@
 # Design outline (Step 1d.7)
 
-**Consumer**: `/design` Step **1d.7** — runs after Step **1d** Round 1 discussion and optional Step **1d.5** brainstorm, before Step **2a** sketches, on runs that continue from Round 1 into new plan production. The already-planned ad-hoc Q&A-only branch does **not** invoke this file. Step **1e** Gate A is re-entry-only after a plan exists.
+**Consumer**: `/design` Step **1d.7** — runs after Step **1d** Round 1 discussion and optional Step **1d.5** brainstorm, before Step **2a** sentinel prep and Step **2b** plan drafting, on runs that continue from Round 1 into new plan production. The already-planned ad-hoc Q&A-only branch does **not** invoke this file. Step **1e** Gate A is re-entry-only after a plan exists.
 
 **Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.outline-approved`. Produces `$DESIGN_TMPDIR/design-outline.md`; the outline is load-bearing for Step **2b** only when the file is non-empty **and** `$DESIGN_TMPDIR/.outline-approved` exists. It is never written to `composed-plan.md`, the `larch:plan` GitHub block, or any `/implement`-consumed artifact. Session-log publishing may still capture the file as a top-level artifact through redaction, so do **not** treat it as excluded from design-log publish bundles.
 
@@ -21,8 +21,8 @@ Step 1d.7 **overrides** the generic anti-halt continuation rule only for the nar
 ## Entry guard
 
 1. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` does **not** exist: print `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` and **proceed to Step 2a**. Do not route to Gate A.
-2. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (approved outline + existing plan; continue to Step 1e Gate A post-plan path)` and continue directly to **Step 1e Gate A**. This is stale-sentinel / resumed-session recovery; do **not** re-enter Step 2a sketches once a plan already exists.
-3. If `$DESIGN_TMPDIR/.outline-approved` does **not** exist **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (plan already exists; continue to Step 1e Gate A post-plan path even without .outline-approved)` and continue directly to **Step 1e Gate A**. Once a plan exists, stay on the post-plan gate path instead of re-running outline approval or sketches.
+2. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (approved outline + existing plan; continue to Step 1e Gate A post-plan path)` and continue directly to **Step 1e Gate A**. This is stale-sentinel / resumed-session recovery; do **not** re-enter Step 2a/2b once a plan already exists.
+3. If `$DESIGN_TMPDIR/.outline-approved` does **not** exist **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (plan already exists; continue to Step 1e Gate A post-plan path even without .outline-approved)` and continue directly to **Step 1e Gate A**. Once a plan exists, stay on the post-plan gate path instead of re-running outline approval or plan drafting.
 4. Otherwise print `> **🔶 /design 1d.7: outline**` and continue.
 
 ---
@@ -81,10 +81,10 @@ When `skip_approve_requested=true` (bound from the Step 1d.7 fence in `SKILL.md`
 
 When `skip_approve_requested=false`, fire `AskUserQuestion` after printing the outline:
 
-- **Question**: `"Here is the proposed design direction. Approve and proceed to sketches + plan, refine the outline, or cancel?"`
+- **Question**: `"Here is the proposed design direction. Approve and proceed to plan drafting, refine the outline, or cancel?"`
 - **Header**: `"Design outline"`
 - **Options**:
-  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to sketches`, and **proceed to Step 2a**. The orchestrator MUST go to Step 2a, not Step 1e. This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).
+  - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved`, print `✅ 1d.7: outline approved — proceeding to plan drafting`, and **proceed to Step 2a**. The orchestrator MUST go to Step 2a, not Step 1e. This sentinel is written **only** on explicit Approve (and on auto-approve per the `--skip-approve` path above).
   - **Refine outline** — enter the Refine loop below.
   - **Cancel** — run Cancel hygiene below.
 
@@ -117,7 +117,6 @@ On **Cancel**:
 
 ## Downstream consumer contract (additive)
 
-- **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, prepend a concise `## Approved direction (outline)` section only when `design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Do not replace the issue body file. Stack this with the brainstorm digest when both exist.
 - **Step 2b**: Read `design-outline.md` only when it is present, non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Honor approved Goals, Non-goals, and Surfaces as binding scope.
 - **Step 3**: `plan-review-loop.sh` appends an approved `design-outline.md` to `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` when `.outline-approved` exists. Brainstorm synthesis remains optional non-binding context in `plan-review-feature-context.txt` only; it is not merged into the binding reviewer scope anchor.
 

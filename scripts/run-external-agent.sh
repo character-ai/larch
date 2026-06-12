@@ -4,7 +4,7 @@
 # configured by RUN_EXTERNAL_AGENT_POLL_INTERVAL (default 10s; tests override
 # to a fraction of a second), prints a one-line progress message per elapsed
 # minute, and kills after a configurable timeout (e.g., 30 minutes for
-# reviews/implementation, 20 minutes for votes/sketches).
+# reviews/implementation, 20 minutes for votes).
 #
 # The --tool value is used as-is for human-readable log messages. For the
 # .meta TOOL= field it is sanitized through a label-safe allowlist

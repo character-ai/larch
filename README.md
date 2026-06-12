@@ -18,13 +18,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **Architecture and workflow**
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
-  - [Collaborative Sketches](docs/collaborative-sketches.md) — the diverge-then-converge design phase
+  - [Design Flow](docs/collaborative-sketches.md) — direct plan drafting and plan review
   - [Voting Process](docs/voting-process.md) — the voting panel protocol
   - [Point Competition](docs/point-competition.md) — reviewer scoring system
 
 ## Features
 
-- **[Multi-agent design planning and reviews](docs/collaborative-sketches.md)** — the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews the final plan.
+- **[Direct design planning and plan reviews](docs/collaborative-sketches.md)** — Step 2b drafts the plan directly, then the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews it.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
 - **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.

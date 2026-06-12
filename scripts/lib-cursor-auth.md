@@ -17,7 +17,7 @@ Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `scr
 - `scripts/launch-cursor-ci.sh` — Cursor CI-fix launcher (via `cursor_launcher_setup_auth_argv`).
 - `scripts/check-reviewers.sh` — reviewer presence check (sources the lib; calls `cursor_preread_service_token` + `cursor_auth_export_env` — `cursor_auth_preflight` is invoked separately to gate the probe loop).
 - `scripts/run-negotiation-round.sh` — negotiation runner (calls `cursor_auth_export_env` after `cursor_auth_preflight`).
-- `scripts/cursor-auth-flags.sh` — Darwin preflight **gate** for runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward. It runs `cursor_auth_preflight` and emits **no** argv flags; the markdown blocks rely on the orchestrator's inherited `CURSOR_API_KEY` for the Cursor child.
+- `scripts/cursor-auth-flags.sh` — Darwin preflight **gate** for runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward. It runs `cursor_auth_preflight` and emits **no** argv flags; the markdown blocks rely on the orchestrator's inherited `CURSOR_API_KEY` for the Cursor child.
 
 ## Invariants
 

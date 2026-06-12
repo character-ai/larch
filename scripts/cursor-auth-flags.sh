@@ -12,7 +12,7 @@
 #
 # It is retained as the Darwin-gated preflight GATE for the markdown templates
 # that cannot conveniently `source` a library
-# (skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+# (skills/shared/voting-protocol.md,
 # skills/research/references/validation-phase.md): it runs the same
 # cursor_auth_preflight the launchers use and exits non-zero with an actionable
 # message when neither CURSOR_API_KEY nor a cursor keychain entry is available,
@@ -44,9 +44,9 @@ fi
 
 # Run the same Darwin-gated preflight the launchers use (lib-cursor-auth.sh
 # `cursor_auth_preflight`). The runtime markdown templates that invoke this
-# script (skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+# script (skills/shared/voting-protocol.md,
 # skills/research/references/validation-phase.md) had no preflight gate before
-# — operators hitting voting / dialectic / research-validation paths could see
+# — operators hitting voting / research-validation paths could see
 # the cryptic `Security process exited with code: 45` while script-owned
 # launches got the actionable preflight error. Fail closed via exit 2 so the
 # markdown-template Bash blocks abort with the same actionable stderr message

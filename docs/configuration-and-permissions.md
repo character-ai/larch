@@ -166,7 +166,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
 
 **When set:**
-- All Cursor invocations (reviews, sketches, voting, negotiations, and implement when `--coder=cursor`) use this model
+- All Cursor invocations (reviews, voting, negotiations, and implement when `--coder=cursor`) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
@@ -217,11 +217,11 @@ Bad or expired keys stay on the env-key path and fail loud / waterfall rather th
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
-- All Codex invocations (reviews, sketches, voting, negotiations) use this model
+- All Codex invocations (reviews, voting, negotiations) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
-- Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
+- Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews and voting)
 - `scripts/check-reviewers.sh` runs a lightweight `codex exec --sandbox read-only …` health probe with the Codex model argv from `scripts/agent-model-args.sh --tool codex --with-effort`, matching reviewer launch model selection. If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
 
 ### `LARCH_SHIP_PR_IMPL`
@@ -261,9 +261,9 @@ Per-process random delay (milliseconds) applied once before the cursor auth/retr
 
 ### `LARCH_CODEX_EFFORT`
 
-Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
+Codex reasoning effort for all Codex launches (reviews and voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
 
-**When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel):**
+**When set at launch sites (plan review, code review, conflict-resolution review, voting panel):**
 - `scripts/agent-model-args.sh --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**

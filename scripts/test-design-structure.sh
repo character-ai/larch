@@ -276,8 +276,6 @@ boundary_markers = (
     '<!-- step:6',
     '**Regular mode**',
     '**Quick mode**',
-    'zero-sketch degraded fence',
-    '**Zero-sketches guard',
     'discussion-round2',
     'site discussion-round2',
     '--site step2b',
@@ -510,8 +508,6 @@ assert_wrapper_fence_ordering() {
   first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'design-step3-state.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
-
-  wrapper='design-step2a-zero-sketch.sh'
 
   wrapper='design-step4b.sh'
   first_line=$(grep -nF 'design-step4b-read.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)

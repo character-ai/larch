@@ -19,6 +19,7 @@ Do not satisfy this case by calling `complete_design_steps … 3 3.5` or by manu
 ## Legacy compatibility coverage
 
 - Legacy Step 2a snapshots without the retired `.completed/step-2a.5` marker resume at `STEP=2b`.
+- Legacy `STEP=2a.5` pause markers load as `STEP=2b` and normalize the required no-planning sentinel artifacts before installing the restored tmpdir.
 - Legacy snapshots with `.completed/step-3b` but no `.completed/finalize` save/load at `STEP=4`, then execute the Step 4 FINALIZE compatibility guard and assert `.completed/finalize` is written.
 - FINALIZE failure coverage pins the operator-visible warning `**⚠ FINALIZE failed; repair the missing artifact before Step 5.**` and the non-zero exit path.
 

@@ -190,12 +190,12 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 
 ## Design Mindset
 
-Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice — sketch synthesis, plan drafting, review-finding acceptance — and are the thinking pattern this skill transfers along with its mechanical procedures.
+Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice: plan drafting, review-finding acceptance, and the thinking pattern this skill transfers along with its mechanical procedures.
 
 - **What is the smallest change that achieves the goal?** Resist adding abstractions, flags, or layers the feature description did not ask for. Every additional moving part is a new failure mode.
 - **Where is anchoring risk highest?** The first plausible approach locks architectural direction. Step 2a always writes sentinel artifacts; Step 2b drafts the plan from direct codebase inspection. Prefer minimum-change plans.
 - **What hidden constraints must this preserve?** Canonical sources, CI invariants, downstream parsers, contract tokens, byte-preserved reference files. Identify them before edits, not during plan review.
-- **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences belong to the sketch phase — not to the user.
+- **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences are resolved during direct plan drafting and review, not by asking the user to design the internals.
 - **Which anti-patterns in the NEVER list below apply to this specific feature?** Re-read the Anti-patterns section for every non-trivial feature; muscle memory for the six rules is the expert delta this skill aims to transfer.
 
 ## Anti-patterns
@@ -332,7 +332,7 @@ See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-s
 
 ### 0c — Plan-relevant symbol breadcrumb
 
-Before sketches, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
+Before plan drafting, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
 
 After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
 
@@ -461,7 +461,7 @@ Apply this emphasis before drafting:
 
 "Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
 
-Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a. It contains `NO_SKETCHES` (the sentinel that no sketch agents ran). Write the plan from direct codebase/doc inspection.
+Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a. It contains `NO_SKETCHES` (the sentinel that no planning panel ran). Write the plan from direct codebase/doc inspection.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
 
@@ -898,11 +898,11 @@ When `_publish_rc=4`, execute **### Plan command validator failure (shared)** us
 
 ### 5d — Final warning replay + footer
 
-**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
+**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session setup`, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
-- `**⚠ Cursor sketch timed out / produced empty output**`
-- `**⚠ Codex sketch timed out / produced empty output**`
+- `**⚠ Cursor plan review failed / produced empty output**`
+- `**⚠ Codex plan review failed / produced empty output**`
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.

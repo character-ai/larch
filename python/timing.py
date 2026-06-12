@@ -20,9 +20,7 @@ import tokens
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-review", "cursor-review", "codex-review-generic", "cursor-review-generic",
     "codex-implement", "cursor-implement", "codex-ci-fix", "cursor-ci-fix", "claude-ci-fix",
-    "claude-review", "codex-sketch-arch", "codex-sketch-innovation", "codex-sketch-pragmatic",
-    "cursor-sketch-arch", "cursor-sketch-innovation", "cursor-sketch-pragmatic",
-    "codex-sketch-generic", "cursor-sketch-generic", "cursor-brainstorm", "codex-brainstorm",
+    "claude-review", "cursor-brainstorm", "codex-brainstorm",
     "codex-plan-arch", "codex-plan-innovation", "codex-plan-pragmatic", "codex-plan-requirements",
     "cursor-plan-arch", "cursor-plan-innovation", "cursor-plan-pragmatic", "cursor-plan-requirements",
     "codex-plan-voter", "cursor-plan-voter", "claude-plan-voter", "claude-plan-draft",
@@ -37,11 +35,8 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "cursor-phase1-edge-cases", "cursor-phase1-testing", "cursor-phase2-correctness",
     "cursor-phase2-edge-cases", "cursor-phase2-testing", "codex-phase1-correctness",
     "codex-phase1-edge-cases", "codex-phase1-testing", "codex-phase2-correctness",
-    "codex-phase2-edge-cases", "codex-phase2-testing", "codex-debate-thesis",
-    "codex-debate-antithesis", "cursor-debate-thesis", "cursor-debate-antithesis",
-    "cursor-debate-thesis-retry1", "cursor-debate-antithesis-retry1", "codex-debate-thesis-retry1",
-    "codex-debate-antithesis-retry1", "claude-debate-thesis-retry2", "claude-debate-antithesis-retry2",
-    "codex-judge", "cursor-judge", "codex-exec", "codex-plan-draft", "vendor-misc", "implement-code-flow",
+    "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
+    "vendor-misc", "implement-code-flow",
 })
 TIMING_LOCK_TIMEOUT_S = 5.0
 TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"})

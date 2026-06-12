@@ -14,7 +14,7 @@
 
 <!-- step:1c — Clarifying Questions -->
 
-Before launching the expensive collaborative sketch phase, use `AskUserQuestion` to clarify any ambiguities in the feature description. This is the highest-value question point — answers here reshape what the sketch agents explore.
+Before drafting the plan, use `AskUserQuestion` to clarify any ambiguities in the feature description. This is the highest-value question point: answers here shape the plan's scope and constraints.
 
 Consider asking about:
 - **Scope boundaries**: What is explicitly in-scope vs. out-of-scope? Are there related changes the user does NOT want?
@@ -22,7 +22,7 @@ Consider asking about:
 - **Unclear requirements**: Any aspect of the feature description that is vague, could be interpreted multiple ways, or has implicit assumptions.
 
 **Guidelines**:
-- If you have any doubt about scope, requirements, or what 'done' means, ask. This is the highest-value question point in the entire workflow — answers here reshape what the sketch agents explore. The cost of one extra clarifying question is small; anchoring sketches on the wrong interpretation is large. Suppress only when the feature description is fully unambiguous.
+- If you have any doubt about scope, requirements, or what 'done' means, ask. This is the highest-value question point in the entire workflow because answers shape the implementation plan. The cost of one extra clarifying question is small; drafting from the wrong interpretation is expensive. Suppress only when the feature description is fully unambiguous.
 - Batch questions into a single `AskUserQuestion` call with 1-4 questions rather than multiple sequential calls.
 - **Semantic sprawl heuristic (best-effort)**: when clarifying answers suggest several distinct sub-features or cross-cutting infrastructure changes, the orchestrator MAY fire an additional `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no Continue — there is no plan yet to continue with). On **Cancel**: export `SUMMARY_OUTCOME=cancelled-sprawl` and run the Final summary block from `SKILL.md` (`### Final summary block`), print `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run the **Split-path** procedure in `SKILL.md` (decomposition panel stub until #2672). The heuristic is semantic — when uncertain, do not fire. At most **once** per Step 1c invocation.
 - If the feature description is clear and unambiguous, proceed to Step 1d.
@@ -33,7 +33,7 @@ After the user responds, incorporate their answers into your understanding of th
 
 <!-- step:1d — Design Discussion Round 1 -->
 
-Before launching the expensive collaborative sketch phase, stress-test the feature's scope and requirements by walking through the decision tree one question at a time. This is a deeper, sequential interrogation that resolves dependencies between decisions — each answer may reshape subsequent questions.
+Before drafting the plan, stress-test the feature's scope and requirements by walking through the decision tree one question at a time. This is a deeper, sequential interrogation that resolves dependencies between decisions; each answer may reshape subsequent questions.
 
 ## Behavior
 
@@ -47,11 +47,11 @@ Then walk each branch one question at a time via sequential `AskUserQuestion` ca
 
 After each `AskUserQuestion` answer is recorded, apply the **same semantic sprawl heuristic** as Step 1c (Split / Cancel only, no Continue; on Cancel export `SUMMARY_OUTCOME=cancelled-sprawl` and run `### Final summary block`). **Cap**: at most **once** per Step 1d invocation for this heuristic — if it already fired during Step 1c or earlier in Step 1d, do not re-fire.
 
-**Explicit prohibition**: Do NOT ask about implementation approach, architectural preferences, library choices, or file organization. Those decisions belong to the sketch phase (Step 2a). Round 1 is strictly requirements/scope clarification.
+**Explicit prohibition**: Do NOT ask about implementation approach, architectural preferences, library choices, or file organization. Those decisions belong to Step 2b plan drafting and Step 3 plan review. Round 1 is strictly requirements/scope clarification.
 
 ## Short-circuit
 
-If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off. Step 1d.7 always fires on new-plan runs after Step 1d / Step 1d.5, including this short-circuit path; users may use **Refine outline** there to add context before sketches.
+If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off. Step 1d.7 always fires on new-plan runs after Step 1d / Step 1d.5, including this short-circuit path; users may use **Refine outline** there to add context before plan drafting.
 
 ## Output
 
@@ -68,7 +68,7 @@ This file captures scope boundaries and hard constraints only — NOT architectu
 
 ## Cap
 
-At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off — users may pick **Refine outline** there to surface any deferred branches before sketches launch.
+At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off; users may pick **Refine outline** there to surface any deferred branches before plan drafting.
 
 ## Terse answers
 

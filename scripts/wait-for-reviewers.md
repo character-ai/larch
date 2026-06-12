@@ -5,7 +5,7 @@
 ## Callers
 
 - `/review` Step 3a (collect-agent-results.sh's caller-side wait). Default `--timeout 1860` matches `run-external-agent.sh`'s 30-minute review timeout plus a 1-minute grace.
-- `/design` Step 2a (sketches) and Step 3 (plan review) via the same collector.
+- `/design` Step 3 (plan review) via the same collector.
 - `/implement` does not invoke this script directly — it runs through `/review` and `/design`.
 
 ## Timeout (`--timeout`)

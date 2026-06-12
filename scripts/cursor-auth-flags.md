@@ -9,7 +9,6 @@ Historically this script emitted `--api-key <CURSOR_API_KEY>` argv elements for 
 Runtime skill markdown templates that emit Bash blocks executed verbatim by the orchestrator:
 
 - `skills/shared/voting-protocol.md` — Cursor voter launch.
-- `skills/shared/dialectic-protocol.md` — Cursor judge launch.
 - `skills/research/references/validation-phase.md` — Cursor research-validation launch.
 
 These markdown blocks invoke the gate (advisory exit) and pass **no** `--api-key`:

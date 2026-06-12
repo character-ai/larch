@@ -62,7 +62,7 @@ chmod +x "$A_DIR/ci-wait.sh"
 
 # Stub ci-status.sh: touches loop-entered marker on each call (the test
 # polls for this as a deterministic readiness signal, eliminating the
-# stderr-readiness race the design dialectic flagged). Outputs values
+# stderr-readiness race flagged during design review). Outputs values
 # that drive the polling loop into ACTION=wait via ci-decide.sh below.
 cat > "$A_DIR/ci-status.sh" <<'SH'
 #!/usr/bin/env bash

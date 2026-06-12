@@ -11,7 +11,7 @@ Five columns on every data row (empty optional fields are literal empty strings,
 | `path` | Repo-relative file path |
 | `variant` | `orchestrator-inline` or `external-prompt` |
 | `expected_count` | Non-negative integer match count |
-| `prompt_kind` | `standard`, `sketch`, or `plan-review` for external rows; empty for orchestrator rows |
+| `prompt_kind` | `standard` or `plan-review` for external rows; empty for orchestrator rows |
 | `step_markers` | Comma-separated step IDs for per-step placement checks; empty skips placement |
 
 Comment lines (`#` in column 1) and blank lines are skipped.
@@ -27,7 +27,7 @@ Both `python3 python/cli.py lint readability-preamble` and `python/test_lint_rea
 ## Semantics
 
 - **orchestrator-inline**: file-level count of the MANDATORY readability directive regex; when `step_markers` is non-empty, each listed step body (from `<!-- step:<id>` until the next `<!-- step:`) must contain at least one match.
-- **external-prompt**: exact prompt-line counts — `standard` and `plan-review` use backticked style lines; `sketch` uses the bare `Style requirements: <READABILITY_STYLE>.` line (no backticks), either as a literal line or as the escaped `\n...` tail in the byte-preserved sketch prompt bodies.
+- **external-prompt**: exact prompt-line counts. `standard` and `plan-review` use backticked style lines.
 
 ## Edit in sync
 

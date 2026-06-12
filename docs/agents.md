@@ -31,7 +31,7 @@ flowchart TD
 
 This pattern is used for:
 
-- **[Collaborative sketches](collaborative-sketches.md)** — the mode-specific sketch topology fans out across Claude, Cursor, and Codex
+- **[Design planning](collaborative-sketches.md)** — `/design` drafts the plan directly, then fans out to the plan-review panel
 - **Plan review** — the validation panels described in [Review Agents](review-agents.md) examine plans and research output simultaneously
 - **Code review** — the specialist panel described in [Review Agents](review-agents.md) examines the diff simultaneously; Claude is a voter only
 - **[Voting](voting-process.md)** — the voting panel evaluates findings in parallel
@@ -70,7 +70,6 @@ Each agent runs in its own context window:
 Agents have restricted tool access depending on their role:
 
 - **Review agents** — Read, Grep, Glob only (cannot modify files)
-- **Sketch agents** — Read, Grep, Glob only (research phase)
 - **Voting agents** — Read, Grep, Glob only (evaluation phase)
 - **Implementation agents** — Full tool access when implementing fixes
 

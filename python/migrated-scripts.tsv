@@ -129,8 +129,6 @@ scripts/refresh-run-logs.md	#3672
 scripts/refresh-run-logs.sh	#3672
 scripts/render-cost-line.md	#3671
 scripts/render-cost-line.sh	#3671
-scripts/render-debate-retry-prompt.md	#3675
-scripts/render-debate-retry-prompt.sh	#3675
 scripts/render-lane-status-lib.md	#3675
 scripts/render-lane-status-lib.sh	#3675
 scripts/render-lane-status.md	#3675
@@ -216,8 +214,6 @@ scripts/test-refresh-run-logs.sh	#3672
 scripts/test-render-cost-line-realism.sh	#3671
 scripts/test-render-cost-line.md	#3671
 scripts/test-render-cost-line.sh	#3671
-scripts/test-render-debate-retry-prompt.md	#3675
-scripts/test-render-debate-retry-prompt.sh	#3675
 scripts/test-render-lane-status.md	#3675
 scripts/test-render-lane-status.sh	#3675
 scripts/test-render-reviewer-prompt.md	#3675

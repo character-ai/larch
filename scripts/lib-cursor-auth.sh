@@ -6,7 +6,7 @@
 #   - scripts/check-reviewers.sh
 #   - scripts/run-negotiation-round.sh
 #   - scripts/cursor-auth-flags.sh (used by runtime skill markdown blocks:
-#     skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+#     skills/shared/voting-protocol.md,
 #     skills/research/references/validation-phase.md)
 #
 # No shebang: this is a library, not a standalone executable. Do NOT `set -e`

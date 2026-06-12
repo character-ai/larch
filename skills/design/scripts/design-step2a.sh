@@ -97,11 +97,21 @@ if [ -f "$DESIGN_TMPDIR/run-params.json" ]; then
   fi
 fi
 # Repair or write sentinel artifacts; do not overwrite non-sentinel data
+_exact_line_file() {
+  _elf_file="$1"
+  _elf_expected="$2"
+  awk -v expected="$_elf_expected" '
+    NR == 1 { ok = ($0 == expected) }
+    NR > 1 { ok = 0 }
+    END { exit (NR == 1 && ok) ? 0 : 1 }
+  ' "$_elf_file" 2>/dev/null
+}
+
 _artifacts_ok=true
 _NO_SKETCHES="NO_SKETCHES"
 _NO_CONTESTED="NO_CONTESTED_DECISIONS"
 _LEGACY_NO_SKETCHES=false
-if ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then
+if _exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "$_NO_SKETCHES"; then
   :
 elif [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_CLASSIFIED_SI""MPLE" ] \
   || [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_DEGRADED_HA""RD" ]; then
@@ -110,13 +120,13 @@ elif [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "N
 else
   _artifacts_ok=false
 fi
-if ( command grep -Fxq "$_NO_CONTESTED" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _artifacts_ok=false; fi
+if _exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "$_NO_CONTESTED"; then :; else _artifacts_ok=false; fi
 if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _artifacts_ok=false; fi
 _artifact_conflict=false
 if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] \
-  && ! ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ) \
+  && ! _exact_line_file "$DESIGN_TMPDIR/approach-synthesis.txt" "$_NO_SKETCHES" \
   && [ "$_LEGACY_NO_SKETCHES" != true ]; then _artifact_conflict=true; fi
-if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! ( command grep -Fxq "$_NO_CONTESTED" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then _artifact_conflict=true; fi
+if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! _exact_line_file "$DESIGN_TMPDIR/contested-decisions.md" "$_NO_CONTESTED"; then _artifact_conflict=true; fi
 if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _artifact_conflict=true; fi
 if [ "$_artifact_conflict" = true ]; then
   printf '%s\n' '**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect before continuing.**' >&2
@@ -137,4 +147,4 @@ if [ "$_artifacts_ok" != true ]; then
 fi
 : > "$DESIGN_TMPDIR/.completed/step-2a"
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2a — sketches" || true
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 2a — sentinel prep" || true

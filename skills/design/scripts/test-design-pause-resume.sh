@@ -387,7 +387,7 @@ if true; then
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
@@ -408,6 +408,24 @@ fi
 [[ "$(cat "$DESIGN_LEGACY_2A/approach-synthesis.txt")" == "NO_SKETCHES" ]] || fail "step-2a-only compatibility guard did not repair approach sentinel"
 [[ "$(cat "$DESIGN_LEGACY_2A/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "step-2a-only compatibility guard did not repair contested sentinel"
 [[ -f "$DESIGN_LEGACY_2A/dialectic-resolutions.md" ]] || fail "step-2a-only compatibility guard did not repair dialectic sentinel"
+
+echo "=== legacy Step 2a.5 pause load remaps and normalizes sentinels ==="
+DESIGN_LEGACY_2A5="$TMP/design-legacy-2a5"
+RESTORE_LEGACY_2A5="$TMP/restore-legacy-2a5"
+make_design_tmpdir "$DESIGN_LEGACY_2A5"
+complete_design_steps "$DESIGN_LEGACY_2A5" 1c 1d 1d.5 1d.7 1e 2a
+rm -f "$DESIGN_LEGACY_2A5/approach-synthesis.txt" "$DESIGN_LEGACY_2A5/contested-decisions.md" "$DESIGN_LEGACY_2A5/dialectic-resolutions.md"
+printf '%s\n' 'ISSUE_NUMBER=9' 'RUN_ID=RUNPAUSE1' 'REPO=owner/repo' >"$DESIGN_LEGACY_2A5/pause-state.txt"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+mkdir -p "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+cp -R "$DESIGN_LEGACY_2A5"/. "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/"
+printf '%s\n' '<!-- larch:design-pause:start -->' 'ISSUE_NUMBER=9' 'REPO=owner/repo' 'RUN_ID=RUNPAUSE1' 'SESSION_ID=RUNPAUSE1' 'STEP=2a.5' '<!-- larch:design-pause:end -->' >"$BODY_FILE"
+out_legacy_2a5_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_LEGACY_2A5" --issue 9 --repo owner/repo)
+[[ "$out_legacy_2a5_load" == *"LOAD_OK=true"* && "$out_legacy_2a5_load" == *"STEP=2b"* ]] || fail "legacy 2a.5 load should remap to Step 2b: $out_legacy_2a5_load"
+[[ "$(cat "$RESTORE_LEGACY_2A5/approach-synthesis.txt")" == "NO_SKETCHES" ]] || fail "legacy 2a.5 load did not normalize approach sentinel"
+[[ "$(cat "$RESTORE_LEGACY_2A5/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "legacy 2a.5 load did not normalize contested sentinel"
+[[ -f "$RESTORE_LEGACY_2A5/dialectic-resolutions.md" && ! -s "$RESTORE_LEGACY_2A5/dialectic-resolutions.md" ]] || fail "legacy 2a.5 load did not normalize dialectic sentinel"
+[[ -f "$RESTORE_LEGACY_2A5/.completed/step-2a" ]] || fail "legacy 2a.5 load did not write step-2a marker"
 
 echo "=== Step 2a marker-only repair ==="
 DESIGN_MARKER_ONLY="$TMP/design-simple-marker-only"
@@ -433,7 +451,7 @@ if true; then
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
@@ -457,7 +475,7 @@ echo "=== Step 2a sentinel repair refuses non-sentinel artifacts ==="
 DESIGN_CONFLICT="$TMP/design-simple-conflict"
 make_design_tmpdir "$DESIGN_CONFLICT"
 complete_design_steps "$DESIGN_CONFLICT" 1c 1d 1d.5 1d.7 1e 2a
-printf '%s\n' 'real sketch synthesis' >"$DESIGN_CONFLICT/approach-synthesis.txt"
+printf '%s\n' 'real planning synthesis' >"$DESIGN_CONFLICT/approach-synthesis.txt"
 printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_CONFLICT/contested-decisions.md"
 : >"$DESIGN_CONFLICT/dialectic-resolutions.md"
 set +e
@@ -473,7 +491,7 @@ if true; then
   if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
   if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
   if [ "$_simple_artifact_conflict" = true ]; then
-    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    printf "%s\n" "**⚠ Step 2a: sentinel repair refused: non-sentinel artifacts already exist. Inspect run-params.json before continuing.**" >&2
     exit 1
   fi
 fi
@@ -482,7 +500,7 @@ rc_conflict=$?
 set -e
 [[ "$rc_conflict" -ne 0 ]] || fail "conflict repair should exit non-zero"
 [[ "$out_conflict" == *"sentinel repair refused"* ]] || fail "conflict warning missing: $out_conflict"
-[[ "$(cat "$DESIGN_CONFLICT/approach-synthesis.txt")" == "real sketch synthesis" ]] || fail "conflict repair clobbered non-sentinel synthesis"
+[[ "$(cat "$DESIGN_CONFLICT/approach-synthesis.txt")" == "real planning synthesis" ]] || fail "conflict repair clobbered non-sentinel synthesis"
 
 echo "=== NO_SKETCHES sentinel already present; no repair needed ==="
 DESIGN_SENTINEL_OK="$TMP/design-hard-sentinel"
@@ -499,6 +517,21 @@ if true; then
 fi
 '
 [[ -f "$DESIGN_SENTINEL_OK/.completed/step-2a" ]] || fail "sentinel-present run should write step-2a marker"
+
+echo "=== Step 2a sentinel repair rejects extra content after sentinel ==="
+DESIGN_SENTINEL_EXTRA="$TMP/design-sentinel-extra"
+make_design_tmpdir "$DESIGN_SENTINEL_EXTRA"
+complete_design_steps "$DESIGN_SENTINEL_EXTRA" 1c 1d 1d.5 1d.7 1e
+printf '%s\n' 'NO_SKETCHES' 'stale planning synthesis' >"$DESIGN_SENTINEL_EXTRA/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SENTINEL_EXTRA/contested-decisions.md"
+: >"$DESIGN_SENTINEL_EXTRA/dialectic-resolutions.md"
+set +e
+out_sentinel_extra=$(DESIGN_TMPDIR="$DESIGN_SENTINEL_EXTRA" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$REPO_ROOT/skills/design/scripts/design-step2a.sh" --plugin-root "$REPO_ROOT" 2>&1)
+rc_sentinel_extra=$?
+set -e
+[[ "$rc_sentinel_extra" -ne 0 ]] || fail "sentinel plus stale extra content should exit non-zero"
+[[ "$out_sentinel_extra" == *"sentinel repair refused"* ]] || fail "sentinel plus stale extra warning missing: $out_sentinel_extra"
+grep -Fq 'stale planning synthesis' "$DESIGN_SENTINEL_EXTRA/approach-synthesis.txt" || fail "sentinel extra rejection should not clobber stale content"
 
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"

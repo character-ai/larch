@@ -187,7 +187,7 @@ When your skill consumes a session-env file, always route through `session-setup
 
 `--session-env` forwarding and `/design`'s internal heavy-worker dispatch address orthogonal concerns.
 
-- **`/design` execution topology.** `/design` runs sketches → dialectic → plan review → finalize inline in the current context. There is no Agent-tool subagent dispatch.
+- **`/design` execution topology.** `/design` runs sentinel prep → direct plan drafting → plan review → finalize inline in the current context. There is no Agent-tool subagent dispatch.
 
 `SESSION_ENV_PATH` / `--caller-env` shape what crosses the parent/child call boundary. When `/design` is nested under another orchestrator with a non-empty session env, verbosity suppression in `/design` still follows that nested contract.
 

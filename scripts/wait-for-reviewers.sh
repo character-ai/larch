@@ -17,7 +17,7 @@
 #
 # The default timeout is 1860 seconds (31 minutes), matching the run-external-agent.sh
 # review timeout of 30 minutes + 1 minute grace period. Override with --timeout if a different
-# wrapper timeout was used (e.g., 1260 for the 20-minute vote/sketch timeout).
+# wrapper timeout was used (e.g., 1260 for the 20-minute vote timeout).
 
 # No -e: script always exits 0 for normal operation; subshell failures must not abort.
 set -uo pipefail

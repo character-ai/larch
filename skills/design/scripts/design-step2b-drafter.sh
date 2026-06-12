@@ -139,7 +139,7 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     printf '%s\n' 'You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.'
     printf '\n%s\n' 'Drafting requirements to follow:'
     printf '%s\n' '- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.'
-    printf '%s\n' '- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating sketch agreement.'
+    printf '%s\n' '- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.'
     printf '%s\n' '- Read discussion-round1.md when present for scope boundaries and strict constraints.'
     printf '%s\n' '- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.'
     printf '%s\n' '- Read brainstorm.md when present as additive ideation context for plan drafting.'

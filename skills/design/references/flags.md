@@ -72,7 +72,7 @@ Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after 
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 
-## Internal — sketch dispatch (not public argv)
+## Internal — planning dispatch (not public argv)
 
 - **`/design` planning is inline-only** (issue #2487): sentinel prep, direct drafting, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for Step 2a sentinel prep.
 

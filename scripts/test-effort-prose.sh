@@ -9,15 +9,10 @@ PATTERN='Work at (your )?maximum reasoning effort level[.]'
 FILES=(
   python/rendering.py
   skills/design/SKILL.md
-  skills/design/references/sketch-prompts.md
-  skills/design/references/sketch-launch.md
   skills/design/references/plan-review.md
-  skills/design/references/dialectic-execution.md
-  skills/design/references/dialectic-debate.md
   skills/implement/SKILL.md
   skills/review/SKILL.md
   skills/shared/voting-protocol.md
-  skills/shared/dialectic-protocol.md
 )
 
 if LC_ALL=C grep -nE "$PATTERN" "${FILES[@]}"; then

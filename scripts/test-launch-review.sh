@@ -146,9 +146,8 @@ done
 # flag-like values must be rejected with exit 2 and a clear message, NOT
 # silently consumed (which would either pass `--prompt` as the timing-task-kind
 # value or hit the unknown-flag branch later, masking the original arg-shape
-# defect). The dialectic-execution.md template fix (Bug #1) prevents the LLM
-# from constructing this argv shape in the first place; the launcher
-# validation is defense in depth.
+# defect). Runtime templates are expected to avoid this argv shape; the
+# launcher validation is defense in depth.
 set +e
 "$LAUNCHER" --output "$TMPDIR/bad-empty-tk.txt" --timeout 5 --timing-task-kind "" --prompt "x" >/dev/null 2>"$TMPDIR/bad-empty-tk.stderr"
 RC=$?

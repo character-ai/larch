@@ -33,7 +33,7 @@ clear_pause_marker() {
 
 load_fail_retryable() {
     case "$1" in
-        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree)
+        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree|sentinel-artifact-conflict|sentinel-repair-failed)
             return 0
             ;;
         *)
@@ -78,6 +78,60 @@ validate_repo_value() {
 
 larch_log_slug_is_valid() {
     [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+exact_line_file() {
+    local file="$1" expected="$2"
+    awk -v expected="$expected" '
+      NR == 1 { ok = ($0 == expected) }
+      NR > 1 { ok = 0 }
+      END { exit (NR == 1 && ok) ? 0 : 1 }
+    ' "$file" 2>/dev/null
+}
+
+repair_no_sketch_sentinels() {
+    local root="$1"
+    local no_sketches="NO_SKETCHES"
+    local no_contested="NO_CONTESTED_DECISIONS"
+    local artifacts_ok=true
+    local legacy_no_sketches=false
+    local approach_contents
+
+    approach_contents="$(cat "$root/approach-synthesis.txt" 2>/dev/null || true)"
+    if exact_line_file "$root/approach-synthesis.txt" "$no_sketches"; then
+        :
+    elif [[ "$approach_contents" == "NO_SKETCHES_CLASSIFIED_SIMPLE" || "$approach_contents" == "NO_SKETCHES_DEGRADED_HARD" ]]; then
+        legacy_no_sketches=true
+        artifacts_ok=false
+    else
+        artifacts_ok=false
+    fi
+    if exact_line_file "$root/contested-decisions.md" "$no_contested"; then
+        :
+    else
+        artifacts_ok=false
+    fi
+    [[ -f "$root/dialectic-resolutions.md" ]] || artifacts_ok=false
+
+    if [[ -s "$root/approach-synthesis.txt" ]] \
+        && ! exact_line_file "$root/approach-synthesis.txt" "$no_sketches" \
+        && [[ "$legacy_no_sketches" != true ]]; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+    if [[ -s "$root/contested-decisions.md" ]] && ! exact_line_file "$root/contested-decisions.md" "$no_contested"; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+    if [[ -s "$root/dialectic-resolutions.md" ]]; then
+        emit_load_fail "sentinel-artifact-conflict"
+    fi
+
+    if [[ "$artifacts_ok" != true ]]; then
+        printf '%s\n' "$no_sketches" >"$root/approach-synthesis.txt" || emit_load_fail "sentinel-repair-failed"
+        printf '%s\n' "$no_contested" >"$root/contested-decisions.md" || emit_load_fail "sentinel-repair-failed"
+        : >"$root/dialectic-resolutions.md" || emit_load_fail "sentinel-repair-failed"
+    fi
+    mkdir -p "$root/.completed" || emit_load_fail "sentinel-repair-failed"
+    : >"$root/.completed/step-2a" || emit_load_fail "sentinel-repair-failed"
 }
 
 resolve_repo() {
@@ -178,6 +232,7 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
 fi
 
 validate_plain_value step "$STEP"
+ORIGINAL_STEP="$STEP"
 case "$STEP" in
     2a.5) STEP=2b ;;
 esac
@@ -317,6 +372,10 @@ if [[ -z "$manifest_run_id" || "$manifest_run_id" != "$RUN_ID" ]]; then
 fi
 
 rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
+
+if [[ "${ORIGINAL_STEP:-}" == "2a.5" ]]; then
+    repair_no_sketch_sentinels "$restore_tmp"
+fi
 
 : > "$restore_tmp/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 

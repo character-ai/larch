@@ -35,7 +35,7 @@ The harness sends **SIGTERM**, NOT SIGKILL. Bash CANNOT trap SIGKILL; no shell-s
 
 ## Deterministic readiness signal
 
-Sub-test A uses a **stub-touched marker file** (`$tmpdir/loop-entered`, set by the stub `ci-status.sh` on its first call) as the readiness signal, polled with `until [ -f ... ]; do sleep 0.05; done` capped at 10 seconds. This avoids the `⏳ CI: waiting` stderr-marker race the design dialectic flagged: that marker is printed BEFORE the loop's first sleep, so observing it does NOT confirm the trap has had time to install or that the loop has reached `sleep 10`. The stub-touched marker fires exactly when the polling loop's first iteration runs — deterministic.
+Sub-test A uses a **stub-touched marker file** (`$tmpdir/loop-entered`, set by the stub `ci-status.sh` on its first call) as the readiness signal, polled with `until [ -f ... ]; do sleep 0.05; done` capped at 10 seconds. This avoids the `⏳ CI: waiting` stderr-marker race flagged during design review: that marker is printed BEFORE the loop's first sleep, so observing it does NOT confirm the trap has had time to install or that the loop has reached `sleep 10`. The stub-touched marker fires exactly when the polling loop's first iteration runs — deterministic.
 
 A small additional `sleep 0.5` buffer follows the readiness wait to ensure the EXIT trap chain is fully installed before SIGTERM is delivered.
 
