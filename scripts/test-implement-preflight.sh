@@ -27,6 +27,10 @@ assert_eq() {
   local actual="$1" expected="$2" label="$3"
   [ "$actual" = "$expected" ] || fail "$label: expected [$expected], got [$actual]"
 }
+assert_first_line_eq() {
+  local file="$1" expected="$2" label="$3"
+  assert_eq "$(sed -n '1p' "$file")" "$expected" "$label"
+}
 
 STUBDIR="$TMPROOT/bin"
 mkdir -p "$STUBDIR"
@@ -178,17 +182,21 @@ not_contains "$TMPROOT/admission-managed/stdout" 'PLAN_PATH=' 'managed no succes
 
 # 2. Admission blockers echo blocker context and emit no success envelope.
 ADMISSION_CASE=blockers PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-blockers
+assert_first_line_eq "$TMPROOT/admission-blockers/stdout" '**❌ /implement preflight: admission blocked — `ADMISSION_RESULT=has-blockers`**' 'blockers refusal first line'
 contains "$TMPROOT/admission-blockers/stdout" 'ADMISSION_RESULT=has-blockers' 'blockers result'
 contains "$TMPROOT/admission-blockers/stdout" 'BLOCKERS=1,2' 'blockers echo'
 not_contains "$TMPROOT/admission-blockers/stdout" 'PLAN_PATH=' 'blockers no success envelope'
 
 # Extra admission context branches.
 ADMISSION_CASE=missing-designed PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-missing-designed
+assert_first_line_eq "$TMPROOT/admission-missing-designed/stdout" '**❌ /implement preflight: admission blocked — `ADMISSION_RESULT=missing-designed-prefix`**' 'missing-designed refusal first line'
 contains "$TMPROOT/admission-missing-designed/stdout" 'TITLE=Needs design' 'missing-designed title echo'
 ADMISSION_CASE=report PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-report
+assert_first_line_eq "$TMPROOT/admission-report/stdout" '**❌ /implement preflight: admission blocked — `ADMISSION_RESULT=report-title`**' 'report refusal first line'
 contains "$TMPROOT/admission-report/stdout" 'TITLE=[BUG report] Sample' 'report title echo'
 ADMISSION_CASE=error PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-error
-contains "$TMPROOT/admission-error/stdout" 'ADMISSION_ERROR=gh=down' 'admission error first line'
+assert_first_line_eq "$TMPROOT/admission-error/stdout" '**❌ /implement preflight: admission blocked — `ADMISSION_ERROR=gh=down`**' 'admission error refusal first line'
+contains "$TMPROOT/admission-error/stdout" 'ADMISSION_ERROR=gh=down' 'admission error context'
 ADMISSION_CASE=managed-no-title PLAN_CASE=present GH_JSON="$(json_body '[DESIGNED] T' 'body')" run_expect 2 admission-managed-no-title
 contains "$TMPROOT/admission-managed-no-title/stdout" 'ADMISSION_RESULT=managed-prefix' 'managed no-title result'
 not_contains "$TMPROOT/admission-managed-no-title/stdout" 'TITLE=' 'managed no-title context absent'
