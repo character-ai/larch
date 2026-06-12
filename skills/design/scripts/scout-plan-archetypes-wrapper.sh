@@ -11,11 +11,15 @@ larch_quiet_init
 
 usage() {
     larch_err "Usage: scout-plan-archetypes-wrapper.sh --plan-file PATH --description-file PATH --output PATH --max-archetypes N --session-env-path PATH"
+    larch_err "       scout-plan-archetypes-wrapper.sh --filter-manifest INPUT OUTPUT [--max-archetypes N]"
 }
 
 PLAN_FILE=""
 DESCRIPTION_FILE=""
 OUTPUT=""
+FILTER_INPUT=""
+FILTER_OUTPUT=""
+FILTER_MODE="false"
 MAX_ARCHETYPES="3"
 SESSION_ENV_FILE=""
 CODEX_PRESENT="false"
@@ -24,6 +28,7 @@ PROMPT_TEMPLATE="${PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prom
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --filter-manifest) FILTER_INPUT="${2:?}"; FILTER_OUTPUT="${3:?}"; FILTER_MODE="true"; shift 3 ;;
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --description-file) DESCRIPTION_FILE="${2:?}"; shift 2 ;;
         --output) OUTPUT="${2:?}"; shift 2 ;;
@@ -101,15 +106,140 @@ validate_under_allowed_roots() {
     printf '%s\n' "$canon"
 }
 
-[[ -n "$PLAN_FILE" ]] || fail "--plan-file is required"
-[[ -n "$DESCRIPTION_FILE" ]] || fail "--description-file is required"
-[[ -n "$OUTPUT" ]] || fail "--output is required"
-[[ -n "$SESSION_ENV_FILE" ]] || fail "--session-env-path is required"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
 
 case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer 0-3" ;; esac
 (( 10#$MAX_ARCHETYPES <= 3 )) || fail "--max-archetypes must be 0-3 for plan scout"
+
+write_empty_manifest() {
+    local target="$1" tmp
+    mkdir -p "$(dirname "$target")"
+    tmp=$(mktemp "${target}.tmp.XXXXXX") || exit 1
+    printf '{"archetypes":[]}\n' >"$tmp"
+    mv -f "$tmp" "$target"
+}
+
+filter_and_cap_manifest() {
+    local input="$1" output="$2" cap="$3"
+    local before after tmp warnings_file
+    [[ -s "$input" ]] || return 1
+    mkdir -p "$(dirname "$output")"
+    before=$(jq -r 'if (.archetypes | type) == "array" then (.archetypes | length) else 0 end' "$input" 2>/dev/null | tr -d '[:space:]' || printf '0')
+    tmp=$(mktemp "${output}.filter.XXXXXX") || return 1
+    warnings_file=$(mktemp "${output}.warnings.XXXXXX") || { rm -f "$tmp"; return 1; }
+    if ! jq -c --argjson cap "$cap" '
+      def reserved:
+        ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
+         "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
+         "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity",
+         "arch","edge","innovation","pragmatic","requirements"];
+      def has_unsafe_wrapper_tag:
+        (ascii_downcase
+         | contains("</scout_notes>")
+           or contains("</reviewer_feature_description>")
+           or contains("</plan_review_scope_anchor>")
+           or contains("</feature>"));
+      def has_unsafe_plan_delimiter:
+        test("<implementation_plan")
+        or test("<feature_description")
+        or test("<reviewer_feature_description")
+        or test("<plan_review_scope_anchor")
+        or test("<feature[ >]");
+      def has_unsafe_rationale:
+        has_unsafe_wrapper_tag
+        or has_unsafe_plan_delimiter
+        or test("\n")
+        or test("(?m)^---$");
+      reduce .archetypes[]? as $a
+        ({seen:{}, archetypes:[], warns:[], valid_total:0};
+         ($a.name // "") as $name
+         | if (($a | type) != "object") then
+             .warns += ["invalid archetype object"]
+           elif (($name | type) != "string") or (($name | test("^[a-z][a-z0-9-]{2,40}$")) | not) then
+             .warns += ["invalid archetype name: \($name)"]
+           elif (reserved | index($name)) then
+             .warns += ["reserved archetype name: \($name)"]
+           elif (.seen[$name] // false) then
+             .warns += ["duplicate archetype name: \($name)"]
+           elif ((["code-quality","risk-integration","correctness","architecture","security"] | index($a.focus_area)) | not) then
+             .warns += ["invalid focus_area for \($name)"]
+           elif (($a.weight | type) != "number") or (($a.weight % 1) != 0) or ($a.weight < 1) or ($a.weight > 8) then
+             .warns += ["invalid weight for \($name)"]
+           elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then
+             .warns += ["empty rationale for \($name)"]
+           elif ($a.rationale | has_unsafe_rationale) then
+             .warns += ["unsafe rationale for \($name)"]
+           elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then
+             .warns += ["empty prompt_body for \($name)"]
+           elif (($a.prompt_body | test("(?m)^---$"))
+                 or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
+                 or ($a.prompt_body | has_unsafe_wrapper_tag)
+                 or ($a.prompt_body | has_unsafe_plan_delimiter)) then
+             .warns += ["unsafe prompt_body for \($name)"]
+           else
+             .seen[$name] = true
+             | .valid_total += 1
+             | if (.archetypes | length) < $cap then
+                 (if ($a.prompt_body | test("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly\\.?$"))
+                  then $a.prompt_body
+                  else ($a.prompt_body | rtrimstr(" ") | rtrimstr(".")) + " Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
+                  end) as $repaired_body
+                 | .archetypes += [{
+                   name:$name,
+                   focus_area:$a.focus_area,
+                   weight:($a.weight | floor),
+                   rationale:$a.rationale,
+                   prompt_body:$repaired_body
+                 }]
+               else . end
+           end)
+      | if .valid_total > $cap then
+          .warns += ["validated archetypes exceed max cap: \(.valid_total) > \($cap); truncating"]
+        else . end
+      | {archetypes, warns}
+    ' "$input" >"$tmp"; then
+        rm -f "$tmp" "$warnings_file"
+        return 1
+    fi
+    jq -r '.warns[]?' "$tmp" >"$warnings_file"
+    jq -c '{archetypes}' "$tmp" >"${tmp}.manifest" || { rm -f "$tmp" "$warnings_file" "${tmp}.manifest"; return 1; }
+    after=$(jq -r '.archetypes | length' "${tmp}.manifest" | tr -d '[:space:]')
+    if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$before" -gt "$after" ]]; then
+        emit_kv WARN "scout-plan-archetypes-wrapper: filtered archetypes from ${before} to ${after} (reserved slugs and/or cap)"
+    fi
+    while IFS= read -r warning || [[ -n "$warning" ]]; do
+        [[ -n "$warning" ]] && emit_kv WARN "$warning"
+    done <"$warnings_file"
+    mv -f "${tmp}.manifest" "$output"
+    rm -f "$tmp" "$warnings_file"
+}
+
+if [[ "$FILTER_MODE" == "true" ]]; then
+    [[ -n "$FILTER_INPUT" ]] || fail "--filter-manifest input is required"
+    [[ -n "$FILTER_OUTPUT" ]] || fail "--filter-manifest output is required"
+    if filter_and_cap_manifest "$FILTER_INPUT" "$FILTER_OUTPUT" "$MAX_ARCHETYPES"; then
+        final_count=$(jq '.archetypes | length' "$FILTER_OUTPUT" 2>/dev/null || printf '0')
+        if [[ "$final_count" == "0" ]]; then
+            emit_kv SCOUT_STATUS empty
+        else
+            emit_kv SCOUT_STATUS ok
+        fi
+        emit_kv SCOUT_MANIFEST "$FILTER_OUTPUT"
+        emit_kv SCOUT_ARCHETYPE_COUNT "$final_count"
+    else
+        write_empty_manifest "$FILTER_OUTPUT"
+        emit_kv SCOUT_STATUS parse-failed
+        emit_kv SCOUT_MANIFEST "$FILTER_OUTPUT"
+        emit_kv SCOUT_ARCHETYPE_COUNT 0
+    fi
+    exit 0
+fi
+
+[[ -n "$PLAN_FILE" ]] || fail "--plan-file is required"
+[[ -n "$DESCRIPTION_FILE" ]] || fail "--description-file is required"
+[[ -n "$OUTPUT" ]] || fail "--output is required"
+[[ -n "$SESSION_ENV_FILE" ]] || fail "--session-env-path is required"
 
 PLAN_CANON=$(validate_under_allowed_roots "plan-file" "$PLAN_FILE")
 DESC_CANON=$(validate_under_allowed_roots "description-file" "$DESCRIPTION_FILE")
@@ -127,34 +257,6 @@ write_scope_files() {
 write_scope_files "$PLAN_CANON" "$SCOPE_LIST" || fail "scope-files derivation failed"
 
 mkdir -p "$(dirname "$OUTPUT")"
-write_empty_manifest() {
-    local target="$1" tmp
-    tmp=$(mktemp "${target}.tmp.XXXXXX") || exit 1
-    printf '{"archetypes":[]}\n' >"$tmp"
-    mv -f "$tmp" "$target"
-}
-
-filter_and_cap_manifest() {
-    local path="$1" cap="$2"
-    local before after tmp
-    before=$(jq -r '.archetypes | length' "$path" | tr -d '[:space:]')
-    tmp=$(mktemp "${path}.filter.XXXXXX") || return 1
-    if ! jq -c --argjson cap "$cap" '
-      ["arch","edge","innovation","pragmatic","requirements"] as $r
-      | [.archetypes[]? | select((.name | ascii_downcase) as $n | ($r | index($n) | not))]
-      | if length > $cap then .[0:$cap] else . end
-      | {archetypes: .}
-    ' "$path" >"$tmp"; then
-        rm -f "$tmp"
-        return 1
-    fi
-    after=$(jq -r '.archetypes | length' "$tmp" | tr -d '[:space:]')
-    if [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ && "$before" -gt "$after" ]]; then
-        emit_kv WARN "scout-plan-archetypes-wrapper: filtered archetypes from ${before} to ${after} (reserved slugs and/or cap)"
-    fi
-    mv -f "$tmp" "$path"
-}
-
 SCOUT_ARGS=(
     --mode description
     --description-file "$DESC_CANON"
@@ -218,13 +320,17 @@ if ! jq -e '.archetypes | type == "array"' "$OUTPUT" >/dev/null 2>&1; then
     exit 0
 fi
 
-filter_and_cap_manifest "$OUTPUT" "$MAX_ARCHETYPES" || {
+filter_input="$OUTPUT"
+filter_tmp=$(mktemp "${OUTPUT}.filter-out.XXXXXX") || exit 1
+filter_and_cap_manifest "$filter_input" "$filter_tmp" "$MAX_ARCHETYPES" || {
+    rm -f "$filter_tmp"
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS validation-failed
     emit_kv SCOUT_MANIFEST "$OUTPUT"
     emit_kv SCOUT_ARCHETYPE_COUNT 0
     exit 0
 }
+mv -f "$filter_tmp" "$OUTPUT"
 
 final_count=$(jq '.archetypes | length' "$OUTPUT")
 emit_kv SCOUT_STATUS "$SCOUT_STATUS"

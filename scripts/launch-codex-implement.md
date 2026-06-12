@@ -24,6 +24,7 @@
 LAUNCHER_EXIT=<int>            # exit code from run-external-agent.sh
 MANIFEST_WRITTEN=<true|false>  # whether $MANIFEST_PATH exists and is non-empty
 QA_PENDING_WRITTEN=<true|false># whether $QA_PENDING_PATH exists and is non-empty
+SCOUT_MANIFEST_WRITTEN=<true|false># whether $SCOUT_MANIFEST_PATH exists and is non-empty
 TRANSCRIPT=<path>              # path to Codex's --output-last-message file
 SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 ```
@@ -36,6 +37,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--sidecar-log PATH` | yes | Where wrapper progress chatter is captured |
 | `--manifest-path PATH` | yes | Where Codex MUST atomic-write `manifest.json` |
 | `--qa-pending-path PATH` | yes | Where Codex atomic-writes `qa-pending.json` on `needs_qa` |
+| `--scout-manifest-path PATH` | yes | Where Codex may best-effort atomic-write `{"archetypes":[...]}`; must share the manifest parent |
 | `--plan-file PATH` | yes | Plan to implement (read by Codex) |
 | `--feature-file PATH` | yes | Original feature description (read by Codex) |
 | `--agent-prompt PATH` | yes | `agents/codex-implementer.md` system prompt body |

@@ -308,6 +308,12 @@ step3_loop_restore_snapshot() {
     cp "$snapshot" "$DESIGN_TMPDIR/plan.txt"
 }
 
+step3_loop_clear_stale_scout_manifest() {
+    rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
+          "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
+          "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.* 2>/dev/null || true
+}
+
 step3_loop_run_dedup() {
     local round_num="$1" snapshot dedup_sh dedup_rc
     snapshot="$DESIGN_TMPDIR/plan-pre-apply-round-${round_num}.txt"
@@ -369,6 +375,7 @@ step3_loop_run_apply() {
     fi
 
     step3_loop_write_phase "$round_num" awaiting-revise
+    step3_loop_clear_stale_scout_manifest
     revise_sh="${RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
     set +e
     revise_out=$(LARCH_QUIET_DISABLE=1 "$revise_sh" \

@@ -15,7 +15,6 @@ if [[ ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]] \
     PLUGIN_ROOT="$REPO_ROOT"
 fi
 # Optional harness overrides (see test-plan-review-loop.sh).
-PLAN_REVIEW_SCOUT_SH="${LARCH_PLAN_REVIEW_SCOUT_SH:-$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh}"
 PLAN_REVIEW_DISPATCH_PANEL_SH="${LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH:-$PLUGIN_ROOT/skills/design/scripts/dispatch-plan-review-panel.sh}"
 PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/collect-agent-results.sh}"
 PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
@@ -873,16 +872,6 @@ _run_plan_review_round() {
     local round_num="$1"
     _dedup_failed=0
     loop_status_override=""
-
-# --- Step 2: scout (fail-open) ---
-"$PLAN_REVIEW_SCOUT_SH" \
-    --plan-file "$PLAN_FILE" \
-    --description-file "$SCOPE_ANCHOR_FILE" \
-    --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
-    --max-archetypes 3 \
-    --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
-    --codex-present "$CODEX_PRESENT" \
-    --cursor-present "$CURSOR_PRESENT" || true
 
 # --- Step 3: panel dispatch ---
 set +e

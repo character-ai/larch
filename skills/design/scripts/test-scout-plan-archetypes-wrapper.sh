@@ -80,7 +80,7 @@ export SCOUT_STUB_MANIFEST="$TMP/m3.json"
 export SCOUT_STUB_ARGV_LOG="$D1/argv.log"
 : >"$SCOUT_STUB_ARGV_LOG"
 cat >"$SCOUT_STUB_MANIFEST" <<'JSON'
-{"archetypes":[{"name":"x","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}
+{"archetypes":[{"name":"api-x","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}
 JSON
 "$WRAPPER" \
     --plan-file "$D1/plan.txt" \

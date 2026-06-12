@@ -17,6 +17,8 @@ Accepted flags:
 - `--description-text TEXT`
 - `--panel simple|hard` (default `hard`)
 - `--dynamic-archetypes N` (`0..3`, default `0`; overrides `LARCH_DYNAMIC_ARCHETYPES_MAX`; an explicitly empty env value is invalid and exits 2)
+- `--pre-scouted-manifest FILE` (optional; forwarded to `dispatch-panel.sh`
+  so `/implement` Step 5 can consume a producer-side scout sidecar)
 - `--run-id ID`
 - `--round-num N` (default `1`)
 

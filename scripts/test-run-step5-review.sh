@@ -131,12 +131,15 @@ false
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
+--dynamic-archetypes
+0
 --run-id
 run-xyz" "conventional plan path resolved argv"
 
 echo "=== unified Step 5 argv (round 1, dynamic-archetypes) ==="
 case_dir="$TMP/hard"
 make_tmpdir "$case_dir" round1-dynamic-archetypes false true "run-xyz" 2
+printf 'eligible\n' >"$case_dir/step2-external-scout-eligible.txt"
 argv_file="$TMP/hard.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
 assert_file_equals "$argv_file" "--implement-tmpdir
@@ -157,6 +160,8 @@ true
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
+--pre-scouted-manifest
+$case_dir/scout-coder-manifest.json
 --dynamic-archetypes
 2
 --run-id

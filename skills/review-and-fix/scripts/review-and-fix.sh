@@ -93,6 +93,7 @@ ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 DYNAMIC_ARCHETYPES_CLI=""
+PRE_SCOUTED_MANIFEST=""
 readonly CONVERGENCE_NON_NIT_MAX=5
 REVIEW_FIX_TMPDIRS=()
 
@@ -123,6 +124,7 @@ while [[ $# -gt 0 ]]; do
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
         --no-dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="0"; shift ;;
+        --pre-scouted-manifest) PRE_SCOUTED_MANIFEST="${2:?--pre-scouted-manifest requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "review-and-fix.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -1443,6 +1445,7 @@ _implement_round_body() {
     [[ -n "$PLAN_FILE" ]] && core_args+=(--plan-file "$PLAN_FILE")
     [[ -n "$FEATURE_FILE" ]] && core_args+=(--feature-file "$FEATURE_FILE")
     [[ -n "$RUN_ID" ]] && core_args+=(--run-id "$RUN_ID")
+    [[ -n "$PRE_SCOUTED_MANIFEST" && "$MODE" != "mav-apply" ]] && core_args+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
 
     set +e
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"

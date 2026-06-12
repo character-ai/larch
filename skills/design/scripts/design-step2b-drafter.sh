@@ -127,6 +127,9 @@ rm -f "$DESIGN_TMPDIR/plan.txt" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.failure-diag" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.token-record" \
       "$DESIGN_TMPDIR/step2b-drafter-status.txt.json" \
+      "$DESIGN_TMPDIR/scout-plan-manifest.json" \
+      "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
+      "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.* \
       "$DESIGN_TMPDIR/step2b-drafter-baseline.porcelain"
 if [[ -z "$_step2b_drafter_skip_reason" ]]; then
   _baseline_arg=()
@@ -147,16 +150,25 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     printf '%s\n' '- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).'
     printf '%s\n' '- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.'
     printf '%s\n' '- The final plan body must end with a whole-line diff_lines: <N> trailer.'
+    printf '%s\n' '- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.'
+    printf '%s\n' '- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.'
     printf '\n%s\n' 'Readability style (trusted):'
     cat "$CLAUDE_PLUGIN_ROOT/skills/design/references/readability-style.md"
     printf '\n%s\n' 'Required output format:'
+    printf '%s\n' '[optional]'
     printf '%s\n' 'LARCH_SUMMARY_BEGIN'
     printf '%s\n' 'A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.'
     printf '%s\n' 'LARCH_SUMMARY_END'
+    printf '%s\n' '[/optional]'
     printf '%s\n' 'LARCH_PLAN_BEGIN'
     printf '%s\n' 'Full implementation plan body ending with diff_lines: <N>.'
     printf '%s\n' 'LARCH_PLAN_END'
-    printf '\n%s\n' 'Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.'
+    printf '%s\n' '[optional]'
+    printf '%s\n' 'LARCH_SCOUT_BEGIN'
+    printf '%s\n' '{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}'
+    printf '%s\n' 'LARCH_SCOUT_END'
+    printf '%s\n' '[/optional]'
+    printf '\n%s\n' 'Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.'
     if [ -s "$DESIGN_TMPDIR/feature-description.txt" ]; then
       printf '\n%s\n' 'Untrusted feature description:'
       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block feature_description "$DESIGN_TMPDIR/feature-description.txt"
@@ -262,6 +274,9 @@ elif [[ "$_drafter_dirty_block" == "true" ]]; then
   printf '%s\n' "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**"
 else
   rm -f "$DESIGN_TMPDIR/plan-summary.md"
+  rm -f "$DESIGN_TMPDIR/scout-plan-manifest.json" \
+        "$DESIGN_TMPDIR"/scout-plan-manifest.json.candidate.* \
+        "$DESIGN_TMPDIR"/scout-plan-manifest.json.filtered.*
   printf '%s\n' inline > "$DESIGN_TMPDIR/.step2b-plan-source"
   printf '%s\n' "**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor=$_step2b_drafter_vendor)**"
   if [[ -n "${DESIGN_TMPDIR:-}" ]]; then

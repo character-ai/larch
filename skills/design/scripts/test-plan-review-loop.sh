@@ -1028,8 +1028,7 @@ write_dispatch_combined_threshold
 write_collect empty
 write_voters_three
 outc=$(run_loop "$DC")
-grep -Fq -- '--codex-present' "$DC/scout-argv.log" || fail "plan-review-loop must forward codex-present to scout wrapper"
-grep -Fq -- '--cursor-present' "$DC/scout-argv.log" || fail "plan-review-loop must forward cursor-present to scout wrapper"
+[[ ! -s "$DC/scout-argv.log" ]] || fail "plan-review-loop must not call scout wrapper during review rounds"
 printf '%s\n' "$outc" | grep -q '^DEGRADED_PANEL=1$' || fail "expected DEGRADED_PANEL=1 when COMBINED_FALLBACK_COUNT crosses threshold on zero-findings path"
 printf '%s\n' "$outc" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings with combined threshold"
 
@@ -1318,8 +1317,7 @@ PY
 grep -Fq '## Feature / issue context (base)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing base header"
 grep -Fq '## Brainstorm synthesis (additive; optional, non-binding)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm header"
 grep -Fq 'extra context' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm content"
-grep -Fq -- '--description-file' "$DB/scout-argv.log" || fail "scout argv missing --description-file"
-grep -Fq 'plan-review-scope-anchor.txt' "$DB/scout-argv.log" || fail "scout argv missing raw staged scope anchor path"
+[[ ! -s "$DB/scout-argv.log" ]] || fail "plan-review-loop should not run scout for brainstorm case"
 grep -Fq -- '--scope-anchor-file' "$DB/voter-argv.log" || fail "voter argv missing --scope-anchor-file"
 grep -Fq 'plan-review-scope-anchor.txt' "$DB/voter-argv.log" || fail "voter argv missing staged scope anchor path"
 
@@ -1638,7 +1636,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings-all.md\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-prune-label-map.tsv\nplan-review-prune-nit.env\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/panel-manifest.ndjson\nplan-review/round-1/prune-decision.env\nplan-review/round-1/prune-nit.env\nplan-review/round-1/round-meta.json\nplan-review/round-1/round-summary.env\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nreviewer-prune-ledger.tsv\nscout-plan-manifest.json\ntiming-ledger.tsv\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings-all.md\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-this-round.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-prune-label-map.tsv\nplan-review-prune-nit.env\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan-review/round-1/panel-manifest.ndjson\nplan-review/round-1/prune-decision.env\nplan-review/round-1/prune-nit.env\nplan-review/round-1/round-meta.json\nplan-review/round-1/round-summary.env\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nreviewer-prune-ledger.tsv\ntiming-ledger.tsv\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 

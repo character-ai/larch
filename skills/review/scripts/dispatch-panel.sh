@@ -11,7 +11,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--prune-ledger FILE] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -42,6 +42,7 @@ SCOUT_MANIFEST=""
 DIFF_MODE=""
 ROUND_NUM="1"
 PRUNE_LEDGER=""
+PRE_SCOUTED_MANIFEST=""
 REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
 
 while [[ $# -gt 0 ]]; do
@@ -63,6 +64,7 @@ while [[ $# -gt 0 ]]; do
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
+        --pre-scouted-manifest) PRE_SCOUTED_MANIFEST="${2:?--pre-scouted-manifest requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --prune-ledger) PRUNE_LEDGER="${2:?--prune-ledger requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -315,6 +317,73 @@ scout_manifest_is_valid() {
     ' "$scout_manifest" >/dev/null 2>&1
 }
 
+normalize_scout_manifest() {
+    local input="$1" output="$2" max="${3:-3}" tmp
+    [[ -s "$input" ]] || return 1
+    tmp=$(mktemp "${output}.normalize.XXXXXX") || return 1
+    if ! jq -c --argjson max "$max" '
+        def reserved:
+          ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
+           "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
+           "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
+        def has_unsafe_wrapper_tag:
+          (ascii_downcase
+           | contains("</scout_notes>")
+             or contains("</reviewer_feature_description>")
+             or contains("</plan_review_scope_anchor>")
+             or contains("</feature>"));
+        def has_unsafe_plan_delimiter:
+          test("<implementation_plan")
+          or test("<feature_description")
+          or test("<reviewer_feature_description")
+          or test("<plan_review_scope_anchor")
+          or test("<feature[ >]");
+        def has_unsafe_rationale:
+          has_unsafe_wrapper_tag
+          or has_unsafe_plan_delimiter
+          or test("\n")
+          or test("(?m)^---$");
+        reduce .archetypes[]? as $a
+          ({seen:{}, archetypes:[], valid_total:0};
+           ($a.name // "") as $name
+           | if (($a | type) != "object") then .
+             elif (($name | type) != "string") or (($name | test("^[a-z][a-z0-9-]{2,40}$")) | not) then .
+             elif (reserved | index($name)) then .
+             elif (.seen[$name] // false) then .
+             elif ((["code-quality","risk-integration","correctness","architecture","security"] | index($a.focus_area)) | not) then .
+             elif (($a.weight | type) != "number") or (($a.weight % 1) != 0) or ($a.weight < 1) or ($a.weight > 8) then .
+             elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then .
+             elif ($a.rationale | has_unsafe_rationale) then .
+             elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then .
+             elif (($a.prompt_body | test("(?m)^---$"))
+                   or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
+                   or ($a.prompt_body | has_unsafe_wrapper_tag)
+                   or ($a.prompt_body | has_unsafe_plan_delimiter)) then .
+             else
+               .seen[$name] = true
+               | .valid_total += 1
+               | if (.archetypes | length) < $max then
+                   (if ($a.prompt_body | test("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly\\.?$"))
+                    then $a.prompt_body
+                    else ($a.prompt_body | rtrimstr(" ") | rtrimstr(".")) + " Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
+                    end) as $repaired_body
+                   | .archetypes += [{
+                     name:$name,
+                     focus_area:$a.focus_area,
+                     weight:($a.weight | floor),
+                     rationale:$a.rationale,
+                     prompt_body:$repaired_body
+                   }]
+                 else . end
+             end)
+        | {archetypes}
+    ' "$input" > "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    mv -f "$tmp" "$output"
+}
+
 write_scout_status_file() {
     local scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
     {
@@ -388,6 +457,32 @@ append_scout_parse_issue() {
         emit_kv WARN "append-execution-issue failed for scout parse issue: $append_error"
     fi
 }
+
+if [[ "$DYNAMIC_ARCHETYPES" != "0" ]]; then
+    SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-manifest.json"
+    case "$SCOUT_STATUS" in
+        skipped-*)
+            write_empty_scout_manifest "$SCOUT_MANIFEST"
+            write_scout_status_file
+            ;;
+    esac
+fi
+
+if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" && -n "$PRE_SCOUTED_MANIFEST" ]]; then
+    SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-manifest.json"
+    if normalize_scout_manifest "$PRE_SCOUTED_MANIFEST" "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES" \
+        && scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES" \
+        && [[ "$(jq -r '.archetypes | length' "$SCOUT_MANIFEST" 2>/dev/null)" != "0" ]]; then
+        SCOUT_STATUS="pre-scouted"
+        write_scout_status_file
+        synthesize_dynamic_slots "$SCOUT_MANIFEST"
+    else
+        write_empty_scout_manifest "$SCOUT_MANIFEST"
+        SCOUT_STATUS="parse-failed"
+        SCOUT_FAIL_REASON="pre_scouted_manifest_validation"
+        write_scout_status_file
+    fi
+fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
     SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-manifest.json"

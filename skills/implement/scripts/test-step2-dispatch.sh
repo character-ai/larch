@@ -63,6 +63,7 @@ export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DISPATCHER="$REPO_ROOT/skills/implement/scripts/step2-implement.sh"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 
 [[ -x "$DISPATCHER" ]] || { echo "FAIL: dispatcher not executable: $DISPATCHER" >&2; exit 1; }
 

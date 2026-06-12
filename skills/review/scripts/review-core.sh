@@ -12,7 +12,7 @@ source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [context flags]"
+    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [context flags]"
 }
 
 MODE=""
@@ -30,6 +30,7 @@ PANEL="hard"
 RUN_ID=""
 ROUND_NUM="1"
 PRUNE_LEDGER=""
+PRE_SCOUTED_MANIFEST=""
 REVIEWER_PRUNE_SH="${REVIEWER_PRUNE_SH:-$PLUGIN_ROOT/scripts/reviewer-prune.sh}"
 # Non-empty process env only: set-but-empty must fall through to default 0
 # (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
@@ -54,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
+        --pre-scouted-manifest) PRE_SCOUTED_MANIFEST="${2:?--pre-scouted-manifest requires a value}"; shift 2 ;;
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --prune-ledger) PRUNE_LEDGER="${2:?--prune-ledger requires a value}"; shift 2 ;;
@@ -715,6 +717,7 @@ dispatch_args=(
 [[ -n "$DESCRIPTION_TEXT" ]] && dispatch_args+=(--description-text "$DESCRIPTION_TEXT")
 [[ -n "$SESSION_ENV_PATH" ]] && dispatch_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$PRUNE_LEDGER" ]] && dispatch_args+=(--prune-ledger "$PRUNE_LEDGER")
+[[ -n "$PRE_SCOUTED_MANIFEST" ]] && dispatch_args+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
 [[ -f "$REVIEW_TMPDIR/competition-notice.md" ]] && dispatch_args+=(--competition-notice-file "$REVIEW_TMPDIR/competition-notice.md")
 set +e
 "$DISPATCH_PANEL_SH" "${dispatch_args[@]}" > "$dispatch_out"

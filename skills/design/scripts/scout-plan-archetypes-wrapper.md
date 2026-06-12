@@ -6,6 +6,12 @@
 
 **Stdout KVs**: `SCOUT_STATUS`, `SCOUT_MANIFEST`, `SCOUT_ARCHETYPE_COUNT` (post-filter count).
 
+**Filter mode**: `--filter-manifest INPUT OUTPUT [--max-archetypes N]` does not
+launch a scout agent. It reuses the manifest reducer rules, removes reserved
+static slugs and duplicate slugs, filters unsafe or malformed rows, caps output
+at three archetypes, and writes normalized `{"archetypes":[...]}`. Invalid JSON
+fails open to an empty manifest.
+
 **Harness**: `skills/design/scripts/test-scout-plan-archetypes-wrapper.sh`.
 
 **Edit in sync**: this file, `scout-plan-archetypes-wrapper.sh`, `scout-plan-archetypes-prompt.txt`, `scripts/scout-dynamic-archetypes.sh` / `.md`, `skills/design/scripts/test-scout-plan-archetypes-wrapper.sh`, `scripts/test-design-structure.sh`, `skills/shared/topology.tsv`.

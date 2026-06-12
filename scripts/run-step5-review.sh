@@ -170,6 +170,8 @@ LARCH_TOKEN_SESSION_ID="$(session_get "$SESSION_ENV_PATH" LARCH_TOKEN_SESSION_ID
 LARCH_CLAUDE_SOURCE_FILE="$(session_get "$SESSION_ENV_PATH" LARCH_CLAUDE_SOURCE_FILE "")"
 LARCH_TIMING_LEDGER="$(session_get "$SESSION_ENV_PATH" LARCH_TIMING_LEDGER "")"
 DYNAMIC_ARCHETYPES="$(session_get "$SESSION_ENV_PATH" LARCH_DYNAMIC_ARCHETYPES_MAX "")"
+PRE_SCOUTED_MANIFEST="$IMPLEMENT_TMPDIR/scout-coder-manifest.json"
+EXTERNAL_SCOUT_ELIGIBLE_MARKER="$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt"
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 REVIEW_AND_FIX_ARGS=()
 
@@ -227,7 +229,14 @@ case "$STEP5_MODE" in
         ;;
 esac
 
-[[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
+if [[ "$STEP5_MODE" != "mav-apply" && -f "$EXTERNAL_SCOUT_ELIGIBLE_MARKER" ]]; then
+    REVIEW_AND_FIX_ARGS+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
+    [[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
+elif [[ "$STEP5_MODE" != "mav-apply" ]]; then
+    REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes 0)
+elif [[ -n "$DYNAMIC_ARCHETYPES" ]]; then
+    REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
+fi
 REVIEW_AND_FIX_ARGS+=(--run-id "$RUN_ID")
 
 LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.py" timing mark --if-latest-differs "Step 5 — code review" || true

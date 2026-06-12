@@ -3,7 +3,7 @@
 **Purpose**: Spawn the Cursor implementer subprocess for `/implement` Step 2 with a tight, machine-parseable stdout contract. Wraps `run-external-agent.sh` + `cursor agent -p --force --trust` (parallel to `launch-review.sh --tool cursor`) but redirects the wrapper's human-readable progress lines to a sidecar log file so the dispatcher (`skills/implement/scripts/step2-implement.sh`) only sees deterministic `KEY=VALUE` lines.
 
 **Invariants**:
-- Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; any progress text leaking to stdout would be parsed as garbage.
+- Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `SCOUT_MANIFEST_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; any progress text leaking to stdout would be parsed as garbage.
 - `run-external-agent.sh`'s stdout AND stderr are redirected (`>"$SIDECAR_LOG" 2>&1`) inside the wrapper. Operators inspecting a failed run read the sidecar log to see what went wrong.
 - Cursor stdout is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout-only`, with stderr routed to `<transcript>.diag` so Cursor JSON remains parseable. This file may grow large; it is intentionally NOT echoed to stdout.
 - The Cursor command includes `--output-format json`; after the run, the wrapper best-effort parses `.usage` and records a `cursor_implement` vendor total via `python3 python/cli.py token`. Missing `jq`, malformed JSON, or absent usage is silent and non-fatal.
@@ -29,6 +29,7 @@
 LAUNCHER_EXIT=<int>            # exit code from run-external-agent.sh
 MANIFEST_WRITTEN=<true|false>  # whether $MANIFEST_PATH exists and is non-empty
 QA_PENDING_WRITTEN=<true|false># whether $QA_PENDING_PATH exists and is non-empty
+SCOUT_MANIFEST_WRITTEN=<true|false># whether $SCOUT_MANIFEST_PATH exists and is non-empty
 TRANSCRIPT=<path>              # path to captured Cursor stdout
 SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 ```
@@ -41,6 +42,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--sidecar-log PATH` | yes | Where wrapper progress chatter is captured |
 | `--manifest-path PATH` | yes | Where Cursor MUST atomic-write `manifest.json` |
 | `--qa-pending-path PATH` | yes | Where Cursor atomic-writes `qa-pending.json` on `needs_qa` |
+| `--scout-manifest-path PATH` | yes | Where Cursor may best-effort atomic-write `{"archetypes":[...]}`; must share the manifest parent |
 | `--plan-file PATH` | yes | Plan to implement (read by Cursor through the composed prompt) |
 | `--feature-file PATH` | yes | Original feature description (read by Cursor through the composed prompt) |
 | `--agent-prompt PATH` | yes | `agents/cursor-implementer.md` system prompt body |

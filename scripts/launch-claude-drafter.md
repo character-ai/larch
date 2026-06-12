@@ -68,8 +68,13 @@ The `.result` text is parsed from scratch by `scripts/parse-drafter-output.py` w
 
 - `LARCH_PLAN_BEGIN` / `LARCH_PLAN_END` — required exactly once.
 - `LARCH_SUMMARY_BEGIN` / `LARCH_SUMMARY_END` — optional, but when present must be exactly one balanced non-empty pair.
+- `LARCH_SCOUT_BEGIN` / `LARCH_SCOUT_END` — optional after the plan. A valid
+  candidate is filtered through `scout-plan-archetypes-wrapper.sh
+  --filter-manifest` and materialized as `$DESIGN_TMPDIR/scout-plan-manifest.json`.
 
 Missing, duplicate, reversed, nested (summary inside plan or plan inside summary), or unbalanced sentinel pairs fail closed. The sentinel names may appear inside prose when they are not exact whole lines. The extracted plan must be non-empty and its final line must match `diff_lines: <N>`. The launcher atomically writes `plan.txt`, and writes `plan-summary.md` only when a non-empty summary block is present.
+Malformed scout output after a valid plan is fail-open static-only and is
+reported with `SCOUT_WRITTEN=false` plus `SCOUT_FAIL_REASON`.
 
 ## Dirty-tree sidecar
 
