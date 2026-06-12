@@ -7,6 +7,53 @@ HELPER="$REPO/scripts/render-review-phase-detail.sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+MERMAID_OPTIONAL_SKIP_EMITTED=0
+
+mermaid_required() {
+    [ -n "${GITHUB_ACTIONS:-}" ] && return 0
+    [ "${LARCH_MERMAID_REQUIRED:-}" = "1" ] && return 0
+    return 1
+}
+
+_mermaid_cli_available() {
+    [ -x "$REPO/mermaid-lint/node_modules/.bin/mmdc" ] && return 0
+    command -v mmdc >/dev/null 2>&1
+}
+
+assert_mermaid_valid() {
+    local file="$1"
+    grep -Fq -- '```mermaid' "$file" || return 0
+    if ! _mermaid_cli_available; then
+        if mermaid_required; then
+            fail 'Mermaid CLI unavailable in required validation mode'
+        fi
+        if [ "${MERMAID_OPTIONAL_SKIP_EMITTED:-0}" -eq 0 ]; then
+            printf 'SKIP: Mermaid CLI unavailable; Mermaid parse validation skipped\n'
+            MERMAID_OPTIONAL_SKIP_EMITTED=1
+        fi
+        return 0
+    fi
+    local lint_out lint_rc
+    set +e
+    lint_out="$(python3 "$REPO/python/cli.py" lint mermaid-fences "$file" 2>&1)"
+    lint_rc=$?
+    set -e
+    if [ "$lint_rc" -eq 0 ]; then
+        return 0
+    fi
+    if [ "$lint_rc" -eq 2 ]; then
+        if mermaid_required; then
+            fail "Mermaid lint exit 2 in required validation mode: $lint_out"
+        fi
+        if [ "${MERMAID_OPTIONAL_SKIP_EMITTED:-0}" -eq 0 ]; then
+            printf 'SKIP: Mermaid CLI unavailable; Mermaid parse validation skipped\n'
+            MERMAID_OPTIONAL_SKIP_EMITTED=1
+        fi
+        return 0
+    fi
+    fail "Mermaid lint failed: $lint_out"
+}
+
 command -v jq >/dev/null 2>&1 || { printf 'SKIP: jq unavailable\n'; exit 0; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/trrpd.XXXXXX")"
@@ -115,6 +162,7 @@ r1_ids=$(grep -Eo 'r1_t[0-9]+' "$OUT" | sort | uniq | wc -l | tr -d ' ')
 r1_task_lines=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$OUT" || true)
 [ "$r1_ids" -eq "$r1_task_lines" ] || fail 'Gantt ids must be deterministic and unique per round'
 pass 'reviewer timing Gantt charts render with safe labels and ids'
+assert_mermaid_valid "$OUT"
 
 NO_GANTT_OUT="$WORK/no-gantt.md"
 "$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" \
@@ -254,6 +302,7 @@ grep -Fq -- '- unknown/collector-failure-1: 1' "$DOUT" \
     || fail "design collector placeholder failure attribution wrong: $(grep -F 'collector-failure' "$DOUT" || true)"
 grep -Fq -- '### Round 1 reviewer timing' "$DOUT" || fail 'design skill fixture missing reviewer timing despite vendor skill mismatch'
 grep -Fq -- 'claude_sub/claude-plan-generic :r1_t1' "$DOUT" || fail 'design skill fixture must join vendor row to slot_map despite vendor skill mismatch'
+assert_mermaid_valid "$DOUT"
 pass 'design skill fixture renders counts, attribution, collector failures, and timing'
 
 CAP="$WORK/cap-run"
@@ -271,6 +320,7 @@ CAP_OUT="$WORK/cap.md"
 "$HELPER" --rounds-root "$CAP" --timing-ledger "$CAP/timing-ledger.tsv" --skill implement --output "$CAP_OUT"
 cap_tasks=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$CAP_OUT" || true)
 [ "$cap_tasks" -eq 25 ] || fail "Gantt task cap must render 25 tasks (got $cap_tasks)"
+assert_mermaid_valid "$CAP_OUT"
 pass 'Gantt task cap limits each round to 25 tasks'
 
 MAL="$WORK/malformed-run"
@@ -289,6 +339,65 @@ MAL_OUT="$WORK/malformed.md"
 grep -Fq -- '| 1 | 1 | 1 | 0 | 0 | 1m 40s | — | 1 |' "$MAL_OUT" || fail 'malformed timing rows must keep the table'
 grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$MAL_OUT" || fail 'malformed timing rows should render no-task note'
 pass 'malformed timing rows are best-effort'
+
+# --- Test 11: skill-window contamination — table Time/Cost ignore other-skill round rows ---
+CONT="$WORK/contamination"
+mkdir -p "$CONT/round-1"
+cat >"$CONT/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"1","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":2}}}
+JSON
+cat >"$CONT/round-1/panel-manifest.ndjson" <<'JSON'
+{"slot":"correctness","tool":"cursor","output":"/t/cont/cursor-specialist-correctness-output.txt"}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000100\t100\t1\t0\t0\t-\n'
+    printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700001800\t1800\t1\t0\t0\t-\n'
+} >"$CONT/timing-ledger.tsv"
+if echo '"2023-11-14T22:18:20Z"' | jq -e 'fromdateiso8601 | numbers' >/dev/null 2>&1; then
+        printf '{"type":"vendor","vendor":"codex","input":5000,"cache_read":20000,"cache_create":0,"output":3000,"total":28000,"ts":"2023-11-14T22:21:40Z"}\n' >"$CONT/token-ledger.jsonl"
+    if ! _tc_cont="$(python3 "$REPO/python/cli.py" token cost --codex-input-tokens 5000 --codex-cached-input-tokens 20000 --codex-output-tokens 3000 2>/dev/null)"; then
+        fail "python3 python/cli.py token cost failed for contamination fixture (rc=$?)"
+    fi
+    exp_cont="$(printf '%s\n' "$_tc_cont" | awk -F= '$1=="TOTAL_COST"{print $2; exit}')"
+    CONT_OUT="$WORK/contamination.md"
+    "$HELPER" --rounds-root "$CONT" --timing-ledger "$CONT/timing-ledger.tsv" \
+        --token-ledger "$CONT/token-ledger.jsonl" --skill implement --no-gantt --output "$CONT_OUT"
+    grep -Fq -- "| 1 | 1 | 1 | 0 | 0 | 1m 40s | \$0.00 | 2 |" "$CONT_OUT" \
+        || fail "skill-window Time must use implement window only: $(grep -F '| 1 |' "$CONT_OUT" || true)"
+    if grep -Fq -- '30m' "$CONT_OUT" || grep -Fq -- '16m' "$CONT_OUT"; then
+        fail 'skill-window Time must not use wider design round window'
+    fi
+    if grep -Fq -- "\$$exp_cont" "$CONT_OUT"; then
+        fail "implement round Cost must exclude design-only token-ledger record (exp excluded \$$exp_cont)"
+    fi
+    grep -Fq -- "| **Total** | **1** | **1** | **0** | **0** | **1m 40s** | **\$0.00** | **2** |" "$CONT_OUT" \
+        || fail "Total cost must exclude design-only token record: $(grep -F 'Total' "$CONT_OUT" || true)"
+    pass 'skill-window contamination: table Time/Cost ignore other-skill round rows'
+else
+    printf 'SKIP: jq fromdateiso8601 unavailable; skill-window contamination test skipped\n'
+fi
+
+# --- Test 12: Gantt preservation — vendor rows join by unfiltered round overlap ---
+GANTT_PRES="$WORK/gantt-preservation"
+mkdir -p "$GANTT_PRES/round-1"
+cat >"$GANTT_PRES/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":1}}}
+JSON
+cat >"$GANTT_PRES/round-1/panel-manifest.ndjson" <<'JSON'
+{"slot":"structure","tool":"cursor","output":"/t/gp/cursor-specialist-structure-output.txt"}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000100\t100\t0\t0\t0\t-\n'
+    printf 'v1\tround\t1700000000\tdesign\tdesign Step 3 — plan review\t1\t1700000000\t1700001800\t1800\t0\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000500\timplement\t-\tcursor\treview\t1700000500\t1700000600\t100\tcursor-specialist-structure-output.txt\t0\tcomplete\n'
+} >"$GANTT_PRES/timing-ledger.tsv"
+GP_OUT="$WORK/gantt-preservation.md"
+"$HELPER" --rounds-root "$GANTT_PRES" --timing-ledger "$GANTT_PRES/timing-ledger.tsv" --skill implement --output "$GP_OUT"
+grep -Fq -- '### Round 1 reviewer timing' "$GP_OUT" || fail 'Gantt preservation fixture missing timing heading'
+grep -Fq -- 'cursor/structure :r1_t1' "$GP_OUT" \
+    || fail 'Gantt must include vendor row overlapping wider unfiltered round window'
+assert_mermaid_valid "$GP_OUT"
+pass 'Gantt preservation: vendor rows join by unfiltered round overlap'
 
 ROUND_META="$REPO/scripts/write-design-round-meta.sh"
 TSV_SEC="$WORK/tsv-fallback-security-oos"

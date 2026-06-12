@@ -238,23 +238,37 @@ while IFS= read -r rn; do
     oosp=$((oosa + oosr))
 
     rstart=""; rend=""
+    gantt_start=""; gantt_end=""
     if [ -n "$TIMING_LEDGER" ] && [ -f "$TIMING_LEDGER" ]; then
-        rrange="$(awk -F'\t' -v r="$rn" '
+        table_rrange="$(awk -F'\t' -v r="$rn" -v SKILL="$SKILL" '
+            $2=="round" && $4==SKILL && $6==r {
+                if (s=="" || ($7+0) < s) s=$7+0
+                if (e=="" || ($8+0) > e) e=$8+0
+            }
+            END { if (s != "" && e != "") printf "%d %d", s, e }
+        ' "$TIMING_LEDGER" 2>/dev/null || true)"
+        if [ -n "$table_rrange" ]; then
+            rstart="${table_rrange%% *}"
+            rend="${table_rrange##* }"
+        fi
+        gantt_rrange="$(awk -F'\t' -v r="$rn" '
             $2=="round" && $6==r {
                 if (s=="" || ($7+0) < s) s=$7+0
                 if (e=="" || ($8+0) > e) e=$8+0
             }
             END { if (s != "" && e != "") printf "%d %d", s, e }
         ' "$TIMING_LEDGER" 2>/dev/null || true)"
-        if [ -n "$rrange" ]; then
-            rstart="${rrange%% *}"
-            rend="${rrange##* }"
+        if [ -n "$gantt_rrange" ]; then
+            gantt_start="${gantt_rrange%% *}"
+            gantt_end="${gantt_rrange##* }"
         fi
     fi
     secs=""
     if [ -n "$rstart" ] && [ -n "$rend" ] && [ "$rend" -gt "$rstart" ]; then
         secs=$((rend - rstart))
-        printf '%s\t%s\t%s\n' "$rn" "$rstart" "$rend" >>"$round_windows_file"
+    fi
+    if [ -n "$gantt_start" ] && [ -n "$gantt_end" ] && [ "$gantt_end" -gt "$gantt_start" ]; then
+        printf '%s\t%s\t%s\n' "$rn" "$gantt_start" "$gantt_end" >>"$round_windows_file"
     fi
 
     cost_disp="$(round_vendor_cost "$rstart" "$rend")"

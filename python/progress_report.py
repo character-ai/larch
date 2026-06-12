@@ -279,6 +279,22 @@ def _round_dirs(implement_tmpdir: Path) -> list[Path]:
     return sorted(dirs, key=lambda p: _round_number(p) or 0)
 
 
+def _all_round_dirs_inflight(rounds_root: Path) -> bool:
+    dirs = _round_dirs(rounds_root)
+    if not dirs:
+        return False
+    for round_dir in dirs:
+        meta_path = round_dir / "round-meta.json"
+        try:
+            _ = meta_path.lstat()
+            return False
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return False
+    return True
+
+
 def _current_round_dir(rounds_root: Path) -> Path | None:
     dirs = _round_dirs(rounds_root)
     if not dirs:
@@ -401,6 +417,9 @@ def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
         f"Step 5 code review — round {round_num} in progress\n"
         f"  reviewers: {returned}/{total} returned | elapsed: {_round_elapsed(round_dir)}"
     )
+    selected_root = _review_rounds_root(implement_tmpdir, run_id)
+    if _all_round_dirs_inflight(selected_root):
+        return header
     detail = _render_review_detail(implement_tmpdir, run_id)
     return f"{header}\n\n{detail}" if detail else header
 
@@ -752,6 +771,9 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
                 f"Step 3 plan review — round {round_num} in progress\n"
                 f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
             )
+    plan_review_root = design_tmpdir / "plan-review"
+    if _all_round_dirs_inflight(plan_review_root):
+        return header
     detail = _render_design_review_detail(design_tmpdir)
     return f"{header}\n\n{detail}" if detail else header
 

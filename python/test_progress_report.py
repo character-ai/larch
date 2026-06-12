@@ -63,6 +63,13 @@ def _write_output(path: Path, ts: int, text: str = "done\n") -> Path:
     return path
 
 
+_MINIMAL_ROUND_META = (
+    '{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0",'
+    '"NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},'
+    '"summary":{"panel":{"total_slot_count":1}}}'
+)
+
+
 def test_no_live_run(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     assert progress_report._report(str(tmp_path)) == ""
@@ -273,6 +280,7 @@ def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: i
         "slot1 STATUS=OK\nslot2 STATUS=FAILED\nslot3 STATUS=OK\n",
         encoding="utf-8",
     )
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
     start_s = int(time.time()) - 125
     (round_dir / "round-start-s").write_text(f"{start_s}\n", encoding="utf-8")
     monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "detail")
@@ -291,6 +299,7 @@ def test_step5_between_rounds_keeps_latest_round_liveness(tmp_path: Path, monkey
     round_dir.mkdir(parents=True)
     (round_dir / "review-and-fix.env").write_text("STATUS=complete\n", encoding="utf-8")
     (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
     (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
     monkeypatch.setattr(progress_report, "_render_review_detail", lambda _tmpdir, _run_id: "detail")
 
@@ -403,6 +412,110 @@ def test_render_review_detail_strips_markdown(tmp_path: Path, monkeypatch) -> No
     assert "Footnote." in detail
 
 
+def test_all_round_dirs_inflight_no_round_dirs(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    assert progress_report._all_round_dirs_inflight(root) is False
+
+
+def test_all_round_dirs_inflight_all_missing_meta(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    (root / "round-1").mkdir(parents=True)
+    assert progress_report._all_round_dirs_inflight(root) is True
+
+
+def test_all_round_dirs_inflight_one_completed(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    (root / "round-1").mkdir(parents=True)
+    (root / "round-2").mkdir(parents=True)
+    (root / "round-1" / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    assert progress_report._all_round_dirs_inflight(root) is False
+
+
+def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+
+    def fail_detail(_tmpdir: Path, _run_id: str) -> str:
+        raise AssertionError("_render_review_detail must not run for inflight-only root")
+
+    monkeypatch.setattr(progress_report, "_render_review_detail", fail_detail)
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "Step 5 code review — round 1 in progress" in report
+    assert "No review rounds completed." not in report
+
+
+def test_render_step5_mixed_state_still_renders_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    completed = impl / "round-1"
+    inflight = impl / "round-2"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (inflight / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    (inflight / "round-start-s").write_text("100\n", encoding="utf-8")
+    monkeypatch.setattr(progress_report, "_render_review_detail", lambda _t, _r: "sentinel-detail")
+
+    report = progress_report._render_step5(impl, "run-1")
+
+    assert "sentinel-detail" in report
+
+
+def test_render_design_plan_review_inflight_only_skips_detail(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 220)
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    out = _write_output(design / "slot-output.txt", 120)
+    (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(round_dir / "panel-manifest.ndjson", [out])
+    _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+
+    def fail_detail(_tmpdir: Path) -> str:
+        raise AssertionError("_render_design_review_detail must not run for inflight-only root")
+
+    monkeypatch.setattr(progress_report, "_render_design_review_detail", fail_detail)
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "Step 3 plan review — round 1 in progress" in report
+    assert "No review rounds completed." not in report
+
+
+def test_render_design_plan_review_mixed_state_still_renders_detail(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(progress_report.time, "time", lambda: 220)
+    design = tmp_path / "design"
+    completed = design / "plan-review" / "round-1"
+    inflight = design / "plan-review" / "round-2"
+    completed.mkdir(parents=True)
+    inflight.mkdir(parents=True)
+    out = _write_output(design / "slot-output.txt", 120)
+    (completed / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (inflight / "round-start-s").write_text("100\n", encoding="utf-8")
+    _write_slot_manifest(inflight / "panel-manifest.ndjson", [out])
+    _set_mtime(inflight / "panel-manifest.ndjson", 120)
+    monkeypatch.setattr(
+        progress_report,
+        "_render_design_review_detail",
+        lambda _tmpdir: "sentinel-design-detail",
+    )
+
+    report = progress_report._render_design_plan_review(design, 90)
+
+    assert "sentinel-design-detail" in report
+
+
 def test_design_step3_no_round_dirs_falls_through_to_generic(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -444,6 +557,7 @@ def test_design_step3_appends_stripped_detail(tmp_path: Path, monkeypatch) -> No
     (round_dir / "round-start-s").write_text("100\n", encoding="utf-8")
     _write_slot_manifest(round_dir / "panel-manifest.ndjson", [out])
     _set_mtime(round_dir / "panel-manifest.ndjson", 120)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
 
     def fake_run(_argv: list[str], **_kwargs: object):  # type: ignore[no-untyped-def]
         class Result:
