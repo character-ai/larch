@@ -1858,7 +1858,7 @@ grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DQUIET/plan-review-collector.stderr" 
     || fail "stderr tail marker must reach plan-review-collector.stderr under quiet"
 
 echo "=== tagged dedup: divergent Concern bodies with shared header must not merge ==="
-MARKER_HELPER="$ROOT/scripts/check-scope-reduction-marker.sh"
+MARKER_HELPER="$ROOT/python/cli.py"
 SCOPE_MARKER_HELPER="$MARKER_HELPER" python3 - <<'PY' || fail 'tagged dedup divergent-header fixture failed'
 import os, re, subprocess, tempfile, sys
 
@@ -1869,7 +1869,7 @@ def is_tagged(block):
         fh.write(block)
         name = fh.name
     try:
-        return subprocess.run([helper, "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        return subprocess.run([sys.executable, helper, "dirty-tree", "scope-marker", "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
     finally:
         os.unlink(name)
 

@@ -1,6 +1,6 @@
 # step-0-bootstrap.sh
 
-Step 0 initial/resume bootstrap wrapper around scripts/implement-bootstrap-invoke.sh. In fork mode, captures `implement-fork-env.sh` metadata into `CALLER_ENV_PATH`, `UPSTREAM_REPO`, and sibling fork variables before invoking bootstrap. Emits the parsed routing envelope and the progress prompt on initial bootstrap; resume uses --preserve-coder parsing.
+Step 0 initial/resume bootstrap wrapper around python/cli.py bootstrap invoke. In fork mode, captures `python/cli.py admission fork-env` metadata into `CALLER_ENV_PATH`, `UPSTREAM_REPO`, and sibling fork variables before invoking bootstrap. Emits the parsed routing envelope and the progress prompt on initial bootstrap; resume uses --preserve-coder parsing.
 
 ## Caller
 

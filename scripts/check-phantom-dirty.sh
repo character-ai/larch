@@ -54,7 +54,7 @@ if ! [[ "$STEP" =~ ^[A-Za-z0-9_.-]+$ ]]; then
 fi
 
 CHECK_OUT=""
-if ! CHECK_OUT=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$BASELINE" 2>/dev/null); then
+if ! CHECK_OUT=$(python3 "$SCRIPT_DIR/../python/cli.py" dirty-tree baseline --baseline "$BASELINE" 2>/dev/null); then
     emit_status unknown "check-mid-run-dirty-tree-failed"
 fi
 

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from proc import Runner
+import dirty_tree
 
 
 @dataclass(frozen=True)
@@ -48,17 +49,20 @@ def _baseline_dirty_probe(
     *,
     cwd: str | None,
 ) -> tuple[str, str, str]:
-    """Delegate to check-mid-run-dirty-tree.sh --mode baseline (bash parity)."""
-    script = str(_REPO_ROOT / "scripts" / "check-mid-run-dirty-tree.sh")
-    result = runner.run(
-        [script, "--mode", "baseline", "--baseline", baseline_file],
-        cwd=cwd,
-    )
-    if result.returncode != 0:
-        return "unknown", "check-mid-run-dirty-tree-failed", ""
-    output = result.stdout
+    """Run dirty-tree baseline detection in Python."""
+    _ = runner
+    old_cwd = Path.cwd()
+    try:
+        if cwd:
+            os.chdir(cwd)
+        output = "\n".join(dirty_tree.baseline(baseline_path=baseline_file)) + "\n"
+    except OSError:
+        return "unknown", "dirty-tree-baseline-failed", ""
+    finally:
+        if cwd:
+            os.chdir(old_cwd)
     if not output.strip():
-        return "unknown", "check-mid-run-dirty-tree-failed", ""
+        return "unknown", "dirty-tree-baseline-failed", ""
 
     fields = _parse_kv_output(output)
     status = fields.get("STATUS", "")

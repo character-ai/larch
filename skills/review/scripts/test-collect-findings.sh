@@ -98,7 +98,7 @@ out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --external-output-files "$
 assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
 grep -Fq '[SCOPE-REDUCTION] Remove unrelated plan work' "$TMP/findings-scope-marker.md"
-"$REPO_ROOT/scripts/check-scope-reduction-marker.sh" --file "$TMP/findings-scope-marker.md" \
+python3 "$REPO_ROOT/python/cli.py" dirty-tree scope-marker --file "$TMP/findings-scope-marker.md" \
     || { echo "FAIL: collected scope-reduction marker should remain detectable" >&2; exit 1; }
 # collect-findings pins LARCH_QUIET_DISABLE=1 on the collector so §3.8 larch_err lines reach the tee.
 # shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$PLUGIN_ROOT" in source

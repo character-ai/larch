@@ -12,6 +12,15 @@ import importlib
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
+    ("bootstrap", "invoke"): ("bootstrap", "invoke_main"),
+    ("bootstrap", "parse-routing"): ("bootstrap", "parse_routing_main"),
+    ("admission", "gate"): ("admission", "gate_main"),
+    ("admission", "preflight"): ("admission", "preflight_main"),
+    ("admission", "fork-env"): ("admission", "fork_env_main"),
+    ("dirty-tree", "baseline"): ("dirty_tree", "baseline_main"),
+    ("dirty-tree", "checkpoint"): ("dirty_tree", "checkpoint_main"),
+    ("dirty-tree", "scope-check"): ("dirty_tree", "scope_check_main"),
+    ("dirty-tree", "scope-marker"): ("dirty_tree", "scope_marker_main"),
     ("blocker", "all-open"): ("blocker", "all_open_blockers_main"),
     ("issue", "state"): ("issue_query", "issue_state_main"),
     ("issue", "info"): ("issue_query", "issue_info_main"),

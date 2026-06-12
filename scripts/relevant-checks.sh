@@ -270,14 +270,17 @@ run_direct_relevant_targets() {
                 maybe_append_py_test_target
                 append_target_once test-issue-query
                 ;;
-            scripts/implement-admission.sh|scripts/implement-admission.md|scripts/test-implement-admission.sh)
+            python/admission.py|python/test_admission.py)
                 append_target_once test-implement-admission
                 ;;
-            scripts/implement-bootstrap.sh|scripts/implement-bootstrap.md|skills/implement/scripts/test-implement-bootstrap.sh|skills/implement/scripts/test-implement-bootstrap.md)
-                append_target_once test-implement-bootstrap
+            python/dirty_tree.py|python/test_dirty_tree.py)
+                append_target_once test-check-mid-run-dirty-tree
+                append_target_once test-check-scope-reduction-marker
                 ;;
-            scripts/implement-bootstrap-invoke.sh|skills/implement/scripts/test-implement-bootstrap-invoke.sh)
+            python/bootstrap.py|python/test_bootstrap.py)
+                append_target_once test-implement-bootstrap
                 append_target_once test-implement-bootstrap-invoke
+                append_target_once test-parse-bootstrap-routing-envelope
                 ;;
             scripts/implement-finalize.sh|scripts/implement-finalize.md|scripts/test-implement-finalize.sh)
                 append_target_once test-implement-finalize

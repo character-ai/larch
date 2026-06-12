@@ -884,7 +884,7 @@ DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
 
 _write_unknown_dirty_tree_sidecar() {
     # Used by the auth-preflight short-circuit when no agent ran. We have
-    # NOT probed the working tree (no `check-mid-run-dirty-tree.sh` call),
+    # NOT probed the working tree (no `python/cli.py dirty-tree` call),
     # so emit STATUS=unknown rather than STATUS=clean. Pre-launch tracked
     # or staged edits would otherwise be silently masked when consumers
     # treat a present sidecar with STATUS=clean as "launcher proved the

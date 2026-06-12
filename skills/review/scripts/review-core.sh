@@ -85,7 +85,7 @@ PRUNE_NITS_SH="${REVIEW_CORE_PRUNE_NITS_SH:-$SCRIPT_DIR/prune-nit-findings.sh}"
 AGGREGATE_FINDINGS_SH="${REVIEW_CORE_AGGREGATE_FINDINGS_SH:-$SCRIPT_DIR/aggregate-findings.sh}"
 TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-code-votes.sh}"
 EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
-CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
+CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
 DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
 review_core_can_larch_log() {
@@ -464,7 +464,11 @@ recover_dirty_tree() {
             [[ -n "$new_paths" ]] && printf 'LAUNCHER_%s_NEW_UNTRACKED_PATHS_FILE=%s\n' "$idx" "$new_paths" >> "$summary"
 
             checkpoint_file="$REVIEW_TMPDIR/dirty-checkpoint-${idx}.env"
-            "$CHECK_DIRTY_TREE_SH" --mode checkpoint > "$checkpoint_file" || true
+            if [[ -n "$CHECK_DIRTY_TREE_SH" ]]; then
+                "$CHECK_DIRTY_TREE_SH" --mode checkpoint > "$checkpoint_file" || true
+            else
+                python3 "$PLUGIN_ROOT/python/cli.py" dirty-tree checkpoint > "$checkpoint_file" || true
+            fi
             checkpoint_status=$(kv_get "$checkpoint_file" STATUS)
             if [[ "$checkpoint_status" == "dirty" || "$checkpoint_status" == "unknown" ]]; then
                 recovery_taken="true"

@@ -2,7 +2,7 @@
 
 **Purpose**: detect non-ignored untracked files that appear after the
 `/implement` session untracked baseline was captured. It is a thin wrapper
-around `scripts/check-mid-run-dirty-tree.sh --mode baseline`; it does not
+around `python/cli.py dirty-tree baseline`; it does not
 reimplement baseline comparison.
 
 **Primary callers**: `skills/implement/SKILL.md` probe instructions at key

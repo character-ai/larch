@@ -107,7 +107,7 @@ Guard this call exactly like Step 2a.3: **omit paths** for slots that were not l
 After the collector returns for whichever externals actually ran, consult `${OUTPUT}.dirty-tree` sidecars, then run:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree checkpoint
 ```
 
 If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel (same semantics as sketch collection).

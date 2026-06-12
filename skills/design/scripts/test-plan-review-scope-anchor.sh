@@ -46,7 +46,7 @@ cat >"$TMP/oos.md" <<'BODY'
 ### OOS_1: [SCOPE-REDUCTION] no special handling for OOS
 - **Description**: ordinary OOS row.
 BODY
-if "$REPO_ROOT/scripts/check-scope-reduction-marker.sh" --file "$TMP/oos.md"; then
+if python3 "$REPO_ROOT/python/cli.py" dirty-tree scope-marker --file "$TMP/oos.md"; then
     : # detector can see the marker, but tally callers do not special-case OOS blocks.
 fi
 

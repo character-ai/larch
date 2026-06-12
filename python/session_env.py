@@ -1245,7 +1245,7 @@ def setup_main(argv: list[str]) -> int:
     caller = _parse_key_value_file(args.caller_env)
     scripts = _scripts_dir()
     if not args.skip_preflight:
-        cmd = [str(scripts / "preflight.sh")]
+        cmd = [sys.executable, str(Path(__file__).with_name("cli.py")), "admission", "preflight"]
         if args.skip_branch_check:
             cmd.append("--skip-branch-check")
         preflight = runner.run(cmd)

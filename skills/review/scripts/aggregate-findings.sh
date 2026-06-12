@@ -77,9 +77,9 @@ unset _findings_canon
 source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 # shellcheck source=scripts/lib-scope-anchor-handoff.sh
 source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
-MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
-if [[ ! -x "$MARKER_HELPER" ]]; then
-    MARKER_HELPER="$SCRIPT_DIR/../../../scripts/check-scope-reduction-marker.sh"
+MARKER_HELPER="$PLUGIN_ROOT/python/cli.py"
+if [[ ! -f "$MARKER_HELPER" ]]; then
+    MARKER_HELPER="$SCRIPT_DIR/../../../python/cli.py"
 fi
 export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
 export EMPTY_MERGE_ATTESTATION
@@ -172,7 +172,7 @@ blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?
 def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
     try:
-        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        rc = subprocess.run([sys.executable, helper, 'dirty-tree', 'scope-marker', '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         if rc == 0:
             return True
         if rc == 1:
@@ -781,7 +781,7 @@ blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?
 def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
     try:
-        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        rc = subprocess.run([sys.executable, helper, 'dirty-tree', 'scope-marker', '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
         if rc == 0:
             return True
         if rc == 1:

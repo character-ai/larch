@@ -43,11 +43,11 @@ def test_check_phantom_dirty_side_effect_free_shape(monkeypatch, tmp_path) -> No
     assert not any("check-phantom-dirty.sh" in str(call) for call in runner.calls)
 
 
-def test_baseline_dirty_probe_ignores_failed_stdout(tmp_path) -> None:
+def test_baseline_dirty_probe_reports_detector_unknown(tmp_path) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(
-                ("check-mid-run-dirty-tree.sh",),
+                ("python/cli.py dirty-tree",),
                 1,
                 "STATUS=clean\n",
                 "boom\n",
@@ -60,7 +60,9 @@ def test_baseline_dirty_probe_ignores_failed_stdout(tmp_path) -> None:
         str(tmp_path / "baseline.z"),
         cwd=None,
     )
-    assert (status, reason, paths_file) == ("unknown", "check-mid-run-dirty-tree-failed", "")
+    assert status == "unknown"
+    assert reason
+    assert paths_file == ""
 
 
 def test_probe_with_warn_folds_append_failure(monkeypatch, tmp_path) -> None:

@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+PY_CLI="$PLUGIN_ROOT/python/cli.py"
 MODE=""
 ISSUE_NUMBER_ARG=""
 PREFLIGHT_TMPDIR_ARG=""
@@ -68,7 +69,7 @@ read_session_key() {
     local key=$1 default_value=$2 file
     file="${IMPLEMENT_TMPDIR:-}/session-env.sh"
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
-        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+        python3 "$PY_CLI" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi
@@ -98,7 +99,7 @@ read_run_flag_key() {
     local key=$1 default_value=$2 file
     file="${IMPLEMENT_TMPDIR:-}/run-flags.sh"
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
-        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+        python3 "$PY_CLI" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi
@@ -145,7 +146,7 @@ if [ "$MODE" = resume ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
 fi
 if [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ]; then
     set +e
-    _fork_env_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-fork-env.sh")
+    _fork_env_out=$(python3 "$PY_CLI" admission fork-env)
     _fork_env_rc=$?
     set -e
     if [ "$_fork_env_rc" -ne 0 ]; then
@@ -176,7 +177,7 @@ if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
 fi
 set +e
-_inv_out=$("$CLAUDE_PLUGIN_ROOT/scripts/implement-bootstrap-invoke.sh" --mode "$MODE")
+_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --emergency-requested "${emergency_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}")
 _inv_rc=$?
 set -e
 if [ "$_inv_rc" -eq 2 ]; then
@@ -185,11 +186,7 @@ fi
 if [ "$_inv_rc" -ne 0 ]; then
     exit "$_inv_rc"
 fi
-# shellcheck source=scripts/parse-bootstrap-routing-envelope.sh
-if [ "$MODE" = resume ]; then
-    . "$CLAUDE_PLUGIN_ROOT/scripts/parse-bootstrap-routing-envelope.sh" --preserve-coder
-else
-    . "$CLAUDE_PLUGIN_ROOT/scripts/parse-bootstrap-routing-envelope.sh"
+if [ "$MODE" != resume ]; then
     printf '%s
 ' 'progress: type p (or progress) at any time'
 fi
