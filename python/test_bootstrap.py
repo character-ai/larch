@@ -1205,7 +1205,7 @@ def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_pat
 def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     consumer = tmp_path / "consumer"
     _ = consumer.mkdir()
-    subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)
+    _ = subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)
     captured_cwd: list[str | None] = []
 
     def fake_run(argv, *, env=None, cwd=None):
@@ -1222,8 +1222,10 @@ def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: 
         non_interactive=False,
     )
     assert captured_cwd
-    assert Path(captured_cwd[0]).resolve() == consumer.resolve()
-    assert Path(captured_cwd[0]).resolve() != _REPO_ROOT.resolve()
+    cwd = captured_cwd[0]
+    assert cwd is not None
+    assert Path(cwd).resolve() == consumer.resolve()
+    assert Path(cwd).resolve() != _REPO_ROOT.resolve()
 
 
 def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
