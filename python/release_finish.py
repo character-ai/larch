@@ -131,8 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     if not re.fullmatch(r"[0-9]+", args.pr):
         return _e(f"ERROR=invalid --pr value: {args.pr}", 2)
     root = _repo_root()
-    if _origin_repo(root) != args.repo:
-        return _e(f"ERROR=origin-repo-mismatch: origin ({_origin_repo(root)}) != --repo ({args.repo})")
+    origin_repo = _origin_repo(root)
+    if origin_repo != args.repo:
+        return _e(f"ERROR=origin-repo-mismatch: origin ({origin_repo}) != --repo ({args.repo})")
     old_cwd = Path.cwd()
     os.chdir(root)
     redacted_notes = _redacted_notes(notes)

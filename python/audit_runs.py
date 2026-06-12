@@ -428,6 +428,8 @@ def map_runs_main(argv: list[str] | None = None) -> int:
         body_res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "body"])
         if body_res.returncode != 0:
             _report_pr_view_failed(pr, "body", body_res)
+            print(f"{pr}\t\t\t\t")
+            continue
         body_obj = _load_json(body_res.stdout, {}) if body_res.returncode == 0 else {}
         body = str(body_obj.get("body") or "") if isinstance(body_obj, dict) else ""
         for kw in ("Closes", "Fixes", "Resolves"):
@@ -574,11 +576,20 @@ def _iter_ndjson(path: Path) -> tuple[list[dict[str, object]], bool]:
     return rows, err
 
 
+def _category_string(row: dict[str, object]) -> str:
+    cat = row.get("category")
+    if cat is None:
+        return ""
+    if isinstance(cat, bool):
+        return "true" if cat else "false"
+    return str(cat)
+
+
 def _mangled_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     out = []
     for r in rows:
-        cat = r.get("category")
-        if r.get("outcome") == "accepted" and str(r.get("phase") or "") == "plan-review" and isinstance(cat, str) and cat and cat not in _CANONICAL:
+        cat = _category_string(r)
+        if r.get("outcome") == "accepted" and str(r.get("phase") or "") == "plan-review" and cat and cat not in _CANONICAL:
             out.append(r)
     return out
 
@@ -738,7 +749,7 @@ def scan_run_main(argv: list[str] | None = None) -> int:
     # category-stats
     if (run_dir/"review-findings-full.jsonl").is_file():
         mangled=mangled_cache if mangled_cache is not None else _mangled_rows(rows)
-        _json_line({"scan":"category-stats","pr":pr,"partial_data":jsonl_err,"canonical":sum(1 for r in rows if r.get("category") in _CANONICAL),"blank":sum(1 for r in rows if not r.get("category")),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not r.get("category")),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not r.get("category"))})
+        _json_line({"scan":"category-stats","pr":pr,"partial_data":jsonl_err,"canonical":sum(1 for r in rows if _category_string(r) in _CANONICAL),"blank":sum(1 for r in rows if not _category_string(r)),"mangled":len(mangled),"oos_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("OOS_") and not _category_string(r)),"rej_blank":sum(1 for r in rows if str(r.get("id") or "").startswith("REJ_") and not _category_string(r))})
     else:
         if args.skill=="design": _json_line({"scan":"category-stats","pr":pr,"partial_data":False,"skip_reason":"design_run_has_no_review_findings_jsonl","detail":"design runs intentionally omit review-findings-full.jsonl","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
         else: _json_line({"scan":"category-stats","pr":pr,"partial_data":True,"partial_reason":"missing_review_findings_jsonl","detail":"review-findings-full.jsonl not found","canonical":0,"blank":0,"mangled":0,"oos_blank":0,"rej_blank":0})
@@ -758,11 +769,24 @@ def _prior_value(text: str, key: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _top_frontmatter(text: str) -> str:
+    lines = text.splitlines()
+    if not lines:
+        return ""
+    if lines[0].strip() != "---":
+        return ""
+    for idx, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "\n".join(lines[1:idx])
+    return ""
+
+
 def compute_counters_main(argv: list[str] | None = None) -> int:
     p=argparse.ArgumentParser(prog="cli.py audit-runs compute-counters"); p.add_argument("--scan-results-dir", required=True); p.add_argument("--prior-frontmatter", default=""); args=p.parse_args(argv)
     d=Path(args.scan_results_dir)
     if not d.is_dir(): print(f"audit-compute-counters.sh: directory not found: {d}", file=sys.stderr); return 1
-    prior=Path(args.prior_frontmatter).read_text(encoding="utf-8") if args.prior_frontmatter and Path(args.prior_frontmatter).is_file() else ""
+    prior_body=Path(args.prior_frontmatter).read_text(encoding="utf-8") if args.prior_frontmatter and Path(args.prior_frontmatter).is_file() else ""
+    prior=_top_frontmatter(prior_body)
     p_exon=_prior_value(prior,"exon_misclassifications"); p_mang=_prior_value(prior,"oos_categories_mangled"); p_clean=_prior_value(prior,"oos_categories_clean"); p_blank=_prior_value(prior,"oos_categories_blank"); p_ns=max(_prior_value(prior,"ns_retries_cursor_specialist"),_prior_value(prior,"ns_retries_cursor_specialist_launches")); p_ch=_prior_value(prior,"changelog_rebase_conflicts")
     de=dm=dc=db=dn=dskip=dch=0; partial=False; files=0
     for f in d.glob("scan-results-*.ndjson"):
@@ -788,8 +812,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
     if not _validate_skill(args.skill,"audit-close-priors.sh"): return 1
     res=proc.run(["gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo",args.repo,"--json","number,title"])
     if res.returncode != 0:
-        reason = _clean_reason(res.stderr or res.stdout or "gh issue list failed")
-        print(f"ISSUE_LIST_FAILED=true\nREASON={reason}")
+        print("ISSUE_LIST_FAILED=true\nREASON=gh issue list failed")
         return 1
     try:
         arr=json.loads(res.stdout or "null")
@@ -805,8 +828,8 @@ def close_priors_main(argv: list[str] | None = None) -> int:
             body = Path(handle.name)
         finally:
             handle.close()
-    except OSError as exc:
-        print(f"BODY_FILE_FAILED=true\nREASON={_clean_reason(str(exc))}")
+    except OSError:
+        print("BODY_FILE_FAILED=true\nREASON=mktemp failed")
         return 1
     try:
         for issue in arr:

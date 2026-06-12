@@ -106,6 +106,17 @@ def test_compute_counters_legacy_alias(tmp_path: Path, capsys):
     assert out["NS_RETRIES_SKIPPED_RUNS"] == "1"
 
 
+def test_compute_counters_reads_only_top_frontmatter(tmp_path: Path, capsys):
+    d = tmp_path / "scans"; d.mkdir()
+    (d / "scan-results-1.ndjson").write_text('{"scan":"changelog-rebase-conflicts","count":1}\n', encoding="utf-8")
+    prior = tmp_path / "prior.md"
+    prior.write_text("---\nchangelog_rebase_conflicts: 2\n---\n\nExample:\nchangelog_rebase_conflicts: 99\n", encoding="utf-8")
+    assert audit_runs.compute_counters_main(["--scan-results-dir", str(d), "--prior-frontmatter", str(prior)]) == 0
+    out = dict(line.split("=",1) for line in capsys.readouterr().out.splitlines())
+    assert out["CHANGELOG_REBASE_CONFLICTS"] == "3"
+    assert out["CHANGELOG_DELTA"] == "1"
+
+
 class AuditRunner:
     def __init__(self, responses: dict[tuple[str, ...], CommandResult]):
         self.responses = responses
@@ -129,7 +140,7 @@ def test_close_priors_reports_transport_failure_before_json_parse(monkeypatch, c
     assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
     out = capsys.readouterr().out
     assert "ISSUE_LIST_FAILED=true" in out
-    assert "REASON=network down" in out
+    assert "REASON=gh issue list failed" in out
 
 
 def test_close_priors_reports_malformed_success_json(monkeypatch, capsys):
@@ -150,7 +161,9 @@ def test_close_priors_body_file_failure_fallback(monkeypatch, capsys):
         raise OSError("no temp")
     monkeypatch.setattr(audit_runs.tempfile, "NamedTemporaryFile", fail_named_temp)
     assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
-    assert "BODY_FILE_FAILED=true" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "BODY_FILE_FAILED=true" in out
+    assert "REASON=mktemp failed" in out
 
 
 def test_resolve_prs_reports_issue_list_failure(monkeypatch, capsys):
@@ -161,6 +174,23 @@ def test_resolve_prs_reports_issue_list_failure(monkeypatch, capsys):
     assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0
     out = capsys.readouterr().out
     assert "ERROR=gh issue list failed" in out
+
+
+def test_resolve_prs_stdout_key_order_on_error(monkeypatch, capsys):
+    runner = AuditRunner({
+        ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stderr="auth", rc=1),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0
+    keys = [line.split("=", 1)[0] for line in capsys.readouterr().out.splitlines()]
+    assert keys == ["IMPLICIT_SINCE_LAST_AUDIT", "PRIOR_REPORT_NUMBER", "PR_LIST", "PR_COUNT", "RESOLVED_ECHO", "ERROR"]
+
+
+def test_resolve_prs_unknown_argv_exits_one_stderr_only(capsys):
+    assert audit_runs.resolve_prs_main(["--skill","implement","--bogus"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unrecognized arguments: --bogus" in captured.err
 
 
 def test_resolve_prs_reports_issue_view_failure(monkeypatch, capsys):
@@ -268,6 +298,40 @@ def test_map_runs_reports_pr_view_failure(monkeypatch, tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "MAP_GH_PR_VIEW_FAILED=true" in captured.err
     assert captured.out.splitlines()[0] == "5\t\t\t\t"
+
+
+def test_map_runs_does_not_use_manifest_fallback_after_pr_body_failure(monkeypatch, tmp_path: Path, capsys):
+    root = tmp_path / "larch-logs" / "implement"
+    run = root / "stale"
+    run.mkdir(parents=True)
+    (run / "manifest.json").write_text('{"pr_number":"5","started_at":"2026-01-01T00:00:00+00:00","larch_version":"1.2.3","closes_issue":"12"}\n', encoding="utf-8")
+    runner = AuditRunner({
+        ("gh","pr","view","5","--repo","o/r","--json","body"): cr(("gh",), stderr="auth", rc=1),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.map_runs_main(["--skill","implement","--pr-list","5","--repo","o/r","--log-root",str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "MAP_GH_PR_VIEW_FAILED=true" in captured.err
+    assert captured.out.splitlines()[0] == "5\t\t\t\t"
+
+
+def test_scan_run_counts_non_string_categories_as_mangled(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    rows = [
+        {"id":"FINDING_1","outcome":"accepted","phase":"plan-review","category":7},
+        {"id":"FINDING_2","outcome":"accepted","phase":"plan-review","category":True},
+        {"id":"FINDING_3","outcome":"accepted","phase":"plan-review","category":"correctness"},
+    ]
+    (run / "review-findings-full.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\noos-category-mangle\tjsonl-field\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans)]) == 0
+    out = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    mangle = next(row for row in out if row["scan"] == "oos-category-mangle")
+    stats = next(row for row in out if row["scan"] == "category-stats")
+    assert mangle["count"] == 2
+    assert stats["mangled"] == 2
 
 
 def test_scan_codex_generalist_waste_fails_slow_no_issues(tmp_path: Path, capsys):

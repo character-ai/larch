@@ -127,6 +127,20 @@ def test_release_finish_falls_back_to_origin_main_when_merge_commit_missing(monk
     assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5
 
 
+def test_release_finish_origin_repo_mismatch_blocks_side_effects(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    notes = tmp_path / "notes.md"
+    notes.write_text("notes\n", encoding="utf-8")
+    runner = ReleaseFinishRunner()
+    monkeypatch.setattr(release_finish, "_repo_root", lambda: root)
+    monkeypatch.setattr(release_finish, "_origin_repo", lambda _root: "other/repo")
+    monkeypatch.setattr(release_finish.proc, "run", runner.run)
+    assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 1
+    assert "ERROR=origin-repo-mismatch" in capsys.readouterr().err
+    assert runner.calls == []
+
+
 def test_read_plugin_version_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     root = tmp_path / "plugin"
     (root / ".claude-plugin").mkdir(parents=True)
@@ -171,6 +185,28 @@ def test_promote_latest_dry_run_emits_prelude(monkeypatch: pytest.MonkeyPatch, c
     assert "RELEASE_TAG=v1.2.3" in out
     assert "DRY_RUN=true" in out
     assert not any(line == "DRY_RUN=false" for line in out)
+
+
+def test_promote_validation_errors_exit_one(capsys: pytest.CaptureFixture[str]) -> None:
+    assert promote_release.promote_main(["1.2", "--repo", "o/r"]) == 1
+    assert "ERROR=invalid semver format" in capsys.readouterr().err
+    assert promote_release.promote_main(["1.2.3", "--repo", "not-a-repo"]) == 1
+    assert "ERROR=invalid --repo value" in capsys.readouterr().err
+
+
+def test_promote_latest_preserves_empty_boolean_fields(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    runner = QueueRunner([
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","publishedAt":"2026-01-01T00:00:00Z"}])),
+        cr(["gh"]),
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":False,"isLatest":True}])),
+    ])
+    monkeypatch.setattr(promote_release.proc, "run", runner.run)
+    assert promote_release.promote_latest_main(["--repo", "o/r"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "RELEASE_WAS_PRERELEASE=" in out
+    assert "RELEASE_WAS_LATEST=" in out
+    assert "RELEASE_ALREADY_LATEST=false" in out
+    assert any(call[:3] == ["gh", "release", "edit"] for call in runner.calls)
 
 
 def test_promote_latest_errors_are_error_kv_prefixed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

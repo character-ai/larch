@@ -27,6 +27,7 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
         {"number":3,"title":"normal"},
         {"number":4,"title":"[IN PROGRESS] legacy"},
         {"number":5,"title":"[LOCKED] not now"},
+        {"number":6,"title":"[LOCKED]Do not combine"},
     ]
     monkeypatch.setattr(combine_issues.proc, "run", Runner(json.dumps(issues)).run)
     assert combine_issues.fetch_main(["--repo", "o/r"]) == 0
@@ -35,6 +36,8 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
     issues_file = Path(out["ISSUES_FILE"])
     try:
         assert issues_file.stat().st_mode & 0o777 == 0o600
+        kept = json.loads(issues_file.read_text(encoding="utf-8"))
+        assert [issue["number"] for issue in kept] == [2, 3]
     finally:
         issues_file.unlink(missing_ok=True)
 

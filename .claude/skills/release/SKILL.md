@@ -183,7 +183,7 @@ Or promote-only: `python3 "$PWD/python/cli.py" release promote "$NEW_VERSION" --
 
 After a successful `release finish` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release finish` retry command after a failure, expand `"$RECOVERY_NOTES_FILE"` to its concrete path; the temp `"$NOTES_DIR"` may be removed after the durable recovery copy exists.
 
-**Recovery when remote tag exists on a different commit:** `release finish` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release finish` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
+**Recovery when remote tag exists on a different commit:** `release finish` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release finish` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (implementation: `python/release_finish.py`).
 
 ## Step 7 — Upgrade local install
 
@@ -317,12 +317,13 @@ If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=tr
 
 ## Script index
 
-Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless noted):
+Runtime helpers:
 
-- `release prepare` (contract: `release-prepare.md`) — baseline, PR list, aggregate bump KV
-- `release-set-version.sh` (contract: `release-set-version.md`) — atomic `plugin.json` version write
-- `release finish` (contract: `release-finish.md`) — tag, GitHub Release, promote tail
-- `promote-latest-release.sh` (contract: `promote-latest-release.md`) — legacy helper; superseded by the cut-a-release flow but retained for one-off promotion
+- `python3 "$PWD/python/cli.py" release prepare`: baseline, PR list, aggregate bump KV
+- `python3 "$PWD/python/cli.py" release set-version`: atomic `plugin.json` version write
+- `python3 "$PWD/python/cli.py" release finish`: tag, GitHub Release, promote tail
+- `python3 "$PWD/python/cli.py" release promote`: promote a specific release after `finish`, or during promote-only recovery
+- `python3 "$PWD/python/cli.py" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
 
 Repo-root helpers referenced from steps above:
 
@@ -332,12 +333,10 @@ Repo-root helpers referenced from steps above:
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 
-- `classify-bump.sh` (contract: `classify-bump.md`) — semver bump classifier; `release prepare` defaults `CLASSIFY_BUMP` to this path
+- `.claude/skills/release/scripts/classify-bump.md`: semver bump classifier prompt reference used by `python/release_prepare.py` through `python/version_bump.py`
 
-Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`):
+Offline harnesses:
 
-- `test-release prepare` (contract: `test-release-prepare.md`)
-- `test-release-set-version.sh` (contract: `test-release-set-version.md`)
-- `test-release finish` (contract: `test-release-finish.md`)
-- `python/test_release.py` (contract: `python/test_release.py`)
-- `test-classify-bump.sh` (contract: `test-classify-bump.md`)
+- `python/test_release.py`: release prepare, set-version, finish, promote, and promote-latest regression coverage
+- `python/test_version_bump.py`: bump classification and plugin version helper coverage
+- Makefile targets: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`

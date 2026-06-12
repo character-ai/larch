@@ -16,7 +16,7 @@ from pathlib import Path
 import proc
 import redact
 
-_BUSY_RE = re.compile(r"^\[(DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS|LOCKED)\]\s")
+_BUSY_RE = re.compile(r"^(?:\[(?:DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s|\[LOCKED\])")
 _OOS_RE = re.compile(r"^\[OOS\]\s")
 
 

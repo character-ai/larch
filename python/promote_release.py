@@ -32,9 +32,9 @@ def promote_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo")
     args = parser.parse_args(argv)
     if args.repo and not _REPO_RE.fullmatch(args.repo):
-        return _err(f"invalid --repo value: {args.repo}") + 1
+        return _err(f"invalid --repo value: {args.repo}")
     if not _SEMVER_RE.fullmatch(args.version):
-        return _err(f"invalid semver format: {args.version} (expected X.Y.Z)") + 1
+        return _err(f"invalid semver format: {args.version} (expected X.Y.Z)")
     logging_util.quiet_init(argv0="promote-release.sh")
     tag = f"v{args.version}"
     repo_args = _repo_args(args.repo)
@@ -61,6 +61,14 @@ def promote_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _jq_bool(value: object) -> str:
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return ""
+
+
 def promote_latest_main(argv: list[str] | None = None) -> int:
     logging_util.reset_quiet_state()
     parser = argparse.ArgumentParser(prog="cli.py release promote-latest")
@@ -85,8 +93,8 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
         return _err(f"ERROR=No non-draft releases found for {args.repo}")
     latest = releases[0]
     tag = str(latest.get("tagName") or "")
-    was_pre = str(bool(latest.get("isPrerelease"))).lower()
-    was_latest = str(bool(latest.get("isLatest"))).lower()
+    was_pre = _jq_bool(latest.get("isPrerelease"))
+    was_latest = _jq_bool(latest.get("isLatest"))
     published = str(latest.get("publishedAt") or latest.get("createdAt") or "")
     print(f"RELEASE_REPO={args.repo}")
     print(f"RELEASE_TAG={tag}")
@@ -113,8 +121,8 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
         found = next(r for r in json.loads(ver.stdout or "[]") if r.get("tagName") == tag)
     except (json.JSONDecodeError, StopIteration):
         return _err(f"ERROR=Promoted release {tag} was not found during verification")
-    is_pre = str(bool(found.get("isPrerelease"))).lower()
-    is_latest = str(bool(found.get("isLatest"))).lower()
+    is_pre = _jq_bool(found.get("isPrerelease"))
+    is_latest = _jq_bool(found.get("isLatest"))
     print(f"RELEASE_IS_PRERELEASE={is_pre}")
     print(f"RELEASE_IS_LATEST={is_latest}")
     if is_pre != "false" or is_latest != "true":
