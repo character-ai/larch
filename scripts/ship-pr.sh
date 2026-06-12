@@ -173,17 +173,38 @@ _RCC_DISPATCH_FIRST=0
 _RCC_INITIAL_REDACTED_LOG=""
 _RCC_LAST_FIX_STATUS=""
 _RCC_LAST_FIX_RC=0
+_RCC_LAST_LEDGER_FAILURE_DETAIL_LOG=""
+_RCC_LAST_FAILURE_CAPTURE_PATH=""
+
+exit_ship_pr_internal_lint_fix_handoff() {
+    local phase=$1 detail_log=${2:-}
+    case "$detail_log" in
+        "$IMPLEMENT_TMPDIR"/*) ;;
+        *) detail_log="" ;;
+    esac
+    state_set_many BAIL_REASON ship-pr-internal-lint-fix BAIL_FAILURE_DETAIL_LOG "$detail_log" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
+    exit 3
+}
+
+rcc_main_agent_required_detail_log() {
+    local detail_log=${_RCC_LAST_LEDGER_FAILURE_DETAIL_LOG:-}
+    [ -n "$detail_log" ] || detail_log=${_RCC_LAST_FAILURE_CAPTURE_PATH:-}
+    [ -n "$detail_log" ] || detail_log=${_RCC_INITIAL_REDACTED_LOG:-}
+    printf '%s\n' "$detail_log"
+}
 
 # Parses lint-fix-loop output and updates accumulated delta paths or terminal _RCC_STATUS.
 # Returns 0 if status is applied/no-changes (caller continues), 1 if a terminal status was set.
 _rcc_handle_fix_status() {
     local fix_out=$1 fix_rc=$2
-    local fix_status fix_delta_paths_file failure_reason
+    local fix_status fix_delta_paths_file failure_reason ledger_detail_log
     fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
     fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
     failure_reason=$(printf '%s\n' "$fix_out" | awk -F= '/^FAILURE_REASON=/ { print substr($0, index($0,"=")+1); exit }')
+    ledger_detail_log=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=/ { print substr($0, index($0,"=")+1); exit }')
     _RCC_LAST_FIX_STATUS="$fix_status"
     _RCC_LAST_FIX_RC="$fix_rc"
+    _RCC_LAST_LEDGER_FAILURE_DETAIL_LOG="$ledger_detail_log"
     case "$fix_status" in
         applied|no-changes)
             if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
@@ -250,6 +271,8 @@ run_captured_cmd_then_fix_loop() {
     _RCC_LAST_LOG_PATH=""
     _RCC_LAST_FIX_STATUS=""
     _RCC_LAST_FIX_RC=0
+    _RCC_LAST_LEDGER_FAILURE_DETAIL_LOG=""
+    _RCC_LAST_FAILURE_CAPTURE_PATH=""
     _RCC_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/rcc-delta-paths-$$-$RANDOM.txt"
     : > "$_RCC_DELTA_PATHS_FILE"
     max_iter=$(normalize_rcc_max_iter "${_RCC_MAX_ITER:-3}")
@@ -268,6 +291,7 @@ run_captured_cmd_then_fix_loop() {
             fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
             run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log_for_dispatch" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
             printf '%s\n' "$fix_out" >> "$fail_file"
+            _RCC_LAST_FAILURE_CAPTURE_PATH="$fail_file"
             if ! _rcc_handle_fix_status "$fix_out" "$fix_rc"; then
                 return 1
             fi
@@ -316,6 +340,7 @@ run_captured_cmd_then_fix_loop() {
             fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
             run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
             printf '%s\n' "$fix_out" >> "$fail_file"
+            _RCC_LAST_FAILURE_CAPTURE_PATH="$fail_file"
             if ! _rcc_handle_fix_status "$fix_out" "$fix_rc"; then
                 return 1
             fi
@@ -849,6 +874,13 @@ run_checks_phase() {
             *)
                 # failed, main-agent-required, or empty — fall through to stall.
                 printf 'ship-pr checks: lint fix %s (attempt %d/3, rc=%s), stalling.\n' "${fix_status:-unknown}" "$lint_attempt" "${fix_rc:-unknown}"
+                if [ "$fix_status" = "main-agent-required" ]; then
+                    local detail_log
+                    detail_log=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=/ { print substr($0, index($0,"=")+1); exit }')
+                    [ -n "$detail_log" ] || detail_log=$redacted_log
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix ci-initial "$detail_log"
+                    exit_ship_pr_internal_lint_fix_handoff ci-initial "$detail_log"
+                fi
                 break
                 ;;
         esac
@@ -958,6 +990,12 @@ run_checks_with_lint_fix_loop() {
         main-agent-required|dispatch-failed|head-changed)
             fail_file=$(failure_capture_path "$phase")
             record_failure "$phase" "lint-fix-loop.sh" "${_RCC_LAST_FIX_RC:-1}" "$fail_file" "$fail_category"
+            if [ "$_RCC_STATUS" = main-agent-required ]; then
+                local _mardl
+                _mardl=$(rcc_main_agent_required_detail_log)
+                emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl"
+                exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl"
+            fi
             return 1
             ;;
         *)
@@ -1258,8 +1296,27 @@ record_ci_counters() {
 
 needs_user_bail_reason() {
     case "$1" in
-        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|first-fixer-non-health) return 0 ;;
+        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|first-fixer-non-health|ci-fix-exhausted|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix) return 0 ;;
         *) return 1 ;;
+    esac
+}
+
+emit_ship_pr_ledger_ready() {
+    local reason=$1 phase=${2:-ci-merge} detail_log=${3:-} ledger_site=ship-pr
+    case "$reason" in
+        ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
+            [ "$reason" = "ship-pr-internal-lint-fix" ] && ledger_site=ship-pr-internal
+            printf 'SHIP_PR_LEDGER_READY=true\n'
+            printf 'SHIP_PR_LEDGER_SITE=%s\n' "$ledger_site"
+            printf 'SHIP_PR_LEDGER_TRIGGER=%s\n' "$reason"
+            printf 'SHIP_PR_LEDGER_STEP=8\n'
+            printf 'SHIP_PR_LEDGER_PHASE=%s\n' "$phase"
+            printf 'SHIP_PR_LEDGER_DISPATCHER=ship-pr\n'
+            printf 'SHIP_PR_LEDGER_EXIT_CODE=3\n'
+            case "$detail_log" in
+                "$IMPLEMENT_TMPDIR"/*) printf 'SHIP_PR_LEDGER_FAILURE_DETAIL_LOG=%s\n' "$detail_log" ;;
+            esac
+            ;;
     esac
 }
 
@@ -1656,7 +1713,7 @@ run_ci_fix_vendor() {
             _lf_class=$(ship_pr_read_launcher_failure_class "$fail_file")
             if [ "$_lf_class" = "other" ]; then
                 larch_err "⚠ ship-pr: first fixer failed non-health; skipping waterfall"
-                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 return 1
             fi
         fi
@@ -1693,7 +1750,7 @@ run_ci_fix_vendor() {
                     printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
                 } > "$detail_log"
                 larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
-                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 _ffnh_tier_stem="${ci_fix_out_base}.${winning_tier}"
                 if [[ ! -s "${_ffnh_tier_stem}.stderr-tail" ]]; then
                     if [[ -s "${_ffnh_tier_stem}.diag" ]]; then
@@ -1888,6 +1945,12 @@ _verify_failed_jobs_locally() {
                 return 2
                 ;;
             main-agent-required|dispatch-failed|exhausted|no-changes-stale)
+                if [ "$_RCC_STATUS" = main-agent-required ]; then
+                    local _mardl2
+                    _mardl2=$(rcc_main_agent_required_detail_log)
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl2"
+                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl2"
+                fi
                 unfixable+=("$job_token")
                 ;;
             *)
@@ -1922,7 +1985,9 @@ _verify_failed_jobs_locally() {
             printf '%s\n' "$sanitized" >> "$detail_file"
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
-        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        [ -n "$sanitized" ] || sanitized=unknown
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
+        emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
 
@@ -1988,6 +2053,12 @@ run_per_job_local_fix_loop() {
                 return 2
                 ;;
             main-agent-required|dispatch-failed|exhausted)
+                if [ "$_RCC_STATUS" = main-agent-required ]; then
+                    local _mardl3
+                    _mardl3=$(rcc_main_agent_required_detail_log)
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix "$phase" "$_mardl3"
+                    exit_ship_pr_internal_lint_fix_handoff "$phase" "$_mardl3"
+                fi
                 return 1
                 ;;
             *)
@@ -2022,7 +2093,9 @@ run_per_job_local_fix_loop() {
             printf '%s\n' "$sanitized" >> "$detail_file"
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
-        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        [ -n "$sanitized" ] || sanitized=unknown
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
+        emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
     return 0
@@ -2226,6 +2299,8 @@ run_evaluate_failure() {
             esac
         fi
         if [ "$(read_state BAIL_REASON)" = "first-fixer-non-health" ]; then
+            state_set_many STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
+            emit_ship_pr_ledger_ready first-fixer-non-health "$phase" "$(read_state BAIL_FAILURE_DETAIL_LOG)"
             exit 3
         fi
         _fix_attempt=$(( _fix_attempt + 1 ))
@@ -2930,9 +3005,11 @@ EOF
                 exit_transient_net "ci-wait: $bail_reason"
             fi
             if needs_user_bail_reason "$bail_reason"; then
+                state_set_many BAIL_REASON "$bail_reason" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
                 if ! is_autonomous_exit3_bail_reason "$bail_reason"; then
                     state_set BAIL_NEEDS_USER_INPUT true
                 fi
+                emit_ship_pr_ledger_ready "$bail_reason" "$phase" "$(kv_value BAIL_FAILURE_DETAIL_LOG "$out")"
                 exit 3
             fi
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12d)"

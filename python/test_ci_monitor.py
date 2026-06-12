@@ -194,6 +194,32 @@ def test_decide_parity_table(
     assert decision.action == expected
 
 
+@pytest.mark.parametrize(
+    ("status", "iteration", "rebase_count", "fix_attempts", "expected_reason"),
+    [
+        ("error", 0, 0, 0, "ci-status-error"),
+        ("pending", config.CI_MONITOR_MAX_ITERATIONS, 0, 0, "ci-timeout"),
+        ("pending", 0, config.CI_MONITOR_MAX_REBASES, 0, "ci-too-many-rebases"),
+        ("fail", 0, 0, config.CI_MONITOR_MAX_FIX_ATTEMPTS, "fix-attempts-exhausted"),
+    ],
+)
+def test_decide_bail_reasons_match_ci_decide_tokens(
+    status: str,
+    iteration: int,
+    rebase_count: int,
+    fix_attempts: int,
+    expected_reason: str,
+) -> None:
+    decision = ci_monitor.decide(
+        ci_monitor.CiStatus(status=status, behind_count=0, failed_run_id=None),
+        iteration=iteration,
+        rebase_count=rebase_count,
+        fix_attempts=fix_attempts,
+    )
+    assert decision.action == "bail"
+    assert decision.bail_reason == expected_reason
+
+
 def test_gather_status_merged_short_circuit() -> None:
     runner = RecordingRunner(_status(merged=True))
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
@@ -2049,7 +2075,7 @@ def test_monitor_timeout_bail_stalled() -> None:
         sleep_fn=lambda _s: None,
     )
     assert result.result.outcome == Outcome.STALLED
-    assert "Timeout" in (result.result.detail or "")
+    assert result.result.detail == "ci-timeout"
 
 
 def test_checks_status_required_true_is_checks_only_and_uses_required_json() -> None:

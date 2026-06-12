@@ -84,7 +84,7 @@ fi
 # ci-status.sh emits "error" when it fails to parse its own arguments
 if [[ "$CI_STATUS" == "error" ]]; then
     emit_kv ACTION "bail"
-    emit_kv BAIL_REASON "ci-status.sh returned error — check script arguments"
+    emit_kv BAIL_REASON "ci-status-error"
     exit 0
 fi
 
@@ -122,13 +122,13 @@ fi
 # --- Safety limits (checked before non-merge actions) ---
 if [[ "$ITERATION" -ge 50 ]]; then
     emit_kv ACTION "bail"
-    emit_kv BAIL_REASON "Timeout: 50 iterations (~25 minutes) without successful merge"
+    emit_kv BAIL_REASON "ci-timeout"
     exit 0
 fi
 
 if [[ "$REBASE_COUNT" -ge 20 ]]; then
     emit_kv ACTION "bail"
-    emit_kv BAIL_REASON "Too many rebases (20) without converging — main branch too active"
+    emit_kv BAIL_REASON "ci-too-many-rebases"
     exit 0
 fi
 

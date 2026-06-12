@@ -33,6 +33,15 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1" needle="$2" label="$3"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        fail "$label (unexpected $needle; got ${haystack:0:400})"
+    else
+        pass "$label"
+    fi
+}
+
 assert_file_equals() {
     local file="$1" expected="$2" label="$3"
     local actual
@@ -259,6 +268,81 @@ set -e
 if [[ "$rc" -eq 2 ]]; then pass "step5: conventional plan.txt missing exits 2 even with design-export"; else fail "step5 plan missing rc=$rc"; fi
 assert_contains "$out" "plan file not found at conventional path" "step5 emits conventional-path error"
 [[ ! -f "$argv_file" ]] || fail "review helper should not run when plan.txt missing"
+
+echo "=== main-agent-vote-required emits ledger KVs ==="
+MAV_SPY="$TMP/review-mav-spy.sh"
+cat > "$MAV_SPY" <<'EOF'
+#!/usr/bin/env bash
+printf 'STEP5_REVIEW_STATUS=main-agent-vote-required\n'
+printf 'needs main vote\n' >&2
+exit 7
+EOF
+chmod +x "$MAV_SPY"
+case_dir="$TMP/mav-ledger"
+make_tmpdir "$case_dir" default true false
+set +e
+out="$(RUN_STEP5_REVIEW_SH="$MAV_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>/dev/null)"
+rc=$?
+set -e
+if [[ "$rc" -eq 7 ]]; then pass "step5 MAV preserves downstream rc"; else fail "step5 MAV rc=$rc"; fi
+assert_contains "$out" "STEP5_REVIEW_LEDGER_READY=true" "step5 MAV emits ledger ready"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_SITE=step5-mav" "step5 MAV emits ledger site"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required" "step5 MAV emits ledger trigger"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review" "step5 MAV emits ledger dispatcher"
+
+echo "=== coder-main-agent-required record-escalation failure fails open ==="
+CMAR_SPY="$TMP/review-cmar-spy.sh"
+cat > "$CMAR_SPY" <<'EOF'
+#!/usr/bin/env bash
+printf 'STEP5_REVIEW_STATUS=coder-main-agent-required\n'
+printf 'needs main agent\n' >&2
+EOF
+chmod +x "$CMAR_SPY"
+case_dir="$TMP/cmar-record-fail"
+make_tmpdir "$case_dir" default true false
+printf 'outside\n' >"$TMP/outside-ledger"
+ln -s "$TMP/outside-ledger" "$case_dir/stall-recovery-escalation-ledger.tsv"
+set +e
+out="$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" RUN_STEP5_REVIEW_SH="$CMAR_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then pass "step5 CMAR record-escalation failure preserves downstream rc"; else fail "step5 CMAR record-escalation failure rc=$rc"; fi
+assert_contains "$out" "must not be a symlink" "step5 CMAR surfaces record-escalation error"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_READY=true" "step5 CMAR emits fallback ledger KVs"
+assert_contains "$(cat "$case_dir/execution-issues.md")" "Tool Failure: record-escalation" "step5 CMAR writes record-escalation tool failure"
+
+echo "=== coder-main-agent-required records exactly one canonical row on success ==="
+case_dir="$TMP/cmar-record-success"
+make_tmpdir "$case_dir" default true false
+set +e
+out="$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" RUN_STEP5_REVIEW_SH="$CMAR_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>/dev/null)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then pass "step5 CMAR record success preserves downstream rc"; else fail "step5 CMAR record success rc=$rc"; fi
+row_count="$(awk 'END { print NR + 0 }' "$case_dir/stall-recovery-escalation-ledger.tsv")"
+if [[ "$row_count" -eq 1 ]]; then pass "step5 CMAR writes exactly one canonical ledger row"; else fail "step5 CMAR row_count=$row_count"; fi
+assert_contains "$(cat "$case_dir/stall-recovery-escalation-ledger.tsv")" "site=step5"$'\t'"trigger=coder-main-agent-required" "step5 CMAR ledger row has normalized tokens"
+assert_not_contains "$out" "ESCALATION_RECORDED=" "step5 CMAR suppresses record-escalation stdout"
+assert_not_contains "$out" "STEP5_REVIEW_LEDGER_READY=true" "step5 CMAR success emits no duplicate prompt ledger KVs"
+
+echo "=== STEP5_REVIEW_STATUS token parser uses final envelope line ==="
+TOKEN_SPY="$TMP/review-token-spy.sh"
+cat > "$TOKEN_SPY" <<'EOF'
+#!/usr/bin/env bash
+printf 'noise STEP5_REVIEW_STATUS=complete OTHER=1\n'
+printf 'prefix=ignored STEP5_REVIEW_STATUS=main-agent-vote-required FINAL=1\n'
+exit 9
+EOF
+chmod +x "$TOKEN_SPY"
+case_dir="$TMP/token-status"
+make_tmpdir "$case_dir" default true false
+set +e
+out="$(RUN_STEP5_REVIEW_SH="$TOKEN_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>/dev/null)"
+rc=$?
+set -e
+if [[ "$rc" -eq 9 ]]; then pass "step5 token parser preserves downstream rc"; else fail "step5 token parser rc=$rc"; fi
+assert_contains "$out" "STEP5_REVIEW_LEDGER_READY=true" "step5 token parser emits MAV ledger KVs from final status token"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_SITE=step5-mav" "step5 token parser routes final MAV status"
 
 echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"

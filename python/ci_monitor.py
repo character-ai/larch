@@ -144,7 +144,7 @@ def decide(
     if status.status == "error":
         return Decision(
             action="bail",
-            bail_reason="ci-status.sh returned error — check script arguments",
+            bail_reason="ci-status-error",
         )
     behind = status.behind_count > 0
     if status.status == "pass" and (not behind or not status.conflicted):
@@ -152,12 +152,12 @@ def decide(
     if iteration >= config.CI_MONITOR_MAX_ITERATIONS:
         return Decision(
             action="bail",
-            bail_reason="Timeout: 50 iterations (~25 minutes) without successful merge",
+            bail_reason="ci-timeout",
         )
     if rebase_count >= config.CI_MONITOR_MAX_REBASES:
         return Decision(
             action="bail",
-            bail_reason="Too many rebases (20) without converging — main branch too active",
+            bail_reason="ci-too-many-rebases",
         )
     if fix_attempts >= config.CI_MONITOR_MAX_FIX_ATTEMPTS:
         return Decision(action="bail", bail_reason="fix-attempts-exhausted")

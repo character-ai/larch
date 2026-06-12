@@ -51,6 +51,17 @@ grep -Fq 'release classify-bump' "$SHIP_PR" \
     && fail "(D) ship-pr.sh must not invoke release classify-bump after Phase 1"
 
 # ---------------------------------------------------------------------------
+# (D1) Lint-fix main-agent handoffs and malformed CI job tokens fail safely.
+# ---------------------------------------------------------------------------
+grep -Fq 'exit_ship_pr_internal_lint_fix_handoff' "$SHIP_PR" \
+    || fail "(D1) ship-pr.sh must centralize ship-pr-internal lint-fix handoffs"
+grep -Fq 'SHIP_PR_LEDGER_TRIGGER=%s\n' "$SHIP_PR" \
+    || fail "(D1) ship-pr.sh must emit ledger-ready trigger fields"
+unknown_suffix_count=$(grep -Fc '[ -n "$sanitized" ] || sanitized=unknown' "$SHIP_PR")
+[[ "$unknown_suffix_count" -ge 2 ]] \
+    || fail "(D1) ci-local-unfixable aggregate suffix must default to unknown when sanitization empties it"
+
+# ---------------------------------------------------------------------------
 # (D2) Fork carve-out in implement-finalize postbump branch validation.
 # ---------------------------------------------------------------------------
 FINALIZE="$REPO_ROOT/scripts/implement-finalize.sh"

@@ -37,3 +37,5 @@ Case map:
 The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns sanitized bail/step output and a non-`none` resume hint from the four-layer Step 18a evidence order.
 
 The generic `/issue --input-file` body-splitting footgun (OOS_2) is tracked in the #3550/#3547 family and is out of scope for this harness.
+
+- Case 23 covers the terminal-only rework seams: shared `normalize-outcome`, canonical escalation ledger recording, Tier B `compose-report`, root-caused escalation titles, prompt-state sensitive supplement rejection, and `operator-action` durable non-filing sentinel behavior.

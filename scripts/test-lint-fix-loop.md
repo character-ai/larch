@@ -17,3 +17,5 @@ Edit in sync: update `scripts/test-lint-fix-loop.sh` with
 `scripts/lint-fix-loop.sh` and `scripts/lint-fix-loop.md` whenever dispatch
 safety, commit ownership, failure reasons, or clean-index rollback behavior
 changes.
+
+- Ledger-ready coverage asserts `main-agent-required` emits exact `LINT_FIX_LEDGER_*` keys, while `applied`, `no-changes`, and plain `failed` do not. Step 5 site validation includes `step5-self-review` and `step5-mav`.

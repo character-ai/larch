@@ -18,6 +18,14 @@ if not _version_supported(sys.version_info):
             {
                 "detail": _VERSION_ERROR,
                 "failed_run_id": "",
+                "ledger_dispatcher": "",
+                "ledger_exit_code": None,
+                "ledger_failure_detail_log": "",
+                "ledger_phase": "",
+                "ledger_ready": False,
+                "ledger_site": "",
+                "ledger_step": "",
+                "ledger_trigger": "",
                 "merge_result": "",
                 "needs_user_reason": "",
                 "outcome": "STALLED",
@@ -131,6 +139,14 @@ class ShipResult:
     pr_url: str = ""
     merge_result: str = ""
     detail: str = ""
+    ledger_ready: bool = False
+    ledger_site: str = ""
+    ledger_trigger: str = ""
+    ledger_step: str = ""
+    ledger_phase: str = ""
+    ledger_dispatcher: str = ""
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log: str = ""
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -141,6 +157,14 @@ class ShipResult:
             "pr_url": self.pr_url,
             "merge_result": self.merge_result,
             "detail": self.detail,
+            "ledger_ready": self.ledger_ready,
+            "ledger_site": self.ledger_site,
+            "ledger_trigger": self.ledger_trigger,
+            "ledger_step": self.ledger_step,
+            "ledger_phase": self.ledger_phase,
+            "ledger_dispatcher": self.ledger_dispatcher,
+            "ledger_exit_code": self.ledger_exit_code,
+            "ledger_failure_detail_log": self.ledger_failure_detail_log,
         }
 
 
@@ -167,21 +191,66 @@ def _step_result_to_ship(
     pr_number: int | None = None,
     pr_url: str = "",
     merge_result: str = "",
+    default_ledger_phase: str = "ci-merge",
+    default_ledger_failure_detail_log: str = "",
 ) -> ShipResult:
     reason = ""
     detail = step.detail
     if step.outcome is Outcome.NEEDS_USER_INPUT:
         reason = detail or "needs-user-input"
-        for token in (
-            config.NEEDS_USER_CI_FIX_EXHAUSTED,
-            config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
-            config.NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
-            config.NEEDS_USER_REVIEW_REQUIRED,
-            "local-unfixable",
-        ):
-            if reason == token or reason.startswith((f"{token}:", f"{token}\n")):
+        for token in config.NEEDS_USER_REASON_TOKENS:
+            if reason == token or reason.startswith(f"{token}\n"):
                 reason = token
                 break
+            if token == config.NEEDS_USER_CI_LOCAL_UNFIXABLE and reason.startswith(f"{token}:"):
+                suffix = reason.split(":", 1)[1].splitlines()[0]
+                if suffix and all(ch.isalnum() or ch in "_," or ch == "-" for ch in suffix):
+                    reason = f"{token}:{suffix}"
+                else:
+                    reason = token
+                break
+            if reason.startswith(f"{token}:"):
+                reason = token
+                break
+    ledger_ready = False
+    ledger_site = ""
+    ledger_trigger = ""
+    ledger_step = ""
+    ledger_phase = ""
+    ledger_dispatcher = "ship-pr"
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log = ""
+    ledger_triggers = {
+        config.NEEDS_USER_CI_FIX_EXHAUSTED,
+        config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+        config.NEEDS_USER_LOCAL_UNFIXABLE,
+        config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    }
+    if step.ledger_ready:
+        ledger_ready = True
+        ledger_site = step.ledger_site
+        ledger_trigger = step.ledger_trigger or reason
+        if ledger_site.startswith("ship-pr-ci-") and ledger_trigger in {
+            "main-agent-required",
+            config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        }:
+            ledger_site = "ship-pr-internal"
+            ledger_trigger = config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+        ledger_step = step.ledger_step
+        ledger_phase = step.ledger_phase or default_ledger_phase
+        ledger_dispatcher = step.ledger_dispatcher or ledger_dispatcher
+        ledger_exit_code = step.ledger_exit_code
+        ledger_failure_detail_log = step.ledger_failure_detail_log or default_ledger_failure_detail_log
+    elif step.outcome is Outcome.NEEDS_USER_INPUT and (
+        reason in ledger_triggers or reason.startswith(f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:")
+    ):
+        ledger_ready = True
+        ledger_site = "ship-pr"
+        ledger_trigger = reason
+        ledger_step = "8"
+        ledger_phase = default_ledger_phase
+        ledger_exit_code = config.OUTCOME_EXIT_MAP[Outcome.NEEDS_USER_INPUT]
+        ledger_failure_detail_log = default_ledger_failure_detail_log
     return ShipResult(
         step.outcome,
         needs_user_reason=reason,
@@ -190,6 +259,14 @@ def _step_result_to_ship(
         pr_url=pr_url,
         merge_result=merge_result,
         detail=detail,
+        ledger_ready=ledger_ready,
+        ledger_site=ledger_site,
+        ledger_trigger=ledger_trigger,
+        ledger_step=ledger_step,
+        ledger_phase=ledger_phase,
+        ledger_dispatcher=ledger_dispatcher if ledger_ready else "",
+        ledger_exit_code=ledger_exit_code,
+        ledger_failure_detail_log=ledger_failure_detail_log,
     )
 
 
@@ -1469,6 +1546,8 @@ def run_ship(
                     failed_run_id=monitor.failed_run_id or "",
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
+                    default_ledger_phase="ci-initial",
+                    default_ledger_failure_detail_log=_bail_detail_log,
                 )
             if monitor.action not in {"merge", "already_merged"}:
                 if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:

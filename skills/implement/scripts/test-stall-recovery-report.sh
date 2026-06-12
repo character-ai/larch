@@ -4,6 +4,7 @@
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
+export LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -31,12 +32,12 @@ assert_eq() {
 
 assert_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then pass "$label"; else fail "$label" "missing: $needle" "$haystack"; fi
+    if grep -qF -- "$needle" <<<"$haystack"; then pass "$label"; else fail "$label" "missing: $needle" "$haystack"; fi
 }
 
 assert_not_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -qF -- "$needle"; then fail "$label" "unexpected: $needle" "$haystack"; else pass "$label"; fi
+    if grep -qF -- "$needle" <<<"$haystack"; then fail "$label" "unexpected: $needle" "$haystack"; else pass "$label"; fi
 }
 
 kv() {
@@ -1463,6 +1464,400 @@ run_capture "$SANDBOX/case22-seed-awk-metachar.out" "$SCRIPT" seed-terminal-stat
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-awk-metachar.out")" "22: seed-terminal-state rewrite sanitizes metacharacter PHASE from disk"
 assert_eq review "$(read_session_key --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
 assert_eq 5 "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
+
+
+# New terminal-only / escalation-success reporting seams.
+dir=$(make_tmp case23-normalize)
+printf 'STALL_TRACKING=false
+MERGE_RESULT=already_merged
+' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case23-normalize.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
+assert_eq force-merged-externally "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize.out")" "23: normalize-outcome maps already_merged"
+assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize.out")" "23: normalize-outcome success allowlist accepts force-merged"
+printf 'STALL_TRACKING=true
+' >"$dir/finalize-state.sh"
+run_capture "$SANDBOX/case23-normalize-stall.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
+assert_eq stalled "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-stall.out")" "23: normalize-outcome any stall layer wins"
+assert_eq false "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-stall.out")" "23: normalize-outcome rejects active stall"
+
+dir=$(make_tmp case23-compose)
+cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=lint-failure
+FAILURE_SIGNATURE=abcdef
+STALL_STEP=5
+PHASE=review
+BAIL_REASON=wrapper-validation-failure
+EXIT_CODE=1
+MATCHED_CLASSIFIER_PATTERN=lint-output
+DISPATCHER=codex
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop missed retry path
+
+Observation: stall-recovery-escalation-ledger.tsv shows a handoff.
+EOF
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop missed retry path
+
+Bounded larch-only finding.
+EOF
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+assert_eq true "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record.out")" "23: record-escalation writes canonical ledger"
+chmod 444 "$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-record-nonwritable.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+chmod 644 "$dir/stall-recovery-escalation-ledger.tsv"
+assert_eq false "$(kv ESCALATION_RECORDED "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation routes non-writable canonical ledger to fallback"
+assert_eq true "$(kv ESCALATION_FALLBACK_WRITTEN "$SANDBOX/case23-record-nonwritable.out")" "23: record-escalation writes fallback for non-writable canonical ledger"
+assert_contains 'RECORD_ESCALATION_FAILED=true' "$(cat "$dir/stall-recovery-escalation-record-failure.env")" "23: record-escalation writes marker on canonical ledger write failure"
+assert_eq true "$(read_session_key --file "$dir/stall-recovery-escalation-record-failure.env" --key RECORD_ESCALATION_FAILED --default "")" "23: record-escalation marker is parseable KV"
+assert_eq canonical-ledger-not-writable "$(read_session_key --file "$dir/stall-recovery-escalation-record-failure.env" --key REASON --default "")" "23: record-escalation marker reason is parseable KV"
+run_capture "$SANDBOX/case23-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: compose-report Tier B exits 0"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.out")" "23: compose-report prints Tier B"
+assert_contains '[Bug] /implement escalation: lint fix loop missed retry path' "$(cat "$dir/out.md")" "23: compose-report root-caused title"
+assert_contains '| Larch version | `' "$(cat "$dir/out.md")" "23: compose-report includes larch version"
+assert_contains "| Run ID | \`unknown\` |" "$(cat "$dir/out.md")" "23: compose-report includes run id"
+assert_contains 'Bounded larch-only finding.' "$(cat "$dir/out.md")" "23: compose-report renders bounded root-cause prose"
+assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
+printf 'stale-partial-row' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-record-newline.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
+assert_contains $'stale-partial-row\nutc=' "$(cat "$dir/stall-recovery-escalation-ledger.tsv")" "23: record-escalation repairs missing trailing newline"
+
+dir=$(make_tmp case23-ledger-only)
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=ledger only success report
+
+Observation: escalation ledger exists without a terminal classifier.
+EOF
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=ledger only success report
+
+Bounded larch-only finding.
+EOF
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-ledger-only-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site ship-pr --trigger first-fixer-non-health --step 8 --phase ci-initial --dispatcher ship-pr --exit-code 3
+run_capture "$SANDBOX/case23-ledger-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes without classification"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-ledger-only-compose.out")" "23: ledger-only report prints"
+assert_not_contains "Failure class | \`unrecoverable\`" "$(cat "$dir/out.md")" "23: ledger-only success report does not claim unrecoverable failure"
+
+dir=$(make_tmp case23-ledger-zero-attempts)
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-ledger-zero-attempts-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site ship-pr --trigger first-fixer-non-health --step 8 --phase ci-initial --dispatcher ship-pr --exit-code 3
+run_capture "$SANDBOX/case23-ledger-zero-attempts-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success initializes missing attempts"
+assert_eq 0 "$(kv attempt_count "$dir/stall-recovery-attempts.env")" "23: escalation-success zero-attempt file is parseable KV"
+
+dir=$(make_tmp case23-tool-failure-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/execution-issues.md" <<'EOF'
+## Tool Failure: record-escalation
+
+- reason: `canonical-ledger-write-failed`
+EOF
+run_capture "$SANDBOX/case23-tool-failure-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success accepts tagged record-escalation Tool Failure evidence"
+assert_contains 'tagged record-escalation Tool Failure present' "$(cat "$dir/out.md")" "23: compose-report renders tagged Tool Failure evidence"
+
+dir=$(make_tmp case23-generic-tool-failure-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/execution-issues.md" <<'EOF'
+## Tool Failure: unrelated-helper
+
+- reason: `failed`
+EOF
+run_capture "$SANDBOX/case23-generic-tool-failure-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: escalation-success rejects generic Tool Failure evidence"
+
+dir=$(make_tmp case23-fallback-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=step5\ttrigger=main-agent-required\tstep=5\tphase=review\tdispatcher=lint-fix-loop\texit_code=1\tfailure_detail_log=\n' >"$dir/stall-recovery-escalation-fallback.tsv"
+run_capture "$SANDBOX/case23-fallback-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes from fallback ledger only"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-fallback-only-compose.out")" "23: fallback-only report prints"
+assert_contains '[Bug] /implement escalation: lint fix loop missed retry path (step5:main-agent-required)' "$(cat "$dir/out.md")" "23: fallback-only title uses fallback tokens"
+assert_contains "fallback site=\`step5\` trigger=\`main-agent-required\`" "$(cat "$dir/out.md")" "23: fallback-only body renders fallback tokens"
+
+dir=$(make_tmp case23-marker-only)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'RECORD_ESCALATION_FAILED=true\nREASON=canonical-ledger-write-failed\n' >"$dir/stall-recovery-escalation-record-failure.env"
+run_capture "$SANDBOX/case23-marker-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes from record-failure marker only"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-marker-only-compose.out")" "23: marker-only report prints"
+assert_contains 'record-failure marker present' "$(cat "$dir/out.md")" "23: marker-only body renders marker evidence"
+
+dir=$(make_tmp case23-escalation-success-no-evidence)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-escalation-success-no-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: escalation-success fails closed without evidence"
+
+dir=$(make_tmp case23-ledger-sanitize)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=now\tsite=/var/tmp/test-repo\ttrigger=secret-branch\n' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case23-ledger-sanitize.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: malformed ledger tokens do not fail Tier B"
+assert_contains "site=\`redacted\` trigger=\`redacted\`" "$(cat "$dir/out.md")" "23: malformed ledger tokens are sanitized"
+assert_not_contains '/var/tmp/test-repo' "$(cat "$dir/out.md")" "23: malformed ledger site path is not printed"
+
+for token in adopted-issue-closed adopted-issue-is-pr all-vendors-failed branch-create-failed ci-fix-exhausted design-flaw escalate first-fixer-non-health fix-attempts-exhausted local-unfixable review-required ship-pr-internal-lint-fix ci-timeout ci-status-error ci-too-many-rebases main-agent-required coder-main-agent-required main-agent-vote-required; do
+    dir=$(make_tmp "case23-token-$token")
+    write_state "$dir" 8 ci-initial "$token"
+    run_capture "$SANDBOX/case23-token-$token.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+    assert_eq "$token" "$(kv BAIL_REASON "$SANDBOX/case23-token-$token.out")" "23: bail token renders $token"
+done
+dir=$(make_tmp case23-token-compound)
+write_state "$dir" 8 ci-initial "ci-local-unfixable:lint_1,test-2"
+run_capture "$SANDBOX/case23-token-compound.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq "ci-local-unfixable:lint_1,test-2" "$(kv BAIL_REASON "$SANDBOX/case23-token-compound.out")" "23: ci-local compound renders"
+write_state "$dir" 8 ci-initial "ci-local-unfixable:../../secret"
+run_capture "$SANDBOX/case23-token-compound-bad.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq redacted "$(kv BAIL_REASON "$SANDBOX/case23-token-compound-bad.out")" "23: ci-local unsafe suffix redacts"
+
+dir=$(make_tmp case23-sensitive-shapes)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+printf 'CLIENT_URL=https://client.example.test/private
+' >"$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop referenced https://client.example.test/private
+
+Bounded finding.
+EOF
+run_capture "$SANDBOX/case23-sensitive-value.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive KEY=value extraction rejects bounded prose"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop referenced an absolute path
+
+Bounded finding at /Users/example/project/file.txt.
+EOF
+run_capture "$SANDBOX/case23-sensitive-path.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive shape rejects absolute paths"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=main-agent-required handoff is report-safe
+
+Bounded finding mentions BAIL_REASON=main-agent-required.
+EOF
+run_capture "$SANDBOX/case23-allowlisted-assignment.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: allowlisted operational assignment passes sensitive scan"
+printf 'other-token\n' >"$dir/stall-recovery-sensitive-corpus.env"
+printf 'feature text mentions https://client.example.test/private
+' >"$dir/plan.txt"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=plan echoed client URL
+
+Bounded finding mentions https://client.example.test/private.
+EOF
+run_capture "$SANDBOX/case23-sensitive-plan-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan derives URL corpus from plan evidence"
+
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=plan echoed client repo path
+
+Bounded finding mentions docs/private-plan.md.
+EOF
+printf 'plan names docs/private-plan.md
+' >"$dir/plan.txt"
+run_capture "$SANDBOX/case23-sensitive-relative-path.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan rejects repo-relative paths"
+
+dir=$(make_tmp case23-sensitive-raw-evidence)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+printf 'other-token\n' >"$dir/stall-recovery-sensitive-corpus.env"
+printf 'Client-specific marker prose remains private.\n' >"$dir/stall-recovery-escalation-record-failure.env"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=raw evidence echoed
+
+Client-specific marker prose remains private.
+EOF
+run_capture "$SANDBOX/case23-sensitive-raw-evidence.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan rejects raw evidence text"
+
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=short repo token echoed
+
+Bounded finding mentions qa.
+EOF
+printf 'qa
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-sensitive-short-token.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive scan rejects two-character sensitive token"
+
+dir=$(make_tmp case23-path-confinement)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+outside="$SANDBOX/outside-ledger.tsv"
+printf 'utc=now\tsite=step5\ttrigger=main-agent-required
+' >"$outside"
+run_capture "$SANDBOX/case23-path-confinement.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --escalation-ledger-file "$outside" --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: compose-report rejects outside ledger path"
+missing_outside="$SANDBOX/outside-attempts.env"
+rm -f "$missing_outside"
+run_capture "$SANDBOX/case23-attempts-confinement.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --attempts-file "$missing_outside" --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: compose-report rejects missing attempts path outside tmpdir"
+
+dir=$(make_tmp case23-operator)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env" 2>/dev/null || cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=unrecoverable
+STALL_STEP=8
+PHASE=ci-initial
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=operator-action
+confidence=medium
+summary=operator stopped the run
+
+Observation: operator action.
+EOF
+run_capture "$SANDBOX/case23-operator.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq skipped_operator_action "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-operator.out")" "23: operator-action skips filing"
+if [ -f "$dir/stall-recovery-operator-action.env" ]; then
+    pass "23: operator-action sentinel written"
+else
+    fail "23: operator-action sentinel missing"
+fi
+assert_eq true "$(read_session_key --file "$dir/stall-recovery-operator-action.env" --key STALL_RECOVERY_OPERATOR_ACTION --default "")" "23: operator-action sentinel is parseable KV"
+assert_eq operator-action "$(read_session_key --file "$dir/stall-recovery-operator-action-record.md" --key VERDICT --default "")" "23: operator-action record is parseable KV"
+
+dir=$(make_tmp case23-issue-input-status)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-issue-input-status.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-issue-input-status.out")" "23: issue-input composition uses documented report status"
+
+run_capture "$SANDBOX/case23-legacy-bug-body-gated.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/stall-recovery-classification.env"
+assert_eq 1 "$RC" "23: legacy bug-body is gated outside test compatibility"
+assert_contains "bug-body is test-only" "$(cat "$SANDBOX/case23-legacy-bug-body-gated.out.err")" "23: legacy bug-body gate explains compose-report replacement"
+
+dir=$(make_tmp case23-issue-input-raw-bail)
+cat >"$dir/stall-recovery-classification.env" <<EOF
+FAILURE_CLASS=unrecoverable
+FAILURE_SIGNATURE=abcdef
+STALL_STEP=8
+PHASE=ship
+BAIL_REASON=redacted
+BAIL_REASON_RAW=operator supplied $GHP_TOKEN_CASE13 during handoff
+EXIT_CODE=4
+MATCHED_CLASSIFIER_PATTERN=terminal-bail
+DISPATCHER=ship-pr
+EOF
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-issue-input-raw-bail.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: Tier A raw bail report composes"
+assert_contains 'operator supplied' "$(cat "$dir/out.md")" "23: Tier A preserves raw bail intent"
+assert_not_contains "$GHP_TOKEN_CASE13" "$(cat "$dir/out.md")" "23: Tier A redacts secret token from raw bail"
+
+dir=$(make_tmp case23-terminal-missing-classification)
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-terminal-missing-classification.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: terminal-failure compose fails closed without classification"
+assert_contains "--classification-file missing" "$(cat "$SANDBOX/case23-terminal-missing-classification.out.err")" "23: terminal-failure missing classification error"
+
+dir=$(make_tmp case23-issue-input-denied)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+consumer_root="$SANDBOX/consumer-root"
+mkdir -p "$consumer_root"
+run_capture "$SANDBOX/case23-issue-input-denied.out" env CLAUDE_PROJECT_DIR="$consumer_root" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: issue-input denied outside larch dev clone"
+
+dir=$(make_tmp case23-header-only-root-cause)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=header only
+EOF
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=header only
+EOF
+run_capture "$SANDBOX/case23-header-only-root-cause.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: root-cause validation rejects header-only artifacts"
+
+dir=$(make_tmp case23-normalize-memory)
+printf 'STALL_TRACKING=false\nMERGE_RESULT=merged\n' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case23-normalize-memory.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir" --in-memory-stall-tracking true
+assert_eq stalled "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-memory.out")" "23: normalize-outcome honors in-memory stall tracking"
+assert_eq true "$(kv IMPLEMENT_MEMORY_STALL_TRACKING "$SANDBOX/case23-normalize-memory.out")" "23: normalize-outcome emits memory stall layer"
+
+dir=$(make_tmp case23-normalize-forked-ci-failed)
+printf 'FORKED_TARGET=true\nSTALL_TRACKING=false\nCI_PASSED=false\n' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case23-normalize-forked-ci-failed.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
+assert_eq forked-dry-run "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: normalize-outcome preserves forked outcome"
+assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: forked dry-run succeeds without CI_PASSED"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

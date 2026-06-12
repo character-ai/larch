@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HELPER="$SCRIPT_DIR/step-8-ship.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+SKILL_MD="$SCRIPT_DIR/../SKILL.md"
+EXIT_MATRIX="$SCRIPT_DIR/../references/ship-pr-exit-matrix.md"
+SHIP_PR="$REPO_ROOT/scripts/ship-pr.sh"
 
 PASS=0
 FAIL=0
@@ -44,6 +47,12 @@ assert_rc() {
 assert_contains 'sys.version_info >= (3, 11)' "$(cat "$HELPER")" 'static: python 3.11 guard present'
 assert_contains '"outcome":"STALLED"' "$(cat "$HELPER")" 'static: stalled JSON present'
 assert_contains 'exit 4' "$(cat "$HELPER")" 'static: exit 4 present'
+assert_contains 'SHIP_PR_LEDGER_READY' "$(cat "$EXIT_MATRIX")" 'static: bash ledger contract documented in exit matrix'
+assert_contains 'SHIP_PR_LEDGER_*' "$(cat "$SKILL_MD")" 'static: bash ledger parse contract documented in SKILL'
+SHIP_PR_LEDGER_SNIPPET="$(grep -E 'ship-pr-internal-lint-fix|ci-local-unfixable|emit_ship_pr_ledger_ready' "$SHIP_PR")"
+assert_contains 'BAIL_REASON ship-pr-internal-lint-fix' "$SHIP_PR_LEDGER_SNIPPET" 'static: step6 lint-fix handoff sets ship-pr-internal token'
+assert_contains 'emit_ship_pr_ledger_ready ship-pr-internal-lint-fix ci-initial' "$SHIP_PR_LEDGER_SNIPPET" 'static: step6 lint-fix handoff emits ledger before exit 3'
+assert_contains "emit_ship_pr_ledger_ready \"ci-local-unfixable:\${sanitized}\" \"\$phase\" \"\$detail_file\"" "$SHIP_PR_LEDGER_SNIPPET" 'static: ci-local exit3 emits ledger'
 # shellcheck disable=SC2016
 if grep -q '"\${_resume_args\[@\]+"\${_resume_args\[@\]}"}"' "$HELPER"; then
     pass 'static: bash32-safe resume args expansion'
@@ -85,6 +94,7 @@ STDERR=$(cat "$TMP_ROOT/stderr.txt" 2>/dev/null || true)
 
 assert_rc "$RC" 4 'dynamic: stale python exits 4'
 assert_contains '"outcome":"STALLED"' "$OUT" 'dynamic: stale python emits STALLED JSON'
+assert_contains '"ledger_ready":false' "$OUT" 'dynamic: stale python emits ledger keys'
 assert_contains 'Python ship driver requires Python 3.11 or newer' "$STDERR" 'dynamic: stale python stderr message'
 
 # Case 3: bash mode with empty RESUME_PHASE must not abort under nounset.

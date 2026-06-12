@@ -1911,7 +1911,7 @@ exec {real_python} "$@"
     script = """
 if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
   echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
-  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
   exit 4
 fi
 exit 0
@@ -1928,6 +1928,7 @@ exit 0
     )
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
+    assert '"ledger_ready":false' in completed.stdout
     assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
 
 
@@ -1994,15 +1995,16 @@ print("contract", file=stream)
 stream.close()
 logging_util.BreadcrumbWriter().emit("crumb")
 print(os.environ[config.ENV_LARCH_QUIET_LOG_FILE], file=logging_util.contract_stream())
-"""
+    """
     _quiet_vars = {config.ENV_LARCH_QUIET_ACTIVE, config.ENV_LARCH_QUIET_PID, config.ENV_LARCH_QUIET_LOG_FILE, config.ENV_LARCH_QUIET_DISABLE}
     clean_env = {k: v for k, v in os.environ.items() if k not in _quiet_vars}
+    python_dir = Path(__file__).resolve().parent
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
         capture_output=True,
         text=True,
-        env={**clean_env, "PYTHONPATH": str(Path.cwd()), "QUIET_TMPDIR": str(tmp_path)},
+        env={**clean_env, "PYTHONPATH": str(python_dir), "QUIET_TMPDIR": str(tmp_path)},
     )
     lines = completed.stdout.strip().splitlines()
     assert lines[0] == "contract"
@@ -2526,3 +2528,87 @@ def test_oos_check_no_signal_when_no_accepted_oos_files(
 
     assert result.outcome is Outcome.STALLED
     assert "past-oos-check" in result.detail
+
+def test_needs_user_ship_result_includes_ledger_ready_keys() -> None:
+    result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED))
+    data = result.to_json_dict()
+    assert data["ledger_ready"] is True
+    assert data["ledger_site"] == "ship-pr"
+    assert data["ledger_trigger"] == config.NEEDS_USER_CI_FIX_EXHAUSTED
+    assert data["ledger_step"] == "8"
+    assert data["ledger_phase"] == "ci-merge"
+    assert data["ledger_dispatcher"] == "ship-pr"
+    assert data["ledger_exit_code"] == config.EXIT_NEEDS_USER_INPUT
+    assert "ledger_failure_detail_log" in data
+
+
+def test_step_result_ledger_handoff_overrides_ship_defaults(tmp_path: Path) -> None:
+    detail_log = tmp_path / "checks.redacted.log"
+    _ = detail_log.write_text("lint failed\n", encoding="utf-8")
+    step = StepResult(
+        Outcome.NEEDS_USER_INPUT,
+        config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        ledger_ready=True,
+        ledger_site="ship-pr-ci-initial",
+        ledger_trigger="main-agent-required",
+        ledger_step="8",
+        ledger_phase="ci-initial",
+        ledger_dispatcher="lint-fix-loop",
+        ledger_exit_code=config.EXIT_NEEDS_USER_INPUT,
+        ledger_failure_detail_log=str(detail_log),
+    )
+    data = ship._step_result_to_ship(step).to_json_dict()  # pyright: ignore[reportPrivateUsage]
+    assert data["needs_user_reason"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert data["ledger_ready"] is True
+    assert data["ledger_site"] == "ship-pr-internal"
+    assert data["ledger_trigger"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert data["ledger_phase"] == "ci-initial"
+    assert data["ledger_failure_detail_log"] == str(detail_log)
+
+
+def test_step_result_ledger_handoff_normalizes_merge_lint_fix_tokens(tmp_path: Path) -> None:
+    detail_log = tmp_path / "checks.redacted.log"
+    _ = detail_log.write_text("lint failed\n", encoding="utf-8")
+    step = StepResult(
+        Outcome.NEEDS_USER_INPUT,
+        config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        ledger_ready=True,
+        ledger_site="ship-pr-ci-merge",
+        ledger_trigger="main-agent-required",
+        ledger_step="8",
+        ledger_phase="ci-merge",
+        ledger_dispatcher="lint-fix-loop",
+        ledger_exit_code=config.EXIT_NEEDS_USER_INPUT,
+        ledger_failure_detail_log=str(detail_log),
+    )
+    data = ship._step_result_to_ship(step).to_json_dict()  # pyright: ignore[reportPrivateUsage]
+    assert data["ledger_site"] == "ship-pr-internal"
+    assert data["ledger_trigger"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert data["ledger_phase"] == "ci-merge"
+
+
+def test_ship_default_ledger_phase_can_follow_active_phase() -> None:
+    result = ship._step_result_to_ship(  # pyright: ignore[reportPrivateUsage]
+        StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED),
+        default_ledger_phase="ci-initial",
+    )
+    assert result.ledger_phase == "ci-initial"
+
+
+def test_ship_default_ledger_detail_log_is_included() -> None:
+    result = ship._step_result_to_ship(  # pyright: ignore[reportPrivateUsage]
+        StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED),
+        default_ledger_phase="ci-initial",
+        default_ledger_failure_detail_log="/tmp/claude-implement-x/ci-fix.log",
+    )
+    assert result.ledger_ready is True
+    assert result.ledger_failure_detail_log == "/tmp/claude-implement-x/ci-fix.log"
+
+
+def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
+    detail = f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:job_1,job-2"
+    result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, detail))
+    data = result.to_json_dict()
+    assert data["needs_user_reason"] == detail
+    assert data["ledger_ready"] is True
+    assert data["ledger_trigger"] == detail

@@ -1336,6 +1336,14 @@ def test_run_checks_phase_checks_site_and_fix_site_split(
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
+            ledger_ready=True,
+            ledger_site="ship-pr-internal",
+            ledger_trigger=config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+            ledger_step="8",
+            ledger_phase="ci-initial",
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(log),
         )
 
     monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
@@ -1351,6 +1359,12 @@ def test_run_checks_phase_checks_site_and_fix_site_split(
         fix_site="ship-pr-ci-initial",
     )
     assert result.outcome == Outcome.NEEDS_USER_INPUT
+    assert result.detail == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert result.ledger_ready is True
+    assert result.ledger_site == "ship-pr-internal"
+    assert result.ledger_trigger == "ship-pr-internal-lint-fix"
+    assert result.ledger_phase == "ci-initial"
+    assert result.ledger_failure_detail_log == str(log)
     assert captured == {"checks_site": "step6", "fix_site": "ship-pr-ci-initial"}
 
 
@@ -1995,3 +2009,78 @@ def test_run_relevant_checks_marks_step6_ledger(
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)
+
+def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    runner = StubRunner()
+    checks_log = tmp_path / "checks.log"
+    _ = checks_log.write_text("lint failed\n", encoding="utf-8")
+    run_parent = tmp_path / "lint-fix-loop"
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step5-self-review",
+        checks_log=str(checks_log),
+        repo_root=str(repo),
+        codex_present=False,
+        cursor_present=False,
+        run_parent=str(run_parent),
+        allowed_tmpdir=str(tmp_path),
+    )
+    assert outcome.status == "main-agent-required"
+    assert outcome.ledger_ready is True
+    assert outcome.ledger_site == "step5-self-review"
+    assert outcome.ledger_trigger == "main-agent-required"
+    assert outcome.ledger_step == "5"
+    assert outcome.ledger_phase == "review"
+    assert outcome.ledger_dispatcher == "lint-fix-loop"
+    assert outcome.ledger_failure_detail_log == str(checks_log)
+
+
+def test_lint_fix_ship_pr_initial_carries_ci_initial_ledger_phase(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    checks_log = tmp_path / "checks.log"
+    _ = checks_log.write_text("lint failed\n", encoding="utf-8")
+    outcome = checks.run_lint_fix(
+        StubRunner(),
+        site="ship-pr-ci-initial",
+        checks_log=str(checks_log),
+        repo_root=str(repo),
+        codex_present=False,
+        cursor_present=False,
+        run_parent=str(tmp_path / "lint-fix-loop"),
+        allowed_tmpdir=str(tmp_path),
+    )
+    assert outcome.status == "main-agent-required"
+    assert outcome.ledger_ready is True
+    assert outcome.ledger_site == "ship-pr-internal"
+    assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
+    assert outcome.ledger_step == "8"
+    assert outcome.ledger_phase == "ci-initial"
+
+
+def test_lint_fix_ship_pr_merge_handoffs_use_internal_ledger_tokens(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    checks_log = tmp_path / "checks.log"
+    _ = checks_log.write_text("lint failed\n", encoding="utf-8")
+    for site in ("ship-pr-ci-merge", "ship-pr-ci-per-job"):
+        run_parent = tmp_path / "lint-fix-loop"
+        outcome = checks.run_lint_fix(
+            StubRunner(),
+            site=site,
+            checks_log=str(checks_log),
+            repo_root=str(repo),
+            codex_present=False,
+            cursor_present=False,
+            run_parent=str(run_parent),
+            allowed_tmpdir=str(tmp_path),
+            target_cmd_display="make check-job" if site == "ship-pr-ci-per-job" else None,
+        )
+        assert outcome.status == "main-agent-required"
+        assert outcome.ledger_ready is True
+        assert outcome.ledger_site == "ship-pr-internal"
+        assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
+        assert outcome.ledger_step == "8"
+        assert outcome.ledger_phase == "ci-merge"

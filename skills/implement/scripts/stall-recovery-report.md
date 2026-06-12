@@ -1,112 +1,134 @@
 # stall-recovery-report.sh
 
-`stall-recovery-report.sh` is the deterministic helper for `/implement` Step 18a stall recovery. It classifies a persisted stall, tracks retry attempts, exposes the normative retry-cap table, detects larch dev clones, and composes sanitized public issue/report surfaces from fixed allowlists.
+`stall-recovery-report.sh` is the deterministic `/implement` stall recovery helper. It classifies terminal stalls, records script-to-main-agent escalation handoffs, normalizes final outcomes, and composes exactly one public report only on terminal failure or escalation-success teardown.
+
+## Canonical `/implement` artifacts
+
+The `/implement` runtime uses pinned files under `$IMPLEMENT_TMPDIR`:
+
+- canonical ledger: `stall-recovery-escalation-ledger.tsv`
+- ledger fallback: `stall-recovery-escalation-fallback.tsv`
+- ledger write failure marker: `stall-recovery-escalation-record-failure.env`
+- terminal sentinel: `stall-recovery-terminal-report.env`
+- escalation-success sentinel: `stall-recovery-escalation-success.env`
+- classification state: `stall-recovery-classification.env`
+- prompt-state sensitive supplement: `stall-recovery-sensitive-corpus.env`
+- issue input artifact: `stall-recovery-issue-input.md`
+- chat-print artifact: `stall-recovery-chat-print.md`
+- operator-action record: `stall-recovery-operator-action-record.md`
+- operator-action sentinel: `stall-recovery-operator-action.env`
+- root-cause finding: `stall-recovery-root-cause.md`
+- bounded root-cause finding: `stall-recovery-bounded-root-cause.md`
+- root-caused title: `stall-recovery-title.txt`
+
+These names are internal constants so `/design` can later parameterize the same engine without forking it. Public generic profile flags such as `--profile generic`, `--artifact-prefix`, state-file overrides, vocabulary overrides, and generic ledger overrides are deferred to #3992.
 
 ## Subcommands
 
-- `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--stall-step <N>] [--phase <token>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
-  - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress finalize-state or session-env stalls.
-  - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
-  - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
-  - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
-  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `adopted-issue-is-pr`, `branch-create-failed`, `ci-fix-exhausted`, `dirty-state-after-timeout`, `dirty-tree`, `first-fixer-non-health`, `main-branch-post-dispatch`, `orchestrator-envelope-invalid`, `qa-loop-exceeded`, `recovery-out-of-scope`, `run-flags-persist-failed`, `tracking-init-failed`, `wrapper-validation-failure`) plus empty; every other value is emitted as `redacted`. `recovery-out-of-scope` is set unconditionally alongside `STALL_TRACKING=true` on the Step 2 manifest-schema-invalid recovery sub-branch (no reclassification — stays `unrecoverable`).
-  - `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only. Argv-only bail reasons can still route transient-infra and dispatch-failure classifications when their text matches classifier evidence.
-  - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
-  - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family (except the explicit no-resume terminals `12d` and `bump-branch-guard`) plus `rebase-failed`.
-  - `FAILURE_SIGNATURE` includes a bounded evidence digest (first 2048 bytes of evidence, hashed, truncated to 16 hex chars) so distinct failures with identical `class`/`step`/`phase`/`bail` hash differently and don't prematurely collapse into `same-cause-repeat` (#3592 bug b). The digest is never emitted in public report surfaces.
-  - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
-- `init-attempts --implement-tmpdir <path> --attempts-file <path>`
-  - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
-- `record-attempt --implement-tmpdir <path> --attempts-file <path> --class <class> --signature <hash> --resume-hint <hint> --outcome <token>`
-  - Atomically appends `attempt.<N>.{class,signature,resume_hint,outcome,utc}` and increments `attempt_count`.
-  - `--attempts-file` must be an absolute path inside `--implement-tmpdir`; the helper rejects symlinks, non-regular files, and cross-tmpdir writes before any write occurs.
-- `retry-policy --class <class>`
-  - Emits `FAILURE_CLASS`, `MAX_ATTEMPTS`, and `RETRY_DELAY` for the requested classifier. This is the helper's mechanical projection of the retry-cap table below.
-- `is-larch-dev-clone [--working-tree-root <path>] [--implement-tmpdir <path>]`
-  - Emits `LARCH_DEV_CLONE=true|false` using the canonical `skills/implement/SKILL.md` marker.
-  - When `--implement-tmpdir` shows `FORKED_TARGET=true`, emits `false` so forked runs keep the consumer-facing action-required path instead of auto-filing a larch-dev issue.
-- `bug-body --implement-tmpdir <path> --classification-file <path> [--output-file <path>]`
-  - Writes a sanitized bug body and emits `BODY_FILE` and `DRY_RUN_DECISION`.
-- `bug-comment --implement-tmpdir <path> --classification-file <path> --attempts-file <path> [--output-file <path>]`
-  - Writes the sanitized terminal-failure comment, including the allowlisted retry-attempt table.
-  - `--classification-file`, `--attempts-file`, and `--output-file` must stay under `--implement-tmpdir`.
-- `issue-input-file --implement-tmpdir <path> --classification-file <path> --body-file <path> [--output-file <path>]`
-  - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
-  - `--classification-file` and `--body-file` must be absolute paths that resolve to regular, non-symlink, readable files under `$IMPLEMENT_TMPDIR`.
-  - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
-- `normalize-issue-env --implement-tmpdir <path> --issue-stdout-file <path> [--issue-exit-code <n>] [--output-file <path>]`
-  - Consumes captured single-item `/larch:issue --input-file` stdout and writes `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` only when `/issue` exited `0`, `ISSUES_FAILED=0`, `ISSUE_1_FAILED` is not truthy, and either a create path (`ISSUE_1_NUMBER` plus `ISSUE_1_URL`) or dedup path (`ISSUE_1_DUPLICATE_OF_NUMBER` plus `ISSUE_1_DUPLICATE_OF_URL`) is resolvable.
-  - Emits `NORMALIZED=true`, `ISSUE_ENV_WRITTEN=true`, `ISSUE_ENV_FILE`, canonical `ISSUE_NUMBER`, and canonical `ISSUE_URL` on success. The env file writes only canonical validated `ISSUE_NUMBER` and `ISSUE_URL`; raw `/issue` stdout metadata remains in the captured stdout file and is not persisted into the sourceable env file.
-  - On missing `--issue-exit-code`, `/issue` non-zero exit, `ISSUES_FAILED>0`, truthy `ISSUE_1_FAILED`, missing counters, missing canonical create/dedup fields, or output write failure, removes any stale output file, emits `NORMALIZED=false`, `ISSUE_ENV_WRITTEN=false`, and `REASON=<token>`, then exits `0` so the orchestrator can log the filing failure and continue to the manual-filing fallback.
-  - `--issue-stdout-file` and `--output-file` must stay under `$IMPLEMENT_TMPDIR`; invalid paths exit non-zero.
-- `clear-stall --implement-tmpdir <path>`
-  - Owns the Step 18a success-path atomic clear of `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (disk before memory). Emits `CLEARED=true|false` on every path.
-  - Present-file guards are two-tier: (1) symlink or non-regular file → `CLEARED=false`, exit 3; (2) syntax-invalid lines (`check_ship_pr_state_syntax`) → `CLEARED=false`, exit 3. Never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`).
-  - On success (including absent state and syntax-valid keyless empty or comment-only files): key-rewrite or minimal seeding sets `STALL_TRACKING=false` and `STALL_STEP=` (appending both when absent), preserves every other key and line order for keyed files, temp-write → re-read-assert `false` via `read-session-env-key.sh` → `mv -f` → destination re-read-assert `false`. Operational failures on temp-write, re-read, `mv`, or destination re-read emit `CLEARED=false` before exit (explicit handlers; no bare `set -e` abort without the KV).
-  - Never clears in-memory orchestrator state.
-- `seed-terminal-state --implement-tmpdir <path> [--stall-step <N>] [--phase <token>]`
-  - Owns the Step 18a terminal-failure durable write (steps 8.1–8.3). Emits `SEEDED=true|false` and, on success, `SEED_MODE=rewrite|seed`.
-  - When `ship-pr-state.sh` exists: same three-tier present-file guards as `clear-stall` for symlink/non-regular (exit 3) and syntax-invalid (exit 3). Unlike `clear-stall`, a syntax-valid keyless present file is not a no-op: the helper seeds the canonical minimal Step-8 shape (`SEED_MODE=seed`) instead of exiting 3. When the file has keys, rewrite keeps `STALL_TRACKING=true`, refreshes `STALL_STEP` / `PHASE` from sanitized args when provided else keeps existing sanitized disk values, and preserves `BAIL_FAILURE_DETAIL_LOG` and all other keys by construction (key-rewrite updates only the named keys).
-  - When absent: seeds the canonical minimal Step-8 shape (`PHASE=ci-initial`, `STALL_TRACKING=true`, `STALL_STEP=8`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, `EXIT_CODE=4`) with `--stall-step` / `--phase` overriding defaults when supplied.
-  - Re-read-assert `STALL_TRACKING=true` after `mv -f`. Operational failures emit `SEEDED=false` before exit.
-- `lint`
-  - Asserts allowlist parity: TSV surface keys == helper code surface keys == this document's surface keys.
+- `init-attempts --implement-tmpdir <path> --attempts-file <path>` initializes retry history.
+- `classify --implement-tmpdir <path> ...` emits the sanitized classification KV contract and writes `stall-recovery-classification.env`. The file includes `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, `EXIT_CODE`, `MATCHED_CLASSIFIER_PATTERN`, and `DISPATCHER`.
+- `record-attempt ...` appends retry attempt history.
+- `retry-policy --class <class>` emits the retry-cap table projection. Retry caps are unchanged.
+- `record-escalation --implement-tmpdir <path> --site <token> --trigger <token> --step <token> --phase <token> [--dispatcher <token>] [--exit-code <n>] [--failure-detail-log <path>]` appends one canonical ledger row. The canonical ledger path is always `stall-recovery-escalation-ledger.tsv`. Invalid, outside-tmpdir, symlinked, non-regular, or malformed paths fail closed. Append failures write fallback evidence or the record-failure marker and add a tagged `record-escalation` Tool Failure when possible.
+- `normalize-outcome --implement-tmpdir <path>` is the shared final-outcome API used by `write-final-report.sh` and Step 18a.5. It emits `IMPLEMENT_NORMALIZED_OUTCOME=<token>`, `IMPLEMENT_OUTCOME_SUCCEEDED=true|false`, stall-tracking layer diagnostics, and the state fields used in the decision.
+- `compose-report --report-kind terminal-failure|escalation-success --surface issue-input|chat-print ...` is the single public report-rendering API. It writes Tier A issue input or Tier B chat-print output and emits normalized report env fields.
+- `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns.
+- `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
+- `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles.
+
+`bug-body`, `bug-comment`, and `issue-input-file` are no longer public report surfaces. Compatibility is gated behind `LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1` for older harness fixtures only.
+
+## Outcome normalization
+
+`normalize-outcome` preserves the final-summary precedence:
+
+1. Any observed `STALL_TRACKING=true` in `ship-pr-state.sh`, `finalize-state.sh`, or `session-env.sh` maps to `stalled`.
+2. `FORKED_TARGET=true` maps to `forked-dry-run`.
+3. `DESIGN_ONLY_DONE=true` maps to `design-only`.
+4. `MERGE_RESULT=merged` or `admin_merged` maps to `merged`.
+5. `MERGE_RESULT=already_merged` maps to `force-merged-externally`.
+6. A non-zero draft PR maps to `pr-created-draft`.
+7. A non-zero non-draft PR with `MERGE=false` maps to `pr-created`.
+8. Otherwise the outcome is `bailed`, except `BAIL_NEEDS_USER_INPUT=true` remaps only that fallthrough to `bailed-needs-user-input`.
+
+Step 18a.5 treats only `merged`, `force-merged-externally`, `pr-created`, `pr-created-draft`, and `forked-dry-run` as success. Unknown, partial, failed, invented, or missing outcomes do not succeed. Every observed `STALL_TRACKING` layer must be false.
+
+## Escalation-success evidence
+
+Step 18a.5 counts only these evidence sources:
+
+- non-empty canonical ledger
+- non-empty fallback ledger
+- non-empty record-failure marker
+- uniquely tagged `record-escalation` Tool Failure entries
+
+Generic Tool Failures do not trigger escalation-success reporting. Terminal failure absorbs ledger, fallback, and marker evidence into the terminal report. A run publishes at most one report.
+
+## Root-cause artifacts
+
+Main Claude must investigate before composing. The root-cause file schema is:
+
+```text
+verdict=larch-defect|environment|operator-action
+confidence=low|medium|high
+summary=<single-line safe summary>
+
+<finding prose with durable evidence citations>
+```
+
+`operator-action` writes the local non-filing record and sentinel, then skips public filing or printing. This also applies after successful merge so cleanup has a durable non-filing record.
+
+## Tier behavior
+
+Tier A is a larch dev clone with `FORKED_TARGET=false`. Tier A uses `issue-input`, bypasses TSV field allowlists, and redacts secrets from the complete public heading and body. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after secret redaction.
+
+Tier B covers consumer repos and forked runs. Tier B writes `chat-print` only. It renders allowlisted machine fields plus validated bounded root-cause prose. `compose-report` requires `stall-recovery-sensitive-corpus.env` for Tier B and rejects bounded prose, titles, and chat-print output that contain excluded client-bearing values or raw evidence text. Allowlisted larch operational enums and machine fields are exempt, including step tokens, phase tokens, site tokens, trigger tokens, bail tokens, dispatcher names, `lint-fix-loop`, `ship-pr`, and `main-agent-required`.
+
+Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
+
+## Titles
+
+Terminal reports use:
+
+```text
+[Bug] /implement terminal: <safe-root-cause-summary> (<class> at <step>)
+```
+
+Escalation-success reports use:
+
+```text
+[Bug] /implement escalation: <safe-root-cause-summary> (<site>:<trigger>)
+```
+
+Explicit title text comes from `stall-recovery-title.txt`. If it is unsafe, composition falls back to the validated root-cause summary. If neither is safe, composition fails closed and requires a rewrite. The full heading and body are redacted after composition.
 
 ## Surface Allowlists
 
-`clear-stall` and `seed-terminal-state` compose no public report text. The `## Surface Allowlists` table, TSV, and `lint` parity checks are unchanged — only classification/report subcommands participate in allowlisted surfaces.
-
-The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint` subcommand, and this table must remain byte-equivalent at the `surface + field_key + source + transform` level.
+Lint parity covers Tier B only. The committed TSV, helper code, and this table must remain byte-equivalent at the `surface + field_key + source + transform` level.
 
 <!-- stall-recovery-allowlist:begin -->
 | surface | field_key | source | transform |
 |---|---|---|---|
-| bug-body | failing_step | STALL_STEP | enum |
-| bug-body | failing_phase | PHASE | enum |
-| bug-body | failure_class | FAILURE_CLASS | enum |
-| bug-body | bail_reason | BAIL_REASON | enum |
-| bug-body | exit_code | EXIT_CODE | integer-or-unknown |
-| bug-body | signature_hash | FAILURE_SIGNATURE | hex |
-| bug-body | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
-| bug-body | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
-| bug-comment | failing_step | STALL_STEP | enum |
-| bug-comment | failing_phase | PHASE | enum |
-| bug-comment | failure_class | FAILURE_CLASS | enum |
-| bug-comment | bail_reason | BAIL_REASON | enum |
-| bug-comment | exit_code | EXIT_CODE | integer-or-unknown |
-| bug-comment | signature_hash | FAILURE_SIGNATURE | hex |
-| bug-comment | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
-| bug-comment | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
-| bug-comment | attempt_count | attempts-file | integer |
-| bug-comment | attempt_table | attempts-file | allowlisted-attempt-fields |
-| bug-comment | final_class | FAILURE_CLASS | enum |
-| bug-comment | final_signature | FAILURE_SIGNATURE | hex |
-| issue-input-file | title | FAILURE_CLASS+STALL_STEP | synthesized-heading |
-| issue-input-file | body | bug-body | body-file |
+| chat-print | report_kind | REPORT_KIND | enum |
 | chat-print | failing_step | STALL_STEP | enum |
 | chat-print | failing_phase | PHASE | enum |
 | chat-print | failure_class | FAILURE_CLASS | enum |
-| chat-print | bail_reason | BAIL_REASON | enum |
+| chat-print | bail_reason | BAIL_REASON | expanded-bail-token-union |
 | chat-print | exit_code | EXIT_CODE | integer-or-unknown |
-| chat-print | signature_hash | FAILURE_SIGNATURE | hex |
-| chat-print | inferred_root_cause | FAILURE_CLASS | fixed-prose-template |
-| chat-print | suggested_mitigation | FAILURE_CLASS | fixed-prose-template |
+| chat-print | dispatcher | DISPATCHER | enum |
+| chat-print | matched_classifier_pattern | MATCHED_CLASSIFIER_PATTERN | enum |
+| chat-print | larch_version | larch-version | token |
+| chat-print | run_id | RUN_ID | token-or-unknown |
+| chat-print | attempt_table | attempts-file | allowlisted-attempt-fields |
+| chat-print | escalation_site | escalation-ledger | enum |
+| chat-print | escalation_trigger | escalation-ledger | enum |
+| chat-print | fallback_escalation_marker | escalation-fallback | present-marker |
+| chat-print | record_failure_marker | record-failure-marker | present-marker |
+| chat-print | record_escalation_tool_failure | execution-issues | present-marker |
+| chat-print | bounded_root_cause | bounded-root-cause-file | validated-larch-internal-prose |
 <!-- stall-recovery-allowlist:end -->
 
-## Classifier Evidence
-
-- `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or, when no validated detail log is available, the persisted state/session evidence. Standalone auth-failure wording is not treated as transient.
-- `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
-- `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
-- `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, orchestrator-envelope-invalid evidence, or a known Step-2 dispatcher bail token.
-- `ci-fix-exhausted`: `BAIL_REASON=ci-fix-exhausted` together with a readable validated failure-detail log. The CI fix loop exhausted its retry budget, but the surfaced failing job and redacted log tail are actionable, so the main agent applies an inline fix and re-ships (`RESUME_HINT=step8-shippr`). The evidence-specific classes above (test/lint/dispatch/transient) still win when the log matches a more precise signature; without a readable detail log the stall stays `unrecoverable`.
-- `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
-- `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.
-- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`). Reserved for cases where no code fix is possible (merge conflict, repo access failure, or a CI-fix exhaustion with no readable failure-detail log to act on).
-
 ## Retry Caps
-
-This table is the single normative retry-cap source. `skills/implement/references/stall-recovery.md` points here and does not duplicate values. `stall-recovery-report.sh lint` fails closed if the table drifts from helper output, and the offline harness checks every class against `retry-policy`.
 
 | failure_class | attempts | delay |
 |---|---:|---|
@@ -119,37 +141,8 @@ This table is the single normative retry-cap source. `skills/implement/reference
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
 
-For `same-cause-repeat`, the absence of a delay is intentional: the orchestrator uses the one-time alternate strategy immediately instead of sleeping before redispatch.
-`ci-fix-exhausted` shares the fixable-code cap (`8`) with `test-failure` / `lint-failure`: all three resolve to the same `step8-shippr` re-dispatch, so a CI failure gets the same recovery budget whether or not its log matched a more precise signature. The `same-cause-repeat` guard (cap `2`) still bounds an inline fix that keeps reproducing the same sanitized signature.
-For `transient-infra`, the emitted retry delay means "sleep this command between attempts."
+For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts.
 
-## Exit Codes
+## Dry run
 
-| exit | meaning |
-|---:|---|
-| 0 | success |
-| 1 | argv error, validation rejection, or lint parity failure |
-| 2 | missing required input |
-| 3 | present `ship-pr-state.sh` is symlinked, non-regular, or syntax-invalid only |
-
-Missing `ship-pr-state.sh` is never exit 3. Without other recoverable evidence it is classified as a bounded `unrecoverable` outcome; `session-env.sh` plus a recoverable bail/detail signal can still produce a recoverable class.
-
-Rendered report `exit_code` values use the `integer-or-unknown` transform: empty or non-numeric persisted values render as `unknown`, and captured numeric values, including `0`, render unchanged.
-
-Rendered report `bail_reason` values are closed-enum sanitized before publication. Allowlisted `BAIL_REASON` values render verbatim in the public `Bail reason` row, an empty value renders as `none`, and every non-allowlisted value renders as `redacted`.
-
-## `--failure-detail-log` Validation
-
-The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Step 18a should source the canonical path from `BAIL_FAILURE_DETAIL_LOG` in `ship-pr-state.sh` when that key is populated, then pass it through `--failure-detail-log` after validation; classification validates and reads the file through one helper so the public classifier does not re-open the path after validation. Invalid logs are ignored and classification continues from the remaining persisted evidence. The offline harness covers the oversize rejection path in addition to relative/outside/symlink/non-regular validation.
-
-## Signatures
-
-Failure signatures are always SHA-256 digests. The helper uses `shasum -a 256`, then `sha256sum`, then a Python `hashlib.sha256` fallback so deduplication stays environment-independent.
-
-## Dry Run
-
-`LARCH_STALL_RECOVERY_DRY_RUN=1` makes `bug-body`, `bug-comment`, and `issue-input-file` emit `DRY_RUN_DECISION=true`. `bug-body` also writes `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`. The caller must skip `/larch:issue` and `gh issue comment` when this value is true, and the harness covers all three helper surfaces.
-
-## Security
-
-All public surfaces are composed from the allowlists above using classifier enums, hashes, integers or `unknown`, and fixed prose templates. Raw stdout, stderr, failure-detail logs, local paths, branch names, issue bodies, and plan text are excluded. Every body/comment surface is still piped through `python/cli.py redact secrets` as a secrets-family backstop. See `SECURITY.md` "Stall recovery sanitization".
+`LARCH_STALL_RECOVERY_DRY_RUN=1` makes report composition write local artifacts and emit `DRY_RUN_DECISION=true`. Callers must skip `/larch:issue` when dry-run is true.

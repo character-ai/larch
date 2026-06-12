@@ -1376,6 +1376,11 @@ exclude = [
   # target) and the sibling contract scripts/test-ci-behind-count.md.
   "scripts/test-ci-behind-count.sh",
   "scripts/test-ci-behind-count.md",
+  # scripts/test-ci-decide.sh is the offline regression harness for
+  # scripts/ci-decide.sh's report-safe bail-token contract. It has only a
+  # sibling contract and no runtime skill-prose invocation edge.
+  "scripts/test-ci-decide.sh",
+  "scripts/test-ci-decide.md",
   # scripts/test-lint-fix-loop.sh is the offline regression harness for
   # scripts/lint-fix-loop.sh dispatch safety and helper-owned commit rollback.
   # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,

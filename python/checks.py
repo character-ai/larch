@@ -25,6 +25,8 @@ from proc import CommandResult, Runner
 _SITE_LABELS: Final[dict[str, str]] = {
     "step3": "Step 3",
     "step5": "Step 5",
+    "step5-self-review": "Step 5",
+    "step5-mav": "Step 5",
     "step6": "Step 6",
     "ship-pr-ci-initial": "ship-pr CI initial",
     "ship-pr-ci-merge": "ship-pr CI merge",
@@ -36,6 +38,40 @@ _RCC_MAX_ITER_CAP: Final = 6
 _EMPTY_FAILURE_CAP: Final = 2
 _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
+
+
+def _ledger_site_for_lint_site(site: str) -> str:
+    if site.startswith("ship-pr-ci-"):
+        return "ship-pr-internal"
+    return site
+
+
+def _ledger_trigger_for_lint_site(site: str) -> str:
+    if site.startswith("ship-pr-ci-"):
+        return config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    return "main-agent-required"
+
+
+def _ledger_step_for_site(site: str) -> str:
+    if site.startswith("step5"):
+        return "5"
+    if site == "step6":
+        return "6"
+    if site == "step3":
+        return "3"
+    return "8"
+
+
+def _ledger_phase_for_site(site: str) -> str:
+    if site.startswith("step5"):
+        return "review"
+    if site in {"step3", "step6"}:
+        return "checks"
+    if site == "ship-pr-ci-initial":
+        return "ci-initial"
+    if site in {"ship-pr-ci-merge", "ship-pr-ci-per-job"}:
+        return "ci-merge"
+    return "ci-merge"
 
 
 @dataclass(frozen=True)
@@ -59,6 +95,14 @@ class FixOutcome:
     commit_sha: str | None
     head_changed: bool
     coder_tool: str | None
+    ledger_ready: bool = False
+    ledger_site: str = ""
+    ledger_trigger: str = ""
+    ledger_step: str = ""
+    ledger_phase: str = ""
+    ledger_dispatcher: str = ""
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log: str = ""
 
 
 @dataclass
@@ -66,6 +110,14 @@ class LoopResult:
     status: str
     delta_paths: tuple[str, ...] = ()
     last_fix_status: str = ""
+    ledger_ready: bool = False
+    ledger_site: str = ""
+    ledger_trigger: str = ""
+    ledger_step: str = ""
+    ledger_phase: str = ""
+    ledger_dispatcher: str = ""
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log: str = ""
 
 
 def normalize_max_iter(raw: str | int | None = None) -> int:
@@ -1111,6 +1163,14 @@ def run_lint_fix(
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
+            ledger_ready=True,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=0,
+            ledger_failure_detail_log=str(log_path),
         )
     cwd = repo_root
     site_label = _site_label(site)
@@ -1174,6 +1234,14 @@ def run_lint_fix(
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
+            ledger_ready=True,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(log_path),
         )
     try:
         current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
@@ -1348,6 +1416,15 @@ def _handle_fix_outcome(
 ) -> bool:
     """Return True when the outer loop should continue."""
     loop.last_fix_status = fix.status
+    if fix.ledger_ready:
+        loop.ledger_ready = True
+        loop.ledger_site = fix.ledger_site
+        loop.ledger_trigger = fix.ledger_trigger
+        loop.ledger_step = fix.ledger_step
+        loop.ledger_phase = fix.ledger_phase
+        loop.ledger_dispatcher = fix.ledger_dispatcher
+        loop.ledger_exit_code = fix.ledger_exit_code
+        loop.ledger_failure_detail_log = fix.ledger_failure_detail_log
     if fix.status in {"applied", "no-changes"}:
         if fix.status == "applied":
             for path in fix.delta_paths:
@@ -1547,15 +1624,37 @@ def run_check_fix_loop(
     return loop
 
 
-def escalate(status: str, *, delta_paths: tuple[str, ...] = ()) -> StepResult:
+def escalate(status: str, *, delta_paths: tuple[str, ...] = (), loop: LoopResult | None = None) -> StepResult:
     """Map loop terminal status to StepResult."""
+    def make_step(outcome: Outcome, detail: str = "") -> StepResult:
+        if loop is None or not loop.ledger_ready:
+            return StepResult(outcome, detail, payload=delta_paths)
+        return StepResult(
+            outcome,
+            detail,
+            payload=delta_paths,
+            ledger_ready=loop.ledger_ready,
+            ledger_site=loop.ledger_site,
+            ledger_trigger=loop.ledger_trigger,
+            ledger_step=loop.ledger_step,
+            ledger_phase=loop.ledger_phase,
+            ledger_dispatcher=loop.ledger_dispatcher,
+            ledger_exit_code=loop.ledger_exit_code,
+            ledger_failure_detail_log=loop.ledger_failure_detail_log,
+        )
+
     if status == "ok":
-        return StepResult(Outcome.OK, "", payload=delta_paths)
+        return make_step(Outcome.OK)
     if status in {"exhausted", "no-changes-stale"}:
-        return StepResult(Outcome.STALLED, status, payload=delta_paths)
+        return make_step(Outcome.STALLED, status)
     if status == "main-agent-required":
-        return StepResult(Outcome.NEEDS_USER_INPUT, status, payload=delta_paths)
-    return StepResult(Outcome.TRANSIENT, status, payload=delta_paths)
+        detail = (
+            config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+            if loop and loop.ledger_trigger == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+            else status
+        )
+        return make_step(Outcome.NEEDS_USER_INPUT, detail)
+    return make_step(Outcome.TRANSIENT, status)
 
 
 def run_checks_phase(
@@ -1620,4 +1719,4 @@ def run_checks_phase(
         initial_redacted_log=initial_redacted_log,
         allowed_tmpdir=str(canonical_tmp),
     )
-    return escalate(loop.status, delta_paths=loop.delta_paths)
+    return escalate(loop.status, delta_paths=loop.delta_paths, loop=loop)

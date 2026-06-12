@@ -1,42 +1,95 @@
-# Stall Recovery Reference
+# /implement Step 18a stall recovery
 
-**Consumer**: `/implement` Step 18a — the orchestrator-facing stall recovery gate that runs at the start of every Step 18 entry when `STALL_TRACKING` is true in any layer.
+**Consumer**: `/implement` Step 18a.
 
-**Contract**: Authoritative procedure for Step 18a stall recovery. `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempt bookkeeping, dev-clone detection, and sanitized report composition. Retry caps are authoritative only in `skills/implement/scripts/stall-recovery-report.md`; this reference points there and never duplicates them. Safety constraints (no Agent-tool subagents for code writes, no `finalize-state.sh` mutation, no `ScheduleWakeup`, immediate-background dispatch for long review/ship recovery steps, no recursion into Step 18) are enumerated in the Procedure section below.
+**Contract**: Step 18a reports only terminal failures and escalation-success events. It never files or prints at first detection. `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempts, canonical escalation recording, normalized outcome reads, and report composition.
 
-**When to load**: loaded via MANDATORY directive at Step 18a entry when the four-layer `STALL_TRACKING` resolution (in-memory → `ship-pr-state.sh` → `finalize-state.sh` → `session-env.sh`) returns true for any layer. Do NOT load when all layers are false or empty — in that case print `⏩ 18a: stall recovery — no stall detected` and proceed directly to Step 18b teardown.
+**When to load**: MANDATORY before executing Step 18a stall recovery or Step 18a.5 escalation-success teardown. Load before changing stall recovery report composition, escalation recording, or normalized outcome handling.
 
-Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is orchestrator-facing procedure; `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempt bookkeeping, dev-clone detection, and sanitized report composition. Retry caps live only in `skills/implement/scripts/stall-recovery-report.md`.
+## Canonical artifacts
 
-## Procedure
+Use these `$IMPLEMENT_TMPDIR` paths for `/implement`:
 
-1. **Resolve `STALL_TRACKING`.** Check the in-memory orchestrator value first, then `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, then `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python/cli.py session read-key`. Truthy means the same allowlisted values as `stall-recovery-report.sh` (`1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, `On`); every other value is false. If every layer is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. If any layer is true, continue to attempt initialization.
+- `stall-recovery-attempts.env`
+- `stall-recovery-escalation-ledger.tsv`
+- `stall-recovery-escalation-fallback.tsv`
+- `stall-recovery-escalation-record-failure.env`
+- `stall-recovery-terminal-report.env`
+- `stall-recovery-escalation-success.env`
+- `stall-recovery-classification.env`
+- `stall-recovery-sensitive-corpus.env`
+- `stall-recovery-issue-input.md`
+- `stall-recovery-chat-print.md`
+- `stall-recovery-operator-action-record.md`
+- `stall-recovery-operator-action.env`
+- `stall-recovery-root-cause.md`
+- `stall-recovery-bounded-root-cause.md`
+- `stall-recovery-title.txt`
 
-2. **Initialize attempts.** Run `stall-recovery-report.sh init-attempts --implement-tmpdir "$IMPLEMENT_TMPDIR" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"` before classification, issue filing, or dispatch. Continue to classification.
+The helper keeps internal seams for a later `/design` profile. Do not add public generic profile flags in this part.
 
-3. **Classify.** Read `BAIL_FAILURE_DETAIL_LOG` from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` first; when that key is non-empty, it is the canonical Step 18a failure-detail path to pass through `--failure-detail-log` after validating it with `realpath`/physical directory resolution, a non-symlink check, a regular-file check, a tmpdir-prefix check, and the 64 KiB cap. Then run `stall-recovery-report.sh classify --implement-tmpdir "$IMPLEMENT_TMPDIR" --in-memory-stall-tracking "${STALL_TRACKING:-false}" --stall-step "${STALL_STEP:-}" --phase "${PHASE:-}" --bail-reason "${IMPLEMENT_BAIL_REASON:-${FINAL_BAIL_REASON:-}}" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env" [--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]`. `--stall-step` and `--phase` preserve in-memory hard-bail context when no `ship-pr-state.sh` exists yet. `--bail-reason` remains classifier evidence as well as the source for rendered `BAIL_REASON`; it is not report-only, so argv-only transient-infra and dispatch-failure bail evidence remains valid. When a validated failure-detail log is present, treat it as the primary evidence surface; do not let stale full-state/session notes override it. A CI-fix exhaustion (`BAIL_REASON=ci-fix-exhausted`) paired with a readable validated failure-detail log classifies as `ci-fix-exhausted` — a recoverable class that resumes through `step8-shippr`, so steps in the `8`–`15` family (including `10-max-retries`) drive an inline fix from the surfaced failing job and log tail rather than terminating. `unrecoverable` is reserved for stalls where no code fix is possible (repo access failure, CI-fix exhaustion with no readable failure-detail log, or merge conflicts that are not the Python driver's `rebase-failed` step — bash `STALL_STEP=8b` postbump conflicts remain unrecoverable). Persist stdout to `$IMPLEMENT_TMPDIR/stall-recovery-classification.env`. Continue to first-detection issue filing or terminal handling based on the classified outcome.
+## Step 18a procedure for active stalls
 
-4. **First-detection issue filing.** Only when `attempt_count==0` **and** `FAILURE_CLASS` is not terminal (`contract-failure` or `unrecoverable`), first call `stall-recovery-report.sh is-larch-dev-clone --implement-tmpdir "$IMPLEMENT_TMPDIR"` and parse `LARCH_DEV_CLONE` from stdout before composing any report or filing anything. Then run `stall-recovery-report.sh bug-body --implement-tmpdir "$IMPLEMENT_TMPDIR" --classification-file "$IMPLEMENT_TMPDIR/stall-recovery-classification.env"` so it writes `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.md`, and parse `DRY_RUN_DECISION` from that stdout. Next run `stall-recovery-report.sh issue-input-file --implement-tmpdir "$IMPLEMENT_TMPDIR" --classification-file "$IMPLEMENT_TMPDIR/stall-recovery-classification.env" --body-file "$IMPLEMENT_TMPDIR/stall-recovery-bug-body.md"` so it writes the heading-bearing `$IMPLEMENT_TMPDIR/stall-recovery-issue-input.md`; this is local composition only and is safe before the dry-run gate. If `DRY_RUN_DECISION=true`, keep `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`, skip `/larch:issue`, and do not write or normalize `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`. If `LARCH_DEV_CLONE=true` and `DRY_RUN_DECISION=false`, invoke the `/larch:issue --input-file "$IMPLEMENT_TMPDIR/stall-recovery-issue-input.md"` Skill tool with the heading-bearing input file, not a Bash subprocess and not the raw bug-body file. After the Skill tool returns, persist only its stdout machine lines matching `^(ISSUES?_[A-Z0-9_]+)=` to `$IMPLEMENT_TMPDIR/stall-recovery-issue.stdout`; derive `ISSUE_RC=0` only when the Skill call completed and parsed `ISSUES_FAILED=0`, otherwise use a non-zero `ISSUE_RC`. Then run `stall-recovery-report.sh normalize-issue-env --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-stdout-file "$IMPLEMENT_TMPDIR/stall-recovery-issue.stdout" --issue-exit-code "$ISSUE_RC"` in a separate foreground Bash call and parse `ISSUE_ENV_WRITTEN`. The helper is the sole writer of `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`: it writes only canonical validated `ISSUE_NUMBER` / `ISSUE_URL` for both create (`ISSUE_1_NUMBER` / `ISSUE_1_URL`) and dedup (`ISSUE_1_DUPLICATE_OF_NUMBER` / `ISSUE_1_DUPLICATE_OF_URL`) paths, keeps raw `/issue` metadata out of the sourceable env file, and removes any stale env file when `--issue-exit-code` is missing, `/issue` exits non-zero, `ISSUES_FAILED>0`, `ISSUE_1_FAILED=true`, canonical fields are missing, or the env write fails. When normalize exits non-zero or `ISSUE_ENV_WRITTEN=false`, append a Tool Failures entry to `$IMPLEMENT_TMPDIR/execution-issues.md` with the helper's `REASON` when present and rely on Step 8's manual-filing fallback. If `LARCH_DEV_CLONE=false` (consumer repo or `--forked`), print the bug-body file contents verbatim under `## Action required — file larch bug` with no `/larch:issue` call and no `stall-recovery-issue.env` normalization. Terminal classes skip this step and continue directly to terminal-failure handling.
+1. **Resolve stall tracking.** Read in-memory state, then `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. If every layer is false or empty, skip active-stall recovery and allow Step 18a.5 to run outside this gate.
+2. **Initialize attempts.** Run `stall-recovery-report.sh init-attempts --implement-tmpdir "$IMPLEMENT_TMPDIR" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`.
+3. **Classify.** Pass any validated `BAIL_FAILURE_DETAIL_LOG`. The helper writes `stall-recovery-classification.env`, including `MATCHED_CLASSIFIER_PATTERN` and dispatcher identity when known.
+4. **Do not file on first detection.** First detection only classifies, records attempts, and decides retry or terminal routing.
+5. **Retry dispatch.** Respect the unchanged retry caps from `stall-recovery-report.md`. Record only branches that hand work to Main Claude. Do not record ordinary retries or reships. Re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` (same immediate-background fence: `run_in_background: true`, `timeout: 21600000`); wait for `<task-notification>` before advancing.
+6. **Record prompt-side Main Claude handoffs before edits.** Call `record-escalation` before Step 18a inline `step2-impl` repair and before inline `step8-shippr` repair when Step 18a itself owns the repair. Stable owner tokens are `step2-impl` and `step8-shippr`.
+7. **Success after recovery.** Clear stall state with `clear-stall`. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
+8. **Terminal failure.** Seed durable terminal stall state with `seed-terminal-state`. Main Claude must investigate before report composition and write `stall-recovery-root-cause.md`. If Tier B may be used, also write `stall-recovery-bounded-root-cause.md`, `stall-recovery-title.txt`, and `stall-recovery-sensitive-corpus.env`. Then call `compose-report --report-kind terminal-failure` exactly once. Tier A uses `--surface issue-input` and then `/larch:issue --input-file`; Tier B uses `--surface chat-print`. Write `stall-recovery-terminal-report.env` atomically after the issue is filed, after Tier B is printed, or after an operator-action skip result.
+9. **Operator action.** If the root-cause verdict is `operator-action`, compose-report writes the non-filing record and sentinel. Do not file or print a public report.
 
-5. **Dispatch on `RESUME_HINT`.** Before every dispatch-capable action, including the same-cause alternate restart, call `stall-recovery-report.sh retry-policy --class "$FAILURE_CLASS"` and compare the durable `attempt_count` from `$IMPLEMENT_TMPDIR/stall-recovery-attempts.env` against `MAX_ATTEMPTS`. If `attempt_count >= MAX_ATTEMPTS`, do not dispatch; continue directly to terminal-failure handling. For `same-cause-repeat`, the documented cap includes the initial failed recovery attempt plus one alternate restart budget, so the alternate path remains eligible until the durable count reaches that cap. Otherwise branch exhaustively:
-   - `step2-impl`: main Claude reads `$IMPLEMENT_TMPDIR/plan.txt`, performs the implementation edits inline, runs the relevant-checks helper, commits as Step 4 does, then continues into `step5-review` and `step8-shippr`.
-   - `step5-review`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round <next>` with `run_in_background: true` and `timeout: 21600000`; wait for `<task-notification>` before parsing stdout or continuing. On success, continue into `step8-shippr`.
-   - `step8-shippr`: re-enter Step 8+ through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with `run_in_background: true` and `timeout: 21600000`; wait for `<task-notification>` before routing its stdout/exit status. On the Python path, `writer_rc` plus JSON routing is authoritative; treat the wrapper exit code as `writer_rc` for the bash opt-in path; read `ship-pr-state.sh`, `BAIL_FAILURE_DETAIL_LOG`, and `finalize-state.sh` only for classification evidence. Exit 6 maps to a `transient-infra` retry. Exit 4 is routed through Step 16 into Step 18a classification. Only after classification produces the same sanitized signature again does it become `same-cause-repeat`; that follow-up classification emits `RESUME_HINT=none`, so do not redispatch the same step automatically.
-   - `none`: when `FAILURE_CLASS=same-cause-repeat`, do not dispatch yet; continue to Step 6 so the one-time alternate strategy runs before terminal handling. Otherwise, do not dispatch and continue directly to terminal-failure handling.
-   Any dispatch path that reaches a successful review+ship continuation must then proceed to Step 7 so `STALL_TRACKING` is cleared before Step 18b teardown observes the run as complete.
+## Step 18a.5 escalation-success procedure
 
-6. **Retry loop.** Record every attempt with `record-attempt --implement-tmpdir "$IMPLEMENT_TMPDIR"`, re-classify after failures to detect `same-cause-repeat`, and re-run `stall-recovery-report.sh retry-policy --class "$FAILURE_CLASS"` before any next dispatch so the cap is enforced mechanically, not just reported. Use `scripts/sleep-seconds.sh 5` only for `transient-infra` retry delays. For `same-cause-repeat`, take the documented alternate strategy exactly once before terminal failure: reread `larch:plan`, restart the failed step from scratch, and persist that attempt outcome. `contract-failure` and `unrecoverable` remain terminal even when the signature matches a previous attempt. Continue to success or terminal failure.
+Run this after the active stall gate and before Step 18b teardown.
 
-7. **Success path.** Clear disk before memory: run `stall-recovery-report.sh clear-stall --implement-tmpdir "$IMPLEMENT_TMPDIR"` and parse `CLEARED` from stdout. When `CLEARED=true`, only then clear the in-memory orchestrator variable (step 7.6). When `CLEARED=false`, the KV is missing, or the helper exits non-zero, leave both layers true and route to terminal failure (step 7.7). **Asymmetry note:** a present but keyless (empty or comment-only) `ship-pr-state.sh` is syntax-valid and exits 0 with `CLEARED=false` — the file is left unchanged, so orchestrators must not treat that as a successful disk clear even though the exit code is 0. The helper owns the atomic temp-write → re-read-assert `STALL_TRACKING=false` → `mv -f` → destination re-read-assert sequence for keyed files; do not hand-compose `ship-pr-state.sh` on the success path. Continue to Step 18b teardown when cleared.
+Skip when any predicate is true:
 
-8. **Terminal-failure path.** Before comment generation, ensure `STALL_TRACKING=true` is durable on disk, not memory-only: run `stall-recovery-report.sh seed-terminal-state --implement-tmpdir "$IMPLEMENT_TMPDIR" [--stall-step <N>] [--phase <token>]` and parse `SEEDED` from stdout. When `SEEDED=false`, the KV is missing, or the helper exits non-zero, treat that as a terminal-route failure. **Asymmetry note:** unlike `clear-stall`, `seed-terminal-state` treats a present keyless file as seedable — it writes the canonical minimal Step-8 shape (`SEED_MODE=seed`) rather than no-oping. The helper rewrites an existing keyed `ship-pr-state.sh` with a key-based update that preserves the canonical Step-8 state shape, keeps `STALL_TRACKING=true`, refreshes `STALL_STEP` / `PHASE`, and preserves `BAIL_FAILURE_DETAIL_LOG` when present; when no state file exists or the present file is keyless it seeds the canonical minimal Step-8-shape `ship-pr-state.sh` used by the pre-Step-8 stall paths with `PHASE=ci-initial`, `STALL_TRACKING=true`, `STALL_STEP=8`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, and `EXIT_CODE=4` so Step 18b's on-disk `[STALLED]` rename gate can observe the stall even when the run bailed before `ship-pr.sh` wrote a state file. Then run `bug-comment --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`, evaluate `DRY_RUN_DECISION`, then either post `gh issue comment` in the larch dev clone path or print the comment in chat for consumer repos. Before any GitHub comment call, load `ISSUE_NUMBER` from `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` when that file exists so the exhaustion comment targets the recovery-created issue instead of any unrelated in-memory issue number. If that file is absent or `ISSUE_NUMBER` is empty, do not reuse an unrelated consumer/tracking issue number as a fallback; print the terminal comment for manual filing instead. Leave `STALL_TRACKING=true`. Continue to **Step 18b — Teardown** for the title-prefix terminal transition.
+- `stall-recovery-terminal-report.env` exists.
+- `stall-recovery-escalation-success.env` exists.
+- `stall-recovery-report.sh normalize-outcome` does not emit `IMPLEMENT_OUTCOME_SUCCEEDED=true`.
+- Any observed `STALL_TRACKING` layer is true.
+- No escalation evidence exists.
 
-9. **Continue to teardown.** Regardless of success or terminal failure, continue to the existing Step 18b teardown body: token/timing refresh, `restore-finalize-state.sh` per the active-driver restore gate (bash always when `ship-pr-state.sh` exists; Python only when finalize is missing or stale), then `implement-finalize.sh teardown`. Teardown branches on the on-disk `STALL_TRACKING` value unchanged.
+Escalation evidence is only:
 
-## Safety Constraints
+- non-empty canonical ledger
+- non-empty fallback ledger
+- non-empty record-failure marker
+- tagged `record-escalation` Tool Failure entries
 
-- NEVER spawn Agent-tool subagents for code-writing work during stall recovery; main Claude owns recovery edits.
-- NEVER mutate `$IMPLEMENT_TMPDIR/finalize-state.sh`; use the existing Step 18 restore path only.
-- NEVER call `ScheduleWakeup`.
-- ALWAYS invoke `run-step5-review.sh` and `step-8-ship.sh` with immediate-background Bash calls during stall recovery, with `timeout: 21600000` and a `<task-notification>` wait before parsing results.
-- NEVER recurse into Step 18 from inside the recovery loop.
+Generic Tool Failures do not count. Missing attempts history is initialized as zero attempts.
+
+If eligible, Main Claude reads validated failure detail, `ship-pr-state.sh`, `finalize-state.sh`, `session-env.sh`, attempts, classification, ledger, fallback evidence, record-failure marker, execution issues, run-log pointer when present, and prompt-state values it used. It writes root-cause artifacts for why the script loop needed Main Claude. Then it writes the prompt-state sensitive supplement immediately before `compose-report --report-kind escalation-success`.
+
+Tier A files through `/larch:issue --input-file` after full-output secret redaction. Tier B prints `stall-recovery-chat-print.md` only. Write `stall-recovery-escalation-success.env` atomically after filed, printed, or operator-action skip result.
+
+## Tier policy
+
+Tier A applies only when `is-larch-dev-clone` is true and `FORKED_TARGET=false`. It bypasses TSV allowlists and redacts the full public issue input, including headings. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after redaction.
+
+Tier B covers consumer repos and forked runs. It prints through chat only. It uses allowlisted machine fields plus bounded root-cause prose. Bounded prose and title validation reject client repo names, branch names, paths, PR URLs, plan text, issue text, state-file client values, evidence-log values, attempts, ledger, fallback evidence, record-failure markers, run-log pointers, and prompt-state supplement tokens. Allowlisted larch operational terms are exempt.
+
+## Root-cause finding schema
+
+```text
+verdict=larch-defect|environment|operator-action
+confidence=low|medium|high
+summary=<single-line>
+
+<finding prose with durable evidence citations>
+```
+
+The finding must distinguish observation from inference and cite evidence by path or artifact name.
+
+## Ship-pr and script handoff ownership
+
+- `run-step5-review.sh` records `coder-main-agent-required` directly.
+- Step 5 `main-agent-vote-required` is emitted as `STEP5_REVIEW_LEDGER_*` for the prompt side to record once.
+- `lint-fix-loop.sh` emits `LINT_FIX_LEDGER_*` only for `main-agent-required` paths.
+- Python `ship.py` emits ledger-ready JSON keys only for Step 8+ `NEEDS_USER_INPUT` handoffs.
+- Bash `ship-pr.sh` emits ledger-ready data for opt-in handoffs and returns before recovery-waterfall edits on ship-pr-internal lint-fix `main-agent-required`.
+- Clean retries, reships, and health-only paths do not record escalation events.
+
+Report target stays unchanged in this part.

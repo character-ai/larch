@@ -16,3 +16,7 @@
 ## Terminal `BAIL_REASON` tokens
 
 At the `fix_attempts >= 10` cap, `ci-decide.sh` emits `ACTION=bail` with **`BAIL_REASON=fix-attempts-exhausted`** (exact token, no prose). `ci-wait.sh` forwards that line verbatim on stdout. `scripts/ship-pr.sh` `needs_user_bail_reason` treats this token (and `design-flaw`, `escalate`, `all-vendors-failed`) as an operator-input bail, exiting **3** with `BAIL_NEEDS_USER_INPUT=true` — see `/implement` Step 16 in `skills/implement/SKILL.md`. This path is distinct from vendor-fix outer exhaustion (`run_evaluate_failure` → `exit_stall` with `STALL_STEP=10-max-retries` / exit **4** for `ci-initial`).
+
+## Report-safe bail tokens
+
+`ci-decide.sh` emits report-safe bail tokens for Tier B parity: `ci-status-error`, `ci-timeout`, `ci-too-many-rebases`, and `fix-attempts-exhausted`. `stall-recovery-report.sh lint` keeps those tokens aligned with the Tier B bail-token union used by report rendering.

@@ -182,29 +182,13 @@ if [ -z "$ISSUE_URL" ] || [ "$ISSUE_URL" = "N/A" ]; then
 fi
 
 # --- Outcome ---
-OUTCOME=""
-if [ "$STALL_TRACKING" = "true" ]; then
-    OUTCOME="stalled"
-elif [ "$FORKED_TARGET" = "true" ]; then
-    OUTCOME="forked-dry-run"
-elif [ "$DESIGN_ONLY_DONE" = "true" ]; then
-    OUTCOME="design-only"
-elif [ "$MERGE_RESULT" = "merged" ] || [ "$MERGE_RESULT" = "admin_merged" ]; then
-    OUTCOME="merged"
-elif [ "$MERGE_RESULT" = "already_merged" ]; then
-    OUTCOME="force-merged-externally"
-elif [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ] && [ "$DRAFT" = "true" ]; then
-    OUTCOME="pr-created-draft"
-elif [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ] && [ "$DRAFT" = "false" ] && [ "$MERGE" = "false" ]; then
-    OUTCOME="pr-created"
+outcome_kv="$IMPLEMENT_TMPDIR/final-outcome-normalized.env"
+if "$SCRIPT_DIR/stall-recovery-report.sh" normalize-outcome --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$outcome_kv"; then
+    OUTCOME="$(read_kv IMPLEMENT_NORMALIZED_OUTCOME "$outcome_kv")"
+else
+    OUTCOME=""
 fi
-if [ -z "$OUTCOME" ]; then
-    OUTCOME="bailed"
-fi
-
-if [ "$BAIL_USER" = "true" ] && [ "$OUTCOME" = "bailed" ]; then
-    OUTCOME="bailed-needs-user-input"
-fi
+[ -n "$OUTCOME" ] || OUTCOME="bailed"
 
 # --- Mode flags (display) ---
 mode_parts=()

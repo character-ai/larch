@@ -1,0 +1,1 @@
+Complete. `manifest.json` was written atomically with `status=complete`.

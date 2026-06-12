@@ -244,7 +244,7 @@ jobs:
   # which also pulls pre-commit).
   test-harnesses:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
