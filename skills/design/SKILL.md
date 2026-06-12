@@ -141,6 +141,8 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2a.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-drafter.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step2b-drafter.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step2b-drafter.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-prelude.sh`

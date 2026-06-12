@@ -71,7 +71,7 @@ Tracked total estimated cost: $13.00.
 ## Rates used for display/fallback
 
 Claude: input 5.0/M, cache read 0.5/M, output 25.0/M.
-Codex: input 0.44/M, cached input 0.04/M, output 3.5/M.
-Cursor: input 1.25/M, cache read 0.25/M, output 6.0/M.
+Codex: input 5.0/M, cached input 0.5/M, output 30.0/M.
+Cursor: input 0.5/M, cache read 0.2/M, output 2.5/M.
 
 Cache JSON: <CACHE>

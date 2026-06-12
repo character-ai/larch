@@ -266,7 +266,9 @@ external_launcher_record_usage_from_events() {
     local sidecar_path="$3"
     local raw_label="$4"
     local token_record_path="${5:-}"
+    local model="${6:-}"
     local usage_err usage_blob key value
+    local record_args=()
     local input_tokens=0 cached_tokens=0 output_tokens=0 total_tokens=0
 
     usage_err=$(mktemp "${TMPDIR:-/tmp}/external-launcher-usage.XXXXXX") || return 0
@@ -287,17 +289,56 @@ external_launcher_record_usage_from_events() {
     done <<< "$usage_blob"
 
     if [[ -n "$token_record_path" ]]; then
-        printf 'TOOL=codex\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nTOTAL=%s\nRAW=%s\n' \
-            "$input_tokens" "$output_tokens" "$cached_tokens" "$total_tokens" "$raw_label" > "$token_record_path"
+        {
+            printf 'TOOL=codex\n'
+            printf 'INPUT=%s\n' "$input_tokens"
+            printf 'OUTPUT=%s\n' "$output_tokens"
+            printf 'CACHE_READ=%s\n' "$cached_tokens"
+            printf 'TOTAL=%s\n' "$total_tokens"
+            printf 'RAW=%s\n' "$raw_label"
+            [[ -z "$model" ]] || printf 'MODEL=%s\n' "$model"
+        } > "$token_record_path"
         return 0
     fi
 
+    record_args=(
+        input="$input_tokens"
+        cache_read="$cached_tokens"
+        output="$output_tokens"
+        total="$total_tokens"
+        raw="$raw_label"
+    )
+    [[ -z "$model" ]] || record_args+=(model="$model")
     python3 "$plugin_root/python/cli.py" token record-vendor codex \
-        input="$input_tokens" \
-        cache_read="$cached_tokens" \
-        output="$output_tokens" \
-        total="$total_tokens" \
-        raw="$raw_label" >/dev/null 2>&1 || true
+        "${record_args[@]}" >/dev/null 2>&1 || true
+}
+
+external_launcher_extract_arg_after() {
+    local _out_var="$1"
+    local flag="$2"
+    shift 2 || true
+    local prev=""
+    printf -v "$_out_var" '%s' ""
+    for arg in "$@"; do
+        if [[ "$prev" == "$flag" ]]; then
+            printf -v "$_out_var" '%s' "$arg"
+            return 0
+        fi
+        prev="$arg"
+    done
+    return 0
+}
+
+external_launcher_extract_codex_model() {
+    local _out_var="$1"
+    shift || true
+    external_launcher_extract_arg_after "$_out_var" "-m" "$@"
+}
+
+external_launcher_extract_cursor_model() {
+    local _out_var="$1"
+    shift || true
+    external_launcher_extract_arg_after "$_out_var" "--model" "$@"
 }
 
 external_serial_lock_acquire() {

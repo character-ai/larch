@@ -85,6 +85,7 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) die "--timeout must be a positive integer" ;; 
 case "$OUTPUT" in /*) ;; *) die "--output must be an absolute path" ;; esac
 case "$PLAN_FILE" in /*) ;; "") ;; *) die "--plan-file must be an absolute path" ;; esac
 case "$OUTPUT" in *[!A-Za-z0-9._/-]*) die "--output contains unsupported characters" ;; esac
+: > "${OUTPUT}.token-record" 2>/dev/null || true
 if [[ -n "$CONFLICT_FILES" ]]; then
     if [[ "$CONFLICT_FILES" == *..* || "$CONFLICT_FILES" == /* ]]; then
         die "--conflict-files must be repo-relative comma-separated paths (no .. or absolute paths)"
@@ -112,6 +113,8 @@ esac
 
 MODEL_ARGS=()
 cursor_launcher_load_model_args
+RESOLVED_CURSOR_MODEL=""
+external_launcher_extract_cursor_model RESOLVED_CURSOR_MODEL "${MODEL_ARGS[@]}"
 cursor_launcher_setup_auth_argv
 
 PLAN_CONTEXT=""
@@ -249,8 +252,16 @@ if command -v jq >/dev/null 2>&1 && [ -f "$OUTPUT" ]; then
     read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$OUTPUT" 2>/dev/null || echo "0 0 0 0") || true
     if [[ "$INP" =~ ^[0-9]+$ && "$OUT" =~ ^[0-9]+$ && "$CR" =~ ^[0-9]+$ && "$CW" =~ ^[0-9]+$ ]]; then
         TOTAL=$((INP + OUT + CR + CW))
-        printf 'TOOL=cursor\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nCACHE_CREATE=%s\nTOTAL=%s\nRAW=cursor_ci_fix\n' \
-            "$INP" "$OUT" "$CR" "$CW" "$TOTAL" > "${OUTPUT}.token-record"
+        {
+            printf 'TOOL=cursor\n'
+            printf 'INPUT=%s\n' "$INP"
+            printf 'OUTPUT=%s\n' "$OUT"
+            printf 'CACHE_READ=%s\n' "$CR"
+            printf 'CACHE_CREATE=%s\n' "$CW"
+            printf 'TOTAL=%s\n' "$TOTAL"
+            printf 'RAW=cursor_ci_fix\n'
+            [[ -z "$RESOLVED_CURSOR_MODEL" ]] || printf 'MODEL=%s\n' "$RESOLVED_CURSOR_MODEL"
+        } > "${OUTPUT}.token-record"
     fi
 fi
 

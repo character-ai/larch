@@ -81,6 +81,7 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) die "--timeout must be a positive integer" ;; 
 case "$OUTPUT" in /*) ;; *) die "--output must be an absolute path" ;; esac
 case "$PLAN_FILE" in /*) ;; "") ;; *) die "--plan-file must be an absolute path" ;; esac
 case "$OUTPUT" in *[!A-Za-z0-9._/-]*) die "--output contains unsupported characters" ;; esac
+: > "${OUTPUT}.token-record" 2>/dev/null || true
 if [[ -n "$CONFLICT_FILES" ]]; then
     if [[ "$CONFLICT_FILES" == *..* || "$CONFLICT_FILES" == /* ]]; then
         die "--conflict-files must be repo-relative comma-separated paths (no .. or absolute paths)"
@@ -172,6 +173,8 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
+RESOLVED_CODEX_MODEL=""
+external_launcher_extract_codex_model RESOLVED_CODEX_MODEL "${MODEL_ARGS[@]}"
 AUTH_PREP_RC=0
 external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
 if (( AUTH_PREP_RC != 0 )); then
@@ -183,7 +186,6 @@ if (( AUTH_PREP_RC != 0 )); then
     else
         printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
     fi
-    : > "${OUTPUT}.token-record" 2>/dev/null || true
     emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
     external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "unclassified" 1 "codex" "$OUTPUT"
     emit_kv OUTPUT "$OUTPUT"
@@ -200,7 +202,6 @@ TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
 SIDECAR_LOG="${OUTPUT}.sidecar"
 CODEX_EVENTS="${OUTPUT}.events.jsonl"
-: > "${OUTPUT}.token-record" 2>/dev/null || true
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
@@ -262,7 +263,7 @@ DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$PLUGIN_ROOT/python/cli.p
     --exit-code "$LAUNCHER_EXIT" \
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
-codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_ci_fix" "${OUTPUT}.token-record"
+codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_ci_fix" "${OUTPUT}.token-record" "$RESOLVED_CODEX_MODEL"
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG"; true)

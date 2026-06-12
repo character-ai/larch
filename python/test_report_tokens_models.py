@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from report_tokens_models import ReportSection, RunRecord, SectionPriority, VendorTotals, env_rate, safe_int
+from report_tokens_models import ReportSection, RunRecord, SectionPriority, VendorTotals, safe_int
 
 
 def test_dataclasses_and_helpers() -> None:
@@ -23,12 +23,6 @@ def test_dataclasses_and_helpers() -> None:
     assert safe_int("42.9") == 42
     value: object = True
     assert safe_int(value, 9) == 9
-
-
-def test_env_rate_alias_precedence() -> None:
-    env = {"OLD": "1.5", "NEW": "2.5"}
-    assert env_rate(("NEW", "OLD"), 0.1, environ=env) == 2.5
-    assert env_rate(("BAD", "OLD"), 0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
 
 
 def test_section_priority_banner_is_immutable_floor() -> None:

@@ -78,7 +78,11 @@ Behavior:
    `LAUNCHER_EXIT=` fails closed. The launcher writes the final response to
    `$run_dir/codex.log`, JSONL events to `$run_dir/codex.log.events.jsonl`,
    diagnostics to `$run_dir/codex.log.sidecar`, and retry metadata to
-   `$run_dir/codex.log.meta`.
+   `$run_dir/codex.log.meta`. The token sidecar may include `MODEL=`.
+   After the launcher returns, any non-empty sidecar is ingested best-effort
+   through `python3 python/cli.py token record-vendor-sidecar` with
+   `IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"` exported. Failed Codex attempts with
+   parseable usage are counted; ingestion is not gated on `parsed_exit == 0`.
    Codex serial locking and `run-external-agent.sh` dispatch are owned by
    `scripts/launch-codex-exec.sh`. `run_cursor()` uses `--capture-stdout`;
    `run-external-agent.sh` writes

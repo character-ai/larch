@@ -292,11 +292,12 @@ def test_token_report_append_json_writes_json_not_repr(tmp_path: Path) -> None:
 def test_token_ledger_mark_record_dump(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"
     tokens.TokenLedger(ledger).mark("Step 1 - fixture")
-    tokens.TokenLedger(ledger).record_vendor("codex", total=123, raw="codex_implement")
+    tokens.TokenLedger(ledger).record_vendor("codex", total=123, raw="codex_implement", model="gpt-5.5")
     dump = tokens.TokenLedger(ledger).dump()
     assert '"type":"mark"' in dump
     assert '"vendor":"codex"' in dump
     assert '"total":123' in dump
+    assert '"model":"gpt-5.5"' in dump
     assert oct(ledger.stat().st_mode & 0o777) == oct(0o600)
 
 
@@ -304,6 +305,66 @@ def test_token_ledger_rejects_claude_vendor(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"
     with pytest.raises(ValueError, match="claude"):
         tokens.TokenLedger(ledger).record_vendor("claude", total=1)
+
+
+def test_append_token_record_from_sidecar_preserves_model(tmp_path: Path) -> None:
+    sidecar = tmp_path / "codex.token-record"
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=10\nOUTPUT=2\nCACHE_READ=30\nTOTAL=42\nRAW=codex_plan_draft\nMODEL=gpt-5.5\n",
+        encoding="utf-8",
+    )
+    tokens.append_token_record_from_sidecar(input_path=sidecar, tmpdir=tmp_path)
+    row = json.loads((tmp_path / "token-report.ndjson").read_text(encoding="utf-8"))
+    assert row["tool"] == "codex"
+    assert row["raw"] == "codex_plan_draft"
+    assert row["model"] == "gpt-5.5"
+
+
+def test_append_token_record_from_sidecar_accepts_historical_without_model(tmp_path: Path) -> None:
+    sidecar = tmp_path / "cursor.token-record"
+    _ = sidecar.write_text("TOOL=cursor\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=cursor_ci_fix\n", encoding="utf-8")
+    tokens.append_token_record_from_sidecar(input_path=sidecar, tmpdir=tmp_path)
+    row = json.loads((tmp_path / "token-report.ndjson").read_text(encoding="utf-8"))
+    assert row["tool"] == "cursor"
+    assert "model" not in row
+
+
+def test_record_vendor_from_sidecar_noops_for_absent_empty_malformed_and_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.delenv("LARCH_TOKEN_LEDGER", raising=False)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "sidecar-noop")
+    for name, body in {
+        "empty": "",
+        "malformed": "not kv\n",
+        "zero": "TOOL=codex\nINPUT=0\nOUTPUT=0\nTOTAL=0\n",
+    }.items():
+        sidecar = tmp_path / f"{name}.token-record"
+        _ = sidecar.write_text(body, encoding="utf-8")
+        tokens.record_vendor_from_sidecar(input_path=sidecar)
+    tokens.record_vendor_from_sidecar(input_path=tmp_path / "absent.token-record")
+    ledger = tokens.resolve_token_ledger_path()
+    assert ledger is not None
+    assert not ledger.exists()
+
+
+def test_record_vendor_from_sidecar_writes_active_ledger_with_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.delenv("LARCH_TOKEN_LEDGER", raising=False)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "sidecar-model")
+    sidecar = tmp_path / "codex.token-record"
+    _ = sidecar.write_text(
+        "TOOL=codex\nINPUT=10\nOUTPUT=2\nCACHE_READ=30\nTOTAL=42\nRAW=codex_plan_draft\nMODEL=gpt-5.5\n",
+        encoding="utf-8",
+    )
+    tokens.record_vendor_from_sidecar(input_path=sidecar)
+    ledger = tokens.resolve_token_ledger_path()
+    assert ledger is not None
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["vendor"] == "codex"
+    assert rows[0]["raw"] == "codex_plan_draft"
+    assert rows[0]["model"] == "gpt-5.5"
 
 
 def test_token_report_json_includes_custom_vendor_sibling(tmp_path: Path) -> None:

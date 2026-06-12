@@ -354,6 +354,7 @@ dispatch_vendor_fix() {
         codex)
             local launcher_stdout parsed_exit=1
             launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/autofix-codex-launcher.XXXXXX") || return 1
+            : > "$run_dir/codex.log.token-record" 2>/dev/null || true
             set +e
             "$LAUNCH_CODEX_EXEC_SH" \
                 --output "$run_dir/codex.log" \
@@ -407,6 +408,20 @@ dispatch_vendor_fix() {
             return 1
             ;;
     esac
+}
+
+ingest_codex_autofix_sidecar() {
+    local token_record="$1"
+    [[ -s "$token_record" ]] || return 0
+    if ! python3 "$PLUGIN_ROOT/python/cli.py" token append-record \
+        --input "$token_record" \
+        --tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1; then
+        larch_err "⚠ auto-fix [$SITE]: token-report append failed for Codex sidecar"
+    fi
+    if ! DESIGN_TMPDIR="$DESIGN_TMPDIR" python3 "$PLUGIN_ROOT/python/cli.py" token record-vendor-sidecar \
+        --input "$token_record" >/dev/null 2>&1; then
+        larch_err "⚠ auto-fix [$SITE]: active-ledger append failed for Codex sidecar"
+    fi
 }
 
 attempts=0
@@ -485,6 +500,9 @@ while (( attempts < MAX_ATTEMPTS )); do
         else
             dispatch_rc=91
         fi
+    fi
+    if [[ "$vendor" == "codex" ]]; then
+        ingest_codex_autofix_sidecar "$run_dir/codex.log.token-record"
     fi
     larch_err "→ auto-fix: attempt ${attempts} vendor=${vendor} dispatch-rc=${dispatch_rc}"
     if [[ "$dispatch_rc" -ne 0 ]]; then

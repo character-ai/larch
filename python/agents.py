@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -96,6 +97,72 @@ def parse_launcher_exit_text(text: str) -> int:
             except ValueError:
                 return 0
     return 0
+
+
+def parse_token_record_text(text: str) -> str:
+    """Read TOKEN_RECORD= from launcher stdout; missing -> empty string."""
+    for line in text.splitlines():
+        if line.startswith("TOKEN_RECORD="):
+            return line.split("=", 1)[1].strip().strip("\r")
+    return ""
+
+
+def ingest_launcher_token_sidecar(
+    runner: Runner,
+    *,
+    launcher_stdout: str,
+    output: str | Path,
+    tmpdir: str | Path | None,
+    plugin_root: str | Path | None = None,
+    implement_tmpdir: str | Path | None = None,
+    seen: set[str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Best-effort, exactly-once ingestion for Codex/Cursor .token-record sidecars."""
+    token_record = parse_token_record_text(launcher_stdout)
+    if not token_record:
+        token_record = f"{output}.token-record"
+    path = Path(token_record)
+    key = str(path)
+    if seen is not None:
+        if key in seen:
+            return False
+        seen.add(key)
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    if tmpdir is None:
+        return False
+    root = Path(plugin_root) if plugin_root is not None else Path(__file__).resolve().parents[1]
+    cli = root / "python" / "cli.py"
+    runner.run(
+        [
+            "python3",
+            str(cli),
+            "token",
+            "append-record",
+            "--input",
+            str(path),
+            "--tmpdir",
+            str(tmpdir),
+        ],
+        cwd=cwd,
+    )
+    if implement_tmpdir is not None:
+        env = dict(os.environ)
+        env["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
+        runner.run(
+            [
+                "python3",
+                str(cli),
+                "token",
+                "record-vendor-sidecar",
+                "--input",
+                str(path),
+            ],
+            cwd=cwd,
+            env=env,
+        )
+    return True
 
 
 def read_launcher_exit(output_file: str | Path) -> int:

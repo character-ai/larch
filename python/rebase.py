@@ -199,6 +199,16 @@ def make_conflict_launch_fn(
             conflict_files=conflict_csv,
             cwd=cwd,
         )
+        if tier in {"codex", "cursor"}:
+            implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
+            agents.ingest_launcher_token_sidecar(
+                runner,
+                launcher_stdout=result.stdout + result.stderr,
+                output=output,
+                tmpdir=implement_tmpdir,
+                implement_tmpdir=implement_tmpdir,
+                cwd=cwd,
+            )
         launcher_exit = agents.parse_launcher_exit_text(result.stdout)
         failure = agents.classify_launch_failure(
             launcher_exit,

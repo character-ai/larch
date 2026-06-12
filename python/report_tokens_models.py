@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Literal
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 Skill = Literal["design", "implement"]
 # claude_sub = spawned-process Claude (reviewer/voter/CI/scout), distinct from
@@ -132,44 +131,3 @@ def workflow_groups(_skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, 
     for record in records:
         groups["All runs"].append(record)
     return {label: items for label, items in groups.items() if items}
-
-
-def env_rate(
-    names: str | Sequence[str],
-    default: float,
-    *,
-    environ: Mapping[str, str] | None = None,
-) -> float:
-    env = os.environ if environ is None else environ
-    keys = (names,) if isinstance(names, str) else tuple(names)
-    for key in keys:
-        raw = env.get(key, "").strip()
-        if not raw:
-            continue
-        try:
-            value = float(raw)
-        except ValueError:
-            continue
-        if value > 0:
-            return value
-    return default
-
-
-def display_rates(*, environ: Mapping[str, str] | None = None) -> DisplayRates:
-    env = os.environ if environ is None else environ
-    return DisplayRates(
-        claude_input=env_rate(("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), 5.00, environ=env),
-        claude_cache_read=env_rate(("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), 0.50, environ=env),
-        claude_cache_create_5m=env_rate(("LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_RATE_CLAUDE_CACHE_CREATE_5M"), 6.25, environ=env),
-        claude_cache_create_1h=env_rate(("LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_CREATE_1H"), 10.00, environ=env),
-        claude_output=env_rate(("LARCH_CLAUDE_OUTPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_OUTPUT"), 25.00, environ=env),
-        codex_input=env_rate(("LARCH_CODEX_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_INPUT"), 0.44, environ=env),
-        codex_cached_input=env_rate(("LARCH_CODEX_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_CACHE_READ", "LARCH_RATE_CODEX_CACHED_INPUT"), 0.04, environ=env),
-        codex_output=env_rate(("LARCH_CODEX_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_OUTPUT"), 3.50, environ=env),
-        cursor_input=env_rate(("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), 1.25, environ=env),
-        cursor_cache_read=env_rate(("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), 0.25, environ=env),
-        cursor_output=env_rate(("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), 6.00, environ=env),
-        claude_blended=env_rate(("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), 0.80, environ=env),
-        codex_blended=env_rate(("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), 2.00, environ=env),
-        cursor_blended=env_rate(("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), 1.50, environ=env),
-    )

@@ -432,17 +432,9 @@ run_codex() {
     parsed_exit=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$launcher_stdout")
     [[ -n "$parsed_exit" ]] || parsed_exit=1
     rm -f "$launcher_stdout"
-    if (( parsed_exit == 0 )) && [[ -s "${run_dir}/codex.log.token-record" ]]; then
-        _token_record="${run_dir}/codex.log.token-record"
-        _tr_kv() {
-            awk -F= -v key="$1" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$_token_record"
-        }
-        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor codex \
-            input="$(_tr_kv INPUT)" \
-            output="$(_tr_kv OUTPUT)" \
-            cache_read="$(_tr_kv CACHE_READ)" \
-            total="$(_tr_kv TOTAL)" \
-            raw="$(_tr_kv RAW)" >/dev/null 2>&1 || true
+    if [[ -s "${run_dir}/codex.log.token-record" ]]; then
+        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+            --input "${run_dir}/codex.log.token-record" >/dev/null 2>&1 || true
     fi
     if (( parsed_exit != 0 )); then
         if [[ -s "${run_dir}/codex.log.sidecar" ]]; then

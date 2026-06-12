@@ -4,6 +4,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+export CLAUDE_PLUGIN_ROOT
 HELPER="$SCRIPT_DIR/render-run-summary.sh"
 TMP="$(mktemp "${TMPDIR:-/tmp}/trs.XXXXXX")"
 TMP_DEF=""
@@ -78,7 +80,8 @@ grep -Fxq -- '- **Lines (PR diff)**: code +107/-23, larch-logs +50/-10' "$TMP" |
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost + lines'
 
-# Shipped defaults: 1M tokens each lane (aggregate-only) → blended 0.80 + 2.00 + 1.50 = 4.30 USD total.
+# Shipped defaults: 1M aggregate-only tokens per lane use Claude's legacy
+# blended fallback plus Codex/Cursor blended defaults derived from the fleet mix.
 TMP_DEF="$(mktemp "${TMPDIR:-/tmp}/trs-def.XXXXXX")"
 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
@@ -113,10 +116,10 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --warnings 0 \
     --run-logs-path 'N/A' \
     --output-file "$TMP_DEF" >/dev/null 2>/dev/null
-grep -Fq "TOTAL ~\$4.30" "$TMP_DEF" || fail 'all-defaulted total cost'
+grep -Fq "TOTAL ~\$2.15" "$TMP_DEF" || fail 'all-defaulted total cost'
 grep -Fq "Claude \$0.80" "$TMP_DEF" || fail 'all-defaulted Claude slot'
-grep -Fq "Codex \$2.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
-grep -Fq "Cursor \$1.50" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
+grep -Fq "Codex \$1.11" "$TMP_DEF" || fail 'all-defaulted Codex slot'
+grep -Fq "Cursor \$0.24" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
 if grep -Fq '**Tokens**:' "$TMP_DEF"; then fail 'legacy Tokens bullet must not appear'; fi
 if grep -Fq -- '- **Path**:' "$TMP_DEF"; then fail 'implement default path must omit Path bullet'; fi
 if grep -Fq 'Emergency: true' "$TMP_DEF"; then fail 'omitted emergency state must not render emergency line'; fi

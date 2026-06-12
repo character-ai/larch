@@ -45,6 +45,7 @@ In `--output-file` (status KV file):
 Side files written under `<output-file>.*`:
 - `.dirty-tree` — baseline-delta or absolute dirty-tree sidecar (always written)
 - `.done` — exit code
+- `.token-record` — stable Codex usage sidecar copied from the raw inner launcher before raw-output cleanup when usage parsed
 - `.stderr` — Codex stderr on failure (removed on success)
 - `.failure-diag` — failure classification token (on ERROR)
 - `.stderr-tail` — redacted stderr tail via `write_failed_agent_stderr_tail` (on exec failure)
@@ -58,7 +59,12 @@ Under `DESIGN_TMPDIR`:
 Calls `launch-codex-exec.sh --sandbox read-only --add-dir REPO_ROOT`, captures
 `LAUNCHER_EXIT` from its stdout, then parses the `--output-last-message` file
 for plan sentinels using the shared `scripts/parse-drafter-output.py` helper.
-Token and timing recording are handled inside `launch-codex-exec.sh`.
+Timing recording is handled inside `launch-codex-exec.sh`. Token sidecar
+creation is also handled there, but this wrapper copies the raw
+`${_codex_raw}.token-record` to stable `<output-file>.token-record` immediately
+after the exec launcher returns. Success and failure paths can expose usage.
+Step 2b owns exactly-once ingestion into `$DESIGN_TMPDIR/token-report.ndjson`
+and the active design token ledger.
 
 ## Edit-in-sync
 

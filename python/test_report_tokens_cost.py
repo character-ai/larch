@@ -10,7 +10,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from proc import CommandResult
-from report_tokens_cost import price_run, render_cost_line_main, token_cost_argv, token_cost_main
+from report_tokens_cost import (
+    CODEX_CURSOR_BLENDED_FLEET_MIX,
+    DEFAULT_VENDOR_MODEL,
+    display_rates,
+    env_rate,
+    price_run,
+    render_cost_line_main,
+    token_cost_argv,
+    token_cost_main,
+)
 from report_tokens_models import RunRecord, VendorTotals
 
 if TYPE_CHECKING:
@@ -247,8 +256,8 @@ def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> 
     out = capsys.readouterr().out
     parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     assert parsed["CLAUDE_COST"] == "0.00"
-    assert parsed["CODEX_COST"] == "3.94"
-    assert parsed["TOTAL_COST"] == "3.94"
+    assert parsed["CODEX_COST"] == "35.00"
+    assert parsed["TOTAL_COST"] == "35.00"
     assert parsed["TOTAL_TOKENS"] == "2000000"
     assert out.strip().splitlines()[0].startswith("CLAUDE_COST=")
     assert out.strip().splitlines()[4].startswith("TOTAL_COST=")
@@ -261,3 +270,73 @@ def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixtu
     assert out.startswith("💰 Cost: TOTAL ~$")
     assert "Codex $" in out
     assert "Tokens:" in out
+
+
+def test_display_rates_shipped_defaults_snapshot() -> None:
+    assert DEFAULT_VENDOR_MODEL == {
+        "codex": "gpt-5.5",
+        "cursor": "composer-2.5",
+        "claude": "claude-opus-4-8",
+    }
+    rates = display_rates(environ={})
+    assert rates.codex_input == 5.00
+    assert rates.codex_cached_input == 0.50
+    assert rates.codex_output == 30.00
+    assert rates.cursor_input == 0.50
+    assert rates.cursor_cache_read == 0.20
+    assert rates.cursor_output == 2.50
+    assert rates.claude_input == 5.00
+    assert rates.claude_cache_read == 0.50
+    assert rates.claude_cache_create_5m == 6.25
+    assert rates.claude_cache_create_1h == 10.00
+    assert rates.claude_output == 25.00
+    assert rates.claude_blended == 0.80
+    assert rates.codex_blended == 1.11
+    assert abs(rates.cursor_blended - 0.244) < 0.000001
+
+
+def test_env_rate_alias_precedence() -> None:
+    env = {"OLD": "1.5", "NEW": "2.5"}
+    assert env_rate(("NEW", "OLD"), 0.1, environ=env) == 2.5
+    assert env_rate(("BAD", "OLD"), 0.1, environ={"BAD": "no", "OLD": "3"}) == 3.0
+    assert env_rate(("BAD", "ZERO", "NEG", "OLD"), 0.1, environ={"BAD": "no", "ZERO": "0", "NEG": "-1", "OLD": "4"}) == 4.0
+
+
+def test_codex_and_cursor_blended_defaults_derive_from_fleet_mix() -> None:
+    rates = display_rates(environ={})
+    assert CODEX_CURSOR_BLENDED_FLEET_MIX == {"input": 0.07, "cache_read": 0.92, "output": 0.01}
+    assert rates.codex_blended == (5.00 * 0.07) + (0.50 * 0.92) + (30.00 * 0.01)
+    assert rates.cursor_blended == (0.50 * 0.07) + (0.20 * 0.92) + (2.50 * 0.01)
+
+
+def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = token_cost_main([
+        "--codex-input-tokens", "4580000",
+        "--codex-cached-input-tokens", "77100000",
+        "--codex-output-tokens", "475000",
+        "--cursor-input-tokens", "8000000",
+        "--cursor-cache-read-tokens", "89100000",
+        "--cursor-output-tokens", "425000",
+    ])
+    assert rc == 0
+    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    assert abs(float(parsed["CODEX_COST"]) - 75.70) < 0.01
+    assert abs(float(parsed["CURSOR_COST"]) - 22.88) < 0.01
+
+
+def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in ("LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL", "LARCH_CURSOR_MODEL", "CLAUDE_PLUGIN_OPTION_CURSOR_MODEL"):
+        monkeypatch.delenv(key, raising=False)
+
+    def resolved(tool: str, flag: str) -> str:
+        result = subprocess.run(
+            [str(Path(__file__).resolve().parents[1] / "scripts" / "agent-model-args.sh"), "--tool", tool],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        args = result.stdout.splitlines()
+        return args[args.index(flag) + 1]
+
+    assert resolved("codex", "-m") == DEFAULT_VENDOR_MODEL["codex"]
+    assert resolved("cursor", "--model") == DEFAULT_VENDOR_MODEL["cursor"]

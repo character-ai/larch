@@ -34,6 +34,14 @@ Reuses the verified launcher primitives (same argv grammar as `scripts/lint-fix-
 
 The agent edits the plan file IN PLACE; `revalidate()` (re-running `validate-plan.sh`) is the authoritative success signal, not the launcher exit code. Nonzero launcher exits, repository dirty-tree deltas, failed non-target `$DESIGN_TMPDIR` restoration, and optional-trailer guard failures are treated as failed attempts and cannot be converted into success by a passing revalidation. Non-target tmpdir mutations that restore cleanly do not fail an otherwise valid target-file fix. The fix prompt wraps the plan content and validator log as **untrusted data** (trust-boundary preserved) and instructs minimal, defect-only edits preserving plan prose, structure, and the trailing metadata block. The helper copies the original validator log to a site/target-specific `plan-autofix/original-validate-plan-commands-*.log` before revalidation can overwrite the live log; if `redact secrets` fails while rendering the prompt, the raw validator log is withheld and a fixed placeholder is included instead. Each revalidation writes `attempt-*/revalidate.log`; validator infrastructure failures stop the loop immediately and emit that path as `REVALIDATE_LOG_FILE`.
 
+Codex token sidecars use `RAW=codex_plan_autofix` and may include `MODEL=`.
+The helper clears `codex.log.token-record` before each Codex launch. After the
+tmpdir guard and restore block completes, it best-effort appends any non-empty
+sidecar to `$DESIGN_TMPDIR/token-report.ndjson` and records it into the active
+design token ledger with `DESIGN_TMPDIR` exported. Usage can be counted even
+when the Codex launch fails after emitting parseable usage. Ingestion is
+non-blocking and never runs inside the tmpdir mutation guard.
+
 ## Mutation guards
 
 Before each dispatch the helper snapshots the target file, all non-target regular files/directories except `plan-autofix/**`, and the repository dirty-tree status/content under `--repo-root`. Symlinks and special files in the guarded tmpdir surface fail closed. After dispatch it restores any non-target session changes, rejects repo dirty-tree status or content changes introduced by the vendor, then runs a fresh per-attempt optional-trailer snapshot/dedup cycle for `plan.txt` targets before revalidation. Failed attempts restore the target file to its pre-attempt bytes so later attempts and operator prompts never inherit unvalidated vendor edits. This makes auto-fix a target-file-only repair path; logs and prompts remain confined to `plan-autofix/**`.
