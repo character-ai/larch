@@ -873,7 +873,7 @@ PY
 jq -nc \
     --arg out "$REVIEW_TMPDIR/aggregator-output.txt" \
     --arg pf "$prompt_file" \
-    '{slot:"aggregator",tool:"codex",output:$out,prompt_file:$pf}' > "$slots_file"
+    '{slot:"aggregator",tool:"cursor",output:$out,prompt_file:$pf}' > "$slots_file"
 
 dispatch_args=(
     --slots-file "$slots_file"

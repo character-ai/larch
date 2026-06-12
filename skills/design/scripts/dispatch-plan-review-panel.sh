@@ -67,13 +67,17 @@ if [[ -n "$PRUNE_ROUND_NUM" ]]; then
     PRUNE_ROUND_NUM=$((10#$PRUNE_ROUND_NUM))
 fi
 
-# Codex reviewer slots: rounds 1-2 always (status quo); round 3+ only as
-# replacement when Cursor is unavailable (#4060).
+# Codex specialist slots: round 1 only; round 2+ only as replacement when
+# Cursor is unavailable (#4062).
 codex_slots_enabled="false"
 if [[ "$CODEX_PRESENT" == "true" ]]; then
-    if (( ROUND_NUM < 3 )) || [[ "$CURSOR_PRESENT" != "true" ]]; then
+    if (( ROUND_NUM < 2 )) || [[ "$CURSOR_PRESENT" != "true" ]]; then
         codex_slots_enabled="true"
     fi
+fi
+codex_generic_enabled="false"
+if [[ "$CODEX_PRESENT" == "true" && "$CURSOR_PRESENT" == "true" ]] && (( ROUND_NUM >= 2 )); then
+    codex_generic_enabled="true"
 fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
@@ -140,6 +144,8 @@ write_dynamic_prompt() {
     local slug="$1" plan_path="$2" body_file="$3" out="$4"
     local vendor_note=""
     if [[ "$codex_slots_enabled" == "true" && "$CURSOR_PRESENT" == "true" ]]; then
+        vendor_note=" (Cursor + Codex)"
+    elif [[ "$codex_generic_enabled" == "true" ]]; then
         vendor_note=" (Cursor + Codex)"
     elif [[ "$CURSOR_PRESENT" == "true" ]]; then
         vendor_note=" (Cursor)"
@@ -271,6 +277,24 @@ for _archetype in arch innovation pragmatic requirements; do
     fi
 done
 
+if [[ "$codex_generic_enabled" == "true" ]]; then
+    _generic_prompt="$DESIGN_TMPDIR/render-plan-codex-generic.prompt"
+    {
+        printf '%s\n' "You are a combined plan-review reviewer applying all four standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
+        printf '\n'
+        for _archetype in arch innovation pragmatic requirements; do
+            _role_render=$(render_plan_review_prompt "$_archetype" codex "$PLAN_FILE")
+            _role_line="${_role_render%%$'\n'*}"
+            printf '%s\n\n' "$_role_line"
+        done
+        append_shared_prompt_tail "$PLAN_FILE"
+    } >"$_generic_prompt"
+    _append_manifest_row "codex-plan-generic" codex \
+        "$DESIGN_TMPDIR/codex-plan-generic-output.txt" \
+        "$_generic_prompt" \
+        "$_manifest"
+fi
+
 if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout_manifest" >/dev/null 2>&1; then
     while IFS= read -r row || [[ -n "$row" ]]; do
         [[ -n "$row" ]] || continue
@@ -389,11 +413,10 @@ if [[ "$PANEL_PRUNED_EMPTY" == "true" && "$PRUNE_STATUS" == "pruned-empty" ]]; t
     exit 0
 fi
 
-# --no-fallback only while Codex peer rows cover Cursor rows (rounds 1-2 with
-# both vendors). In round 3+ with both vendors present, Codex rows are
-# suppressed (#4060), so keep normal fallback: a failed Cursor slot may
-# backfill via Codex or Claude. Single-vendor invocations keep --no-fallback
-# (status quo).
+# --no-fallback only while Codex peer rows cover Cursor rows (round 1 with both
+# vendors). In round 2+ with both vendors present, Codex specialist rows are
+# suppressed (#4062), so keep normal fallback: a failed Cursor slot may backfill
+# via Codex or Claude. Single-vendor invocations keep --no-fallback.
 _waterfall_fallback_args=(--no-fallback)
 if [[ "$CODEX_PRESENT" == "true" && "$CURSOR_PRESENT" == "true" && "$codex_slots_enabled" != "true" ]]; then
     _waterfall_fallback_args=()

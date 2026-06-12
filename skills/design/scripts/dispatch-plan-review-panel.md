@@ -2,7 +2,7 @@
 
 **Purpose**: Renders static plan-review prompts (per-archetype vendor rows), appends dynamic slots from `$DESIGN_TMPDIR/scout-plan-manifest.json` (`dyn-cursor-plan-<slug>` / `dyn-codex-plan-<slug>`), and dispatches via `scripts/dispatch-with-waterfall.sh`.
 
-**Codex round gating (#4060)**: Codex reviewer slots (static and dynamic) are emitted in rounds 1–2 whenever Codex is present (status quo); starting with round 3 they are emitted only as a replacement when Cursor is absent. The `write_dynamic_prompt` vendor note follows the same gate, so round 3+ dynamic prompts do not advertise Codex. `--no-fallback` is passed to the waterfall except in round 3+ with both vendors present (where Codex rows are suppressed): there the panel keeps normal fallback so a failed Cursor slot may backfill via Codex or Claude. Single-vendor and both-absent invocations keep their status-quo fallback behavior.
+**Codex round gating (#4062)**: Codex specialist and dynamic twin slots are emitted in round 1 whenever Codex is present; starting with round 2 they are emitted only as a replacement when Cursor is absent. When both vendors are present in round 2+, the panel emits Cursor specialists plus one generic Codex reviewer (`codex-plan-generic`). The `write_dynamic_prompt` vendor note still names Codex in that case because the generic Codex reviewer covers the static lenses. `--no-fallback` is passed to the waterfall only while Codex peer rows cover Cursor rows; in round 2+ with both vendors present, normal fallback stays enabled so a failed Cursor slot may backfill via Codex or Claude. Single-vendor and both-absent invocations keep their status-quo fallback behavior.
 
 **Primary callers**: `skills/design/SKILL.md` Step 3.
 
