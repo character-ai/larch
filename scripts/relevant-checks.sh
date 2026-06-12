@@ -169,21 +169,10 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/launch-codex-exec.sh|scripts/launch-codex-exec.md|scripts/test-launch-codex-exec.sh)
+            python/agents.py|python/test_agents.py)
                 append_target_once test-launch-codex-exec
-                append_target_once test-parse-codex-usage
-                append_target_once test-token-vendor-scrapers
-                ;;
-            scripts/launch-codex-ci.sh|scripts/launch-codex-ci.md|scripts/test-launch-codex-ci.sh)
                 append_target_once test-launch-codex-ci
-                append_target_once test-parse-codex-usage
-                append_target_once test-token-vendor-scrapers
-                ;;
-            scripts/launch-cursor-ci.sh|scripts/launch-cursor-ci.md|scripts/test-launch-cursor-ci.sh)
                 append_target_once test-launch-cursor-ci
-                append_target_once test-token-vendor-scrapers
-                ;;
-            scripts/parse-codex-usage.sh|scripts/parse-codex-usage.md|scripts/test-parse-codex-usage.sh|scripts/test-parse-codex-usage.md)
                 append_target_once test-parse-codex-usage
                 append_target_once test-token-vendor-scrapers
                 ;;

@@ -430,11 +430,11 @@ setup_launch_cursor_ci_repo() {
     setup_git_repo "$dir"
     (
         cd "$dir"
-        git checkout -q -b launch-cursor-ci-change
-        mkdir -p scripts
-        printf '%s\n' "# launch cursor ci" > scripts/launch-cursor-ci.sh
-        git add scripts/launch-cursor-ci.sh
-        git commit -q -m "touch launch cursor ci"
+        git checkout -q -b agents-cursor-ci-change
+        mkdir -p python
+        printf '%s\n' "# agents cursor ci stub" > python/agents.py
+        git add python/agents.py
+        git commit -q -m "touch agents.py for cursor ci routing"
     )
 }
 
@@ -443,11 +443,11 @@ setup_launch_codex_exec_repo() {
     setup_git_repo "$dir"
     (
         cd "$dir"
-        git checkout -q -b launch-codex-exec-change
-        mkdir -p scripts
-        printf '%s\n' "# launch codex exec" > scripts/launch-codex-exec.sh
-        git add scripts/launch-codex-exec.sh
-        git commit -q -m "touch launch codex exec"
+        git checkout -q -b agents-codex-exec-change
+        mkdir -p python
+        printf '%s\n' "# agents codex exec stub" > python/agents.py
+        git add python/agents.py
+        git commit -q -m "touch agents.py for codex exec routing"
     )
 }
 
