@@ -1,0 +1,9 @@
+scripts/render-review-phase-detail.sh
+scripts/test-render-review-phase-detail.sh
+scripts/test-render-review-phase-detail.md
+.github/workflows/ci.yaml
+docs/linting.md
+python/progress_report.py
+python/test_progress_report.py
+skills/design/scripts/render-final-summary.md
+skills/implement/scripts/write-final-report.md
