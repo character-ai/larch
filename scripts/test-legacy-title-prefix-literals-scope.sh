@@ -17,7 +17,6 @@ ALLOW=(
   python/admission.py
   python/issue_wire.py
   python/tracking_issue.py
-  scripts/test-fetch-combinable-issues-filter.sh
   python/test_admission.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
