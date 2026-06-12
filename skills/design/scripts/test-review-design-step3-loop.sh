@@ -94,6 +94,27 @@ run_loop() {
 
 contains() { case "$1" in *"$2"*) ;; *) fail "$3 (missing $2; got ${1:0:400})" ;; esac; }
 
+write_envelope_stub() {
+    local dir="$1" body="$2" stub
+    stub="$dir/envelope-stub.sh"
+    cat >"$stub" <<EOFSTUB
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=skills/design/scripts/lib-phase-driver.sh
+source '$ROOT/skills/design/scripts/lib-phase-driver.sh'
+# shellcheck source=skills/design/scripts/review-design-step3-loop.sh
+source '$ROOT/skills/design/scripts/review-design-step3-loop.sh'
+$body
+EOFSTUB
+    chmod +x "$stub"
+    printf '%s\n' "$stub"
+}
+
+run_envelope_stub() {
+    local dir="$1" stub="$2"
+    env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$dir" "$stub"
+}
+
 bash -n "$ROOT/skills/design/scripts/review-design-step3-loop.sh" || fail 'loop script bash -n failed'
 
 echo '=== complete after in-loop apply ==='
@@ -422,6 +443,56 @@ out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$RO
   "$LAUNCHER" --design-tmpdir "$D9" --mode loop --starting-round 1)"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'empty filtered approval completes'
 [[ ! -s "$D9/accepted-plan-findings.md" ]] || fail 'empty filtered approval should clear stale accepted-plan-findings.md'
+
+
+echo '=== CR/LF sanitization before envelope emission ==='
+D_CRLF="$TMP/crlf-sanitize"
+write_common "$D_CRLF"
+envelope_stub="$(write_envelope_stub "$D_CRLF" 'PLAN_REVIEW_CONTINUE_REASON=$'"'"'reason\nwith\nlines\rand\rcrs'"'"'
+SCOPE_ANCHOR_FILE=$'"'"'path\nwith\rnewlines'"'"'
+export PLAN_REVIEW_CONTINUE_REASON SCOPE_ANCHOR_FILE
+step3_loop_emit_envelope complete 1 1 1')"
+out="$(run_envelope_stub "$D_CRLF" "$envelope_stub")"
+contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'CR/LF envelope status'
+contains "$out" 'PLAN_REVIEW_CONTINUE_REASON=reasonwithlinesandcrs' 'CR/LF sanitized continue reason'
+case "$out" in *'SCOPE_ANCHOR_FILE='*) fail 'CR/LF envelope should omit SCOPE_ANCHOR_FILE' ;; esac
+[[ -f "$D_CRLF/.step3-review-result.env" ]] || fail 'CR/LF envelope should persist result env'
+grep -q '^PLAN_REVIEW_CONTINUE_REASON=reasonwithlinesandcrs$' "$D_CRLF/.step3-review-result.env" || fail 'CR/LF persisted continue reason'
+reason_value="$(grep '^PLAN_REVIEW_CONTINUE_REASON=' "$D_CRLF/.step3-review-result.env" | cut -d= -f2-)"
+case "$reason_value" in *$'\n'*|*$'\r'*) fail 'persisted continue reason value must not contain CR/LF' ;; esac
+grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D_CRLF/.step3-review-result.env" || fail 'CR/LF persisted loop status'
+case "$(cat "$D_CRLF/.step3-review-result.env")" in *SCOPE_ANCHOR_FILE=*) fail 'CR/LF persisted env should omit SCOPE_ANCHOR_FILE' ;; esac
+
+
+echo '=== merge fallback sanitizes PLAN_REVIEW_CONTINUE_REASON from result env ==='
+D_MERGE="$TMP/merge-fallback-cr"
+write_common "$D_MERGE"
+printf 'PLAN_REVIEW_CONTINUE_REASON=keep\rme\r\n' >"$D_MERGE/.step3-review-result.env"
+envelope_stub="$(write_envelope_stub "$D_MERGE" 'unset PLAN_REVIEW_CONTINUE_REASON
+step3_loop_persist_envelope complete 1 1 1')"
+out="$(run_envelope_stub "$D_MERGE" "$envelope_stub")"
+grep -q '^PLAN_REVIEW_CONTINUE_REASON=keepme$' "$D_MERGE/.step3-review-result.env" || fail 'merge fallback should persist sanitized continue reason'
+case "$(grep '^PLAN_REVIEW_CONTINUE_REASON=' "$D_MERGE/.step3-review-result.env")" in *$'\r'*) fail 'merge fallback persisted reason must not contain CR' ;; esac
+
+
+echo '=== merge fallback omits sanitized-empty PLAN_REVIEW_CONTINUE_REASON ==='
+D_MERGE_EMPTY="$TMP/merge-fallback-empty"
+write_common "$D_MERGE_EMPTY"
+printf 'PLAN_REVIEW_CONTINUE_REASON=\r\n' >"$D_MERGE_EMPTY/.step3-review-result.env"
+envelope_stub="$(write_envelope_stub "$D_MERGE_EMPTY" 'unset PLAN_REVIEW_CONTINUE_REASON
+step3_loop_persist_envelope complete 1 1 1')"
+out="$(run_envelope_stub "$D_MERGE_EMPTY" "$envelope_stub")"
+case "$(cat "$D_MERGE_EMPTY/.step3-review-result.env")" in *PLAN_REVIEW_CONTINUE_REASON=*) fail 'sanitized-empty merge should omit PLAN_REVIEW_CONTINUE_REASON' ;; esac
+grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' "$D_MERGE_EMPTY/.step3-review-result.env" || fail 'sanitized-empty merge should persist loop status'
+
+
+echo '=== result-env write failure emits visible WARN ==='
+D_WARN="$TMP/write-failure-warn"
+write_common "$D_WARN"
+ln -sf "$D_WARN/nonexistent-target" "$D_WARN/.step3-review-result.env"
+envelope_stub="$(write_envelope_stub "$D_WARN" 'step3_loop_emit_envelope complete 1 1 1')"
+out="$(run_envelope_stub "$D_WARN" "$envelope_stub")"
+contains "$out" 'WARN=step3_loop_persist_envelope: phase_driver_write_result_env failed' 'write failure WARN kv'
 
 
 printf 'PASS: test-review-design-step3-loop.sh\n'

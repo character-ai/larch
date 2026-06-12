@@ -15,6 +15,10 @@ The loop emits a final `STEP3_REVIEW_LOOP_STATUS` envelope and exits only on:
 
 Carry-through KVs include `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `ACCEPTED_COUNT`, `DEGRADED_PANEL`, optional `SCOPE_ANCHOR_FILE`, `PLAN_REVIEW_CONTINUE_REASON`, `POSTPLAN_RC`, and `DEDUP_RC`.
 
+## Envelope KV safety
+
+Emitted and durable loop-envelope KV values must be single-line. `PLAN_REVIEW_CONTINUE_REASON` strips CR/LF before FD3 emission and result-env persistence. Merged `PLAN_REVIEW_CONTINUE_REASON` values from an existing `.step3-review-result.env` strip CR/LF before being preserved; sanitized-empty merged values are omitted (no `PLAN_REVIEW_CONTINUE_REASON=` line). `SCOPE_ANCHOR_FILE` is omitted when it contains CR/LF; invalid multiline scope anchors are not repaired by stripping characters. When `phase_driver_write_result_env` fails, the loop emits a visible human warning via `emit` and a `WARN=` KV via `emit_kv` instead of silently swallowing the failure with `|| true`.
+
 ## Resume phases
 
 For round `N`, `$DESIGN_TMPDIR/.step3-round-N.phase` records one of:

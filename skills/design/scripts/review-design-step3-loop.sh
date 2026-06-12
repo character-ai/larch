@@ -28,15 +28,33 @@ step3_loop_read_phase() {
     fi
 }
 
+step3_loop_strip_crlf_value() {
+    local value="$1"
+    value="${value//$'\n'/}"
+    value="${value//$'\r'/}"
+    printf '%s' "$value"
+}
+
+step3_loop_scope_anchor_single_line_or_empty() {
+    local value="$1"
+    case "$value" in
+        *$'\n'* | *$'\r'*) printf '' ;;
+        *) printf '%s' "$value" ;;
+    esac
+}
+
 step3_loop_emit_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
+    local safe_plan_review_continue_reason safe_scope_anchor_file
+    safe_plan_review_continue_reason="$(step3_loop_strip_crlf_value "${PLAN_REVIEW_CONTINUE_REASON:-}")"
+    safe_scope_anchor_file="$(step3_loop_scope_anchor_single_line_or_empty "${SCOPE_ANCHOR_FILE:-}")"
     emit_kv STEP3_REVIEW_LOOP_STATUS "$status"
     emit_kv ROUNDS_COMPLETED "${rounds_completed:-0}"
     emit_kv FINAL_ROUND_NUM "${final_round:-$round_num}"
     emit_kv ACCEPTED_COUNT "${ACCEPTED_COUNT:-0}"
     emit_kv DEGRADED_PANEL "${DEGRADED_PANEL:-0}"
-    [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || emit_kv SCOPE_ANCHOR_FILE "${SCOPE_ANCHOR_FILE:-}"
-    emit_kv PLAN_REVIEW_CONTINUE_REASON "${PLAN_REVIEW_CONTINUE_REASON:-}"
+    [[ -z "$safe_scope_anchor_file" ]] || emit_kv SCOPE_ANCHOR_FILE "$safe_scope_anchor_file"
+    emit_kv PLAN_REVIEW_CONTINUE_REASON "$safe_plan_review_continue_reason"
     [[ -z "${POSTPLAN_RC:-}" ]] || emit_kv POSTPLAN_RC "${POSTPLAN_RC:-}"
     [[ -z "${DEDUP_RC:-}" ]] || emit_kv DEDUP_RC "${DEDUP_RC:-}"
     if [[ -f "$DESIGN_TMPDIR/.design-postplan-emit-result.env" && ! -L "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
@@ -48,7 +66,7 @@ step3_loop_emit_envelope() {
             esac
         done <"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
     fi
-    step3_loop_persist_envelope "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}"
+    step3_loop_persist_envelope "$status" "$round_num" "${rounds_completed:-0}" "${final_round:-$round_num}" "$safe_plan_review_continue_reason" "$safe_scope_anchor_file"
 }
 
 step3_loop_read_review_round_count() {
@@ -66,8 +84,24 @@ step3_loop_read_review_round_count() {
 
 step3_loop_persist_envelope() {
     local status="$1" round_num="$2" rounds_completed="$3" final_round="$4"
+    local safe_plan_review_continue_reason="" safe_scope_anchor_file=""
+    local _have_safe_reason=false _have_safe_scope=false
     local result_env="$DESIGN_TMPDIR/.step3-review-result.env" loop_status="" kvs=() merge_key _line _key _value _present
     local persist_round_num="" persist_review_count=""
+    if [[ $# -ge 5 ]]; then
+        safe_plan_review_continue_reason="$5"
+        _have_safe_reason=true
+    fi
+    if [[ $# -ge 6 ]]; then
+        safe_scope_anchor_file="$6"
+        _have_safe_scope=true
+    fi
+    if [[ "$_have_safe_reason" != true ]]; then
+        safe_plan_review_continue_reason="$(step3_loop_strip_crlf_value "${PLAN_REVIEW_CONTINUE_REASON:-}")"
+    fi
+    if [[ "$_have_safe_scope" != true ]]; then
+        safe_scope_anchor_file="$(step3_loop_scope_anchor_single_line_or_empty "${SCOPE_ANCHOR_FILE:-}")"
+    fi
     case "$status" in
         cap-hit) loop_status=cap-reached ;;
         complete) loop_status=complete ;;
@@ -109,8 +143,8 @@ step3_loop_persist_envelope() {
     )
     [[ -z "${POSTPLAN_RC:-}" ]] || kvs+=("POSTPLAN_RC=${POSTPLAN_RC:-}")
     [[ -z "${DEDUP_RC:-}" ]] || kvs+=("DEDUP_RC=${DEDUP_RC:-}")
-    [[ -z "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] || kvs+=("PLAN_REVIEW_CONTINUE_REASON=${PLAN_REVIEW_CONTINUE_REASON:-}")
-    [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || kvs+=("SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}")
+    [[ -z "${safe_plan_review_continue_reason:-}" ]] || kvs+=("PLAN_REVIEW_CONTINUE_REASON=${safe_plan_review_continue_reason}")
+    [[ -z "${safe_scope_anchor_file:-}" ]] || kvs+=("SCOPE_ANCHOR_FILE=${safe_scope_anchor_file}")
     if [[ -f "$result_env" && ! -L "$result_env" ]]; then
         for merge_key in TALLY_PLAN_REVIEW_STATUS IMPORTANT_ACCEPTED_COUNT AGGREGATOR_STATUS VOTING_TALLY_FILE PANEL_PRUNED_EMPTY ROUND_NUM PLAN_REVIEW_CONTINUE_REASON; do
             _present=false
@@ -126,13 +160,20 @@ step3_loop_persist_envelope() {
                 _key="${_line%%=*}"
                 _value="${_line#*=}"
                 if [[ "$_key" == "$merge_key" && -n "$_value" ]]; then
+                    if [[ "$merge_key" == "PLAN_REVIEW_CONTINUE_REASON" ]]; then
+                        _value="$(step3_loop_strip_crlf_value "$_value")"
+                        [[ -n "$_value" ]] || break
+                    fi
                     kvs+=("${_key}=${_value}")
                     break
                 fi
             done <"$result_env"
         done
     fi
-    phase_driver_write_result_env "$result_env" "${kvs[@]}" || true
+    if ! phase_driver_write_result_env "$result_env" "${kvs[@]}"; then
+        emit "**⚠ step3_loop_persist_envelope: failed to write result env (${result_env##*/}); loop status may be unrecoverable**"
+        emit_kv WARN "step3_loop_persist_envelope: phase_driver_write_result_env failed"
+    fi
 }
 
 step3_loop_write_completed_step3() {
