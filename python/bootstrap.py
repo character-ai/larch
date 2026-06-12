@@ -23,6 +23,7 @@ import logging_util
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _REPO_ROOT / "scripts"
 _PY_CLI = Path(__file__).with_name("cli.py")
+_PS = shutil.which("ps") or "/bin/ps"
 BOOTSTRAP_CONTRACT_FAILURE = 2
 ROUTING_KEYS: tuple[str, ...] = (
     "IMPLEMENT_TMPDIR",
@@ -1152,7 +1153,7 @@ def _parent_invocation_non_interactive() -> bool:
             break
         visited.add(pid)
         comm = subprocess.run(
-            ["ps", "-o", "comm=", "-p", str(pid)],
+            [_PS, "-o", "comm=", "-p", str(pid)],
             capture_output=True,
             text=True,
             errors="replace",
@@ -1163,7 +1164,7 @@ def _parent_invocation_non_interactive() -> bool:
             if comm_name in {"cron", "crond"} or "cron" in comm_name:
                 return True
         args = subprocess.run(
-            ["ps", "-o", "args=", "-p", str(pid)],
+            [_PS, "-o", "args=", "-p", str(pid)],
             capture_output=True,
             text=True,
             errors="replace",
@@ -1176,7 +1177,7 @@ def _parent_invocation_non_interactive() -> bool:
                 if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
                     return True
         ppid = subprocess.run(
-            ["ps", "-o", "ppid=", "-p", str(pid)],
+            [_PS, "-o", "ppid=", "-p", str(pid)],
             capture_output=True,
             text=True,
             errors="replace",
