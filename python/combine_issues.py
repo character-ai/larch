@@ -1,5 +1,5 @@
-# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: SIM115
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
+# ruff: noqa: SIM115, TRY004, PLR2004, PERF401
 # pylint: skip-file
 """Combine-issues helper CLI verbs."""
 
@@ -11,13 +11,22 @@ import re
 import sys
 import tempfile
 import time
+from collections import defaultdict
 from pathlib import Path
+from typing import Any, cast
 
+import blocker
+import gh
 import proc
 import redact
 
 _BUSY_RE = re.compile(r"^(?:\[(?:DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s|\[LOCKED\])")
 _OOS_RE = re.compile(r"^\[OOS\]\s")
+_BLOCKS_RE = re.compile(r"(?:Blocks|Blocking)[ \t]+#([0-9]+)(?:[^0-9]|$)", re.IGNORECASE)
+_WRITE_SUCCESS = {"written", "already_present"}
+_INHERITED_SAFE_PHASES = {"inherited_safe", "inherited_reclassified_safe"}
+_INHERITED_EXCEPTION_PHASES = {"inherited_exception", "inherited_reclassified_exception"}
+_INHERITED_WRITE_PHASES = _INHERITED_SAFE_PHASES | _INHERITED_EXCEPTION_PHASES
 
 
 def _repo() -> str | None:
@@ -30,6 +39,825 @@ def _repo() -> str | None:
         return None
     val = data.get("nameWithOwner") if isinstance(data, dict) else None
     return str(val) if val else None
+
+
+def _resolve_repo(explicit: str = "") -> str | None:
+    if explicit:
+        return explicit
+    return gh.resolve_repo(proc)
+
+
+def _emit_json(payload: dict[str, Any]) -> int:
+    json.dump(payload, sys.stdout, sort_keys=True)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _load_json_file(path: str, *, desc: str) -> Any:
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"{desc}: file not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{desc}: invalid JSON: {exc}") from exc
+
+
+def _fail_json_error(message: str) -> int:
+    print(f"ERROR={message}", file=sys.stderr)
+    return 1
+
+
+def _positive_int_value(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str) and value.isdigit() and int(value) > 0:
+        return int(value)
+    return None
+
+
+def _parse_issue_csv(raw: str, *, arg_name: str = "--issues") -> list[int]:
+    if not raw.strip():
+        raise ValueError(f"{arg_name} must contain at least one positive integer")
+    values: list[int] = []
+    seen: set[int] = set()
+    for part in raw.split(","):
+        token = part.strip()
+        value = _positive_int_value(token)
+        if value is None:
+            raise ValueError(f"{arg_name} values must be positive integers: {token!r}")
+        if value not in seen:
+            seen.add(value)
+            values.append(value)
+    return values
+
+
+def _parse_source_to_combined(data: Any) -> dict[int, int]:
+    if not isinstance(data, dict):
+        raise ValueError("source-to-combined JSON must be an object")
+    out: dict[int, int] = {}
+    for raw_source, raw_combined in data.items():
+        source = _positive_int_value(raw_source)
+        combined = _positive_int_value(raw_combined)
+        if source is None or combined is None:
+            raise ValueError("source-to-combined keys and values must be positive integers")
+        out[source] = combined
+    return out
+
+
+def _edge_key(edge: tuple[int, int] | list[int]) -> str:
+    return f"{int(edge[0])}:{int(edge[1])}"
+
+
+def _edge_list(edge: tuple[int, int]) -> list[int]:
+    return [edge[0], edge[1]]
+
+
+def _edge_record(edge: tuple[int, int], source_issues: list[int], reason: str, *, meta: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
+    client, blocker_issue = edge
+    record: dict[str, Any] = {
+        "edge": [client, blocker_issue],
+        "client_issue": client,
+        "blocker_issue": blocker_issue,
+        "source_issues": source_issues,
+        "reason": reason,
+    }
+    if meta is not None:
+        client_meta = meta.get(client, {})
+        blocker_meta = meta.get(blocker_issue, {})
+        record["client_title"] = str(client_meta.get("title") or "")
+        record["blocker_title"] = str(blocker_meta.get("title") or "")
+    return record
+
+
+def _normal_edge(value: Any, *, desc: str) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise ValueError(f"{desc}: edge must be [client_issue, blocker_issue]")
+    client = _positive_int_value(value[0])
+    blocker_issue = _positive_int_value(value[1])
+    if client is None or blocker_issue is None:
+        raise ValueError(f"{desc}: edge values must be positive integers")
+    return client, blocker_issue
+
+
+def _load_edge_pair_list(path: str, *, desc: str) -> set[tuple[int, int]]:
+    data = _load_json_file(path, desc=desc)
+    if not isinstance(data, list):
+        raise ValueError(f"{desc}: expected a JSON list")
+    return {_normal_edge(item, desc=desc) for item in data}
+
+
+def _warning(issue: int, direction: str, result: proc.CommandResult) -> dict[str, Any]:
+    err = redact.redact((result.stderr or result.stdout or "dependency read failed")[:500]).strip()
+    code = "dependency_read_failed"
+    if direction == "blocking" and re.search(r"404|not found|unavailable|preview", err, re.IGNORECASE):
+        code = "blocking_endpoint_unavailable"
+    return {"source_issue": issue, "direction": direction, "code": code, "message": err}
+
+
+def _dep_numbers(text: str) -> list[int]:
+    rows = gh.loads_json_paginated_list(text or "[]")
+    nums: set[int] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        number = _positive_int_value(row.get("number"))
+        if number is not None:
+            nums.add(number)
+    return sorted(nums)
+
+
+def _read_deps_for_issue(repo: str, issue: int) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    warnings: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    entry: dict[str, Any] = {"blocked_by": [], "blocking": [], "read_ok": True}
+    for direction, reader in (("blocked_by", gh.issue_blocked_by_read), ("blocking", gh.issue_blocking_read)):
+        result = reader(proc, str(issue), repo=repo)
+        if result.returncode != 0:
+            entry["read_ok"] = False
+            warn = _warning(issue, direction, result)
+            warnings.append(warn)
+            failed.append({"source_issue": issue, "direction": direction, "error": warn["message"]})
+            continue
+        try:
+            entry[direction] = _dep_numbers(result.stdout)
+        except Exception as exc:
+            entry["read_ok"] = False
+            message = redact.redact(str(exc)).strip()
+            warnings.append({"source_issue": issue, "direction": direction, "code": "dependency_json_invalid", "message": message})
+            failed.append({"source_issue": issue, "direction": direction, "error": message})
+    return entry, failed, warnings
+
+
+def fetch_deps_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues fetch-deps")
+    p.add_argument("--repo", default="")
+    p.add_argument("--issues", required=True)
+    args = p.parse_args(argv)
+    try:
+        issues = _parse_issue_csv(args.issues)
+    except ValueError as exc:
+        print(f"ERROR={exc}", file=sys.stderr)
+        return 1
+    repo = _resolve_repo(args.repo)
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
+    out: dict[str, Any] = {"status": "ok", "issues": {}, "failed_issue_reads": [], "warnings": []}
+    for issue in issues:
+        entry, failed, warnings = _read_deps_for_issue(repo, issue)
+        out["issues"][str(issue)] = entry
+        out["failed_issue_reads"].extend(failed)
+        out["warnings"].extend(warnings)
+    return _emit_json(out)
+
+
+def _combined_issue_rows(data: Any) -> list[dict[str, Any]]:
+    if not isinstance(data, list):
+        raise ValueError("combined-issues JSON must be a list")
+    rows: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError("combined-issues entries must be objects")
+        number = _positive_int_value(item.get("number"))
+        if number is None:
+            raise ValueError("combined-issues entries require positive integer number")
+        source_issues = item.get("source_issues", [])
+        if not isinstance(source_issues, list):
+            raise ValueError("combined-issues source_issues must be a list")
+        rows.append({
+            "number": number,
+            "title": str(item.get("title") or ""),
+            "state": "open",
+            "labels": item.get("labels", []),
+            "body": str(item.get("body") or ""),
+            "source_issues": sorted(n for n in (_positive_int_value(v) for v in source_issues) if n is not None),
+        })
+    return rows
+
+
+def _open_issue_rows(data: Any) -> list[dict[str, Any]]:
+    if isinstance(data, dict):
+        data = data.get("issues", [])
+    if not isinstance(data, list):
+        raise ValueError("open-issues JSON must contain an issues list")
+    rows: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        number = _positive_int_value(item.get("number"))
+        if number is None:
+            continue
+        rows.append({
+            "number": number,
+            "title": str(item.get("title") or ""),
+            "state": str(item.get("state") or ""),
+            "labels": item.get("labels", []),
+            "body": str(item.get("body") or ""),
+        })
+    return rows
+
+
+def _metadata(open_rows: list[dict[str, Any]], combined_rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    meta: dict[int, dict[str, Any]] = {}
+    for row in open_rows + combined_rows:
+        number = _positive_int_value(row.get("number"))
+        if number is not None:
+            meta[number] = row
+    return meta
+
+
+def _is_oos_title(title: str) -> bool:
+    return _OOS_RE.match(title or "") is not None
+
+
+def _classify_edge(edge: tuple[int, int], meta: dict[int, dict[str, Any]], combined_oos: set[int]) -> tuple[str, str]:
+    client, blocker_issue = edge
+    client_meta = meta.get(client)
+    blocker_meta = meta.get(blocker_issue)
+    if client_meta is None or blocker_meta is None:
+        return "unknown", "missing issue metadata"
+    if str(client_meta.get("state") or "").lower() != "open":
+        return "unknown", "client issue is not known open"
+    if str(blocker_meta.get("state") or "").lower() != "open":
+        return "unknown", "blocker issue is not known open"
+    client_title = str(client_meta.get("title") or "")
+    if blocker_issue in combined_oos and not _is_oos_title(client_title):
+        return "exception", "non-OOS open issue would be blocked by a newly combined [OOS] issue"
+    return "safe", "edge does not block a non-OOS issue on newly combined [OOS] work"
+
+
+def _dep_entry(source: int, data: Any) -> dict[str, Any]:
+    if isinstance(data, dict):
+        issues = data.get("issues", {})
+        if isinstance(issues, dict) and isinstance(issues.get(str(source)), dict):
+            return cast("dict[str, Any]", issues[str(source)])
+        if isinstance(issues, list):
+            for row in issues:
+                if isinstance(row, dict) and _positive_int_value(row.get("source_issue") or row.get("number")) == source:
+                    return row
+    return {"blocked_by": [], "blocking": [], "read_ok": False}
+
+
+def plan_inherited_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues plan-inherited")
+    p.add_argument("--deps-file", required=True)
+    p.add_argument("--source-to-combined-file", required=True)
+    p.add_argument("--open-issues-file", required=True)
+    p.add_argument("--combined-issues-file", required=True)
+    args = p.parse_args(argv)
+    try:
+        deps = _load_json_file(args.deps_file, desc="deps-file")
+        source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
+        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        combined_rows = _combined_issue_rows(_load_json_file(args.combined_issues_file, desc="combined-issues-file"))
+    except ValueError as exc:
+        return _fail_json_error(str(exc))
+
+    meta = _metadata(open_rows, combined_rows)
+    combined_oos = {int(row["number"]) for row in combined_rows if _is_oos_title(str(row.get("title") or ""))}
+    edge_sources: dict[tuple[int, int], set[int]] = defaultdict(set)
+    self_edges_skipped = 0
+    duplicate_edges_skipped = 0
+    per_source: dict[str, dict[str, Any]] = {}
+    warnings: list[Any] = []
+    if isinstance(deps, dict) and isinstance(deps.get("warnings"), list):
+        warnings.extend(deps["warnings"])
+
+    for source, combined in sorted(source_to_combined.items()):
+        entry = _dep_entry(source, deps)
+        reasons: list[str] = []
+        if not bool(entry.get("read_ok")):
+            reasons.append("dependency_read_failed")
+        per_source[str(source)] = {"eligible": not reasons, "reasons": reasons}
+        for blocker_issue in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocked_by", [])) if n is not None):
+            edge = (combined, source_to_combined.get(blocker_issue, blocker_issue))
+            if edge[0] == edge[1]:
+                self_edges_skipped += 1
+                continue
+            if source in edge_sources[edge] or edge_sources[edge]:
+                duplicate_edges_skipped += 1
+            edge_sources[edge].add(source)
+        for client in sorted(n for n in (_positive_int_value(v) for v in entry.get("blocking", [])) if n is not None):
+            edge = (source_to_combined.get(client, client), combined)
+            if edge[0] == edge[1]:
+                self_edges_skipped += 1
+                continue
+            if source in edge_sources[edge] or edge_sources[edge]:
+                duplicate_edges_skipped += 1
+            edge_sources[edge].add(source)
+
+    safe: list[dict[str, Any]] = []
+    exception: list[dict[str, Any]] = []
+    unknown: list[dict[str, Any]] = []
+    edge_provenance: dict[str, list[int]] = {}
+    for edge in sorted(edge_sources):
+        sources = sorted(edge_sources[edge])
+        edge_provenance[_edge_key(edge)] = sources
+        bucket, reason = _classify_edge(edge, meta, combined_oos)
+        record = _edge_record(edge, sources, reason, meta=meta)
+        if bucket == "safe":
+            safe.append(record)
+        elif bucket == "exception":
+            exception.append(record)
+        else:
+            unknown.append(record)
+            for source in sources:
+                state = per_source.setdefault(str(source), {"eligible": True, "reasons": []})
+                state["eligible"] = False
+                if "unknown_inherited_classification" not in state["reasons"]:
+                    state["reasons"].append("unknown_inherited_classification")
+    for state in per_source.values():
+        if state.get("reasons"):
+            state["eligible"] = False
+    return _emit_json({
+        "status": "ok",
+        "safe_edges": safe,
+        "exception_edges": exception,
+        "unknown_edges": unknown,
+        "edge_provenance": edge_provenance,
+        "per_source_initial_eligibility": per_source,
+        "self_edges_skipped": self_edges_skipped,
+        "duplicate_edges_skipped": duplicate_edges_skipped,
+        "warnings": warnings,
+    })
+
+
+def _records_by_edge(data: Any, key: str) -> dict[tuple[int, int], list[dict[str, Any]]]:
+    if not isinstance(data, dict) or not isinstance(data.get(key), list):
+        raise ValueError(f"{key} JSON must be an object with {key} list")
+    out: dict[tuple[int, int], list[dict[str, Any]]] = defaultdict(list)
+    for item in data[key]:
+        if not isinstance(item, dict):
+            raise ValueError(f"{key} entries must be objects")
+        edge = _normal_edge(item.get("edge"), desc=key)
+        out[edge].append(item)
+    return out
+
+
+def _successful_write_edges(data: Any, *, phases: set[str] | None = None) -> set[tuple[int, int]]:
+    records = _records_by_edge(data, "write_results")
+    out: set[tuple[int, int]] = set()
+    for edge, items in records.items():
+        if any(str(item.get("status")) in _WRITE_SUCCESS and (phases is None or str(item.get("phase")) in phases) for item in items):
+            out.add(edge)
+    return out
+
+
+def _decision_for_edge(decisions: dict[tuple[int, int], list[dict[str, Any]]], edge: tuple[int, int]) -> str:
+    items = decisions.get(edge, [])
+    if any(str(item.get("decision")) == "unresolved" for item in items):
+        return "unresolved"
+    if any(str(item.get("decision")) == "approved" for item in items):
+        return "approved"
+    if any(str(item.get("decision")) == "rejected" for item in items):
+        return "rejected"
+    return "missing"
+
+
+def _source_issues_from_record(record: dict[str, Any]) -> list[int]:
+    source_issues = record.get("source_issues", [])
+    return sorted(n for n in (_positive_int_value(v) for v in source_issues if not isinstance(v, dict)) if n is not None)
+
+
+def close_eligible_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues close-eligible")
+    p.add_argument("--inherited-plan-file", required=True)
+    p.add_argument("--write-results-file", required=True)
+    p.add_argument("--exception-decisions-file", required=True)
+    p.add_argument("--source-to-combined-file", required=True)
+    p.add_argument("--blocked-sources-file", required=True)
+    args = p.parse_args(argv)
+    try:
+        plan = _load_json_file(args.inherited_plan_file, desc="inherited-plan-file")
+        write_results = _load_json_file(args.write_results_file, desc="write-results-file")
+        exception_decisions = _load_json_file(args.exception_decisions_file, desc="exception-decisions-file")
+        source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
+        blocked_data = _load_json_file(args.blocked_sources_file, desc="blocked-sources-file")
+        writes_by_edge = _records_by_edge(write_results, "write_results")
+        decisions_by_edge = _records_by_edge(exception_decisions, "decisions")
+    except ValueError as exc:
+        return _fail_json_error(str(exc))
+    if not isinstance(plan, dict):
+        return _fail_json_error("inherited plan must be an object")
+    if not isinstance(blocked_data, dict) or not isinstance(blocked_data.get("blocked_sources", []), list):
+        return _fail_json_error("blocked-sources JSON must be an object with blocked_sources list")
+
+    reasons: dict[str, list[str]] = {str(source): [] for source in source_to_combined}
+    blocked_sources: set[int] = set()
+    for item in blocked_data.get("blocked_sources", []):
+        if isinstance(item, dict):
+            source = _positive_int_value(item.get("source_issue"))
+            if source is not None:
+                blocked_sources.add(source)
+                reasons.setdefault(str(source), []).append(str(item.get("reason") or "blocked_source"))
+
+    per_source = plan.get("per_source_initial_eligibility", {}) if isinstance(plan.get("per_source_initial_eligibility", {}), dict) else {}
+    for raw_source, state in per_source.items():
+        source = _positive_int_value(raw_source)
+        if source is None or not isinstance(state, dict):
+            continue
+        if not bool(state.get("eligible", True)):
+            for reason in state.get("reasons", []) if isinstance(state.get("reasons", []), list) else ["initially_ineligible"]:
+                reasons.setdefault(str(source), []).append(str(reason))
+
+    safe_edges = plan.get("safe_edges", []) if isinstance(plan.get("safe_edges", []), list) else []
+    exception_edges = plan.get("exception_edges", []) if isinstance(plan.get("exception_edges", []), list) else []
+    unknown_edges = plan.get("unknown_edges", []) if isinstance(plan.get("unknown_edges", []), list) else []
+    for item in unknown_edges:
+        if not isinstance(item, dict):
+            continue
+        edge = _normal_edge(item.get("edge"), desc="unknown_edges")
+        for source in _source_issues_from_record(item):
+            reasons.setdefault(str(source), []).append(f"unknown_inherited_classification:{_edge_key(edge)}")
+    for item in safe_edges:
+        if not isinstance(item, dict):
+            continue
+        edge = _normal_edge(item.get("edge"), desc="safe_edges")
+        successful = any(str(row.get("status")) in _WRITE_SUCCESS and str(row.get("phase")) in _INHERITED_SAFE_PHASES for row in writes_by_edge.get(edge, []))
+        failed = any(str(row.get("status")) in {"failed", "unresolved"} and str(row.get("phase")) in _INHERITED_SAFE_PHASES for row in writes_by_edge.get(edge, []))
+        if not successful or failed:
+            for source in _source_issues_from_record(item):
+                reasons.setdefault(str(source), []).append(f"inherited_safe_write_missing_or_failed:{_edge_key(edge)}")
+    for item in exception_edges:
+        if not isinstance(item, dict):
+            continue
+        edge = _normal_edge(item.get("edge"), desc="exception_edges")
+        decision = _decision_for_edge(decisions_by_edge, edge)
+        write_success = any(str(row.get("status")) in _WRITE_SUCCESS and str(row.get("phase")) in _INHERITED_EXCEPTION_PHASES for row in writes_by_edge.get(edge, []))
+        write_failed = any(str(row.get("status")) in {"failed", "unresolved"} and str(row.get("phase")) in _INHERITED_EXCEPTION_PHASES for row in writes_by_edge.get(edge, []))
+        for source in _source_issues_from_record(item):
+            if write_failed:
+                reasons.setdefault(str(source), []).append(f"inherited_exception_write_failed:{_edge_key(edge)}")
+            elif decision == "rejected":
+                reasons.setdefault(str(source), []).append(f"inherited_exception_rejected:{_edge_key(edge)}")
+            elif decision == "approved" and write_success:
+                continue
+            elif decision == "approved":
+                reasons.setdefault(str(source), []).append(f"approved_exception_write_missing_or_failed:{_edge_key(edge)}")
+            elif decision == "unresolved":
+                reasons.setdefault(str(source), []).append(f"inherited_exception_unresolved:{_edge_key(edge)}")
+            else:
+                reasons.setdefault(str(source), []).append(f"inherited_exception_decision_missing:{_edge_key(edge)}")
+
+    eligible_by_combined: dict[str, list[int]] = defaultdict(list)
+    ineligible_sources: list[int] = []
+    for source, combined in sorted(source_to_combined.items()):
+        source_reasons = [r for r in reasons.get(str(source), []) if not r.startswith("inherited_exception_rejected:")]
+        if source in blocked_sources or source_reasons:
+            ineligible_sources.append(source)
+        else:
+            eligible_by_combined[str(combined)].append(source)
+    return _emit_json({
+        "eligible_by_combined": dict(sorted(eligible_by_combined.items(), key=lambda kv: int(kv[0]))),
+        "ineligible_sources": ineligible_sources,
+        "reasons": reasons,
+        "counts": {
+            "eligible_sources": sum(len(v) for v in eligible_by_combined.values()),
+            "ineligible_sources": len(ineligible_sources),
+            "blocked_sources": len(blocked_sources),
+        },
+    })
+
+
+def list_open_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues list-open")
+    p.add_argument("--repo", default="")
+    args = p.parse_args(argv)
+    repo = _resolve_repo(args.repo)
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
+    result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
+    warnings: list[dict[str, str]] = []
+    if result.returncode != 0:
+        return _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "gh_api_failed", "message": "failed to list open issues"}]})
+    try:
+        rows = gh.loads_json_paginated_list(result.stdout)
+    except Exception as exc:
+        return _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "json_invalid", "message": str(exc)}]})
+    issues: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("pull_request") is not None:
+            continue
+        number = _positive_int_value(row.get("number"))
+        if number is None or str(row.get("state") or "").lower() != "open":
+            continue
+        issues.append({
+            "number": number,
+            "title": str(row.get("title") or ""),
+            "state": "open",
+            "labels": row.get("labels", []),
+            "body": str(row.get("body") or ""),
+        })
+    return _emit_json({"status": "ok", "issues": sorted(issues, key=lambda item: item["number"]), "warnings": warnings})
+
+
+def _parse_issue_number(text: str) -> str:
+    nums = re.findall(r"/issues/([0-9]+)", text)
+    return nums[-1] if nums else ""
+
+
+def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
+    result: proc.CommandResult | None = None
+    for attempt in range(attempts):
+        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", f"Combined into #{combined}"])
+        if result.returncode == 0:
+            return result
+        if attempt + 1 < attempts:
+            time.sleep(1)
+    assert result is not None
+    return result
+
+
+def apply_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues apply")
+    p.add_argument("--title", required=True)
+    p.add_argument("--body-file", required=True)
+    p.add_argument("--source-issues", required=True)
+    p.add_argument("--repo", default="")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--defer-close", action="store_true")
+    args = p.parse_args(argv)
+    body = Path(args.body_file)
+    if not body.is_file():
+        print(f"ERROR=Missing or unreadable --body-file: {args.body_file}", file=sys.stderr)
+        return 1
+    repo = args.repo or _repo()
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
+    issues = [x.strip() for x in args.source_issues.split(",") if x.strip()]
+    if not issues:
+        print("ERROR=No source issues provided", file=sys.stderr)
+        return 1
+    if args.dry_run:
+        print("DRY_RUN=true")
+        print(f"WOULD_CREATE={args.title}")
+        print(f"WOULD_CLOSE={len(issues)} issues: {args.source_issues}")
+        if args.defer_close:
+            print("CLOSING_DEFERRED=true")
+        return 0
+    red_title = redact.redact(args.title).rstrip("\n")
+    red_body = tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="combine-redacted-", dir="/tmp", delete=False)
+    red_body.write(redact.redact(body.read_text(encoding="utf-8")))
+    red_body.close()
+    try:
+        create = proc.run(["gh", "issue", "create", "--repo", repo, "--title", red_title, "--body-file", red_body.name])
+        if create.returncode != 0:
+            print("ERROR=Failed to create combined issue (gh output withheld)", file=sys.stderr)
+            return 1
+        combined = _parse_issue_number(create.stdout + create.stderr)
+        if not combined:
+            print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
+            return 1
+        if args.defer_close:
+            print("DRY_RUN=false")
+            print(f"COMBINED_ISSUE={combined}")
+            print(f"SOURCE_ISSUES={','.join(issues)}")
+            print("CLOSING_DEFERRED=true")
+            print("CLOSED_ISSUES=0")
+            return 0
+        closed = 0
+        warnings = []
+        for issue in issues:
+            res = _close_issue_with_retry(issue, repo, combined)
+            if res.returncode == 0:
+                closed += 1
+            else:
+                warnings.append(f"Failed to close #{issue}: {redact.redact((res.stderr or res.stdout)[:500]).strip()}")
+        if warnings:
+            print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
+        print("DRY_RUN=false")
+        print(f"COMBINED_ISSUE={combined}")
+        print(f"CLOSED_ISSUES={closed}")
+        return 0
+    finally:
+        Path(red_body.name).unlink(missing_ok=True)
+
+
+def close_sources_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues close-sources")
+    p.add_argument("--repo", default="")
+    p.add_argument("--combined-issue", required=True)
+    p.add_argument("--source-issues", required=True)
+    args = p.parse_args(argv)
+    repo = args.repo or _repo()
+    if not repo:
+        print("ERROR=Could not determine repository", file=sys.stderr)
+        return 1
+    try:
+        sources = _parse_issue_csv(args.source_issues, arg_name="--source-issues")
+    except ValueError as exc:
+        print(f"ERROR={exc}", file=sys.stderr)
+        return 1
+    combined = _positive_int_value(args.combined_issue)
+    if combined is None:
+        print("ERROR=--combined-issue must be a positive integer", file=sys.stderr)
+        return 1
+    closed = 0
+    warnings = []
+    for source in sources:
+        res = _close_issue_with_retry(str(source), repo, str(combined))
+        if res.returncode == 0:
+            closed += 1
+        else:
+            warnings.append(f"Failed to close #{source}: {redact.redact((res.stderr or res.stdout)[:500]).strip()}")
+    if warnings:
+        print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
+    print(f"CLOSED_ISSUES={closed}")
+    return 0
+
+
+def _issue_content_from_view(result: proc.CommandResult, fallback: dict[str, Any]) -> tuple[str, str]:
+    if result.returncode == 0:
+        try:
+            data = json.loads(result.stdout or "{}")
+            if isinstance(data, dict):
+                return str(data.get("title") or fallback.get("title") or ""), str(data.get("body") or fallback.get("body") or "")
+        except json.JSONDecodeError:
+            pass
+    return str(fallback.get("title") or ""), str(fallback.get("body") or "")
+
+
+def _comment_rows(result: proc.CommandResult) -> list[dict[str, Any]]:
+    if result.returncode != 0:
+        return []
+    rows = gh.loads_json_paginated_list(result.stdout or "[]")
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if isinstance(row, dict):
+            out.append(row)
+    return out
+
+
+def _candidate_reason(kind: str, current: int, ref: int) -> str:
+    if kind == "blocked_by":
+        return f"issue #{current} prose says it is blocked by #{ref}"
+    return f"issue #{current} prose says it blocks #{ref}"
+
+
+def prose_audit_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues prose-audit")
+    p.add_argument("--repo", required=True)
+    p.add_argument("--combined-issues", required=True)
+    p.add_argument("--open-issues-file", required=True)
+    p.add_argument("--existing-edges-file", required=True)
+    p.add_argument("--source-to-combined-file", required=True)
+    args = p.parse_args(argv)
+    try:
+        combined_issue_numbers = set(_parse_issue_csv(args.combined_issues, arg_name="--combined-issues"))
+        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        existing_edges = _load_edge_pair_list(args.existing_edges_file, desc="existing-edges-file")
+        source_to_combined = _parse_source_to_combined(_load_json_file(args.source_to_combined_file, desc="source-to-combined-file"))
+    except ValueError as exc:
+        return _fail_json_error(str(exc))
+    meta = _metadata(open_rows, [])
+    open_numbers = {row["number"] for row in open_rows}
+    all_to_scan = sorted(open_numbers | combined_issue_numbers)
+    candidates_by_edge: dict[tuple[int, int], dict[str, Any]] = {}
+    warnings: list[dict[str, Any]] = []
+
+    def remap(issue: int) -> int:
+        return source_to_combined.get(issue, issue)
+
+    def add_candidate(raw_current: int, ref: int, kind: str, evidence_kind: str, comment_id: int | None = None) -> None:
+        current = remap(raw_current)
+        mapped_ref = remap(ref)
+        edge = (current, mapped_ref) if kind == "blocked_by" else (mapped_ref, current)
+        if edge[0] == edge[1] or edge in existing_edges:
+            return
+        if edge[0] not in meta or edge[1] not in meta:
+            return
+        if str(meta[edge[0]].get("state") or "").lower() != "open" or str(meta[edge[1]].get("state") or "").lower() != "open":
+            return
+        if edge[0] not in combined_issue_numbers and edge[1] not in combined_issue_numbers:
+            return
+        if edge in candidates_by_edge:
+            return
+        record: dict[str, Any] = {
+            "edge": [edge[0], edge[1]],
+            "source_kind": "tier1_prose",
+            "confidence": "explicit",
+            "evidence_kind": evidence_kind,
+            "evidence_issue": raw_current,
+            "reason": _candidate_reason(kind, current, mapped_ref),
+        }
+        if comment_id is not None:
+            record["evidence_comment_id"] = comment_id
+        candidates_by_edge[edge] = record
+
+    for issue in all_to_scan:
+        fallback = meta.get(issue, {"number": issue, "title": "", "body": "", "state": "open"})
+        view = gh.issue_view_title_body_read(proc, str(issue), repo=args.repo)
+        _title, body_text = _issue_content_from_view(view, fallback)
+        for ref in blocker.parse_prose_blockers(body_text):
+            add_candidate(issue, ref, "blocked_by", "body")
+        for match in _BLOCKS_RE.finditer(body_text or ""):
+            add_candidate(issue, int(match.group(1)), "blocks", "body")
+        comments = gh.issue_comments_list_read(proc, str(issue), repo=args.repo)
+        try:
+            rows = _comment_rows(comments)
+        except Exception as exc:
+            warnings.append({"issue": issue, "code": "comments_json_invalid", "message": str(exc)})
+            rows = []
+        for row in rows:
+            text = str(row.get("body") or "")
+            comment_id = _positive_int_value(row.get("id"))
+            for ref in blocker.parse_prose_blockers(text):
+                add_candidate(issue, ref, "blocked_by", "comment", comment_id)
+            for match in _BLOCKS_RE.finditer(text):
+                add_candidate(issue, int(match.group(1)), "blocks", "comment", comment_id)
+    return _emit_json({"status": "ok", "candidates": list(candidates_by_edge.values()), "warnings": warnings})
+
+
+def _candidate_rows(data: Any, *, desc: str) -> list[dict[str, Any]]:
+    if isinstance(data, dict):
+        data = data.get("candidates", [])
+    if not isinstance(data, list):
+        raise ValueError(f"{desc}: expected candidate list")
+    rows: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise ValueError(f"{desc}: candidate entries must be objects")
+        _normal_edge(item.get("edge"), desc=desc)
+        rows.append(item)
+    return rows
+
+
+def _decided_edge_set(data: Any) -> set[tuple[int, int]]:
+    if not isinstance(data, dict) or not isinstance(data.get("decisions", []), list):
+        raise ValueError("decided-edges JSON must be an object with decisions list")
+    out: set[tuple[int, int]] = set()
+    for item in data.get("decisions", []):
+        if isinstance(item, dict):
+            out.add(_normal_edge(item.get("edge"), desc="decided-edges"))
+    return out
+
+
+def plan_audit_main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="cli.py combine-issues plan-audit")
+    p.add_argument("--prose-candidates-file", required=True)
+    p.add_argument("--tier2-candidates-file", required=True)
+    p.add_argument("--existing-edges-file", required=True)
+    p.add_argument("--decided-edges-file", required=True)
+    p.add_argument("--open-issues-file", required=True)
+    p.add_argument("--combined-issues-file", required=True)
+    args = p.parse_args(argv)
+    try:
+        prose = _candidate_rows(_load_json_file(args.prose_candidates_file, desc="prose-candidates-file"), desc="prose-candidates-file")
+        tier2 = _candidate_rows(_load_json_file(args.tier2_candidates_file, desc="tier2-candidates-file"), desc="tier2-candidates-file")
+        existing = _load_edge_pair_list(args.existing_edges_file, desc="existing-edges-file")
+        decided = _decided_edge_set(_load_json_file(args.decided_edges_file, desc="decided-edges-file"))
+        open_rows = _open_issue_rows(_load_json_file(args.open_issues_file, desc="open-issues-file"))
+        combined_rows = _combined_issue_rows(_load_json_file(args.combined_issues_file, desc="combined-issues-file"))
+    except ValueError as exc:
+        return _fail_json_error(str(exc))
+    meta = _metadata(open_rows, combined_rows)
+    combined_oos = {int(row["number"]) for row in combined_rows if _is_oos_title(str(row.get("title") or ""))}
+    merged: dict[tuple[int, int], dict[str, Any]] = {}
+    duplicate = 0
+    for row in prose + tier2:
+        edge = _normal_edge(row.get("edge"), desc="candidate")
+        if edge in existing or edge in decided:
+            duplicate += 1
+            continue
+        if edge in merged:
+            duplicate += 1
+            if str(row.get("source_kind")) == "tier2_semantic" and str(merged[edge].get("source_kind")) != "tier2_semantic":
+                merged[edge] = row
+            continue
+        merged[edge] = row
+    auto: list[dict[str, Any]] = []
+    approval: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+    for edge, row in sorted(merged.items()):
+        bucket, reason = _classify_edge(edge, meta, combined_oos)
+        enriched = dict(row)
+        enriched["client_issue"] = edge[0]
+        enriched["blocker_issue"] = edge[1]
+        enriched["reason"] = str(row.get("reason") or reason)
+        source_kind = str(row.get("source_kind") or "")
+        if source_kind == "tier2_semantic" and str(row.get("confidence") or "") not in {"low", "medium", "high"}:
+            enriched["policy_reason"] = "tier2 candidate missing low, medium, or high confidence"
+            rejected.append(enriched)
+        elif bucket == "unknown":
+            enriched["policy_reason"] = reason
+            rejected.append(enriched)
+        elif source_kind == "tier2_semantic" or bucket == "exception":
+            enriched["approval_reason"] = "Tier-2 semantic edge requires approval" if source_kind == "tier2_semantic" else reason
+            approval.append(enriched)
+        else:
+            auto.append(enriched)
+    return _emit_json({
+        "auto_write_edges": auto,
+        "approval_required_edges": approval,
+        "policy_rejected_edges": rejected,
+        "duplicate_edges_skipped": duplicate,
+        "warnings": warnings,
+    })
 
 
 def fetch_main(argv: list[str] | None = None) -> int:
@@ -71,76 +899,3 @@ def fetch_main(argv: list[str] | None = None) -> int:
     print(f"ISSUES_FILE={handle.name}")
     print(f"COUNT={len(out)}")
     return 0
-
-
-def _parse_issue_number(text: str) -> str:
-    nums = re.findall(r"/issues/([0-9]+)", text)
-    return nums[-1] if nums else ""
-
-
-def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
-    result: proc.CommandResult | None = None
-    for attempt in range(attempts):
-        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", f"Combined into #{combined}"])
-        if result.returncode == 0:
-            return result
-        if attempt + 1 < attempts:
-            time.sleep(1)
-    assert result is not None
-    return result
-
-
-def apply_main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="cli.py combine-issues apply")
-    p.add_argument("--title", required=True)
-    p.add_argument("--body-file", required=True)
-    p.add_argument("--source-issues", required=True)
-    p.add_argument("--repo", default="")
-    p.add_argument("--dry-run", action="store_true")
-    args = p.parse_args(argv)
-    body = Path(args.body_file)
-    if not body.is_file():
-        print(f"ERROR=Missing or unreadable --body-file: {args.body_file}", file=sys.stderr)
-        return 1
-    repo = args.repo or _repo()
-    if not repo:
-        print("ERROR=Could not determine repository", file=sys.stderr)
-        return 1
-    issues = [x.strip() for x in args.source_issues.split(",") if x.strip()]
-    if not issues:
-        print("ERROR=No source issues provided", file=sys.stderr)
-        return 1
-    if args.dry_run:
-        print("DRY_RUN=true")
-        print(f"WOULD_CREATE={args.title}")
-        print(f"WOULD_CLOSE={len(issues)} issues: {args.source_issues}")
-        return 0
-    red_title = redact.redact(args.title).rstrip("\n")
-    red_body = tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix="combine-redacted-", dir="/tmp", delete=False)
-    red_body.write(redact.redact(body.read_text(encoding="utf-8")))
-    red_body.close()
-    try:
-        create = proc.run(["gh", "issue", "create", "--repo", repo, "--title", red_title, "--body-file", red_body.name])
-        if create.returncode != 0:
-            print("ERROR=Failed to create combined issue (gh output withheld)", file=sys.stderr)
-            return 1
-        combined = _parse_issue_number(create.stdout + create.stderr)
-        if not combined:
-            print("ERROR=Could not parse issue number from gh issue create output (output withheld)", file=sys.stderr)
-            return 1
-        closed = 0
-        warnings = []
-        for issue in issues:
-            res = _close_issue_with_retry(issue, repo, combined)
-            if res.returncode == 0:
-                closed += 1
-            else:
-                warnings.append(f"Failed to close #{issue}: {redact.redact((res.stderr or res.stdout)[:500]).strip()}")
-        if warnings:
-            print(f"WARNING={'; '.join(warnings)}", file=sys.stderr)
-        print("DRY_RUN=false")
-        print(f"COMBINED_ISSUE={combined}")
-        print(f"CLOSED_ISSUES={closed}")
-        return 0
-    finally:
-        Path(red_body.name).unlink(missing_ok=True)
