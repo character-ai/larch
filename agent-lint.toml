@@ -263,6 +263,10 @@ exclude = [
   # root scripts/test-* harnesses below.
   "scripts/test-read-result-env.sh",
   "scripts/test-read-result-env.md",
+  # Makefile-only harnesses for upstream-repo resolution and cross-repo failure
+  # filing. Agent-lint's G004/dead-script graph does not follow Makefile targets.
+  "scripts/test-resolve-upstream-larch-repo.sh",
+  "scripts/test-file-failure-report-cross-repo.sh",
   # larch-log migration harnesses are Makefile/pre-commit only. They are not
   # invoked from skill prose at runtime, so dead-script reachability is a false
   # positive for these test entrypoints.
