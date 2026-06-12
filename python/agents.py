@@ -1330,6 +1330,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         os.environ["CODEX_HOME"] = home
         state = external_serial_lock_acquire("codex")
         external_serial_lock_release_after(state)
+        start = time.time()
         try:
             events = output.with_suffix(output.suffix + ".events.jsonl")
             sidecar = output.with_suffix(output.suffix + ".sidecar")
@@ -1348,9 +1349,33 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
                 os.environ.pop("CODEX_HOME", None)
             else:
                 os.environ["CODEX_HOME"] = env_old
+        end = time.time()
         events = output.with_suffix(output.suffix + ".events.jsonl")
         if not events.is_file() or events.stat().st_size == 0:
             _write(events, "{}\n")
+        proc.run(
+            [
+                sys.executable,
+                str(_PY_CLI),
+                "timing",
+                "record-vendor-task",
+                "--vendor",
+                "codex",
+                "--task-kind",
+                args.timing_task_kind,
+                "--start-s",
+                str(int(start)),
+                "--end-s",
+                str(int(end)),
+                "--output",
+                str(output),
+                "--exit-code",
+                str(launcher_exit),
+                "--status",
+                "complete" if launcher_exit == 0 else "signal",
+            ],
+            check=False,
+        )
         _record_usage_from_events(events, output.with_suffix(output.suffix + ".sidecar"), args.usage_label, output.with_suffix(output.suffix + ".token-record"))
         _append(
             output.with_suffix(output.suffix + ".meta"),
