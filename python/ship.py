@@ -183,6 +183,7 @@ def _step_result_to_ship(
     pr_number: int | None = None,
     pr_url: str = "",
     merge_result: str = "",
+    default_ledger_phase: str = "ci-merge",
 ) -> ShipResult:
     reason = ""
     detail = step.detail
@@ -209,20 +210,30 @@ def _step_result_to_ship(
     ledger_phase = ""
     ledger_dispatcher = "ship-pr"
     ledger_exit_code: int | None = None
+    ledger_failure_detail_log = ""
     ledger_triggers = {
         config.NEEDS_USER_CI_FIX_EXHAUSTED,
         config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
         config.NEEDS_USER_LOCAL_UNFIXABLE,
         config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
     }
-    if step.outcome is Outcome.NEEDS_USER_INPUT and (
+    if step.ledger_ready:
+        ledger_ready = True
+        ledger_site = step.ledger_site
+        ledger_trigger = step.ledger_trigger or reason
+        ledger_step = step.ledger_step
+        ledger_phase = step.ledger_phase or default_ledger_phase
+        ledger_dispatcher = step.ledger_dispatcher or ledger_dispatcher
+        ledger_exit_code = step.ledger_exit_code
+        ledger_failure_detail_log = step.ledger_failure_detail_log
+    elif step.outcome is Outcome.NEEDS_USER_INPUT and (
         reason in ledger_triggers or reason.startswith(f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:")
     ):
         ledger_ready = True
         ledger_site = "ship-pr"
         ledger_trigger = reason
         ledger_step = "8"
-        ledger_phase = "ci-merge"
+        ledger_phase = default_ledger_phase
         ledger_exit_code = config.OUTCOME_EXIT_MAP[Outcome.NEEDS_USER_INPUT]
     return ShipResult(
         step.outcome,
@@ -239,6 +250,7 @@ def _step_result_to_ship(
         ledger_phase=ledger_phase,
         ledger_dispatcher=ledger_dispatcher if ledger_ready else "",
         ledger_exit_code=ledger_exit_code,
+        ledger_failure_detail_log=ledger_failure_detail_log,
     )
 
 
@@ -1518,6 +1530,7 @@ def run_ship(
                     failed_run_id=monitor.failed_run_id or "",
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
+                    default_ledger_phase="ci-initial",
                 )
             if monitor.action not in {"merge", "already_merged"}:
                 if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:

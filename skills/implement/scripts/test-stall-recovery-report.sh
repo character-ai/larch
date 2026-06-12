@@ -1518,6 +1518,83 @@ assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-compose.ou
 assert_contains '[Bug] /implement escalation: lint fix loop missed retry path' "$(cat "$dir/out.md")" "23: compose-report root-caused title"
 assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
 
+dir=$(make_tmp case23-ledger-only)
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=ledger only success report
+
+Observation: escalation ledger exists without a terminal classifier.
+EOF
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=ledger only success report
+
+Bounded larch-only finding.
+EOF
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case23-ledger-only-record.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site ship-pr --trigger first-fixer-non-health --step 8 --phase ci-initial --dispatcher ship-pr --exit-code 3
+run_capture "$SANDBOX/case23-ledger-only-compose.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
+assert_eq 0 "$RC" "23: escalation-success composes without classification"
+assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-ledger-only-compose.out")" "23: ledger-only report prints"
+
+for token in adopted-issue-closed adopted-issue-is-pr all-vendors-failed branch-create-failed ci-fix-exhausted design-flaw escalate first-fixer-non-health fix-attempts-exhausted local-unfixable review-required ship-pr-internal-lint-fix ci-timeout ci-status-error ci-too-many-rebases main-agent-required coder-main-agent-required main-agent-vote-required; do
+    dir=$(make_tmp "case23-token-$token")
+    write_state "$dir" 8 ci-initial "$token"
+    run_capture "$SANDBOX/case23-token-$token.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+    assert_eq "$token" "$(kv BAIL_REASON "$SANDBOX/case23-token-$token.out")" "23: bail token renders $token"
+done
+dir=$(make_tmp case23-token-compound)
+write_state "$dir" 8 ci-initial "ci-local-unfixable:lint_1,test-2"
+run_capture "$SANDBOX/case23-token-compound.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq "ci-local-unfixable:lint_1,test-2" "$(kv BAIL_REASON "$SANDBOX/case23-token-compound.out")" "23: ci-local compound renders"
+write_state "$dir" 8 ci-initial "ci-local-unfixable:../../secret"
+run_capture "$SANDBOX/case23-token-compound-bad.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq redacted "$(kv BAIL_REASON "$SANDBOX/case23-token-compound-bad.out")" "23: ci-local unsafe suffix redacts"
+
+dir=$(make_tmp case23-sensitive-shapes)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+printf 'CLIENT_URL=https://client.example.test/private
+' >"$dir/stall-recovery-sensitive-corpus.env"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop referenced https://client.example.test/private
+
+Bounded finding.
+EOF
+run_capture "$SANDBOX/case23-sensitive-value.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive KEY=value extraction rejects bounded prose"
+cat >"$dir/stall-recovery-bounded-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=lint fix loop referenced an absolute path
+
+Bounded finding at /Users/example/project/file.txt.
+EOF
+run_capture "$SANDBOX/case23-sensitive-path.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: sensitive shape rejects absolute paths"
+
+dir=$(make_tmp case23-path-confinement)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+outside="$SANDBOX/outside-ledger.tsv"
+printf 'utc=now\tsite=step5\ttrigger=main-agent-required
+' >"$outside"
+run_capture "$SANDBOX/case23-path-confinement.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --escalation-ledger-file "$outside" --output-file "$dir/out.md"
+assert_eq 1 "$RC" "23: compose-report rejects outside ledger path"
+
 dir=$(make_tmp case23-operator)
 cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env" 2>/dev/null || cat >"$dir/stall-recovery-classification.env" <<'EOF'
 FAILURE_CLASS=unrecoverable

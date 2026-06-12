@@ -710,6 +710,10 @@ case0b_out=$(printf '%s\n' "$case0b_result" | sed -n '2,$p')
 [[ "$case0b_rc" == "0" ]] || fail "case0b expected rc 0 (#3207 waterfall to main-agent), got $case0b_rc"
 assert_contains "$case0b_out" 'LINT_FIX_STATUS=main-agent-required' "case0b waterfalls to main-agent (#3207)"
 assert_contains "$case0b_out" 'FAILURE_REASON=dispatch-failed' "case0b retains dispatch-failed diagnostic"
+assert_contains "$case0b_out" 'LINT_FIX_LEDGER_READY=true' "case0b emits ledger-ready KV"
+assert_contains "$case0b_out" 'LINT_FIX_LEDGER_SITE=step3' "case0b emits ledger site"
+assert_contains "$case0b_out" 'LINT_FIX_LEDGER_TRIGGER=main-agent-required' "case0b emits ledger trigger"
+assert_contains "$case0b_out" 'LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop' "case0b emits ledger dispatcher"
 case0b_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0b_out")
 [[ -s "$case0b_run_dir/codex.log.events.jsonl" ]] || fail "case0b expected codex.log.events.jsonl despite failure"
 grep -Fq 'RAW=codex_lint_fix' "$case0b_run_dir/codex.log.token-record" \

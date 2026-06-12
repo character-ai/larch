@@ -579,9 +579,9 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|ci-fix-exhausted|dirty-state-after-timeout|dirty-tree|first-fixer-non-health|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|recovery-out-of-scope|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure|\
+        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|interactive-subprocess-unsupported|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|submodule-edit-required-out-of-scope|\
-        local-unfixable|checks-failed|checks-timeout|ci-local-unfixable|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required)
+        local-unfixable|checks-failed|checks-timeout|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required)
             printf '%s\n' "$1"
             ;;
         ci-local-unfixable:*)
@@ -614,7 +614,7 @@ safe_site_value() {
 
 safe_trigger_value() {
     case "${1:-}" in
-        main-agent-required|coder-main-agent-required|main-agent-vote-required|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ship-pr-internal-lint-fix|lint-fix-main-agent-required|step2-impl|step8-shippr|dispatch-failed) printf '%s\n' "$1" ;;
+        main-agent-required|coder-main-agent-required|main-agent-vote-required|fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ship-pr-internal-lint-fix|lint-fix-main-agent-required|step2-impl|step8-shippr|dispatch-failed) printf '%s\n' "$1" ;;
         ci-local-unfixable:*)
             if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^ci-local-unfixable:[A-Za-z0-9_,-]+$'; then
                 printf '%s\n' "$1"
@@ -668,7 +668,7 @@ cmd_classify() {
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local finalize_stall_step="" finalize_phase="" finalize_stall_tracking="" finalize_bail_reason="" finalize_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
-    local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig evidence_digest matched_pattern classification_file classification_content dispatcher
+    local stall_step phase stall_tracking bail_reason bail_reason_raw exit_code failure_class signature resume_hint last_sig evidence_digest matched_pattern classification_file classification_content dispatcher failure_detail_log_value
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -725,6 +725,7 @@ cmd_classify() {
     stall_step=$(first_nonempty "$stall_step_arg" "$state_stall_step" "$finalize_stall_step" "$session_stall_step")
     phase=$(first_nonempty "$phase_arg" "$state_phase" "$finalize_phase" "$session_phase")
     bail_reason=$(first_nonempty "$bail_arg" "$state_bail_reason" "$finalize_bail_reason" "$session_bail_reason")
+    bail_reason_raw=${bail_reason%%$'\n'*}
     exit_code=$(first_nonempty "$state_exit_code" "$finalize_exit_code" "$session_exit_code")
     stall_tracking=false
     if truthy "$in_memory"; then
@@ -740,6 +741,7 @@ cmd_classify() {
     if [ -n "$detail_log" ]; then
         if evidence=$(read_validated_failure_detail_log "$tmpdir" "$detail_log"); then
             detail_log_valid=true
+            failure_detail_log_value=$detail_log
         fi
     fi
     if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$state_file" "ship-pr-state.sh"; then
@@ -793,6 +795,8 @@ STALL_STEP=$(safe_step_value "$stall_step")
 PHASE=$(safe_phase_value "$phase")
 STALL_TRACKING=$stall_tracking
 BAIL_REASON=$(safe_bail_reason_value "$bail_reason")
+BAIL_REASON_RAW=$bail_reason_raw
+FAILURE_DETAIL_LOG=$failure_detail_log_value
 EXIT_CODE=$exit_code
 MATCHED_CLASSIFIER_PATTERN=$matched_pattern
 DISPATCHER=$dispatcher
@@ -1431,7 +1435,7 @@ safe_title_summary() {
 }
 
 sensitive_token_rejects_file() {
-    local sensitive_file=$1 candidate_file=$2 token
+    local sensitive_file=$1 candidate_file=$2 token value
     [ -f "$sensitive_file" ] || return 1
     while IFS= read -r token || [ -n "$token" ]; do
         case "$token" in
@@ -1441,8 +1445,55 @@ sensitive_token_rejects_file() {
         if grep -Fq -- "$token" "$candidate_file"; then
             return 0
         fi
+        case "$token" in
+            *=*)
+                value=${token#*=}
+                case "$value" in
+                    ""|[A-Za-z0-9_-]|[A-Za-z0-9_-][A-Za-z0-9_-]) ;;
+                    *)
+                        if grep -Fq -- "$value" "$candidate_file"; then
+                            return 0
+                        fi
+                        ;;
+                esac
+                ;;
+        esac
     done <"$sensitive_file"
+    if grep -Eq 'https?://|git@github\.com:|github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' "$candidate_file"; then
+        return 0
+    fi
+    if grep -Eq "(^|[[:space:]\`(])/(Users|home|private|tmp|var|Volumes)/[^[:space:]\`)]+" "$candidate_file"; then
+        return 0
+    fi
+    if grep -Eq '(^|[[:space:]])[A-Z][A-Z0-9_]{2,}=[^[:space:]]{3,}' "$candidate_file"; then
+        return 0
+    fi
     return 1
+}
+
+validate_optional_tmpdir_read_file() {
+    local tmpdir=$1 path=$2 flag_name=$3
+    local dir base real_dir real_path tmp_real
+    [ -n "$path" ] || return 0
+    case "$path" in
+        /*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name must be absolute"; return 1 ;;
+    esac
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    [ -d "$dir" ] || { larch_err "stall-recovery-report.sh: $flag_name parent directory missing"; return 1; }
+    real_dir=$(canonical_dir "$dir") || { larch_err "stall-recovery-report.sh: $flag_name parent directory not canonical"; return 1; }
+    tmp_real=$(canonical_dir "$tmpdir") || { larch_err "stall-recovery-report.sh: --implement-tmpdir directory not canonical"; return 1; }
+    real_path="$real_dir/$base"
+    case "$real_path" in
+        "$tmp_real"/*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name outside implement tmpdir"; return 1 ;;
+    esac
+    [ -e "$path" ] || return 0
+    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
+    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
+    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+    return 0
 }
 
 append_file_if_readable() {
@@ -1519,7 +1570,7 @@ compose_tier_a_issue() {
     local class step bail
     class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
     step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "")")
-    bail=$(kv_get "$class_file" BAIL_REASON "")
+    bail=$(first_nonempty "$(kv_get "$class_file" BAIL_REASON_RAW "")" "$(kv_get "$class_file" BAIL_REASON "")")
     [ -n "$bail" ] || bail=none
     printf '### %s\n\n' "$title"
     printf '## Report metadata\n\n'
@@ -1528,7 +1579,7 @@ compose_tier_a_issue() {
     printf -- "- **Step**: \`%s\`\n" "$step"
     printf -- "- **Bail reason**: \`%s\`\n" "$bail"
     printf -- "- **Run ID**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/parent-issue.md" RUN_ID "")" "unknown")"
-    printf -- "- **Branch**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/session-env.sh" BRANCH "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH "")" "unknown")"
+    printf -- "- **Branch**: \`%s\`\n" "$(first_nonempty "$(kv_get "$tmpdir/session-env.sh" BRANCH_NAME "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH_NAME "")" "$(kv_get "$tmpdir/session-env.sh" BRANCH "")" "$(kv_get "$tmpdir/ship-pr-state.sh" BRANCH "")" "unknown")"
     printf -- "- **PR URL**: \`%s\`\n\n" "$(first_nonempty "$(kv_get "$tmpdir/ship-pr-state.sh" PR_URL "")" "$(kv_get "$tmpdir/finalize-state.sh" PR_URL "")" "unknown")"
     append_file_if_readable "Root-cause finding" "$root_file"
     printf '\n## Attempts\n\n'
@@ -1581,9 +1632,28 @@ cmd_compose_report() {
             chat-print) out_file="$tmpdir/$DEFAULT_CHAT_PRINT" ;;
         esac
     fi
+    if [ "$kind" = escalation-success ] && [ ! -e "$class_file" ]; then
+        validate_tmpdir_write_file "$tmpdir" "$class_file" "--classification-file" false || exit 1
+        atomic_write_text "$class_file" "FAILURE_CLASS=unrecoverable
+FAILURE_SIGNATURE=$(printf '%s' escalation-success | hash_text)
+RESUME_HINT=none
+STALL_STEP=unknown
+PHASE=unknown
+STALL_TRACKING=false
+BAIL_REASON=
+EXIT_CODE=unknown
+MATCHED_CLASSIFIER_PATTERN=no-stall
+DISPATCHER=unknown
+" || exit 1
+    fi
     validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
     if [ -f "$attempts_file" ]; then validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1; else atomic_write_text "$attempts_file" "version=1\ncreated_utc=$(now_utc)\nattempt_count=0\n" || exit 1; fi
     validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
+    validate_optional_tmpdir_read_file "$tmpdir" "$ledger" "--escalation-ledger-file" || exit 1
+    validate_optional_tmpdir_read_file "$tmpdir" "$fallback" "--escalation-fallback-file" || exit 1
+    validate_optional_tmpdir_read_file "$tmpdir" "$marker" "--record-failure-marker" || exit 1
+    validate_optional_tmpdir_read_file "$tmpdir" "$title_file" "--title-file" || exit 1
+    validate_tmpdir_local_file "$tmpdir" "$root_file" "--root-cause-file" || exit 1
     validate_root_cause_artifact "$root_file" || exit 1
     verdict=$(parse_root_cause_file "$root_file" verdict "")
     summary=$(parse_root_cause_file "$root_file" summary "")
@@ -1613,6 +1683,7 @@ cmd_compose_report() {
         tier=B
         status=printed
         validate_tmpdir_local_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" || exit 1
+        validate_tmpdir_local_file "$tmpdir" "$bounded_file" "--bounded-root-cause-file" || exit 1
         validate_root_cause_artifact "$bounded_file" || exit 1
         if sensitive_token_rejects_file "$sensitive_file" "$bounded_file"; then
             rm -f "$raw_file"
@@ -1704,6 +1775,43 @@ tsv_allowlist_lines() {
     awk 'NR > 1 { print $1 "\t" $2 "\t" $3 "\t" $4 }' "$ALLOWLIST_TSV"
 }
 
+runtime_bail_token_lines() {
+    {
+        awk -F'"' '/emit_kv BAIL_REASON "/ { print $2 }' "$SCRIPTS_DIR/ci-decide.sh"
+        python3 - <<PY
+import sys
+sys.path.insert(0, "$PLUGIN_ROOT/python")
+import config
+for token in config.NEEDS_USER_REASON_TOKENS:
+    print(token)
+PY
+        printf '%s\n' design-flaw escalate all-vendors-failed
+    } | awk 'NF && !seen[$0]++ { print }'
+}
+
+lint_runtime_bail_tokens() {
+    local token safe compound_safe compound_bad
+    while IFS= read -r token || [ -n "$token" ]; do
+        case "$token" in
+            ci-local-unfixable)
+                compound_safe=$(safe_bail_reason_value "ci-local-unfixable:job_1,job-2")
+                compound_bad=$(safe_bail_reason_value "ci-local-unfixable:../../secret")
+                if [ "$compound_safe" != "ci-local-unfixable:job_1,job-2" ] || [ "$compound_bad" != redacted ]; then
+                    larch_err "stall-recovery-report.sh: ci-local-unfixable compound grammar drift"
+                    return 1
+                fi
+                ;;
+            *)
+                safe=$(safe_bail_reason_value "$token")
+                if [ "$safe" != "$token" ]; then
+                    larch_err "stall-recovery-report.sh: runtime bail token not render-safe: $token"
+                    return 1
+                fi
+                ;;
+        esac
+    done < <(runtime_bail_token_lines)
+}
+
 cmd_lint() {
     local tmpdir tsv code doc retry_doc retry_code
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/larch-stall-recovery-lint.XXXXXX")
@@ -1734,6 +1842,7 @@ cmd_lint() {
         diff -u "$retry_doc" "$retry_code" >&2 || true
         exit 1
     fi
+    lint_runtime_bail_tokens || exit 1
     emit_kv LINT_OK true
 }
 

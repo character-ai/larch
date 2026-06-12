@@ -4,6 +4,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SCRIPT="$SCRIPT_DIR/ci-decide.sh"
+REPORT="$SCRIPT_DIR/../skills/implement/scripts/stall-recovery-report.sh"
 pass=0
 fail=0
 
@@ -37,6 +38,42 @@ assert_eq fix-attempts-exhausted "$(kv BAIL_REASON "$tmp/fixes.out")" "fix cap t
 
 run_case error --status error --behind 0 --iteration 0 --rebase-count 0 --fix-attempts 0
 assert_eq ci-status-error "$(kv BAIL_REASON "$tmp/error.out")" "ci-status error emits report-safe token"
+
+for token in ci-timeout ci-too-many-rebases fix-attempts-exhausted ci-status-error; do
+    dir="$tmp/report-$token"
+    mkdir -p "$dir"
+    cat >"$dir/ship-pr-state.sh" <<EOF
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=10
+BAIL_REASON=$token
+EXIT_CODE=3
+EOF
+    "$REPORT" classify --implement-tmpdir "$dir" >"$dir/classify.out"
+    assert_eq "$token" "$(kv BAIL_REASON "$dir/classify.out")" "stall report accepts $token"
+done
+
+dir="$tmp/report-ci-local"
+mkdir -p "$dir"
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=10
+BAIL_REASON=ci-local-unfixable:lint_1,test-2
+EXIT_CODE=3
+EOF
+"$REPORT" classify --implement-tmpdir "$dir" >"$dir/classify.out"
+assert_eq "ci-local-unfixable:lint_1,test-2" "$(kv BAIL_REASON "$dir/classify.out")" "stall report accepts ci-local compound suffix"
+
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=10
+BAIL_REASON=ci-local-unfixable
+EXIT_CODE=3
+EOF
+"$REPORT" classify --implement-tmpdir "$dir" >"$dir/bare.out"
+assert_eq redacted "$(kv BAIL_REASON "$dir/bare.out")" "stall report rejects bare ci-local token"
 
 printf '\nResults: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

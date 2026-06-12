@@ -260,6 +260,27 @@ if [[ "$rc" -eq 2 ]]; then pass "step5: conventional plan.txt missing exits 2 ev
 assert_contains "$out" "plan file not found at conventional path" "step5 emits conventional-path error"
 [[ ! -f "$argv_file" ]] || fail "review helper should not run when plan.txt missing"
 
+echo "=== main-agent-vote-required emits ledger KVs ==="
+MAV_SPY="$TMP/review-mav-spy.sh"
+cat > "$MAV_SPY" <<'EOF'
+#!/usr/bin/env bash
+printf 'STEP5_REVIEW_STATUS=main-agent-vote-required\n'
+printf 'needs main vote\n' >&2
+exit 7
+EOF
+chmod +x "$MAV_SPY"
+case_dir="$TMP/mav-ledger"
+make_tmpdir "$case_dir" default true false
+set +e
+out="$(RUN_STEP5_REVIEW_SH="$MAV_SPY" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>/dev/null)"
+rc=$?
+set -e
+if [[ "$rc" -eq 7 ]]; then pass "step5 MAV preserves downstream rc"; else fail "step5 MAV rc=$rc"; fi
+assert_contains "$out" "STEP5_REVIEW_LEDGER_READY=true" "step5 MAV emits ledger ready"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_SITE=step5-mav" "step5 MAV emits ledger site"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_TRIGGER=main-agent-vote-required" "step5 MAV emits ledger trigger"
+assert_contains "$out" "STEP5_REVIEW_LEDGER_DISPATCHER=run-step5-review" "step5 MAV emits ledger dispatcher"
+
 echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"
 make_tmpdir "$case_dir" default true false

@@ -37,6 +37,6 @@ Before any CI handoff to Main Claude edits, the orchestrator records one escalat
 - `ship-pr` / `local-unfixable`
 - `ship-pr-internal` / `ship-pr-internal-lint-fix`
 
-Python and bash ship-pr helpers emit ledger-ready data for those handoffs. They do not append duplicate ledger rows. Python ledger-ready data stays inside the single JSON stdout object under `ledger_ready`, `ledger_site`, `ledger_trigger`, `ledger_step`, `ledger_phase`, `ledger_dispatcher`, `ledger_exit_code`, and `ledger_failure_detail_log`.
+Python and bash ship-pr helpers emit ledger-ready data for those handoffs. They do not append duplicate ledger rows. Python ledger-ready data stays inside the single JSON stdout object under `ledger_ready`, `ledger_site`, `ledger_trigger`, `ledger_step`, `ledger_phase`, `ledger_dispatcher`, `ledger_exit_code`, and `ledger_failure_detail_log`. Bash opt-in emits matching stdout KVs as `SHIP_PR_LEDGER_READY`, `SHIP_PR_LEDGER_SITE`, `SHIP_PR_LEDGER_TRIGGER`, `SHIP_PR_LEDGER_STEP`, `SHIP_PR_LEDGER_PHASE`, `SHIP_PR_LEDGER_DISPATCHER`, `SHIP_PR_LEDGER_EXIT_CODE`, and `SHIP_PR_LEDGER_FAILURE_DETAIL_LOG`.
 
 For ship-pr-internal lint-fix `main-agent-required` at Step 6, the helper returns before `run_recovery_waterfall` or CI repair edits. The handoff return leaves all `STALL_TRACKING` layers false, records escalation first, allows the narrow Step-3-style Main Claude repair, and then re-invokes Step 8+. Exhausted and non-handoff `STALL_STEP=6` paths keep the no-edit rule. Clean retries, reships, and health-only paths do not record escalation events.

@@ -13,7 +13,7 @@ PYTHON ?= python3
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-auto-fix-plan-commands test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
-.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
+.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
 .PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-step-18b-final-report
 .PHONY: test-design-pause-resume
@@ -83,7 +83,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: test-implement-bootstrap
 
-test-harnesses-2: test-findings-classification test-classify-bump test-check-main-sync test-trailer-helpers test-ci-failed-jobs test-deny-edit-write test-hook-progress-report test-audit-edit-write test-gather-context test-orchestrator-scope-sync
+test-harnesses-2: test-findings-classification test-classify-bump test-check-main-sync test-trailer-helpers test-ci-failed-jobs test-ci-decide test-deny-edit-write test-hook-progress-report test-audit-edit-write test-gather-context test-orchestrator-scope-sync
 
 test-harnesses-3: test-check-reviewers test-launch-claude-ci test-implement-review-token-propagation test-ship-pr-rebase test-redact-tmpdir-paths test-generate-code-flow-diagram test-git-push test-implement-cleanup-script test-quick-mode-docs-sync test-implement-rebase-macro
 
@@ -372,6 +372,9 @@ test-ci-status:
 
 test-ci-behind-count:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-behind-count.sh
+
+test-ci-decide:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-ci-decide.sh
 
 test-merge-pr:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-merge-pr.sh

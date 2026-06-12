@@ -849,6 +849,14 @@ run_checks_phase() {
             *)
                 # failed, main-agent-required, or empty — fall through to stall.
                 printf 'ship-pr checks: lint fix %s (attempt %d/3, rc=%s), stalling.\n' "${fix_status:-unknown}" "$lint_attempt" "${fix_rc:-unknown}"
+                if [ "$fix_status" = "main-agent-required" ]; then
+                    local detail_log
+                    detail_log=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=/ { print substr($0, index($0,"=")+1); exit }')
+                    [ -n "$detail_log" ] || detail_log=$redacted_log
+                    state_set_many BAIL_REASON ship-pr-internal-lint-fix BAIL_FAILURE_DETAIL_LOG "$detail_log" STALL_TRACKING false STALL_STEP "" EXIT_CODE 3
+                    emit_ship_pr_ledger_ready ship-pr-internal-lint-fix ci-initial "$detail_log"
+                    exit 3
+                fi
                 break
                 ;;
         esac
@@ -1266,7 +1274,7 @@ needs_user_bail_reason() {
 emit_ship_pr_ledger_ready() {
     local reason=$1 phase=${2:-ci-merge} detail_log=${3:-}
     case "$reason" in
-        ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
+        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ci-local-unfixable:*|ship-pr-internal-lint-fix)
             printf 'SHIP_PR_LEDGER_READY=true\n'
             printf 'SHIP_PR_LEDGER_SITE=ship-pr\n'
             printf 'SHIP_PR_LEDGER_TRIGGER=%s\n' "$reason"
@@ -1941,6 +1949,7 @@ _verify_failed_jobs_locally() {
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
         state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
 
@@ -2041,6 +2050,7 @@ run_per_job_local_fix_loop() {
         done
         sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
         state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        emit_ship_pr_ledger_ready "ci-local-unfixable:${sanitized}" "$phase" "$detail_file"
         exit 3
     fi
     return 0
@@ -2244,6 +2254,7 @@ run_evaluate_failure() {
             esac
         fi
         if [ "$(read_state BAIL_REASON)" = "first-fixer-non-health" ]; then
+            emit_ship_pr_ledger_ready first-fixer-non-health "$phase" "$(read_state BAIL_FAILURE_DETAIL_LOG)"
             exit 3
         fi
         _fix_attempt=$(( _fix_attempt + 1 ))

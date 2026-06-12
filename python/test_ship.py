@@ -2539,6 +2539,38 @@ def test_needs_user_ship_result_includes_ledger_ready_keys() -> None:
     assert data["ledger_exit_code"] == config.EXIT_NEEDS_USER_INPUT
     assert "ledger_failure_detail_log" in data
 
+
+def test_step_result_ledger_handoff_overrides_ship_defaults(tmp_path: Path) -> None:
+    detail_log = tmp_path / "checks.redacted.log"
+    _ = detail_log.write_text("lint failed\n", encoding="utf-8")
+    step = StepResult(
+        Outcome.NEEDS_USER_INPUT,
+        config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+        ledger_ready=True,
+        ledger_site="ship-pr-ci-initial",
+        ledger_trigger="main-agent-required",
+        ledger_step="8",
+        ledger_phase="ci-initial",
+        ledger_dispatcher="lint-fix-loop",
+        ledger_exit_code=config.EXIT_NEEDS_USER_INPUT,
+        ledger_failure_detail_log=str(detail_log),
+    )
+    data = ship._step_result_to_ship(step).to_json_dict()  # pyright: ignore[reportPrivateUsage]
+    assert data["needs_user_reason"] == config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX
+    assert data["ledger_ready"] is True
+    assert data["ledger_site"] == "ship-pr-ci-initial"
+    assert data["ledger_phase"] == "ci-initial"
+    assert data["ledger_failure_detail_log"] == str(detail_log)
+
+
+def test_ship_default_ledger_phase_can_follow_active_phase() -> None:
+    result = ship._step_result_to_ship(  # pyright: ignore[reportPrivateUsage]
+        StepResult(Outcome.NEEDS_USER_INPUT, config.NEEDS_USER_CI_FIX_EXHAUSTED),
+        default_ledger_phase="ci-initial",
+    )
+    assert result.ledger_phase == "ci-initial"
+
+
 def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
     detail = f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:job_1,job-2"
     result = ship._step_result_to_ship(StepResult(Outcome.NEEDS_USER_INPUT, detail))

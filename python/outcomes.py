@@ -20,3 +20,11 @@ class StepResult:
     outcome: Outcome
     detail: str = ""
     payload: Any | None = None
+    ledger_ready: bool = False
+    ledger_site: str = ""
+    ledger_trigger: str = ""
+    ledger_step: str = ""
+    ledger_phase: str = ""
+    ledger_dispatcher: str = ""
+    ledger_exit_code: int | None = None
+    ledger_failure_detail_log: str = ""
