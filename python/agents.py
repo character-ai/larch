@@ -61,6 +61,7 @@ _CURSOR_AUTH_MAX_ATTEMPTS = 3
 _MAX_CONTEXT_FILES = 20
 _MAX_CLAUDE_TIMEOUT = 1800
 _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
+_TOML_CLOSED_STRING_DELIMITER_COUNT = 2
 _CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
     "HARD CONSTRAINTS — your role is read-only review. "
     "Do not create, edit, delete, or overwrite files. "
@@ -687,6 +688,13 @@ def _dig(obj: object, *keys: str) -> object:
     return cur
 
 
+def _first_not_none(*values: object | None) -> object | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _has_tokenish(obj: object) -> bool:
     if not isinstance(obj, dict):
         return False
@@ -710,33 +718,39 @@ def _usage_row(obj: dict[str, object]) -> UsageTotals:
     if _has_tokenish(msg_usage) and isinstance(usage, dict) and _has_tokenish(usage):
         ignore_msg = (
             _num(_dig(msg_usage, "input_tokens")) == 0
-            and _num(_dig(msg_usage, "cached_input_tokens") or _dig(msg_usage, "input_tokens_details", "cached_tokens")) == 0
+            and _num(_first_not_none(_dig(msg_usage, "cached_input_tokens"), _dig(msg_usage, "input_tokens_details", "cached_tokens"))) == 0
             and _num(_dig(msg_usage, "output_tokens")) == 0
         )
     input_tokens = _num(
-        (None if ignore_msg else _dig(msg_usage, "input_tokens"))
-        or _dig(obj, "msg", "input_tokens")
-        or _dig(usage, "input_tokens")
-        or _dig(obj, "input_tokens")
-        or 0
+        _first_not_none(
+            None if ignore_msg else _dig(msg_usage, "input_tokens"),
+            None if ignore_msg else _dig(obj, "msg", "input_tokens"),
+            _dig(usage, "input_tokens"),
+            _dig(obj, "input_tokens"),
+            0,
+        )
     )
     cached = _num(
-        (None if ignore_msg else _dig(msg_usage, "cached_input_tokens"))
-        or (None if ignore_msg else _dig(msg_usage, "input_tokens_details", "cached_tokens"))
-        or _dig(obj, "msg", "cached_input_tokens")
-        or _dig(obj, "msg", "input_tokens_details", "cached_tokens")
-        or _dig(usage, "cached_input_tokens")
-        or _dig(usage, "input_tokens_details", "cached_tokens")
-        or _dig(obj, "cached_input_tokens")
-        or _dig(obj, "input_tokens_details", "cached_tokens")
-        or 0
+        _first_not_none(
+            None if ignore_msg else _dig(msg_usage, "cached_input_tokens"),
+            None if ignore_msg else _dig(msg_usage, "input_tokens_details", "cached_tokens"),
+            None if ignore_msg else _dig(obj, "msg", "cached_input_tokens"),
+            None if ignore_msg else _dig(obj, "msg", "input_tokens_details", "cached_tokens"),
+            _dig(usage, "cached_input_tokens"),
+            _dig(usage, "input_tokens_details", "cached_tokens"),
+            _dig(obj, "cached_input_tokens"),
+            _dig(obj, "input_tokens_details", "cached_tokens"),
+            0,
+        )
     )
     output = _num(
-        (None if ignore_msg else _dig(msg_usage, "output_tokens"))
-        or _dig(obj, "msg", "output_tokens")
-        or _dig(usage, "output_tokens")
-        or _dig(obj, "output_tokens")
-        or 0
+        _first_not_none(
+            None if ignore_msg else _dig(msg_usage, "output_tokens"),
+            None if ignore_msg else _dig(obj, "msg", "output_tokens"),
+            _dig(usage, "output_tokens"),
+            _dig(obj, "output_tokens"),
+            0,
+        )
     )
     if cached > input_tokens:
         raise ValueError("cached_tokens exceeds input_tokens; fail-closed")
@@ -754,8 +768,8 @@ def parse_codex_usage_file(events_file: str | Path) -> UsageTotals:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+        except json.JSONDecodeError as exc:
+            raise ValueError("malformed usage event") from exc
         if not isinstance(obj, dict):
             continue
         selected = _has_tokenish(_dig(obj, "msg", "usage")) or _has_tokenish(_dig(obj, "usage")) or (obj.get("type") == "token_usage" and _has_tokenish(obj))
@@ -782,6 +796,8 @@ def parse_codex_usage_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         if "cached_tokens" in str(exc):
             _err("agent parse-codex-usage: cached_tokens exceeds input_tokens; fail-closed")
+        elif "malformed" in str(exc):
+            _err("agent parse-codex-usage: malformed usage event; fail-closed")
         else:
             _err("agent parse-codex-usage: no usage events")
         return 1
@@ -1073,7 +1089,7 @@ def run_external_agent(
     done = output_path.with_suffix(output_path.suffix + os.environ.get("RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX", ".done"))
     meta = output_path.with_suffix(output_path.suffix + ".meta")
     failure_diag = output_path.with_suffix(output_path.suffix + ".failure-diag")
-    for stale in (
+    stale_paths = {
         output_path,
         output_path.with_suffix(output_path.suffix + ".done"),
         output_path.with_suffix(output_path.suffix + ".inner.done"),
@@ -1081,7 +1097,12 @@ def run_external_agent(
         diag,
         output_path.with_suffix(output_path.suffix + ".stderr-tail"),
         failure_diag,
-    ):
+    }
+    if stdout_path is not None:
+        stale_paths.add(Path(stdout_path))
+    if stderr_path is not None:
+        stale_paths.add(Path(stderr_path))
+    for stale in stale_paths:
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1347,7 +1368,7 @@ def external_serial_lock_release_after(state: SerialLockState, delay: float | No
             state.lock_path.rmdir()
 
     timer = Timer(release_delay, release)
-    timer.daemon = True
+    timer.daemon = False
     timer.start()
 
 
@@ -1444,15 +1465,15 @@ def _strip_codex_config(text: str, *, strip_instructions: bool = False) -> str:
         if re.match(r"env_key\s*=\s*['\"]?OPENAI_API_KEY", stripped):
             continue
         if re.match(r"([A-Za-z0-9_-]+\.)*(api_key|openai_api_key)\s*=", stripped):
-            if "'''" in stripped:
+            if "'''" in stripped and stripped.count("'''") < _TOML_CLOSED_STRING_DELIMITER_COUNT:
                 skip_block_delim = "'''"
-            elif '"""' in stripped:
+            elif '"""' in stripped and stripped.count('"""') < _TOML_CLOSED_STRING_DELIMITER_COUNT:
                 skip_block_delim = '"""'
             continue
         if strip_instructions and re.match(r"instructions\s*=", stripped):
-            if "'''" in stripped:
+            if "'''" in stripped and stripped.count("'''") < _TOML_CLOSED_STRING_DELIMITER_COUNT:
                 skip_block_delim = "'''"
-            elif '"""' in stripped:
+            elif '"""' in stripped and stripped.count('"""') < _TOML_CLOSED_STRING_DELIMITER_COUNT:
                 skip_block_delim = '"""'
             continue
         out.append(line)
@@ -1487,16 +1508,116 @@ def _prepare_codex_home(home_dir: Path, *, trusted_instructions_file: str = "") 
     return 0, ""
 
 
-def _write_preflight_bundle(output: Path, timeout: str, launcher_exit: int, failure_reason: str, *, tool: str = "codex") -> None:
+def _ci_failure_source(output: Path) -> Path:
+    for path in (
+        output.with_suffix(output.suffix + ".failure-diag"),
+        output.with_suffix(output.suffix + ".diag"),
+        output.with_suffix(output.suffix + ".sidecar"),
+        output.with_suffix(output.suffix + ".stderr"),
+        output,
+    ):
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    return output.with_suffix(output.suffix + ".diag")
+
+
+def _resolve_execution_issues_log() -> Path | None:
+    if os.environ.get("LARCH_EXECUTION_ISSUES_LOG"):
+        return Path(os.environ["LARCH_EXECUTION_ISSUES_LOG"])
+    if os.environ.get("SESSION_ENV_PATH"):
+        return Path(os.environ["SESSION_ENV_PATH"]).parent / "execution-issues.md"
+    for name in ("IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "REVIEW_TMPDIR"):
+        if os.environ.get(name):
+            return Path(os.environ[name]) / "execution-issues.md"
+    return None
+
+
+def _append_vendor_failure_diagnostics(source: Path, *, site: str, exit_code: int) -> None:
+    tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return
+    root = Path(tmpdir)
+    if not root.is_dir():
+        return
+    parts_dir = root / "vendor-failure-diagnostics.parts"
+    try:
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        cap = int(os.environ.get("LARCH_VENDOR_FAILURE_DIAG_BYTES", "20000") or "20000")
+        body = source.read_text(encoding="utf-8", errors="replace")[:cap] if source.is_file() and source.stat().st_size > 0 else f"no diagnostics captured (exit {exit_code})\n"
+        text = f"===== {site} =====\nexit-code: {exit_code}\n{body.rstrip()}\n"
+        redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
+        fd, _part = tempfile.mkstemp(prefix="part.", dir=str(parts_dir))
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(redacted)
+    except OSError:
+        return
+
+
+def _append_ci_failure(output: Path, *, tool: str, launcher_exit: int, site: str, binary_present: bool = True) -> None:
+    if launcher_exit == 0:
+        return
+    source = _ci_failure_source(output)
+    log = _resolve_execution_issues_log()
+    if log is not None:
+        failure = classify_launch_failure(
+            launcher_exit,
+            source,
+            auth_verdict=external_auth_verdict(tool, source, output),
+            binary_present=binary_present,
+            tool=tool,
+            output_file=output,
+        )
+        proc.run(
+            [
+                sys.executable,
+                str(_PY_CLI),
+                "run-log",
+                "append-failure",
+                "--log",
+                str(log),
+                "--site",
+                site,
+                "--tool",
+                f"{tool}-ci",
+                "--exit-code",
+                str(launcher_exit),
+                "--category",
+                "CI Issues",
+                "--output-file",
+                str(source),
+                "--verdict",
+                failure.reason or failure.failure_class,
+                "--redact",
+            ],
+            check=False,
+        )
+    _append_vendor_failure_diagnostics(source, site=f"{site} {tool}-ci", exit_code=launcher_exit)
+
+
+def _write_preflight_bundle(
+    output: Path,
+    timeout: str,
+    launcher_exit: int,
+    failure_reason: str,
+    *,
+    tool: str = "codex",
+    binary_present: bool = True,
+) -> None:
     _write(output, "")
     _write(output.with_suffix(output.suffix + ".diag"), f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n")
     _write(
         output.with_suffix(output.suffix + ".meta"),
-        f"TOOL=codex\nTIMEOUT={timeout}\nCAPTURE_STDOUT=false\nOUTPUT_FILE={output}\nCMD_JSON=[]\n",
+        f"TOOL={tool}\nTIMEOUT={timeout}\nCAPTURE_STDOUT=false\nOUTPUT_FILE={output}\nCMD_JSON=[]\n",
     )
     _write(output.with_suffix(output.suffix + ".done"), f"{launcher_exit}\n")
     _emit_kv("LAUNCHER_EXIT", launcher_exit)
-    failure = classify_launch_failure(launcher_exit, output.with_suffix(output.suffix + ".diag"), binary_present=True, tool=tool, output_file=output)
+    failure = classify_launch_failure(
+        launcher_exit,
+        output.with_suffix(output.suffix + ".diag"),
+        binary_present=binary_present,
+        tool=tool,
+        output_file=output,
+    )
     _emit_kv("LAUNCHER_FAILURE_CLASS", failure.failure_class)
     _emit_kv("LAUNCHER_FAILURE_REASON", failure.reason or failure_reason)
     _emit_kv("OUTPUT", str(output))
@@ -1799,10 +1920,19 @@ def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
     )
     failure_context = _read_failure_context(args.failure_log)
     role_line = "resolve merge/rebase conflicts" if args.role == "resolve-conflict" else "fix larch /implement CI subwork"
+    if args.role == "resolve-conflict":
+        role_guidance = (
+            "Resolve only the reported merge or rebase conflicts. Inspect each conflict marker, keep the intended behavior from both sides where possible, stage every resolved file, then continue the in-progress rebase with git rebase --continue when applicable. If a nested conflict appears, resolve it the same way and continue again.\n"
+        )
+    else:
+        role_guidance = (
+            "Reproduce the failing check locally when a command is available in the failure log. Prefer the narrowest relevant test or lint command before broader checks. Look for common larch failure patterns: stale sidecars, missing run-log artifacts, retry-classification drift, dirty-tree guards, and shell/Python parity regressions.\n"
+        )
     return (
         f"You are using {tool} to {role_line}.\n"
         "Do not commit. Make focused working-tree edits only.\n"
         "Never spawn persistent interactive subprocess sessions.\n"
+        f"{role_guidance}"
         f"Run id: {args.run_id}\nRepo: {args.repo}\n"
         f"Conflict files: {args.conflict_files}\n"
         f"Plan context:\n{plan_context}\n"
@@ -1844,16 +1974,22 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
     workdir = str(Path.cwd())
     start = time.time()
+    if shutil.which("codex") is None:
+        _write_preflight_bundle(output, args.timeout, 127, "codex binary missing", tool="codex", binary_present=False)
+        _append_ci_failure(output, tool="codex", launcher_exit=127, site="ci fixer", binary_present=False)
+        return 0
     with tempfile.TemporaryDirectory(prefix="larch-codex-ci-home-") as home:
         auth_rc, auth_msg = _prepare_codex_home(Path(home))
         if auth_rc != 0:
             reason = auth_msg or f"codex auth setup failed (exit {auth_rc})"
             _write_preflight_bundle(output, args.timeout, auth_rc, reason)
+            _append_ci_failure(output, tool="codex", launcher_exit=auth_rc, site="ci fixer")
             return 0
         try:
             model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
             _write_preflight_bundle(output, args.timeout, 1, f"model args failed: {exc}")
+            _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
             return 0
         child = [
             "codex",
@@ -1922,6 +2058,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "codex", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
+    _append_ci_failure(output, tool="codex", launcher_exit=result.exit_code, site="ci fixer")
     _emit_ci_launcher_result(output, result.exit_code, tool="codex")
     return 0
 
@@ -1935,10 +2072,10 @@ def _record_cursor_usage_from_output(output: Path, label: str) -> None:
     if not isinstance(usage, dict):
         return
     try:
-        input_tokens = _num(usage.get("inputTokens") or usage.get("input_tokens") or 0)
-        output_tokens = _num(usage.get("outputTokens") or usage.get("output_tokens") or 0)
-        cache_read = _num(usage.get("cacheReadTokens") or usage.get("cache_read_input_tokens") or 0)
-        cache_create = _num(usage.get("cacheWriteTokens") or usage.get("cache_creation_input_tokens") or 0)
+        input_tokens = _num(_first_not_none(usage.get("inputTokens"), usage.get("input_tokens"), 0))
+        output_tokens = _num(_first_not_none(usage.get("outputTokens"), usage.get("output_tokens"), 0))
+        cache_read = _num(_first_not_none(usage.get("cacheReadTokens"), usage.get("cache_read_input_tokens"), 0))
+        cache_create = _num(_first_not_none(usage.get("cacheWriteTokens"), usage.get("cache_creation_input_tokens"), 0))
     except ValueError as exc:
         _append(output.with_suffix(output.suffix + ".sidecar"), f"agent parse-cursor-usage: {exc}\n")
         return
@@ -1956,19 +2093,23 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     ok, rc = _validate_ci_args(args)
     if not ok:
         return rc
+    output = Path(args.output)
+    if shutil.which("cursor") is None:
+        _write_preflight_bundle(output, args.timeout, 127, "cursor binary missing", tool="cursor", binary_present=False)
+        _append_ci_failure(output, tool="cursor", launcher_exit=127, site="ci fixer", binary_present=False)
+        return 0
     verdict = cursor_auth_preflight(caller="agent launch-cursor-ci")
     if not verdict.ok:
         _err(verdict.message)
-        output = Path(args.output)
         _write(output, "")
         _write(output.with_suffix(output.suffix + ".diag"), verdict.message + "\n")
         _compose_failure_diag(output)
         _write(output.with_suffix(output.suffix + ".done"), f"{verdict.rc}\n")
+        _append_ci_failure(output, tool="cursor", launcher_exit=verdict.rc, site="ci fixer")
         _emit_ci_launcher_result(output, verdict.rc, tool="cursor")
         return 0
     cursor_preread_service_token()
     cursor_auth_export_env()
-    output = Path(args.output)
     prompt = f" /max-mode on. Prompt: {_ci_prompt('Cursor', args)}"
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
     model_args = list(resolve_model_args("cursor", with_effort=True).argv)
@@ -2024,6 +2165,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     if result.exit_code == config.EXIT_TIMEOUT:
         _write(output.with_suffix(output.suffix + ".stall.json"), json.dumps({"tool": "cursor", "exit_code": result.exit_code, "timeout": int(args.timeout, 10)}) + "\n")
     _promote_inner_done(output)
+    _append_ci_failure(output, tool="cursor", launcher_exit=result.exit_code, site="ci fixer")
     _emit_ci_launcher_result(output, result.exit_code, tool="cursor")
     return 0
 
@@ -2038,10 +2180,17 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     prompt = _ci_prompt("Claude", args)
     _write(output.with_suffix(output.suffix + ".prompt"), prompt)
+    if shutil.which("claude") is None:
+        _write_preflight_bundle(output, args.timeout, 127, "claude binary missing", tool="claude", binary_present=False)
+        _append_ci_failure(output, tool="claude", launcher_exit=127, site="ci fixer", binary_present=False)
+        return 0
     child = ["claude", "--print", "--output-format", "json", "--model", args.model]
+    start = time.time()
     result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    end = time.time()
     exit_code = result.returncode
     diag_parts: list[str] = []
+    parsed_obj: dict[str, object] | None = None
     if result.stdout and exit_code == 0:
         try:
             obj = json.loads(result.stdout)
@@ -2052,6 +2201,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         else:
             value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
             if isinstance(value, str) and value:
+                parsed_obj = obj
                 _write(output, value)
             elif isinstance(obj, dict) and obj.get("is_error"):
                 exit_code = 1
@@ -2071,7 +2221,33 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         _write(output.with_suffix(output.suffix + ".diag"), redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(diag_parts))))
     if exit_code != 0:
         _compose_failure_diag(output)
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "claude",
+            "--task-kind",
+            args.timing_task_kind or "claude-ci",
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(end)),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(exit_code),
+            "--status",
+            "complete" if exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
+    if parsed_obj is not None:
+        _record_claude_ci_usage(parsed_obj, output, "claude_ci_fix")
     _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
+    _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="ci fixer")
     _emit_ci_launcher_result(output, exit_code, tool="claude")
     return 0
 
@@ -2174,13 +2350,48 @@ def _record_claude_sub_usage(obj: dict[str, object], raw: str) -> None:
     if not isinstance(usage, dict):
         return
     try:
-        input_tokens = _num(usage.get("input_tokens") or usage.get("inputTokens") or 0)
-        output_tokens = _num(usage.get("output_tokens") or usage.get("outputTokens") or 0)
-        cache_read = _num(usage.get("cache_read_input_tokens") or usage.get("cacheReadTokens") or 0)
-        cache_create = _num(usage.get("cache_creation_input_tokens") or usage.get("cacheWriteTokens") or 0)
+        input_tokens = _num(_first_not_none(usage.get("input_tokens"), usage.get("inputTokens"), 0))
+        output_tokens = _num(_first_not_none(usage.get("output_tokens"), usage.get("outputTokens"), 0))
+        cache_read = _num(_first_not_none(usage.get("cache_read_input_tokens"), usage.get("cacheReadTokens"), 0))
+        cache_create = _num(_first_not_none(usage.get("cache_creation_input_tokens"), usage.get("cacheWriteTokens"), 0))
     except ValueError:
         return
     total = input_tokens + output_tokens + cache_read + cache_create
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "token",
+            "record-vendor",
+            "claude_sub",
+            f"input={input_tokens}",
+            f"output={output_tokens}",
+            f"cache_read={cache_read}",
+            f"cache_create={cache_create}",
+            f"total={total}",
+            f"raw={raw}",
+        ],
+        check=False,
+    )
+
+
+def _record_claude_ci_usage(obj: dict[str, object], output: Path, raw: str) -> None:
+    usage = obj.get("usage")
+    if not isinstance(usage, dict):
+        return
+    try:
+        input_tokens = _num(_first_not_none(usage.get("input_tokens"), usage.get("inputTokens"), 0))
+        output_tokens = _num(_first_not_none(usage.get("output_tokens"), usage.get("outputTokens"), 0))
+        cache_read = _num(_first_not_none(usage.get("cache_read_input_tokens"), usage.get("cacheReadTokens"), 0))
+        cache_create = _num(_first_not_none(usage.get("cache_creation_input_tokens"), usage.get("cacheWriteTokens"), 0))
+    except ValueError as exc:
+        _append(output.with_suffix(output.suffix + ".diag"), f"agent parse-claude-usage: {exc}\n")
+        return
+    total = input_tokens + output_tokens + cache_read + cache_create
+    _write(
+        output.with_suffix(output.suffix + ".token-record"),
+        f"TOOL=claude\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={raw}\n",
+    )
     proc.run(
         [
             sys.executable,
@@ -2319,11 +2530,11 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
                 status = "complete"
                 _record_claude_sub_usage(obj, _claude_token_raw(args.timing_task_kind))
             else:
-                exit_code = 1
-                promoted = "CLAUDE_SUBPROCESS_EMPTY_RESULT"
+                exit_code = 99
+                promoted = "CLAUDE_JSON_RESULT_INVALID"
         except json.JSONDecodeError:
-            exit_code = 1
-            promoted = "CLAUDE_SUBPROCESS_MALFORMED_JSON"
+            exit_code = 99
+            promoted = "CLAUDE_JSON_RESULT_INVALID"
     else:
         promoted = raw
     _write(output, promoted)
@@ -2437,7 +2648,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
     else:
         prompt_file = args.prompt_file
     try:
-        forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value]
+        forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value and Path(value).is_file()]
         sub_args = [
             "--model",
             model,

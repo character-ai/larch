@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -229,6 +230,38 @@ def test_parse_codex_usage_nested_usage(tmp_path: Path) -> None:
     assert totals.total_tokens == 19
 
 
+def test_parse_codex_usage_preserves_explicit_zeroes(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text(
+        '{"msg":{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0},'
+        '"input_tokens":99,"cached_input_tokens":88,"output_tokens":77},'
+        '"usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}\n',
+        encoding="utf-8",
+    )
+    totals = agents.parse_codex_usage_file(events)
+    assert totals.input_tokens == 10
+    assert totals.cached_input_tokens == 2
+    assert totals.output_tokens == 3
+
+
+def test_parse_codex_usage_fails_closed_on_malformed_jsonl(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text(
+        '{"type":"token_usage","input_tokens":10,"cached_input_tokens":1,"output_tokens":2}\n'
+        '{"type":"token_usage","input_tokens":1\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="malformed usage event"):
+        agents.parse_codex_usage_file(events)
+
+
+def test_parse_codex_usage_fails_when_usage_stream_has_no_tokens(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    _ = events.write_text('{"type":"token_usage"}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="no usage events"):
+        agents.parse_codex_usage_file(events)
+
+
 def test_parse_codex_usage_fails_when_cached_exceeds_input(tmp_path: Path) -> None:
     events = tmp_path / "events.jsonl"
     _ = events.write_text(
@@ -438,6 +471,29 @@ def test_run_external_agent_args_rejects_timeout_zero(tmp_path: Path, capsys: py
     assert "--timeout must be a positive integer" in capsys.readouterr().err
 
 
+def test_run_external_agent_args_rejects_bad_stderr_sink_without_sidecars(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    rc = agents.run_external_agent_main(
+        [
+            "--tool",
+            "claude",
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+            "--stderr-sink",
+            str(tmp_path / "bad\nsink.log"),
+            "--",
+            sys.executable,
+            "-c",
+            "print('should not run')",
+        ],
+    )
+    assert rc == 1
+    assert not output.with_suffix(output.suffix + ".meta").exists()
+    assert not output.with_suffix(output.suffix + ".done").exists()
+
+
 def test_health_gate_timeout_resolves_session_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", raising=False)
     session = tmp_path / "session-env.sh"
@@ -485,6 +541,36 @@ def test_run_external_agent_health_gate_fast_fails_without_spawn(
     assert result.exit_code == expected_rc
     assert not marker.exists()
     assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == f"{expected_rc}\n"
+
+
+def test_run_external_agent_health_gate_clears_supplied_sidecars(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = tmp_path / "scripts" / "check-reviewers.sh"
+    helper.parent.mkdir()
+    _ = helper.write_text("#!/usr/bin/env bash\nprintf 'CODEX_PRESENT=false\\n'\n", encoding="utf-8")
+    helper.chmod(0o755)
+    output = tmp_path / "codex.out"
+    stdout_path = tmp_path / "events.jsonl"
+    stderr_path = tmp_path / "sidecar.log"
+    _ = stdout_path.write_text("stale usage limit\n", encoding="utf-8")
+    _ = stderr_path.write_text("stale auth error\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT", "1")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv("LARCH_EXTERNAL_HEALTH_GATE_SLEEP_SECONDS", "0")
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=5,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        cmd=[sys.executable, "-c", "print('should not run')"],
+    )
+    assert result.exit_code == 7
+    assert not stdout_path.exists()
+    assert not stderr_path.exists()
 
 
 def test_cursor_auth_prereads_darwin_keychain_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -589,6 +675,89 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     assert home_log.read_text(encoding="utf-8").strip()
 
 
+def test_launch_codex_exec_preflight_missing_trusted_instructions_writes_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("do work", encoding="utf-8")
+    output = tmp_path / "codex.out"
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    rc = agents.launch_codex_exec_main(
+        [
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+            "--prompt-file",
+            str(prompt),
+            "--workdir",
+            str(workdir),
+            "--trusted-instructions-file",
+            str(tmp_path / "missing.txt"),
+        ],
+    )
+    assert rc == 0
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "2\n"
+    assert "trusted-instructions-file not found" in output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+    assert "LAUNCHER_FAILURE_CLASS=other" in capsys.readouterr().out
+
+
+def test_launch_codex_exec_preflight_model_args_writes_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("do work", encoding="utf-8")
+    output = tmp_path / "codex.out"
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "   ")
+    rc = agents.launch_codex_exec_main(
+        [
+            "--output",
+            str(output),
+            "--timeout",
+            "5",
+            "--prompt-file",
+            str(prompt),
+            "--workdir",
+            str(workdir),
+        ],
+    )
+    assert rc == 0
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "1\n"
+    assert "model args failed" in output.with_suffix(output.suffix + ".diag").read_text(encoding="utf-8")
+
+
+def test_prepare_codex_home_merges_trusted_instructions_and_strips_user_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    user_codex = home / ".codex"
+    user_codex.mkdir(parents=True)
+    _ = (user_codex / "config.toml").write_text(
+        "instructions = '''old'''\nmodel_provider = \"openai-larch-env\"\nkeep = true\n",
+        encoding="utf-8",
+    )
+    trusted = tmp_path / "trusted.txt"
+    _ = trusted.write_text("trusted body", encoding="utf-8")
+    codex_home = tmp_path / "codex-home"
+    monkeypatch.setenv("HOME", str(home))
+    rc, msg = agents._prepare_codex_home(codex_home, trusted_instructions_file=str(trusted))  # pylint: disable=protected-access
+    assert (rc, msg) == (0, "")
+    config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+    assert config_text.startswith("instructions = '''\ntrusted body\n'''")
+    assert "old" not in config_text
+    assert "openai-larch-env" not in config_text
+    assert "keep = true" in config_text
+
+
 def test_render_context_files_redacts_and_xml_escapes(tmp_path: Path) -> None:
     ctx = tmp_path / "ctx<&>.txt"
     secret = "sk-" + "A" * 24
@@ -623,6 +792,61 @@ def test_degraded_tools_gate_flag_precedence_and_both_down(capsys: pytest.Captur
     assert "DEGRADED=true" in out
     assert "BOTH_DOWN=true" in out
     assert "CODEX_STATE=binary-missing" in out
+
+
+def test_ci_prompt_includes_role_specific_recovery_guidance(tmp_path: Path) -> None:
+    failure_log = tmp_path / "failure.log"
+    _ = failure_log.write_text("pytest failed", encoding="utf-8")
+    fix_args = argparse.Namespace(
+        role="fix",
+        plan_file="",
+        failure_log=str(failure_log),
+        run_id="run",
+        repo="o/r",
+        conflict_files="",
+    )
+    conflict_args = argparse.Namespace(
+        role="resolve-conflict",
+        plan_file="",
+        failure_log="",
+        run_id="run",
+        repo="o/r",
+        conflict_files="a.py",
+    )
+    assert "Reproduce the failing check locally" in agents._ci_prompt("Codex", fix_args)  # pylint: disable=protected-access
+    conflict_prompt = agents._ci_prompt("Codex", conflict_args)  # pylint: disable=protected-access
+    assert "stage every resolved file" in conflict_prompt
+    assert "git rebase --continue" in conflict_prompt
+
+
+def test_launch_codex_ci_missing_binary_classifies_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    empty_path = tmp_path / "empty-bin"
+    empty_path.mkdir()
+    monkeypatch.setenv("PATH", str(empty_path))
+    output = tmp_path / "codex-ci.out"
+    rc = agents.launch_codex_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "127\n"
+    stdout = capsys.readouterr().out
+    assert "LAUNCHER_FAILURE_CLASS=health" in stdout
+    assert "LAUNCHER_FAILURE_REASON=binary-missing" in stdout
 
 
 def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -661,6 +885,44 @@ def test_launch_claude_ci_uses_stdin_not_prompt_argv(tmp_path: Path, monkeypatch
     assert "You are using Claude" not in argv_log.read_text(encoding="utf-8")
     assert "You are using Claude" in stdin_log.read_text(encoding="utf-8")
     assert output.read_text(encoding="utf-8") == "fixed"
+
+
+def test_launch_claude_ci_records_timing_and_token_sidecars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":4,\"cache_read_input_tokens\":2,\"cache_creation_input_tokens\":1}}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "fix",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+            "--timing-task-kind",
+            "claude-ci-test",
+        ],
+    )
+    assert rc == 0
+    token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert "TOOL=claude" in token_record
+    assert "TOTAL=17" in token_record
 
 
 @pytest.mark.parametrize(
@@ -715,6 +977,12 @@ def test_launch_cursor_ci_auth_preflight_classifies_as_health_auth(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "cursor"
+    _ = cursor.write_text("#!/usr/bin/env bash\nexit 1\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
     monkeypatch.setenv("CURSOR_API_KEY", "")
     monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
@@ -802,6 +1070,40 @@ def test_launch_claude_review_forwards_context_files_to_subprocess(tmp_path: Pat
     assert forwarded == [str(diff), str(plan), str(feature), str(scope)]
 
 
+def test_launch_claude_review_skips_missing_implicit_context_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    prompt = tmp_path / "prompt.md"
+    diff = tmp_path / "review.diff"
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    _ = diff.write_text("diff", encoding="utf-8")
+    output = tmp_path / "claude-review.out"
+    captured: list[str] = []
+
+    def fake_launch(sub_args: list[str]) -> int:
+        captured.extend(sub_args)
+        _ = output.write_text("ok", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(agents, "launch_claude_subprocess_main", fake_launch)
+    rc = agents.launch_claude_review_main(
+        [
+            "--output",
+            str(output),
+            "--prompt-file",
+            str(prompt),
+            "--diff-file",
+            str(diff),
+            "--plan-file",
+            str(tmp_path / "missing-plan.md"),
+            "--feature-file",
+            str(tmp_path / "missing-feature.txt"),
+        ],
+    )
+    assert rc == 0
+    forwarded = [captured[idx + 1] for idx, value in enumerate(captured) if value == "--context-files"]
+    assert forwarded == [str(diff)]
+
+
 def test_launch_claude_subprocess_failure_sidecars_and_clean_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -832,6 +1134,41 @@ def test_launch_claude_subprocess_failure_sidecars_and_clean_dirty_tree(tmp_path
     assert "boom" in output.with_suffix(output.suffix + ".stderr-tail").read_text(encoding="utf-8")
     assert output.with_suffix(output.suffix + ".failure-diag").is_file()
     assert "STATUS=clean" in output.with_suffix(output.suffix + ".dirty-tree").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("payload", ["not-json", '{"is_error":true,"result":"bad"}', '{"result":""}'])
+def test_launch_claude_subprocess_bad_json_envelope_uses_legacy_sentinel(
+    payload: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "cat >/dev/null\n"
+        f"printf '%s\\n' {payload!r}\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    prompt = tmp_path / "prompt.md"
+    _ = prompt.write_text("prompt", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    rc = agents.launch_claude_subprocess_main(
+        [
+            "--prompt-file",
+            str(prompt),
+            "--output-file",
+            str(output),
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 99
+    assert output.read_text(encoding="utf-8") == "CLAUDE_JSON_RESULT_INVALID"
+    assert output.with_suffix(output.suffix + ".done").read_text(encoding="utf-8") == "99\n"
 
 
 def test_cursor_ci_stall_monitor_writes_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,8 +1,10 @@
+# pyright: reportPrivateUsage=false
 """Unit tests for ci_monitor.py (stub Runner; no bash)."""
 
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -82,6 +84,40 @@ class RecordingRunner:
 
 def _cr(argv: Sequence[str], rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
+
+
+def test_available_tiers_tracks_config_order() -> None:
+    assert ci_monitor._available_tiers() == config.FIXER_TIER_ORDER  # pylint: disable=protected-access
+
+
+@pytest.mark.parametrize("tier", config.FIXER_TIER_ORDER)
+def test_default_launch_fn_uses_python_agent_launcher(
+    tier: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    runner = RecordingRunner()
+    runner.prefix_responses.append(
+        ((sys.executable,), _cr((sys.executable,), stdout="LAUNCHER_EXIT=0\n")),
+    )
+    logs = ci_monitor.LogCollectResult(text="", state="ready")
+    launch_fn = ci_monitor._make_default_launch_fn(
+        runner,
+        run_id="run-1",
+        repo="o/r",
+        plan_file=None,
+        logs=logs,
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+    attempt = launch_fn(tier)
+    assert attempt.launcher_exit == 0
+    argv = runner.calls[-1]
+    assert argv[2] == "agent"
+    assert argv[3] == f"launch-{tier}-ci"
+    assert str(tmp_path / f"ci-fix-{tier}.out") in argv
 
 
 def _status(
