@@ -240,6 +240,74 @@ def test_parse_rate_retry_bare_status_and_oos_grammar(tmp_path: Path) -> None:
     assert voter.read_text(encoding="utf-8").startswith("OOS_1: YES")
 
 
+def test_parse_rate_retry_claude_uses_agent_launcher_and_forwards_context(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    py_dir = root / "python"
+    py_dir.mkdir(parents=True)
+    argv_log = tmp_path / "claude-retry-argv.log"
+    cli = py_dir / "cli.py"
+    cli.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        f"Path({str(argv_log)!r}).write_text('\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+        "out = sys.argv[sys.argv.index('--output') + 1]\n"
+        "Path(out).write_text('FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\\n', encoding='utf-8')\n"
+        "Path(out + '.done').write_text('0\\n', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
+    voter = tmp_path / "claude-vote-output.txt"
+    voter.write_text("narrative only\n", encoding="utf-8")
+    prompt = tmp_path / "claude-vote-prompt.txt"
+    prompt.write_text("prompt\n", encoding="utf-8")
+    diff = tmp_path / "review.diff"
+    plan = tmp_path / "plan.md"
+    diff.write_text("diff", encoding="utf-8")
+    plan.write_text("plan", encoding="utf-8")
+    result = run_cli(
+        "voting",
+        "parse-rate-retry",
+        "--ballot-file",
+        str(ballot),
+        "--id-grammar",
+        "finding-only",
+        "--review-tmpdir",
+        str(tmp_path),
+        "--plugin-root",
+        str(root),
+        "--dispatch-label",
+        "dispatch-code-voters.sh",
+        "--retry-prefix-kind",
+        "code",
+        "--launch-mode",
+        "description",
+        "--ctx=--diff-file",
+        "--ctx",
+        str(diff),
+        "--ctx=--plan-file",
+        "--ctx",
+        str(plan),
+        "--slot",
+        "1",
+        "--voter-file",
+        str(voter),
+        "--voter-tool",
+        "claude",
+        "--prompt-file",
+        str(prompt),
+    )
+    assert result.returncode == 0
+    assert result.stdout == "OK\n"
+    argv = argv_log.read_text(encoding="utf-8")
+    assert "agent\nlaunch-claude-review" in argv
+    assert "--diff-file" in argv
+    assert str(diff) in argv
+    assert "--plan-file" in argv
+    assert str(plan) in argv
+    assert voter.read_text(encoding="utf-8").startswith("FINDING_1: YES")
+
+
 def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) -> None:
     root = tmp_path / "root"
     scripts = root / "scripts"

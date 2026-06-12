@@ -61,6 +61,12 @@ _CURSOR_AUTH_MAX_ATTEMPTS = 3
 _MAX_CONTEXT_FILES = 20
 _MAX_CLAUDE_TIMEOUT = 1800
 _DEFAULT_CURSOR_CI_STALL_THRESHOLD = 180
+_CLAUDE_REVIEW_READ_ONLY_PREAMBLE = (
+    "HARD CONSTRAINTS — your role is read-only review. "
+    "Do not create, edit, delete, or overwrite files. "
+    "Do not run Bash, shell, or git commands. "
+    "Use only the explicitly granted read-only tools."
+)
 
 
 @dataclass(frozen=True)
@@ -1121,9 +1127,17 @@ def run_external_agent(
                 if stdout_path is not None:
                     stdout_target = Path(stdout_path).open("wb")  # noqa: SIM115 - child owns descriptor after Popen starts  # pylint: disable=consider-using-with
                     handles.append(stdout_target)
+                elif os.environ.get(config.ENV_LARCH_QUIET_ACTIVE, "").lower() in {"1", "true", "yes", "on"}:
+                    with contextlib.suppress(OSError):
+                        stdout_target = os.fdopen(os.dup(3), "wb", closefd=True)
+                        handles.append(stdout_target)
                 if stderr_path is not None:
                     stderr_target = Path(stderr_path).open("wb")  # noqa: SIM115 - child owns descriptor after Popen starts  # pylint: disable=consider-using-with
                     handles.append(stderr_target)
+                elif os.environ.get(config.ENV_LARCH_QUIET_ACTIVE, "").lower() in {"1", "true", "yes", "on"}:
+                    with contextlib.suppress(OSError):
+                        stderr_target = os.fdopen(os.dup(4), "wb", closefd=True)
+                        handles.append(stderr_target)
             proc_obj = subprocess.Popen(  # pylint: disable=consider-using-with
                 list(cmd),
                 cwd=cwd,
@@ -1778,7 +1792,11 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
 
 
 def _ci_prompt(tool: str, args: argparse.Namespace) -> str:
-    plan_context = _read_text(args.plan_file)[:20000] if args.plan_file else ""
+    plan_context = (
+        redact.redact_secrets_only(redact.redact_tmpdir_paths(_read_text(args.plan_file)[:20000]))
+        if args.plan_file
+        else ""
+    )
     failure_context = _read_failure_context(args.failure_log)
     role_line = "resolve merge/rebase conflicts" if args.role == "resolve-conflict" else "fix larch /implement CI subwork"
     return (
@@ -1916,10 +1934,14 @@ def _record_cursor_usage_from_output(output: Path, label: str) -> None:
     usage = obj.get("usage") if isinstance(obj, dict) else None
     if not isinstance(usage, dict):
         return
-    input_tokens = int(usage.get("inputTokens") or usage.get("input_tokens") or 0)
-    output_tokens = int(usage.get("outputTokens") or usage.get("output_tokens") or 0)
-    cache_read = int(usage.get("cacheReadTokens") or usage.get("cache_read_input_tokens") or 0)
-    cache_create = int(usage.get("cacheWriteTokens") or usage.get("cache_creation_input_tokens") or 0)
+    try:
+        input_tokens = _num(usage.get("inputTokens") or usage.get("input_tokens") or 0)
+        output_tokens = _num(usage.get("outputTokens") or usage.get("output_tokens") or 0)
+        cache_read = _num(usage.get("cacheReadTokens") or usage.get("cache_read_input_tokens") or 0)
+        cache_create = _num(usage.get("cacheWriteTokens") or usage.get("cache_creation_input_tokens") or 0)
+    except ValueError as exc:
+        _append(output.with_suffix(output.suffix + ".sidecar"), f"agent parse-cursor-usage: {exc}\n")
+        return
     total = input_tokens + output_tokens + cache_read + cache_create
     _write(
         output.with_suffix(output.suffix + ".token-record"),
@@ -1937,9 +1959,12 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     verdict = cursor_auth_preflight(caller="agent launch-cursor-ci")
     if not verdict.ok:
         _err(verdict.message)
-        _write(Path(args.output), "")
-        _write(Path(args.output).with_suffix(Path(args.output).suffix + ".done"), f"{verdict.rc}\n")
-        _emit_ci_launcher_result(Path(args.output), verdict.rc, tool="cursor")
+        output = Path(args.output)
+        _write(output, "")
+        _write(output.with_suffix(output.suffix + ".diag"), verdict.message + "\n")
+        _compose_failure_diag(output)
+        _write(output.with_suffix(output.suffix + ".done"), f"{verdict.rc}\n")
+        _emit_ci_launcher_result(output, verdict.rc, tool="cursor")
         return 0
     cursor_preread_service_token()
     cursor_auth_export_env()
@@ -2016,17 +2041,36 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     child = ["claude", "--print", "--output-format", "json", "--model", args.model]
     result = _run_claude_with_stdin(child, prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
     exit_code = result.returncode
-    if result.stdout:
+    diag_parts: list[str] = []
+    if result.stdout and exit_code == 0:
         try:
             obj = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            exit_code = 1
+            _write(output, "CLAUDE_CI_MALFORMED_JSON\n")
+            diag_parts.append(f"Malformed Claude CI JSON: {exc}\n{result.stdout}")
+        else:
             value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
-            _write(output, value if isinstance(value, str) and value else result.stdout)
-        except json.JSONDecodeError:
-            _write(output, result.stdout)
+            if isinstance(value, str) and value:
+                _write(output, value)
+            elif isinstance(obj, dict) and obj.get("is_error"):
+                exit_code = 1
+                _write(output, "CLAUDE_CI_ERROR_RESPONSE\n")
+                diag_parts.append(result.stdout)
+            else:
+                exit_code = 1
+                _write(output, "CLAUDE_CI_EMPTY_RESULT\n")
+                diag_parts.append(result.stdout)
+    elif result.stdout:
+        _write(output, result.stdout)
     else:
         _write(output, "")
     if result.stderr:
-        _write(output.with_suffix(output.suffix + ".diag"), result.stderr)
+        diag_parts.append(result.stderr)
+    if diag_parts:
+        _write(output.with_suffix(output.suffix + ".diag"), redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(diag_parts))))
+    if exit_code != 0:
+        _compose_failure_diag(output)
     _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
     _emit_ci_launcher_result(output, exit_code, tool="claude")
     return 0
@@ -2111,6 +2155,8 @@ def _run_claude_with_stdin(cmd: Sequence[str], prompt: str, *, timeout: float, c
         stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
         stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "claude subprocess timed out\n")
         return CommandResult(tuple(cmd), config.EXIT_TIMEOUT, stdout, stderr, time.time() - start)
+    except FileNotFoundError as exc:
+        return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.time() - start)
 
 
 def _claude_token_raw(timing_task_kind: str) -> str:
@@ -2178,6 +2224,12 @@ def _render_context_files(paths: Sequence[Path], roots: Sequence[Path]) -> tuple
     return 0, "\n\n".join(rendered), ""
 
 
+def _with_claude_read_only_preamble(prompt: str) -> str:
+    if prompt.startswith(_CLAUDE_REVIEW_READ_ONLY_PREAMBLE):
+        return prompt
+    return _CLAUDE_REVIEW_READ_ONLY_PREAMBLE + "\n\n" + prompt
+
+
 def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-subprocess")
@@ -2240,7 +2292,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
         _err(f"agent launch-claude-subprocess: {ctx_msg}")
         return ctx_rc
     prompt = prompt_file.read_text(encoding="utf-8", errors="replace")
-    full_prompt = prompt + ("\n\n" + context_text if context_text else "")
+    full_prompt = _with_claude_read_only_preamble(prompt + ("\n\n" + context_text if context_text else ""))
     cmd = ["claude", "--print", "--output-format", "json", "--model", args.model]
     if args.read_tools:
         cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
@@ -2252,6 +2304,8 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     _write(output.with_suffix(output.suffix + ".meta"), f"TOOL=claude\nTIMEOUT={args.timeout}\nOUTPUT_FILE={output}\nPROMPT_FILE={prompt_sidecar}\nCMD_JSON={_json_array(cmd)}\n")
     start = time.time()
     result = _run_claude_with_stdin(cmd, full_prompt, timeout=float(args.timeout), cwd=str(Path.cwd()))
+    end = time.time()
+    elapsed = int(end - start)
     exit_code = result.returncode
     raw = result.stdout
     promoted = ""
@@ -2275,7 +2329,6 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     _write(output, promoted)
     if result.stderr:
         _write(output.with_suffix(output.suffix + ".stderr"), result.stderr)
-    _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
     if exit_code != 0:
         stderr_file = output.with_suffix(output.suffix + ".stderr")
         if stderr_file.is_file() and stderr_file.stat().st_size > 0:
@@ -2286,6 +2339,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             with contextlib.suppress(FileNotFoundError):
                 stale.unlink()
     _write(output.with_suffix(output.suffix + ".dirty-tree"), "STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n")
+    _write(output.with_suffix(output.suffix + ".done"), f"{exit_code}\n")
     proc.run(
         [
             sys.executable,
@@ -2299,7 +2353,7 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             "--start-s",
             str(int(start)),
             "--end-s",
-            str(int(time.time())),
+            str(int(end)),
             "--output",
             str(output),
             "--exit-code",
@@ -2308,6 +2362,9 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
             status,
         ],
     )
+    _emit_kv("STATUS", "OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
+    _emit_kv("OUTPUT_FILE", str(output))
+    _emit_kv("ELAPSED", elapsed)
     return exit_code
 
 
@@ -2380,6 +2437,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
     else:
         prompt_file = args.prompt_file
     try:
+        forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value]
         sub_args = [
             "--model",
             model,
@@ -2394,7 +2452,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         ]
         if args.read_tools_add_dir:
             sub_args.extend(["--read-tools", "--read-tools-add-dir", args.read_tools_add_dir])
-        for ctx in args.context_files:
+        for ctx in [*args.context_files, *forwarded_contexts]:
             sub_args.extend(["--context-files", ctx, "--allow-root", str(Path(ctx).parent)])
         rc = launch_claude_subprocess_main(sub_args)
         done = Path(args.output).with_suffix(Path(args.output).suffix + ".done")
