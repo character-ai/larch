@@ -2622,14 +2622,10 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     )
     # Emit STATUS based on exit_code (tracks whether JSON promotion succeeded),
     # but return the subprocess's own returncode so callers that check the
-    # launcher exit status (e.g. dispatch-plan-voters.sh) do not mark a
-    # successfully-running subprocess as a launcher failure just because the
-    # JSON envelope was malformed/absent (which is surfaced as NOT_SUBSTANTIVE
-    # by parse-rate-retry, not as a hard voter failure).
     _emit_kv("STATUS", "OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
     _emit_kv("OUTPUT_FILE", str(output))
     _emit_kv("ELAPSED", elapsed)
-    return result.returncode
+    return exit_code
 
 
 def launch_claude_review_main(argv: list[str] | None = None) -> int:

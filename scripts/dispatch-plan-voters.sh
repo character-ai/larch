@@ -201,7 +201,10 @@ fi
 
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
-[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
+# rc=99 means the Python launcher ran but the JSON envelope was malformed/absent;
+# the output file will contain CLAUDE_JSON_RESULT_INVALID which parse-rate-retry
+# classifies as NOT_SUBSTANTIVE — treat it the same as a successful launch.
+[[ ("$voter1_rc" -eq 0 || "$voter1_rc" -eq 99) && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
 
 dispatch_ok="true"
 waterfall_files=""
