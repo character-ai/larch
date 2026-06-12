@@ -573,9 +573,11 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_
     --round-num 3)
 # Static: 3 Cursor only (no Codex); dynamic: 1 Cursor per archetype (no Codex twin).
 grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 3 static slots" >&2; exit 1; }
-# scout-valid4.json has 2 archetypes → 2 dynamic Cursor slots, 0 Codex twins.
-dynamic_count=$(grep -o '"tool":"codex"' "$TMP/dynamic-round3/panel-manifest.ndjson" | wc -l | awk '{print $1}')
-[[ "$dynamic_count" = "0" ]] || { echo "FAIL: round 3 panel manifest must have 0 codex tool entries (got $dynamic_count)" >&2; exit 1; }
+grep -Fq 'DYNAMIC_SLOTS=3' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 3 dynamic slots" >&2; exit 1; }
+grep -Fq 'SLOT_COUNT=6' <<< "$out" || { echo "FAIL: round 3 dynamic test SLOT_COUNT must be 6" >&2; exit 1; }
+# scout-valid4.json is capped to 3 archetypes: 3 dynamic Cursor slots, 0 Codex twins.
+codex_count=$(jq -s '[.[] | select(.tool == "codex")] | length' "$TMP/dynamic-round3/panel-manifest.ndjson")
+[[ "$codex_count" = "0" ]] || { echo "FAIL: round 3 panel manifest must have 0 codex tool entries (got $codex_count)" >&2; exit 1; }
 fi  # end section: core-dynamic
 
 if section_runs reuse; then
