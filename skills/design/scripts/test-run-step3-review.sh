@@ -809,6 +809,7 @@ assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'cap-reach
 echo "=== REASON relay from plan-review-loop stub ==="
 D_REASON="$TMP/reason-relay"
 write_common_inputs "$D_REASON" sketch
+# shellcheck disable=SC2016 # Stub body expands DESIGN_TMPDIR when the generated stub runs.
 stub_reason="$(write_loop_stub "$D_REASON" 'cat >"$DESIGN_TMPDIR/.step3-plan-review-result.env" <<EOF
 LOOP_STATUS=zero-findings-degraded-panel
 ACCEPTED_COUNT=0

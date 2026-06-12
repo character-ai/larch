@@ -499,6 +499,7 @@ echo '=== loop envelope carries REASON=ballot-items-lost ==='
 D_REASON="$TMP/reason-carry"
 write_common "$D_REASON"
 write_ok_stubs "$D_REASON"
+# shellcheck disable=SC2016 # Stub body expands DESIGN_TMPDIR when the generated stub runs.
 round_stub="$(write_round_stub "$D_REASON" 'cat >"$DESIGN_TMPDIR/.step3-review-result.env" <<EOF
 LOOP_STATUS=zero-findings-degraded-panel
 REASON=ballot-items-lost
