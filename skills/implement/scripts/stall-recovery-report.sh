@@ -132,6 +132,10 @@ truthy() {
     esac
 }
 
+stall_recovery_dry_run_requested() {
+    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" || truthy "${DRY_RUN_DECISION:-}"
+}
+
 first_nonempty() {
     local value
     for value in "$@"; do
@@ -1170,7 +1174,7 @@ cmd_bug_body_like() {
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
     validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
-    if truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}"; then
+    if stall_recovery_dry_run_requested; then
         dry_run=true
     fi
     if [ -z "$out_file" ]; then
@@ -1223,7 +1227,7 @@ cmd_issue_input_file() {
     { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } \
         | python3 "$PLUGIN_ROOT/python/cli.py" redact secrets >"$out_file.tmp.$$"
     mv -f "$out_file.tmp.$$" "$out_file"
-    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
+    stall_recovery_dry_run_requested && dry_run=true
     emit_kv INPUT_FILE "$out_file"
     emit_kv DRY_RUN_DECISION "$dry_run"
 }
@@ -2122,7 +2126,7 @@ cmd_dedup_tier_a_report() {
     [ -n "$escalation_file" ] || escalation_file="$tmpdir/$DEFAULT_TIER_A_ESCALATION_SLICE"
     [ -n "$root_file" ] || root_file="$tmpdir/$DEFAULT_TIER_A_ROOT_CAUSE_SLICE"
     validate_tmpdir_local_file "$tmpdir" "$body_file" "--body-file" || exit 1
-    if truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}"; then
+    if stall_recovery_dry_run_requested; then
         emit_kv STALL_RECOVERY_REPORT_STATUS dry-run
         return 0
     fi
@@ -2289,7 +2293,7 @@ ROOT_CAUSE_FILE=$root_file
     fi
     redact_to_file "$raw_file" "$out_file"
     rm -f "$raw_file"
-    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
+    stall_recovery_dry_run_requested && dry_run=true
     emit_kv STALL_RECOVERY_REPORT_KIND "$kind"
     emit_kv STALL_RECOVERY_REPORT_TIER "$tier"
     emit_kv STALL_RECOVERY_REPORT_ARTIFACT "$out_file"

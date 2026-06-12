@@ -198,6 +198,26 @@ printf 'client-secret-token\n' >"$dir/root.md"
 GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: sensitive-token rejection reused"
 
+dir=$(make_case tier-b-missing-corpus)
+rm -f "$dir/stall-recovery-sensitive-corpus.env"
+GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: missing sensitive corpus falls back"
+assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out")" "tier-b: missing sensitive corpus reports unsafe comment"
+
+dir=$(make_case tier-b-missing-validator)
+fake_root="$dir/fake-plugin"
+mkdir -p "$fake_root/scripts"
+cp "$SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
+chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
+GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE
+set +e
+PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" >"$dir/out-validator" 2>"$dir/out-validator.err"
+rc=$?
+set -e
+assert_eq 0 "$rc" "tier-b: missing validator exits 0"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-validator")" "tier-b: missing validator falls back"
+assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-validator")" "tier-b: missing validator reports unsafe comment"
+
 if [ "$FAIL" -ne 0 ]; then
     echo "FAILURES: $FAIL"
     exit 1

@@ -106,10 +106,16 @@ reject_tier_b_comment_if_unsafe() {
     local body_dir sensitive_file
     body_dir=$(dirname "$body_file")
     sensitive_file="$body_dir/stall-recovery-sensitive-corpus.env"
-    if [ -x "$STALL_REPORT_SCRIPT" ] && [ -f "$sensitive_file" ] && [ ! -L "$sensitive_file" ]; then
-        if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file --implement-tmpdir "$body_dir" --candidate-file "$comment_file" --sensitive-corpus-file "$sensitive_file" >/dev/null 2>"$err"; then
-            return 0
-        fi
+    if [ ! -x "$STALL_REPORT_SCRIPT" ]; then
+        echo "file-failure-report-cross-repo.sh: tier-b comment validator unavailable" >"$err"
+        return 0
+    fi
+    if [ ! -f "$sensitive_file" ] || [ -L "$sensitive_file" ] || [ ! -r "$sensitive_file" ]; then
+        echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
+        return 0
+    fi
+    if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file --implement-tmpdir "$body_dir" --candidate-file "$comment_file" --sensitive-corpus-file "$sensitive_file" >/dev/null 2>"$err"; then
+        return 0
     fi
     return 1
 }
