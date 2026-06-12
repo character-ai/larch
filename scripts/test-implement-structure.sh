@@ -261,6 +261,9 @@ for needle in [
     'run_in_background: true',
     'timeout: 21600000',
     '<task-notification>',
+    'Dispatch by `RESUME_HINT`',
+    '`step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline',
+    '`step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh`',
 ]:
     if needle not in stall_ref:
         checks.append(f'stall-recovery.md missing {needle!r}')
