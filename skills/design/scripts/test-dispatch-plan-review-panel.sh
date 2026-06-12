@@ -323,7 +323,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
 [[ "$(grep -c . "$D9/plan-review-slots.ndjson" || true)" == "4" ]] || fail "cursor-down expected 4 codex rows"
 grep -Fq 'cursor-plan-' "$D9/plan-review-slots.ndjson" && fail "cursor-down must not emit cursor rows"
 
-echo "=== round 3+: Codex suppressed when both vendors present; --no-fallback omitted (#4060) ==="
+echo "=== round 3+: Codex specialists suppressed; generic Codex kept; --no-fallback omitted (#4062) ==="
 D13="$TMP/s13"
 prep "$D13"
 printf '{"archetypes":[]}\n' >"$D13/scout-plan-manifest.json"
@@ -340,11 +340,12 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D13/plan.txt" \
     --round-num 3 \
     --timeout 60 >"$D13/out.env"
-[[ "$(grep -c . "$D13/plan-review-slots.ndjson" || true)" == "4" ]] || fail "round-3 both-present expected 4 cursor rows"
-grep -Fq 'codex-plan-' "$D13/plan-review-slots.ndjson" && fail "round-3 both-present must not emit codex rows"
+[[ "$(grep -c . "$D13/plan-review-slots.ndjson" || true)" == "5" ]] || fail "round-3 both-present expected 4 cursor rows plus generic codex"
+grep -Fq 'codex-plan-arch' "$D13/plan-review-slots.ndjson" && fail "round-3 both-present must not emit codex specialist rows"
+grep -Fq 'codex-plan-generic' "$D13/plan-review-slots.ndjson" || fail "round-3 both-present must emit generic codex row"
 grep -Fq -- '--no-fallback' "$log13" && fail "round-3 both-present must omit --no-fallback"
 
-echo "=== round 2: status quo — both vendors emitted, --no-fallback kept ==="
+echo "=== round 2: Codex specialists suppressed; generic Codex emitted; --no-fallback omitted (#4062) ==="
 D14="$TMP/s14"
 prep "$D14"
 printf '{"archetypes":[]}\n' >"$D14/scout-plan-manifest.json"
@@ -361,11 +362,12 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D14/plan.txt" \
     --round-num 2 \
     --timeout 60 >"$D14/out.env"
-[[ "$(grep -c . "$D14/plan-review-slots.ndjson" || true)" == "8" ]] || fail "round-2 both-present expected 8 rows"
-grep -Fq 'codex-plan-' "$D14/plan-review-slots.ndjson" || fail "round-2 both-present must emit codex rows"
-grep -Fq -- '--no-fallback' "$log14" || fail "round-2 both-present must pass --no-fallback"
+[[ "$(grep -c . "$D14/plan-review-slots.ndjson" || true)" == "5" ]] || fail "round-2 both-present expected 4 cursor rows plus generic codex"
+grep -Fq 'codex-plan-arch' "$D14/plan-review-slots.ndjson" && fail "round-2 both-present must not emit codex specialist rows"
+grep -Fq 'codex-plan-generic' "$D14/plan-review-slots.ndjson" || fail "round-2 both-present must emit generic codex row"
+grep -Fq -- '--no-fallback' "$log14" && fail "round-2 both-present must omit --no-fallback"
 
-echo "=== round 3+: Codex replacement panel when Cursor absent (#4060) ==="
+echo "=== round 3+: Codex replacement panel when Cursor absent (#4062) ==="
 D15="$TMP/s15"
 prep "$D15"
 printf '{"archetypes":[]}\n' >"$D15/scout-plan-manifest.json"
@@ -386,7 +388,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
 grep -Fq 'cursor-plan-' "$D15/plan-review-slots.ndjson" && fail "round-3 cursor-down must not emit cursor rows"
 grep -Fq -- '--no-fallback' "$log15" || fail "round-3 cursor-down (single vendor) must keep --no-fallback"
 
-echo "=== round 3+: dynamic Codex twins suppressed; vendor note drops Codex (#4060) ==="
+echo "=== round 3+: dynamic Codex twins suppressed; generic Codex kept (#4062) ==="
 D16="$TMP/s16"
 prep "$D16"
 cp "$D2/scout-plan-manifest.json" "$D16/scout-plan-manifest.json"
@@ -404,12 +406,12 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --round-num 3 \
     --timeout 60 >"$D16/out.env"
 grep -Fq 'DYNAMIC_SLOT_COUNT=2' "$D16/out.env" || fail "round-3 both-present expected 2 dynamic slot rows (Cursor only)"
-[[ "$(grep -c . "$D16/plan-review-slots.ndjson" || true)" == "6" ]] || fail "round-3 both-present dynamic expected 6 rows"
+[[ "$(grep -c . "$D16/plan-review-slots.ndjson" || true)" == "7" ]] || fail "round-3 both-present dynamic expected 7 rows"
 grep -Fq 'dyn-codex-plan-' "$D16/plan-review-slots.ndjson" && fail "round-3 both-present must not emit dyn codex rows"
-grep -Fq 'Requirements (Cursor).' "$D16/render-plan-cursor-dyn-alpha.prompt" \
-    || fail "round-3 dynamic prompt vendor note must advertise Cursor only"
+grep -Fq 'Requirements (Cursor + Codex).' "$D16/render-plan-cursor-dyn-alpha.prompt" \
+    || fail "round-3 dynamic prompt vendor note must advertise Cursor plus generic Codex"
 grep -Fq '(Cursor + Codex)' "$D16/render-plan-cursor-dyn-alpha.prompt" \
-    && fail "round-3 dynamic prompt vendor note must not advertise Codex"
+    || fail "round-3 dynamic prompt vendor note missing Codex"
 
 echo "=== availability matrix: both-absent => generic Claude reviewer ==="
 PLUGIN_STUB="$TMP/plugin-stub"

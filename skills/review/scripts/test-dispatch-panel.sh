@@ -623,7 +623,7 @@ grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 [[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
 
-# Round 3+: dynamic Codex slots suppressed; only Cursor dynamic slots emitted.
+# Round 3+: dynamic Codex slots suppressed; Cursor dynamic slots plus generic Codex emitted.
 seed_case_inputs "$TMP/dynamic-round3"
 export SCOUT_SCOUT_ARGV_LOG="$TMP/dynamic-round3/scout-argv.log"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
@@ -636,15 +636,17 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_
     --plan-file "$TMP/dynamic-round3/plan.md" \
     --dynamic-archetypes 3 \
     --round-num 3)
-# Static: 3 Cursor only (no Codex); dynamic: 1 Cursor per archetype (no Codex twin).
-grep -Fq 'STATIC_SLOT_COUNT=3' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 3 static slots" >&2; exit 1; }
+# Static: 3 Cursor plus 1 generic Codex; dynamic: 1 Cursor per archetype (no Codex twin).
+grep -Fq 'STATIC_SLOT_COUNT=4' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 4 static slots" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=3' <<< "$out" || { echo "FAIL: round 3 dynamic test must have 3 dynamic slots" >&2; exit 1; }
-grep -Fq 'SLOT_COUNT=6' <<< "$out" || { echo "FAIL: round 3 dynamic test SLOT_COUNT must be 6" >&2; exit 1; }
-# scout-valid4.json is capped to 3 archetypes: 3 dynamic Cursor slots, 0 Codex twins.
+grep -Fq 'SLOT_COUNT=7' <<< "$out" || { echo "FAIL: round 3 dynamic test SLOT_COUNT must be 7" >&2; exit 1; }
+# scout-valid4.json is capped to 3 archetypes: 3 dynamic Cursor slots, 1 generic Codex, 0 Codex twins.
 codex_count=$(jq -s '[.[] | select(.tool == "codex")] | length' "$TMP/dynamic-round3/panel-manifest.ndjson")
-[[ "$codex_count" = "0" ]] || { echo "FAIL: round 3 panel manifest must have 0 codex tool entries (got $codex_count)" >&2; exit 1; }
+[[ "$codex_count" = "1" ]] || { echo "FAIL: round 3 panel manifest must have 1 codex tool entry (got $codex_count)" >&2; exit 1; }
+jq -s -e '[.[] | select(.tool == "codex" and .slot == "codex-generic")] | length == 1' "$TMP/dynamic-round3/panel-manifest.ndjson" >/dev/null \
+    || { echo "FAIL: round 3 panel manifest must include codex-generic" >&2; exit 1; }
 
-# Round 3+, Cursor unavailable: Codex dynamic slots act as the replacement (#4060).
+# Round 3+, Cursor unavailable: Codex dynamic slots act as the replacement (#4062).
 seed_case_inputs "$TMP/dynamic-round3-replacement"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
@@ -992,25 +994,21 @@ fi
         || { echo "FAIL: regression3 prod-shape — execution-issues warning not written for production-shape tmpdir" >&2; exit 1; }
 )
 
-# Conditional pruning: two zero-yield prior rounds drop every combo before waterfall.
+# Conditional pruning: two zero-yield prior launched rounds drop every combo before waterfall.
 prune_dir="$TMP/prune-all"
 mkdir -p "$prune_dir"
 seed_case_inputs "$prune_dir"
 prune_ledger="$prune_dir/reviewer-prune-ledger.tsv"
 cat >"$prune_ledger" <<'TSV'
 round	tool	slot	label	accepted_count
-1	cursor	correctness	cursor-specialist-correctness-output.txt	0
-1	codex	correctness	codex-specialist-correctness-output.txt	0
-1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
-1	codex	edge-cases	codex-specialist-edge-cases-output.txt	0
-1	cursor	testing	cursor-specialist-testing-output.txt	0
-1	codex	testing	codex-specialist-testing-output.txt	0
 2	cursor	correctness	cursor-specialist-correctness-output.txt	0
-2	codex	correctness	codex-specialist-correctness-output.txt	0
 2	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
-2	codex	edge-cases	codex-specialist-edge-cases-output.txt	0
 2	cursor	testing	cursor-specialist-testing-output.txt	0
-2	codex	testing	codex-specialist-testing-output.txt	0
+2	codex	codex-generic	codex-generic-output.txt	0
+3	cursor	correctness	cursor-specialist-correctness-output.txt	0
+3	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	0
+3	cursor	testing	cursor-specialist-testing-output.txt	0
+3	codex	codex-generic	codex-generic-output.txt	0
 TSV
 prune_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$prune_dir/waterfall.argv" "$SCRIPT" \
     --mode diff \
@@ -1020,7 +1018,7 @@ prune_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TES
     --cursor-available true \
     --panel hard \
     --plan-file "$prune_dir/plan.md" \
-    --round-num 3 \
+    --round-num 4 \
     --prune-ledger "$prune_ledger")
 printf '%s
 ' "$prune_out" | grep -q '^PANEL_PRUNED_EMPTY=true$' || { echo "FAIL: prune all should mark PANEL_PRUNED_EMPTY" >&2; exit 1; }

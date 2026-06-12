@@ -247,7 +247,7 @@ Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default 
 
 ### `LARCH_REVIEWER_PRUNE`
 
-Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps full reviewer manifests for every round. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 launch the full panel, while rounds 3-4 skip combos that produced zero accepted findings in their last two launched rounds. Non-empty values other than `off` emit a warning because `off` is the only supported override.
+Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos that produced zero accepted findings in their last two launched rounds. Non-empty values other than `off` emit a warning because `off` is the only supported override.
 
 ### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
 
