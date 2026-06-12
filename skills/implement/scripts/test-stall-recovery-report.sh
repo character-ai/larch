@@ -1622,11 +1622,11 @@ cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-at
 cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
 cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
 cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
-printf 'utc=now\tsite=/Users/client/repo\ttrigger=secret-branch\n' >"$dir/stall-recovery-escalation-ledger.tsv"
+printf 'utc=now\tsite=/var/tmp/test-repo\ttrigger=secret-branch\n' >"$dir/stall-recovery-escalation-ledger.tsv"
 run_capture "$SANDBOX/case23-ledger-sanitize.out" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/out.md"
 assert_eq 0 "$RC" "23: malformed ledger tokens do not fail Tier B"
 assert_contains "site=\`redacted\` trigger=\`redacted\`" "$(cat "$dir/out.md")" "23: malformed ledger tokens are sanitized"
-assert_not_contains '/Users/client/repo' "$(cat "$dir/out.md")" "23: malformed ledger site path is not printed"
+assert_not_contains '/var/tmp/test-repo' "$(cat "$dir/out.md")" "23: malformed ledger site path is not printed"
 
 for token in adopted-issue-closed adopted-issue-is-pr all-vendors-failed branch-create-failed ci-fix-exhausted design-flaw escalate first-fixer-non-health fix-attempts-exhausted local-unfixable review-required ship-pr-internal-lint-fix ci-timeout ci-status-error ci-too-many-rebases main-agent-required coder-main-agent-required main-agent-vote-required; do
     dir=$(make_tmp "case23-token-$token")
