@@ -411,6 +411,8 @@ if grep -Fq -- '- **PR**:' "$TMP_DES_OUT"; then fail 'design must not emit PR'; 
 if grep -Fq -- '- **Code review**:' "$TMP_DES_OUT"; then fail 'design must not emit code review'; fi
 if grep -Fq -- '- **Lines (PR diff)**:' "$TMP_DES_OUT"; then fail 'design must not emit Lines (PR diff)'; fi
 if grep -Fq -- '- **Outcome**:' "$TMP_DES_OUT"; then fail 'approved design must not emit Outcome'; fi
+if grep -Fq -- '- **Mode**:' "$TMP_DES_OUT"; then fail 'design must not emit Mode'; fi
+if grep -Fq -- '- **Path**:' "$TMP_DES_OUT"; then fail 'design must not emit Path'; fi
 cmp -s "$TMP_DES_OUT" "$TMP_DES_STD" || fail 'design stdout must match --output-file byte-for-byte'
 pass 'design skill schema + cmp byte identity'
 

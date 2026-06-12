@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -177,10 +175,6 @@ if [[ -z "$_step2b_drafter_skip_reason" ]]; then
     if [ -s "$DESIGN_TMPDIR/brainstorm.md" ]; then
       printf '\n%s\n' 'Untrusted brainstorm:'
       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block brainstorm "$DESIGN_TMPDIR/brainstorm.md"
-    fi
-    if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
-      printf '\n%s\n' 'Untrusted dialectic resolutions:'
-      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" untrusted file-block dialectic_resolutions "$DESIGN_TMPDIR/dialectic-resolutions.md"
     fi
   } > "$DESIGN_TMPDIR/step2b-drafter-prompt.txt"
   _repo_root="$(git -C "$PWD" rev-parse --show-toplevel)"

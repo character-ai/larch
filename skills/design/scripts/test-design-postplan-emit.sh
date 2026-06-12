@@ -270,8 +270,8 @@ assert_rc "missing diff rc" 1 "$rc"
 assert_file_kv "$D6/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS missing-diff-lines "missing diff status"
 assert_file_kv "$D6/.design-postplan-emit-result.env" VALIDATE_STATUS not-run "missing diff validator not run"
 
-# 7 snapshot failure
-D7="$TMP/snapshot-fail"
+# 7 snapshot-original remains suppressed
+D7="$TMP/snapshot-suppressed"
 setup_design_tmp "$D7" full
 reset_env
 export SNAPSHOT_STUB_RC=1
@@ -279,9 +279,9 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D7" --snapshot-original >"$D7/stdout.txt" 2>"$D7/stderr.txt"
 rc=$?
 set -e
-assert_rc "snapshot failure rc" 1 "$rc"
-assert_file_kv "$D7/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS snapshot-failed "snapshot failed status"
-assert_file_kv "$D7/.design-postplan-emit-result.env" SNAPSHOT_STATUS failed "snapshot status failed"
+assert_rc "snapshot suppressed rc" 0 "$rc"
+assert_file_kv "$D7/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS ok "snapshot suppressed status"
+assert_file_kv "$D7/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "snapshot suppressed status"
 
 # 8 validator infra failure
 D8="$TMP/validator-fail"
@@ -440,7 +440,7 @@ rc=$?
 set -e
 assert_rc "merged hard body" 12 "$rc"
 assert_file_kv "$D14/.design-postplan-emit-result.env" SIZE_TRIGGER_FIRED true "merged hard KV"
-assert_contains "$D14/stdout.txt" '## Plan Size — Hard Trigger' "merged hard section"
+assert_contains "$D14/stdout.txt" '## Plan Size — Size Trigger' "merged hard section"
 
 D15="$TMP/merged-hard-diff-added"
 setup_design_tmp "$D15" full
@@ -490,7 +490,7 @@ rc=$?
 set -e
 assert_rc "merged soft+hard" 12 "$rc"
 assert_contains "$D17/stdout.txt" 'mechanical-churn advisory' "merged soft+hard advisory"
-assert_contains "$D17/stdout.txt" '## Plan Size — Hard Trigger' "merged soft+hard hard section"
+assert_contains "$D17/stdout.txt" '## Plan Size — Size Trigger' "merged soft+hard hard section"
 
 D18="$TMP/merged-partition"
 setup_design_tmp "$D18" full
@@ -577,17 +577,16 @@ export LARCH_QUIET_DISABLE=1
 assert_rc "merged quiet parent" 0 "$rc"
 assert_file_kv "$D23/.design-postplan-emit-result.env" PLAN_SIZE_STATUS under-threshold "merged quiet parent env"
 
-D24="$TMP/merged-classification-warn"
+D24="$TMP/merged-missing-run-params"
 setup_design_tmp "$D24" full
 rm -f "$D24/run-params.json"
 set +e
 run_subject "$D24" --with-plan-size --snapshot-original
 rc=$?
 set -e
-assert_rc "merged classification warn" 0 "$rc"
-assert_contains "$D24/stdout.txt" 'read-design-classification' "merged classification warn display"
-assert_not_contains "$D24/stdout.txt" 'WARN=' "merged classification no WARN="
-grep -Fq 'WARN=' "$D24/.design-postplan-emit-result.env" || fail "merged classification WARN in env"
+assert_rc "merged missing run-params" 0 "$rc"
+assert_not_contains "$D24/stdout.txt" 'WARN=' "merged missing run-params no WARN="
+if grep -Fq 'WARN=' "$D24/.design-postplan-emit-result.env"; then fail "merged missing run-params should not emit WARN"; fi
 
 D25="$TMP/merged-missing-diff"
 setup_design_tmp "$D25" full
@@ -647,9 +646,10 @@ set +e
 bash "$SUBJECT" --design-tmpdir "$D28" --with-plan-size --snapshot-original >"$D28/stdout.txt" 2>"$D28/stderr.txt"
 rc=$?
 set -e
-assert_rc "merged snapshot failed rc1" 1 "$rc"
-assert_file_kv "$D28/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS snapshot-failed "merged snapshot failed status"
-assert_contains "$D28/stdout.txt" 'failed to snapshot plan.txt-original' "merged snapshot failed diagnostic"
+assert_rc "merged snapshot suppressed despite requested snapshot" 0 "$rc"
+assert_file_kv "$D28/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS ok "merged snapshot suppressed status"
+assert_file_kv "$D28/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "merged snapshot suppressed snapshot status"
+assert_not_contains "$D28/stdout.txt" 'failed to snapshot plan.txt-original' "merged snapshot suppressed no diagnostic"
 
 D29="$TMP/merged-validate-driver-failed-diagnostic"
 setup_design_tmp "$D29" full
@@ -714,7 +714,7 @@ run_subject "$D33" --with-plan-size --snapshot-original
 rc=$?
 set -e
 assert_rc "drift hard precedence rc" 12 "$rc"
-assert_file_kv "$D33/.design-postplan-emit-result.env" PLAN_SIZE_STATUS hard-trigger "drift hard precedence status"
+assert_file_kv "$D33/.design-postplan-emit-result.env" PLAN_SIZE_STATUS plan-size-trigger "drift hard precedence status"
 assert_not_contains "$D33/stdout.txt" '## Plan Size — Drift' "drift hard precedence no drift section"
 
 D34="$TMP/drift-partition-precedence"

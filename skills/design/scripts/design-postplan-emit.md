@@ -70,7 +70,7 @@ When `SOFT_ADVISORY=true` and `SIZE_TRIGGER_FIRED=false`, emit mechanical-churn 
 
 ## Classification warnings (#3441)
 
-`read-design-classification.sh` stderr is captured into `WARN` result-env lines and replayed via display `emit` (not `WARN=` tokens on FD 3).
+Missing `run-params.json` defaults optional flags without replaying removed classification-reader warnings.
 
 ## Edit in sync
 

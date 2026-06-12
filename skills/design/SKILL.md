@@ -42,7 +42,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 - Use empty string for the `description` parameter on all Bash tool calls.
 - Use terse 3-5 word descriptions for Agent tool calls.
-- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, dialectic resolutions, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
+- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
@@ -204,7 +204,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
 
-1. **NEVER skip Step 2a** (the sentinel artifact prep). **Why:** Step 2a writes sentinel artifacts required by Step 2b. **How to apply:** Step 2a always runs and writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty `dialectic-resolutions.md`, and `.completed/step-2a` before proceeding to Step 2b.
+1. **NEVER skip Step 2a** (the sentinel artifact prep). **Why:** Step 2a writes sentinel artifacts required by Step 2b. **How to apply:** Step 2a always runs and writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, the empty legacy placeholder `dialectic-resolutions.md`, and `.completed/step-2a` before proceeding to Step 2b.
 
 2. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
@@ -225,7 +225,7 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
+`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same parse-then-bind pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-session.sh" \
@@ -264,9 +264,9 @@ Parse `STEP0_STATUS`, `DEGRADED`, and `BOTH_DOWN` from the wrapper stdout (ignor
 
 and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
-### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
+### 0b — Parse argv, issue binding, clarify / already-planned routers, init → `run-params.json`
 
-1. Consume only the Step **0-pre** bindings (`hard_requested`, `partition_requested`, `brainstorm_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
+1. Consume only the Step **0-pre** bindings (`partition_requested`, `brainstorm_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
    - `POSITIONAL_KIND=issue` → set `ISSUE_NUMBER` to `POSITIONAL_VALUE` (digits only; do not re-match raw argv).
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
@@ -282,7 +282,7 @@ and stop (run no further steps). On a **non-interactive / autonomous** run, log 
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` through `${CLAUDE_PLUGIN_ROOT}/scripts/read-result-env.sh` (file-first with KV-filtered stdout fallback) and source only allowlisted keys. Do not parse raw route stdout except as the helper fallback. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
-   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). `design-route.sh` still OR-merges current `--partition`, `--brainstorm`, Brainstorm title-prefix auto-enable, `--per-round-approval`, and `--skip-approve` booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
+   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, run-params initialization, `[DESIGNING]` rename, `feature-description.txt`, or full `run-params.json` rewrite). `design-route.sh` still OR-merges current `--partition`, `--brainstorm`, Brainstorm title-prefix auto-enable, `--per-round-approval`, and `--skip-approve` booleans into an existing safe `run-params.json` before the direct resume so a resumed Gate B observes a newly supplied `--per-round-approval`. On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. When the driver emits `ROUTE=cancel-pause-load` (pause load failure or `MARKER_CLEARED=false` after a successful restore), `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
 3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact secrets`, and `python/cli.py named-block write --marker plan --content-file`. **Only when `python/cli.py named-block write --marker plan` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
@@ -427,7 +427,7 @@ Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or G
   --claude-pid "$PPID"
 ```
 
-The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty `dialectic-resolutions.md`) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel sketch or dialectic artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `collect-agent-results.sh`.
+The Step 2a entry fence writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md` placeholder) and `.completed/step-2a` if any are missing. If pre-existing non-sentinel artifacts exist, it refuses to overwrite them and exits for inspection. Proceed directly to Step 2b after `.completed/step-2a` is present. Do NOT call `collect-agent-results.sh`.
 
 <!-- step:2b — Design the Implementation Plan -->
 
@@ -457,7 +457,7 @@ When the fence writes `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=step-
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
-Read the tier with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-classification "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
+Apply this emphasis before drafting:
 
 "Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
 
@@ -467,14 +467,7 @@ Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. I
 
 Also read `$DESIGN_TMPDIR/design-outline.md` only when it exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Treat the approved Goals, Non-goals, and Surfaces as binding scope. Draft the plan from direct codebase inspection.
 
-Also read `$DESIGN_TMPDIR/brainstorm.md` if it exists and is non-empty. Treat brainstorm output as **additive ideation** — fold ideas into the plan only when they do not conflict with binding dialectic resolutions or explicit user refusals from Round 1.
-
-- **`Disposition: voted`**: the plan **must** follow the `Resolution` direction and explicitly note how the antithesis concern (from `Antithesis summary`) was addressed, referencing the `Why thesis prevails` / `Why antithesis prevails` justification. These resolutions are binding for Step 2b — do not override them.
-- **`Disposition: fallback-to-synthesis`**: the synthesis decision stands (Resolution is the synthesis choice = `CHOSEN`). Note the `Why fallback` reason briefly (judge panel tie, quorum failure, etc.) but do NOT fabricate antithesis-engagement prose — no antithesis was heard with sufficient rigor to engage.
-- **`Disposition: bucket-skipped`**: the synthesis decision stands. Note that debate was skipped (`Why skipped` reason) but do NOT fabricate antithesis-engagement prose — no debate occurred.
-- **`Disposition: over-cap`**: the synthesis decision stands. Note that this decision was outside the dialectic cap (`Why over-cap` reason) but do NOT fabricate antithesis-engagement prose.
-
-(Note: Step 3 plan review may subsequently revise the plan based on accepted review findings, which supersede dialectic resolutions.)
+Also read `$DESIGN_TMPDIR/brainstorm.md` if it exists and is non-empty. Treat brainstorm output as **additive ideation** — fold ideas into the plan only when they do not conflict with explicit user refusals from Round 1.
 
 Produce a plan that includes:
 
@@ -503,7 +496,7 @@ If the terminal postplan fence prints `**⚠ 2b: drafter plan failed postplan va
 
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b"` then run the retained **Step 2b.5** procedure before continuing.
 
-On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskUserQuestion` with exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site — no Override). On **Split** or partition routing (`_postplan_rc=13`), run **Split-path** in `decompose-panel.md` only — do not re-run Step 2b.5 display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns (**Refine**, no-split **Continue**), write `: > "$DESIGN_TMPDIR/.completed/step-2b"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before continuing to Step 3. Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer prompts — the driver records a warning in `execution-issues.md` and exits `0`; no operator action is required.
+On `_postplan_rc=12`, the driver already printed the plan-size-trigger section. `AskUserQuestion` with exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site — no Override). On **Split** or partition routing (`_postplan_rc=13`), run **Split-path** in `decompose-panel.md` only — do not re-run Step 2b.5 display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns (**Refine**, no-split **Continue**), write `: > "$DESIGN_TMPDIR/.completed/step-2b"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before continuing to Step 3. Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer prompts — the driver records a warning in `execution-issues.md` and exits `0`; no operator action is required.
 
 > **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
@@ -993,7 +986,7 @@ When auto-repair does not resolve the defects, use **AskUserQuestion** with exac
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" named-block write --marker plan` — writes the `larch:plan` block into the issue body. Coverage: `python/test_issue_wire.py`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists Step 0 `run-params.json`. Sibling: `write-run-params.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh` — Step 0-pre public argv parser. Sibling: `parse-design-argv.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.md`).

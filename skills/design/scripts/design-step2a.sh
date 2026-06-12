@@ -30,14 +30,12 @@ CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-false}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 POSITIONAL_KIND="${POSITIONAL_KIND:-}"
 POSITIONAL_VALUE="${POSITIONAL_VALUE:-}"
-hard_requested="${hard_requested:-false}"
 partition_requested="${partition_requested:-false}"
 brainstorm_requested="${brainstorm_requested:-false}"
 approve_requested="${approve_requested:-false}"
 skip_approve_requested="${skip_approve_requested:-false}"
 no_dedup_requested="${no_dedup_requested:-false}"
 run_id="${run_id:-}"
-design_classification="${design_classification:-}"
 STEP3_REVIEW_LOOP_STATUS="${STEP3_REVIEW_LOOP_STATUS:-}"
 LOOP_STATUS="${LOOP_STATUS:-}"
 VALIDATE_STATUS="${VALIDATE_STATUS:-}"
@@ -102,11 +100,22 @@ fi
 _artifacts_ok=true
 _NO_SKETCHES="NO_SKETCHES"
 _NO_CONTESTED="NO_CONTESTED_DECISIONS"
-if ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _artifacts_ok=false; fi
+_LEGACY_NO_SKETCHES=false
+if ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then
+  :
+elif [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_CLASSIFIED_SI""MPLE" ] \
+  || [ "$(cat "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null || true)" = "NO_SKETCHES_DEGRADED_HA""RD" ]; then
+  _LEGACY_NO_SKETCHES=true
+  _artifacts_ok=false
+else
+  _artifacts_ok=false
+fi
 if ( command grep -Fxq "$_NO_CONTESTED" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _artifacts_ok=false; fi
 if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _artifacts_ok=false; fi
 _artifact_conflict=false
-if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then _artifact_conflict=true; fi
+if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] \
+  && ! ( command grep -Fxq "$_NO_SKETCHES" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ) \
+  && [ "$_LEGACY_NO_SKETCHES" != true ]; then _artifact_conflict=true; fi
 if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! ( command grep -Fxq "$_NO_CONTESTED" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then _artifact_conflict=true; fi
 if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _artifact_conflict=true; fi
 if [ "$_artifact_conflict" = true ]; then

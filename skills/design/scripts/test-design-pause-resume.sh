@@ -255,6 +255,7 @@ out=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo)
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "pause marker missing"
 grep -Fq 'ISSUE_NUMBER=9' "$BODY_FILE" || fail "pause marker missing issue binding"
 grep -Fq 'REPO=owner/repo' "$BODY_FILE" || fail "pause marker missing repo binding"
+! grep -Fq 'TIER=' "$BODY_FILE" || fail "pause marker should not emit legacy TIER binding"
 [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-1c" ]] || fail ".completed sentinel not staged"
 [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/timing-report-final.json" ]] || fail "pause publish must stage fresh timing-report-final.json"
 jq -e '.per_step[] | select(.skill == "design" and .step == "design Step 3 — plan review") | .rounds[] | select(.round == 1 and .duration_seconds == 5)' \
@@ -960,8 +961,9 @@ printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_
 out_bad_session=$(bash "$LOAD" --design-tmpdir "$TMP/bad-session" --issue 9 --repo owner/repo)
 [[ "$out_bad_session" == *"ERROR=invalid-session-id"* ]] || fail "bad session validation mismatch: $out_bad_session"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nTIER=bad\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
-out_bad_tier=$(bash "$LOAD" --design-tmpdir "$TMP/bad-tier" --issue 9 --repo owner/repo)
-[[ "$out_bad_tier" == *"ERROR=invalid-tier"* ]] || fail "bad tier validation mismatch: $out_bad_tier"
+out_legacy_tier=$(bash "$LOAD" --design-tmpdir "$TMP/legacy-tier" --issue 9 --repo owner/repo)
+[[ "$out_legacy_tier" == *"LOAD_OK=true"* && "$out_legacy_tier" == *"STEP=1d"* ]] || fail "legacy tier should be ignored: $out_legacy_tier"
+[[ "$out_legacy_tier" != *"TIER="* ]] || fail "legacy tier should not be re-emitted: $out_legacy_tier"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nBRAINSTORM_DONE=maybe\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_brainstorm=$(bash "$LOAD" --design-tmpdir "$TMP/bad-brainstorm" --issue 9 --repo owner/repo)
 [[ "$out_bad_brainstorm" == *"ERROR=invalid-brainstorm-done"* ]] || fail "bad brainstorm validation mismatch: $out_bad_brainstorm"
@@ -1063,14 +1065,13 @@ mkdir -p "$DESIGN_TMPDIR/.completed"
 if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
   : > "$DESIGN_TMPDIR/.completed/step-1e"
   [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
   [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
   [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
   rm -f "$DESIGN_TMPDIR/.step3-reentry"
 fi
 '
 [[ ! -f "$DESIGN_DIRECT/.step3-reentry" ]] || fail "direct-review restore did not consume .step3-reentry"
-for direct_step in 2a 2a.5 2b 2b.5; do
+for direct_step in 2a 2b 2b.5; do
   [[ -f "$DESIGN_DIRECT/.completed/step-$direct_step" ]] || fail "direct-review restore missing step-$direct_step"
 done
 : >"$DESIGN_DIRECT/.pause-requested"
@@ -1082,7 +1083,7 @@ RESTORE_DIRECT="$TMP/restore-direct-review"
 out_direct_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_DIRECT" --issue 9 --repo owner/repo)
 [[ "$out_direct_load" == *"LOAD_OK=true"* && "$out_direct_load" == *"STEP=3"* ]] || fail "direct-review load mismatch: $out_direct_load"
 [[ ! -e "$RESTORE_DIRECT/.pause-requested" ]] || fail "direct-review restore should clear .pause-requested"
-for direct_step in 2a 2a.5 2b 2b.5; do
+for direct_step in 2a 2b 2b.5; do
   [[ -f "$RESTORE_DIRECT/.completed/step-$direct_step" ]] || fail "direct-review restore missing step-$direct_step after load"
 done
 
@@ -1107,7 +1108,7 @@ out_direct_pause_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --i
 STEP3_STATE="$("$REPO_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$RESTORE_DIRECT_PAUSE" --direct-review-entry)"
 [[ "$STEP3_STATE" == *"STEP3_STATE=direct-review-entry"* ]] || fail "direct-review pause resume helper state missing: $STEP3_STATE"
 [[ ! -f "$RESTORE_DIRECT_PAUSE/.step3-reentry" ]] || fail "direct-review pause resume helper did not consume marker"
-for direct_step in 2a 2a.5 2b 2b.5; do
+for direct_step in 2a 2b 2b.5; do
   [[ -f "$RESTORE_DIRECT_PAUSE/.completed/step-$direct_step" ]] || fail "direct-review pause resume missing step-$direct_step"
 done
 
@@ -1205,7 +1206,6 @@ mkdir -p "$DESIGN_TMPDIR/.completed"
 if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then
   : > "$DESIGN_TMPDIR/.completed/step-1e"
   [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
-  [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
   [ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"
   [ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"
   rm -f "$DESIGN_TMPDIR/.step3-reentry"

@@ -178,6 +178,9 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
 fi
 
 validate_plain_value step "$STEP"
+case "$STEP" in
+    2a.5) STEP=2b ;;
+esac
 STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 if ! awk -F '\t' -v step="$STEP" '$1 == step { found=1 } END { exit(found ? 0 : 1) }' "$STEP_REGISTRY"; then
     emit_load_fail "invalid-step"

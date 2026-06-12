@@ -45,9 +45,8 @@ Phase 7 folds absorbed prior-step `.completed` writes into adjacent real-work Ba
 | Step 1d.5 prelude | `step-1c`, `step-1d` |
 | Step 2a entry | `step-1c`, `step-1d`, conditional `step-1d.5` (`brainstorm_requested` guard), `step-1d.7`, `step-1e`; `step-2a` sentinel block |
 | Step 3 entry | `step-1e` |
-| Step 2a.5 prelude | `step-2a` |
-| zero-sketch degraded branch | `step-2a`, `step-2a.5` |
-| Step 2b prelude | `step-2a`, `step-2a.5` |
+| Step 2a entry | `step-2a` |
+| Step 2b prelude | `step-2a` |
 | Step 3.5 prelude | `step-3` |
 | Step 3.6 entry | `step-3.5` |
 | Step 5 prelude | `step-4b` |
@@ -62,11 +61,11 @@ Pure-LLM Steps **1c**, **1d**, **1d.7**, and **1e** must not retain standalone `
 ### Branch and re-entry guards
 
 - `assert_step3b_diagram_branches` — `architecture-diagram.skipped` only on the skip-path fence (`rm -f` before write); architectural entry removes `.skipped`; FINALIZE boundary does not write `.skipped`.
-- `assert_backward_reentry_guards` — Gate B(c)/Gate C(b) re-entry clears `step-1e`…`step-4b`; Step 3 entry clears downstream sentinels and restores the direct-review bypass package (`step-2a` / `step-2a.5` / `step-2b` / `step-2b.5`).
+- `assert_backward_reentry_guards` — Gate B(c)/Gate C(b) re-entry clears `step-1e`…`step-4b`; Step 3 entry clears downstream sentinels and restores the direct-review bypass package (`step-2a` / `step-2b` / `step-2b.5`).
 - `assert_publish_fence_guards` — `design-publish.sh` fence sources env then pause-check and does not write `step-5b`; Gate C preview fence does not write `step-4`.
 
 ### Refactored completion-sentinel scan
 
-`assert_step_completion_sentinels` skips host-absorbed steps (`1c`, `1d`, `1e`, `2a`, `2a.5`, `3`, `3.5`, `4b`, `5d`, `6`) and only section-greps self-writing steps: `0c`, `1d.5`, `2b`, `2b.5`, `3b`, `3.6`, `4`, `5b`, plus `assert_gate_b_bypass_branch_sentinels` for Gate-B-bypass triple writes.
+`assert_step_completion_sentinels` skips host-absorbed steps (`1c`, `1d`, `1e`, `2a`, `3`, `3.5`, `4b`, `5d`, `6`) and only section-greps self-writing steps: `0c`, `1d.5`, `2b`, `2b.5`, `3b`, `3.6`, `4`, `5b`, plus `assert_gate_b_bypass_branch_sentinels` for Gate-B-bypass triple writes.
 
 `assert_bash_fences_have_pause_check` starts at `<!-- step:1c` and scans every surviving source-env Bash fence from Step 1c onward (whitespace-tolerant fence open/close). `assert_step2a_entry_simple_guard` requires pause-check after sentinel completion markers inside the entry fence.

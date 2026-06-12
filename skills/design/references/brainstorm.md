@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline — Gate A re-entry only post-plan) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv or the Step 0b `Brainstorm:` title-prefix auto-enable.
 
-**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2a** (sketch `<FEATURE_DESCRIPTION>` substitution), **Step 2a.5** (dialectic `{FEATURE_DESCRIPTION}` / synthesis context), **Step 2b** (plan drafting), **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
+**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2b** (plan drafting) and **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
 
 **When to load**: only when Step **1d.5** executes — do not preload during Step 0.
 
@@ -155,8 +155,7 @@ When the loop ends via terminal path, ensure `.brainstorm-done` exists before en
 ## Downstream consumer contract (additive)
 
 - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, if `brainstorm.md` exists and is non-empty, **prepend** a concise digest under a `## Brainstorm context` header to the feature text **inside the substitution string** (do not replace the issue body file).
-- **Step 2a.5**: `{FEATURE_DESCRIPTION}` / synthesis MAY incorporate the same additive digest when non-empty.
-- **Step 2b**: Read `brainstorm.md` when present; fold ideas only when they do not conflict with voted dialectic resolutions.
+- **Step 2b**: Read `brainstorm.md` when present; fold ideas only when they do not conflict with explicit user refusals.
 - **Step 3**: `plan-review-loop.sh` may stage non-empty `brainstorm.md` as optional feature context, but `plan-review-scope-anchor.txt` remains the binding issue scope for scout, reviewer, voter, and MainAgent fallback decisions.
 
 ## Plan-review binding scope

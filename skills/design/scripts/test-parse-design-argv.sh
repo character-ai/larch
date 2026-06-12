@@ -255,18 +255,22 @@ assert_kv '--run-id newline smuggling' VALIDATION_ERROR newline-in-value
 assert_no_flag_kvs '--run-id newline smuggling'
 
 # flags then positional
+run_case -p --brainstorm --no-dedup 3249
 assert_rc 'flags then positional' 0
 assert_kv 'flags then positional' POSITIONAL_KIND issue
 assert_kv 'flags then positional' POSITIONAL_VALUE 3249
 
 # positional then flaglike: trailing token is not re-parsed
+run_case 3249 --bogus
 assert_rc 'positional then flaglike' 0
 assert_kv 'positional then flaglike' POSITIONAL_KIND issue
 assert_kv 'positional then flaglike' POSITIONAL_VALUE 3249
 
 # validation errors
-assert_rc 'duplicate hard' 3
-assert_no_flag_kvs 'duplicate hard'
+run_case --hard
+assert_rc 'retired --hard' 3
+assert_kv 'retired --hard' VALIDATION_ERROR --hard
+assert_no_flag_kvs 'retired --hard'
 
 run_case --per-round-approval --per-round-approval
 assert_rc 'duplicate per-round-approval' 3
@@ -310,14 +314,17 @@ assert_kv 'empty argv' POSITIONAL_KIND none
 assert_kv 'empty argv' POSITIONAL_VALUE ""
 
 # end of options
+run_case --
 assert_rc 'terminator only' 0
 assert_kv 'terminator only' POSITIONAL_KIND none
 assert_kv 'terminator only' POSITIONAL_VALUE ""
 
+run_case -- 3249
 assert_rc 'terminator issue' 0
 assert_kv 'terminator issue' POSITIONAL_KIND issue
 assert_kv 'terminator issue' POSITIONAL_VALUE 3249
 
+run_case -- --hard
 assert_rc 'terminator flaglike verbal' 0
 assert_common_false 'terminator flaglike verbal'
 assert_kv 'terminator flaglike verbal' POSITIONAL_KIND verbal
@@ -336,9 +343,9 @@ assert_no_flag_kvs 'newline smuggling'
 
 
 # hidden --output writes sourceable success output and preserves stdout compatibility
+run_case_with_output -p --brainstorm --per-round-approval --skip-approve --no-dedup --run-id RID42 3249
 assert_rc 'hidden output full flags' 0
 assert_success_kv_count 'hidden output full flags' 8
-assert_file_contains 'hidden output hard binding' "$ARGV_ENV" "='true'"
 assert_file_contains 'hidden output partition binding' "$ARGV_ENV" "partition_requested='true'"
 assert_file_contains 'hidden output brainstorm binding' "$ARGV_ENV" "brainstorm_requested='true'"
 assert_file_contains 'hidden output approve binding' "$ARGV_ENV" "approve_requested='true'"
@@ -360,7 +367,6 @@ if [ "$partition_requested" = true ] \
 else
     fail 'hidden output sourceable success bindings'
 fi
-assert_eq 'stdout hard matches source' "$(kv_value )" "$"
 assert_eq 'stdout partition matches source' "$(kv_value PARTITION_REQUESTED)" "$partition_requested"
 assert_eq 'stdout brainstorm matches source' "$(kv_value BRAINSTORM_REQUESTED)" "$brainstorm_requested"
 assert_eq 'stdout approve matches source' "$(kv_value APPROVE_REQUESTED)" "$approve_requested"
@@ -404,7 +410,7 @@ assert_rc 'public output rejected' 3
 assert_kv 'public output rejected' VALIDATION_ERROR --output
 source_argv_env
 assert_eq 'public output validation sources' "${VALIDATION_ERROR:-}" --output
-assert_file_not_contains 'validation output has no success binding' "$ARGV_ENV" '='
+assert_file_not_contains 'validation output has no partition binding' "$ARGV_ENV" 'partition_requested='
 
 assert_rc 'public output interleaved rejected' 3
 assert_kv 'public output interleaved rejected' VALIDATION_ERROR --output

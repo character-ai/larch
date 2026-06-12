@@ -214,7 +214,6 @@ design_source_env_optional() {
      --allow RESUME_STEP \
      --allow SESSION_ID \
      --allow RUN_ID \
-     --allow TIER \
      --allow BRAINSTORM_DONE \
      --allow MARKER_CLEARED \
      --output "$_safe_route_env"

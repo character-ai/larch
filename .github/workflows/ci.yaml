@@ -545,11 +545,6 @@ jobs:
           version: 3.82.13
           path: ./
           extra_args: --only-verified
-      - name: Run dialectic smoke test
-        
-        # target is equivalent and exists for local developer convenience.
-        run: bash scripts/dialectic-smoke-test.sh
-
   python-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10

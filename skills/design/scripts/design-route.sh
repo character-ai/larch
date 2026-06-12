@@ -219,7 +219,6 @@ SUMMARY_MODE_STRING=N/A
 RESUME_STEP=""
 SESSION_ID=""
 RUN_ID=""
-TIER=""
 BRAINSTORM_DONE=""
 MARKER_CLEARED=""
 WARN_LINES=()
@@ -237,7 +236,6 @@ route_build_kvs() {
     [[ -n "$RESUME_STEP" ]] && ROUTE_KVS+=("RESUME_STEP=$RESUME_STEP")
     [[ -n "$SESSION_ID" ]] && ROUTE_KVS+=("SESSION_ID=$SESSION_ID")
     [[ -n "$RUN_ID" ]] && ROUTE_KVS+=("RUN_ID=$RUN_ID")
-    [[ -n "$TIER" ]] && ROUTE_KVS+=("TIER=$TIER")
     [[ -n "$BRAINSTORM_DONE" ]] && ROUTE_KVS+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
     [[ -n "$MARKER_CLEARED" ]] && ROUTE_KVS+=("MARKER_CLEARED=$MARKER_CLEARED")
     local w e
@@ -375,7 +373,6 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
             STEP) _step="$_pval" ;;
             SESSION_ID) SESSION_ID="$_pval" ;;
             RUN_ID) RUN_ID="$_pval" ;;
-            TIER) TIER="$_pval" ;;
             BRAINSTORM_DONE) BRAINSTORM_DONE="$_pval" ;;
             MARKER_CLEARED) MARKER_CLEARED="$_pval" ;;
             WARN) WARN_LINES+=("$_pval") ;;

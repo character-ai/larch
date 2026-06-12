@@ -87,7 +87,6 @@ REPO=<owner/repo>              # optional when repo resolution failed
 RUN_ID=<run-id>
 STEP=<step-id>
 SESSION_ID=<run-id>
-TIER=<classification>
 BRAINSTORM_DONE=true|false
 BODY_HASH=<sha256>
 PAUSED_AT=<utc timestamp>
@@ -301,4 +300,4 @@ Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/pr
 
 - **`skills/implement/references/preflight-plan-audit.md`** — fixed Preflight plan adequacy rubric.
 - **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `python/cli.py plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
-- **`skills/design/SKILL.md`** — tiered `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.
+- **`skills/design/SKILL.md`** — `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.

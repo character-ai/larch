@@ -4,13 +4,13 @@
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
-**Binding convention**: `SKILL.md`'s compact flag table is a non-normative index — this file is authoritative for validation, tier mapping, and internal dispatch notes.
+**Binding convention**: `SKILL.md`'s compact flag table is a non-normative index — this file is authoritative for validation and internal dispatch notes.
 
 ---
 
 ## Public `/design` flags
 
-Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist and tier-mapping source.
+Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist source.
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
@@ -21,7 +21,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 - `--approve`: **retired** — rejected as an unknown public flag before Step 0. Use `--per-round-approval` to restore the explicit per-round Gate B prompt, or `--skip-approve`/`-s` to auto-approve the outline and final plan.
 - `--manual` / `-m`: removed. These flags are rejected as unknown public flags before Step 0. There is no persisted manual mode; Gate B auto-applies by default and `--per-round-approval` is the only way to restore the explicit per-round apply prompt.
 
-`python/cli.py session write-run-params` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration. The `skip_approve_requested` boolean field is also persisted (default `false`; read at Step 1d.7 and Step 4b Gate C).
+`python/cli.py session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and is read at Step 1d.7 and Step 4b Gate C.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 
@@ -52,7 +52,7 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 ## Step 3 review env vars
 
-Step 3 review is single-pass: each entry runs at most one plan-review panel. The Gate C review-run counter cap is **5 for both tiers**, and no env knob exists for the cap.
+Step 3 review is single-pass: each entry runs at most one plan-review panel. The Gate C review-run counter cap is **5**, and no env knob exists for the cap.
 
 If the panel fails, Step 3 skips Gate B and proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the pre-review `plan.txt` unchanged.
 
@@ -74,7 +74,7 @@ Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after 
 
 ## Internal — sketch dispatch (not public argv)
 
-- **`/design` sketch phase is inline-only** (issue #2487): sketches, external collectors, synthesis, dialectic, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for the sketch phase.
+- **`/design` planning is inline-only** (issue #2487): sentinel prep, direct drafting, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for Step 2a sentinel prep.
 
 - **`brainstorm_requested` in `run-params.json`**: boolean sibling to `partition_requested`; Step **1d.5** reads this field (default `false` when absent) instead of re-parsing argv after subshell boundaries.
 

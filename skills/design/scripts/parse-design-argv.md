@@ -12,15 +12,15 @@ Reserved internal `--output PATH` support exists only for the orchestrator and m
 parse-design-argv.sh --output "$argv_env" <PUBLIC_ARGV_WORDS>
 ```
 
-Any later/public `--output` token is not a supported `/design` flag and remains a validation error. Before invoking the Step 0-pre fence, substitute `<PUBLIC_ARGV_WORDS>` with those quoted tokens (never leave the literal placeholder in the rendered Bash). Example: public argv `--hard add a foo` → invoke `parse-design-argv.sh --output "$argv_env" '--hard' 'add a foo'`.
+Any later/public `--output` token is not a supported `/design` flag and remains a validation error. Before invoking the Step 0-pre fence, substitute `<PUBLIC_ARGV_WORDS>` with those quoted tokens (never leave the literal placeholder in the rendered Bash). Example: public argv `--brainstorm add a foo` → invoke `parse-design-argv.sh --output "$argv_env" '--brainstorm' 'add' 'a' 'foo'`.
 
 ## Allowlist
 
-`skills/design/references/flags.md` is normative for the public flag allowlist and tier mapping. This parser implements only Step 0-pre validation and raw flag binding; Step 0b still maps  to `design_classification`.
+`skills/design/references/flags.md` is normative for the public flag allowlist. This parser implements only Step 0-pre validation and raw flag binding.
 
 ## Machine output
 
-On success, stdout always contains exactly these nine uppercase KVs, one per line, including when `--output` is used:
+On success, stdout always contains exactly these eight uppercase KVs, one per line, including when `--output` is used:
 
 - `PARTITION_REQUESTED=true|false`
 - `BRAINSTORM_REQUESTED=true|false`
@@ -33,10 +33,9 @@ On success, stdout always contains exactly these nine uppercase KVs, one per lin
 
 On validation failure, stdout contains only `VALIDATION_ERROR=<token>`.
 
-When leading internal `--output PATH` is present, the script additionally writes a sourceable env file atomically. On exit `0`, the output file contains all nine orchestrator-facing bindings:
+When leading internal `--output PATH` is present, the script additionally writes a sourceable env file atomically. On exit `0`, the output file contains all eight orchestrator-facing bindings:
 
 ```bash
-hard_requested='<value>'
 partition_requested='<value>'
 brainstorm_requested='<value>'
 approve_requested='<value>'
@@ -75,7 +74,7 @@ Retired flag: `--approve` is rejected with `VALIDATION_ERROR=--approve` (exit `3
 
 | Code | Meaning |
 |------|---------|
-| `0` | Parsed OK; nine uppercase KVs on stdout; sourceable output file written when requested |
+| `0` | Parsed OK; eight uppercase KVs on stdout; sourceable output file written when requested |
 | `1` | Internal/parser/output write failure |
 | `3` | Public argv validation error; `VALIDATION_ERROR=<token>` on stdout; sourceable validation output when requested |
 

@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **1d.7** — runs after Step **1d** Round 1 discussion and optional Step **1d.5** brainstorm, before Step **2a** sketches, on runs that continue from Round 1 into new plan production. The already-planned ad-hoc Q&A-only branch does **not** invoke this file. Step **1e** Gate A is re-entry-only after a plan exists.
 
-**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.outline-approved`. Produces `$DESIGN_TMPDIR/design-outline.md`; the outline is load-bearing for Step **2a** / Step **2a.5** / Step **2b** only when the file is non-empty **and** `$DESIGN_TMPDIR/.outline-approved` exists. It is never written to `composed-plan.md`, the `larch:plan` GitHub block, or any `/implement`-consumed artifact. Session-log publishing may still capture the file as a top-level artifact through redaction, so do **not** treat it as excluded from design-log publish bundles.
+**Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.outline-approved`. Produces `$DESIGN_TMPDIR/design-outline.md`; the outline is load-bearing for Step **2b** only when the file is non-empty **and** `$DESIGN_TMPDIR/.outline-approved` exists. It is never written to `composed-plan.md`, the `larch:plan` GitHub block, or any `/implement`-consumed artifact. Session-log publishing may still capture the file as a top-level artifact through redaction, so do **not** treat it as excluded from design-log publish bundles.
 
 **When to load**: only when Step **1d.7** executes — do not preload during Step 0 or Gate A re-entry.
 
@@ -56,7 +56,7 @@ Write `$DESIGN_TMPDIR/design-outline.md` with this exact top-level structure. Ke
 
 ### Approach sketch
 - 3-5 bullets that name the direction: which surfaces, which gate, which file.
-- This is not a fully-baked architecture. Step 2a sketches and Step 2a.5 dialectic explore concrete alternatives; the outline names the conceptual direction the operator has agreed to.
+- This is not a fully-baked architecture. The outline names the conceptual direction the operator has agreed to before direct plan drafting.
 
 ### Surfaces in scope
 - File or directory names; conceptual surfaces, not full diff paths.
@@ -118,8 +118,7 @@ On **Cancel**:
 ## Downstream consumer contract (additive)
 
 - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, prepend a concise `## Approved direction (outline)` section only when `design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Do not replace the issue body file. Stack this with the brainstorm digest when both exist.
-- **Step 2a.5**: Prepend a concise `## Approved direction (outline)` section to `{FEATURE_DESCRIPTION}` only when the same approved-outline conditions hold (`design-outline.md` non-empty + `.outline-approved` present), treated like Round 1 user-resolved decisions rather than optional ideation.
-- **Step 2b**: Read `design-outline.md` only when it is present, non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Honor approved Goals, Non-goals, and Surfaces as binding scope. Let Approach sketch inform plan structure without locking in specific architecture choices; sketches and dialectic own architecture.
+- **Step 2b**: Read `design-outline.md` only when it is present, non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Honor approved Goals, Non-goals, and Surfaces as binding scope.
 - **Step 3**: `plan-review-loop.sh` appends an approved `design-outline.md` to `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` when `.outline-approved` exists. Brainstorm synthesis remains optional non-binding context in `plan-review-feature-context.txt` only; it is not merged into the binding reviewer scope anchor.
 
 ---

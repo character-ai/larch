@@ -20,13 +20,13 @@ Tests added for the new mode (real `check-plan-size.sh` symlinked into the fake 
 - **`--snapshot-original` composition**: rc 0 clean path with snapshot.
 - **D27+ nonfatal / merged failures**: plan-size rc 2/3 WARN display, `check-plan-size.validation.log` written, stderr diagnostics preserved, `execution-issues.md` entry attempted, no `APPENDED=` / `LOG=` in display output, nonfatal even when `run-log append-failure` itself fails; merged rc1 diagnostics for `snapshot-failed` and `validate-driver-failed`.
 - **pause rc 11**: thin fence can exec pause-save.
-- **classification-stderr WARN display**: WARN body appears in display; no `WARN=` KV leaks to display; WARN retained in result env.
+- **missing run-params**: defaults remain quiet; no removed classification-reader warning is emitted.
 - **rc1 subfailures**: failure-specific diagnostic emitted before exit.
 - **result-env create/truncate/write failure or symlink**: rc1 with clear diagnostic, no stdout-KV fallback.
 - **nested plan-size with `LARCH_QUIET_DISABLE=1`**: verdict KVs and WARNs captured even under a quiet-mode parent.
 
 Non-flag cases retained to prove unchanged `{0,1,2}` + FD3-KV contract.
 
-## Quiet-mode warning regression
+## Quiet-mode regression
 
-The harness includes default-quiet cases with `LARCH_QUIET_DISABLE` unset: one removes `run-params.json` and one keeps a readable `run-params.json` missing `design_classification`. Both assert stdout contains a `WARN=` line with the `read-design-classification` defaulting message.
+The harness includes a default-quiet case with `run-params.json` removed. It asserts the merged postplan path stays quiet instead of replaying the removed classification-reader warning.

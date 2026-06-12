@@ -289,7 +289,6 @@ boundary_markers = (
     '#### Step 2b drafter',
     '#### Step 2b postplan',
     'terminal postplan fence',
-    '> **🔶 /design 2a.5: dialectic**',
     '> **🔶 /design 3b: arch diagram**',
     'branch-local skip fence below',
     'architectural entry cleanup fence below',

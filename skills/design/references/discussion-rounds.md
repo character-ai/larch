@@ -90,27 +90,20 @@ Read the following artifacts:
 - `$DESIGN_TMPDIR/discussion-round1.md` — If it exists and is non-empty, use it to identify decisions already covered in Round 1 (avoid re-asking). **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
 - `$DESIGN_TMPDIR/plan.txt` — The latest implementation plan (initial Step 2b write, or with any Gate B applied findings on a post-plan re-entry). Read this file instead of retrieving the plan from conversation context.
 - `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions that reviewers challenged as suboptimal or that required plan revision. This file is the latest single-pass Step 3 artifact from `plan-review-loop.sh`; see `plan-review.md` § Single-pass review for OOS cumulation and Gate C re-run overwrite semantics.
-- `$DESIGN_TMPDIR/contested-decisions.md` — Decisions that sketch agents disagreed on.
-- `$DESIGN_TMPDIR/dialectic-resolutions.md` — How contested decisions were resolved.
 
 ## Behavior
 
 Identify decisions in the implementation plan that meet any of these criteria:
 1. **Not covered in Round 1** — decisions that emerged from the plan design, not from the original feature description.
 2. **Challenged by reviewers** — decisions that appear in `accepted-plan-findings.md` (reviewers found them suboptimal and the plan was revised).
-3. **Still contested** — decisions whose `dialectic-resolutions.md` entry matches any of the following (per the protocol in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`):
-   - `Disposition: voted` AND `Vote tally` shows a close 2-1 split (the minority 1 vote signals substantive disagreement).
-   - `Disposition: fallback-to-synthesis` (the dialectic layer could not resolve).
-   - `Disposition: bucket-skipped` (no debate occurred — tool was unavailable).
-   - `Disposition: over-cap` (no debate occurred — decision ranked outside the top-5 dialectic cap).
 
 Walk each uncovered branch one question at a time via sequential `AskUserQuestion` calls, providing a **recommended answer** for each question. If a question can be answered by exploring the codebase, do so and report the finding instead of asking the user.
 
-Unlike Round 1, Round 2 MAY ask about architectural decisions and implementation approach — the sketch phase has already provided divergent perspectives, so anchoring is no longer a concern at this stage.
+Unlike Round 1, Round 2 MAY ask about architectural decisions and implementation approach because the current plan and reviewer feedback provide concrete context.
 
 ## Short-circuit
 
-If all plan decisions are already covered by Round 1, no reviewer findings challenged them, and no decisions in `dialectic-resolutions.md` match the still-contested criteria above (no close 2-1 voted splits, no fallback-to-synthesis, no bucket-skipped, no over-cap entries), print `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)` and return to the calling Gate A prompt (re-fire the "ready for review / discuss more" `AskUserQuestion`). This body is invoked from Gate A's "Discuss more" branch on a post-plan re-entry — control returns to Gate A, NOT to Step 3b. Gate A's own exit decides where to go next ("Ready for review" on a post-plan re-entry proceeds to Step 3, not Step 3b).
+If all plan decisions are already covered by Round 1 and no reviewer findings challenged them, print `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)` and return to the calling Gate A prompt (re-fire the "ready for review / discuss more" `AskUserQuestion`). This body is invoked from Gate A's "Discuss more" branch on a post-plan re-entry — control returns to Gate A, NOT to Step 3b. Gate A's own exit decides where to go next ("Ready for review" on a post-plan re-entry proceeds to Step 3, not Step 3b).
 
 ## Output
 

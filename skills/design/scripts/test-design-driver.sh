@@ -99,9 +99,6 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 [[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
 
-hard_row=$'| `--hard` |'
-grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
-# Tier-mapping pins moved to design-init-runparams.sh (#3245); check the driver.
 grep -Fq 'invoke-plan-validator.sh' "$DESIGN_SKILL" || fail "design SKILL missing unconditional validator helper pin"
 
 echo "PASS: test-design-driver.sh"

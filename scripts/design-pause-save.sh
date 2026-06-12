@@ -201,10 +201,6 @@ else
 fi
 [[ -n "$STEP" ]] || STEP="6"
 
-TIER="unknown"
-if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-    TIER=$(jq -r '.design_classification // "unknown"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf 'unknown')
-fi
 BRAINSTORM_DONE=false
 [[ -f "$DESIGN_TMPDIR/.brainstorm-done" ]] && BRAINSTORM_DONE=true
 
@@ -253,7 +249,6 @@ fi
     printf 'SESSION_ID=%s\n' "$RUN_ID"
     printf 'RUN_ID=%s\n' "$RUN_ID"
     [[ -n "$REPO" ]] && printf 'REPO=%s\n' "$REPO"
-    printf 'TIER=%s\n' "$TIER"
     printf 'BRAINSTORM_DONE=%s\n' "$BRAINSTORM_DONE"
     printf 'BODY_HASH=%s\n' "$BODY_HASH"
     printf 'PAUSED_AT=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

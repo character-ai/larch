@@ -391,7 +391,7 @@ step3_loop_run_post_apply() {
             ;;
         12)
             # Plan-size hard trigger in continuation path: warn and continue (#3959).
-            emit_kv WARN "plan-size hard trigger (postplan rc=12) in continuation (round ${round_num}): proceeding as warning-only"
+            emit_kv WARN "plan-size trigger (postplan rc=12) in continuation (round ${round_num}): proceeding as warning-only"
             set +e
             post_rc=$?
             set -e

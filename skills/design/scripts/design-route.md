@@ -41,7 +41,7 @@ The driver does not fetch the issue body or resolve `REPO` itself. The module `S
 
 ## Result env (`.design-route-result.env`)
 
-Allowlist: `ROUTE`, `BRAINSTORM_PREFIX`, `TITLE_FILTER_REASON`, `TITLE_FILTER_MARKER`, `MARKER_AGE`, `MARKER_TTL`, `DESIGN_REENTRY_MARKER_PATH`, `RESUME_STEP`, `SESSION_ID`, `RUN_ID`, `TIER`, `BRAINSTORM_DONE`, `MARKER_CLEARED`, `WARN`, `ERROR`.
+Allowlist: `ROUTE`, `BRAINSTORM_PREFIX`, `TITLE_FILTER_REASON`, `TITLE_FILTER_MARKER`, `MARKER_AGE`, `MARKER_TTL`, `DESIGN_REENTRY_MARKER_PATH`, `RESUME_STEP`, `SESSION_ID`, `RUN_ID`, `BRAINSTORM_DONE`, `MARKER_CLEARED`, `WARN`, `ERROR`.
 
 Cancel routes write and validate `.design-route-result.env` via `phase_driver_write_result_env` before any reject banner, `render-final-summary.sh`, or GitHub upsert side effect. Result-env refusal exits `1` with no render/upsert. `resume@*` / `already-planned` route-flag merge warnings are included as `WARN=` records before the result env is written.
 

@@ -8,13 +8,13 @@
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
-**Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
+**Binding convention**: single normative source for the three gate prompts, their shared behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**All gates apply uniformly.
+**All gates apply uniformly.**
 
 ## Review-round cap
 
-Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: 5 (the one flow). When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve final design / See full plan / Discuss further remain. Any Gate C re-prompt after `Other` must preserve those three at-cap options (Approve final design / See full plan / Discuss further), while a `See full plan` pick at cap re-fires the same prompt minus the `See full plan` option (leaving Approve final design / Discuss further). Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
+Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric). Cap: 5 (the one flow). When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve final design / See full plan / Discuss further remain. Any Gate C re-prompt after `Other` must preserve those three at-cap options (Approve final design / See full plan / Discuss further), while a `See full plan` pick at cap re-fires the same prompt minus the `See full plan` option (leaving Approve final design / Discuss further). Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
 
 ---
 
@@ -29,7 +29,7 @@ Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-nu
 **Shape 2 — re-entry from Gate B(c) or Gate C(b) (post-plan)**: exactly three options.
 
 - **See full plan** — re-display the current `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header (verbatim, no diff vs. prior version) and re-fire the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`). This option never advances state; it loops back to the prompt.
-- **Ready for review** — write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` (Step 2a sketches and Step 2a.5 dialectic are NOT re-run on re-entry per the existing loop-exit semantics below). Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.
+- **Ready for review** — write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`. Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.
 - **Discuss more** — remain in Gate A; conduct another discussion sub-round, then re-prompt.
 
 The trigger for Shape 2 is exactly "Gate A entered from Gate B(c) or Gate C(b)" — the same trigger that already routes the discussion sub-round body to `discussion-round2.md`.
@@ -51,7 +51,7 @@ When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") o
 
 When the user picks **Ready for review**:
 - First-time entry: handled by Step 1d.7 outline-approval; Approve → Step 2a, Cancel → exit, Refine → loop.
-- Re-entry (from Gate B or Gate C): write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 (plan review) with the current `$DESIGN_TMPDIR/plan.txt`. Do NOT re-run sketches or dialectic.
+- Re-entry (from Gate B or Gate C): write `: > "$DESIGN_TMPDIR/.step3-reentry"` and proceed directly to Step 3 (plan review) with the current `$DESIGN_TMPDIR/plan.txt`.
 
 ---
 

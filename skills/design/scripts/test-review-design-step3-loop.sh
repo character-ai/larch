@@ -59,6 +59,7 @@ done
 printf 'POSTPLAN_EMIT_STATUS=ok\n' >"$dir/.design-postplan-emit-result.env"
 exit 0
 STUB
+    cat >"$dir/snapshot-ok.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 cmd="${1:?}"; shift
@@ -147,7 +148,7 @@ dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --design-tmpdir) dir="${2:?}"; shift 2 ;; *) shift ;; esac
 done
-printf 'POSTPLAN_EMIT_STATUS=ok\nSIZE_TRIGGER_FIRED=true\nPLAN_SIZE_STATUS=hard-trigger\n' >"$dir/.design-postplan-emit-result.env"
+printf 'POSTPLAN_EMIT_STATUS=ok\nSIZE_TRIGGER_FIRED=true\nPLAN_SIZE_STATUS=plan-size-trigger\n' >"$dir/.design-postplan-emit-result.env"
 exit 12
 STUB
 chmod +x "$D4/postplan-ok.sh"
@@ -159,7 +160,7 @@ FINDINGS
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'")"
 out="$(run_loop "$D4" "$round_stub")"
 contains "$out" 'STEP3_REVIEW_LOOP_STATUS=complete' 'postplan rc=12 warn-and-continue: complete envelope'
-contains "$out" 'WARN=plan-size hard trigger' 'postplan rc=12 warn-and-continue: WARN emitted'
+contains "$out" 'WARN=plan-size trigger' 'postplan rc=12 warn-and-continue: WARN emitted'
 case "$out" in *'POSTPLAN_RC=12'*) fail 'postplan rc=12 should not appear in result (warn-and-continue)' ;; esac
 [[ -f "$D4/.completed/step-3" ]] || fail 'postplan rc=12 warn-and-continue: .completed/step-3 written'
 
@@ -376,6 +377,7 @@ D8="$TMP/per-round-approval-bail"
 write_common "$D8"
 write_ok_stubs "$D8"
 cat >"$D8/run-params.json" <<'JSON'
+{"approve_requested":true}
 JSON
 cat >"$D8/accepted-plan-findings.md" <<'FINDINGS'
 ### FINDING_1: Important

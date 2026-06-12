@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design-init-runparams.sh — /design Step 0b post-gate phase driver (tier, env, rename, run-params).
+# design-init-runparams.sh — /design Step 0b post-gate phase driver (env, rename, run-params).
 
 set -euo pipefail
 

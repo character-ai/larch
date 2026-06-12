@@ -58,9 +58,9 @@ Age-based retention policy for committed `larch-logs/` run directories. Slims qu
 
 ## `/design`
 
-**Arguments**: `[--hard] [-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>`
+**Arguments**: `[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>`
 
-**Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
+**Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md)
 
 Design an implementation plan with the mechanical plan-review panel. `/design` uses a single direct-drafting flow: Step 2a writes sentinel artifacts, Step 2b drafts the plan from direct codebase inspection, and Step 3 runs the full plan-review panel. `-p`/`--partition` requests the Step 2b.5 partition/break-up flow when no plan-size threshold trips; optional `--brainstorm` runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan); Gate B auto-applies accepted findings by default, `--per-round-approval` restores the explicit per-round prompt (the former manual flag is rejected), and `--skip-approve`/`-s` auto-approves the Step 1d.7 outline and Gate C final plan (no other prompts are skipped) — see `skills/design/references/flags.md`. Internal-only flags also live there. After final approval, **Step 5b** may file accepted non-security OOS items via `/larch:issue` (`[OOS]` prefix) before **Step 5c** writes the `larch:plan` block to the issue; **Step 6** removes the design tmpdir.
 
