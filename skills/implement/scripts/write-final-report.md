@@ -117,7 +117,10 @@ rounds (for example `--self-review` runs, where Step 5 does no panel review), it
 renders `## Review Phase Detail` plus `No review rounds completed.`. A completed
 `round-meta.json` only outside the selected `--rounds-root` is still not counted
 as a completed round; the final report shows the no-completed-round message for
-that selected valid root. A render failure is swallowed
+that selected valid root. Terminal progress (`python/progress_report.py`) skips
+the shared renderer when every discovered round dir under the selected root lacks
+`round-meta.json`, so in-flight-only reviews do not append
+`No review rounds completed.` during live Step 5 or design plan review. A render failure is swallowed
 (`|| : >"$review_detail_file"`) and never blocks the report. `/design`'s plan
 review uses the same shared renderer through its final summary helper; see the
 helper's `.md` for the `/design` contract.
