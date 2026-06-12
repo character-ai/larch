@@ -1076,6 +1076,20 @@ def issue_blocked_by_read(
     )
 
 
+def issue_blocking_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["api", f"repos/{repo}/issues/{issue}/dependencies/blocking", "--paginate"],
+        cwd=cwd,
+    )
+
+
 def _issue_view_read(
     runner: Runner,
     issue: str,

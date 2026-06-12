@@ -45,6 +45,19 @@ def test_parse_prose_blockers(text: str, expected: list[int]) -> None:
     assert blocker.parse_prose_blockers(text) == expected
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("This does not affect release. Depends on #150", [150]),
+        ("This is not a blocker, but blocked by #151", [151]),
+        ("Not blocked by #152", []),
+        ("No longer needs #153", []),
+    ],
+)
+def test_parse_prose_blockers_scopes_negation(text: str, expected: list[int]) -> None:
+    assert blocker.parse_prose_blockers(text) == expected
+
+
 def test_native_open_blockers_case_insensitive_and_paginated() -> None:
     payload = json.dumps([{"number": 3, "state": "open"}]) + json.dumps(
         [{"number": "2", "state": "OPEN"}, {"number": 4, "state": "closed"}]
