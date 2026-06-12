@@ -2343,7 +2343,14 @@ def _validate_claude_output(output: Path) -> tuple[Path | None, str]:
 def _root_allowed_for_context(root: Path, session_root: Path) -> bool:
     plugin = _plugin_root().resolve()
     repo = Path.cwd().resolve()
-    return _under(root, session_root) or _under(root, plugin) or _under(root, repo)
+    # Also allow roots that are ancestors of session_root (e.g. the implement tmpdir
+    # parent when context files live alongside the session directory).
+    return (
+        _under(root, session_root)
+        or _under(session_root, root)
+        or _under(root, plugin)
+        or _under(root, repo)
+    )
 
 
 def _run_claude_with_stdin(cmd: Sequence[str], prompt: str, *, timeout: float, cwd: str) -> CommandResult:
