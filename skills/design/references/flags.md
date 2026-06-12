@@ -2,6 +2,8 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
+**Contract**: the normative allowlist for all `/design` public flags — validation rules, dispatch notes, and persistence conventions.
+
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
 **Binding convention**: `SKILL.md`'s compact flag table is a non-normative index — this file is authoritative for validation and internal dispatch notes.
