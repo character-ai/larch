@@ -1145,9 +1145,7 @@ def _resolve_non_interactive(
         return True
     if runtime.get("GITHUB_ACTIONS", "").lower() in {"1", "true", "yes"}:
         return True
-    if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
-        return True
-    return False
+    return runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}
 
 
 def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
