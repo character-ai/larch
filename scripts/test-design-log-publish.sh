@@ -373,6 +373,7 @@ setup_clone_with_origin_head() {
     git -C "$clone" commit -q -m "init"
     git -C "$clone" branch -M main
     git -C "$clone" push -q -u origin main
+    git --git-dir="$bare" symbolic-ref HEAD refs/heads/main
     git -C "$clone" remote set-head origin main
     printf '%s\n' "$clone"
 }
