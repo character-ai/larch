@@ -13,7 +13,7 @@ trap 'rm -rf "$TMP"' EXIT
 STUB="$TMP/stub-bin"
 mkdir -p "$STUB" "$TMP/design"
 
-cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
+cat >"$STUB/scout-plan-archetypes-cli" <<'EOS'
 #!/usr/bin/env bash
 out=""
 while [[ $# -gt 0 ]]; do
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 printf '%s\n' '{"archetypes":[]}' >"$out"
 EOS
-chmod +x "$STUB/scout-plan-archetypes-wrapper.sh"
+chmod +x "$STUB/scout-plan-archetypes-cli"
 
 cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -77,7 +77,7 @@ printf 'feat\n' >"$TMP/design/feature-description.txt"
 out=$(env -u LARCH_QUIET_PID \
     CLAUDE_PLUGIN_ROOT="$ROOT" \
     LARCH_QUIET_DISABLE=1 \
-    LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh" \
+    LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli" \
     LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh" \
     LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh" \
     LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh" \

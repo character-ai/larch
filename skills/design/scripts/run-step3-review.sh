@@ -162,13 +162,8 @@ export DESIGN_TMPDIR
 SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
 PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
-if [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
-    PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
-fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark --if-latest-differs "design Step 3 — plan review" || true
-# shellcheck source=scripts/lib-scope-anchor-handoff.sh
-source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 
 RESULT_ENV="$DESIGN_TMPDIR/.step3-review-result.env"
 CAP_ENV="$DESIGN_TMPDIR/.step3-review-cap.env"
@@ -192,10 +187,9 @@ REASON=""
 INSCOPE_REMAINING="0"
 
 validate_scope_anchor_handoff() {
-    local path="${SCOPE_ANCHOR_FILE:-}" canon design_canon
+    local path="${SCOPE_ANCHOR_FILE:-}" canon
     [[ -z "$path" ]] && return 0
-    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-    if canon="$(larch_scope_anchor_validate_design "$path" "$design_canon" 2>/dev/null)"; then
+    if canon="$(python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor validate --mode design --design-tmpdir "$DESIGN_TMPDIR" --path "$path" 2>/dev/null)" && [[ -n "$canon" ]]; then
         SCOPE_ANCHOR_FILE="$canon"
         return 0
     fi
@@ -204,12 +198,11 @@ validate_scope_anchor_handoff() {
 }
 
 recover_main_agent_scope_anchor() {
-    local staged canon design_canon
+    local staged canon
     [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]] || return 0
     [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || return 0
     staged="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
-    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-    if canon="$(larch_scope_anchor_validate_design "$staged" "$design_canon" 2>/dev/null)"; then
+    if canon="$(python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor validate --mode design --design-tmpdir "$DESIGN_TMPDIR" --path "$staged" 2>/dev/null)" && [[ -n "$canon" ]]; then
         SCOPE_ANCHOR_FILE="$canon"
         emit_kv WARN "Step 3: recovered SCOPE_ANCHOR_FILE from canonical staged anchor"
         return 0
@@ -380,7 +373,7 @@ fi
 
 validate_scope_anchor_handoff
 recover_main_agent_scope_anchor
-larch_scope_anchor_relay_allowed || SCOPE_ANCHOR_FILE=""
+python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor relay-allowed --tally-plan-review-status "${TALLY_PLAN_REVIEW_STATUS:-}" --loop-status "${LOOP_STATUS:-}" || SCOPE_ANCHOR_FILE=""
 
 emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
 emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"
@@ -465,9 +458,6 @@ if [[ "$STEP3_MODE" == loop ]]; then
     SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
     PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
     [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
-    if [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
-        PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
-    fi
     export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
     validate_step3_loop_starting_round
     # shellcheck source=skills/design/scripts/review-design-step3-loop.sh

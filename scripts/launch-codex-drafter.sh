@@ -274,7 +274,7 @@ done < "${OUTPUT_CANON}.parse"
 
 SCOUT_WRITTEN=false
 if [[ "$SCOUT_CANDIDATE_WRITTEN" == "true" && -s "$_scout_candidate" ]]; then
-    _filter_out="$("$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh" --filter-manifest "$_scout_candidate" "$_scout_filtered" --max-archetypes 3 2>/dev/null || true)"
+    _filter_out="$(python3 "$PLUGIN_ROOT/python/cli.py" scout filter-manifest "$_scout_candidate" "$_scout_filtered" --max-archetypes 3 2>/dev/null || true)"
     _filter_status=$(printf '%s\n' "$_filter_out" | awk -F= '$1=="SCOUT_STATUS"{print $2; exit}')
     if [[ -s "$_scout_filtered" && "$_filter_status" != "parse-failed" ]] && jq -e '.archetypes | type == "array"' "$_scout_filtered" >/dev/null 2>&1; then
         mv -f "$_scout_filtered" "$DESIGN_CANON/scout-plan-manifest.json"

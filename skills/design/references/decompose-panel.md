@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **2b.5 Split-path** only — after a hard trigger or `--partition` / `-p`. This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
 
-**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `decompose-panel-dispatch.sh` → `scripts/dispatch-with-waterfall.sh --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
+**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `python/cli.py decompose panel-dispatch` → `scripts/dispatch-with-waterfall.sh --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
 
 **When to load**: immediately when Step 2b.5 enters **Split-path (decomposition panel)** in `skills/design/SKILL.md` — read this entire file before invoking any helper below.
 
@@ -29,12 +29,12 @@ Always pass `--design-tmpdir "$DESIGN_TMPDIR"` and the session’s `codex_presen
 
 ## 2) Dispatch the decomposition panel (availability-gated, `--no-fallback`)
 
-`decompose-panel-dispatch.sh` emits only rows for tools present at Step 0 (`codex_present` / `cursor_present`). It invokes `dispatch-with-waterfall.sh` with **`--no-fallback`**: each slot gets a single launch; absent tools are omitted from the manifest; failed or narration-only outputs are **dropped** (no cross-tool relaunch, no per-slot Claude pad). `ALL_OUTPUT_FILES_PATH` lists **only succeeded** paths; panel rows match manifest `output` paths to that list (unmatched rows are `missing`).
+`python/cli.py decompose panel-dispatch` emits only rows for tools present at Step 0 (`codex_present` / `cursor_present`). It invokes `dispatch-with-waterfall.sh` with **`--no-fallback`**: each slot gets a single launch; absent tools are omitted from the manifest; failed or narration-only outputs are **dropped** (no cross-tool relaunch, no per-slot Claude pad). `ALL_OUTPUT_FILES_PATH` lists **only succeeded** paths; panel rows match manifest `output` paths to that list (unmatched rows are `missing`).
 
 Run (stdout is KV-shaped; parse `PANEL_OUTPUTS_FILE`, `DEGRADED_PANEL`, `PANEL_STATUS`):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-panel-dispatch.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose panel-dispatch \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --codex-present "$codex_present" \
   --cursor-present "$cursor_present" \
@@ -55,7 +55,7 @@ Where:
 - `PANEL_STATUS=panel-failed` — zero outputs contain a parseable `## Recommendation` heading. Offer **`AskUserQuestion`**: **Retry panel** / **Cancel**. On **Retry**, rerun §2 **once**; a second `panel-failed` exits `/design` **1** and preserves `$DESIGN_TMPDIR`.
 - `PANEL_STATUS=degraded` or `DEGRADED_PANEL=true` — include **degraded vendor counts** in option labels where it helps the operator (mirror Step 3 plan-review degraded presentation).
 
-**Harness override**: `DECOMPOSE_PANEL_WATERFALL_SH` substitutes `scripts/dispatch-with-waterfall.sh` for offline tests (`skills/design/scripts/test-decompose-panel-dispatch.sh`).
+**Harness override**: `DECOMPOSE_PANEL_WATERFALL_SH` substitutes `scripts/dispatch-with-waterfall.sh` for offline tests (`python/test_decompose.py`).
 
 ---
 
@@ -92,12 +92,12 @@ When both Cursor and Codex outputs are usable, ask which vendor’s file becomes
 
 ---
 
-## 5) Aggregator path (`decompose-aggregator.sh`)
+## 5) Aggregator path (`python/cli.py decompose aggregate`)
 
 Concatenate the eight panel outputs and merge into one canonical partition proposal:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-aggregator.sh" \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose aggregate \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --panel-outputs-file "$PANEL_OUTPUTS_FILE" \
   --codex-present "$codex_present" \
@@ -106,13 +106,13 @@ Concatenate the eight panel outputs and merge into one canonical partition propo
   --timeout 1800
 ```
 
-`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges use `decompose-aggregator.sh`, which still runs the **legacy three-tier waterfall** for its single merge slot (`/review`-style cross-tool + Claude pad). That is separate from the decomposition panel dispatch above.
+`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges use `python/cli.py decompose aggregate`, which still runs the **legacy three-tier waterfall** for its single merge slot (`/review`-style cross-tool + Claude pad). That is separate from the decomposition panel dispatch above.
 
 The decomposition panel threads `--require-result-pattern '^[[:space:]]*## Recommendation'` with `--no-fallback`, so narration-only `STATUS=OK` outputs are dropped rather than retried on another vendor. Panel rows in `panel-outputs.ndjson` bind each manifest `output` to a succeeded path from `ALL_OUTPUT_FILES_PATH` when present; otherwise the row stays `missing` / `unparsed` on the manifest path.
 
 Parse stdout for `AGGREGATOR_STATUS=ok|failed` and consume `AGGREGATOR_OUTPUT` when `ok`.
 
-**Harness override**: `DECOMPOSE_AGGREGATE_WATERFALL_SH` substitutes the waterfall entrypoint (`skills/design/scripts/test-decompose-aggregator.sh`).
+**Harness override**: `DECOMPOSE_AGGREGATE_WATERFALL_SH` substitutes the waterfall entrypoint (`python/test_decompose.py`).
 
 ---
 
@@ -133,7 +133,7 @@ Chosen partition Markdown path is denoted `<PARTITION_FILE>` below (vendor outpu
 ### 7a `prepare`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-file-issues.sh" prepare \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose prepare \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --partition-file "<PARTITION_FILE>" \
   ${ISSUE_NUMBER:+--issue-number "$ISSUE_NUMBER"}
@@ -156,7 +156,7 @@ Run the Skill in batch mode with **dedup enabled** (default) and capture **stdou
 ### 7c `annotate`
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-file-issues.sh" annotate \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose annotate \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --issue-stdout-file "$DESIGN_TMPDIR/decompose/issue-run.stdout"
 ```
@@ -172,7 +172,7 @@ This writes `$DESIGN_TMPDIR/decompose/partition-filed.md` and `$DESIGN_TMPDIR/.d
 Only when **§7 succeeded with `ISSUES_FAILED=0`** (all pieces filed and URLs recorded):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-file-issues.sh" close-original \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose close-original \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --original-issue "$ISSUE_NUMBER" \
   --repo "$GITHUB_REPOSITORY"
@@ -180,7 +180,7 @@ Only when **§7 succeeded with `ISSUES_FAILED=0`** (all pieces filed and URLs re
 
 The helper composes a **#2644-shaped** prose comment (partition rationale + per-piece bullets + blocked-by narrative), pipes the body through `python/cli.py redact secrets` into `$DESIGN_TMPDIR/decompose/close-comment.redacted.md`, posts with `gh issue comment --body-file` (never inline `--body`), then `gh issue close`. Success writes `$DESIGN_TMPDIR/.decompose-original-closed`.
 
-**Harness override**: `DECOMPOSE_REDACT_SH` substitutes the redactor (`skills/design/scripts/test-decompose-file-issues.sh` asserts the redacted path is what `gh` receives).
+**Harness override**: `DECOMPOSE_REDACT_SH` substitutes the redactor (`python/test_decompose.py` asserts the redacted path is what `gh` receives).
 
 On `gh` or redactor failure, the helper appends via `python/cli.py run-log append-failure` under **External Reviewer Issues** in `execution-issues.md` and exits non-zero **without** writing the close sentinel so the operator can retry.
 

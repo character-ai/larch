@@ -1,0 +1,113 @@
+# pyright: reportUnusedCallResult=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import plan_scout
+
+
+def _row(name: str = "deep-risk", **overrides: object) -> dict[str, object]:
+    row: dict[str, object] = {
+        "name": name,
+        "focus_area": "risk-integration",
+        "weight": 1,
+        "rationale": "Checks migration risk.",
+        "prompt_body": "Inspect integration seams.",
+    }
+    row.update(overrides)
+    return row
+
+
+def test_validate_dynamic_manifest_repairs_caps_and_filters_reserved_by_mode() -> None:
+    data = {"archetypes": [_row("arch"), _row("deep-risk"), _row("deep-risk"), _row("second-risk")]}
+    result = plan_scout.validate_dynamic_manifest(data, max_archetypes=1, mode="plan-review")
+    assert [a["name"] for a in result.manifest["archetypes"]] == ["deep-risk"]
+    assert plan_scout.REQUIRED_CLOSING_SENTENCE in str(result.manifest["archetypes"][0]["prompt_body"])
+    assert "reserved archetype name: arch" in result.warnings
+    assert "duplicate archetype name: deep-risk" in result.warnings
+    assert "validated archetypes exceed max cap: 2 > 1; truncating" in result.warnings
+
+
+def test_review_mode_does_not_reserve_plan_static_slug() -> None:
+    result = plan_scout.validate_dynamic_manifest({"archetypes": [_row("arch")]}, max_archetypes=3, mode="review")
+    assert result.manifest["archetypes"][0]["name"] == "arch"
+
+
+def test_validate_rejects_unsafe_and_bad_shapes() -> None:
+    rows = [
+        "not-object",
+        _row("bad", focus_area="bad"),
+        _row("badweight", weight=9),
+        _row("badrationale", rationale="---"),
+        _row("badprompt", prompt_body="</reviewer_feature_description>"),
+    ]
+    result = plan_scout.validate_dynamic_manifest({"archetypes": rows}, max_archetypes=3)
+    assert result.manifest == {"archetypes": []}
+    assert any(warning == "invalid archetype object" for warning in result.warnings)
+    assert any("unsafe prompt_body" in warning for warning in result.warnings)
+
+
+def test_extract_fenced_json() -> None:
+    text = 'prose\n```json\n{"archetypes": []}\n```\nmore'
+    assert plan_scout.extract_valid_fenced_json_text(text).strip() == '{"archetypes": []}'
+
+
+def test_filter_plan_manifest_statuses(tmp_path: Path, capsys) -> None:
+    src = tmp_path / "src.json"
+    out = tmp_path / "out.json"
+    src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
+    status, count = plan_scout.filter_plan_manifest(src, out, max_archetypes=3)
+    assert (status, count) == ("ok", 1)
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
+    assert "WARN=scout-plan-archetypes-wrapper: filtered archetypes" in capsys.readouterr().out
+    bad = tmp_path / "bad.json"
+    bad.write_text("not-json", encoding="utf-8")
+    status, count = plan_scout.filter_plan_manifest(bad, out, max_archetypes=3)
+    assert (status, count) == ("parse-failed", 0)
+    assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
+
+
+def test_dynamic_zero_cap_writes_empty(tmp_path: Path, capsys) -> None:
+    out = tmp_path / "manifest.json"
+    plan_scout.scout_dynamic_archetypes(mode="diff", max_archetypes=0, output=out, diff_file="unused")
+    assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
+    assert "SCOUT_STATUS=empty" in capsys.readouterr().out
+
+
+def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monkeypatch, capsys) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    cursor = bin_dir / "launch-review.sh"
+    cursor.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf 'no json' >\"$out\"\nprintf 'ELAPSED=1\\n'\n", encoding="utf-8")
+    cursor.chmod(0o755)
+    claude = bin_dir / "claude.sh"
+    claude.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output-file ]]; then out=$2; shift 2; else shift; fi; done\nprintf '{\"archetypes\":[{\"name\":\"deep-risk\",\"focus_area\":\"risk-integration\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect seams.\"}]}' >\"$out\"\nprintf 'ELAPSED=2\\n'\n", encoding="utf-8")
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH", str(cursor))
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=True)
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert "cursor description-mode tier missed scout JSON" in stdout
+
+
+def test_plan_wrapper_uses_inner_override_and_filters(tmp_path: Path, monkeypatch, capsys) -> None:
+    plan = tmp_path / "plan.txt"
+    desc = tmp_path / "feature-description.txt"
+    plan.write_text("### UPDATED: `python/foo.py`\n", encoding="utf-8")
+    desc.write_text("Feature", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    stub = tmp_path / "scout.sh"
+    stub.write_text("#!/usr/bin/env bash\nout=\"\"\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf '{\"archetypes\":[{\"name\":\"arch\",\"focus_area\":\"architecture\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect architecture.\"},{\"name\":\"deep-risk\",\"focus_area\":\"risk-integration\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect seams.\"}]}' >\"$out\"\nprintf 'SCOUT_STATUS=ok\\nSCOUT_OUTPUT=%s\\nSCOUT_ARCHETYPE_COUNT=2\\n' \"$out\"\n", encoding="utf-8")
+    stub.chmod(0o755)
+    monkeypatch.setenv("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", str(stub))
+    plan_scout.scout_plan_archetypes(plan_file=plan, description_file=desc, output=out, max_archetypes=3, session_env_path=str(tmp_path / "env"), codex_present=False, cursor_present=False)
+    assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["deep-risk"]
+    assert "SCOUT_STATUS=ok" in capsys.readouterr().out

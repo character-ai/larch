@@ -196,7 +196,7 @@ printf '%s\n' "$post_inline_out" | grep -q '^SCOUT_STALE_CLEARED=true$' || fail 
 assert_stale_scout_files_removed "$DPOSTINLINE" "inline retry"
 
 write_scout() {
-    cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
+    cat >"$STUB/scout-plan-archetypes-cli" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ -n "${PLAN_REVIEW_SCOUT_ARGV_LOG:-}" ]]; then
@@ -214,7 +214,7 @@ done
 [[ -n "$out" ]] || exit 2
 printf '%s\n' '{"archetypes":[]}' >"$out"
 EOS
-    chmod +x "$STUB/scout-plan-archetypes-wrapper.sh"
+    chmod +x "$STUB/scout-plan-archetypes-cli"
 }
 
 write_dispatch_one_slot() {
@@ -1096,7 +1096,7 @@ run_loop() {
     fi
     export CLAUDE_PLUGIN_ROOT="$ROOT"
     export LARCH_QUIET_DISABLE=1
-    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli"
     export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
@@ -1117,7 +1117,7 @@ run_loop_real_panel() {
     shift
     export CLAUDE_PLUGIN_ROOT="$ROOT"
     export LARCH_QUIET_DISABLE=1
-    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli"
     export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$ROOT/skills/design/scripts/dispatch-plan-review-panel.sh"
     export DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB/dispatch-with-waterfall.sh"
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
@@ -2170,7 +2170,7 @@ write_voters_three
 set +e
 (
     export CLAUDE_PLUGIN_ROOT="$ROOT"
-    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-cli"
     export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"

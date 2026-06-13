@@ -514,8 +514,12 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
             fi
             set +e
-            scout_bin="${SCOUT_DYNAMIC_ARCHETYPES_SH:-$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh}"
-            scout_output=$("$scout_bin" "${scout_args[@]}")
+            if [[ -n "${SCOUT_DYNAMIC_ARCHETYPES_SH:-}" ]]; then
+                scout_cmd=("$SCOUT_DYNAMIC_ARCHETYPES_SH")
+            else
+                scout_cmd=(python3 "$PLUGIN_ROOT/python/cli.py" scout dynamic-archetypes)
+            fi
+            scout_output=$("${scout_cmd[@]}" "${scout_args[@]}")
             scout_rc=$?
             set -e
             if [[ "$scout_rc" -ne 0 ]]; then

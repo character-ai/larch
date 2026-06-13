@@ -27,7 +27,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 ## Argv
 
-`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (round label; default 1), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
+`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (round label; default 1), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. Review rounds consume dynamic slots from the drafter-produced `scout-plan-manifest.json`; this loop does not launch the plan scout per round.
 
 The script always runs one pass and never invokes the revision waterfall; Gate B is the apply point.
 

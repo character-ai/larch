@@ -1,3 +1,4 @@
+# pyright: reportMissingParameterType=false, reportUnknownParameterType=false
 from __future__ import annotations
 
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
@@ -595,3 +596,9 @@ def test_quiet_parent_diagnostic_stays_off_stdout(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert result.stdout == "PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n"
     assert "Voter claude" in result.stderr
+
+
+def test_findings_classification_header_cli(capsys) -> None:
+    rc = voting.findings_classification_header_main([])
+    assert rc == 0
+    assert capsys.readouterr().out == voting.FINDINGS_CLASSIFICATION_HEADER + "\n"

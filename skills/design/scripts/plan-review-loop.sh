@@ -10,8 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 if [[ ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]] \
     || [[ ! -f "$PLUGIN_ROOT/scripts/lib-prune-decision.sh" ]] \
-    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]] \
-    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh" ]]; then
+    || [[ ! -f "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" ]]; then
     PLUGIN_ROOT="$REPO_ROOT"
 fi
 # Optional harness overrides (see test-plan-review-loop.sh).
@@ -31,16 +30,11 @@ source "$PLUGIN_ROOT/scripts/lib-prune-decision.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
-# shellcheck source=skills/design/scripts/lib-findings-classification.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
-# shellcheck source=scripts/lib-scope-anchor-handoff.sh
-source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--prune-round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -233,9 +227,13 @@ emit_loop_kvs() {
 }
 
 _scope_anchor_handoff_value() {
-    local design_canon
-    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)" || return 0
-    larch_scope_anchor_design_handoff_value "$design_canon" "${_PARSED_SCOPE_ANCHOR_FILE:-}" "${_LOOP_SCOPE_ANCHOR_IN:-}"
+    local args=(scope-anchor design-handoff
+        --design-tmpdir "$DESIGN_TMPDIR"
+        --tally-plan-review-status "${TALLY_PLAN_REVIEW_STATUS:-}"
+        --loop-status "${LOOP_STATUS:-}")
+    [[ -z "${_PARSED_SCOPE_ANCHOR_FILE:-}" ]] || args+=(--candidate "$_PARSED_SCOPE_ANCHOR_FILE")
+    [[ -z "${_LOOP_SCOPE_ANCHOR_IN:-}" ]] || args+=(--candidate "$_LOOP_SCOPE_ANCHOR_IN")
+    python3 "$PLUGIN_ROOT/python/cli.py" "${args[@]}"
 }
 
 write_step3_result_env() {
@@ -280,7 +278,7 @@ write_empty_review_artifacts() {
     } > "$DESIGN_TMPDIR/voting-tally.md"
     _fc_out="$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
     mkdir -p "$(dirname "$_fc_out")"
-    emit_findings_classification_header > "$_fc_out"
+    python3 "$PLUGIN_ROOT/python/cli.py" voting findings-classification-header > "$_fc_out"
 }
 
 _count_important_findings() {
@@ -1953,7 +1951,7 @@ if [[ "$_tally_rc" -ne 0 ]]; then
     TALLY_PLAN_REVIEW_STATUS="tally-error"
     TALLY_PLAN_REVIEW_FATAL=true
     [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
-    emit_findings_classification_header > "$_findings_classification_out"
+    python3 "$PLUGIN_ROOT/python/cli.py" voting findings-classification-header > "$_findings_classification_out"
     if [[ ! -s "$VOTING_TALLY_FILE" ]]; then
         {
             printf '# Plan Review Voting Tally\n\n'

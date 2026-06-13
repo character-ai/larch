@@ -234,10 +234,10 @@ assert_contains "specialist focus-area contract" \
 assert_contains "specialist bullet punctuation" \
     "- **<focus-area>** \`<path>:<line-range>\` — <one-paragraph issue text>." "$specialist_out"
 
-# ── scout-dynamic-archetypes.sh static source assertions ─────────────────────
+# ── plan_scout.py static source assertions ─────────────────────
 
-SCOUT="$REPO_ROOT/scripts/scout-dynamic-archetypes.sh"
-scout_out="$TMP/scout-dynamic-archetypes.sh"
+SCOUT="$REPO_ROOT/python/plan_scout.py"
+scout_out="$TMP/plan_scout.py"
 cp "$SCOUT" "$scout_out"
 
 assert_contains "scout prompt_body constraints" \
@@ -245,7 +245,7 @@ assert_contains "scout prompt_body constraints" \
 assert_contains "scout closing-sentence requirement" \
     'follow the output-format rules from your outer wrapper exactly' "$scout_out"
 assert_contains "scout closing-sentence repair" \
-    'repaired_body' "$scout_out"
+    'REQUIRED_CLOSING_SENTENCE' "$scout_out"
 assert_contains "scout closing-sentence full anchor" \
     'Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.' "$scout_out"
 

@@ -226,6 +226,9 @@ test-check-scope-reduction-marker:
 test-plan-review-scope-anchor:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-scope-anchor.sh
 
+test-lib-scope-anchor-handoff:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_rendering.py -q
+
 test-clarify-comment:
 	cd python && $(PYTHON) -m pytest test_clarify.py
 
@@ -420,13 +423,13 @@ test-pause-skill:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-panel-dispatch.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-decompose-aggregator:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-aggregator.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-decompose-file-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-file-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-design-step2b-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
@@ -561,7 +564,7 @@ test-lint-awk-multibyte-regex:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
 
 test-scout-plan-archetypes-wrapper:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-review-panel:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-dispatch-plan-review-panel.sh
@@ -801,7 +804,7 @@ test-dispatch-panel-limits:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section limits
 
 test-scout-dynamic-archetypes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scout-dynamic-archetypes.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-voters:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-plan-voters.sh

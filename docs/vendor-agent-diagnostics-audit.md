@@ -66,7 +66,7 @@ below.
 | `scripts/dispatch-code-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As plan voters. |
 | `scripts/dispatch-with-waterfall.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
 | `skills/review-and-fix/scripts/review-and-fix.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
-| `scripts/scout-dynamic-archetypes.sh` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `launch-review.sh` (**D**), Claude tier via `launch-claude-subprocess.sh` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
+| `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `launch-review.sh` (**D**), Claude tier via `launch-claude-subprocess.sh` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `launch-claude-subprocess.sh` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
 | `scripts/lint-fix-loop.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
 | `python3 python/cli.py agent compose-collector-failure-log` / `python/review_dispatch.py` | ✅ inherit | ✅ | R | **R** | Collector failure log composition now lives in the Python CLI/module surface. |
@@ -93,7 +93,7 @@ the carrier into its `run-log append-failure` source and (b) call
    then batch-append; expose the dropped-slot output path.
 5. `review-and-fix.sh` `run_coder_dispatch_*` give-up: explicit per-tool sinks +
    batch append.
-6. `scout-dynamic-archetypes.sh`: tier-specific raw stems
+6. `plan_scout.py`: tier-specific raw stems
    (`${OUTPUT}.raw.cursor` / `.raw.claude`) + direct-Claude tier site-aware
    logging.
 7. `generate-code-flow-diagram.sh`: resolve `code-flow-diagram.raw.md` carrier +
