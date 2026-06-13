@@ -15,6 +15,20 @@ fail() {
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
+REAL_CP=$(command -v cp)
+cat > "$STUB_BIN/cp" <<EOF
+#!/usr/bin/env bash
+if [[ "\${LARCH_TEST_FAIL_TOKEN_RECORD_COPY:-0}" == "1" ]]; then
+    for arg in "\$@"; do
+        if [[ "\$arg" == *.token-record ]]; then
+            echo "cp stub: simulated token-record copy failure" >&2
+            exit 1
+        fi
+    done
+fi
+exec "$REAL_CP" "\$@"
+EOF
+chmod +x "$STUB_BIN/cp"
 cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
 out=""
@@ -195,6 +209,14 @@ command grep -Fxq -- '--sandbox' "$TMPROOT/codex.argv" || fail "read-only sandbo
 command grep -Fxq -- 'read-only' "$TMPROOT/codex.argv" || fail "read-only sandbox argv missing"
 command grep -Fq 'OUTPUT CONTRACT' "$TMPROOT/codex-config.toml" || fail "trusted instructions missing from CODEX_HOME config"
 command grep -Fq 'instructions =' "$TMPROOT/codex-config.toml" || fail "instructions field missing from CODEX_HOME config"
+
+out1_copy_fail="$d1/status-token-copy-fail.txt"
+LARCH_TEST_FAIL_TOKEN_RECORD_COPY=1 run_drafter "$d1" "$out1_copy_fail" >/dev/null 2>"$TMPROOT/token-copy-fail.err"
+command grep -Fq 'STATUS=OK' "$out1_copy_fail" || fail "token copy failure should not fail drafter"
+command grep -Fq 'WARNING: failed to copy token record' "$TMPROOT/token-copy-fail.err" || fail "token copy failure warning missing"
+command grep -Fq '.token-record' "$TMPROOT/token-copy-fail.err" || fail "token copy failure warning should include token-record paths"
+[[ ! -e "$out1_copy_fail.token-record" ]] || fail "failed token-record copy should leave stable path absent"
+
 [[ -f "$out1.done" ]] || fail ".done missing"
 [[ -f "$out1.dirty-tree" ]] || fail ".dirty-tree missing"
 [[ ! -e "$out1.stderr-tail" ]] || fail "success should not keep stderr-tail"

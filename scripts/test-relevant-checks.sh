@@ -546,6 +546,22 @@ setup_oos_caller_repo() {
     )
 }
 
+setup_lint_fix_loop_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        mkdir -p scripts
+        printf '%s\n' "#!/usr/bin/env bash" "echo lint fix" > scripts/lint-fix-loop.sh
+        git add scripts/lint-fix-loop.sh
+        git commit -q -m "add lint fix loop"
+        git checkout -q -b lint-fix-loop-change
+        printf '%s\n' "#!/usr/bin/env bash" "echo lint fix changed" > scripts/lint-fix-loop.sh
+        git add scripts/lint-fix-loop.sh
+        git commit -q -m "change lint fix loop"
+    )
+}
+
 echo "=== Section 3h: verifier-source routing ==="
 
 REPO_3H="$TMPROOT/repo-verifier-source"
@@ -627,6 +643,16 @@ make_stub_dir "$STUB_3J3" present absent
 run_checks "$REPO_3J3" "$(controlled_path "$STUB_3J3")"
 assert_exit_eq "3j3: migrated-scripts manifest change exits 0" "$RUN_EXIT" 0
 assert_stdout_contains "3j3: routes lint-retired-scripts" "$RUN_OUT" "lint-retired-scripts"
+
+echo "=== Section 3j4: lint-fix-loop routing ==="
+
+REPO_3J4="$TMPROOT/repo-lint-fix-loop"
+STUB_3J4="$TMPROOT/stub-lint-fix-loop"
+setup_lint_fix_loop_repo "$REPO_3J4"
+make_stub_dir "$STUB_3J4" present absent
+run_checks "$REPO_3J4" "$(controlled_path "$STUB_3J4")"
+assert_exit_eq "3j4: lint-fix-loop change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j4: routes lint-fix-loop harness" "$RUN_OUT" "test-lint-fix-loop"
 
 echo "=== Section 3k: Python direct targets with missing lint tools ==="
 

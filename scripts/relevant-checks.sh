@@ -234,6 +234,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/lint-fix-loop.sh|scripts/test-lint-fix-loop.sh)
+                append_target_once test-lint-fix-loop
+                ;;
+        esac
+        case "$f" in
             scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
                 append_target_once test-collect-agent-results
                 ;;

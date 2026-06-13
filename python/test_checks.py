@@ -43,9 +43,9 @@ class StubRunner:
         stdout: int | None = None,
         stderr: int | None = None,
     ) -> CommandResult:
-        _ = timeout, env, check
+        _ = timeout, check
         argv_tuple = tuple(argv)
-        self.calls.append((argv_tuple, {"cwd": cwd}))
+        self.calls.append((argv_tuple, {"cwd": cwd, "env": env}))
         if self.responses:
             result = self.responses.pop(0)
             payload = (result.stdout + result.stderr).encode()
@@ -1006,6 +1006,257 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "--usage-label" in argv
     assert "codex_lint_fix" in argv
     assert "run-external-agent" not in argv
+
+
+@dataclass
+class TokenWritingRunner(StubRunner):
+    launcher_exit: int = 0
+    append_rc: int = 0
+    append_stderr: str = ""
+    active_rc: int = 0
+    active_stderr: str = ""
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        _ = timeout, check, stdout, stderr
+        argv_tuple = tuple(argv)
+        self.calls.append((argv_tuple, {"cwd": cwd, "env": env}))
+        if "launch-codex-exec" in argv_tuple:
+            output = Path(argv_tuple[argv_tuple.index("--output") + 1])
+            _ = output.with_suffix(output.suffix + ".token-record").write_text(
+                "TOOL=codex\nINPUT=1\nOUTPUT=2\nTOTAL=3\nRAW=codex_lint_fix\n",
+                encoding="utf-8",
+            )
+            return CommandResult(argv=argv_tuple, returncode=self.launcher_exit, stdout=f"LAUNCHER_EXIT={self.launcher_exit}\n", stderr="", duration=0.0)
+        if "append-record" in argv_tuple:
+            return CommandResult(argv=argv_tuple, returncode=self.append_rc, stdout="", stderr=self.append_stderr, duration=0.0)
+        if "record-vendor-sidecar" in argv_tuple:
+            return CommandResult(argv=argv_tuple, returncode=self.active_rc, stdout="", stderr=self.active_stderr, duration=0.0)
+        return CommandResult(argv=argv_tuple, returncode=0, stdout="", stderr="", duration=0.0)
+
+
+def _token_calls(runner: StubRunner, token_command: str) -> list[tuple[tuple[str, ...], dict[str, object]]]:
+    return [(call, kw) for call, kw in runner.calls if token_command in call]
+
+
+def test_run_codex_ingests_token_record_on_success_and_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_dir = implement_tmpdir / "lint-fix-loop" / "step6.1"
+    run_dir.mkdir(parents=True)
+    monkeypatch.setenv("LARCH_TOKEN_LEDGER", str(tmp_path / "stale.jsonl"))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "stale-session")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path / "design"))
+    monkeypatch.setenv("RESEARCH_TMPDIR", str(tmp_path / "research"))
+    monkeypatch.setenv("SESSION_ENV_PATH", str(tmp_path / "session-env.sh"))
+
+    for launcher_exit in (0, 7):
+        runner = TokenWritingRunner(launcher_exit=launcher_exit)
+        rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            scripts_dir=Path("/plugin/scripts"),
+            agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+            run_dir=run_dir,
+            implement_tmpdir=implement_tmpdir,
+            repo_root=str(repo),
+            prompt_body="fix lint",
+        )
+
+        assert rc == launcher_exit
+        append_calls = _token_calls(runner, "append-record")
+        active_calls = _token_calls(runner, "record-vendor-sidecar")
+        assert len(append_calls) == 1
+        assert len(active_calls) == 1
+        append_argv = list(append_calls[0][0])
+        token_record = run_dir / "codex.log.token-record"
+        assert append_argv[:3] == ["python3", str(checks._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
+        assert append_argv[1] != "python/cli.py"
+        assert append_argv[append_argv.index("--input") + 1] == str(token_record)
+        assert append_argv[append_argv.index("--tmpdir") + 1] == str(implement_tmpdir)
+        active_argv = list(active_calls[0][0])
+        assert active_argv[:3] == ["python3", str(checks._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
+        assert active_argv[active_argv.index("--input") + 1] == str(token_record)
+        active_env = active_calls[0][1]["env"]
+        assert isinstance(active_env, Mapping)
+        assert active_env["IMPLEMENT_TMPDIR"] == str(implement_tmpdir)
+        for key in ("LARCH_TOKEN_LEDGER", "LARCH_TOKEN_SESSION_ID", "DESIGN_TMPDIR", "RESEARCH_TMPDIR", "SESSION_ENV_PATH"):
+            assert key not in active_env
+
+
+def test_run_codex_warns_on_append_failure_and_still_records_active_ledger(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_dir = implement_tmpdir / "lint-fix-loop" / "step6.1"
+    run_dir.mkdir(parents=True)
+    runner = TokenWritingRunner(append_rc=13, append_stderr="append exploded")
+
+    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        scripts_dir=Path("/plugin/scripts"),
+        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        run_dir=run_dir,
+        implement_tmpdir=implement_tmpdir,
+        repo_root=str(repo),
+        prompt_body="fix lint",
+    )
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "WARNING: token append-record failed with exit 13" in err
+    assert "append exploded" in err
+    assert len(_token_calls(runner, "append-record")) == 1
+    assert len(_token_calls(runner, "record-vendor-sidecar")) == 1
+
+
+def test_run_codex_warns_on_active_ledger_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_dir = implement_tmpdir / "lint-fix-loop" / "step6.1"
+    run_dir.mkdir(parents=True)
+    runner = TokenWritingRunner(active_rc=9, active_stderr="ledger denied")
+
+    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        scripts_dir=Path("/plugin/scripts"),
+        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        run_dir=run_dir,
+        implement_tmpdir=implement_tmpdir,
+        repo_root=str(repo),
+        prompt_body="fix lint",
+    )
+
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "WARNING: token record-vendor-sidecar failed with exit 9" in err
+    assert "ledger denied" in err
+
+
+def test_run_codex_preserves_active_ledger_stderr_warning(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_dir = implement_tmpdir / "lint-fix-loop" / "step6.1"
+    run_dir.mkdir(parents=True)
+    runner = TokenWritingRunner(active_stderr="unsupported TOOL=unknown")
+
+    _ = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        scripts_dir=Path("/plugin/scripts"),
+        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        run_dir=run_dir,
+        implement_tmpdir=implement_tmpdir,
+        repo_root=str(repo),
+        prompt_body="fix lint",
+    )
+
+    assert "token record-vendor-sidecar: unsupported TOOL=unknown" in capsys.readouterr().err
+
+
+def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_parent = implement_tmpdir / "lint-fix-loop"
+    run_parent.mkdir(parents=True)
+    log = implement_tmpdir / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    captured: dict[str, Path] = {}
+
+    def fail_codex(*_args: object, **kwargs: object) -> int:
+        captured["implement_tmpdir"] = kwargs["implement_tmpdir"]  # type: ignore[assignment]
+        captured["run_dir"] = kwargs["run_dir"]  # type: ignore[assignment]
+        return 1
+
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok("abc123\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach
+    ])
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=str(implement_tmpdir),
+        run_parent=str(run_parent),
+    )
+
+    assert outcome.status == "main-agent-required"
+    assert captured["implement_tmpdir"] == implement_tmpdir.resolve()
+    assert captured["implement_tmpdir"] != run_parent
+    assert captured["implement_tmpdir"] != captured["run_dir"]
+
+
+def test_run_lint_fix_derives_implement_tmpdir_from_run_parent_without_allowed_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    implement_tmpdir = tmp_path / "implement"
+    run_parent = implement_tmpdir / "lint-fix-loop"
+    run_parent.mkdir(parents=True)
+    log = implement_tmpdir / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    captured: dict[str, Path] = {}
+
+    def fail_codex(*_args: object, **kwargs: object) -> int:
+        captured["implement_tmpdir"] = kwargs["implement_tmpdir"]  # type: ignore[assignment]
+        return 1
+
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok("abc123\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach
+    ])
+
+    _ = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        allowed_tmpdir=None,
+        run_parent=str(run_parent),
+    )
+
+    assert captured["implement_tmpdir"] == implement_tmpdir.resolve()
 
 
 def test_run_lint_fix_dispatch_failure_ignores_health_classification(
