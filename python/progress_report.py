@@ -14,10 +14,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from gantt import GanttRow, format_mss, render_gantt
+
 TIMING_MARK_MIN_COLS = 5
+TIMING_VENDOR_MIN_COLS = 13
+TIMING_VENDOR_VENDOR_COL = 5
+TIMING_VENDOR_KIND_COL = 6
+TIMING_VENDOR_START_COL = 7
+TIMING_VENDOR_END_COL = 8
+TIMING_VENDOR_OUTPUT_COL = 10
+TIMING_VENDOR_STATUS_COL = 12
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
+PROGRESS_GANTT_ROW_CAP = 25
 
 _MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
 _MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
@@ -351,6 +361,10 @@ def _review_rounds_root(implement_tmpdir: Path, run_id: str) -> Path:
     return implement_tmpdir
 
 
+def _has_completed_round_meta(rounds_root: Path) -> bool:
+    return any((round_dir / "round-meta.json").is_file() for round_dir in _round_dirs(rounds_root))
+
+
 def _latest_token_ledger(tmpdir: Path) -> Path | None:
     try:
         token_ledgers = sorted(tmpdir.glob("larch-tokens-*.jsonl"), key=_path_mtime)
@@ -388,6 +402,175 @@ def _call_render_phase_detail_script(
     return _strip_md_for_terminal(result.stdout.strip())
 
 
+def _progress_label_map_from_manifests(manifest_paths: list[Path]) -> dict[str, str]:
+    label_map: dict[str, str] = {}
+    for manifest in manifest_paths:
+        try:
+            lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                parsed: object = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            row = cast("dict[str, object]", parsed)
+            output = row.get("output")
+            tool = row.get("tool")
+            slot = row.get("slot")
+            if not all(isinstance(value, str) and value for value in (output, tool, slot)):
+                continue
+            output_s = cast("str", output)
+            tool_s = cast("str", tool)
+            slot_s = cast("str", slot)
+            label_map[Path(output_s).name] = f"{tool_s}/{slot_s}"
+    return label_map
+
+
+def _progress_label_map(round_dirs: list[Path]) -> dict[str, str]:
+    return _progress_label_map_from_manifests([round_dir / "panel-manifest.ndjson" for round_dir in round_dirs])
+
+
+def _progress_core_from_output(output: str) -> str:
+    core = Path(output).name
+    core = core.removesuffix(".txt")
+    for suffix in ("-output-ns-retry", "-output", "-ns-retry"):
+        if core.endswith(suffix):
+            core = core[: -len(suffix)]
+            break
+    return core.lower()
+
+
+def _progress_derived_label(output: str) -> str:
+    core = _progress_core_from_output(output)
+    vendor_match = r"cursor|codex|claude_sub|claude"
+    if core == "aggregator":
+        return "aggregator"
+    if core == "scout-plan-manifest" or core.startswith("scout-plan-manifest."):
+        return "scout"
+    if core in {"codex", "cursor", "claude", "claude_sub"}:
+        return core
+    match = re.match(rf"^({vendor_match})-specialist-(.+)$", core)
+    if match:
+        return f"{match.group(1)}/{match.group(2)}"
+    match = re.match(rf"^({vendor_match})-generalist$", core)
+    if match:
+        return f"{match.group(1)}/generalist"
+    if core.startswith("dyn-"):
+        return f"dynamic/{core[4:]}"
+    match = re.match(rf"^({vendor_match})-(.*)$", core)
+    if match:
+        arch = match.group(2) or "panel"
+        return f"{match.group(1)}/{arch}"
+    if core in {"", "panel"}:
+        return "panel/panel"
+    return f"unknown/{core}"
+
+
+def _derive_progress_label(
+    output: str,
+    vendor: str = "",
+    kind: str = "",
+    label_map: dict[str, str] | None = None,
+) -> str:
+    basename = Path(output).name if output and output != "-" else ""
+    labels = label_map or {}
+    if basename and basename in labels:
+        return labels[basename]
+    derived = _progress_derived_label(basename) if basename else ""
+    if derived in {"codex", "cursor", "claude", "claude_sub"} and kind and kind != "-":
+        return f"{derived}/{kind}"
+    if derived and derived != "unknown/-":
+        return derived
+    if vendor and kind:
+        return f"{vendor}/{kind}"
+    if vendor:
+        return vendor
+    return kind or "unknown"
+
+
+def _progress_vendor_rows(
+    timing_ledger: Path,
+    window_start_s: int,
+    window_end_s: int,
+    label_map: dict[str, str] | None = None,
+) -> list[GanttRow]:
+    if window_end_s <= window_start_s:
+        return []
+    try:
+        lines = timing_ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    rows: list[tuple[int, int, str]] = []
+    for line in lines:
+        cols = line.split("\t")
+        if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
+            continue
+        status = cols[TIMING_VENDOR_STATUS_COL]
+        if status not in {"complete", "OK"}:
+            continue
+        try:
+            start_s = int(cols[TIMING_VENDOR_START_COL])
+            end_s = int(cols[TIMING_VENDOR_END_COL])
+        except ValueError:
+            continue
+        if end_s <= window_start_s or start_s >= window_end_s:
+            continue
+        clamped_start = max(start_s, window_start_s)
+        clamped_end = min(end_s, window_end_s)
+        if clamped_end <= clamped_start:
+            continue
+        output = cols[TIMING_VENDOR_OUTPUT_COL] if len(cols) > TIMING_VENDOR_OUTPUT_COL else ""
+        label = _derive_progress_label(output, cols[TIMING_VENDOR_VENDOR_COL], cols[TIMING_VENDOR_KIND_COL], label_map)
+        rows.append((clamped_start, clamped_end, label))
+    rows.sort(key=lambda row: (row[0], row[1], row[2]))
+    return [GanttRow(label, start_s, end_s) for start_s, end_s, label in rows[:PROGRESS_GANTT_ROW_CAP]]
+
+
+def _render_inflight_gantt(
+    round_dir: Path,
+    round_num: int,
+    timing_ledger: Path,
+    label_manifest_paths: list[Path],
+    window_start_s: int | None = None,
+) -> str:
+    start_s = _read_epoch_file(round_dir / "round-start-s")
+    if start_s is None:
+        start_s = window_start_s
+    if start_s is None:
+        mtime = _path_mtime_s(round_dir)
+        start_s = int(mtime) if mtime is not None else None
+    if start_s is None:
+        return ""
+    end_s = int(time.time())
+    if end_s <= start_s:
+        return ""
+    round_manifest_dirs = [path.parent for path in label_manifest_paths if path.name == "panel-manifest.ndjson"]
+    label_map = (
+        _progress_label_map(round_manifest_dirs)
+        if len(round_manifest_dirs) == len(label_manifest_paths)
+        else _progress_label_map_from_manifests(label_manifest_paths)
+    )
+    rows = _progress_vendor_rows(timing_ledger, start_s, end_s, label_map)
+    if not rows:
+        return ""
+    chart = render_gantt(start_s, end_s, rows)
+    if not chart:
+        return ""
+    span = end_s - start_s
+    return (
+        f"Round {round_num} reviewer timing\n\n"
+        "```\n"
+        f"Round {round_num} reviewer timing  ·  window 0:00-{format_mss(span)} ({span}s)\n"
+        f"{chart}\n"
+        "```"
+    )
+
+
 def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     timing = implement_tmpdir / "timing-ledger.tsv"
     return _call_render_phase_detail_script(
@@ -398,7 +581,7 @@ def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
     )
 
 
-def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
+def _render_step5(implement_tmpdir: Path, run_id: str, window_start_s: int | None = None) -> str:
     round_dir = _current_round_dir(implement_tmpdir)
     if round_dir is None:
         return ""
@@ -410,10 +593,24 @@ def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
         f"  reviewers: {returned}/{total} returned | elapsed: {_round_elapsed(round_dir)}"
     )
     selected_root = _review_rounds_root(implement_tmpdir, run_id)
-    if _all_round_dirs_inflight(selected_root):
-        return header
+    inflight = ""
+    if not (round_dir / "round-meta.json").is_file():
+        inflight = _render_inflight_gantt(
+            round_dir,
+            round_num,
+            implement_tmpdir / "timing-ledger.tsv",
+            [round_dir / "panel-manifest.ndjson"],
+            window_start_s,
+        )
+    if _all_round_dirs_inflight(selected_root) or not _has_completed_round_meta(selected_root):
+        return f"{header}\n\n{inflight}" if inflight else header
     detail = _render_review_detail(implement_tmpdir, run_id)
-    return f"{header}\n\n{detail}" if detail else header
+    parts = [header]
+    if detail:
+        parts.append(detail)
+    if inflight:
+        parts.append(inflight)
+    return "\n\n".join(parts)
 
 
 def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
@@ -442,13 +639,13 @@ def _render_implement(run: LiveRun) -> str:
     done_marker = tmpdir / "progress" / "done"
     if not done_marker.exists():
         if "Step 5" in step_label or (not step_label and not phase):
-            report = _render_step5(tmpdir, _resolve_run_id(tmpdir))
+            report = _render_step5(tmpdir, _resolve_run_id(tmpdir), start_s)
             if report:
                 return report
         else:
             round_dir = _current_round_dir(tmpdir)
             if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
-                report = _render_step5(tmpdir, _resolve_run_id(tmpdir))
+                report = _render_step5(tmpdir, _resolve_run_id(tmpdir), start_s)
                 if report:
                     return report + "\nnote: step marks stale; phase inferred from round artifacts"
     return _render_generic("implement", step_label, start_s, tmpdir)
@@ -764,10 +961,24 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
                 f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir, start_s)}"
             )
     plan_review_root = design_tmpdir / "plan-review"
-    if _all_round_dirs_inflight(plan_review_root):
-        return header
+    inflight = ""
+    if not (round_dir / "round-meta.json").is_file():
+        inflight = _render_inflight_gantt(
+            round_dir,
+            round_num,
+            design_tmpdir / "timing-ledger.tsv",
+            [manifest],
+            start_s,
+        )
+    if _all_round_dirs_inflight(plan_review_root) or not _has_completed_round_meta(plan_review_root):
+        return f"{header}\n\n{inflight}" if inflight else header
     detail = _render_design_review_detail(design_tmpdir)
-    return f"{header}\n\n{detail}" if detail else header
+    parts = [header]
+    if detail:
+        parts.append(detail)
+    if inflight:
+        parts.append(inflight)
+    return "\n\n".join(parts)
 
 
 def _render_design(run: LiveRun) -> str:

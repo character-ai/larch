@@ -122,6 +122,9 @@ function derive(b,    core, rest, vendor, arch) {
         arch = core; sub(/^dyn-/, "", arch)
         return "dynamic/" arch
     }
+    if (core == "aggregator") return "aggregator"
+    if (core == "scout-plan-manifest" || core ~ /^scout-plan-manifest\./) return "scout"
+    if (core ~ /^(cursor|codex|claude_sub|claude)$/) return core
     if (core ~ /^(cursor|codex|claude_sub|claude)-/) {
         vendor = core; sub(/-.*$/, "", vendor)
         rest = core;   sub(/^(cursor|codex|claude_sub|claude)-/, "", rest)
@@ -394,6 +397,7 @@ function label_for(out, vendor, kind,    bn, val) {
     if (bn in m) return m[bn]
     if (bn != "" && bn != "-") {
         val = derive(bn)
+        if (val ~ /^(cursor|codex|claude_sub|claude)$/ && kind != "" && kind != "-") return val "/" kind
         if (val != "" && val != "unknown/-") return val
     }
     return vendor "/" kind

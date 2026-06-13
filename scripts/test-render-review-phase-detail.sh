@@ -98,6 +98,10 @@ JSON
     printf 'v1\tround\t1700001000\timplement\tStep 5 — code review\t2\t1700001000\t1700001120\t120\t3\t0\t0\t-\n'
     printf 'v1\tvendor\t1700000010\timplement\t-\tcursor\treview\t1700000000\t1700000120\t120\tcursor-specialist-structure-output.txt\t0\tcomplete\n'
     printf 'v1\tvendor\t1700000020\timplement\t-\tcodex\treview\t1700000060\t1700000200\t140\tReviewer:Unsafe,Name-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000025\timplement\t-\tclaude\tvendor-misc\t1700000025\t1700000040\t15\taggregator-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000030\timplement\t-\tcodex\tvendor-misc\t1700000030\t1700000050\t20\tscout-plan-manifest.json.raw\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000040\timplement\t-\tcodex\tcodex-plan-autofix\t1700000040\t1700000070\t30\tcodex-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000050\timplement\t-\tcursor\tcursor-plan-autofix\t1700000050\t1700000080\t30\tcursor-output.txt\t0\tcomplete\n'
     printf 'v1\tvendor\t1700001010\timplement\t-\tcursor\treview\t1700001010\t1700001100\t90\tcursor-specialist-correctness-output.txt\t0\tcomplete\n'
 } >"$ROOT/timing-ledger.tsv"
 
@@ -146,6 +150,10 @@ if grep -Fq -- 'dateFormat X' "$OUT" || grep -Fq -- 'axisFormat %H:%M:%S' "$OUT"
 grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-5:00 (300s)' "$OUT" || fail 'ASCII chart title must use m:ss span'
 grep -Fq -- 'cursor/structure' "$OUT" || fail 'ASCII label must use slot_map when available'
 grep -Fq -- 'unknown/reviewer:unsafe,name' "$OUT" || fail 'ASCII fallback label must preserve punctuation'
+grep -Fq -- 'aggregator ' "$OUT" || fail 'ASCII fallback label must render aggregator'
+grep -Fq -- 'scout ' "$OUT" || fail 'ASCII fallback label must render scout-plan-manifest as scout'
+grep -Fq -- 'codex/codex-plan-autofix' "$OUT" || fail 'ASCII bare codex output must use task kind'
+grep -Fq -- 'cursor/cursor-plan-autofix' "$OUT" || fail 'ASCII bare cursor output must use task kind'
 grep -Fq -- 'cursor/correctness' "$OUT" || fail 'ASCII chart must render round 2 task'
 grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'ASCII chart must render round 2 heading'
 grep -Fq -- '120s' "$OUT" || fail 'ASCII chart must include bare duration suffix'
