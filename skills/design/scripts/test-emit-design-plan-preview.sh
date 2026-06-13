@@ -228,4 +228,47 @@ touch "$d9/.step3-entry-plan-printed"
 out9b=$("$SUBJECT" --design-tmpdir "$d9" --variant step3)
 printf '%s\n' "$out9b" | grep -Fq '**⚠ 3: DESIGN_TMPDIR not under allowlist' || fail "existing sentinel must not bypass allowlist validation"
 
+# Full variant — small plan: header + full body, no summary markers
+d_full_small="$TMPROOT/d_full_small"
+mkdir -p "$d_full_small"
+printf '# FullSmall\n\nHello full body\n\ndiff_lines: 1\n' >"$d_full_small/plan.txt"
+out_full_small=$("$SUBJECT" --design-tmpdir "$d_full_small" --variant full)
+printf '%s\n' "$out_full_small" | grep -Fq '## Final Design Plan' || fail "full small missing header"
+printf '%s\n' "$out_full_small" | grep -Fq 'Hello full body' || fail "full small should include full body"
+printf '%s\n' "$out_full_small" | grep -Fq '**Section outline:**' && fail "full small should not print section outline"
+printf '%s\n' "$out_full_small" | grep -Fq 'very large' && fail "full small should not print large-plan note"
+
+# Full variant — large plan: full body past summary window, no summary markers
+d_full_large="$TMPROOT/d_full_large"
+mkdir -p "$d_full_large"
+{
+    printf '# FullLarge\n\n'
+    for _ in $(seq 1 130); do
+        printf 'full-body line %s\n' "$_"
+    done
+} >"$d_full_large/plan.txt"
+out_full_large=$("$SUBJECT" --design-tmpdir "$d_full_large" --variant full)
+printf '%s\n' "$out_full_large" | grep -Fq '## Final Design Plan' || fail "full large missing header"
+printf '%s\n' "$out_full_large" | grep -Fq 'full-body line 125' || fail "full large should include body past summary window"
+printf '%s\n' "$out_full_large" | grep -Fq '**Section outline:**' && fail "full large should not print section outline"
+printf '%s\n' "$out_full_large" | grep -Fq 'very large' && fail "full large should not print large-plan note"
+
+# Full variant — empty tmpdir: friendly warning, exit 0
+if ! out_full_empty=$("$SUBJECT" --design-tmpdir '' --variant full); then
+    fail "empty --design-tmpdir should exit 0 for full"
+fi
+printf '%s\n' "$out_full_empty" | grep -Fq '**⚠ 4b: DESIGN_TMPDIR missing or invalid' || fail "full empty tmpdir should warn"
+
+# Full variant — missing plan: friendly warning, exit 0
+d_full_noplan="$TMPROOT/d_full_noplan"
+mkdir -p "$d_full_noplan"
+out_full_noplan=$("$SUBJECT" --design-tmpdir "$d_full_noplan" --variant full)
+printf '%s\n' "$out_full_noplan" | grep -Fq '**⚠ 4b: plan.txt missing or empty' || fail "full missing plan should warn"
+
+# Full variant — disallowed tmpdir: allowlist warning
+d_full_bad=$(mktemp -d "$SCRIPT_DIR/emit-design-plan-preview-full-disallowed.XXXXXX")
+trap 'rm -rf "$TMPROOT" "$d9" "$d_full_bad"' EXIT
+out_full_bad=$("$SUBJECT" --design-tmpdir "$d_full_bad" --variant full)
+printf '%s\n' "$out_full_bad" | grep -Fq '**⚠ 4b: DESIGN_TMPDIR not under allowlist' || fail "full should validate allowlist"
+
 echo "PASS: test-emit-design-plan-preview.sh"

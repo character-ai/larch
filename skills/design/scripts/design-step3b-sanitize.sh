@@ -144,7 +144,7 @@ set -e
 _sanitizer_output=$(cat "$_sanitizer_output_file")
 rm -f "$_sanitizer_output_file"
 
-if [ "$_sanitizer_rc" -eq 0 ] && ! printf '%s\n' "$_sanitizer_output" | grep -Fq 'STATUS=rejected'; then
+if [ "$_sanitizer_rc" -eq 0 ] && ! printf '%s\n' "$_sanitizer_output" | grep -qE '^STATUS=rejected$'; then
   rm -f "$_failure_log"
   mv "$_candidate" "$DESIGN_TMPDIR/architecture-diagram.md"
   printf '%s\n' '---LARCH-DIAGRAM-BEGIN---'
