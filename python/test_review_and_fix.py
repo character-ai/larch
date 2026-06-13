@@ -163,7 +163,7 @@ def test_run_coder_codex_rejects_nonzero_launcher_exit(tmp_path, monkeypatch):
     output = tmp_path / "coder-codex.log"
     output.write_text("ok\n", encoding="utf-8")
 
-    def fake_run(argv, **kwargs):
+    def fake_run(_argv, **_kwargs):
         class Result:
             returncode = 0
             stdout = "LAUNCHER_EXIT=1\n"
@@ -191,7 +191,7 @@ def test_post_dispatch_submodule_revert_restores_tracked_path(tmp_path, monkeypa
     round_dir.mkdir()
     monkeypatch.setattr(review_and_fix, "_capture_round_tracked_paths", lambda: ["vendor/tracked.txt"])
     monkeypatch.setattr(review_and_fix, "_capture_round_untracked_paths", list)
-    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
+    monkeypatch.setattr(review_and_fix, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(argv, 0, "", "", 0.0))
     count = review_and_fix._post_dispatch_submodule_revert(round_dir, ["vendor"])
     assert count == 1
 
@@ -202,6 +202,7 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
     impl = _tmp_impl(tmp_path)
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
         return review_and_fix.RoundResult(
             0, "coder-main-agent-required", "fix-required", 1, 1, 0, 0, 0, 1, 0, 0, 0,
             impl / "round-1" / "accepted-findings.md",
@@ -213,7 +214,7 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
         )
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
-    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda argv: 0)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -250,7 +251,7 @@ def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys
 
 
 @pytest.mark.step5
-def test_mav_apply_writes_relocated_pre_coder_head(tmp_path, monkeypatch, capsys):
+def test_mav_apply_writes_relocated_pre_coder_head(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     findings = impl / "accepted.md"
@@ -267,7 +268,7 @@ def test_mav_apply_writes_relocated_pre_coder_head(tmp_path, monkeypatch, capsys
 
 
 @pytest.mark.write_rejected
-def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch, capsys):
+def test_write_rejected_redacts_tmpdir_and_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = tmp_path / "impl"
     impl.mkdir()
@@ -315,7 +316,7 @@ def test_step5_post_round_substantial_at_cap_emits_cap_hit(tmp_path, monkeypatch
 
 
 @pytest.mark.dispatch
-def test_process_skipped_findings_routes_security_vs_oos(tmp_path, monkeypatch):
+def test_process_skipped_findings_routes_security_vs_oos(tmp_path):
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()
     in_scope = round_dir / "accepted-in-scope-findings.md"
