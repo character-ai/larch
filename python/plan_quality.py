@@ -540,7 +540,7 @@ def parse_plan_commands(plan_text: str, repo_root: str | Path | None = None, plu
         if files_section == "update" and "**UPDATED**:" in raw:
             pending_updated = _strip_md_ticks(re.sub(r"^[^*]*\*\*UPDATED\*\*:[ \t]*", "", raw).strip())
             continue
-        elif files_section == "update" and pending_updated and re.match(r"^[ \t]+-[ \t]+Adds[ \t]+flag:", raw):
+        if files_section == "update" and pending_updated and re.match(r"^[ \t]+-[ \t]+Adds[ \t]+flag:", raw):
             flag = re.sub(r"^[ \t]+-[ \t]+Adds[ \t]+flag:[ \t]*", "", raw).strip()
             _emit_updated_flag(rows, pending_updated, flag, idx)
 

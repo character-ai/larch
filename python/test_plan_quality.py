@@ -500,7 +500,8 @@ fi
     assert plan.read_text(encoding="utf-8") == original
     revise_env = (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").read_text(encoding="utf-8")
     assert "REVISE_TIER_4_STATUS=invalid-patch" in revise_env
-    assert "REVISE_PLAN_HASH_BEFORE=" in revise_env and "REVISE_PLAN_HASH_AFTER=" in revise_env
+    assert "REVISE_PLAN_HASH_BEFORE=" in revise_env
+    assert "REVISE_PLAN_HASH_AFTER=" in revise_env
     before, after = (line.split("=", 1)[1] for line in revise_env.splitlines() if line.startswith(("REVISE_PLAN_HASH_BEFORE=", "REVISE_PLAN_HASH_AFTER=")))
     assert before == after
     assert (tmp_path / "plan.txt.before-revise").is_file()
