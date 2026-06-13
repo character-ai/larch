@@ -90,7 +90,7 @@ run_action() {
             ;;
         VALIDATE_PLAN_COMMANDS)
             export DESIGN_TMPDIR
-            python3 "$PLUGIN_ROOT/python/cli.py" plan validate --design-tmpdir "$DESIGN_TMPDIR" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan validate --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$PLUGIN_ROOT" "$@"
             ;;
         *)
             return 64

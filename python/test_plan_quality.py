@@ -12,6 +12,7 @@ import pytest
 import plan_quality
 
 CLI = Path(__file__).with_name("cli.py")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_cli(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -20,6 +21,52 @@ def run_cli(*args: str, cwd: Path | None = None, env: dict[str, str] | None = No
     if env:
         merged.update(env)
     return subprocess.run([sys.executable, str(CLI), *args], cwd=cwd, text=True, capture_output=True, env=merged, check=False)
+
+
+def _write_executable(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _revise_base(tmp_path: Path, plan_text: str | None = None) -> tuple[Path, Path, Path]:
+    plan = tmp_path / "plan.txt"
+    plan.write_text(plan_text or "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("finding\n", encoding="utf-8")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    return plan, findings, feature
+
+
+def _run_revise(tmp_path: Path, plan: Path, findings: Path, feature: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+    return run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "false",
+        *extra,
+        env=env,
+    )
+
+
+def _validate_text(plan_text: str, tmp_path: Path, registry: Path | None = None, source_kind: str = "plan") -> plan_quality.ValidationSummary:
+    plan = tmp_path / "case-plan.md"
+    plan.write_text(plan_text, encoding="utf-8")
+    rows = plan_quality.parse_plan_commands(plan.read_text(encoding="utf-8"), REPO_ROOT, REPO_ROOT)
+    return plan_quality.validate_plan_command_rows(rows, REPO_ROOT, registry, source_kind, help_timeout=5, dry_run_timeout=5)
 
 
 def test_parse_plan_commands_fenced_invocation_and_allowlist(tmp_path: Path) -> None:
@@ -177,6 +224,146 @@ def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> N
     assert (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").is_file()
 
 
+def test_revise_waterfall_restores_when_emit_plan_gate_fails(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+changed
+diff_lines: 2
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=failed\\n'\nexit 0\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert plan.read_text(encoding="utf-8") == original
+
+
+def test_revise_waterfall_restores_after_unified_patch_apply_failure(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  : >"$out"
+else
+  cat >"$out" <<'PATCH'
+--- a/plan.txt
++++ b/plan.txt
+@@ -99,1 +99,1 @@
+-missing
++changed
+PATCH
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "apply-failed"
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert plan.read_text(encoding="utf-8") == original
+
+
+def test_revise_waterfall_falls_back_to_file_replacement_in_tier_order(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    calls = tmp_path / "calls.txt"
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        f"""#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+printf '%s\\n' "$(basename "$out")" >>"{calls}"
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+fallback fixed
+diff_lines: 2
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    assert out["REVISE_TIER_4_STATUS"] == "ok"
+    assert calls.read_text(encoding="utf-8").splitlines() == ["codex-output.txt", "claude-output.txt", "codex-output.txt"]
+    assert "fallback fixed" in plan.read_text(encoding="utf-8")
+
+
+def test_revise_waterfall_heading_guard_restores_replacement(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+body without plan headings
+diff_lines: 1
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "invalid-patch"
+    assert out["REVISE_STATUS"] == "failed-validation"
+    assert plan.read_text(encoding="utf-8") == original
+
+
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands"
 FIXTURE_PAIRS = sorted(
     (plan, plan.with_suffix(".tsv"))
@@ -194,6 +381,171 @@ def test_parse_plan_commands_golden_fixtures(plan_path: Path, tsv_path: Path, tm
     assert plan_quality.render_plan_command_tsv(rows) == tsv_path.read_text(encoding="utf-8")
 
 
+def test_validate_plan_commands_fixture_parity(tmp_path: Path) -> None:
+    fixture_dir = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands"
+    demo = (fixture_dir / "demo-plan.md").read_text(encoding="utf-8")
+    summary = _validate_text(demo, tmp_path)
+    assert "DEFECT script=skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh kind=unknown-flag flag=unknown-flag" in summary.log_text
+    assert summary.status == "defects-found"
+    assert summary.defect_count == 1
+
+    missing = """## Plan
+
+```bash
+scripts/does-not-exist-zzzz-validate-fixture.sh
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(missing, tmp_path)
+    assert "DEFECT script=scripts/does-not-exist-zzzz-validate-fixture.sh kind=missing-script" in summary.log_text
+
+    dots = """## Plan
+
+```bash
+scripts/../python/cli.py redact secrets
+```
+
+diff_lines: 1
+"""
+    rows = plan_quality.parse_plan_commands(dots, REPO_ROOT, REPO_ROOT)
+    assert any(row.row_type == "parse_note" for row in rows)
+    summary = plan_quality.validate_plan_command_rows(rows, REPO_ROOT)
+    assert summary.status == "ok"
+
+    allow_plan = """## Plan
+
+### Files to update
+
+- **UPDATED**: skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh
+  - Adds flag: known-flag
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh --known-flag x
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(allow_plan, tmp_path)
+    assert "kind=unknown-flag flag=known-flag" not in summary.log_text
+    assert summary.status == "ok"
+
+    launch_context = (fixture_dir / "launch-context-plan.md").read_text(encoding="utf-8")
+    summary = _validate_text(launch_context, tmp_path)
+    assert "flag=context-files" not in summary.log_text
+    assert summary.status == "ok"
+
+    dotslash = """## Plan
+
+```bash
+./python/cli.py redact secrets
+```
+
+diff_lines: 1
+"""
+    assert _validate_text(dotslash, tmp_path).status == "ok"
+
+    registry = tmp_path / "dry-registry.tsv"
+    registry.write_text(
+        "script_path\thook\tdoc_anchor\n"
+        "skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh\tLARCH_DRY_RUN=1\t\n"
+        "skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh\tLARCH_DRY_RUN=1\t\n",
+        encoding="utf-8",
+    )
+    tier3_ok = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh --dry-flag x
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(tier3_ok, tmp_path, registry)
+    assert summary.status == "ok"
+    assert "kind=dry-run-failed" not in summary.log_text
+
+    tier3_fail = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh --dry-flag x
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(tier3_fail, tmp_path, registry)
+    assert "kind=dry-run-failed" in summary.log_text
+
+    unsafe = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh --dry-flag 'x;y'
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(unsafe, tmp_path, registry)
+    assert "kind=unsafe-token" in summary.log_text
+    assert summary.unsafe_token_count == 1
+
+    summary = _validate_text(tier3_fail, tmp_path, registry, source_kind="composed")
+    assert "kind=dry-run-failed" not in summary.log_text
+
+    bad_registry = tmp_path / "bad-registry.tsv"
+    bad_registry.write_text(
+        "script_path\thook\tdoc_anchor\n"
+        "skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh\tmy-mode\t\n",
+        encoding="utf-8",
+    )
+    summary = _validate_text(tier3_ok, tmp_path, bad_registry)
+    assert "kind=unknown-registry-hook hook=my-mode" in summary.log_text
+
+    validate_only_registry = tmp_path / "validate-only-registry.tsv"
+    validate_only_registry.write_text(
+        "script_path\thook\tdoc_anchor\n"
+        "skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-validate-only.sh\t--validate-only\t\n",
+        encoding="utf-8",
+    )
+    validate_only = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-validate-only.sh --dry-flag x
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(validate_only, tmp_path, validate_only_registry)
+    assert summary.status == "ok"
+    assert "TIER3_CAPTURE script=skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-validate-only.sh" in summary.log_text
+
+    empty_help = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-empty-help.sh --should-be-ignored x
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(empty_help, tmp_path)
+    assert "SKIPPED_FLAG_CHECK script=skills/design/scripts/fixtures/validate-plan-commands/demo-empty-help.sh" in summary.log_text
+    assert summary.skipped_count == 1
+
+    nonzero_help = """## Plan
+
+```bash
+skills/design/scripts/fixtures/validate-plan-commands/demo-help-nonzero-rc.sh --bogus-flag
+```
+
+diff_lines: 1
+"""
+    summary = _validate_text(nonzero_help, tmp_path)
+    assert "kind=unknown-flag flag=bogus-flag" in summary.log_text
+
+    dot_newskip = (REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands" / "dot-newskip-plan.md").read_text(encoding="utf-8")
+    summary = _validate_text(dot_newskip, tmp_path)
+    assert "SKIPPED script=skills/design/scripts/fixtures/tmp-new2.sh reason=new-script" in summary.log_text
+    assert summary.status == "ok"
+
+
 def test_check_plan_size_reads_postplan_drift_baseline(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("a\nb\ndiff_lines: 2\n")
@@ -206,7 +558,7 @@ def test_check_plan_size_reads_postplan_drift_baseline(tmp_path: Path) -> None:
 
 
 def test_check_plan_size_rejects_disallowed_tmpdir() -> None:
-    outside = Path.home() / "larch-plan-check-size-disallowed-test"
+    outside = REPO_ROOT / ".pytest-larch-plan-check-size-disallowed-test"
     outside.mkdir(exist_ok=True)
     plan = outside / "plan.txt"
     plan.write_text("body\ndiff_lines: 1\n")
@@ -216,6 +568,51 @@ def test_check_plan_size_rejects_disallowed_tmpdir() -> None:
     finally:
         plan.unlink(missing_ok=True)
         outside.rmdir()
+
+
+def test_revise_waterfall_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    disallowed = Path.home() / "larch-revise-disallowed-test"
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(disallowed),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "false",
+    )
+    assert cp.returncode == 2
+    assert "path not under allowlist" in cp.stderr
+
+
+def test_auto_fix_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\nbody\ndiff_lines: 1\n")
+    disallowed = Path.home() / "larch-autofix-disallowed-test"
+    cp = run_cli(
+        "plan",
+        "auto-fix-commands",
+        "--design-tmpdir",
+        str(disallowed),
+        "--plan-file",
+        str(plan),
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "false",
+    )
+    assert cp.returncode == 2
+    assert "path not under allowlist" in cp.stderr
 
 
 def test_check_plan_size_unreadable_baseline_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -251,6 +648,34 @@ def test_validate_plan_log_without_design_tmpdir(tmp_path: Path) -> None:
     log_path = Path(out["VALIDATE_LOG_FILE"])
     assert log_path.is_file()
     assert log_path.read_text(encoding="utf-8").endswith("UNSAFE_TOKEN_COUNT=0\n")
+
+
+def test_validate_plan_uses_temp_log_for_disallowed_design_tmpdir(tmp_path: Path) -> None:
+    script = tmp_path / "scripts" / "demo.sh"
+    script.parent.mkdir()
+    script.write_text("#!/usr/bin/env bash\necho 'usage: demo --known'\n")
+    script.chmod(0o755)
+    (tmp_path / "scripts" / "dry-runnable-scripts.tsv").write_text("script\thook\n")
+    subprocess.run(["git", "init"], cwd=tmp_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    plan = tmp_path / "plan.txt"
+    plan.write_text("```bash\nscripts/demo.sh --unknown\n```\ndiff_lines: 1\n")
+    disallowed = Path.home() / "larch-plan-validate-disallowed-test"
+    cp = run_cli("plan", "validate", "--plan-file", str(plan), "--repo-root", str(tmp_path), "--design-tmpdir", str(disallowed), cwd=tmp_path)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    log_path = Path(out["VALIDATE_LOG_FILE"])
+    assert log_path.is_file()
+    assert log_path != disallowed / "validate-plan-commands.log"
+
+
+def test_validate_plan_defaults_to_plugin_root_for_session_tmpdir_plan(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("```bash\nskills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh --unknown-flag\n```\ndiff_lines: 1\n")
+    cp = run_cli("plan", "validate", "--plan-file", str(plan), "--design-tmpdir", str(tmp_path), cwd=Path("/"))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["VALIDATE_STATUS"] == "defects-found"
+    assert out["VALIDATE_DEFECT_COUNT"] == "1"
 
 
 def test_auto_fix_dispatch_alternation_with_stub(tmp_path: Path) -> None:

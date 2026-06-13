@@ -476,7 +476,7 @@ test-check-plan-size:
 	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k check_plan_size
 
 test-auto-fix-plan-commands:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-auto-fix-plan-commands.sh
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k auto_fix
 
 
 test-parse-plan-commands:
@@ -1002,7 +1002,7 @@ test-dispatch-with-waterfall:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-with-waterfall.sh
 
 test-revise-plan-with-waterfall:
-	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k revise_plan_with_waterfall
+	python3 python/cli.py timing harness-mark --label $@ -- pytest -q python/test_plan_quality.py -k revise_waterfall
 
 test-agent-model-args:
 	cd python && $(PYTHON) -m pytest test_agents.py -q

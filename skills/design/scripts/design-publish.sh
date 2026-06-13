@@ -340,7 +340,7 @@ if [[ "$SKIP_VALIDATE" == true ]]; then
     VALIDATE_STATUS=skipped
 else
     set +e
-    _validate_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/composed-plan.md" --source-kind composed --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
+    _validate_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/composed-plan.md" --source-kind composed --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$PLUGIN_ROOT" 2>&1)
     _validate_rc=$?
     set -e
     parse_kv_from_output "$_validate_out"

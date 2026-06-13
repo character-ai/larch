@@ -487,7 +487,7 @@ SNAPSHOT_STATUS=skipped-suppressed
 
 _postplan_pause_checkpoint
 set +e
-_val_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/plan.txt" --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
+_val_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/plan.txt" --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$PLUGIN_ROOT" 2>&1)
 _val_rc=$?
 set -e
 parse_kv_from_output "$_val_out"

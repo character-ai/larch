@@ -77,11 +77,10 @@ class ValidationSummary:
 # Generic helpers
 
 
-def _repo_root_from(path: Path | None = None) -> Path:
-    start = path or Path.cwd()
+def _git_repo_root(path: Path) -> Path | None:
     try:
         result = subprocess.run(
-            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
             text=True,
             capture_output=True,
             check=False,
@@ -90,7 +89,21 @@ def _repo_root_from(path: Path | None = None) -> Path:
             return Path(result.stdout.strip()).resolve()
     except OSError:
         pass
+    return None
+
+
+def _repo_root_from(path: Path | None = None) -> Path:
+    start = path or Path.cwd()
+    repo = _git_repo_root(start)
+    if repo:
+        return repo
     return Path.cwd().resolve()
+
+
+def _repo_root_for_plan(plan: Path, explicit_repo_root: str | None = None) -> Path:
+    if explicit_repo_root:
+        return Path(explicit_repo_root).resolve()
+    return _git_repo_root(plan.parent) or _repo_root_from(Path(__file__).resolve().parent)
 
 
 def _plugin_root(repo_root: Path) -> Path:
@@ -563,7 +576,7 @@ def parse_plan_commands_main(argv: list[str]) -> int:
     if not plan.is_file():
         diagnostic(f"parse-commands: plan file missing or unreadable: {plan}")
         return 2
-    repo = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from(plan.parent)
+    repo = _repo_root_for_plan(plan, args.repo_root)
     rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, _plugin_root(repo))
     _atomic_write(Path(args.output), render_plan_command_tsv(rows))
     return 0
@@ -842,8 +855,13 @@ def validate_plan_main(argv: list[str]) -> int:
     emit_kv("VALIDATE_DEFECT_COUNT", str(summary.defect_count))
     emit_kv("VALIDATE_SKIPPED_COUNT", str(summary.skipped_count))
     emit_kv("VALIDATE_UNSAFE_TOKEN_COUNT", str(summary.unsafe_token_count))
-    design_tmpdir = Path(args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", "")) if (args.design_tmpdir or os.environ.get("DESIGN_TMPDIR")) else None
-    if design_tmpdir and design_tmpdir.is_dir():
+    design_tmpdir_raw = args.design_tmpdir or os.environ.get("DESIGN_TMPDIR", "")
+    design_tmpdir = Path(design_tmpdir_raw).resolve() if design_tmpdir_raw else None
+    if design_tmpdir_raw:
+        ok, _message = validate_design_tmpdir(design_tmpdir_raw)
+    else:
+        ok = False
+    if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
         _atomic_write(log_path, summary.log_text)
     else:
@@ -1299,6 +1317,9 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
     parser.add_argument("--patch-format", choices=("unified-diff", "file-replacement"), default="unified-diff")
     args = parser.parse_args(argv)
     try:
+        ok, message = validate_design_tmpdir(args.design_tmpdir)
+        if not ok:
+            raise ValueError(message)
         design_tmpdir = Path(args.design_tmpdir).resolve()
         if not design_tmpdir.is_dir():
             raise ValueError("--design-tmpdir must name a directory")
@@ -1715,6 +1736,10 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     parser.add_argument("--site", default="design plan-command auto-fix")
     parser.add_argument("--timeout", type=int, default=1800)
     args = parser.parse_args(argv)
+    ok, message = validate_design_tmpdir(args.design_tmpdir)
+    if not ok:
+        diagnostic(f"auto-fix-commands: {message}")
+        return 2
     design_tmpdir = Path(args.design_tmpdir).resolve()
     plan = Path(args.plan_file).resolve()
     if not design_tmpdir.is_dir() or not plan.is_file() or plan.is_symlink():

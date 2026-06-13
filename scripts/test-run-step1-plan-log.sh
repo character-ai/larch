@@ -91,7 +91,7 @@ case_dir="$TMP/case"
 make_tmpdir "$case_dir"
 compose_argv="$TMP/compose.argv"
 log_argv="$TMP/log.argv"
-out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship launcher")"
+out="$(RUN_STEP1_COMPOSE_CMD="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship launcher")"
 assert_contains "$out" "LOG_WRITTEN=true" "larch-log stdout passes through"
 assert_file_equals "$compose_argv" "--plan-file
 $case_dir/plan.txt
@@ -127,7 +127,7 @@ ADOPTED=false
 EOF
 compose_argv="$TMP/compose-sentinel.argv"
 log_argv="$TMP/log-sentinel.argv"
-RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship sentinel" >/dev/null
+RUN_STEP1_COMPOSE_CMD="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship sentinel" >/dev/null
 assert_contains "$(cat "$log_argv")" "custom-run" "sentinel RUN_ID overrides session-id"
 
 echo "=== canonical RUN_ID falls back to manifest when sentinel missing ==="
@@ -137,7 +137,7 @@ mkdir -p "$case_dir/larch-logs/implement/manifest-run"
 printf '{}\n' > "$case_dir/larch-logs/implement/manifest-run/manifest.json"
 compose_argv="$TMP/compose-manifest.argv"
 log_argv="$TMP/log-manifest.argv"
-RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship manifest" >/dev/null
+RUN_STEP1_COMPOSE_CMD="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship manifest" >/dev/null
 assert_contains "$(cat "$log_argv")" "manifest-run" "manifest RUN_ID overrides session-id"
 
 echo "=== conventional plan.txt missing: fail closed even when design-export/plan.txt exists ==="
@@ -149,7 +149,7 @@ printf '%s\n' "Stale local export must not substitute for conventional plan.txt.
 compose_argv="$TMP/compose-missing.argv"
 log_argv="$TMP/log-missing.argv"
 set +e
-out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
+out="$(RUN_STEP1_COMPOSE_CMD="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then pass "conventional plan.txt missing exits 2 even with design-export"; else fail "plan missing rc=$rc"; fi
