@@ -294,6 +294,44 @@ def test_verify_main_direct_mismatch(monkeypatch: pytest.MonkeyPatch, capsys: py
     assert out["VERIFIED"] == "false"
 
 
+def test_verify_main_unnumbered_expected_prefix(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 Feature follow-up\n"))
+    assert verify_main.main(["--expected-title", "Feature"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["VERIFIED"] == "true"
+
+
+def test_verify_main_numbered_expected_exact(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 Title (#7)\n"))
+    assert verify_main.main(["--expected-title", "Title (#7)"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["VERIFIED"] == "true"
+
+
+def test_verify_main_numbered_expected_suffix_only(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 Feature title (#42)\n"))
+    assert verify_main.main(["--expected-title", "Different title (#42)"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["VERIFIED"] == "true"
+
+
+def test_verify_main_rejects_mid_string_suffix(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 (#42) Feature title\n"))
+    assert verify_main.main(["--expected-title", "Different title (#42)"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["VERIFIED"] == "false"
+
+
+def test_verify_main_rejects_numbered_expected_stripped_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(verify_main.proc, "run", lambda argv: cr(tuple(argv), stdout="abc123 Title follow-up\n"))
+    assert verify_main.main(["--expected-title", "Title (#7)"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["VERIFIED"] == "false"
+
+
 class ReleasePrepareRunner:
     def __init__(self, repo_root: Path, *, log_subjects: str = "Feature (#12)\n", log_hash_subjects: str = "abc Feature (#12)\n", api_stdout: str = "[]\n", api_rc: int = 0):
         self.repo_root = repo_root

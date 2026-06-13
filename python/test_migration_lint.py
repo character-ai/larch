@@ -110,6 +110,161 @@ def test_full_path_flag_detected(tmp_path: Path) -> None:
     assert rc == 1
 
 
+def test_dev_skill_markdown_bare_basename_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/classify-bump.md",
+        "Call classify-bump.sh for release classification.\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
+def test_dev_skill_markdown_backtick_bare_basename_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = [
+        ".claude/skills/release/scripts/" + "classify-bump.sh",
+        ".claude/skills/release/scripts/" + "release-prepare.sh",
+    ]
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/classify-bump.md",
+        "Call `classify-bump.sh` before `release-prepare.sh`.\n",
+    )
+    manifest = _make_manifest(repo, [(path, "#test") for path in retired])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
+def test_dev_skill_markdown_bare_basename_lint_ignore(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/classify-bump.md",
+        "Call classify-bump.sh here. # lint-ignore\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_full_path_with_lint_ignore_still_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/classify-bump.md",
+        f"Call {retired} here. # lint-ignore\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 1
+
+
+def test_dev_skill_cross_directory_bare_basename_not_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/other/scripts/consumer.md",
+        "Call classify-bump.sh for release classification.\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_dev_skill_path_like_bare_basename_not_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/classify-bump.md",
+        "Call other/path/classify-bump.sh for release classification.\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_dev_skill_non_markdown_bare_basename_not_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/notes.txt",
+        "Call classify-bump.sh for release classification.\n",
+    )
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_dev_skill_markdown_live_sibling_bare_basename_not_flagged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = _make_git_repo(tmp_path / "repo")
+    retired = ".claude/skills/release/scripts/" + "classify-bump.sh"
+    _ = _add_file(
+        repo,
+        ".claude/skills/release/scripts/consumer.md",
+        "Call classify-bump.sh for release classification.\n",
+    )
+    _ = _add_file(repo, ".claude/skills/release/scripts/consumer.sh", "echo live\n")
+    manifest = _make_manifest(repo, [(retired, "#test")])
+    monkeypatch.chdir(tmp_path)
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
+def test_top_level_scripts_markdown_bare_basename_not_flagged(tmp_path: Path) -> None:
+    repo = _make_git_repo(tmp_path)
+    retired = [
+        "scripts/" + "append-execution-issue.sh",
+        "scripts/" + "test-lint-skill-invocations.sh",
+    ]
+    _ = _add_file(
+        repo,
+        "scripts/contract.md",
+        "Mentions append-execution-issue.sh and test-lint-skill-invocations.sh.\n",
+    )
+    manifest = _make_manifest(repo, [(path, "#test") for path in retired])
+    rc = migration_lint.main([
+        "--manifest", str(manifest),
+        "--root", str(repo),
+    ])
+    assert rc == 0
+
+
 def test_live_same_basename_not_flagged(tmp_path: Path) -> None:
     repo = _make_git_repo(tmp_path)
     retired = "scripts/old/run-analysis.sh"
