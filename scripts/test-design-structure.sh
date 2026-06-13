@@ -660,6 +660,15 @@ assert_wrapper_fence_ordering() {
   (( first_line < second_line )) || fail "$wrapper must pause-check before cleanup"
 }
 
+assert_compact_reviewer_table_step3_scoped() {
+  contains "$SKILL_MD" '⏳ 5c: writing plan to GitHub' 'SKILL missing plain Step 5c immediate-background breadcrumb'
+  contains "$SKILL_MD" '⏳ final-summary: writing final summary' 'SKILL missing plain final-summary immediate-background breadcrumb'
+  ! grep -Fq 'each immediate-background wait' "$SKILL_MD" \
+    || fail 'SKILL compact-table rule must not fire for every immediate-background wait'
+  ! grep -Fq 'permitted breadcrumb/status table' "$SKILL_MD" \
+    || fail 'SKILL must not reference deprecated "permitted breadcrumb/status table" phrasing'
+}
+
 assert_design_skill_bash_fences_are_wrappers
 assert_no_consecutive_executable_script_call_fences
 assert_no_inline_bash_tokens_in_skill_fences
@@ -684,6 +693,7 @@ assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
 assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
+assert_compact_reviewer_table_step3_scoped
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$SKILL_MD" "SKILL.md" || fail "(3119) SKILL.md still has removed Family-B fence tokens"
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$BRAINSTORM_MD" "brainstorm.md" || fail "(3119) brainstorm.md still has removed Family-B fence tokens"
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$PLAN_REVIEW_MD" "plan-review.md" || fail "(3119) plan-review.md still has removed Family-B fence tokens"
