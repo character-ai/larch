@@ -91,6 +91,7 @@ SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
 PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+CONSUMER_REPO_ROOT="$(phase_driver_resolve_consumer_repo_root "$PLUGIN_ROOT")"
 
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
@@ -487,7 +488,7 @@ SNAPSHOT_STATUS=skipped-suppressed
 
 _postplan_pause_checkpoint
 set +e
-_val_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/plan.txt" --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$PLUGIN_ROOT" 2>&1)
+_val_out=$(env DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_QUIET_DISABLE=1 python3 "$PLUGIN_ROOT/python/cli.py" plan validate --plan-file "$DESIGN_TMPDIR/plan.txt" --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$CONSUMER_REPO_ROOT" 2>&1)
 _val_rc=$?
 set -e
 parse_kv_from_output "$_val_out"

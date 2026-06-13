@@ -419,6 +419,247 @@ fi
     assert "fallback fixed" in plan.read_text(encoding="utf-8")
 
 
+def test_revise_waterfall_tier4_merge_keeps_invalid_patch_over_emit_plan_failed(tmp_path: Path) -> None:
+    original = "## Plan\nalpha\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+name=$(basename "$out")
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  if [ "$name" = "codex-output.txt" ]; then
+    cat >"$out" <<'PLAN'
+## Plan
+missing diff_lines trailer
+PLAN
+  elif [ "$name" = "cursor-output.txt" ]; then
+    touch "${DESIGN_TMPDIR:?}/.force-emit-fail"
+    cat >"$out" <<'PLAN'
+## Plan
+cursor fallback
+diff_lines: 1
+PLAN
+  else
+    : >"$out"
+  fi
+else
+  : >"$out"
+fi
+""",
+    )
+    driver = _write_executable(
+        tmp_path / "driver.sh",
+        """#!/usr/bin/env bash
+if [ -f "${DESIGN_TMPDIR:?}/.force-emit-fail" ]; then
+  rm -f "${DESIGN_TMPDIR:?}/.force-emit-fail"
+  printf 'EMIT_PLAN_STATUS=failed\\n'
+else
+  printf 'EMIT_PLAN_STATUS=ok\\n'
+fi
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "failed-validation"
+    assert out["REVISE_TIER_4_STATUS"] == "invalid-patch"
+    assert out["REVISE_WINNING_TIER"] == ""
+    assert out["REVISE_PATCH_PATH"] == ""
+    assert plan.read_text(encoding="utf-8") == original
+    revise_env = (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").read_text(encoding="utf-8")
+    assert "REVISE_TIER_4_STATUS=invalid-patch" in revise_env
+    assert "REVISE_PLAN_HASH_BEFORE=" in revise_env and "REVISE_PLAN_HASH_AFTER=" in revise_env
+    before, after = (line.split("=", 1)[1] for line in revise_env.splitlines() if line.startswith(("REVISE_PLAN_HASH_BEFORE=", "REVISE_PLAN_HASH_AFTER=")))
+    assert before == after
+    assert (tmp_path / "plan.txt.before-revise").is_file()
+
+
+def test_revise_waterfall_ok_fallback_persists_revise_env_metadata(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+persist fallback
+diff_lines: 1
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    revise_env = (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").read_text(encoding="utf-8")
+    assert "REVISE_STATUS=ok-fallback" in revise_env
+    assert "REVISE_TIER_4_STATUS=ok" in revise_env
+    assert "REVISE_WINNING_TIER=codex" in revise_env
+    assert out["REVISE_PATCH_PATH"].endswith("revise/codex-output.txt")
+    assert not (tmp_path / "plan.txt.before-revise").exists()
+
+
+def test_revise_waterfall_emit_plan_failure_on_tier1_sets_failed_apply(tmp_path: Path) -> None:
+    original = "## Plan\nalpha\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  : >"$out"
+else
+  name=$(basename "$out")
+  if [ "$name" = "codex-output.txt" ]; then
+    cat >"$out" <<'PATCH'
+```diff
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++never persists
+ diff_lines: 1
+```
+PATCH
+  else
+    : >"$out"
+  fi
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=failed\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_2_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_3_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_4_STATUS"] == "no-patch"
+    assert "alpha" in plan.read_text(encoding="utf-8")
+
+
+def test_validate_unified_headers_rejects_malformed_diff_lines() -> None:
+    assert plan_quality._validate_unified_headers("--- \n+++ b/plan.txt\n") is False
+    assert plan_quality._validate_unified_headers("--- a/plan.txt\n+++ \n") is False
+
+
+def test_is_new_script_matches_dot_prefixed_claude_paths(tmp_path: Path) -> None:
+    script = tmp_path / ".claude" / "skills" / "foo" / "scripts" / "new.sh"
+    script.parent.mkdir(parents=True)
+    script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    plan = (
+        "### NEW: .claude/skills/foo/scripts/new.sh\n"
+        "```bash\n"
+        ".claude/skills/foo/scripts/new.sh\n"
+        "```\n"
+        "diff_lines: 1\n"
+    )
+    rows = plan_quality.parse_plan_commands(plan, tmp_path, tmp_path)
+    tsv = tmp_path / "commands.tsv"
+    tsv.write_text(plan_quality.render_plan_command_tsv(rows), encoding="utf-8")
+    log = tmp_path / "validate.log"
+    cp = run_cli("plan", "validate-commands", "--tsv-file", str(tsv), "--repo-root", str(tmp_path), "--log-file", str(log))
+    assert cp.returncode == 0, cp.stderr
+    assert "VALIDATE_STATUS=ok" in cp.stdout
+
+
+def test_check_plan_size_non_file_baseline_recovers_without_crash(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("body\ndiff_lines: 1\n", encoding="utf-8")
+    original = tmp_path / "plan.txt-original"
+    original.write_text("anchor\ndiff_lines: 2\n", encoding="utf-8")
+    baseline = tmp_path / "drift-baseline.env"
+    baseline.mkdir()
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["DRIFT_TRIGGER_FIRED"] == "false"
+    assert any("drift baseline unreadable" in line for line in cp.stdout.splitlines())
+
+
 def test_revise_waterfall_heading_guard_restores_replacement(tmp_path: Path) -> None:
     original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
     plan, findings, feature = _revise_base(tmp_path, original)

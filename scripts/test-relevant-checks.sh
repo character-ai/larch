@@ -679,6 +679,14 @@ run_checks "$REPO_3J1H" "$(controlled_path "$STUB_3J1H")"
 assert_exit_eq "3j1h: run-step1-plan-log change exits 0" "$RUN_EXIT" 0
 assert_stdout_contains "3j1h: routes run-step1-plan-log harness" "$RUN_OUT" "test-run-step1-plan-log"
 
+REPO_3J1I="$TMPROOT/repo-plan-quality-publish"
+STUB_3J1I="$TMPROOT/stub-plan-quality-publish"
+setup_plan_quality_survivor_repo "$REPO_3J1I" "python/plan_quality.py"
+make_stub_dir "$STUB_3J1I" present absent
+run_checks "$REPO_3J1I" "$(controlled_path "$STUB_3J1I")"
+assert_exit_eq "3j1i: plan_quality.py change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j1i: routes design-publish harness" "$RUN_OUT" "test-design-publish"
+
 echo "=== Section 3j2: report-tokens SKILL.md routing ==="
 
 REPO_3J2="$TMPROOT/repo-report-tokens-wrapper"

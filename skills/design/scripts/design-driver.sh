@@ -9,6 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
     export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 fi
+CONSUMER_REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PLUGIN_ROOT")"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
@@ -90,7 +91,7 @@ run_action() {
             ;;
         VALIDATE_PLAN_COMMANDS)
             export DESIGN_TMPDIR
-            python3 "$PLUGIN_ROOT/python/cli.py" plan validate --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$PLUGIN_ROOT" "$@"
+            python3 "$PLUGIN_ROOT/python/cli.py" plan validate --design-tmpdir "$DESIGN_TMPDIR" --repo-root "$CONSUMER_REPO_ROOT" "$@"
             ;;
         *)
             return 64

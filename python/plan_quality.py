@@ -645,16 +645,20 @@ def _unsafe_token(token: str) -> bool:
     return any(x in token for x in ("..", "`", "$", "*", "?", "[", "]", ";", "|", "&", ">", "<", "(", ")"))
 
 
+def _canonical_script_path(path: str) -> str:
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+
+
 def _is_new_script(rows: list[PlanCommandRow], script: str) -> bool:
-    while script.startswith("./"):
-        script = script[2:]
-    return any(row.row_type == "new_script" and row.script_path.lstrip("./") == script for row in rows)
+    script = _canonical_script_path(script)
+    return any(row.row_type == "new_script" and _canonical_script_path(row.script_path) == script for row in rows)
 
 
 def _allow_flag(rows: list[PlanCommandRow], script: str, flag: str) -> bool:
-    while script.startswith("./"):
-        script = script[2:]
-    return any(row.row_type == "updated_flag" and row.script_path.lstrip("./") == script and row.flag == flag for row in rows)
+    script = _canonical_script_path(script)
+    return any(row.row_type == "updated_flag" and _canonical_script_path(row.script_path) == script and row.flag == flag for row in rows)
 
 
 def _redact_capture(repo_root: Path, text: str) -> str:
@@ -1146,7 +1150,8 @@ def check_plan_size_main(argv: list[str]) -> int:
                 _atomic_write(marker, "unreadable\n")
             drift_trigger = True
     elif baseline_path.exists() or baseline_path.is_symlink() or marker.exists():
-        baseline_path.unlink(missing_ok=True)
+        if baseline_path.is_file() and not baseline_path.is_symlink():
+            baseline_path.unlink(missing_ok=True)
         if recover():
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; recovered anchor from plan.txt-original")
             if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
@@ -1280,14 +1285,41 @@ def _validate_unified_headers(patch: str) -> bool:
             if len(parts) < 4 or parts[2] != "a/plan.txt" or parts[3] != "b/plan.txt":
                 return False
         elif line.startswith("--- "):
+            parts = line.split()
+            if len(parts) < 2 or parts[1] != "a/plan.txt":
+                return False
             seen = old = True
-            if line.split()[1] != "a/plan.txt":
-                return False
         elif line.startswith("+++ "):
-            seen = new = True
-            if line.split()[1] != "b/plan.txt":
+            parts = line.split()
+            if len(parts) < 2 or parts[1] != "b/plan.txt":
                 return False
+            seen = new = True
     return seen and old and new
+
+
+_TIER4_RANK = {
+    "not-attempted": 0,
+    "skipped-not-present": 1,
+    "no-patch": 2,
+    "emit-plan-failed": 3,
+    "apply-failed": 4,
+    "invalid-patch": 5,
+    "ok": 6,
+}
+
+
+def _tier4_rank(status: str) -> int:
+    return _TIER4_RANK.get(status, -1)
+
+
+def _merge_tier4_status(current: str, new: str) -> str:
+    if current in {"", "not-attempted"}:
+        return new
+    if current == "ok" or new == "ok":
+        return "ok"
+    if _tier4_rank(new) > _tier4_rank(current):
+        return new
+    return current
 
 
 def _compose_revise_prompt(plan: Path, findings: Path, feature: Path, keys_file: Path, patch_format: str) -> str:
@@ -1373,13 +1405,19 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         proc = subprocess.run([design_driver, "--design-tmpdir", str(design_tmpdir)], input="ACTION=EMIT_PLAN\n", text=True, capture_output=True, check=False)
         return any(line == "EMIT_PLAN_STATUS=ok" for line in proc.stdout.splitlines())
 
+    def set_tier_status(ord_: int, status: str) -> None:
+        if ord_ == 4:
+            statuses[4] = _merge_tier4_status(statuses[4], status)
+        else:
+            statuses[ord_] = status
+
     def attempt(ord_: int, tier: str) -> bool:
         nonlocal winner, winner_output
         if tier == "codex" and args.codex_present == "false":
-            statuses[ord_] = "skipped-not-present"
+            set_tier_status(ord_, "skipped-not-present")
             return False
         if tier == "cursor" and args.cursor_present == "false":
-            statuses[ord_] = "skipped-not-present"
+            set_tier_status(ord_, "skipped-not-present")
             return False
         out_path = revise_dir / f"{tier}-output.txt"
         prompt = revise_dir / "prompt.txt"
@@ -1389,7 +1427,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
             cmd.extend(["--feature-file", str(feature)])
         rc = subprocess.run(cmd, check=False).returncode
         if rc != 0 or not out_path.is_file() or out_path.stat().st_size == 0:
-            statuses[ord_] = "no-patch"
+            set_tier_status(ord_, "no-patch")
             return False
         output = out_path.read_text(encoding="utf-8", errors="replace")
         patch_path = revise_dir / f"{tier}-output-candidate.patch"
@@ -1397,37 +1435,37 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
             patch = _extract_unified_diff(output)
             _atomic_write(patch_path, patch)
             if not patch or not _validate_unified_headers(patch):
-                statuses[ord_] = "invalid-patch"
+                set_tier_status(ord_, "invalid-patch")
                 restore()
                 return False
             proc = subprocess.run(["git", "apply", "--recount", "--whitespace=nowarn", str(patch_path)], cwd=str(plan.parent), capture_output=True, check=False)
             if proc.returncode != 0:
-                statuses[ord_] = "apply-failed"
+                set_tier_status(ord_, "apply-failed")
                 restore()
                 return False
         else:
             repl = _extract_file_replacement(output)
             _atomic_write(patch_path, repl)
             if not repl or not re.search(r"^diff_lines:\s*[0-9]+\s*$", repl, re.MULTILINE):
-                statuses[ord_] = "invalid-patch"
+                set_tier_status(ord_, "invalid-patch")
                 return False
             if not validate_optional_trailer_keys_preserved(patch_path, keys_file):
-                statuses[ord_] = "invalid-patch"
+                set_tier_status(ord_, "invalid-patch")
                 return False
             _atomic_write(plan, repl)
         if orig_headings > 0 and _heading_count(plan) == 0:
-            statuses[ord_] = "invalid-patch"
+            set_tier_status(ord_, "invalid-patch")
             restore()
             return False
         if not validate_optional_trailer_keys_preserved(plan, keys_file):
-            statuses[ord_] = "invalid-patch"
+            set_tier_status(ord_, "invalid-patch")
             restore()
             return False
         if not emit_plan_gate():
-            statuses[ord_] = "emit-plan-failed"
+            set_tier_status(ord_, "emit-plan-failed")
             restore()
             return False
-        statuses[ord_] = "ok"
+        set_tier_status(ord_, "ok")
         winner = tier
         winner_output = str(out_path)
         return True
