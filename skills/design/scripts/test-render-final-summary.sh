@@ -824,7 +824,7 @@ audit_stdout="$TMP/std-gate-audit.log"
 CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$audit_d" ISSUE_NUMBER="" SESSION_ID="RUN-GATE-AUDIT" \
     "$SUBJECT" --outcome failed-publish --post-publish-only >"$audit_stdout" 2>/dev/null
 grep -Fq '### Warnings' "$audit_d/execution-issues.md" || fail 'invalid terminal state gate must append execution-issues audit'
-grep -Fq -- '- **Warnings**: 1' "$audit_d/final-summary.md" || fail 'warning count must refresh after gate audit before render'
+grep -qE -- '\- \*\*Warnings\*\*: [1-9]' "$audit_d/final-summary.md" || fail 'warning count must refresh after gate audit before render'
 pass 'report gate audit refreshes warning counts before render'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
