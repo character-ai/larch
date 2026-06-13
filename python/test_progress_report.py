@@ -355,7 +355,7 @@ def test_render_review_detail_argv(tmp_path: Path, monkeypatch) -> None:  # type
     captured: list[tuple[list[str], int]] = []
 
     def fake_run(argv: list[str], **kwargs: object):  # type: ignore[no-untyped-def]
-        captured.append((list(argv), cast(int, kwargs.get("timeout"))))
+        captured.append((list(argv), cast("int", kwargs.get("timeout"))))
 
         class Result:
             returncode = 0
@@ -648,7 +648,7 @@ def test_design_detail_argv_uses_design_skill_and_rounds_root(
     captured: list[tuple[list[str], int]] = []
 
     def fake_run(argv: list[str], **kwargs: object):  # type: ignore[no-untyped-def]
-        captured.append((list(argv), cast(int, kwargs.get("timeout"))))
+        captured.append((list(argv), cast("int", kwargs.get("timeout"))))
 
         class Result:
             returncode = 0
