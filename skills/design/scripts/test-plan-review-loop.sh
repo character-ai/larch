@@ -1627,14 +1627,24 @@ cat >"$STUB/tally-plan-review.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 DESIGN_TMPDIR=""
+fc_out=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
-        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        --findings-classification-out) fc_out="${2:?}"; shift 2 ;;
+        --ballot-file|--voter) shift 2 ;;
         *) shift 1 ;;
     esac
 done
 [[ -n "$DESIGN_TMPDIR" ]] || exit 2
+if [[ -n "$fc_out" ]]; then
+    mkdir -p "$(dirname "$fc_out")"
+    {
+        printf 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
+        printf 'in_scope\tnit\tcorrectness\tsrc/a\tCRLF scope anchor regression row\tscenario\tfix\n'
+    } >"$fc_out"
+fi
+: >"$DESIGN_TMPDIR/accepted-plan-findings.md"
 printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=/tmp/evil\ranchor.txt\n' "$DESIGN_TMPDIR"
 EOS
 chmod +x "$STUB/tally-plan-review.sh"
@@ -1711,14 +1721,24 @@ cat >"$STUB/tally-plan-review.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 DESIGN_TMPDIR=""
+fc_out=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
-        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        --findings-classification-out) fc_out="${2:?}"; shift 2 ;;
+        --ballot-file|--voter) shift 2 ;;
         *) shift 1 ;;
     esac
 done
 [[ -n "$DESIGN_TMPDIR" ]] || exit 2
+if [[ -n "$fc_out" ]]; then
+    mkdir -p "$(dirname "$fc_out")"
+    {
+        printf 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
+        printf 'in_scope\tnit\tcorrectness\tsrc/a\tParsed scope anchor regression row\tscenario\tfix\n'
+    } >"$fc_out"
+fi
+: >"$DESIGN_TMPDIR/accepted-plan-findings.md"
 printf 'alternate scope\n' >"$DESIGN_TMPDIR/plan-review-scope-anchor-alt.txt"
 printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=%s/plan-review-scope-anchor-alt.txt\n' "$DESIGN_TMPDIR" "$DESIGN_TMPDIR"
 EOS
@@ -1750,14 +1770,24 @@ cat >"$STUB/tally-plan-review.sh" <<EOS
 #!/usr/bin/env bash
 set -euo pipefail
 DESIGN_TMPDIR=""
+fc_out=""
 while [[ \$# -gt 0 ]]; do
     case "\$1" in
         --design-tmpdir) DESIGN_TMPDIR="\${2:?}"; shift 2 ;;
-        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        --findings-classification-out) fc_out="\${2:?}"; shift 2 ;;
+        --ballot-file|--voter) shift 2 ;;
         *) shift 1 ;;
     esac
 done
 [[ -n "\$DESIGN_TMPDIR" ]] || exit 2
+if [[ -n "\$fc_out" ]]; then
+    mkdir -p "\$(dirname "\$fc_out")"
+    {
+        printf 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
+        printf 'in_scope\tnit\tcorrectness\tsrc/a\tOutside scope anchor regression row\tscenario\tfix\n'
+    } >"\$fc_out"
+fi
+: >"\$DESIGN_TMPDIR/accepted-plan-findings.md"
 printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\nSCOPE_ANCHOR_FILE=$outside_parsed\n' "\$DESIGN_TMPDIR"
 EOS
 chmod +x "$STUB/tally-plan-review.sh"
@@ -1883,6 +1913,96 @@ write_voters_three
 out_zd=$(run_loop "$DZD" 1)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero findings should stay degraded"
 assert_no_prune_ledger_rows "$DZD/reviewer-prune-ledger.tsv" "degraded zero findings should not write prune ledger rows"
+
+
+echo "=== ballot-items-lost: non-empty ballot + header-only TSV ==="
+DBIL="$TMP/ballot-items-lost"
+mkdir -p "$DBIL"
+printf 'plan\n\ndiff_lines: 1\n' >"$DBIL/plan.txt"
+printf 'feat\n' >"$DBIL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/prune-nit-findings.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PRUNED_COUNT=0\nINSCOPE_REMAINING=30\nSTATUS=ok\n'
+EOS
+chmod +x "$STUB/prune-nit-findings.sh"
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+fc_out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --findings-classification-out) fc_out="${2:?}"; shift 2 ;;
+        --ballot-file|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" && -n "$fc_out" ]] || exit 2
+mkdir -p "$(dirname "$fc_out")"
+printf 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"$fc_out"
+: >"$DESIGN_TMPDIR/accepted-plan-findings.md"
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\n' "$DESIGN_TMPDIR"
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+export LARCH_PLAN_REVIEW_PRUNE_NITS_SH="$STUB/prune-nit-findings.sh"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out_bil=$(run_loop "$DBIL" 1)
+unset LARCH_PLAN_REVIEW_PRUNE_NITS_SH
+unset LARCH_PLAN_REVIEW_TALLY_SH
+printf '%s\n' "$out_bil" | grep -q '^DEGRADED_PANEL=1$' || fail "ballot-items-lost should set DEGRADED_PANEL=1"
+printf '%s\n' "$out_bil" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "ballot-items-lost should map to zero-findings-degraded-panel"
+printf '%s\n' "$out_bil" | grep -q '^REASON=ballot-items-lost$' || fail "ballot-items-lost should set REASON=ballot-items-lost"
+grep -q '^INSCOPE_REMAINING=30$' "$DBIL/plan-review/round-1/round-summary.env" || fail "ballot-items-lost round-summary missing INSCOPE_REMAINING"
+grep -q '^INSCOPE_REMAINING=30$' "$DBIL/.step3-plan-review-result.env" || fail "ballot-items-lost result env missing INSCOPE_REMAINING"
+
+
+echo "=== ballot-items-lost negative: INSCOPE_REMAINING=0 + header-only TSV ==="
+DBIL0="$TMP/ballot-items-lost-zero"
+mkdir -p "$DBIL0"
+printf 'plan\n\ndiff_lines: 1\n' >"$DBIL0/plan.txt"
+printf 'feat\n' >"$DBIL0/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/prune-nit-findings.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=ok\n'
+EOS
+chmod +x "$STUB/prune-nit-findings.sh"
+cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+fc_out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --findings-classification-out) fc_out="${2:?}"; shift 2 ;;
+        --ballot-file|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" && -n "$fc_out" ]] || exit 2
+mkdir -p "$(dirname "$fc_out")"
+printf 'scope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"$fc_out"
+: >"$DESIGN_TMPDIR/accepted-plan-findings.md"
+printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\n' "$DESIGN_TMPDIR"
+EOS
+chmod +x "$STUB/tally-plan-review.sh"
+export LARCH_PLAN_REVIEW_PRUNE_NITS_SH="$STUB/prune-nit-findings.sh"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out_bil0=$(run_loop "$DBIL0" 1)
+unset LARCH_PLAN_REVIEW_PRUNE_NITS_SH
+unset LARCH_PLAN_REVIEW_TALLY_SH
+printf '%s\n' "$out_bil0" | grep -q '^REASON=ballot-items-lost$' && fail "INSCOPE_REMAINING=0 should not set ballot-items-lost"
 
 
 echo "=== single-pass: zero findings + no collector OK → degraded-empty-collector ==="

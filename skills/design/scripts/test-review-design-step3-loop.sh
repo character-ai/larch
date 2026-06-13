@@ -495,4 +495,31 @@ out="$(run_envelope_stub "$D_WARN" "$envelope_stub")"
 contains "$out" 'WARN=step3_loop_persist_envelope: phase_driver_write_result_env failed' 'write failure WARN kv'
 
 
+echo '=== loop envelope carries REASON=ballot-items-lost ==='
+D_REASON="$TMP/reason-carry"
+write_common "$D_REASON"
+write_ok_stubs "$D_REASON"
+# shellcheck disable=SC2016 # Stub body expands DESIGN_TMPDIR when the generated stub runs.
+round_stub="$(write_round_stub "$D_REASON" 'cat >"$DESIGN_TMPDIR/.step3-review-result.env" <<EOF
+LOOP_STATUS=zero-findings-degraded-panel
+REASON=ballot-items-lost
+ACCEPTED_COUNT=0
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+EOF
+printf "LOOP_STATUS=zero-findings-degraded-panel\nREASON=ballot-items-lost\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nTALLY_PLAN_REVIEW_STATUS=ok\n"')"
+out="$(run_loop "$D_REASON" "$round_stub")"
+contains "$out" 'REASON=ballot-items-lost' 'envelope carries REASON'
+grep -q '^REASON=ballot-items-lost$' "$D_REASON/.step3-review-result.env" || fail 'persisted REASON=ballot-items-lost'
+
+
+echo '=== clean terminal envelope writes empty REASON ==='
+D_REASON_CLEAN="$TMP/reason-clean"
+write_common "$D_REASON_CLEAN"
+envelope_stub="$(write_envelope_stub "$D_REASON_CLEAN" 'REASON=
+step3_loop_emit_envelope complete 1 1 1')"
+out="$(run_envelope_stub "$D_REASON_CLEAN" "$envelope_stub")"
+grep -q '^REASON=$' "$D_REASON_CLEAN/.step3-review-result.env" || fail 'clean terminal should persist empty REASON'
+
+
 printf 'PASS: test-review-design-step3-loop.sh\n'

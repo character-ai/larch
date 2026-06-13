@@ -336,7 +336,7 @@ _postplan_run_plan_size() {
         rm -f "$_plan_size_stderr" 2>/dev/null || true
         if [[ "$WITH_PLAN_SIZE" == true ]]; then
             POSTPLAN_EMIT_STATUS=plan-size-failed
-            PLAN_SIZE_STATUS=failed
+            case "$PLAN_SIZE_STATUS" in ok|not-run|unknown|'') PLAN_SIZE_STATUS=failed ;; esac
             _postplan_exit_merged_failure
         fi
         return 2
@@ -344,7 +344,7 @@ _postplan_run_plan_size() {
     rm -f "$_plan_size_stderr" 2>/dev/null || true
     if [[ "$WITH_PLAN_SIZE" == true ]]; then
         POSTPLAN_EMIT_STATUS=plan-size-failed
-        PLAN_SIZE_STATUS=failed
+        case "$PLAN_SIZE_STATUS" in ok|not-run|unknown|'') PLAN_SIZE_STATUS=failed ;; esac
         _postplan_exit_merged_failure
     fi
     fail "check-plan-size.sh failed unexpectedly (exit ${_plan_size_rc})"
@@ -355,7 +355,7 @@ _postplan_finish_merged_plan_size() {
     local _defects_exit="${2:-}"
     if [[ "$_plan_size_rc" -ne 0 ]]; then
         POSTPLAN_EMIT_STATUS=plan-size-failed
-        PLAN_SIZE_STATUS=failed
+        case "$PLAN_SIZE_STATUS" in ok|not-run|unknown|'') PLAN_SIZE_STATUS=failed ;; esac
         _postplan_exit_merged_failure
     fi
     _postplan_emit_soft_advisory

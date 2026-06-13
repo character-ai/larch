@@ -35,8 +35,12 @@ Derived sources:
   `$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt` exists and mode is not
   `mav-apply`.
 - `$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt`: the Step 5 pre-scout
-  eligibility marker. Missing marker forces `--dynamic-archetypes 0`, so
-  marker-absent runs and Claude fallback cannot launch the legacy scout.
+  eligibility marker. Missing marker does not force `--dynamic-archetypes 0`;
+  `review-and-fix.sh` keeps the implement-mode default of 3 dynamic archetypes
+  and may run the legacy live scout.
+- `$IMPLEMENT_TMPDIR/step2-scout-coder-status.env`: when present, supplies
+  `SCOUT_CODER_STATUS` for pre-scout forwarding. `--pre-scouted-manifest` is
+  forwarded only when the marker exists and `SCOUT_CODER_STATUS=ok`.
 - `$IMPLEMENT_TMPDIR/step2-spawn-coder.txt`: remains the cross-coder tmpdir
   guard and does not enable Step 5 dynamic review by itself.
 

@@ -44,7 +44,7 @@ The cap warning remains boundary-qualified: `**⚠ Step 3: review-round cap (<ca
 
 ## Normalized result env (`.step3-review-result.env`)
 
-`LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, `STEP3_REVIEW_CAP_REACHED`, `STEP3_REVIEW_ROUND_NUM`, `ROUND_NUM`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`, `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, `REVIEW_ROUND_COUNT`, plus `SCOPE_ANCHOR_FILE` only when forwarded from the inner plan-review result on `ok` / `main-agent-vote-required`.
+`LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, `STEP3_REVIEW_CAP_REACHED`, `STEP3_REVIEW_ROUND_NUM`, `ROUND_NUM`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`, `REASON`, `INSCOPE_REMAINING`, `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, `REVIEW_ROUND_COUNT`, plus `SCOPE_ANCHOR_FILE` only when forwarded from the inner plan-review result on `ok` / `main-agent-vote-required`.
 
 ## Exit codes
 

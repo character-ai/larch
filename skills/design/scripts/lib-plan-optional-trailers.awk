@@ -30,7 +30,7 @@ END {
             block[++block_len] = line
             continue
         }
-        if (line ~ /^mechanical_churn: (true|false)$/) {
+        if (line ~ /^mechanical_churn:/) {
             block[++block_len] = line
             continue
         }
@@ -60,14 +60,20 @@ END {
             }
             continue
         }
-        if (line ~ /^mechanical_churn: true$/) {
-            mechanical_churn = "true"
-            has_mech = 1
+        if (line ~ /^mechanical_churn:/) {
+            if (line ~ /^mechanical_churn: true$/) {
+                mechanical_churn = "true"
+                has_mech = 1
+            } else if (line ~ /^mechanical_churn: false$/) {
+                mechanical_churn = "false"
+                has_mech = 1
+            } else {
+                mech_val = substr(line, 19)
+                mechanical_churn = "invalid:" mech_val
+                has_mech = 1
+                print "invalid-mechanical-churn: " mech_val > "/dev/stderr"
+            }
             continue
-        }
-        if (line ~ /^mechanical_churn: false$/) {
-            mechanical_churn = "false"
-            has_mech = 1
         }
     }
 

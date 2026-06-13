@@ -764,6 +764,24 @@ assert_rc "defects drift trigger rc" 10 "$rc"
 assert_file_kv "$D36/.design-postplan-emit-result.env" PLAN_SIZE_STATUS skipped-defects "defects win over drift trigger status"
 assert_not_contains "$D36/stdout.txt" '## Plan Size — Drift' "defects win over drift trigger section"
 
+D37="$TMP/merged-invalid-mechanical-churn"
+setup_design_tmp "$D37" full
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 10 b
+    printf 'mechanical_churn: 35\n'
+    printf 'diff_lines: 400\n'
+} >"$D37/plan.txt"
+set +e
+run_subject "$D37" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged invalid mechanical_churn" 1 "$rc"
+assert_file_kv "$D37/.design-postplan-emit-result.env" PLAN_SIZE_STATUS invalid-mechanical-churn "merged invalid mechanical_churn status"
+assert_contains "$D37/.design-postplan-emit-result.env" 'invalid-mechanical-churn' "merged invalid mechanical_churn WARN"
+[[ -f "$D37/check-plan-size.validation.log" ]] || fail "merged invalid mechanical_churn validation log"
+assert_contains "$D37/check-plan-size.validation.log" 'invalid-mechanical-churn: 35' "merged invalid mechanical_churn awk stderr"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2
     exit 1

@@ -13,7 +13,7 @@ The loop emits a final `STEP3_REVIEW_LOOP_STATUS` envelope and exits only on:
 - terminal statuses: `complete`, `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, `postplan-failed`
 - main-agent/operator bail-outs: `main-agent-vote-required`, `main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`
 
-Carry-through KVs include `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `ACCEPTED_COUNT`, `DEGRADED_PANEL`, optional `SCOPE_ANCHOR_FILE`, `PLAN_REVIEW_CONTINUE_REASON`, `POSTPLAN_RC`, and `DEDUP_RC`.
+Carry-through KVs include `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `ACCEPTED_COUNT`, `DEGRADED_PANEL`, optional `SCOPE_ANCHOR_FILE`, `REASON`, `PLAN_REVIEW_CONTINUE_REASON`, `POSTPLAN_RC`, and `DEDUP_RC`. Clean terminal rounds write `REASON=` empty in the persisted envelope.
 
 ## Envelope KV safety
 

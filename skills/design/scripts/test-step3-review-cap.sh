@@ -273,7 +273,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'many 
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=non-nit-accepted$' || fail 'non-nit reason missing'
 
 
-echo "=== continuation helper stops on degraded zero-findings ==="
+echo "=== continuation helper stops on degraded zero-findings without ballot-items-lost ==="
 DDEG="$TMPROOT/continuation-degraded-zero"
 write_common_inputs "$DDEG"
 printf '1\n' >"$DDEG/review-round-count.txt"
@@ -282,6 +282,65 @@ printf 'DEGRADED_PANEL=1\n' >"$DDEG/.step3-review-result.env"
 cont_out=$(run_continuation "$DDEG" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'degraded zero-findings round should stop'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=small-clean$' || fail 'degraded zero-findings reason missing'
+
+echo "=== continuation helper continues on ballot-items-lost terminal shape ==="
+DBIL_CONT="$TMPROOT/continuation-ballot-items-lost"
+write_common_inputs "$DBIL_CONT"
+printf '1\n' >"$DBIL_CONT/review-round-count.txt"
+: >"$DBIL_CONT/accepted-plan-findings.md"
+cat >"$DBIL_CONT/.step3-review-result.env" <<'EOF'
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+LOOP_STATUS=zero-findings-degraded-panel
+REASON=ballot-items-lost
+EOF
+cont_out=$(run_continuation "$DBIL_CONT" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'ballot-items-lost should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=ballot-items-lost$' || fail 'ballot-items-lost reason missing'
+
+echo "=== continuation helper continues ballot-items-lost under explicit approve ==="
+DBIL_APPROVE="$TMPROOT/continuation-ballot-items-lost-approve"
+write_common_inputs "$DBIL_APPROVE"
+printf '1\n' >"$DBIL_APPROVE/review-round-count.txt"
+: >"$DBIL_APPROVE/accepted-plan-findings.md"
+cat >"$DBIL_APPROVE/.step3-review-result.env" <<'EOF'
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+LOOP_STATUS=zero-findings-degraded-panel
+REASON=ballot-items-lost
+EOF
+cont_out=$(run_continuation "$DBIL_APPROVE" true)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'ballot-items-lost with approve should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=ballot-items-lost$' || fail 'ballot-items-lost with approve reason missing'
+
+echo "=== continuation helper continues ballot-items-lost with snapshot-failed suffix ==="
+DBIL_SUFFIX="$TMPROOT/continuation-ballot-items-lost-suffix"
+write_common_inputs "$DBIL_SUFFIX"
+printf '1\n' >"$DBIL_SUFFIX/review-round-count.txt"
+: >"$DBIL_SUFFIX/accepted-plan-findings.md"
+cat >"$DBIL_SUFFIX/.step3-review-result.env" <<'EOF'
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+LOOP_STATUS=zero-findings-degraded-panel
+REASON=ballot-items-lost,snapshot-failed
+EOF
+cont_out=$(run_continuation "$DBIL_SUFFIX" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'ballot-items-lost suffix should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=ballot-items-lost$' || fail 'ballot-items-lost suffix reason missing'
+
+echo "=== continuation helper negative: degraded zero without ballot-items-lost reason ==="
+DDEG_NEG="$TMPROOT/continuation-degraded-no-ballot-reason"
+write_common_inputs "$DDEG_NEG"
+printf '1\n' >"$DDEG_NEG/review-round-count.txt"
+: >"$DDEG_NEG/accepted-plan-findings.md"
+cat >"$DDEG_NEG/.step3-review-result.env" <<'EOF'
+DEGRADED_PANEL=1
+TALLY_PLAN_REVIEW_STATUS=ok
+LOOP_STATUS=zero-findings-degraded-panel
+REASON=zero-findings-degraded-panel
+EOF
+cont_out=$(run_continuation "$DDEG_NEG" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'zero-findings-degraded-panel without ballot-items-lost should stop'
 
 echo "=== continuation helper ignores stale degraded flag after successful retally ==="
 DDEG_STALE="$TMPROOT/continuation-degraded-stale-retally"

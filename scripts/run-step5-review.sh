@@ -172,6 +172,13 @@ LARCH_TIMING_LEDGER="$(session_get "$SESSION_ENV_PATH" LARCH_TIMING_LEDGER "")"
 DYNAMIC_ARCHETYPES="$(session_get "$SESSION_ENV_PATH" LARCH_DYNAMIC_ARCHETYPES_MAX "")"
 PRE_SCOUTED_MANIFEST="$IMPLEMENT_TMPDIR/scout-coder-manifest.json"
 EXTERNAL_SCOUT_ELIGIBLE_MARKER="$IMPLEMENT_TMPDIR/step2-external-scout-eligible.txt"
+SCOUT_CODER_STATUS_FILE="$IMPLEMENT_TMPDIR/step2-scout-coder-status.env"
+SCOUT_CODER_STATUS=""
+if [[ -f "$SCOUT_CODER_STATUS_FILE" ]]; then
+    SCOUT_CODER_STATUS="$(session_get "$SCOUT_CODER_STATUS_FILE" SCOUT_CODER_STATUS "")"
+else
+    SCOUT_CODER_STATUS="$(session_get "$SESSION_ENV_PATH" SCOUT_CODER_STATUS "")"
+fi
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 REVIEW_AND_FIX_ARGS=()
 
@@ -229,11 +236,11 @@ case "$STEP5_MODE" in
         ;;
 esac
 
-if [[ "$STEP5_MODE" != "mav-apply" && -f "$EXTERNAL_SCOUT_ELIGIBLE_MARKER" ]]; then
-    REVIEW_AND_FIX_ARGS+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
+if [[ "$STEP5_MODE" != "mav-apply" ]]; then
+    if [[ -f "$EXTERNAL_SCOUT_ELIGIBLE_MARKER" && "$SCOUT_CODER_STATUS" == ok ]]; then
+        REVIEW_AND_FIX_ARGS+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
+    fi
     [[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
-elif [[ "$STEP5_MODE" != "mav-apply" ]]; then
-    REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes 0)
 elif [[ -n "$DYNAMIC_ARCHETYPES" ]]; then
     REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
 fi
