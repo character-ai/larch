@@ -481,8 +481,15 @@ def scout_dynamic_archetypes(
             pass
     if winner is None:
         _write_empty_manifest(output)
-        status = last_status if last_rc != 0 else "empty"
-        _emit_scout_result(status, output, 0, latency_ms)
+        if last_rc != 0:
+            _emit_scout_result(last_status, output, 0, latency_ms)
+        else:
+            parse_error = Path(str(output) + ".parse-error")
+            probe = _load_json_salvage(raw, parse_error) if raw.is_file() and raw.stat().st_size > 0 else None
+            if probe is None and raw.is_file() and raw.stat().st_size > 0:
+                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+            else:
+                _emit_scout_result("empty", output, 0, latency_ms)
         return
     parse_error = Path(str(output) + ".parse-error")
     data = _load_json_salvage(winner, parse_error)
