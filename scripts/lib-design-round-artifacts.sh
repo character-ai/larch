@@ -4,7 +4,7 @@
 # transcripts, votes, manifests, and per-round plan/diff files are debug-only.
 design_round_artifact_included() {
     case "${1:-}" in
-        round-summary.env|findings-classification.tsv|prune-decision.env|prune-nit.env)
+        round-summary.env|findings-classification.tsv|prune-decision.env|prune-nit.env|reviewer-status.tsv)
             return 0
             ;;
         *-vote-output.txt|*-vote-output-first-pass.txt|*.failure-diag)

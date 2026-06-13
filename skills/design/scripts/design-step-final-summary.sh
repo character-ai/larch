@@ -85,9 +85,32 @@ design_source_env_optional() {
   fi
 }
 
+
+design_bg_wait_marker_start() {
+  local step="$1"
+  _bg_wait_marker="$DESIGN_TMPDIR/.bg-wait-active"
+  _bg_wait_tmp="${_bg_wait_marker}.tmp.$$"
+  {
+    printf 'PID=%s\n' "$$"
+    printf 'CLAUDE_PID=%s\n' "${CLAUDE_PID:-}"
+    printf 'START_EPOCH=%s\n' "$(date +%s)"
+    printf 'STEP=%s\n' "$step"
+    printf 'TIMEOUT_S=21600\n'
+  } >"$_bg_wait_tmp" || return 1
+  mv -f "$_bg_wait_tmp" "$_bg_wait_marker" || { rm -f "$_bg_wait_tmp" 2>/dev/null || true; return 1; }
+  trap 'rm -f "${_bg_wait_marker:-}" "${_bg_wait_tmp:-}"' EXIT
+  return 0
+}
 # design-final-summary-anchor (scripts/test-design-structure.sh)
 # Immediate-background required; prompt waits for <task-notification> before reading final-summary.md.
 design_source_env_optional
+if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
+  printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+# Marker step id: STEP=design-step-final-summary
+design_bg_wait_marker_start design-step-final-summary || true
 export CLAUDE_PLUGIN_ROOT
 DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \

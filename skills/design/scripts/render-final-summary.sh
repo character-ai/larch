@@ -231,20 +231,86 @@ refresh_issue_counts() {
     WARNINGS=0
     ex_file="$DESIGN_TMPDIR/execution-issues.md"
     if [ -f "$ex_file" ] && [ -s "$ex_file" ]; then
-        read -r EXEC_ISSUES WARNINGS < <(awk '
-          /^### Tool Failures$/ { sec=1; next }
-          /^### External Reviewer Issues$/ { sec=1; next }
-          /^### Warnings$/ { sec=2; next }
-          /^### / { sec=0; next }
-          /^- \*\*Step / {
-            if (sec == 1) ex++
-            if (sec == 2) wa++
-            next
-          }
-          END { print ex+0, wa+0 }
-        ' "$ex_file")
+        _issue_counts=$(python3 - "$ex_file" 2>/dev/null <<'PY'
+import sys
+
+section = 0
+fenced = False
+exec_issues = 0
+warnings = 0
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8", errors="replace") as handle:
+        for raw_line in handle:
+            line = raw_line.rstrip("\r\n")
+            stripped = line.strip()
+
+            if stripped == chr(96) * 3:
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+
+            if stripped in ("### Tool Failures", "### External Reviewer Issues"):
+                section = 1
+                continue
+            if stripped == "### Warnings":
+                section = 2
+                continue
+            if stripped.startswith("### "):
+                section = 0
+                continue
+
+            if line.startswith("- **"):
+                if section == 1:
+                    exec_issues += 1
+                elif section == 2:
+                    warnings += 1
+except OSError:
+    pass
+
+print(exec_issues, warnings)
+PY
+        ) || _issue_counts="0 0"
+        _exec_issue_count=0
+        _warning_count=0
+        read -r _exec_issue_count _warning_count _count_extra <<EOF_COUNTS
+$_issue_counts
+EOF_COUNTS
+        case "$_exec_issue_count" in "" | *[!0123456789]*) EXEC_ISSUES=0 ;; *) EXEC_ISSUES="$_exec_issue_count" ;; esac
+        case "$_warning_count" in "" | *[!0123456789]*) WARNINGS=0 ;; *) WARNINGS="$_warning_count" ;; esac
     fi
 }
+
+BLOCKED_POLLING_ATTEMPTS=0
+read_bg_poll_guard_denials() {
+    local count_file="$DESIGN_TMPDIR/bg-poll-guard-denials.count" value
+    [ -f "$count_file" ] && [ ! -L "$count_file" ] || return 0
+    value=$(awk 'NR==1 { print; exit }' "$count_file" 2>/dev/null || printf '0')
+    case "$value" in ''|*[!0-9]*) value=0 ;; esac
+    BLOCKED_POLLING_ATTEMPTS=$value
+}
+
+record_bg_poll_guard_warning() {
+    [ "${BLOCKED_POLLING_ATTEMPTS:-0}" -gt 0 ] 2>/dev/null || return 0
+    [ ! -f "$DESIGN_TMPDIR/.bg-poll-guard-warning-recorded" ] || return 0
+    local warn_file="$DESIGN_TMPDIR/bg-poll-guard-warning.log"
+    printf 'Blocked polling attempts: %s\n' "$BLOCKED_POLLING_ATTEMPTS" >"$warn_file" 2>/dev/null || return 0
+    if python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design immediate-background wait" \
+        --tool "hook-bg-poll-guard.sh" \
+        --exit-code 0 \
+        --category Warnings \
+        --redact \
+        --output-file "$warn_file" \
+        >/dev/null 2>&1; then
+        : >"$DESIGN_TMPDIR/.bg-poll-guard-warning-recorded" 2>/dev/null || true
+    fi
+}
+
+read_bg_poll_guard_denials
+record_bg_poll_guard_warning
 refresh_issue_counts
 
 # --- Plan review line ---
@@ -467,6 +533,11 @@ invoke_render() {
             : >"$_rpd_out"
         fi
     fi
+    if [ "${BLOCKED_POLLING_ATTEMPTS:-0}" -gt 0 ] 2>/dev/null; then
+        [ -f "$note_file" ] || : >"$note_file"
+        printf '%s\n' "- **Blocked polling attempts**: $BLOCKED_POLLING_ATTEMPTS" >>"$note_file"
+        note_args=(--note-lines-file "$note_file")
+    fi
     if [ -s "$_rpd_out" ]; then
         [ -f "$note_file" ] || : >"$note_file"
         printf '\n' >>"$note_file"
@@ -553,6 +624,9 @@ compose_self_fallback() {
         fi
         if [ "$OUTCOME" = "cancelled-outline" ]; then
             printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
+        fi
+        if [ "${BLOCKED_POLLING_ATTEMPTS:-0}" -gt 0 ] 2>/dev/null; then
+            printf '%s\n' "- **Blocked polling attempts**: $BLOCKED_POLLING_ATTEMPTS"
         fi
     } > "$out_file"
 }

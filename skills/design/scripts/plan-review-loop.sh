@@ -533,12 +533,178 @@ _write_prune_nit_env() {
     fi
 }
 
+_write_reviewer_status_artifact() {
+    # Status artifacts: $DESIGN_TMPDIR/plan-review/round-${round_num}/reviewer-status.tsv and $DESIGN_TMPDIR/latest-reviewer-status.tsv
+    local round_num="$1" end_s="$2"
+    local round_dir="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    local dest="$round_dir/reviewer-status.tsv"
+    local latest="$DESIGN_TMPDIR/latest-reviewer-status.tsv"
+    local tmp collect_tmp drops_file manifest_file start_file
+    mkdir -p "$round_dir" || return 0
+    tmp="$dest.tmp.$$"
+    collect_tmp="$DESIGN_TMPDIR/.reviewer-status-collect.$$"
+    printf '%s' "${_last_collect_out:-}" >"$collect_tmp" 2>/dev/null || return 0
+    drops_file="${DROPPED_SLOTS_FILE:-}"
+    manifest_file="${PANEL_MANIFEST:-$DESIGN_TMPDIR/plan-review-slots.ndjson}"
+    start_file="$round_dir/round-start-s"
+    if ! python3 - "$manifest_file" "$collect_tmp" "$drops_file" "$start_file" "$end_s" "$tmp" <<'PY'
+import json
+import os
+import sys
+
+manifest_file, collect_file, drops_file, start_file, end_s, out_file = sys.argv[1:7]
+
+
+def read_int(path, default=0):
+    try:
+        text = open(path, encoding="utf-8", errors="replace").read().strip().splitlines()[0]
+        return int(text)
+    except Exception:
+        return default
+
+
+def norm(path):
+    try:
+        return os.path.realpath(path)
+    except OSError:
+        return os.path.normpath(path)
+
+
+def base_candidates(path):
+    out = {path, norm(path), os.path.normpath(path)}
+    parent = os.path.dirname(path)
+    base = os.path.basename(path)
+    for suffix in ("-phase2.txt", "-phase3.txt"):
+        if base.endswith(suffix):
+            candidate = os.path.join(parent, base[: -len(suffix)] + ".txt")
+            out.update({candidate, norm(candidate), os.path.normpath(candidate)})
+    for suffix in ("-phase2", "-phase3"):
+        if base.endswith(suffix):
+            candidate = os.path.join(parent, base[: -len(suffix)])
+            out.update({candidate, norm(candidate), os.path.normpath(candidate)})
+    return out
+
+
+def parse_collect(text):
+    records = []
+    for para in text.split("\n\n"):
+        data = {}
+        for line in para.splitlines():
+            if "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            data[key] = val
+        if "REVIEWER_FILE" in data or "STATUS" in data:
+            records.append(data)
+    return records
+
+
+def drop_status(reason):
+    reason_l = (reason or "").lower()
+    skipped_terms = ("tool-absent", "tool_absent", "unavailable", "pruned", "explicitly-dropped", "dropped-before-launch", "no-fallback")
+    if any(term in reason_l for term in skipped_terms):
+        return "skipped"
+    return "failed"
+
+start_s = read_int(start_file, int(end_s) if str(end_s).isdigit() else 0)
+try:
+    end_i = int(end_s)
+except ValueError:
+    end_i = start_s
+elapsed = max(0, end_i - start_s)
+
+rows = []
+path_to_index = {}
+try:
+    with open(manifest_file, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            slot = str(obj.get("slot") or "").strip()
+            if not slot:
+                continue
+            tool = str(obj.get("tool") or "").strip() or "unknown"
+            output = str(obj.get("output") or "").strip()
+            row = {"slot": slot, "tool": tool, "status": "failed", "elapsed": str(elapsed), "output": output}
+            path_to_index[slot] = len(rows)
+            if output:
+                for candidate in base_candidates(output):
+                    path_to_index[candidate] = len(rows)
+            rows.append(row)
+except OSError:
+    pass
+
+collect_text = ""
+try:
+    collect_text = open(collect_file, encoding="utf-8", errors="replace").read()
+except OSError:
+    pass
+for record in parse_collect(collect_text):
+    reviewer = (record.get("REVIEWER_FILE") or "").strip()
+    status = (record.get("STATUS") or "").strip()
+    tool = (record.get("TOOL") or "").strip()
+    idx = None
+    for candidate in base_candidates(reviewer):
+        if candidate in path_to_index:
+            idx = path_to_index[candidate]
+            break
+    if idx is None:
+        continue
+    if tool:
+        rows[idx]["tool"] = tool
+    rows[idx]["status"] = "done" if status == "OK" else "failed"
+
+if drops_file and os.path.exists(drops_file):
+    try:
+        with open(drops_file, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                parts = line.rstrip("\n").split("\t")
+                if not parts or not parts[0].strip():
+                    continue
+                slot = parts[0].strip()
+                tool = parts[1].strip() if len(parts) > 1 else "unknown"
+                reason = parts[2].strip() if len(parts) > 2 else ""
+                if slot in path_to_index:
+                    idx = path_to_index[slot]
+                    rows[idx]["status"] = drop_status(reason)
+                    if tool:
+                        rows[idx]["tool"] = tool
+                else:
+                    rows.append({"slot": slot, "tool": tool or "unknown", "status": drop_status(reason), "elapsed": str(elapsed), "output": ""})
+    except OSError:
+        pass
+
+with open(out_file, "w", encoding="utf-8") as out:
+    out.write("slot\ttool\tstatus\telapsed_s\toutput\n")
+    for row in rows:
+        out.write("{slot}\t{tool}\t{status}\t{elapsed}\t{output}\n".format(**row))
+PY
+    then
+        rm -f "$tmp" "$collect_tmp"
+        return 0
+    fi
+    rm -f "$collect_tmp"
+    if mv -f "$tmp" "$dest" 2>/dev/null; then
+        cp -f "$dest" "$latest" 2>/dev/null || true
+    else
+        rm -f "$tmp"
+    fi
+}
+
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
     local snapshot_ok=true
+    local terminal_s
+    terminal_s="$(_plan_round_now_s)"
     if [[ "${LOOP_STATUS:-}" != "main-agent-vote-required" ]]; then
-        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$terminal_s"
     fi
+    _write_reviewer_status_artifact "$round_num" "$terminal_s"
     if ! _snapshot_round_dir "$round_num"; then
         emit_kv WARN "plan-review-snapshot: round-${round_num} snapshot failed after terminal status ${LOOP_STATUS:-unknown}"
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
@@ -1859,6 +2025,7 @@ else
 fi
 
 _round_start=$(_plan_round_now_s)
+_persist_plan_round_start "$ROUND_NUM" "$_round_start"
 set +e
 _run_plan_review_round "$ROUND_NUM"
 _round_rc=$?

@@ -288,6 +288,23 @@ assert_wrapper_contract_pins() {
   contains_near "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh' 'Immediate-background required' 'Final summary missing immediate-background pin' 900
   contains_near "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh' 'timeout: 21600000' 'Final summary missing timeout pin' 900
   contains_near "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh' '<task-notification>' 'Final summary missing task-notification wait' 1700
+  contains "$SKILL_MD" 'END THE TURN' 'SKILL missing immediate-background END THE TURN directive'
+  contains "$SKILL_MD" 'yielding is NOT a halt' 'SKILL missing immediate-background yield-not-halt directive'
+  contains "$SKILL_MD" '<task-notification> is the only resume trigger' 'SKILL missing task-notification-only resume directive'
+  contains "$SKILL_MD" 'ignore the launch ack' 'SKILL missing launch ack ignore directive'
+  contains "$SKILL_MD" 'twice-per-wait reviewer status cadence' 'SKILL missing twice-per-wait reviewer status cadence'
+  contains "$REPO_ROOT/skills/shared/orchestrator-never.md" 'ZERO progress-observation tool calls' 'orchestrator-never missing zero progress-observation intent rule'
+  contains "$REPO_ROOT/skills/shared/orchestrator-never.md" 'sleep N &&' 'orchestrator-never missing sleep probe ban'
+  contains "$REPO_ROOT/skills/shared/orchestrator-never.md" 'TaskOutput' 'orchestrator-never missing TaskOutput ban'
+  contains "$REPO_ROOT/skills/shared/orchestrator-never.md" '1890FD62-0DA8-4259-B652-BE9FFD962A76' 'orchestrator-never missing incident run id'
+  contains "$SCRIPT_DIR/design-step3-review.sh" '.bg-wait-active' 'Step 3 review wrapper missing bg wait marker'
+  contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP=design-step3-review' 'Step 3 review wrapper missing marker step id'
+  contains "$SCRIPT_DIR/design-step-final-summary.sh" 'STEP=design-step-final-summary' 'Final summary wrapper missing marker step id'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'STEP=design-step5c' 'Step 5c wrapper missing marker step id'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'design_bg_wait_marker_start design-step5c || true' 'Step 5c wrapper missing fail-soft bg wait marker call'
+  contains "$SCRIPT_DIR/design-step-final-summary.sh" 'pause-requested' 'Final summary wrapper missing pause-check before bg wait marker'
+  contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/plan-review/round-${round_num}/reviewer-status.tsv' 'plan-review-loop missing round reviewer status artifact'
+  contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/latest-reviewer-status.tsv' 'plan-review-loop missing latest reviewer status artifact'
 }
 
 assert_no_consecutive_executable_script_call_fences() {

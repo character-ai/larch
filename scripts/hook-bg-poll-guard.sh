@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+# hook-bg-poll-guard.sh — PreToolUse hook: deny /design progress polling while an immediate-background wrapper is active.
+# set -e intentionally omitted: hooks must fail open on malformed input or runtime errors.
+
+set -uo pipefail
+
+[ "${LARCH_BG_POLL_GUARD_DISABLE:-}" = "1" ] && exit 0
+
+INPUT=$(cat 2>/dev/null) || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+
+tool_name=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || exit 0
+case "$tool_name" in
+  Read|Bash) ;;
+  *) exit 0 ;;
+esac
+
+now=$(date +%s 2>/dev/null) || exit 0
+case "$now" in ''|*[!0-9]*) exit 0 ;; esac
+
+cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || exit 0
+HOOK_CLAUDE_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+_input_claude_pid=$(printf '%s' "$INPUT" | jq -r '.claude_pid // .parent_pid // ""' 2>/dev/null) || _input_claude_pid=""
+if [ -n "$_input_claude_pid" ] && [ "$_input_claude_pid" != "null" ]; then
+  HOOK_CLAUDE_PID="$_input_claude_pid"
+fi
+
+canonical_dir() {
+  [ -n "$1" ] || return 1
+  [ -d "$1" ] || return 1
+  (cd "$1" 2>/dev/null && pwd -P)
+}
+
+is_allowed_marker_parent() {
+  local dir="$1" home_sessions tmp_root
+  [ -n "$dir" ] || return 1
+  if [ -n "${HOME:-}" ]; then
+    home_sessions="$(canonical_dir "$HOME/.cache/larch/sessions" 2>/dev/null || true)"
+    if [ -n "$home_sessions" ]; then
+      case "$dir" in "$home_sessions"/*) return 0 ;; esac
+    fi
+  fi
+  tmp_root="$(canonical_dir "${TMPDIR:-/tmp}" 2>/dev/null || canonical_dir /tmp 2>/dev/null || true)"
+  if [ -n "$tmp_root" ]; then
+    case "$dir" in
+      "$tmp_root"/claude-design-*|"$tmp_root"/larch-*|"$tmp_root"/*/claude-design-*|"$tmp_root"/*/larch-*) return 0 ;;
+    esac
+  fi
+  case "$dir" in */.cache/larch/sessions/*) return 0 ;; esac
+  return 1
+}
+
+marker_candidates() {
+  if [ -n "${LARCH_BG_POLL_GUARD_MARKER:-}" ]; then
+    printf '%s\n' "$LARCH_BG_POLL_GUARD_MARKER"
+    return 0
+  fi
+  if [ -n "${HOME:-}" ] && [ -d "$HOME/.cache/larch/sessions" ]; then
+    find "$HOME/.cache/larch/sessions" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+  fi
+  if [ -d "${TMPDIR:-/tmp}" ]; then
+    find "${TMPDIR:-/tmp}" -maxdepth 3 -name .bg-wait-active -type f 2>/dev/null || true
+  fi
+}
+
+marker_value() {
+  local marker="$1" key="$2"
+  awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
+}
+
+marker_is_live() {
+  local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid
+  [ -f "$marker" ] || return 1
+  [ ! -L "$marker" ] || return 1
+  dir=$(dirname "$marker") || return 2
+  dir=$(canonical_dir "$dir" 2>/dev/null) || return 2
+  is_allowed_marker_parent "$dir" || return 1
+  stored_claude_pid=$(marker_value "$marker" CLAUDE_PID 2>/dev/null) || stored_claude_pid=""
+  hook_claude_pid="${HOOK_CLAUDE_PID:-}"
+  if [ -n "$stored_claude_pid" ] && [ -n "$hook_claude_pid" ] && [ "$stored_claude_pid" != "$hook_claude_pid" ]; then
+    return 1
+  fi
+  pid=$(marker_value "$marker" PID) || return 2
+  start=$(marker_value "$marker" START_EPOCH) || return 2
+  timeout=$(marker_value "$marker" TIMEOUT_S) || return 2
+  case "$pid" in ''|*[!0-9]*) return 2 ;; esac
+  case "$start" in ''|*[!0-9]*) return 2 ;; esac
+  case "$timeout" in ''|*[!0-9]*) return 2 ;; esac
+  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; return 1; }
+  grace=60
+  limit=$((timeout + grace))
+  age=$((now - start))
+  if [ "$age" -lt 0 ]; then
+    return 2
+  fi
+  if [ "$age" -gt "$limit" ]; then
+    rm -f "$marker" 2>/dev/null || true
+    return 1
+  fi
+  LIVE_MARKER_DIR="$dir"
+  return 0
+}
+
+json_deny() {
+  jq -cn '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:"/design immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}' 2>/dev/null || true
+}
+
+increment_denial_count() {
+  local dir="$1" count_file old tmp
+  count_file="$dir/bg-poll-guard-denials.count"
+  old=0
+  if [ -f "$count_file" ] && [ ! -L "$count_file" ]; then
+    old=$(awk 'NR==1 { print; exit }' "$count_file" 2>/dev/null || printf '0')
+    case "$old" in ''|*[!0-9]*) old=0 ;; esac
+  fi
+  tmp="$count_file.tmp.$$"
+  printf '%s\n' $((old + 1)) >"$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+  mv -f "$tmp" "$count_file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+  return 0
+}
+
+deny_if_needed() {
+  local dir="$1"
+  json_deny
+  increment_denial_count "$dir" || true
+  exit 0
+}
+
+path_under_dir() {
+  local path="$1" dir="$2"
+  [ -n "$path" ] || return 1
+  while [[ "$path" == *//* ]]; do path=${path//\/\//\/}; done
+  while [[ "$dir" == *//* ]]; do dir=${dir//\/\//\/}; done
+  case "$path" in
+    "$dir"|"$dir"/*) return 0 ;;
+  esac
+  case "$dir" in
+    /private/*)
+      local dir_unprivate="${dir#/private}"
+      case "$path" in "$dir_unprivate"|"$dir_unprivate"/*) return 0 ;; esac
+      ;;
+  esac
+  return 1
+}
+
+path_is_task_output() {
+  case "$1" in
+    tasks/*.output|*/tasks/*.output) return 0 ;;
+  esac
+  return 1
+}
+
+path_is_known_result() {
+  case "$(basename "$1" 2>/dev/null)" in
+    .step3-review-result.env|.design-publish-result.env|final-summary.md) return 0 ;;
+  esac
+  return 1
+}
+
+_PROBE_VERB_RE='(ls|cat|wc|stat|find|head|tail|test|grep|rg|ripgrep|awk|sed|python3?|jq|dd|cmp)'
+
+bash_trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+bash_first_sync_segment() {
+  local cmd="$1" rest ch in_s in_d seg
+  in_s=0
+  in_d=0
+  seg=""
+  rest="$cmd"
+  while [ -n "$rest" ]; do
+    ch=${rest:0:1}
+    case "$ch" in
+      \') [ "$in_d" -eq 0 ] && in_s=$((1 - in_s)) ;;
+      \") [ "$in_s" -eq 0 ] && in_d=$((1 - in_d)) ;;
+    esac
+    if [ "$in_s" -eq 0 ] && [ "$in_d" -eq 0 ]; then
+      case "$rest" in
+        '&&'*|'||'*|';'*)
+          bash_trim "$seg"
+          return 0
+          ;;
+      esac
+    fi
+    seg="$seg$ch"
+    rest="${rest:1}"
+  done
+  bash_trim "$seg"
+}
+
+bash_segment_is_wrapper_routed() {
+  local seg="$1"
+  case "$seg" in
+    *design-run-*.sh*design-step3-review.sh*|*design-run-*.sh*design-step5c.sh*|*design-run-*.sh*design-step-final-summary.sh*) return 0 ;;
+  esac
+  return 1
+}
+
+bash_is_strict_wrapper_only() {
+  local cmd="$1" first rest
+  first=$(bash_first_sync_segment "$cmd")
+  bash_segment_is_wrapper_routed "$first" || return 1
+  rest="$cmd"
+  rest="${rest#"$first"}"
+  rest="${rest#"${rest%%[![:space:]]*}"}"
+  case "$rest" in
+    '') return 0 ;;
+    '&&'*|'||'*|';'*) return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
+bash_has_probe_verb() {
+  printf '%s' "$1" | grep -Eq "(^|[^[:alnum:]_])${_PROBE_VERB_RE}([^[:alnum:]_]|$)"
+}
+
+bash_has_probe_target() {
+  local cmd="$1" dir="$2" cwd_canon="$3"
+  local design_tmpdir_ref="\$DESIGN_TMPDIR"
+  local design_tmpdir_braced="\${DESIGN_TMPDIR}"
+  local session_tmpdir_ref="\$SESSION_TMPDIR"
+  local session_tmpdir_braced="\${SESSION_TMPDIR}"
+  case "$cmd" in
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
+  esac
+  if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
+    case "$cmd" in
+      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*) return 0 ;;
+    esac
+  fi
+  return 1
+}
+
+bash_is_sleep_probe() {
+  local cmd="$1"
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "sleep[[:space:]]+[0-9]+[^&;|]*&&[^\\n]*${_PROBE_VERB_RE}"
+}
+
+bash_is_watcher_loop() {
+  local cmd="$1"
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "(while|until|for)[[:space:]].*sleep[[:space:]]+[0-9]+.*${_PROBE_VERB_RE}"
+}
+
+bash_is_filetest_sleep_loop() {
+  local cmd="$1"
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq '(while|until)[[:space:]].*(\[|\[\[).*(sleep|;).*sleep[[:space:]]+[0-9]+|(while|until)[[:space:]].*sleep[[:space:]]+[0-9]+.*(\[|\[\[)'
+}
+
+live_dirs_file=$(mktemp "${TMPDIR:-/tmp}/larch-bg-poll-live.XXXXXX") || exit 0
+trap 'rm -f "$live_dirs_file"' EXIT
+
+while IFS= read -r marker || [ -n "$marker" ]; do
+  [ -n "$marker" ] || continue
+  LIVE_MARKER_DIR=""
+  marker_is_live "$marker"
+  marker_rc=$?
+  case "$marker_rc" in
+    0) printf '%s\n' "$LIVE_MARKER_DIR" >>"$live_dirs_file" ;;
+    1|2) ;;
+    *) exit 0 ;;
+  esac
+done <<EOF_MARKERS
+$(marker_candidates)
+EOF_MARKERS
+
+[ -s "$live_dirs_file" ] || exit 0
+
+cwd_canon=""
+if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+  cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
+fi
+
+if [ "$tool_name" = "Read" ]; then
+  read_path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
+  [ -n "$read_path" ] || exit 0
+  case "$read_path" in
+    /*) read_abs="$read_path" ;;
+    *)
+      if [ -n "$cwd_canon" ]; then read_abs="$cwd_canon/$read_path"; else read_abs="$read_path"; fi
+      ;;
+  esac
+  while IFS= read -r dir || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    if path_under_dir "$read_abs" "$dir" || path_is_task_output "$read_path" || { path_is_known_result "$read_path" && { path_under_dir "$read_abs" "$dir" || [ "$cwd_canon" = "$dir" ]; }; }; then
+      deny_if_needed "$dir"
+    fi
+  done <"$live_dirs_file"
+  exit 0
+fi
+
+cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
+[ -n "$cmd" ] || exit 0
+bash_is_strict_wrapper_only "$cmd" && exit 0
+while IFS= read -r dir || [ -n "$dir" ]; do
+  [ -n "$dir" ] || continue
+  if bash_has_probe_verb "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_is_sleep_probe "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_is_watcher_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_is_filetest_sleep_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+done <"$live_dirs_file"
+
+exit 0
