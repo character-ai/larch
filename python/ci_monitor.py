@@ -1043,6 +1043,8 @@ def _make_default_launch_fn(
 
     def launch_fn(tier: str) -> TierAttempt:
         tier_out = str(Path(prefix) / f"ci-fix-{tier}.out")
+        if tier in {"codex", "cursor"}:
+            Path(f"{tier_out}.token-record").unlink(missing_ok=True)
         argv = agents.build_launch_argv(
             tier,
             role=config.CI_FIX_ROLE,
@@ -1067,6 +1069,7 @@ def _make_default_launch_fn(
             implement_tmpdir=implement_tmpdir,
             seen=seen_token_records,
             cwd=cwd,
+            allow_output_fallback=tier in {"codex", "cursor"},
         )
         launcher_exit = _resolve_launcher_exit(
             combined=combined,

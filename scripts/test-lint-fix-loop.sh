@@ -15,6 +15,10 @@ grep -F -- 'LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_CMD' "$SOURCE_SCRIPTS/lint-fix-loop.
     || fail "lint-fix-loop.sh run_codex must route through agent launch-codex-exec"
 grep -F -- "--prompt-file \"\$run_dir/prompt.md\"" "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
     || fail "lint-fix-loop.sh run_codex must pass prompt by file"
+grep -F -- 'codex active-ledger token append failed with exit' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh must relay record-vendor-sidecar failure exit code"
+grep -F -- 'codex active-ledger token append stderr:' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh must relay record-vendor-sidecar stderr"
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-lint-fix-loop.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
@@ -599,14 +603,27 @@ SESSION0A="$CASE0A/session"
 CHECKS0A="$CASE0A/checks.log"
 WRAPPER0A="$CASE0A/wrapper.sh"
 LEDGER0A="$CASE0A/token-ledger.jsonl"
+STALE_DESIGN0A="$CASE0A/stale-design"
+STALE_RESEARCH0A="$CASE0A/stale-research"
+STALE_SESSION_ENV0A="$CASE0A/stale-session.env"
 ARGV0A="$CASE0A/launcher.argv"
 make_repo "$REPO0A"
 make_fixture_scripts "$SCRIPTS0A"
 make_session "$SESSION0A"
+mkdir -p "$STALE_DESIGN0A" "$STALE_RESEARCH0A"
+printf 'stale session env\n' > "$STALE_SESSION_ENV0A"
 printf 'synthetic checks failure\n' > "$CHECKS0A"
 write_wrapper_codex_telemetry "$WRAPPER0A"
 
-case0a_result=$(LINT_FIX_STUB_ARGV_LOG="$ARGV0A" LARCH_TOKEN_LEDGER="$LEDGER0A" run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A")
+case0a_result=$(
+    LINT_FIX_STUB_ARGV_LOG="$ARGV0A" \
+    LARCH_TOKEN_LEDGER="$LEDGER0A" \
+    LARCH_TOKEN_SESSION_ID=stale-parent-session \
+    DESIGN_TMPDIR="$STALE_DESIGN0A" \
+    RESEARCH_TMPDIR="$STALE_RESEARCH0A" \
+    SESSION_ENV_PATH="$STALE_SESSION_ENV0A" \
+    run_case "$SCRIPTS0A" "$REPO0A" "$SESSION0A" "$CHECKS0A" "$WRAPPER0A"
+)
 case0a_rc=$(printf '%s\n' "$case0a_result" | sed -n '1p')
 case0a_out=$(printf '%s\n' "$case0a_result" | sed -n '2,$p')
 [[ "$case0a_rc" == "0" ]] || fail "case0a expected rc 0, got $case0a_rc"
@@ -622,11 +639,18 @@ grep -Fq 'RAW=codex_lint_fix' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected codex_lint_fix token record"
 grep -Fq 'TOTAL=1050' "$case0a_run_dir/codex.log.token-record" \
     || fail "case0a expected token total"
-if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' "$LEDGER0A" >/dev/null; then
-    :
-else
-    fail "case0a expected codex_lint_fix token ledger row"
+if [[ -e "$LEDGER0A" ]]; then
+    fail "case0a stale parent token ledger must not be used"
 fi
+if compgen -G "$STALE_DESIGN0A/larch-tokens-*.jsonl" >/dev/null; then
+    fail "case0a stale DESIGN_TMPDIR must not receive active ledger rows"
+fi
+if compgen -G "$STALE_RESEARCH0A/larch-tokens-*.jsonl" >/dev/null; then
+    fail "case0a stale RESEARCH_TMPDIR must not receive active ledger rows"
+fi
+jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' \
+    "$SESSION0A"/larch-tokens-*.jsonl >/dev/null \
+    || fail "case0a expected codex_lint_fix active ledger row under IMPLEMENT_TMPDIR"
 jq -e 'select(.tool=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' \
     "$SESSION0A/token-report.ndjson" >/dev/null \
     || fail "case0a expected codex_lint_fix token-report row"
@@ -726,8 +750,9 @@ jq -s 'map(select(.tool=="codex" and .raw=="codex_lint_fix" and .total==1050 and
     "$SESSION0B/token-report.ndjson" >/dev/null \
     || fail "case0b expected one failed Codex token-report row"
 jq -s 'map(select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")) | length == 1' \
-    "$LEDGER0B" >/dev/null \
-    || fail "case0b expected one failed Codex token ledger row"
+    "$SESSION0B"/larch-tokens-*.jsonl >/dev/null \
+    || fail "case0b expected one failed Codex token ledger row under IMPLEMENT_TMPDIR"
+[[ ! -e "$LEDGER0B" ]] || fail "case0b stale parent token ledger must not be used"
 
 # Case 0b.1: launcher reports LAUNCHER_EXIT=1 while its wrapper exits 0;
 # run_codex must treat the launcher key as authoritative.

@@ -77,6 +77,7 @@ pass 'stale Codex drafter sidecar cleanup'
 plugin2="$TMP_ROOT/plugin2"
 design2="$TMP_ROOT/design2"
 impl2="$TMP_ROOT/implement2"
+stale_ledger2="$TMP_ROOT/stale-ledger2.jsonl"
 mkdir -p "$design2" "$impl2"
 make_fake_plugin "$plugin2"
 cat > "$plugin2/scripts/launch-codex-drafter.sh" <<'STUB'
@@ -103,6 +104,8 @@ STUB
 chmod +x "$plugin2/scripts/launch-codex-drafter.sh"
 write_session_env "$design2/session.env" "$design2" "$plugin2"
 printf "export IMPLEMENT_TMPDIR='%s'\n" "$impl2" >> "$design2/session.env"
+printf "export LARCH_TOKEN_LEDGER='%s'\n" "$stale_ledger2" >> "$design2/session.env"
+printf "export LARCH_TOKEN_SESSION_ID='stale-parent-session'\n" >> "$design2/session.env"
 env -u IMPLEMENT_TMPDIR -u LARCH_TOKEN_LEDGER CLAUDE_PLUGIN_ROOT="$plugin2" "$WRAPPER" --session-env-path "$design2/session.env" --claude-pid $$ >/dev/null 2>"$design2/stderr.log"
 [[ -f "$design2/token-report.ndjson" ]] || fail 'missing token-report.ndjson'
 [[ "$(grep -c 'codex_plan_draft' "$design2/token-report.ndjson")" = 1 ]] || fail 'expected one codex_plan_draft NDJSON row'
@@ -111,8 +114,12 @@ ledger_count=$(grep -h -c 'codex_plan_draft' "$design2"/larch-tokens-*.jsonl 2>/
 if compgen -G "$impl2/larch-tokens-*.jsonl" >/dev/null; then
     fail 'design drafter wrote active ledger under IMPLEMENT_TMPDIR'
 fi
+[[ ! -e "$stale_ledger2" ]] || fail 'design drafter wrote active ledger to stale LARCH_TOKEN_LEDGER'
 grep -Fq '"model":"gpt-5.5"' "$design2/token-report.ndjson" || fail 'missing model in NDJSON row'
 grep -h -Fq '"model":"gpt-5.5"' "$design2"/larch-tokens-*.jsonl || fail 'missing model in active ledger row'
+if grep -h -Fq 'stale-parent-session' "$design2"/larch-tokens-*.jsonl; then
+    fail 'design drafter used stale LARCH_TOKEN_SESSION_ID'
+fi
 pass 'fresh Codex drafter sidecar exactly-once ingestion'
 
 printf 'PASS: test-design-step2b-drafter.sh\n'

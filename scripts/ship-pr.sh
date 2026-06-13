@@ -712,7 +712,9 @@ ship_pr_ingest_token_record_once() {
         --tmpdir "$IMPLEMENT_TMPDIR" >>"$log_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "token append-record" "$rc" "$log_file" Warnings
-    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+    env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u DESIGN_TMPDIR -u RESEARCH_TMPDIR -u SESSION_ENV_PATH \
+        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" \
+        python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
         --input "$token_record" >>"$log_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "token record-vendor-sidecar" "$rc" "$log_file" Warnings

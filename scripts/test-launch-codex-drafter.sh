@@ -211,11 +211,13 @@ command grep -Fq 'OUTPUT CONTRACT' "$TMPROOT/codex-config.toml" || fail "trusted
 command grep -Fq 'instructions =' "$TMPROOT/codex-config.toml" || fail "instructions field missing from CODEX_HOME config"
 
 out1_copy_fail="$d1/status-token-copy-fail.txt"
-LARCH_TEST_FAIL_TOKEN_RECORD_COPY=1 run_drafter "$d1" "$out1_copy_fail" >/dev/null 2>"$TMPROOT/token-copy-fail.err"
+token_copy_fail_stdout=$(LARCH_TEST_FAIL_TOKEN_RECORD_COPY=1 run_drafter "$d1" "$out1_copy_fail" 2>"$TMPROOT/token-copy-fail.err")
 command grep -Fq 'STATUS=OK' "$out1_copy_fail" || fail "token copy failure should not fail drafter"
 command grep -Fq 'WARNING: failed to copy token record' "$TMPROOT/token-copy-fail.err" || fail "token copy failure warning missing"
 command grep -Fq '.token-record' "$TMPROOT/token-copy-fail.err" || fail "token copy failure warning should include token-record paths"
 [[ ! -e "$out1_copy_fail.token-record" ]] || fail "failed token-record copy should leave stable path absent"
+[[ "$token_copy_fail_stdout" != *"TOKEN_RECORD=$out1_copy_fail.token-record"* ]] || fail "copy failure must not emit missing TOKEN_RECORD path"
+[[ "$token_copy_fail_stdout" == *"TOKEN_RECORD_MISSING=true"* ]] || fail "copy failure must emit TOKEN_RECORD_MISSING=true"
 
 [[ -f "$out1.done" ]] || fail ".done missing"
 [[ -f "$out1.dirty-tree" ]] || fail ".dirty-tree missing"

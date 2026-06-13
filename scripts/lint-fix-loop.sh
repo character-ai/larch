@@ -424,6 +424,7 @@ delta_paths_after_dispatch() {
 run_codex() {
     local run_dir="$1"
     local launcher_stdout parsed_exit=1
+    local append_err active_err append_rc active_rc
     launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/lint-fix-codex-launcher.XXXXXX") || return 1
     rm -f "$run_dir/codex.log.events.jsonl" "$run_dir/codex.log.sidecar"
     set +e
@@ -440,15 +441,40 @@ run_codex() {
     [[ -n "$parsed_exit" ]] || parsed_exit=1
     rm -f "$launcher_stdout"
     if [[ -s "${run_dir}/codex.log.token-record" ]]; then
-        if ! python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
+        append_err=$(mktemp "${TMPDIR:-/tmp}/lint-fix-token-append.XXXXXX")
+        set +e
+        python3 "$SCRIPT_DIR/../python/cli.py" token append-record \
             --input "${run_dir}/codex.log.token-record" \
-            --tmpdir "$IMPLEMENT_TMPDIR" >/dev/null 2>&1; then
-            larch_err "lint-fix-loop: warning: codex token-report append failed; continuing."
+            --tmpdir "$IMPLEMENT_TMPDIR" >/dev/null 2>"$append_err"
+        append_rc=$?
+        set -e
+        if (( append_rc != 0 )); then
+            larch_err "lint-fix-loop: warning: codex token-report append failed with exit $append_rc; continuing."
+            if [[ -s "$append_err" ]]; then
+                larch_err "lint-fix-loop: warning: codex token-report append stderr: $(cat "$append_err")"
+            fi
+        elif [[ -s "$append_err" ]]; then
+            larch_err "lint-fix-loop: warning: codex token-report append stderr: $(cat "$append_err")"
         fi
-        if ! IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
-            --input "${run_dir}/codex.log.token-record" >/dev/null 2>&1; then
-            larch_err "lint-fix-loop: warning: codex active-ledger token append failed; continuing."
+        rm -f "$append_err"
+
+        active_err=$(mktemp "${TMPDIR:-/tmp}/lint-fix-token-active.XXXXXX")
+        set +e
+        env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u DESIGN_TMPDIR -u RESEARCH_TMPDIR -u SESSION_ENV_PATH \
+            IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" \
+            python3 "$SCRIPT_DIR/../python/cli.py" token record-vendor-sidecar \
+            --input "${run_dir}/codex.log.token-record" >/dev/null 2>"$active_err"
+        active_rc=$?
+        set -e
+        if (( active_rc != 0 )); then
+            larch_err "lint-fix-loop: warning: codex active-ledger token append failed with exit $active_rc; continuing."
+            if [[ -s "$active_err" ]]; then
+                larch_err "lint-fix-loop: warning: codex active-ledger token append stderr: $(cat "$active_err")"
+            fi
+        elif [[ -s "$active_err" ]]; then
+            larch_err "lint-fix-loop: warning: codex active-ledger token append stderr: $(cat "$active_err")"
         fi
+        rm -f "$active_err"
     fi
     if (( parsed_exit != 0 )); then
         if [[ -s "${run_dir}/codex.log.sidecar" ]]; then
