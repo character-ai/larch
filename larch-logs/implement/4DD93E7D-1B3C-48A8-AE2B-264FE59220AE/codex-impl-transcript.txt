@@ -1,0 +1,3 @@
+Implemented the plan and wrote `manifest.json` atomically.
+
+Status: **complete**.
