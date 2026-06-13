@@ -176,8 +176,8 @@ _TRAILER_AWK_HAS_KEY_CASES = [
 ]
 
 
-@pytest.mark.parametrize(("name", "plan_text", "count", "added", "deleted", "mech"), _TRAILER_AWK_PARSE_CASES)
-def test_optional_trailer_awk_parse_parity(name: str, plan_text: str, count: int, added: str | None, deleted: str | None, mech: str) -> None:
+@pytest.mark.parametrize(("_name", "plan_text", "count", "added", "deleted", "mech"), _TRAILER_AWK_PARSE_CASES)
+def test_optional_trailer_awk_parse_parity(_name: str, plan_text: str, count: int, added: str | None, deleted: str | None, mech: str) -> None:
     meta = plan_quality.parse_optional_metadata(plan_text)
     assert meta.metadata_trailer_lines == count
     assert meta.diff_added == added
@@ -185,13 +185,13 @@ def test_optional_trailer_awk_parse_parity(name: str, plan_text: str, count: int
     assert meta.mechanical_churn == mech
 
 
-@pytest.mark.parametrize(("name", "plan_text", "keys"), _TRAILER_AWK_KEYS_CASES)
-def test_optional_trailer_awk_keys_parity(name: str, plan_text: str, keys: tuple[str, ...]) -> None:
+@pytest.mark.parametrize(("_name", "plan_text", "keys"), _TRAILER_AWK_KEYS_CASES)
+def test_optional_trailer_awk_keys_parity(_name: str, plan_text: str, keys: tuple[str, ...]) -> None:
     assert plan_quality.parse_optional_metadata(plan_text).keys == keys
 
 
-@pytest.mark.parametrize(("name", "plan_text", "values"), _TRAILER_AWK_VALUES_CASES)
-def test_optional_trailer_awk_values_parity(name: str, plan_text: str, values: tuple[str, ...]) -> None:
+@pytest.mark.parametrize(("_name", "plan_text", "values"), _TRAILER_AWK_VALUES_CASES)
+def test_optional_trailer_awk_values_parity(_name: str, plan_text: str, values: tuple[str, ...]) -> None:
     assert plan_quality.parse_optional_metadata(plan_text).values == values
 
 

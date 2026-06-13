@@ -1595,7 +1595,7 @@ def _git_status_snapshot(repo: Path) -> bytes:
         entry = rel.encode("utf-8", errors="surrogateescape") + b"\0"
         if path.is_symlink():
             try:
-                target = os.readlink(path)
+                target = str(path.readlink())
             except OSError:
                 target = ""
             entry += hashlib.sha256(target.encode("utf-8", errors="surrogateescape")).hexdigest().encode() + b"\0"
