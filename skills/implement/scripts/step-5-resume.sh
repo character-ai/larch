@@ -60,12 +60,24 @@ DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/pytho
 round_start_file="$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s"
 if [ -f "$round_start_file" ]; then
   round_start_s="$(tr -d '\r\n' < "$round_start_file" 2>/dev/null || true)"
-  end_s="$(date +%s)"
-  "$CLAUDE_PLUGIN_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --round "$FINAL_ROUND_NUM" \
-    --start-s "$round_start_s" \
-    --end-s "$end_s" || true
+  ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+  round_decimal=$((10#$FINAL_ROUND_NUM))
+  needs_record=true
+  if [[ "$round_start_s" =~ ^[0-9]+$ ]] && [ -f "$ledger" ]; then
+    if awk -F '\t' -v r="$round_decimal" -v s="$round_start_s" \
+      '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == r && $7 == s { found=1 } END { exit found }' \
+      "$ledger" 2>/dev/null; then
+      needs_record=false
+    fi
+  fi
+  if [ "$needs_record" = true ] && [[ "$round_start_s" =~ ^[0-9]+$ ]]; then
+    end_s="$(date +%s)"
+    "$CLAUDE_PLUGIN_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+      --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+      --round "$FINAL_ROUND_NUM" \
+      --start-s "$round_start_s" \
+      --end-s "$end_s" || true
+  fi
 fi
 if [ "$RECORD_ONLY" = true ]; then
   exit 0
