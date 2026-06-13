@@ -24,6 +24,7 @@ import logging_util
 import proc
 import redact
 import review_pipeline
+import run_logs
 import voting
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -302,28 +303,7 @@ def _scrub_findings(input_file: Path, output_file: Path, log_file: Path) -> tupl
 
 
 def _submodule_paths() -> list[str]:
-    paths: list[str] = []
-    gm = _run(["git", "config", "-f", ".gitmodules", "--get-regexp", "^[^.]+\\.path$"])
-    if gm.returncode == 0:
-        for line in gm.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 2:
-                paths.append(parts[1])
-    if Path(".gitmodules").is_file():
-        for line in _read_text(Path(".gitmodules")).splitlines():
-            m = re.match(r"\s*path\s*=\s*(.+?)\s*$", line)
-            if m:
-                paths.append(m.group(1))
-    gf = _run(["git", "submodule", "foreach", "--quiet", "echo $sm_path"])
-    if gf.returncode == 0:
-        paths.extend(p for p in gf.stdout.splitlines() if p)
-    seen: set[str] = set()
-    unique: list[str] = []
-    for path in paths:
-        if path and path not in seen:
-            seen.add(path)
-            unique.append(path)
-    return unique
+    return sorted(redact._discover_submodule_paths(Path.cwd()))
 
 
 def _emit_submodule_prohibition(submodules: list[str]) -> str:
@@ -501,6 +481,21 @@ def _post_dispatch_submodule_revert(round_dir: Path, submodules: list[str]) -> i
                 break
     _write_text(revert_log, "\n".join(reverted) + ("\n" if reverted else ""))
     return revert_count
+
+
+def _write_mav_pre_coder_head_snapshot(round_dir: Path) -> str:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    _clear_stale_pre_coder_snapshot_artifacts(snap_dir)
+    head = _git_head()
+    pre_head = snap_dir / "pre-coder-head.txt"
+    if head:
+        _write_text(pre_head, head + "\n")
+        pre_head.chmod(0o444)
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            pre_head.unlink()
+    return head
 
 
 def _write_pre_coder_snapshot(round_dir: Path) -> str:
@@ -695,6 +690,67 @@ def _derive_code_review_tally(findings_file: Path) -> tuple[int, int]:
             elif record.get("outcome") == "rejected":
                 rejected += 1
     return accepted, rejected
+
+
+def _sorted_round_dirs(impl_tmpdir: Path) -> list[tuple[int, Path]]:
+    rounds: list[tuple[int, Path]] = []
+    for path in impl_tmpdir.glob("round-*"):
+        if path.is_dir() and re.fullmatch(r"round-\d+", path.name):
+            rounds.append((int(path.name.split("-", 1)[1]), path))
+    rounds.sort(key=lambda item: item[0])
+    return rounds
+
+
+def _rejected_body_start_line(text: str) -> int:
+    lines = text.splitlines()
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx >= len(lines) or lines[idx].strip() != "# Rejected Findings":
+        return 1
+    idx += 1
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx >= len(lines):
+        return 2
+    return idx + 1
+
+
+def write_rejected_findings_aggregate(impl_tmpdir: Path, fallback_file: Path | None = None) -> None:
+    if not impl_tmpdir.is_dir():
+        raise ValueError(f"implement tmpdir not a directory: {impl_tmpdir}")
+    output_file = impl_tmpdir / "rejected-findings.md"
+    round_dirs = _sorted_round_dirs(impl_tmpdir)
+    any_full = any((round_dir / "rejected-findings-full.md").is_file() and (round_dir / "rejected-findings-full.md").stat().st_size for _, round_dir in round_dirs)
+    if not any_full:
+        if fallback_file and fallback_file.is_file():
+            shutil.copyfile(fallback_file, output_file)
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                output_file.unlink()
+        return
+    parts: list[str] = []
+    for round_num, round_dir in round_dirs:
+        full_file = round_dir / "rejected-findings-full.md"
+        compact_file = round_dir / "rejected-findings.md"
+        if full_file.is_file() and full_file.stat().st_size:
+            round_file = full_file
+        elif compact_file.is_file() and compact_file.stat().st_size:
+            round_file = compact_file
+        else:
+            continue
+        if not parts:
+            parts.append("# Rejected Findings\n\n")
+        body_start = _rejected_body_start_line(_read_text(round_file))
+        body_lines = _read_text(round_file).splitlines()[body_start - 1:]
+        parts.append(f"## Round {round_num}\n\n")
+        parts.extend(line + "\n" for line in body_lines)
+        parts.append("\n")
+    if parts:
+        _write_text(output_file, "".join(parts))
+    else:
+        with contextlib.suppress(FileNotFoundError):
+            output_file.unlink()
 
 
 def _render_rejected_findings_for_tally(path: Path) -> str:
@@ -1282,12 +1338,12 @@ def _core_args_for_round(args: argparse.Namespace, round_dir: Path, dynamic_arch
     return core_args
 
 
-def _dynamic_archetypes(args: argparse.Namespace, _implement_tmpdir: Path) -> str:
+def _dynamic_archetypes(args: argparse.Namespace, implement_tmpdir: Path) -> str:
     value = getattr(args, "dynamic_archetypes", "") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
     if not value and args.session_env_path:
         value = _session_get(Path(args.session_env_path), "LARCH_DYNAMIC_ARCHETYPES_MAX", "")
     if not value:
-        value = "0"
+        value = "3" if implement_tmpdir.is_dir() else "0"
     if value not in {"0", "1", "2", "3"}:
         raise ValueError("--dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 3")
     return value
@@ -1359,6 +1415,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     if rejected_full.is_file():
         with contextlib.suppress(OSError):
             shutil.copyfile(rejected_full, implement_tmpdir / "rejected-findings-full.md")
+    write_rejected_findings_aggregate(implement_tmpdir, rejected_file)
     coder = CoderResult(0)
     skipped_finding_count = 0
     classifier_failed = False
@@ -1402,7 +1459,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         exit_code = 2
     if core_rc != 0 and exit_code == 0:
         exit_code = core_rc
-    if status in {"fix-applied", "complete", "no-changes"} and accepted_count > 0:
+    if status in {"complete", "no-changes"} and accepted_count > 0:
         nit = min(_nit_count(accepted_file), accepted_count)
         non_nit = accepted_count - nit
         findings_path = round_dir / "findings.md"
@@ -1569,6 +1626,8 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
     starting_round = _positive_int(args.starting_round, "--starting-round")
     if args.mode == "mav-apply" and not args.findings_file:
         raise ValueError("--findings-file is required for --mode mav-apply")
+    if args.mode == "mav-apply" and not Path(args.findings_file).is_file():
+        raise ValueError(f"--findings-file must name an existing file: {args.findings_file}")
     session_env = Path(args.session_env_path) if args.session_env_path else implement_tmpdir / "session-env.sh"
     feature_file = Path(args.feature_file) if args.feature_file else implement_tmpdir / "feature-description.txt"
     plan_file = Path(args.plan_file) if args.plan_file else implement_tmpdir / "plan.txt"
@@ -1606,7 +1665,29 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
             args.pre_scouted_manifest = str(manifest)
     if args.mode == "mav-apply":
         args.pre_scouted_manifest = ""
+    _dynamic_archetypes(args, implement_tmpdir)
     return implement_tmpdir, starting_round
+
+
+def _persist_round_start(implement_tmpdir: Path, round_num: int, start_s: int) -> None:
+    round_dir = implement_tmpdir / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    start_file = round_dir / "round-start-s"
+    if not start_file.exists():
+        _write_text(start_file, f"{start_s}\n")
+
+
+def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) -> None:
+    execution = implement_tmpdir / "execution-issues.md"
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    entry = (
+        f"\n## Tool Failure: record-escalation\n\n"
+        f"- utc: `{ts}`\n"
+        f"- helper: `stall-recovery-report.sh record-escalation`\n"
+        f"- reason: `{reason}`\n"
+    )
+    with contextlib.suppress(OSError):
+        run_logs._append_execution_issue(execution, "Tool Failures", entry)
 
 
 def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:
@@ -1628,6 +1709,9 @@ def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, rev
                 return
             if result.stderr:
                 _err(result.stderr.rstrip())
+            _append_record_escalation_tool_failure(implement_tmpdir, f"helper-exit-{result.returncode}")
+        else:
+            _append_record_escalation_tool_failure(implement_tmpdir, "helper-missing")
         _emit_kv("STEP5_REVIEW_LEDGER_READY", "true")
         _emit_kv("STEP5_REVIEW_LEDGER_SITE", "step5")
         _emit_kv("STEP5_REVIEW_LEDGER_TRIGGER", "coder-main-agent-required")
@@ -1650,12 +1734,17 @@ def step5(argv: list[str] | None = None) -> int:
     parser = _build_step5_parser()
     try:
         args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
+    loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
+    default_cap = _positive_int(str(args.round_cap), "--round-cap") if str(args.round_cap).isdigit() else 5
+    try:
         implement_tmpdir, starting_round = _preflight_step5(args)
         round_cap = _positive_int(str(args.round_cap), "--round-cap")
-    except (SystemExit, ValueError) as exc:
-        if isinstance(exc, SystemExit):
-            return int(exc.code)
+    except ValueError as exc:
         _err(f"review-and-fix step5: {exc}")
+        if loop_mode:
+            _emit_step5_envelope("stall", False, "preflight-failed", 0, 0, "unknown", "", "", default_cap)
         return 2
     os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
     os.environ["CODEX_PRESENT"] = args.codex_available
@@ -1674,7 +1763,7 @@ def step5(argv: list[str] | None = None) -> int:
             args.round_num = str(_positive_int(args.round_num, "--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
             round_dir.mkdir(parents=True, exist_ok=True)
-            _write_pre_coder_snapshot(round_dir)
+            _write_mav_pre_coder_head_snapshot(round_dir)
             coder = apply_findings_with_coder(Path(args.findings_file), round_dir, round_dir / "coder.env", int(args.round_num))
             if coder.rc == 0 and coder.status == "applied":
                 with contextlib.suppress(FileNotFoundError):
@@ -1732,6 +1821,13 @@ def step5(argv: list[str] | None = None) -> int:
             stderr_path = round_dir_stderr(implement_tmpdir, round_num)
             with _stderr_sidecar(stderr_path):
                 result = _run_round(args, suppress_emit=True)
+            last = result
+            rounds_completed = round_num
+            if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
+                _persist_round_start(implement_tmpdir, round_num, start_s)
+                _emit_step5_envelope(result.status, False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
+                _record_escalation_if_needed(implement_tmpdir, result.status, result.rc, stderr_path)
+                return result.rc
             end_s = int(time.time())
             record_round_timing([
                 "--implement-tmpdir", str(implement_tmpdir),
@@ -1741,18 +1837,9 @@ def step5(argv: list[str] | None = None) -> int:
                 "--accepted", str(result.accepted_count),
                 "--rejected", str(result.rejected_count),
             ])
-            last = result
-            rounds_completed = round_num
             terminal_status = result.status
             stall_reason = ""
             stall_tracking = False
-            if result.status == "main-agent-vote-required":
-                _emit_step5_envelope("main-agent-vote-required", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
-                return result.rc
-            if result.status == "coder-main-agent-required":
-                _emit_step5_envelope("coder-main-agent-required", False, "", rounds_completed, round_num, result.status, result.coder.status, result.coder.commit_sha, round_cap)
-                _record_escalation_if_needed(implement_tmpdir, result.status, result.rc, stderr_path)
-                return result.rc
             if result.status in {"panel-failed", "aggregator-validation-exhausted"}:
                 terminal_status = "stall"
                 stall_tracking = True
