@@ -308,6 +308,10 @@ cmd_clear_stall() {
     local label path present=false
     for label in ship-pr-state.sh finalize-state.sh session-env.sh; do
         path="$tmpdir/$label"
+        if [ -L "$path" ] && [ ! -e "$path" ]; then
+            emit_kv CLEARED false
+            exit 3
+        fi
         [ -e "$path" ] || continue
         present=true
         if [ -L "$path" ] || [ ! -f "$path" ] || [ ! -r "$path" ] || [ ! -w "$path" ]; then
@@ -325,6 +329,10 @@ cmd_clear_stall() {
     fi
     for label in ship-pr-state.sh finalize-state.sh session-env.sh; do
         path="$tmpdir/$label"
+        if [ -L "$path" ] && [ ! -e "$path" ]; then
+            emit_kv CLEARED false
+            exit 3
+        fi
         [ -e "$path" ] || continue
         clear_stall_layer_path "$path" "$label"
     done

@@ -171,7 +171,7 @@ emit_output() {
 # exit code; the preceding emit_output success gate decides whether
 # .done is written at all. Same consumer contract (numeric exit code in
 # .done) as python/cli.py agent run-external-agent:70.
-trap 'EXIT_STATUS=$?; if emit_output && [[ -n "$OUTPUT_FILE" ]]; then printf "%s\n" "$EXIT_STATUS" > "${OUTPUT_FILE}.done" 2>/dev/null || true; fi' EXIT
+trap 'EXIT_STATUS=$?; if [[ "$ACTION" == "wait" ]]; then ACTION="bail"; BAIL_REASON="ci-wait-unexpected-exit"; fi; if emit_output && [[ -n "$OUTPUT_FILE" ]]; then printf "%s\n" "$EXIT_STATUS" > "${OUTPUT_FILE}.done" 2>/dev/null || true; fi' EXIT
 
 # --- Polling loop ---
 SECONDS=0
@@ -250,9 +250,6 @@ while true; do
     BAIL_REASON=$(echo "$DECIDE_OUTPUT" | grep '^BAIL_REASON=' | head -1 | cut -d= -f2-)
     ACTION="${ACTION:-bail}"
     BAIL_REASON="${BAIL_REASON:-}"
-    if [[ "$ACTION" == "wait" ]] && [[ -z "$BAIL_REASON" ]]; then
-        BAIL_REASON="ci-wait-unexpected-exit"
-    fi
 
     # 3. If not wait, stop and return
     if [[ "$ACTION" != "wait" ]]; then

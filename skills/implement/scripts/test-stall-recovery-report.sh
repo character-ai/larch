@@ -1243,6 +1243,34 @@ run_capture "$SANDBOX/case22-clear-symlink.out" "$SCRIPT" clear-stall --implemen
 assert_eq 3 "$RC" "22: clear-stall symlinked state exits 3"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-symlink.out")" "22: clear-stall symlinked state emits CLEARED=false"
 
+dir=$(make_tmp case22-clear-dangling-ship)
+ln -s "$dir/missing-ship-target" "$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case22-clear-dangling-ship.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling ship-pr-state.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-ship.out")" "22: clear-stall dangling ship-pr-state.sh emits CLEARED=false"
+
+dir=$(make_tmp case22-clear-dangling-finalize)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+ln -s "$dir/missing-finalize-target" "$dir/finalize-state.sh"
+run_capture "$SANDBOX/case22-clear-dangling-finalize.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling finalize-state.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-finalize.out")" "22: clear-stall dangling finalize-state.sh emits CLEARED=false"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: dangling finalize preflight leaves ship layer unchanged"
+
+dir=$(make_tmp case22-clear-dangling-session)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+ln -s "$dir/missing-session-target" "$dir/session-env.sh"
+run_capture "$SANDBOX/case22-clear-dangling-session.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling session-env.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-session.out")" "22: clear-stall dangling session-env.sh emits CLEARED=false"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: dangling session preflight leaves ship layer unchanged"
+
 dir=$(make_tmp case22-clear-append)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
 PHASE=ci-initial

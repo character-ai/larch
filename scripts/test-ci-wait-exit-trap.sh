@@ -131,6 +131,11 @@ if [ -n "${BG_PID:-}" ] && kill -0 "$BG_PID" 2>/dev/null; then
     else
         fail "A: <output-file> missing or malformed (no ACTION= line)"
     fi
+    if [ -f "$OUT_PATH" ] && grep -q '^ACTION=bail$' "$OUT_PATH"; then
+        ok "A: trap output coerces ACTION=bail on SIGTERM mid-wait"
+    else
+        fail "A: trap output missing ACTION=bail on SIGTERM mid-wait"
+    fi
     if [ -f "$OUT_PATH" ] && grep -q '^BAIL_REASON=ci-wait-unexpected-exit$' "$OUT_PATH"; then
         ok "A: trap output uses normalized unexpected-exit token"
     else
