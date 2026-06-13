@@ -51,7 +51,7 @@ contains() {
 
 line_for() {
   local file="$1" literal="$2"
-  grep -nF -- "$literal" "$file" | head -1 | cut -d: -f1
+  grep -nF -m 1 -- "$literal" "$file" | cut -d: -f1
 }
 
 # ---------- Check 1: SKILL.md + 4 reference files exist ----------
