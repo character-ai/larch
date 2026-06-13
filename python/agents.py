@@ -246,24 +246,64 @@ def is_quota_failure(tool: str, sidecar: str | Path | None) -> bool:
     return bool(_QUOTA_RE.search(path.read_text(encoding="utf-8", errors="replace")))
 
 
-def parse_launcher_exit_text(text: str) -> int:
-    """Read LAUNCHER_EXIT= from launcher stdout capture; missing → 0."""
+def _fallback_launcher_exit(process_rc: int) -> int:
+    return max(process_rc, 1) if process_rc != 0 else 0
+
+
+def _parse_launcher_exit_value(text: str) -> int | None:
     for line in text.splitlines():
         if line.startswith("LAUNCHER_EXIT="):
             raw = line.split("=", 1)[1].strip().strip("\r")
             try:
                 return int(raw)
             except ValueError:
-                return 0
-    return 0
+                return None
+    return None
 
 
-def read_launcher_exit(output_file: str | Path) -> int:
-    """Read LAUNCHER_EXIT= from a launcher capture file; missing → 0."""
+def parse_launcher_exit_text(text: str, process_rc: int = 0) -> int:
+    """Read LAUNCHER_EXIT= from launcher stdout capture; failed wrappers fail closed."""
+    parsed = _parse_launcher_exit_value(text)
+    return parsed if parsed is not None else _fallback_launcher_exit(process_rc)
+
+
+def _read_launcher_done(output_file: str | Path) -> int | None:
+    done = Path(output_file).with_suffix(Path(output_file).suffix + ".done")
+    if not done.is_file():
+        return None
+    text = done.read_text(encoding="utf-8", errors="replace").strip()
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def resolve_launcher_exit(
+    captured_text: str,
+    output_file: str | Path | None = None,
+    process_rc: int = 0,
+) -> int:
+    """Resolve launcher exit from sidecar, captured fd 3 text, output file, then wrapper rc."""
+    if output_file is not None:
+        done_exit = _read_launcher_done(output_file)
+        if done_exit is not None:
+            return done_exit
+    parsed = _parse_launcher_exit_value(captured_text)
+    if parsed is not None:
+        return parsed
+    if output_file is not None:
+        path = Path(output_file)
+        if path.is_file():
+            parsed = _parse_launcher_exit_value(path.read_text(encoding="utf-8", errors="replace"))
+            if parsed is not None:
+                return parsed
+    return _fallback_launcher_exit(process_rc)
+
+
+def read_launcher_exit(output_file: str | Path, process_rc: int = 0) -> int:
+    """Read launcher exit from sidecar or capture file; failed wrappers fail closed."""
     path = Path(output_file)
-    if not path.is_file():
-        return 0
-    return parse_launcher_exit_text(path.read_text(encoding="utf-8", errors="replace"))
+    return resolve_launcher_exit("", output_file=path, process_rc=process_rc)
 
 
 def parse_launcher_failure_class(log_file: str | Path | None) -> str:

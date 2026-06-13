@@ -37,9 +37,11 @@ These names are internal constants so `/design` can later parameterize the same 
 - `dedup-tier-a-report --implement-tmpdir <path>` runs the normalized Tier A exact-signature dedup pre-pass against the same current repository that `/larch:issue` will use.
 - `normalize-file-failure-report-env ...` maps cross-repo helper `FILE_FAILURE_REPORT_*` output to canonical `STALL_RECOVERY_REPORT_*` output.
 - `validate-tier-b-public-file ...` reuses the Tier B sensitive-token rejection path for bounded public comment bodies.
-- `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns.
+- `normalize-issue-env ...` persists canonical issue number and URL after `/larch:issue --input-file` returns. It collapses embedded carriage returns and newlines in accepted issue metadata before validation so the persisted env file remains one `KEY=value` row per line.
 - `chat-print ...` is a convenience wrapper for `compose-report --surface chat-print`.
 - `is-larch-dev-clone`, `clear-stall`, `seed-terminal-state`, and `lint` keep their existing operational roles.
+
+`clear-stall` clears every present durable stall layer: `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh`. It rejects symlinks and malformed state before any rewrite, skips absent layers, writes each present layer atomically, and emits `CLEARED=true` only after all present layers read back with `STALL_TRACKING=false` and an empty `STALL_STEP`. It never writes `IMPLEMENT_STALL_TRACKING`.
 
 `bug-body`, `bug-comment`, and `issue-input-file` are no longer public report surfaces. Compatibility is gated behind `LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1` for older harness fixtures only.
 
@@ -91,7 +93,7 @@ Tier B covers consumer repos and forked runs. Tier B writes the sanitized `chat-
 
 Consumer and forked runs file Tier B reports on the public upstream larch repository under the operator's GitHub identity. If repo resolution, lookup, auth, network, create, or comment posting fails, the helper emits `STALL_RECOVERY_REPORT_STATUS=fallback-print-required` and preserves `stall-recovery-chat-print.md` for manual filing.
 
-Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
+Tier B bail-token rendering derives from `python/config.py` `STALL_RECOVERY_BAIL_REASON_TOKENS`. Tier B sensitive-token sources include plan text, feature description, execution issues, validated failure-detail logs, raw attempt values, canonical ledger, fallback evidence, record-failure marker text, run-log pointer text, `finalize-state.sh`, `ship-pr-state.sh`, `session-env.sh`, prompt-state supplement values, repo names, branch names, PR URLs, issue text, plan text, and client paths.
 
 ## Titles
 

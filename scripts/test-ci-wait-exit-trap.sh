@@ -131,6 +131,16 @@ if [ -n "${BG_PID:-}" ] && kill -0 "$BG_PID" 2>/dev/null; then
     else
         fail "A: <output-file> missing or malformed (no ACTION= line)"
     fi
+    if [ -f "$OUT_PATH" ] && grep -q '^ACTION=bail$' "$OUT_PATH"; then
+        ok "A: trap output coerces ACTION=bail on SIGTERM mid-wait"
+    else
+        fail "A: trap output missing ACTION=bail on SIGTERM mid-wait"
+    fi
+    if [ -f "$OUT_PATH" ] && grep -q '^BAIL_REASON=ci-wait-unexpected-exit$' "$OUT_PATH"; then
+        ok "A: trap output uses normalized unexpected-exit token"
+    else
+        fail "A: trap output missing normalized unexpected-exit token"
+    fi
 
     # Assertion 2b: KV output file has full 8-key contract.
     if [ -f "$OUT_PATH" ]; then
@@ -422,13 +432,10 @@ if grep -Fq 'CI_STATUS=NO_CHECKS' <<<"$D_OUT"; then
 else
     fail "D: stdout missing CI_STATUS=NO_CHECKS; got: $D_OUT"
 fi
-if grep -qE 'BAIL_REASON=.*(no.checks|NO_CHECKS|empty)' <<<"$D_OUT"; then
-    ok "D: BAIL_REASON references NO_CHECKS / empty-checks state"
+if grep -Fq 'BAIL_REASON=no-ci-checks-observed' <<<"$D_OUT"; then
+    ok "D: BAIL_REASON=no-ci-checks-observed"
 else
-    # Soft assertion — exact wording is implementation detail; the
-    # critical contract above (ACTION=bail + CI_STATUS=NO_CHECKS +
-    # ci-decide NOT invoked) is the load-bearing pin.
-    echo "  NOTE: BAIL_REASON wording does not mention NO_CHECKS — review ci-wait.sh BAIL_REASON for this path"
+    fail "D: stdout missing BAIL_REASON=no-ci-checks-observed; got: $D_OUT"
 fi
 
 # ----------------------------------------------------------------------

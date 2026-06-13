@@ -38,7 +38,6 @@ _MATRIX_ANY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\(([^)]*)\)$")
 _JOB_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
-_LAUNCHER_EXIT_RE = re.compile(r"^LAUNCHER_EXIT=(\d+)", re.MULTILINE)
 _PR_CHECKS_STATUS_FIELD_MIN_PARTS = 2
 
 SleepFn = Callable[[float], None]
@@ -144,7 +143,7 @@ def decide(
     if status.status == "error":
         return Decision(
             action="bail",
-            bail_reason="ci-status-error",
+            bail_reason=config.CI_DECIDE_BAIL_STATUS_ERROR,
         )
     behind = status.behind_count > 0
     if status.status == "pass" and (not behind or not status.conflicted):
@@ -152,15 +151,15 @@ def decide(
     if iteration >= config.CI_MONITOR_MAX_ITERATIONS:
         return Decision(
             action="bail",
-            bail_reason="ci-timeout",
+            bail_reason=config.CI_DECIDE_BAIL_TIMEOUT,
         )
     if rebase_count >= config.CI_MONITOR_MAX_REBASES:
         return Decision(
             action="bail",
-            bail_reason="ci-too-many-rebases",
+            bail_reason=config.CI_DECIDE_BAIL_TOO_MANY_REBASES,
         )
     if fix_attempts >= config.CI_MONITOR_MAX_FIX_ATTEMPTS:
-        return Decision(action="bail", bail_reason="fix-attempts-exhausted")
+        return Decision(action="bail", bail_reason=config.CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED)
     if status.status == "pending":
         return Decision(action="rebase" if behind else "wait")
     if status.status == "pass":
@@ -557,7 +556,7 @@ def poll_ci(
                 last_status,
                 Decision(
                     action="bail",
-                    bail_reason=f"Poll budget ({max_polls} polls / {int(timeout)}s) exhausted",
+                    bail_reason=config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
                 ),
             )
 
@@ -580,7 +579,7 @@ def poll_ci(
                     CiStatus(status="error", behind_count=0, failed_run_id=None),
                     Decision(
                         action="bail",
-                        bail_reason="ci-status.sh returned no valid output 3 times consecutively",
+                        bail_reason=config.CI_WAIT_BAIL_STATUS_STALE,
                     ),
                 )
             status = CiStatus(
@@ -600,7 +599,7 @@ def poll_ci(
                 status,
                 Decision(
                     action="bail",
-                    bail_reason=f"No CI checks observed after {empty_checks_grace}s grace",
+                    bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
                 ),
             )
 
@@ -955,28 +954,18 @@ def _delta_paths(
     return tuple(sorted(delta))
 
 
-def _parse_launcher_exit(text: str) -> int | None:
-    match = _LAUNCHER_EXIT_RE.search(text)
-    if match:
-        return int(match.group(1))
-    return None
-
-
-def _read_launcher_done(path: str | Path) -> int | None:
-    done = Path(path).with_suffix(Path(path).suffix + ".done")
-    if not done.is_file():
-        return None
-    text = done.read_text(encoding="utf-8", errors="replace").strip()
-    return int(text) if text.isdigit() else None
-
-
-def _resolve_launcher_exit(*, combined: str, output: str | Path) -> int:
-    """Prefer the launcher `.done` sentinel; LAUNCHER_EXIT KVs are on fd 3, not stdout."""
-    done_exit = _read_launcher_done(output)
-    if done_exit is not None:
-        return done_exit
-    parsed = _parse_launcher_exit(combined)
-    return parsed if parsed is not None else 0
+def _resolve_launcher_exit(
+    *,
+    combined: str,
+    output: str | Path,
+    process_rc: int = 0,
+) -> int:
+    """Prefer the launcher `.done` sentinel; failed wrappers without metadata fail closed."""
+    return agents.resolve_launcher_exit(
+        combined,
+        output_file=output,
+        process_rc=process_rc,
+    )
 
 
 def _available_tiers() -> tuple[str, ...]:
@@ -1079,7 +1068,11 @@ def _make_default_launch_fn(
             seen=seen_token_records,
             cwd=cwd,
         )
-        launcher_exit = _resolve_launcher_exit(combined=combined, output=tier_out)
+        launcher_exit = _resolve_launcher_exit(
+            combined=combined,
+            output=tier_out,
+            process_rc=result.returncode,
+        )
         failure = agents.classify_launch_failure(
             launcher_exit,
             sidecar=tier_out,

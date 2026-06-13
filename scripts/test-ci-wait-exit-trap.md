@@ -10,17 +10,20 @@ Asserts the file-mode contract holds when ci-wait.sh is signal-killed mid-pollin
 
 1. `<path>` exists (KV file published via the atomic `<path>.tmp` + `mv -f` chain).
 2. `<path>` contains a parseable `ACTION=` line.
-3. `<path>.done` exists (sentinel written by the EXIT trap).
-4. `<path>.done` content is a parseable non-negative integer (numeric exit code, mirroring `python/cli.py agent run-external-agent:70`).
-5. `<path>.tmp` does NOT linger after the atomic publish.
+3. `<path>` contains `BAIL_REASON=ci-wait-unexpected-exit` on the trap-default path.
+4. `<path>.done` exists (sentinel written by the EXIT trap).
+5. `<path>.done` content is a parseable non-negative integer (numeric exit code, mirroring `python/cli.py agent run-external-agent:70`).
+6. `<path>.tmp` does NOT linger after the atomic publish.
 
 ### Sub-test B — default-mode (stdout) backward-compat
 
 Asserts no behavioral drift for existing callers when `--output-file` is absent:
 
-6. Script exits 0 on `ACTION=merge` resolution.
-7. All 8 KV keys (`ACTION=`, `CI_STATUS=`, `BEHIND_COUNT=`, `CONFLICTED=`, `FAILED_RUN_ID=`, `BAIL_REASON=`, `ITERATION=`, `ELAPSED=`) appear on stdout in order.
-8. No file-mode side effects: no `<dir>/out.txt`, `<dir>/out.txt.done`, or `<dir>/out.txt.tmp` files created adjacent to the test fixture.
+7. Script exits 0 on `ACTION=merge` resolution.
+8. All 8 KV keys (`ACTION=`, `CI_STATUS=`, `BEHIND_COUNT=`, `CONFLICTED=`, `FAILED_RUN_ID=`, `BAIL_REASON=`, `ITERATION=`, `ELAPSED=`) appear on stdout in order.
+9. No file-mode side effects: no `<dir>/out.txt`, `<dir>/out.txt.done`, or `<dir>/out.txt.tmp` files created adjacent to the test fixture.
+
+Additional sub-tests pin fail-closed publish failure and fork-mode `NO_CHECKS` handling, including `BAIL_REASON=no-ci-checks-observed`.
 
 ## Fixture layout
 

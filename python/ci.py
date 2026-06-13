@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import ci_monitor
+import config
 import git
 import logging_util
 import proc
@@ -212,7 +213,7 @@ def wait_main(argv: list[str]) -> int:
     )
     decision = ci_monitor.Decision(
         action="bail",
-        bail_reason="ci-wait.sh exited unexpectedly",
+        bail_reason=config.CI_WAIT_BAIL_UNEXPECTED_EXIT,
     )
     elapsed = 0
     trap_exit = 0

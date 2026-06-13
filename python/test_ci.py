@@ -8,6 +8,7 @@ from test_support import RecordingRunner
 
 import ci
 import ci_monitor
+import config
 
 
 def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
@@ -192,7 +193,7 @@ def test_wait_output_file_publishes_on_poll_exception(monkeypatch, tmp_path):
     assert ci.wait_main(["--pr", "1", "--repo", "o/r", "--output-file", str(out_file)]) == 0
     text = out_file.read_text(encoding="utf-8")
     assert "ACTION=bail" in text
-    assert "ci-wait.sh exited unexpectedly" in text
+    assert config.CI_WAIT_BAIL_UNEXPECTED_EXIT in text
     done = tmp_path / "wait.out.done"
     assert done.read_text(encoding="utf-8").strip() == "1"
 

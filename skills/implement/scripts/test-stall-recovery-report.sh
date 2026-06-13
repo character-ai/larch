@@ -560,6 +560,12 @@ rm -f "$outside_attempts"
 
 run_capture "$SANDBOX/case14.out" "$SCRIPT" lint
 assert_eq 0 "$RC" "14: allowlist parity lint"
+if awk '/runtime_bail_token_lines\(\)/,/^}/' "$SCRIPT" | grep -q 'STALL_RECOVERY_BAIL_REASON_TOKENS' \
+    && ! awk '/runtime_bail_token_lines\(\)/,/^}/' "$SCRIPT" | grep -q 'ci-decide.sh'; then
+    pass "14: runtime bail tokens derive from python/config.py"
+else
+    fail "14: runtime bail tokens should derive from python/config.py, not ci-decide.sh"
+fi
 
 dir=$(make_tmp case15)
 cp "$SANDBOX/case5a.out" "$dir/class.env"
@@ -825,6 +831,29 @@ assert_eq 123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key I
 assert_eq https://github.com/example/repo/issues/123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize create writes canonical ISSUE_URL"
 assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_1_TITLE --default "")" "20: normalize create strips raw ISSUE_1 metadata"
 assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_1_URL --default "")" "20: normalize create strips source ISSUE_1_URL"
+
+
+dir=$(make_tmp case20m2-normalize-newline-injection)
+cat >"$dir/issue.out" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=123
+ISSUE_1_URL=https://github.com/example/repo/issues/123
+INJECTED=bad
+EOF
+run_capture "$SANDBOX/case20m2-normalize-newline-injection.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20m2-normalize-newline-injection.out")" "20: normalize newline-injected URL emits true"
+assert_eq 123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_NUMBER --default "")" "20: normalize newline-injected URL keeps issue number"
+assert_eq https://github.com/example/repo/issues/123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize newline-injected URL keeps canonical URL"
+assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key INJECTED --default "")" "20: normalize newline-injected URL drops injected key"
+
+dir=$(make_tmp case20m3-normalize-carriage-injection)
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://github.com/example/repo/issues/123\rINJECTED=bad\n' >"$dir/issue.out"
+run_capture "$SANDBOX/case20m3-normalize-carriage-injection.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0
+assert_eq true "$(kv NORMALIZED "$SANDBOX/case20m3-normalize-carriage-injection.out")" "20: normalize carriage-injected URL emits true"
+assert_eq https://github.com/example/repo/issues/123 "$(read_session_key --file "$dir/stall-recovery-issue.env" --key ISSUE_URL --default "")" "20: normalize carriage-injected URL keeps canonical URL"
+assert_eq "" "$(read_session_key --file "$dir/stall-recovery-issue.env" --key INJECTED --default "")" "20: normalize carriage-injected URL drops injected key"
 
 dir=$(make_tmp case20n-normalize-dedup)
 cat >"$dir/issue.out" <<'EOF'
@@ -1149,7 +1178,57 @@ dir=$(make_tmp case22-clear-absent)
 run_capture "$SANDBOX/case22-clear-absent.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall absent state exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-absent.out")" "22: clear-stall absent state emits CLEARED=true"
-assert_eq false "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall absent state writes STALL_TRACKING=false"
+if [ ! -e "$dir/ship-pr-state.sh" ]; then
+    pass "22: clear-stall absent state skips optional ship-pr-state.sh"
+else
+    fail "22: clear-stall absent state should not create ship-pr-state.sh" "$(cat "$dir/ship-pr-state.sh")"
+fi
+
+
+dir=$(make_tmp case22-clear-all-layers)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+MERGE_RESULT=merged
+EOF
+cat >"$dir/finalize-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+cat >"$dir/session-env.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+run_capture "$SANDBOX/case22-clear-all-layers.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 0 "$RC" "22: clear-stall all layers exits 0"
+assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-all-layers.out")" "22: clear-stall all layers emits CLEARED=true"
+for layer in ship-pr-state.sh finalize-state.sh session-env.sh; do
+    assert_eq false "$(read_session_key --file "$dir/$layer" --key STALL_TRACKING --default "")" "22: clear-stall clears $layer STALL_TRACKING"
+    if grep -q '^STALL_STEP=$' "$dir/$layer"; then
+        pass "22: clear-stall clears $layer STALL_STEP"
+    else
+        fail "22: clear-stall clears $layer STALL_STEP"
+    fi
+done
+run_capture "$SANDBOX/case22-clear-normalize-false.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir" --in-memory-stall-tracking false
+assert_eq merged "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case22-clear-normalize-false.out")" "22: normalize-outcome succeeds after explicit recovery clear"
+assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case22-clear-normalize-false.out")" "22: normalize-outcome success after durable clear"
+run_capture "$SANDBOX/case22-clear-normalize-true.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir" --in-memory-stall-tracking true
+assert_eq stalled "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case22-clear-normalize-true.out")" "22: normalize-outcome still honors ambient memory stall"
+
+dir=$(make_tmp case22-clear-finalize-symlink)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+printf 'STALL_TRACKING=true\nSTALL_STEP=8\n' >"$dir/finalize.real"
+ln -s "$dir/finalize.real" "$dir/finalize-state.sh"
+run_capture "$SANDBOX/case22-clear-finalize-symlink.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall symlinked finalize exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-finalize-symlink.out")" "22: clear-stall symlinked finalize emits CLEARED=false"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: symlink preflight leaves ship layer unchanged"
 
 dir=$(make_tmp case22-clear-malformed)
 printf 'not valid\n' >"$dir/ship-pr-state.sh"
@@ -1163,6 +1242,34 @@ ln -s "$dir/ship-pr-state.real" "$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-clear-symlink.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 3 "$RC" "22: clear-stall symlinked state exits 3"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-symlink.out")" "22: clear-stall symlinked state emits CLEARED=false"
+
+dir=$(make_tmp case22-clear-dangling-ship)
+ln -s "$dir/missing-ship-target" "$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case22-clear-dangling-ship.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling ship-pr-state.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-ship.out")" "22: clear-stall dangling ship-pr-state.sh emits CLEARED=false"
+
+dir=$(make_tmp case22-clear-dangling-finalize)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+ln -s "$dir/missing-finalize-target" "$dir/finalize-state.sh"
+run_capture "$SANDBOX/case22-clear-dangling-finalize.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling finalize-state.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-finalize.out")" "22: clear-stall dangling finalize-state.sh emits CLEARED=false"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: dangling finalize preflight leaves ship layer unchanged"
+
+dir=$(make_tmp case22-clear-dangling-session)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+ln -s "$dir/missing-session-target" "$dir/session-env.sh"
+run_capture "$SANDBOX/case22-clear-dangling-session.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall dangling session-env.sh exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dangling-session.out")" "22: clear-stall dangling session-env.sh emits CLEARED=false"
+assert_eq true "$(read_session_key --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: dangling session preflight leaves ship layer unchanged"
 
 dir=$(make_tmp case22-clear-append)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
@@ -1711,12 +1818,22 @@ assert_eq 0 "$RC" "23: malformed ledger tokens do not fail Tier B"
 assert_contains "site=\`redacted\` trigger=\`redacted\`" "$(cat "$dir/out.md")" "23: malformed ledger tokens are sanitized"
 assert_not_contains '/var/tmp/test-repo' "$(cat "$dir/out.md")" "23: malformed ledger site path is not printed"
 
-for token in adopted-issue-closed adopted-issue-is-pr all-vendors-failed branch-create-failed ci-fix-exhausted design-flaw escalate first-fixer-non-health fix-attempts-exhausted local-unfixable review-required ship-pr-internal-lint-fix ci-timeout ci-status-error ci-too-many-rebases main-agent-required coder-main-agent-required main-agent-vote-required; do
-    dir=$(make_tmp "case23-token-$token")
+while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    safe_name=$(printf '%s' "$token" | tr -c '[:alnum:]' '_')
+    dir=$(make_tmp "case23-token-$safe_name")
     write_state "$dir" 8 ci-initial "$token"
-    run_capture "$SANDBOX/case23-token-$token.out" "$SCRIPT" classify --implement-tmpdir "$dir"
-    assert_eq "$token" "$(kv BAIL_REASON "$SANDBOX/case23-token-$token.out")" "23: bail token renders $token"
-done
+    run_capture "$SANDBOX/case23-token-$safe_name.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+    assert_eq "$token" "$(kv BAIL_REASON "$SANDBOX/case23-token-$safe_name.out")" "23: config bail token renders $token"
+done < <(
+    python3 - <<PYTOKENS
+import sys
+sys.path.insert(0, "$REPO_ROOT/python")
+import config
+for item in config.STALL_RECOVERY_BAIL_REASON_TOKENS:
+    print(item)
+PYTOKENS
+)
 dir=$(make_tmp case23-token-compound)
 write_state "$dir" 8 ci-initial "ci-local-unfixable:lint_1,test-2"
 run_capture "$SANDBOX/case23-token-compound.out" "$SCRIPT" classify --implement-tmpdir "$dir"
@@ -1864,6 +1981,12 @@ assert_eq printed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-issue-inpu
 run_capture "$SANDBOX/case23-legacy-bug-body-gated.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/stall-recovery-classification.env"
 assert_eq 1 "$RC" "23: legacy bug-body is gated outside test compatibility"
 assert_contains "bug-body is test-only" "$(cat "$SANDBOX/case23-legacy-bug-body-gated.out.err")" "23: legacy bug-body gate explains compose-report replacement"
+run_capture "$SANDBOX/case23-legacy-bug-comment-gated.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$SCRIPT" bug-comment
+assert_eq 1 "$RC" "23: legacy bug-comment is gated outside test compatibility"
+assert_contains "bug-comment is test-only" "$(cat "$SANDBOX/case23-legacy-bug-comment-gated.out.err")" "23: legacy bug-comment gate explains compose-report replacement"
+run_capture "$SANDBOX/case23-legacy-issue-input-gated.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$SCRIPT" issue-input-file
+assert_eq 1 "$RC" "23: legacy issue-input-file is gated outside test compatibility"
+assert_contains "issue-input-file is test-only" "$(cat "$SANDBOX/case23-legacy-issue-input-gated.out.err")" "23: legacy issue-input-file gate explains compose-report replacement"
 
 dir=$(make_tmp case23-issue-input-raw-bail)
 cat >"$dir/stall-recovery-classification.env" <<EOF

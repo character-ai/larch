@@ -50,6 +50,14 @@ def test_parse_launcher_exit_text() -> None:
     assert agents.parse_launcher_exit_text("") == 0
 
 
+def test_parse_launcher_exit_text_fails_closed_on_wrapper_failure() -> None:
+    assert agents.parse_launcher_exit_text("", process_rc=7) == 7
+    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n", process_rc=7) == 7
+    assert agents.parse_launcher_exit_text("", process_rc=0) == 0
+    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n", process_rc=0) == 0
+    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=4\n", process_rc=7) == 4
+
+
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:
     assert agents.read_launcher_exit(tmp_path / "missing.out") == 0
 
@@ -58,6 +66,22 @@ def test_read_launcher_exit_reads_file(tmp_path: Path) -> None:
     path = tmp_path / "capture.out"
     _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
     assert agents.read_launcher_exit(path) == 3
+
+
+def test_resolve_launcher_exit_prefers_done_then_captured_then_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "capture.out"
+    _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
+    _ = path.with_suffix(path.suffix + ".done").write_text("5\n", encoding="utf-8")
+    assert agents.resolve_launcher_exit("LAUNCHER_EXIT=4\n", path, process_rc=7) == 5
+
+    _ = path.with_suffix(path.suffix + ".done").write_text("bad\n", encoding="utf-8")
+    assert agents.resolve_launcher_exit("LAUNCHER_EXIT=4\n", path, process_rc=7) == 4
+
+    assert agents.resolve_launcher_exit("", path, process_rc=7) == 3
+    path.unlink()
+    assert agents.resolve_launcher_exit("", path, process_rc=7) == 7
 
 
 def test_classify_success() -> None:
