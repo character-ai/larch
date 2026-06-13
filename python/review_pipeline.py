@@ -28,7 +28,7 @@ def run_legacy(script_name: str, argv: list[str]) -> int:
     env = os.environ.copy()
     if not env.get("CLAUDE_PLUGIN_ROOT"):
         env["CLAUDE_PLUGIN_ROOT"] = str(_PLUGIN_ROOT)
-    result = proc.run(["bash", str(script), *argv], cwd=Path.cwd(), env=env)
+    result = proc.run(["bash", str(script), *argv], cwd=str(Path.cwd()), env=env)
     for line in result.stdout.splitlines():
         logging_util.emit(line)
     if result.stdout and not result.stdout.endswith("\n"):

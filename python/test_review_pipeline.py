@@ -714,7 +714,7 @@ def test_collect_findings_wait_timeout_redacts_stderr(tmp_path: Path) -> None:
     for entry in (ROOT / "scripts").iterdir():
         if not entry.is_file() or entry.name == "wait-for-reviewers.sh":
             continue
-        shutil.copy2(entry, scripts / entry.name)
+        _ = shutil.copy2(entry, scripts / entry.name)
     (harness / "python").symlink_to(ROOT / "python")
     _write_executable(
         scripts / "wait-for-reviewers.sh",
