@@ -50,7 +50,9 @@ STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 STARTING_ROUND=""
 STARTING_ROUND_SEEN=false
 RESUME_PHASE=""
+RESUME_PHASE_SEEN=false
 RESUME_FINDINGS_FILE=""
+RESUME_FINDINGS_FILE_SEEN=false
 POSTPLAN_OPERATOR_CONTINUE=false
 
 while [ "$#" -gt 0 ]; do
@@ -77,6 +79,7 @@ while [ "$#" -gt 0 ]; do
         printf '%s\n' 'design-step3-review.sh: --phase requires a value' >&2
         exit 2
       fi
+      RESUME_PHASE_SEEN=true
       RESUME_PHASE="${2:-}"
       shift 2
       ;;
@@ -85,6 +88,7 @@ while [ "$#" -gt 0 ]; do
         printf '%s\n' 'design-step3-review.sh: --findings-file requires a value' >&2
         exit 2
       fi
+      RESUME_FINDINGS_FILE_SEEN=true
       RESUME_FINDINGS_FILE="${2:-}"
       shift 2
       ;;
@@ -107,6 +111,16 @@ if [ "$STARTING_ROUND_SEEN" = true ]; then
     printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
     exit 2
   fi
+fi
+
+if [ "$RESUME_PHASE_SEEN" = true ] && [ -z "$RESUME_PHASE" ]; then
+  printf '%s\n' 'design-step3-review.sh: --phase requires a value' >&2
+  exit 2
+fi
+
+if [ "$RESUME_FINDINGS_FILE_SEEN" = true ] && [ -z "$RESUME_FINDINGS_FILE" ]; then
+  printf '%s\n' 'design-step3-review.sh: --findings-file requires a value' >&2
+  exit 2
 fi
 
 design_require_plugin_root() {
@@ -149,7 +163,7 @@ design_source_env_optional
 larch_err() { printf '%s\n' "$*" >&2; }
 
 STEP3_REVIEW_HAS_RESUME_STATE=false
-if [ -n "${RESUME_PHASE:-}" ] || [ -n "${RESUME_FINDINGS_FILE:-}" ] || [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
+if [ "$RESUME_PHASE_SEEN" = true ] || [ "$RESUME_FINDINGS_FILE_SEEN" = true ] || [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
   STEP3_REVIEW_HAS_RESUME_STATE=true
 fi
 
