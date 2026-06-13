@@ -15,7 +15,11 @@
   "skill": "implement",
   "stalled_at_step": null,
   "started_at": "2026-06-13T01:19:26Z",
-  "steps_ran": {},
+  "status": "partial",
+  "steps_ran": {
+    "step8": false,
+    "step9a1": false
+  },
   "superseded_by": null,
-  "updated_at": "2026-06-13T01:41:17Z"
+  "updated_at": "2026-06-13T01:46:21Z"
 }
