@@ -9,10 +9,11 @@ import re
 import shlex
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, cast
+from typing import cast
 
 from gantt import GanttRow, format_mss, render_gantt
 
