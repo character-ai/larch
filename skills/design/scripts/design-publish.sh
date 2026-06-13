@@ -26,6 +26,12 @@ publish_tail_fail() {
 fail() {
     local msg="design-publish.sh: $*"
     larch_err "$msg"
+    if [[ -z "${DESIGN_TMPDIR:-}" || -z "${PLUGIN_ROOT:-}" || ! -d "${DESIGN_TMPDIR:-}" ]]; then
+        if [[ -n "${DESIGN_TMPDIR_ARG:-}" && -d "$DESIGN_TMPDIR_ARG" ]]; then
+            printf '%s\n' "$msg" >"$DESIGN_TMPDIR_ARG/design-publish-tail.failure.log" 2>/dev/null || true
+        fi
+        exit 2
+    fi
     printf '%s\n' "$msg" >"$DESIGN_TMPDIR/design-publish-tail.failure.log"
     publish_tail_fail publish-tail-failed 2 "$DESIGN_TMPDIR/design-publish-tail.failure.log"
 }
