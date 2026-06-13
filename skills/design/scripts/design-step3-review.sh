@@ -126,13 +126,10 @@ design_bg_wait_marker_start() {
   return 0
 }
 design_source_env_optional
-if ! declare -F larch_err >/dev/null 2>&1; then
-  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" ]; then
-    # shellcheck source=scripts/lib-quiet.sh
-    source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh"
-  else
-    larch_err() { printf '%s\n' "$*" >&2; }
-  fi
+larch_err() { printf '%s\n' "$*" >&2; }
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" ]; then
+  # shellcheck source=scripts/lib-quiet.sh
+  source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" || true
 fi
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
