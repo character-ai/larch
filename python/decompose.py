@@ -481,12 +481,12 @@ def dispatch_panel(
             row = json.loads(line)
         except json.JSONDecodeError:
             _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-            _emit_kv("DEGRADED_PANEL", True)
+            _emit_kv("DEGRADED_PANEL", value=True)
             _emit_kv("PANEL_STATUS", "panel-failed")
             raise UsageError("malformed decompose-slots.ndjson") from None
         if not isinstance(row, dict):
             _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
-            _emit_kv("DEGRADED_PANEL", True)
+            _emit_kv("DEGRADED_PANEL", value=True)
             _emit_kv("PANEL_STATUS", "panel-failed")
             raise UsageError("malformed decompose-slots.ndjson") from None
         manifest_rows.append(row)

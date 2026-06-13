@@ -3,12 +3,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import plan_scout
-
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 
 def _row(name: str = "deep-risk", **overrides: object) -> dict[str, object]:
@@ -189,8 +186,6 @@ def test_validate_prompt_override_rejects_outside_root_symlink_and_oversize(tmp_
 
 
 def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> None:
-    import pytest
-
     plugin_root = tmp_path / "plugin"
     session_root = tmp_path / "session"
     plugin_root.mkdir()
@@ -206,8 +201,6 @@ def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> 
 
 
 def test_dynamic_archetypes_rejects_invalid_prompt_override(tmp_path: Path) -> None:
-    import pytest
-
     scope = tmp_path / "scope.txt"
     desc = tmp_path / "desc.txt"
     scope.write_text("python/foo.py\n", encoding="utf-8")
@@ -238,9 +231,9 @@ def test_plan_wrapper_retries_without_override_when_prompt_override_invalid(tmp_
     stub.write_text(
         "#!/usr/bin/env bash\n"
         f'calls="{calls}"\n'
-        "n=$(cat \"$calls\")\n"
-        "echo $((n+1)) >\"$calls\"\n"
-        "out=\"\"\n"
+        'n=$(cat "$calls")\n'
+        'echo $((n+1)) >"$calls"\n'
+        'out=""\n'
         "has_override=false\n"
         "while [[ $# -gt 0 ]]; do\n"
         "  if [[ $1 == --output ]]; then out=$2; shift 2\n"
