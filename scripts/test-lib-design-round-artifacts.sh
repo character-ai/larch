@@ -33,6 +33,7 @@ assert_included round-summary.env
 assert_included findings-classification.tsv
 assert_included prune-decision.env
 assert_included prune-nit.env
+assert_included reviewer-status.tsv
 
 assert_excluded findings.md
 assert_excluded findings-in-scope.md
