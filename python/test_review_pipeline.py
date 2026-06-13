@@ -11,209 +11,27 @@ from pathlib import Path
 import config
 import logging_util
 import review_pipeline
+import review_test_support as rts
 
 if TYPE_CHECKING:
     import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-CLI = ROOT / "python" / "cli.py"
+ROOT = rts.ROOT
+CLI = rts.CLI
 REVIEW_CORE = ROOT / "python" / "legacy_review_shell" / "review-core.sh"
 PRUNE_NITS = ROOT / "skills" / "review" / "scripts" / "prune-nit-findings.sh"
 
 
-def run_review(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = os.environ.copy()
-    merged["LARCH_QUIET_DISABLE"] = "1"
-    if env:
-        merged.update(env)
-    return subprocess.run(
-        [sys.executable, str(CLI), "review", *args],
-        cwd=ROOT,
-        env=merged,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return rts.run_review(*args, env=env, cwd=cwd)
 
 
 def _write_executable(path: Path, body: str) -> None:
-    _ = path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
+    rts.write_executable(path, body)
 
 
 def _write_review_core_stubs(stub_dir: Path) -> dict[str, Path]:
-    stub_dir.mkdir(parents=True, exist_ok=True)
-    paths = {
-        "gather": stub_dir / "gather.sh",
-        "dispatch": stub_dir / "dispatch.sh",
-        "collect": stub_dir / "collect.sh",
-        "tally": stub_dir / "tally.sh",
-        "emit": stub_dir / "emit.sh",
-        "check_dirty": stub_dir / "check-dirty.sh",
-        "check_threshold": stub_dir / "check-threshold.sh",
-        "dispatch_voters": stub_dir / "dispatch-voters.sh",
-    }
-    _write_executable(
-        paths["gather"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-out=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output-dir) out="$2"; shift 2 ;;
-    *) shift 2 ;;
-  esac
-done
-mkdir -p "$out"
-echo "DIFF_FILE=$out/diff.patch"
-echo "FILE_LIST_FILE=$out/scope-files.txt"
-echo "COMMIT_LOG_FILE=$out/commits.txt"
-echo "COMMIT_COUNT=1"
-echo "SCOPE_FILES_COUNT=1"
-echo "MODE=diff"
-""",
-    )
-    _write_executable(
-        paths["dispatch"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-tmp=""
-panel="simple"
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --review-tmpdir) tmp="$2"; shift 2 ;;
-    --panel) panel="$2"; shift 2 ;;
-    *) shift 2 ;;
-  esac
-done
-mkdir -p "$tmp"
-external="$tmp/codex-specialist-correctness-output.txt"
-claude="$tmp/claude-generic-output.txt"
-printf 'reviewer finding\\n' > "$external"
-printf 'claude finding\\n' > "$claude"
-printf '0\\n' > "$claude.done"
-printf 'STATUS=clean\\n' > "$external.dirty-tree"
-printf 'STATUS=clean\\n' > "$claude.dirty-tree"
-cat > "$tmp/panel-manifest.ndjson" <<EOF
-{"slot":"correctness","tool":"codex","output":"$external","agent":"agents/reviewer-correctness.md"}
-EOF
-echo "EXTERNAL_OUTPUT_FILES=$external"
-echo "CLAUDE_OUTPUT_FILES=$claude"
-echo "PANEL_MODE=normal"
-echo "PANEL_SHAPE=$panel"
-echo "PANEL_PRUNED_EMPTY=false"
-echo "SCOUT_STATUS=na"
-echo "DYNAMIC_SLOTS=0"
-echo "STATIC_SLOT_COUNT=1"
-echo "SLOT_COUNT=1"
-echo "PANEL_MANIFEST=$tmp/panel-manifest.ndjson"
-echo "DISPATCH_OK=true"
-""",
-    )
-    _write_executable(
-        paths["collect"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-findings=""
-oos=""
-rtmp=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --findings-file) findings="$2"; shift 2 ;;
-    --oos-file) oos="$2"; shift 2 ;;
-    --external-output-files|--claude-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
-    *) shift 2 ;;
-  esac
-done
-mkdir -p "$(dirname "$findings")"
-rtmp="$(dirname "$findings")"
-: > "$oos"
-cat > "$rtmp/collector-results.env" <<'EOF'
-REVIEWER_FILE=stub-output.txt
-STATUS=OK
-EOF
-if [[ "${TEST_FINDINGS:-0}" -eq 0 ]]; then
-  : > "$findings"
-else
-  cat > "$findings" <<'EOF'
-### FINDING_1: Example
-- **Reviewer**: stub
-- **Severity**: important
-- **Concern**: concern
-- **Suggested revision**: fix it
-EOF
-fi
-echo "FINDINGS_COUNT=${TEST_FINDINGS:-0}"
-echo "OOS_COUNT=0"
-echo "DIRTY_DETECTED=false"
-echo "COLLECT_OK=true"
-echo "COLLECTOR_OUTPUT_FILE=collector.env"
-""",
-    )
-    _write_executable(
-        paths["tally"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-tmp=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --review-tmpdir) tmp="$2"; shift 2 ;;
-    *) shift 2 ;;
-  esac
-done
-accepted="${TEST_ACCEPTED:-0}"
-echo "FINDING_1_ACCEPTED=$([[ "$accepted" -gt 0 ]] && echo true || echo false)" > "$tmp/review-tally.env"
-if [[ "$accepted" -gt 0 ]]; then
-  printf '### FINDING_1: Example\n- **Concern**: concern\n' > "$tmp/accepted-findings.md"
-else
-  : > "$tmp/accepted-findings.md"
-fi
-: > "$tmp/rejected-findings.md"
-: > "$tmp/voting-tally.md"
-echo "ACCEPTED_COUNT=$accepted"
-echo "REJECTED_COUNT=0"
-echo "EXONERATED_COUNT=0"
-echo "NEUTRAL_COUNT=0"
-echo "OUT_OF_SCOPE_DRIFT_COUNT=0"
-""",
-    )
-    _write_executable(
-        paths["emit"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-echo "EMIT_OK=true"
-""",
-    )
-    _write_executable(
-        paths["check_dirty"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-echo "STATUS=clean"
-""",
-    )
-    _write_executable(
-        paths["check_threshold"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-echo "THRESHOLD_OK=true"
-""",
-    )
-    _write_executable(
-        paths["dispatch_voters"],
-        """#!/usr/bin/env bash
-set -euo pipefail
-tmp=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --review-tmpdir) tmp="$2"; shift 2 ;;
-    *) shift 2 ;;
-  esac
-done
-: > "$tmp/voter-1-output.txt"
-echo "VOTER_COUNT=1"
-""",
-    )
-    return paths
+    return rts.write_review_core_stubs(stub_dir)
 
 
 def _run_review_core(
@@ -223,25 +41,18 @@ def _run_review_core(
     findings: int = 1,
     accepted: int = 0,
     extra_env: dict[str, str] | None = None,
+    outdir_name: str = "review-core",
 ) -> subprocess.CompletedProcess[str]:
     stubs = _write_review_core_stubs(tmp_path / "stubs")
-    outdir = tmp_path / "review-core"
-    outdir.mkdir()
-    env = {
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "LARCH_QUIET_DISABLE": "1",
-        "LARCH_AGGREGATOR_DISABLED": "1",
-        "TEST_FINDINGS": str(findings),
-        "TEST_ACCEPTED": str(accepted),
-        "REVIEW_CORE_GATHER_CONTEXT_SH": str(stubs["gather"]),
-        "REVIEW_CORE_DISPATCH_PANEL_SH": str(stubs["dispatch"]),
-        "REVIEW_CORE_COLLECT_FINDINGS_SH": str(stubs["collect"]),
-        "REVIEW_CORE_TALLY_VOTES_SH": str(stubs["tally"]),
-        "REVIEW_CORE_EMIT_TALLY_SH": str(stubs["emit"]),
-        "REVIEW_CORE_CHECK_DIRTY_TREE_SH": str(stubs["check_dirty"]),
-        "REVIEW_CORE_CHECK_THRESHOLD_SH": str(stubs["check_threshold"]),
-        "REVIEW_CORE_DISPATCH_VOTERS_SH": str(stubs["dispatch_voters"]),
-    }
+    outdir = tmp_path / outdir_name
+    outdir.mkdir(parents=True, exist_ok=True)
+    env = rts.build_review_core_env(
+        tmp_path / "stubs",
+        stubs,
+        TEST_FINDINGS=str(findings),
+        TEST_ACCEPTED=str(accepted),
+        TEST_ROUND_NUM=str(round_num),
+    )
     if extra_env:
         env.update(extra_env)
     return run_review(
@@ -267,6 +78,29 @@ def test_gather_context_help_routes_through_review_cli() -> None:
 
     assert result.returncode == 0
     assert "Usage: gather-context.sh" in result.stderr
+
+
+def test_gather_context_diff_mode_relays_branch_kvs_and_trailing_contract(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    rts.init_git_repo(repo)
+    outdir = tmp_path / "gather-out"
+    outdir.mkdir()
+    result = run_review(
+        "gather-context",
+        "--mode",
+        "diff",
+        "--output-dir",
+        str(outdir),
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
+        cwd=repo,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "DIFF_FILE=" in result.stdout
+    assert "FILE_LIST_FILE=" in result.stdout
+    assert "COMMIT_COUNT=" in result.stdout
+    assert "SCOPE_FILES_COUNT=0" in result.stdout
+    assert "MODE=diff" in result.stdout
 
 
 def test_check_reviewer_failure_threshold_zero_static_slots(tmp_path: Path) -> None:
@@ -351,20 +185,12 @@ echo "COLLECTOR_OUTPUT_FILE=collector.env"
     )
     outdir = tmp_path / "review-core-prune"
     outdir.mkdir()
-    env = {
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "LARCH_QUIET_DISABLE": "1",
-        "LARCH_AGGREGATOR_DISABLED": "1",
-        "TEST_ACCEPTED": "0",
-        "REVIEW_CORE_GATHER_CONTEXT_SH": str(stubs["gather"]),
-        "REVIEW_CORE_DISPATCH_PANEL_SH": str(stubs["dispatch"]),
-        "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
-        "REVIEW_CORE_TALLY_VOTES_SH": str(stubs["tally"]),
-        "REVIEW_CORE_EMIT_TALLY_SH": str(stubs["emit"]),
-        "REVIEW_CORE_CHECK_DIRTY_TREE_SH": str(stubs["check_dirty"]),
-        "REVIEW_CORE_CHECK_THRESHOLD_SH": str(stubs["check_threshold"]),
-        "REVIEW_CORE_DISPATCH_VOTERS_SH": str(stubs["dispatch_voters"]),
-    }
+    env = rts.build_review_core_env(
+        tmp_path / "stubs",
+        stubs,
+        TEST_ACCEPTED="0",
+        REVIEW_CORE_COLLECT_FINDINGS_SH=str(collect),
+    )
     result = run_review(
         "core",
         "--mode",
@@ -397,6 +223,124 @@ def test_review_core_cap_reached_round_5_with_accepted_findings(tmp_path: Path) 
     assert "REVIEW_CORE_STATUS=cap-reached" in result.stdout
 
 
+def test_review_core_zero_findings_emits_classification_and_summary(tmp_path: Path) -> None:
+    outdir = tmp_path / "zero"
+    result = _run_review_core(tmp_path, findings=0, accepted=0, outdir_name="zero")
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=zero-findings" in result.stdout
+    assert "FINDINGS_CLASSIFICATION_TSV_FILE=" in result.stdout
+    assert (outdir / "voting-tally.md").is_file()
+    summary = json.loads((outdir / "review-summary.json").read_text(encoding="utf-8"))
+    assert summary["accepted_count"] == 0
+
+
+def test_review_core_prune_skipped_early_exit(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=0,
+        outdir_name="prune-skipped",
+        extra_env={"TEST_PANEL_PRUNED_EMPTY": "true"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=prune-skipped" in result.stdout
+    assert (tmp_path / "prune-skipped" / "prune-decision.env").is_file()
+
+
+def test_review_core_panel_failed_on_collector_error_static_files(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=0,
+        outdir_name="panel-failed-collector",
+        extra_env={
+            "TEST_EXTERNAL_STATIC_OUTPUTS": "true",
+            "TEST_COLLECTOR_VARIANT": "external-files-only",
+        },
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
+    threshold_env = (tmp_path / "panel-failed-collector" / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "COVERAGE_GATE_REASON=no successful launched reviewer output" in threshold_env
+
+
+def test_review_core_panel_failed_on_missing_static_archetype(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=1,
+        accepted=1,
+        outdir_name="coverage-failed",
+        extra_env={
+            "TEST_FULL_STATIC_MANIFEST": "true",
+            "TEST_COLLECTOR_VARIANT": "missing-testing",
+        },
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
+    threshold_env = (tmp_path / "coverage-failed" / "review-core-threshold.env").read_text(encoding="utf-8")
+    assert "COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing" in threshold_env
+
+
+def test_review_core_panel_failed_on_threshold_failure(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=1,
+        accepted=1,
+        outdir_name="panel-failed",
+        extra_env={
+            "TEST_THRESHOLD_OK": "false",
+            "TEST_SCOUT_STATUS": "ok",
+            "TEST_DYNAMIC_SLOTS": "2",
+        },
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
+    assert "SCOUT_STATUS=ok" in result.stdout
+    assert "DYNAMIC_SLOTS=2" in result.stdout
+
+
+def test_review_core_main_agent_vote_required(tmp_path: Path) -> None:
+    result = _run_review_core(
+        tmp_path,
+        findings=1,
+        outdir_name="main-agent",
+        extra_env={"TEST_TALLY_STATUS": "main-agent-vote-required"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=main-agent-vote-required" in result.stdout
+    assert "ACCEPTED_COUNT=0" in result.stdout
+
+
+def test_review_core_aggregator_validation_exhausted(tmp_path: Path) -> None:
+    stubs = _write_review_core_stubs(tmp_path / "stubs")
+    result = _run_review_core(
+        tmp_path,
+        findings=1,
+        accepted=1,
+        outdir_name="agg-exhaust",
+        extra_env={
+            "LARCH_AGGREGATOR_DISABLED": "",
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+        },
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "REVIEW_CORE_STATUS=aggregator-validation-exhausted" in result.stdout
+
+
+def test_review_core_fix_required_emits_accepted_path(tmp_path: Path) -> None:
+    outdir = tmp_path / "fix"
+    result = _run_review_core(tmp_path, findings=1, accepted=1, outdir_name="fix")
+
+    assert result.returncode == 0, result.stderr
+    assert "REVIEW_CORE_STATUS=fix-required" in result.stdout
+    assert f"ACCEPTED_FINDINGS_FILE={outdir}/accepted-findings.md" in result.stdout
+
+
 def test_run_legacy_relays_stdout_kv_without_quiet_disable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     script = tmp_path / "emit-kv.sh"
     _write_executable(script, """#!/usr/bin/env bash
@@ -421,6 +365,38 @@ printf 'PIPELINE_KV=relayed\\n'
 
     assert rc == 0
     assert captured == ["PIPELINE_KV=relayed"]
+
+
+def test_run_legacy_relays_lib_quiet_emit_kv_without_quiet_disable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = tmp_path / "quiet-emit.sh"
+    lib_quiet = ROOT / "scripts" / "lib-quiet.sh"
+    _write_executable(
+        script,
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=scripts/lib-quiet.sh
+source "{lib_quiet}"
+larch_quiet_init
+emit_kv QUIET_RELAY_TEST relayed-quiet-value
+""",
+    )
+    logging_util.reset_quiet_state()
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    captured: list[str] = []
+
+    def fake_emit(line: str) -> None:
+        captured.append(line)
+
+    monkeypatch.setattr(review_pipeline.logging_util, "emit", fake_emit)
+    monkeypatch.setattr(review_pipeline, "_LEGACY_DIR", tmp_path, raising=False)
+    rc = review_pipeline.run_legacy("quiet-emit.sh", [])
+
+    assert rc == 0
+    assert captured == ["QUIET_RELAY_TEST=relayed-quiet-value"]
 
 
 def test_dispatch_panel_pre_scouted_valid_dynamic_slots(tmp_path: Path) -> None:

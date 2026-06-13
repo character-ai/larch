@@ -1,8 +1,11 @@
 """Review pipeline CLI entry points.
 
-The C1b review pipeline now has Python-owned CLI verbs. The functions below
-preserve the shipped contracts by executing the legacy shell implementations
-from a private location while callers cut over to ``python/cli.py review ...``.
+The C1b review pipeline exposes Python-owned ``python/cli.py review ...`` verbs.
+Each verb is a CLI façade: ``run_legacy()`` executes the matching script under
+``python/legacy_review_shell/`` and relays contract KVs through
+``logging_util.emit``. Importable call sites such as ``review_pipeline.dispatch_panel()``
+still shell out today; a native in-process port remains follow-up work tracked in
+``docs/python-migration.md``.
 """
 
 from __future__ import annotations
