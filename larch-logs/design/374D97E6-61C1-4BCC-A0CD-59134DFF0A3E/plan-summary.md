@@ -1,0 +1,1 @@
+Port the design decomposition and scout surfaces to Python. Add direct CLI verbs, cut all callers to `python/cli.py`, replace shell harnesses with pytest, delete retired bash and `.md` siblings, and run the retired-script stale-reference sweep.
