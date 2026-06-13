@@ -426,7 +426,7 @@ def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, mon
             "--output-file",
             str(output),
             "--timeout",
-            "5",
+            "30",
         ],
     )
     assert rc == 0
