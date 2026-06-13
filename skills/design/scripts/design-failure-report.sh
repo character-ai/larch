@@ -70,9 +70,41 @@ compose_env_key() {
     python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$COMPOSE_ENV" --key "$key" --default "$default"
 }
 
+resolve_working_tree_root() {
+    local root=""
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+        printf '%s\n' "$CLAUDE_PROJECT_DIR"
+        return 0
+    fi
+    if [ -n "${REPO_ROOT:-}" ]; then
+        printf '%s\n' "$REPO_ROOT"
+        return 0
+    fi
+    if [ -f "$DESIGN_TMPDIR/source-env.sh" ]; then
+        root=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$DESIGN_TMPDIR/source-env.sh" --key REPO_ROOT --default '')
+        [ -n "$root" ] && { printf '%s\n' "$root"; return 0; }
+    fi
+    git rev-parse --show-toplevel 2>/dev/null || true
+}
+
+tier_a_forked() {
+    local forked="" f
+    for f in "$DESIGN_TMPDIR/ship-pr-state.sh" "$DESIGN_TMPDIR/finalize-state.sh" "$DESIGN_TMPDIR/source-env.sh"; do
+        [ -f "$f" ] || continue
+        forked=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$f" --key FORKED_TARGET --default '')
+        [ -n "$forked" ] && break
+    done
+    case "$forked" in true|1|yes|TRUE|True) return 0 ;; esac
+    return 1
+}
+
 tier_a_eligible() {
+    local working_tree_root=""
+    tier_a_forked && return 1
+    working_tree_root=$(resolve_working_tree_root)
+    [ -n "$working_tree_root" ] || return 1
     "$REPORT_SH" "${helper_common[@]}" is-larch-dev-clone \
-        --working-tree-root "$PLUGIN_ROOT" \
+        --working-tree-root "$working_tree_root" \
         --implement-tmpdir "$DESIGN_TMPDIR" 2>/dev/null | grep -Fxq 'LARCH_DEV_CLONE=true'
 }
 
@@ -106,7 +138,7 @@ populate_design_sensitive_corpus() {
         --escalation-fallback-file "$FALLBACK" \
         --record-failure-marker "$MARKER" \
         >"$DESIGN_TMPDIR/design-failure-populate-sensitive.stdout.log" \
-        2>"$DESIGN_TMPDIR/design-failure-populate-sensitive.stderr.log" || true
+        2>"$DESIGN_TMPDIR/design-failure-populate-sensitive.stderr.log"
 }
 
 persist_effective_sensitive_corpus() {
@@ -143,6 +175,9 @@ file_tier_a_after_compose() {
                 "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$helper_out" >"$file_norm" 2>/dev/null || true
                 cat "$file_norm" >>"$COMPOSE_ENV"
             fi
+            ;;
+        dedup-comment|dry-run|fallback-print-required|filed|printed)
+            [ -s "$dedup_norm" ] && cat "$dedup_norm" >>"$COMPOSE_ENV"
             ;;
     esac
 }
@@ -318,7 +353,11 @@ case "$OUTCOME" in
         "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" classify >"$DESIGN_TMPDIR/design-failure-classify.env"
         _report_surface=$(report_surface)
         _report_output=$(report_output_file "$_report_surface")
-        populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"
+        if ! populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"; then
+            append_run_log_audit populate-sensitive-corpus-failed
+            write_fallback_chat populate-sensitive-corpus-failed
+            exit 0
+        fi
         if ! "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" compose-report \
             --report-kind terminal-failure \
             --surface "$_report_surface" \
@@ -353,7 +392,11 @@ prepare_root_cause escalation
 "$REPORT_SH" "${helper_common[@]}" init-attempts --attempts-file "$ATTEMPTS_FILE" >/dev/null
 _report_surface=$(report_surface)
 _report_output=$(report_output_file "$_report_surface")
-populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"
+if ! populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"; then
+    append_run_log_audit populate-sensitive-corpus-failed
+    write_fallback_chat populate-sensitive-corpus-failed
+    exit 0
+fi
 if ! "$REPORT_SH" "${helper_common[@]}" compose-report \
     --report-kind escalation-success \
     --surface "$_report_surface" \

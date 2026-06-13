@@ -21,14 +21,12 @@ publish_tail_fail() {
 fail() {
     local msg="design-publish.sh: $*"
     larch_err "$msg"
-    if [[ -z "${DESIGN_TMPDIR:-}" || -z "${PLUGIN_ROOT:-}" || ! -d "${DESIGN_TMPDIR:-}" ]]; then
-        if [[ -n "${DESIGN_TMPDIR_ARG:-}" && -d "$DESIGN_TMPDIR_ARG" ]]; then
-            printf '%s\n' "$msg" >"$DESIGN_TMPDIR_ARG/design-publish-tail.failure.log" 2>/dev/null || true
-        fi
-        exit 2
+    if [[ -n "${DESIGN_TMPDIR:-}" && -d "${DESIGN_TMPDIR:-}" ]]; then
+        printf '%s\n' "$msg" >"$DESIGN_TMPDIR/design-publish-setup.failure.log"
+    elif [[ -n "${DESIGN_TMPDIR_ARG:-}" && -d "$DESIGN_TMPDIR_ARG" ]]; then
+        printf '%s\n' "$msg" >"$DESIGN_TMPDIR_ARG/design-publish-setup.failure.log" 2>/dev/null || true
     fi
-    printf '%s\n' "$msg" >"$DESIGN_TMPDIR/design-publish-tail.failure.log"
-    publish_tail_fail publish-tail-failed 2 "$DESIGN_TMPDIR/design-publish-tail.failure.log"
+    exit 5
 }
 
 usage() {
@@ -456,7 +454,7 @@ if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         ${REPO:+--repo "$REPO"} \
-        --post-publish-only || true
+        --post-publish-only >/dev/null || true
     write_result_env_and_emit || exit 1
     exit 1
 fi
@@ -619,7 +617,7 @@ export DESIGNED_ADMISSION_READY
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
-    --post-publish-only || true
+    --post-publish-only >/dev/null || true
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     # shellcheck source=scripts/lib-design-reentry-guard.sh

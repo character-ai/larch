@@ -753,6 +753,39 @@ fi
 stdout_starts_with_summary "$GATE_D/final-summary.md" "$gate_kv_stdout" 'report gate KV isolation stdout/file mismatch'
 pass 'report-gate helper KVs isolated to sidecar log'
 
+# --- fallback chat-print sidecar after summary body ---
+GATE_FB_D="$TMP/design-gate-fallback-chat"
+mkdir -p "$GATE_FB_D"
+: >"$GATE_FB_D/execution-issues.md"
+cat >"$GATE_FB_D/run-params.json" <<'JSON'
+JSON
+cat >"$GATE_FB_D/voting-tally.md" <<'EOF'
+# Tally
+EOF
+: >"$GATE_FB_D/accepted-plan-findings.md"
+: >"$GATE_FB_D/oos-accepted-design.md"
+cat >"$PLUGIN_STUB/skills/design/scripts/design-failure-report.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >"$DESIGN_TMPDIR/design-failure-chat-print.md" <<'CHAT'
+### [Bug] /design report fallback required
+
+Fallback sidecar probe for harness.
+CHAT
+printf 'DESIGN_FAILURE_REPORT_DECISION=fallback-print-required\n'
+printf 'DESIGN_FAILURE_REPORT_REASON=compose-probe\n'
+EOF
+chmod +x "$PLUGIN_STUB/skills/design/scripts/design-failure-report.sh"
+gate_fb_stdout="$TMP/std-gate-fallback-chat.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$GATE_FB_D" ISSUE_NUMBER="" SESSION_ID="RUN-GATE-FB" \
+    "$SUBJECT" --outcome failed-clarify --post-publish-only >"$gate_fb_stdout" 2>/dev/null
+grep -Fq 'Fallback sidecar probe for harness.' "$gate_fb_stdout" \
+    || fail 'fallback chat-print sidecar must appear after summary body in stdout'
+if grep -Fq 'Fallback sidecar probe for harness.' "$GATE_FB_D/final-summary.md"; then
+    fail 'fallback chat-print must stay outside final-summary.md body'
+fi
+stdout_starts_with_summary "$GATE_FB_D/final-summary.md" "$gate_fb_stdout" 'fallback chat-print sidecar stdout/file mismatch'
+pass 'fallback chat-print sidecar prints after summary body'
+
 # --- pre-publish must not invoke report gate ---
 pre_gate_d="$TMP/design-pre-gate"
 mkdir -p "$pre_gate_d"

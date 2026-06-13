@@ -185,6 +185,11 @@ design_bg_wait_marker_start design-step5c || true
      printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
+   if [[ "${_publish_rc:-0}" -eq 5 ]]; then
+     rm -f "$_publish_stdout_file"
+     printf '%s\n' "**⚠ Step 5c: design-publish.sh setup error (exit 5); aborting /design**" >&2
+     exit 1
+   fi
    if [[ "${_publish_rc:-0}" -eq 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**" >&2
    fi
@@ -285,3 +290,17 @@ printf 'CLEANUP_ELIGIBLE=%s\n' "${_cleanup_eligible}"
 if [[ "${_publish_rc:-0}" -eq 4 ]]; then
   printf 'STEP5C_STATUS=validator-defects\n'
 fi
+
+emit_report_gate_sidecars_from_disk() {
+  local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
+  : >"$handoff"
+  for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
+    [ -s "$sidecar" ] || continue
+    cat "$sidecar" >>"$handoff"
+    printf '\n' >>"$handoff"
+  done
+  if [ -s "$handoff" ]; then
+    printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
+  fi
+}
+emit_report_gate_sidecars_from_disk

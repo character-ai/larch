@@ -134,7 +134,7 @@ fi
 # Marker step id: STEP=design-step3-review
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
-  printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**"
+  printf '%s\n' "**⚠ Step 3: could not allocate run-step3-review stdout capture; aborting plan review**" >&2
   exit 1
 }
 _loop_pid=""
@@ -246,7 +246,7 @@ if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step
 fi
 _safe_step3_env="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-env.XXXXXX")" || {
   rm -f "$_plan_review_stdout_file"
-  printf '%s\n' "**⚠ Step 3: could not allocate safe step3 review result env; aborting plan review**"
+  printf '%s\n' "**⚠ Step 3: could not allocate safe step3 review result env; aborting plan review**" >&2
   exit 1
 }
 set +e
@@ -276,7 +276,7 @@ _rre_rc=$?
 set -e
 if [[ "${_rre_rc:-0}" -ne 0 ]]; then
   rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
-  printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**"
+  printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**" >&2
   LOOP_STATUS=panel-failed
 else
   # shellcheck source=/dev/null
@@ -297,12 +297,12 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
 done <"$_plan_review_stdout_file"
 rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**" >&2
   exit 1
 fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
-    printf '%s\n' "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
+    printf '%s\n' "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**" >&2
     STEP3_REVIEW_LOOP_STATUS=panel-failed
   fi
   case "${STEP3_REVIEW_LOOP_STATUS}" in
@@ -311,7 +311,7 @@ if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
   esac
 elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
-  printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
+  printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**" >&2
   LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security

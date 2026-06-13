@@ -36,3 +36,20 @@ env -u CLAUDE_PLUGIN_ROOT "$STAGE_HELPER" --design-tmpdir "$D_STEP3" \
 [ -f "$D_STEP3/design-failure-terminal-state.env" ] || fail 'postplan-failed staging must write terminal state'
 grep -Fxq 'FAILURE_OUTCOME=failed-postplan' "$D_STEP3/design-failure-terminal-state.env" || fail 'postplan terminal outcome missing'
 pass 'Step 3 postplan-failed stages terminal state at runtime'
+
+D_LOOP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-escalation.XXXXXX")
+DESIGN_TMPDIR="$D_LOOP"
+export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
+# shellcheck disable=SC1091
+source "$LOOP"
+step3_record_report_evidence tally-error
+[ -s "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" ] || fail 'tally-error must record escalation ledger row'
+grep -Fq 'trigger=tally-error' "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail 'tally-error ledger trigger missing'
+[ ! -f "$DESIGN_TMPDIR/design-failure-terminal-state.env" ] || fail 'panel degradation must not stage terminal state'
+rm -rf "$D_LOOP"
+pass 'Step 3 tally-error records escalation evidence without terminal state'
+
+if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
+  fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
+fi
+pass 'Step 3 wrapper keeps stdout KV-only'

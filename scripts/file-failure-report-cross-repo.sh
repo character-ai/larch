@@ -232,7 +232,7 @@ if issue_number=$(lookup_open_issue "$repo" "$marker" "$lookup_out" "$lookup_err
     comment_out="$tmpdir/comment.out"
     comment_err="$tmpdir/comment.err"
     assemble_comment "$comment_file" "$attempts_file" "$escalation_file" "$root_file"
-    if [ "$publication_tier" = "tier-b" ] && reject_tier_b_comment_if_unsafe "$body_file" "$comment_file" "$comment_err" "$tmpdir"; then
+    if [ "$publication_tier" = "tier-b" ] && reject_tier_b_comment_if_unsafe "$body_file" "$comment_file" "$comment_err" "$(dirname "$body_file")"; then
         redact_stderr_file "$comment_err"
         status_fallback unsafe-tier-b-comment
         exit 0

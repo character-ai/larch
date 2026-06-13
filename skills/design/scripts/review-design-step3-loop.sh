@@ -592,7 +592,10 @@ run_design_step3_loop() {
                 done <"$DESIGN_TMPDIR/.step3-review-result.env"
             fi
             if [[ "$body_rc" -ne 0 && "${LOOP_STATUS:-}" != panel-failed ]]; then
-                LOOP_STATUS=panel-failed
+                case "${LOOP_STATUS:-}" in
+                    tally-error|degraded-empty-collector) ;;
+                    *) LOOP_STATUS=panel-failed ;;
+                esac
             fi
             round_num=$((10#${STEP3_REVIEW_ROUND_NUM:-$round_num}))
             case "${LOOP_STATUS:-}" in

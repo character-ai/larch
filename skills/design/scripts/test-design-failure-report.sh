@@ -57,3 +57,14 @@ grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=operator-action-skip' "$D4/cancel.out"
 [ -s "$D4/design-failure-operator-action-chat.md" ] || fail 'operator action chat missing'
 [ -s "$D4/design-failure-operator-action.env" ] || fail 'operator action sentinel missing'
 pass 'cancelled outcome writes operator-action audit'
+
+D5=$(mktemp -d)
+CONSUMER_ROOT=$(mktemp -d)
+env -u CLAUDE_PLUGIN_ROOT "$STAGE" --design-tmpdir "$D5" --outcome failed-clarify --step clarify --phase clarify-loop --site clarify-loop --trigger failed --bail-reason clarify-hard-halt --exit-code 1 --source-script clarify-loop >/dev/null
+CLAUDE_PROJECT_DIR="$CONSUMER_ROOT" LARCH_STALL_RECOVERY_DRY_RUN=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D5" --outcome failed-clarify >"$D5/consumer.out"
+grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D5/consumer.out" || fail 'consumer tree terminal decision missing'
+[ -s "$D5/design-failure-chat-print.md" ] || fail 'consumer tree must use chat-print surface'
+[ ! -s "$D5/design-failure-issue-input.md" ] || fail 'consumer tree must not write issue-input surface'
+pass 'consumer working tree uses chat-print without legacy surfaces flag'
+
+printf 'PASS: test-design-failure-report.sh\n'
