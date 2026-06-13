@@ -356,7 +356,6 @@ printf 'record-vendor-sidecar|%s|IMPLEMENT_TMPDIR=%s|LARCH_TOKEN_LEDGER=%s|LARCH
 exit 0
 EOF
     chmod +x "$CASE_DIR/bin/python3"
-    export PATH="$CASE_DIR/bin:$PATH"
     export CALL_LOG
 
     python3() {
@@ -426,6 +425,7 @@ EOF
     _stage_and_push_ci_fixes() { printf 'STAGE|%s\n' "$2" >>"$CALL_LOG"; return 0; }
     larch_err() { return 0; }
 
+    PATH="$CASE_DIR/bin:$PATH" \
     LARCH_TOKEN_LEDGER="$CASE_DIR/stale-ledger.jsonl" \
     LARCH_TOKEN_SESSION_ID="stale-session" \
     DESIGN_TMPDIR="$CASE_DIR/stale-design" \
@@ -484,7 +484,6 @@ printf 'record-vendor-sidecar|%s|IMPLEMENT_TMPDIR=%s|LARCH_TOKEN_LEDGER=%s|LARCH
 exit 0
 EOF
     chmod +x "$CASE_DIR/bin/python3"
-    export PATH="$CASE_DIR/bin:$PATH"
     export CALL_LOG
 
     cat >"$SCRIPT_DIR/ci-behind-count.sh" <<'EOF'
@@ -536,6 +535,7 @@ EOF
 
     CI_FIX_REBASE_PENDING=false
     SHIP_PR_INGESTED_TOKEN_RECORDS=()
+    PATH="$CASE_DIR/bin:$PATH" \
     LARCH_TOKEN_LEDGER="$CASE_DIR/stale-ledger.jsonl" \
     LARCH_TOKEN_SESSION_ID="stale-session" \
     DESIGN_TMPDIR="$CASE_DIR/stale-design" \

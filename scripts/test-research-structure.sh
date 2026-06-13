@@ -230,10 +230,10 @@ for file in "$RESEARCH_MD" "$VALIDATION_MD"; do
   contains "$file" 'token record-vendor-sidecar' "[$base sidecar] missing token record-vendor-sidecar"
   contains "$file" 'env -u LARCH_TOKEN_LEDGER' "[$base sidecar] missing env -u LARCH_TOKEN_LEDGER"
   contains "$file" '-u LARCH_TOKEN_SESSION_ID' "[$base sidecar] missing -u LARCH_TOKEN_SESSION_ID"
-  contains "$file" 'RESEARCH_TMPDIR="$RESEARCH_TMPDIR"' "[$base sidecar] missing RESEARCH_TMPDIR binding"
+  contains "$file" "RESEARCH_TMPDIR=\"\$RESEARCH_TMPDIR\"" "[$base sidecar] missing RESEARCH_TMPDIR binding"
 done
 
-collect_line=$(line_for "$VALIDATION_MD" '${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode')
+collect_line=$(line_for "$VALIDATION_MD" "\${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode")
 parse_line=$(line_for "$VALIDATION_MD" "1. Parse the structured output for each reviewer's \`STATUS\` and \`REVIEWER_FILE\`.")
 ingest_line=$(line_for "$VALIDATION_MD" '2. **Codex/Cursor validation sidecar ingestion after collection settles**')
 status_line=$(line_for "$VALIDATION_MD" '3. **Runtime-timeout replacement**')
