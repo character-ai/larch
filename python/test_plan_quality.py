@@ -347,7 +347,9 @@ exit 0
     )
     dispatch.chmod(0o755)
     validator = tmp_path / "validate.sh"
-    validator.write_text('#!/usr/bin/env bash\nprintf \'VALIDATE_STATUS=ok\\n\'\n')
+    validator.write_text("""#!/usr/bin/env bash
+printf 'VALIDATE_STATUS=ok\\n'
+""")
     validator.chmod(0o755)
     gate_b = tmp_path / "gate-b.sh"
     gate_b.write_text("#!/usr/bin/env bash\nexit 0\n")

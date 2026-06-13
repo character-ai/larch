@@ -8,6 +8,7 @@ Topology row design.plan_commands.validate: Tier2+opt-in Tier3.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import re
@@ -1116,10 +1117,8 @@ def check_plan_size_main(argv: list[str]) -> int:
                 marker.unlink(missing_ok=True)
         else:
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
-            try:
+            with contextlib.suppress(OSError):
                 _atomic_write(marker, "unreadable\n")
-            except OSError:
-                pass
             drift_trigger = True
     elif baseline_path.exists() or baseline_path.is_symlink() or marker.exists():
         baseline_path.unlink(missing_ok=True)
@@ -1132,10 +1131,8 @@ def check_plan_size_main(argv: list[str]) -> int:
                 marker.unlink(missing_ok=True)
         else:
             emit_kv("WARN", "check-plan-size: drift baseline unreadable; failing closed on drift trigger")
-            try:
+            with contextlib.suppress(OSError):
                 _atomic_write(marker, "unreadable\n")
-            except OSError:
-                pass
             drift_trigger = True
     elif recover():
         if not _drift_baseline_write_once(design_tmpdir, baseline_plan, baseline_diff):
