@@ -10,25 +10,40 @@ errors=[]
 skill=Path('skills/implement/SKILL.md').read_text()
 ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 probe=Path('scripts/rebase-checkpoint-probe.sh').read_text()
+bootstrap=Path('python/bootstrap.py').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
 
-if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 1.r') != 1: errors.append('missing one 1.r launcher probe call')
-if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 4.r') != 1: errors.append('missing one 4.r launcher probe call')
-if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 7.r') != 1: errors.append('missing one 7.r launcher probe call')
-if skill.count("rebase-checkpoint-probe.sh 1.r 'plan materialization' --forked-target \"${forked_target:-false}\"") != 1: errors.append('1.r launcher probe must pass --forked-target')
-if skill.count("rebase-checkpoint-probe.sh 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('4.r launcher probe must pass --forked-target')
-if skill.count("rebase-checkpoint-probe.sh 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1: errors.append('7.r launcher probe must pass --forked-target')
-if 'BASE_ARGS=()' in skill: errors.append('SKILL.md still contains inline BASE_ARGS blocks')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 1.r') != 0:
+    errors.append('SKILL.md must not call prompt-side 1.r probe')
+if 'rebase-checkpoint-probe.sh' not in bootstrap or '"1.r"' not in bootstrap:
+    errors.append('python/bootstrap.py must invoke rebase-checkpoint-probe.sh for 1.r')
+if 'plan materialization' not in bootstrap:
+    errors.append('python/bootstrap.py 1.r probe must use plan materialization label')
+if '--forked-target' not in bootstrap or 'REBASE_RC' not in bootstrap:
+    errors.append('python/bootstrap.py must pass --forked-target and synthesize REBASE_RC')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 4.r') != 1:
+    errors.append('missing one 4.r launcher probe call')
+if skill.count('larch-run.sh" scripts/rebase-checkpoint-probe.sh 7.r') != 1:
+    errors.append('missing one 7.r launcher probe call')
+if skill.count("rebase-checkpoint-probe.sh 4.r 'commit (impl)' --forked-target \"${forked_target:-false}\"") != 1:
+    errors.append('4.r launcher probe must pass --forked-target')
+if skill.count("rebase-checkpoint-probe.sh 7.r 'commit (review)' --forked-target \"${forked_target:-false}\"") != 1:
+    errors.append('7.r launcher probe must pass --forked-target')
+if 'BASE_ARGS=()' in skill:
+    errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
-    '**Orchestrator contract — parse the wrapper stdout**',
+    '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
+    '**Orchestrator contract — direct probe fences (`4.r`, `7.r`, `7a.r`)**',
     'REBASE_OUTCOME=conflict',
     '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**',
     '**⚠ Rebase onto main failed unexpectedly',
     'Call-site registry',
     'caller_kind=early_rebase',
     '7a.r',
+    'Absorbed Step 1.r',
 ]:
-    if needle not in ref: errors.append(f'rebase reference missing {needle}')
+    if needle not in ref:
+        errors.append(f'rebase reference missing {needle}')
 if '--forked-target)' not in probe or 'base_remote=upstream' not in probe or 'base_ref=main' not in probe:
     errors.append('rebase-checkpoint-probe.sh does not implement --forked-target upstream/main mapping')
 if step7a.count('rebase-checkpoint-probe.sh" 7a.r') != 1:
@@ -38,5 +53,5 @@ if 'BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")' not in step
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
-print('PASS: test-implement-rebase-macro.sh (routing reference + --forked-target calls)')
+print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + --forked-target calls)')
 PY

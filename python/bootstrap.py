@@ -13,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +23,7 @@ import logging_util
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = _REPO_ROOT / "scripts"
 _PY_CLI = Path(__file__).with_name("cli.py")
+_PS = shutil.which("ps") or "/bin/ps"
 BOOTSTRAP_CONTRACT_FAILURE = 2
 ROUTING_KEYS: tuple[str, ...] = (
     "IMPLEMENT_TMPDIR",
@@ -44,7 +46,20 @@ ROUTING_KEYS: tuple[str, ...] = (
     "BRANCH_NAME",
     "BRANCH_ACTION",
     "SELF_REVIEW_REQUESTED",
+    "DEGRADED",
+    "BOTH_DOWN",
+    "CODEX_STATE",
+    "CURSOR_STATE",
+    "DEGRADED_PROMPT_REQUIRED",
+    "ROUTE",
+    "REBASE_RC",
+    "REBASE_OUTCOME",
+    "CONFLICT_FILES",
+    "REBASE_ERROR",
+    "SKIPPED_ALREADY_PUSHED",
+    "SKIPPED_ALREADY_FRESH",
 )
+_ADVISORY_STDOUT_PREFIXES: tuple[str, ...] = ("PHANTOM_",)
 _KEY_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -158,6 +173,7 @@ class BootstrapOptions:
     resume_plan_tail: bool = False
     skip_codex_probe: bool = False
     skip_cursor_probe: bool = False
+    non_interactive: str = ""
 
 
 @dataclass
@@ -978,6 +994,57 @@ def _filtered_envelope(text: str, *, resume: bool) -> str:
     return "\n".join(lines) + ("\n" if lines else "")
 
 
+def _routing_file_trusted(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
+def _restore_resume_coder(data: dict[str, str], routing_file: Path, tmpdir: str) -> None:
+    if data.get("coder"):
+        return
+    sources: list[Path] = []
+    if routing_file.exists() and _routing_file_trusted(routing_file):
+        sources.append(routing_file)
+    sources.extend((Path(tmpdir) / "session-env.sh", Path(tmpdir) / "run-flags.sh"))
+    for path in sources:
+        if not path.is_file():
+            continue
+        try:
+            prior = _parse_env_lines(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        for key in ("coder", "coder_fallback"):
+            if prior.get(key) and not data.get(key):
+                data[key] = prior[key]
+        if data.get("coder"):
+            return
+    for path in (Path(tmpdir) / "session-env.sh", Path(tmpdir) / "run-flags.sh"):
+        if not path.is_file():
+            continue
+        if not data.get("coder"):
+            value = _read_key(path, "coder", "")
+            if value in {"claude", "codex", "cursor"}:
+                data["coder"] = value
+        if not data.get("coder_fallback"):
+            value = _read_key(path, "coder_fallback", "")
+            if value:
+                data["coder_fallback"] = value
+        if data.get("coder"):
+            return
+
+
+def _step2_blockers(data: dict[str, str]) -> bool:
+    if data.get("REPO_UNAVAILABLE") == "true":
+        return True
+    plan = data.get("PLAN_FILE", "")
+    if not plan or not Path(plan).is_file():
+        return True
+    tmpdir = data.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return False
+    tmp = Path(tmpdir)
+    return not (tmp / "plan.txt").is_file() or not (tmp / "feature-description.txt").is_file()
+
+
 def _preserve_resume_routing(envelope: str, routing_file: Path) -> str:
     if not routing_file.is_file() or routing_file.is_symlink():
         return envelope
@@ -1053,11 +1120,358 @@ def _invoke_error(step_failed: str, out: str, implement_tmpdir: str) -> None:
         log = Path(implement_tmpdir) / ("copy-plan.stderr.log" if step_failed == "copy-plan" else "gh-issue-view.stderr.log")
         if log.is_file():
             sys.stderr.write(_redact_file(log, implement_tmpdir=implement_tmpdir))
+    if step_failed == "absorbed-degraded-gate" and out.strip():
+        detail = out if out.endswith("\n") else out + "\n"
+        sys.stderr.write(detail)
     print(messages.get(step_failed, f"**⚠ /implement Step 0 bootstrap failed at step={step_failed or 'unknown'}. Aborting.**"), file=sys.stderr)
 
 
 def _str_bool(value: str) -> str:
     return value if value in {"true", "false"} else ""
+
+
+def _is_advisory_stdout_key(key: str) -> bool:
+    return any(key.startswith(prefix) for prefix in _ADVISORY_STDOUT_PREFIXES)
+
+
+def _envelope_text(data: dict[str, str]) -> str:
+    lines = [f"{key}={data[key]}" for key in ROUTING_KEYS if data.get(key)]
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+_GATE_STDERR_KV_PREFIXES: tuple[str, ...] = (
+    "DEGRADED=",
+    "BOTH_DOWN=",
+    "CODEX_STATE=",
+    "CURSOR_STATE=",
+    "PRESENCE_INPUT_EMPTY=",
+)
+
+
+def _parent_invocation_non_interactive() -> bool:
+    def ps_query(field: str, pid_value: int) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                [_PS, "-o", field, "-p", str(pid_value)],
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError:
+            return None
+
+    pid = os.getppid()
+    visited: set[int] = set()
+    for _ in range(8):
+        if pid <= 1 or pid in visited:
+            break
+        visited.add(pid)
+        comm = ps_query("comm=", pid)
+        if comm is None:
+            return False
+        if comm.returncode == 0:
+            comm_name = comm.stdout.strip().lower()
+            if comm_name in {"cron", "crond"} or "cron" in comm_name:
+                return True
+        args = ps_query("args=", pid)
+        if args is None:
+            return False
+        if args.returncode == 0:
+            args_line = args.stdout.strip()
+            if args_line:
+                lower = args_line.lower()
+                if "<<autonomous-loop" in lower:
+                    return True
+                if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
+                    return True
+        ppid = ps_query("ppid=", pid)
+        if ppid is None:
+            return False
+        if ppid.returncode != 0:
+            break
+        try:
+            pid = int(ppid.stdout.strip())
+        except ValueError:
+            break
+    return False
+
+
+def _relay_gate_stderr(stderr: str, *, force_all: bool = False) -> None:
+    if not stderr.strip():
+        return
+    if force_all:
+        for line in stderr.splitlines():
+            if line.strip():
+                _err(line)
+        return
+    for line in stderr.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped in {"DEGRADED_EXPLANATION_BEGIN", "DEGRADED_EXPLANATION_END"}:
+            continue
+        if any(stripped.startswith(prefix) for prefix in _GATE_STDERR_KV_PREFIXES):
+            continue
+        _err(line)
+
+
+def _resolve_non_interactive(
+    explicit: str,
+    env: Mapping[str, str] | None = None,
+) -> bool:
+    if explicit in {"true", "false"}:
+        return explicit == "true"
+    runtime = env or os.environ
+    for key in ("LARCH_SKILL_NON_INTERACTIVE", "LARCH_AUTONOMOUS_LOOP", "LARCH_EVAL_RUN", "LARCH_CRON"):
+        if runtime.get(key, "") == "true":
+            return True
+    if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
+        return True
+    return _parent_invocation_non_interactive()
+
+
+def resolve_non_interactive_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="bootstrap resolve-non-interactive", add_help=True)
+    parser.add_argument("--explicit", default="", choices=["", "true", "false"])
+    args = parser.parse_args(argv)
+    print("true" if _resolve_non_interactive(args.explicit) else "false")
+    return 0
+
+
+def _resolve_probe_cwd() -> Path:
+    git = shutil.which("git")
+    if git is None:
+        return _REPO_ROOT
+    result = subprocess.run(
+        [git, "rev-parse", "--show-toplevel"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        top = result.stdout.strip()
+        if top:
+            return Path(top)
+    return _REPO_ROOT
+
+
+def _continue_predicate(data: dict[str, str]) -> bool:
+    if data.get("IMPLEMENT_BAIL_REASON"):
+        return False
+    if data.get("STALL_TRACKING") == "true":
+        return False
+    if _step2_blockers(data):
+        return False
+    return bool(data.get("coder"))
+
+
+@dataclass
+class ContinueTailResult:
+    routing: dict[str, str] = field(default_factory=dict)
+    advisory_lines: list[str] = field(default_factory=list)
+    contract_failure: bool = False
+    step_failed: str = ""
+    failure_detail: str = ""
+
+
+def _parse_gate_output(text: str) -> tuple[dict[str, str], list[str], str]:
+    routing: dict[str, str] = {}
+    explanation: list[str] = []
+    in_explanation = False
+    for line in text.splitlines():
+        if line == "DEGRADED_EXPLANATION_BEGIN":
+            in_explanation = True
+            continue
+        if line == "DEGRADED_EXPLANATION_END":
+            in_explanation = False
+            continue
+        if in_explanation:
+            explanation.append(line)
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in {"DEGRADED", "BOTH_DOWN", "CODEX_STATE", "CURSOR_STATE", "PRESENCE_INPUT_EMPTY"}:
+            routing[key] = value
+    return routing, explanation, "\n".join(explanation).strip()
+
+
+def _parse_probe_stdout(text: str) -> tuple[dict[str, str], list[str]]:
+    routing: dict[str, str] = {}
+    advisory: list[str] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            if _is_advisory_stdout_key(key):
+                advisory.append(f"{key}={value}")
+                continue
+            if key in ROUTING_KEYS:
+                routing[key] = value
+                continue
+        for token in line.split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            if _is_advisory_stdout_key(key):
+                advisory.append(f"{key}={value}")
+            elif key in ROUTING_KEYS:
+                routing[key] = value
+    return routing, advisory
+
+
+def _write_degraded_sentinel(implement_tmpdir: str) -> None:
+    with contextlib.suppress(OSError):
+        Path(implement_tmpdir, ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+
+
+def _log_degraded_explanation(st: BootstrapState, explanation: str) -> None:
+    if not st.implement_tmpdir or not explanation:
+        return
+    entry = (
+        "- **Step 0 degraded-tools gate (non-interactive)**:\n"
+        f"  {explanation.replace(chr(10), '  ' + chr(10))}\n"
+    )
+    _append_execution_issue_entry(Path(st.implement_tmpdir) / "execution-issues.md", "Warnings", entry)
+
+
+def _run_1r_probe(st: BootstrapState, *, forked_target: str) -> tuple[dict[str, str], list[str], int]:
+    probe = _SCRIPTS / "rebase-checkpoint-probe.sh"
+    env = {**os.environ, "IMPLEMENT_TMPDIR": st.implement_tmpdir}
+    result = _run(
+        [str(probe), "1.r", "plan materialization", "--forked-target", forked_target if forked_target in {"true", "false"} else "false"],
+        env=env,
+        cwd=str(_resolve_probe_cwd()),
+    )
+    routing, advisory = _parse_probe_stdout(result.stdout)
+    routing["REBASE_RC"] = str(result.returncode)
+    route = routing.get("ROUTE", "")
+    if route not in {"continue", "conflict", "bail"}:
+        routing["ROUTE"] = "bail"
+        routing.setdefault("REBASE_OUTCOME", "failed")
+        error = _single_line(result.stderr or result.stdout or f"probe rc {result.returncode}")
+        routing["REBASE_ERROR"] = _redact_text(error, implement_tmpdir=st.implement_tmpdir)
+    return routing, advisory, result.returncode
+
+
+def _run_absorbed_continue_tail(
+  data: dict[str, str],
+  *,
+  opts: BootstrapOptions,
+  non_interactive: bool,
+) -> ContinueTailResult:
+    if not _continue_predicate(data):
+        return ContinueTailResult()
+    tmpdir = data.get("IMPLEMENT_TMPDIR", "")
+    if not tmpdir:
+        return ContinueTailResult(contract_failure=True, step_failed="absorbed-continue-tail")
+    st = BootstrapState(opts, implement_tmpdir=tmpdir)
+    st.codex_present = data.get("CODEX_PRESENT", st.codex_present)
+    st.cursor_present = data.get("CURSOR_PRESENT", st.cursor_present)
+    st.codex_binary_found = data.get("CODEX_BINARY_FOUND", st.codex_binary_found)
+    st.cursor_binary_found = data.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+    forked_target = opts.forked_target if opts.forked_target in {"true", "false"} else "false"
+    sentinel = Path(tmpdir) / ".degraded-tools-gate-prompted"
+    sentinel_exists = sentinel.is_file()
+    gate = _cli(
+        "agent",
+        "degraded-tools-gate",
+        "--skill",
+        "implement",
+        "--codex-present",
+        st.codex_present,
+        "--cursor-present",
+        st.cursor_present,
+        "--codex-binary-found",
+        st.codex_binary_found or "unknown",
+        "--cursor-binary-found",
+        st.cursor_binary_found or "unknown",
+    )
+    if gate.returncode != 0:
+        gate_diag = (gate.stderr or "").strip()
+        if gate.stdout and gate.stdout.strip():
+            gate_diag = f"{gate_diag}\n{gate.stdout.strip()}".strip() if gate_diag else gate.stdout.strip()
+        detail = _redact_text(gate_diag, implement_tmpdir=tmpdir) if gate_diag else ""
+        return ContinueTailResult(
+            contract_failure=True,
+            step_failed="absorbed-degraded-gate",
+            failure_detail=detail,
+        )
+    gate_text = gate.stdout + gate.stderr
+    gate_routing, explanation_lines, explanation_text = _parse_gate_output(gate_text)
+    _relay_gate_stderr(
+        gate.stderr,
+        force_all=gate_routing.get("PRESENCE_INPUT_EMPTY") == "true",
+    )
+    both_down_seen = "BOTH_DOWN" in gate_routing
+    both_down = gate_routing.get("BOTH_DOWN", "")
+    degraded = gate_routing.get("DEGRADED", "false") == "true"
+    routing: dict[str, str] = {
+        "DEGRADED": gate_routing.get("DEGRADED", "false"),
+        "CODEX_STATE": gate_routing.get("CODEX_STATE", ""),
+        "CURSOR_STATE": gate_routing.get("CURSOR_STATE", ""),
+        "DEGRADED_PROMPT_REQUIRED": "false",
+    }
+    if gate_routing.get("BOTH_DOWN") in {"true", "false"}:
+        routing["BOTH_DOWN"] = gate_routing["BOTH_DOWN"]
+    if gate_routing.get("PRESENCE_INPUT_EMPTY") == "true":
+        _append_execution_issue_entry(
+            Path(tmpdir) / "execution-issues.md",
+            "Warnings",
+            "- **Step 0 degraded-tools gate**: PRESENCE_INPUT_EMPTY=true (caller rehydration warning)\n",
+        )
+    prompt_required = False
+    run_probe = True
+    if degraded:
+        if not explanation_text:
+            return ContinueTailResult(contract_failure=True, step_failed="absorbed-degraded-explanation-missing")
+        if not both_down_seen:
+            if non_interactive:
+                return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            for line in explanation_lines:
+                _err(line)
+            prompt_required = True
+            run_probe = False
+        elif both_down == "false":
+            if not sentinel_exists:
+                for line in explanation_lines:
+                    _err(line)
+                if non_interactive:
+                    _log_degraded_explanation(st, explanation_text)
+                _write_degraded_sentinel(tmpdir)
+        elif both_down == "true":
+            if non_interactive:
+                if not sentinel_exists:
+                    for line in explanation_lines:
+                        _err(line)
+                    _log_degraded_explanation(st, explanation_text)
+                    _write_degraded_sentinel(tmpdir)
+            elif sentinel_exists:
+                pass
+            else:
+                for line in explanation_lines:
+                    _err(line)
+                prompt_required = True
+                run_probe = False
+        else:
+            if non_interactive:
+                return ContinueTailResult(contract_failure=True, step_failed="absorbed-both-down-missing")
+            for line in explanation_lines:
+                _err(line)
+            prompt_required = True
+            run_probe = False
+    advisory: list[str] = []
+    if prompt_required and not non_interactive:
+        routing["DEGRADED_PROMPT_REQUIRED"] = "true"
+    elif run_probe:
+        probe_routing, probe_advisory, _probe_rc = _run_1r_probe(st, forked_target=forked_target)
+        routing.update({key: value for key, value in probe_routing.items() if value})
+        if _step2_blockers({**data, **routing}):
+            routing.pop("ROUTE", None)
+        advisory.extend(probe_advisory)
+    return ContinueTailResult(routing=routing, advisory_lines=advisory)
 
 
 def invoke_main(argv: list[str]) -> int:
@@ -1073,6 +1487,7 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--caller-env", default="")
     parser.add_argument("--emergency-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--non-interactive", default="", choices=["", "true", "false"])
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -1086,6 +1501,7 @@ def invoke_main(argv: list[str]) -> int:
     run_id = args.run_id or env.get("RUN_ID", "")
     emergency = args.emergency_requested or _str_bool(env.get("emergency_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
+    non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
     coder = "" if args.mode == "resume" else (args.coder or env.get("coder", ""))
     if args.mode == "resume" and not env.get("IMPLEMENT_TMPDIR", ""):
         print("bootstrap invoke: --mode resume requires exported IMPLEMENT_TMPDIR", file=sys.stderr)
@@ -1102,6 +1518,7 @@ def invoke_main(argv: list[str]) -> int:
         preflight_tmpdir=preflight,
         coder_opt=coder if coder in {"claude", "codex", "cursor"} else "",
         resume_plan_tail=args.mode == "resume",
+        non_interactive=non_interactive,
     )
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -1119,23 +1536,46 @@ def invoke_main(argv: list[str]) -> int:
         return 1
     envelope = _filtered_envelope(out, resume=args.mode == "resume")
     routing_file = Path(tmpdir) / "bootstrap-routing.env"
+    routing_trusted = _routing_file_trusted(routing_file)
+    if args.mode == "resume" and routing_trusted:
+        envelope = _preserve_resume_routing(envelope, routing_file)
+    data = _parse_env_lines(envelope)
+    if args.mode == "resume":
+        _restore_resume_coder(data, routing_file, tmpdir)
+    tail = _run_absorbed_continue_tail(
+        data,
+        opts=opts,
+        non_interactive=_resolve_non_interactive(non_interactive, env),
+    )
+    if tail.contract_failure:
+        _emit_kv("STEP_FAILED", tail.step_failed or "absorbed-continue-tail")
+        _invoke_error(tail.step_failed or "absorbed-continue-tail", tail.failure_detail, tmpdir)
+        return 2
+    for key, value in tail.routing.items():
+        if value:
+            data[key] = value
+    envelope = _envelope_text(data)
+
+    def _emit_envelope() -> None:
+        sys.stdout.write(envelope)
+        for line in tail.advisory_lines:
+            sys.stdout.write(line + "\n")
+
     if routing_file.is_symlink():
         print("bootstrap invoke: refusing to overwrite symlinked bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
     if routing_file.exists() and not routing_file.is_file():
         print("bootstrap invoke: refusing to overwrite non-regular bootstrap-routing.env (stdout envelope emitted)", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
-    if args.mode == "resume":
-        envelope = _preserve_resume_routing(envelope, routing_file)
     try:
         _atomic_text(routing_file, envelope)
     except OSError as exc:
         print(f"bootstrap invoke: could not write bootstrap-routing.env ({exc}); stdout envelope emitted", file=sys.stderr)
-        sys.stdout.write(envelope)
+        _emit_envelope()
         return 0
-    sys.stdout.write(envelope)
+    _emit_envelope()
     return 0
 
 

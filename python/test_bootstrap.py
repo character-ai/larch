@@ -374,6 +374,18 @@ def test_step0_wrapper_rejects_invalid_boolean_value() -> None:
     assert "--forked-target must be true or false" in result.stderr
 
 
+def test_step0_wrapper_runs_without_non_interactive_flag() -> None:
+    result = subprocess.run(
+        ["bash", str(_REPO_ROOT / "skills" / "implement" / "scripts" / "step-0-bootstrap.sh"), "--mode", "initial"],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+        check=False,
+    )
+    assert "NON_INTERACTIVE_ARG: unbound variable" not in result.stderr
+    assert "unbound variable" not in result.stderr.lower()
+
+
 def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     captured: list[bootstrap.BootstrapOptions] = []
     monkeypatch.setenv("TARGET_ISSUE_NUMBER", "41")
@@ -550,8 +562,12 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
     assert (tmp_path / "bootstrap-routing.env").is_dir()
 
 
+@pytest.mark.usefixtures("gate_and_probe")
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     (tmp_path / "bootstrap-routing.env").write_text(
         f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\ncoder_fallback=true\n",
         encoding="utf-8",
@@ -560,7 +576,8 @@ def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypat
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
         print("RUN_ID=R1")
-        print(f"PLAN_FILE={tmp_path / 'plan.txt'}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
         return 0
 
     monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
@@ -764,3 +781,670 @@ def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkey
     assert st.implement_tmpdir == str(tmp_path)
     assert "pointer failed" in (tmp_path / "write-implement-env-warning.log").read_text(encoding="utf-8")
     assert any(call[:2] == ("run-log", "append-failure") for call in calls)
+
+
+def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    data = {
+        "IMPLEMENT_TMPDIR": str(tmp_path),
+        "IMPLEMENT_BAIL_REASON": "",
+        "STALL_TRACKING": "false",
+        "PLAN_FILE": str(plan),
+        "coder": "codex",
+        "CODEX_PRESENT": "true",
+        "CURSOR_PRESENT": "true",
+        "CODEX_BINARY_FOUND": "true",
+        "CURSOR_BINARY_FOUND": "true",
+    }
+    data.update(overrides)
+    return data
+
+
+def _healthy_gate_stdout() -> str:
+    return "DEGRADED=false\nBOTH_DOWN=false\nCODEX_STATE=ok\nCURSOR_STATE=ok\n"
+
+
+def _degraded_gate_stdout(*, both_down: str = "true") -> str:
+    return (
+        "DEGRADED=true\n"
+        f"BOTH_DOWN={both_down}\n"
+        "CODEX_STATE=binary-missing\n"
+        "CURSOR_STATE=binary-missing\n"
+        "DEGRADED_EXPLANATION_BEGIN\n"
+        "⚠ Degraded external-tool availability for this /implement run:\n"
+        "DEGRADED_EXPLANATION_END\n"
+    )
+
+
+def _probe_stdout(*, route: str = "continue") -> str:
+    return f"REBASE_OUTCOME=ok\nROUTE={route}\nSKIPPED_ALREADY_FRESH=true\nPHANTOM_STATUS=clean\n"
+
+
+@pytest.fixture
+def gate_and_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _healthy_gate_stdout(), "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "rebase-checkpoint-probe.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+
+
+@pytest.mark.usefixtures("gate_and_probe")
+def test_invoke_absorbed_degraded_gate_healthy_tools_do_not_prompt(tmp_path: Path) -> None:
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("ROUTE") == "continue"
+
+
+def test_invoke_absorbed_degraded_gate_one_down_interactive_writes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(both_down="false"), "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert (tmp_path / ".degraded-tools-gate-prompted").is_file()
+    assert tail.routing.get("ROUTE") == "continue"
+
+
+def test_invoke_absorbed_degraded_gate_both_down_interactive_emits_prompt_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
+    assert "ROUTE" not in tail.routing
+
+
+def test_invoke_absorbed_degraded_gate_existing_sentinel_avoids_reprompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = (tmp_path / ".degraded-tools-gate-prompted").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("ROUTE") == "continue"
+
+
+def test_invoke_absorbed_degraded_gate_both_down_noninteractive_logs_and_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        calls.append(args)
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(), "")
+        if args[:2] == ("run-log", "append-entry"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("ROUTE") == "continue"
+    assert (tmp_path / ".degraded-tools-gate-prompted").is_file()
+    assert any(call[:2] == ("run-log", "append-entry") for call in calls)
+
+
+def test_invoke_absorbed_degraded_gate_noninteractive_never_emits_prompt_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+
+
+def test_invoke_absorbed_degraded_gate_missing_both_down_interactive_fails_closed_to_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(
+            list(args),
+            0,
+            "DEGRADED=true\nCODEX_STATE=binary-missing\nCURSOR_STATE=binary-missing\n"
+            "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
+            "",
+        ),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "true"
+
+
+def test_invoke_absorbed_degraded_gate_missing_both_down_noninteractive_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(
+            list(args),
+            0,
+            "DEGRADED=true\nCODEX_STATE=binary-missing\nCURSOR_STATE=binary-missing\n"
+            "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
+            "",
+        ),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    assert tail.contract_failure
+    assert tail.step_failed == "absorbed-both-down-missing"
+
+
+@pytest.mark.usefixtures("gate_and_probe")
+def test_invoke_absorbed_1r_continue_routes_to_step2(tmp_path: Path) -> None:
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("ROUTE") == "continue"
+    assert tail.routing.get("REBASE_RC") == "0"
+
+
+def test_invoke_absorbed_1r_conflict_relays_conflict_files_and_rebase_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda argv, **_: subprocess.CompletedProcess(
+            argv,
+            1,
+            "REBASE_OUTCOME=conflict\nROUTE=conflict\nCONFLICT_FILES=a.py,b.py\n",
+            "",
+        ),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("ROUTE") == "conflict"
+    assert tail.routing.get("REBASE_RC") == "1"
+    assert tail.routing.get("CONFLICT_FILES") == "a.py,b.py"
+
+
+def test_invoke_absorbed_1r_bail_relays_rebase_error_and_rebase_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda argv, **_: subprocess.CompletedProcess(
+            argv,
+            3,
+            "REBASE_OUTCOME=failed\nROUTE=bail\nREBASE_ERROR=detached-head\n",
+            "",
+        ),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("ROUTE") == "bail"
+    assert tail.routing.get("REBASE_RC") == "3"
+    assert tail.routing.get("REBASE_ERROR") == "detached-head"
+
+
+def test_invoke_absorbed_1r_synthesizes_rebase_rc_from_process_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda argv, **_: subprocess.CompletedProcess(argv, 9, "REBASE_OUTCOME=failed\nROUTE=bail\n", ""),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("REBASE_RC") == "9"
+
+
+def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        print("CODEX_PRESENT=true")
+        print("CURSOR_PRESENT=true")
+        print("CODEX_BINARY_FOUND=true")
+        print("CURSOR_BINARY_FOUND=true")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 0
+    out = capsys.readouterr().out
+    stored = (tmp_path / "bootstrap-routing.env").read_text(encoding="utf-8")
+    assert "PHANTOM_STATUS=clean" in out
+    assert "PHANTOM_STATUS" not in stored
+
+
+def test_filtered_envelope_retains_degraded_prompt_required() -> None:
+    text = "IMPLEMENT_TMPDIR=/tmp/x\nDEGRADED_PROMPT_REQUIRED=true\nROUTE=\nPHANTOM_STATUS=clean\n"
+    out = bootstrap._filtered_envelope(text, resume=False)  # pyright: ignore[reportPrivateUsage]
+    assert "DEGRADED_PROMPT_REQUIRED=true" in out
+    assert "PHANTOM_STATUS" not in out
+
+
+def test_continue_predicate_skips_on_bail(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path, IMPLEMENT_BAIL_REASON="dirty-tree")
+    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_continue_predicate_skips_on_repo_unavailable(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path, REPO_UNAVAILABLE="true")
+    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_continue_predicate_skips_without_feature_description(tmp_path: Path) -> None:
+    data = _continue_data(tmp_path)
+    (tmp_path / "feature-description.txt").unlink()
+    assert not bootstrap._continue_predicate(data)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_restore_resume_coder_from_symlinked_routing_file(tmp_path: Path) -> None:
+    target = tmp_path / "routing-target.env"
+    _ = target.write_text("coder=cursor\ncoder_fallback=true\n", encoding="utf-8")
+    routing = tmp_path / "bootstrap-routing.env"
+    routing.symlink_to(target)
+    _ = (tmp_path / "session-env.sh").write_text("coder=codex\n", encoding="utf-8")
+    data: dict[str, str] = {"IMPLEMENT_TMPDIR": str(tmp_path)}
+    bootstrap._restore_resume_coder(data, routing, str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert data["coder"] == "codex"
+    assert "coder_fallback" not in data
+
+
+def test_resolve_non_interactive_detects_larch_cron_env() -> None:
+    assert bootstrap._resolve_non_interactive("", {"LARCH_CRON": "true"})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_non_interactive_detects_parent_claude_p(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
+    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_non_interactive_both_down_claude_p_never_interactive_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: True)
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _degraded_gate_stdout(), "")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=bootstrap._resolve_non_interactive(""),  # pyright: ignore[reportPrivateUsage]
+    )
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+    assert tail.routing.get("ROUTE") == "continue"
+
+
+def test_invoke_absorbed_degraded_gate_relays_presence_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    gate_stderr = (
+        "agent degraded-tools-gate: ERROR: --codex-present resolved empty "
+        "(caller rehydration bug — read presence keys from the durable session-env file, "
+        "not ambient shell state); treating as down (fail-safe)\n"
+    )
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(
+                ["cli", *args],
+                0,
+                "DEGRADED=true\nBOTH_DOWN=true\nPRESENCE_INPUT_EMPTY=true\n"
+                "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
+                gate_stderr,
+            )
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    assert "--codex-present resolved empty" in capsys.readouterr().err
+
+
+def test_invoke_resume_runs_absorbed_tail_for_symlinked_routing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    target = tmp_path / "routing-target.env"
+    _ = target.write_text(f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n", encoding="utf-8")
+    (tmp_path / "bootstrap-routing.env").symlink_to(target)
+    gate_called = False
+
+    def fake_cli(*args: str, **_kwargs):
+        nonlocal gate_called
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            gate_called = True
+        return subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), "")
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        if "rebase-checkpoint-probe.sh" in str(argv[0]):
+            return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print("RUN_ID=R1")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "resume"]) == 0
+    assert gate_called
+    assert "ROUTE=continue" in capsys.readouterr().out
+
+
+def test_resolve_non_interactive_detects_autonomous_loop_in_parent_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(argv, **kwargs):
+        _ = kwargs
+        if len(argv) >= 3 and argv[2] == "args=":
+            return subprocess.CompletedProcess(argv, 0, "claude <<autonomous-loop-dynamic>> /implement 42", "")
+        if len(argv) >= 3 and argv[2] == "comm=":
+            return subprocess.CompletedProcess(argv, 0, "claude", "")
+        if len(argv) >= 3 and argv[2] == "ppid=":
+            return subprocess.CompletedProcess(argv, 0, "1", "")
+        return subprocess.CompletedProcess(argv, 1, "", "")
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", fake_run)
+    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+
+    def fake_cli(*args: str, **_kwargs):
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(list(args), 1, "", "agent degraded-tools-gate: presence parse failed")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        print("CODEX_PRESENT=true")
+        print("CURSOR_PRESENT=true")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial"]) == 2
+    captured = capsys.readouterr()
+    assert "STEP_FAILED=absorbed-degraded-gate" in captured.out
+    assert "presence parse failed" in captured.err
+
+
+def test_resolve_non_interactive_honors_explicit_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_EVAL_RUN", raising=False)
+    assert bootstrap._resolve_non_interactive("true")  # pyright: ignore[reportPrivateUsage]
+    assert not bootstrap._resolve_non_interactive("false")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setenv("LARCH_EVAL_RUN", "true")
+    assert bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+    assert bootstrap._resolve_non_interactive("", {"LARCH_AUTONOMOUS_LOOP": "true"})  # pyright: ignore[reportPrivateUsage]
+
+
+def test_resolve_non_interactive_defaults_interactive_without_explicit_signal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_parent_invocation_non_interactive", lambda: False)
+    assert not bootstrap._resolve_non_interactive("")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_probe_stdout_preserves_spaced_rebase_error() -> None:
+    routing, advisory = bootstrap._parse_probe_stdout(  # pyright: ignore[reportPrivateUsage]
+        "REBASE_OUTCOME=failed\nROUTE=bail\nREBASE_ERROR=fetch failed on upstream main\nCONFLICT_FILES=docs/user guide.md\nPHANTOM_STATUS=clean tree\n",
+    )
+    assert routing["REBASE_ERROR"] == "fetch failed on upstream main"
+    assert routing["CONFLICT_FILES"] == "docs/user guide.md"
+    assert any(line.startswith("PHANTOM_STATUS=") for line in advisory)
+
+
+def test_invoke_absorbed_degraded_gate_relays_explanation_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    err = capsys.readouterr().err
+    assert "Degraded external-tool availability" in err
+
+
+def test_invoke_absorbed_degraded_gate_one_down_interactive_relays_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(both_down="false"), ""),
+    )
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert "Degraded external-tool availability" in capsys.readouterr().err
+
+
+def test_invoke_absorbed_degraded_gate_both_down_interactive_relays_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _degraded_gate_stdout(), ""),
+    )
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert "Degraded external-tool availability" in capsys.readouterr().err
+
+
+def test_invoke_absorbed_degraded_gate_missing_presence_keys_passed_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, **_kwargs):
+        captured.append(args)
+        if args[:2] == ("agent", "degraded-tools-gate"):
+            return subprocess.CompletedProcess(
+                ["cli", *args],
+                0,
+                "DEGRADED=true\nBOTH_DOWN=true\nPRESENCE_INPUT_EMPTY=true\n"
+                "DEGRADED_EXPLANATION_BEGIN\nwarn\nDEGRADED_EXPLANATION_END\n",
+                "",
+            )
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    data = _continue_data(tmp_path)
+    del data["CODEX_PRESENT"]
+    del data["CURSOR_PRESENT"]
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_: subprocess.CompletedProcess(argv, 0, _probe_stdout(), ""))
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        data,
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=True,
+    )
+    gate_args = next(call for call in captured if call[:2] == ("agent", "degraded-tools-gate"))
+    assert "--codex-present" in gate_args
+    assert "--cursor-present" in gate_args
+    assert gate_args[gate_args.index("--codex-present") + 1] == ""
+    assert gate_args[gate_args.index("--cursor-present") + 1] == ""
+    assert tail.routing.get("DEGRADED_PROMPT_REQUIRED") == "false"
+
+
+def test_invoke_absorbed_1r_passes_forked_target_without_base_remote_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[list[str]] = []
+
+    def fake_run(argv, **_kwargs):
+        captured.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
+
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder", forked_target="true"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("ROUTE") == "continue"
+    argv = captured[0]
+    assert "--forked-target" in argv
+    assert argv[argv.index("--forked-target") + 1] == "true"
+    assert "--base-remote" not in argv
+    assert "--base-ref" not in argv
+
+
+def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    _ = consumer.mkdir()
+    _ = subprocess.run(["git", "init"], cwd=consumer, capture_output=True, check=True)
+    captured_cwd: list[str | None] = []
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env
+        captured_cwd.append(cwd)
+        return subprocess.CompletedProcess(argv, 0, _probe_stdout(), "")
+
+    monkeypatch.chdir(consumer)
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    _ = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert captured_cwd
+    cwd = captured_cwd[0]
+    assert cwd is not None
+    assert Path(cwd).resolve() == consumer.resolve()
+    assert Path(cwd).resolve() != _REPO_ROOT.resolve()
+
+
+def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = tmp_path / "plan.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    monkeypatch.setattr(
+        bootstrap,
+        "_cli",
+        lambda *args, **_: subprocess.CompletedProcess(list(args), 0, "DEGRADED=true\nBOTH_DOWN=true\n", ""),
+    )
+
+    def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
+        print(f"IMPLEMENT_TMPDIR={tmp_path}")
+        print(f"PLAN_FILE={plan}")
+        print("STALL_TRACKING=false")
+        print("coder=codex")
+        print("CODEX_PRESENT=true")
+        print("CURSOR_PRESENT=true")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+    assert bootstrap.invoke_main(["--mode", "initial", "--non-interactive", "false"]) == 2
+
+
+def test_invoke_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(bootstrap, "_cli", lambda *args, **_: subprocess.CompletedProcess(list(args), 0, _healthy_gate_stdout(), ""))
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda argv, **_: subprocess.CompletedProcess(argv, 9, "REBASE_OUTCOME=failed\nROUTE=garbage\n", "probe stderr"),
+    )
+    tail = bootstrap._run_absorbed_continue_tail(  # pyright: ignore[reportPrivateUsage]
+        _continue_data(tmp_path),
+        opts=bootstrap.BootstrapOptions(up_to_phase="coder"),
+        non_interactive=False,
+    )
+    assert tail.routing.get("ROUTE") == "bail"
+    assert tail.routing.get("REBASE_RC") == "9"
+    assert tail.routing.get("REBASE_ERROR")

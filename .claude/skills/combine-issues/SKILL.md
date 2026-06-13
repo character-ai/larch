@@ -326,7 +326,7 @@ Approval-required audit edges include:
 - Audit exception edges where the client is non-OOS and the blocker is a newly combined `[OOS]` issue.
 - All Tier-2 semantic edges.
 
-Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `issue add-blocked-by --repo "$REPO"`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
+Before prompting, show the client issue number and title, blocker issue number and title, source kind, confidence when present, and reason. Do not write rejected edges. Write approved audit edges with `python3 "$PWD/python/cli.py" issue add-blocked-by --client-issue <client> --blocker-issue <blocker> --repo "$REPO"`. Treat idempotent already-present responses as success. Record audit write failures separately from inherited write failures. Count Tier-1 safe writes and approved audit writes in `audit_edges_written`.
 
 <!-- step:oos-10 — Dependency Summary -->
 

@@ -29,6 +29,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "launch-claude-subprocess"): ("agents", "launch_claude_subprocess_main"),
     ("bootstrap", "invoke"): ("bootstrap", "invoke_main"),
     ("bootstrap", "parse-routing"): ("bootstrap", "parse_routing_main"),
+    ("bootstrap", "resolve-non-interactive"): ("bootstrap", "resolve_non_interactive_main"),
     ("admission", "gate"): ("admission", "gate_main"),
     ("admission", "preflight"): ("admission", "preflight_main"),
     ("admission", "fork-env"): ("admission", "fork_env_main"),

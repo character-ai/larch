@@ -17,6 +17,7 @@ UPSTREAM_REPO_ARG=""
 RUN_ID_ARG=""
 CALLER_ENV_ARG=""
 SESSION_ENV_ARG=""
+NON_INTERACTIVE_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode) [ $# -ge 2 ] || { printf '%s
@@ -41,6 +42,8 @@ while [ $# -gt 0 ]; do
 ' 'step-0-bootstrap.sh: --caller-env requires a value' >&2; exit 2; }; CALLER_ENV_ARG=$2; shift 2 ;;
         --session-env) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --session-env requires a value' >&2; exit 2; }; SESSION_ENV_ARG=$2; shift 2 ;;
+        --non-interactive) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --non-interactive requires a value' >&2; exit 2; }; NON_INTERACTIVE_ARG=$2; shift 2 ;;
         --help) printf '%s
 ' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--emergency-requested true|false] [--self-review-requested true|false] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
         *) printf '%s
@@ -55,6 +58,8 @@ case "$SELF_REVIEW_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --self-review-requested must be true or false' >&2; exit 2 ;; esac
 case "$FORKED_TARGET_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --forked-target must be true or false' >&2; exit 2 ;; esac
+case "$NON_INTERACTIVE_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --non-interactive must be true or false' >&2; exit 2 ;; esac
 
 
 rehydrate_plugin_root() {
@@ -100,6 +105,15 @@ case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; e
 [ -n "$RUN_ID_ARG" ] && RUN_ID="$RUN_ID_ARG"
 [ -n "$CALLER_ENV_ARG" ] && CALLER_ENV_PATH="$CALLER_ENV_ARG"
 [ -n "$SESSION_ENV_ARG" ] && SESSION_ENV_PATH="$SESSION_ENV_ARG"
+_non_interactive=false
+case "$NON_INTERACTIVE_ARG" in
+    true) _non_interactive=true ;;
+    false) _non_interactive=false ;;
+    "")
+        _resolved=$(python3 "$PY_CLI" bootstrap resolve-non-interactive 2>/dev/null || printf '%s' false)
+        case "$_resolved" in true) _non_interactive=true ;; esac
+        ;;
+esac
 rehydrate_plugin_root
 read_run_flag_key() {
     local key=$1 default_value=$2 file
@@ -183,7 +197,7 @@ if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
 fi
 set +e
-_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --emergency-requested "${emergency_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}")
+_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --emergency-requested "${emergency_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
 _inv_rc=$?
 set -e
 if [ "$_inv_rc" -eq 2 ]; then
