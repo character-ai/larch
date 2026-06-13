@@ -108,10 +108,11 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t100\t120\n", encoding="utf-8")
     expected = render_gantt(100, 140, [GanttRow("a", 100, 120)], width=12) + "\n"
+    cli = str(Path(__file__).with_name("cli.py"))
     result = subprocess.run(
         [
             sys.executable,
-            "python/cli.py",
+            cli,
             "gantt",
             "render",
             "--window-start-s",
@@ -134,7 +135,7 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     bad_result = subprocess.run(
         [
             sys.executable,
-            "python/cli.py",
+            cli,
             "gantt",
             "render",
             "--window-start-s",
