@@ -148,13 +148,11 @@ persist_effective_sensitive_corpus() {
 file_tier_a_after_compose() {
     local body_file=$1
     local dedup_env="$DESIGN_TMPDIR/design-failure-tier-a-dedup.env"
-    local dedup_norm="$DESIGN_TMPDIR/design-failure-tier-a-dedup.normalized.env"
     local status title repo helper_out
     if ! "$REPORT_SH" "${helper_common[@]}" dedup-tier-a-report --body-file "$body_file" >"$dedup_env" 2>"$DESIGN_TMPDIR/design-failure-tier-a-dedup.stderr.log"; then
         return 0
     fi
-    "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$dedup_env" >"$dedup_norm" 2>/dev/null || true
-    status=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$dedup_norm" --key STALL_RECOVERY_REPORT_STATUS --default '')
+    status=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$dedup_env" --key STALL_RECOVERY_REPORT_STATUS --default '')
     case "$status" in
         no-match|lookup-failed-open)
             repo="$REPO"
@@ -177,7 +175,7 @@ file_tier_a_after_compose() {
             fi
             ;;
         dedup-comment|dry-run|fallback-print-required|filed|printed)
-            [ -s "$dedup_norm" ] && cat "$dedup_norm" >>"$COMPOSE_ENV"
+            [ -s "$dedup_env" ] && cat "$dedup_env" >>"$COMPOSE_ENV"
             ;;
     esac
 }
