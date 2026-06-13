@@ -42,14 +42,14 @@ Design an implementation plan for a feature and review it with the mechanical pl
 
 - Use empty string for the `description` parameter on all Bash tool calls.
 - Use terse 3-5 word descriptions for Agent tool calls.
-- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
+- Do not produce explanatory prose between tool call outputs. Only print: step breadcrumb lines (start `🔶`, skip `⏩`); plain immediate-background progress breadcrumbs required by specific non-Step-3 fences, such as Step 5c and Final summary; all warning/error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans, architecture diagrams); and the compact reviewer status table only for the Step 3 review fence and Step 3 resume fences (see below).
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-**Compact reviewer status table**: Use the twice-per-wait reviewer status cadence. Print a compact table exactly twice for each immediate-background wait:
+**Compact reviewer status table**: Use the twice-per-wait reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print a compact table exactly twice for those Step 3 waits:
 
-1. **Post-launch**: immediately after the background launch ack, show each known slot as pending (`⏳`) or skipped (`⊘`) when the skip is already known.
-2. **Post-notification**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
+1. **Post-launch for Step 3 waits**: immediately after the background launch ack, show each known slot as pending (`⏳`) or skipped (`⊘`) when the skip is already known.
+2. **Post-notification for Step 3 waits**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
 
 ```
 📊 Reviewers: | Cursor-Arch: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ⏳ | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ⏳ | Codex-Requirements: ⏳ |
@@ -333,7 +333,7 @@ Debug harness: `skills/design/scripts/_debug-step5c.sh`.
 
 Wait for `<task-notification>` before reading `final-summary.md`, emitting the summary body, printing a cancellation line, or exiting.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print only the permitted breadcrumb/status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
+**Immediate-background wait rule**: After the `Command running in background` ack, print one plain progress breadcrumb, for example: `⏳ final-summary: writing final summary...`. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 
 After Step 5c `design-publish.sh` returns with the latest `_publish_rc` 0, 1, or 3, when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, the orchestrator MUST read that path and emit its full body verbatim as plain chat markdown (same mechanism as Step 5c item 5). This applies on plan-block-write failure (`PLAN_WRITE_OK=false`) and success. After this cancellation fence's `render-final-summary.sh --post-publish-only` invocation, use the same non-empty-file gate (not helper exit 0). Mechanism: read `final-summary.md` (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text), emit the entire file body verbatim as plain markdown chat text. Do NOT paraphrase, summarize, reorder, or add prose between bullets. The full structured block — including title, mode, duration, cost line with per-agent breakdown, tokens, and all bullets — must appear at top chat. Do NOT add free-form prose around the block. The verbatim file body is the only permitted summary content at top chat. When `design-step-final-summary.sh` stdout includes `REPORT_GATE_SIDECARS_FILE=<path>` and that path is non-empty, read it and emit its full body verbatim immediately after the `final-summary.md` body (same Read/`cat` mechanism; no paraphrase).
 
@@ -585,7 +585,7 @@ Step 3 invokes `design-step3-review.sh` with `run_in_background: true` (immediat
 
 NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print only the permitted breadcrumb/status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
+**Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
@@ -626,7 +626,7 @@ If `TALLY_PLAN_REVIEW_STATUS` is `main-agent-vote-required`, preserve `SCOPE_ANC
 
 Use this fence for every Step 3 resume after `STEP3_REVIEW_LOOP_STATUS` handoff. NEVER poll `.step3-review-result.env` with a sleep loop. Polling bypasses Claude Code task lifecycle. It can leave the task registered as running. It can block session exit until `TaskStop`. Wait for `<task-notification>` unconditionally before parsing stdout or reading `.step3-review-result.env`.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print only the permitted breadcrumb/status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
+**Immediate-background wait rule**: After the `Command running in background` ack, print the Step 3 compact reviewer status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 
 In loop mode, Step 3 no longer returns after every round. The happy path revises `$DESIGN_TMPDIR/plan.txt` inside the loop via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Whenever either path revises the plan, the shared post-apply pipeline runs `design-postplan-emit.sh` so `diff-lines.txt` reflects the final state and validation uses the shared result contract.
 
@@ -853,7 +853,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6.
 
-**Immediate-background wait rule**: After the `Command running in background` ack, print only the permitted breadcrumb/status table. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
+**Immediate-background wait rule**: After the `Command running in background` ack, print one plain progress breadcrumb, for example: `⏳ 5c: writing plan to GitHub...`. Then **END THE TURN**. This yield is **not** a halt; yielding is NOT a halt for an in-flight immediate-background fence. `<task-notification> is the only resume trigger`. Ignore the launch ack's "check interim output" suggestion; ignore the launch ack. Do not read tmpdir files, task outputs, stdout captures, result env files, or reviewer directories before the notification.
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs `design-step5c.sh`; Override re-runs `design-step5c.sh --skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
 
