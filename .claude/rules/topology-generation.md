@@ -19,6 +19,7 @@ paths:
   - "python/review_pipeline.py"
   - "python/legacy_review_shell/dispatch-panel.sh"
   - "python/plan_review.py"
+  - "python/plan_review_panel.py"
 ---
 
 # Topology Generation
