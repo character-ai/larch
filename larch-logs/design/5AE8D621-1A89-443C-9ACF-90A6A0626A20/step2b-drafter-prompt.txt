@@ -1,0 +1,201 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] Dev tooling, Python migration &amp; contract doc cleanup — 5 items
+
+## Out-of-Scope Observations — Dev tooling, Python migration &amp; contract doc cleanup
+
+Combined from issues #4088, #4052, and #4050.
+
+### Item 1 — classify-bump.md references deleted shell scripts
+
+- **Location**: .claude/skills/release/scripts/classify-bump.md
+- **Description**: `classify-bump.md` still references `release-prepare.sh` and `classify-bump.sh` in its consumer description (lines 7 and 12). Both scripts no longer exist in the repo. Operators reading the doc will be confused about the current entry points (`python/cli.py release classify-bump` and `python/cli.py release prepare`).
+
+### Item 2 — python/test_audit_runs.py coverage gaps for Python migration edge cases
+
+- **Location**: python/test_audit_runs.py
+- **Description**: `python/test_audit_runs.py` lacks focused coverage for resolve-prs key order, bad argv stubs, and edge cases from the `audit-runs` Python port. These gaps could allow regressions to pass CI undetected after further changes to the audit-runs subsystem.
+
+### Item 3 — make lint-retired-scripts misses basename-only stale prose references
+
+- **Location**: scripts/lint-retired-scripts (make target)
+- **Description**: `make lint-retired-scripts` matches full repo-relative paths only, so basename-only stale script names in prose (e.g., `classify-bump.sh` without the full path prefix) can pass lint while still breaking operator expectations. Fix: extend the matcher to also catch bare filename occurrences in markdown prose.
+
+### Item 4 — python/finalize.py rename() lacks shell-redacted idempotency
+
+- **Location**: python/finalize.py:435-441
+- **Description**: `tracking_issue.rename()` in `python/finalize.py` still lacks shell-redacted idempotency. The Python ship finalize path can double-rename or fail silently if the issue title has already been updated before the finalize step runs.
+
+### Item 5 — verify-main logic duplicated between finalize.py and verify_main.py
+
+- **Location**: python/finalize.py:386-400, python/verify_main.py
+- **Description**: `python/finalize.py` contains inline verify-main logic at lines 386-400 while `python/verify_main.py` is a standalone 42-line module implementing the same check via CLI. Two authorities for the same check invite drift; one should delegate to the other.
+
+---
+*Combined from [#4088, #4052, #4050] by /combine-issues --oos*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Scope — plan only the 3 unfixed items
+- **Question**: Items 2 and 4 are already fixed by PRs #4089/#4090. Should we plan all 5 or only the 3 remaining?
+- **Resolution**: Plan only items 1, 3, and 5. Note items 2 and 4 as already resolved.
+- **Source**: user
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Fix stale `release-prepare.sh` references in `classify-bump.md` (lines 7, 12, and the file title).
+- Extend `migration_lint.py` to catch bare basename occurrences in markdown prose.
+- Consolidate verify-main comparison logic so `finalize.py` and `verify_main.py` share one implementation.
+
+### Non-goals
+- Items 2 and 4 are already fixed; do not re-implement them.
+- No changes to the lint tool's exclusion list or manifest format.
+- No changes to any `/implement` or `/design` skill surface.
+
+### Approach sketch
+- Update `classify-bump.md` title and lines 7/12 to reference `python/cli.py release classify-bump` and `python/cli.py release prepare`.
+- Add a bare-basename check in `_line_references_retired()` in `migration_lint.py`; limit to a `# lint-ignore` escape hatch for legitimate historical prose.
+- Extract a `_title_matches(actual, expected, pr_number)` helper in `finalize.py`; update the inline block to call it; have `verify_main.py` import and use it.
+
+### Surfaces in scope
+- `.claude/skills/release/scripts/classify-bump.md`
+- `python/migration_lint.py`
+- `python/finalize.py`
+- `python/verify_main.py`
+- `python/test_migration_lint.py` (new tests for baseline matching)
+- `python/test_finalize.py` or equivalent (update tests for shared helper)
+
+### Open questions
+- Should the baseline-matching exemption use an inline comment (`# lint-ignore`) or a dedicated exclusion list?
+
+</design_outline>
+

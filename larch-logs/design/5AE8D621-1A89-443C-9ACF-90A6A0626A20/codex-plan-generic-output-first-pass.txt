@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	requirements	python/migration_lint.py (plan.txt:19-22,47-50,126-133)	Bare-basename lint is narrowed below the approved scope	The issue asks lint to catch bare retired script filenames in markdown prose, but the plan only catches same-directory orphan markdown script docs. A stale bare basename in README.md, docs/*.md, or another markdown prose surface would still pass.	Apply the bare-basename check to tracked markdown prose generally, keep non-path boundaries, and use the line-level # lint-ignore escape hatch for intentional historical mentions instead of same-directory and live-sibling gates
+
+1. **[requirements] python/migration_lint.py (plan.txt:19-22,47-50,126-133)**  
+   **Concern:** The proposed matcher under-serves item 3.  
+   **Breakage:** Markdown prose outside the retired script directory can still mention a retired basename and pass lint.  
+   **Suggested revision:** Remove the same-directory and live-sibling guards from the bare-basename rule. Keep markdown-only matching, non-path boundaries, and `# lint-ignore` for legitimate prose.
