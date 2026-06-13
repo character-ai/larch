@@ -1149,30 +1149,34 @@ _GATE_STDERR_KV_PREFIXES: tuple[str, ...] = (
 
 
 def _parent_invocation_non_interactive() -> bool:
+    def ps_query(field: str, pid_value: int) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                [_PS, "-o", field, "-p", str(pid_value)],
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        except OSError:
+            return None
+
     pid = os.getppid()
     visited: set[int] = set()
     for _ in range(8):
         if pid <= 1 or pid in visited:
             break
         visited.add(pid)
-        comm = subprocess.run(
-            [_PS, "-o", "comm=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            check=False,
-        )
+        comm = ps_query("comm=", pid)
+        if comm is None:
+            return False
         if comm.returncode == 0:
             comm_name = comm.stdout.strip().lower()
             if comm_name in {"cron", "crond"} or "cron" in comm_name:
                 return True
-        args = subprocess.run(
-            [_PS, "-o", "args=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            check=False,
-        )
+        args = ps_query("args=", pid)
+        if args is None:
+            return False
         if args.returncode == 0:
             args_line = args.stdout.strip()
             if args_line:
@@ -1181,13 +1185,9 @@ def _parent_invocation_non_interactive() -> bool:
                     return True
                 if re.search(r"\bclaude\b", lower) and re.search(r"(?:\s|^)(?:-p\b|--print\b)", lower):
                     return True
-        ppid = subprocess.run(
-            [_PS, "-o", "ppid=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            check=False,
-        )
+        ppid = ps_query("ppid=", pid)
+        if ppid is None:
+            return False
         if ppid.returncode != 0:
             break
         try:
@@ -1226,10 +1226,6 @@ def _resolve_non_interactive(
     for key in ("LARCH_SKILL_NON_INTERACTIVE", "LARCH_AUTONOMOUS_LOOP", "LARCH_EVAL_RUN", "LARCH_CRON"):
         if runtime.get(key, "") == "true":
             return True
-    if runtime.get("CI", "").lower() in {"1", "true", "yes"}:
-        return True
-    if runtime.get("GITHUB_ACTIONS", "").lower() in {"1", "true", "yes"}:
-        return True
     if runtime.get("CLAUDE_CODE_SUBAGENT", "").lower() in {"1", "true", "yes"}:
         return True
     return _parent_invocation_non_interactive()
