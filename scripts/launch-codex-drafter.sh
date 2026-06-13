@@ -68,6 +68,7 @@ OUTPUT_CANON="$OUTPUT_DIR/$(basename "$OUTPUT_FILE")"
 
 PROMPT_DIR="$(cd "$(dirname "$PROMPT_FILE")" && pwd -P)"
 PROMPT_CANON="$PROMPT_DIR/$(basename "$PROMPT_FILE")"
+TOKEN_RECORD_AVAILABLE=false
 
 write_status_file() {
     local status_value="$1" plan_written="$2" plan_lines="$3" diff_lines="$4" \
@@ -85,6 +86,14 @@ write_status_file() {
         [[ -z "$reason" ]] || printf 'REASON=%s\n' "$reason"
     } > "$tmp"
     mv -f "$tmp" "$OUTPUT_CANON"
+}
+
+emit_token_record_status() {
+    if [[ "${TOKEN_RECORD_AVAILABLE:-false}" == "true" && -s "${OUTPUT_CANON}.token-record" ]]; then
+        emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+    else
+        emit_kv TOKEN_RECORD_MISSING true
+    fi
 }
 
 # shellcheck disable=SC2329,SC2317  # invoked by the EXIT trap
@@ -205,7 +214,9 @@ set -e
 LAUNCHER_EXIT=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$_launcher_stdout" 2>/dev/null || true)
 [[ -n "$LAUNCHER_EXIT" ]] || LAUNCHER_EXIT=1
 if [[ -s "${_codex_raw}.token-record" ]]; then
-    if ! cp -p "${_codex_raw}.token-record" "${OUTPUT_CANON}.token-record"; then
+    if cp -p "${_codex_raw}.token-record" "${OUTPUT_CANON}.token-record" && [[ -s "${OUTPUT_CANON}.token-record" ]]; then
+        TOKEN_RECORD_AVAILABLE=true
+    else
         larch_err "launch-codex-drafter.sh: WARNING: failed to copy token record from ${_codex_raw}.token-record to ${OUTPUT_CANON}.token-record"
     fi
 fi
@@ -228,7 +239,7 @@ if [[ "$LAUNCHER_EXIT" -ne 0 ]] || [[ "$_exec_wrapper_rc" -ne 0 ]]; then
     printf '%s\n' "${LAUNCHER_EXIT:-1}" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
-    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+    emit_token_record_status
     exit "${LAUNCHER_EXIT:-1}"
 fi
 
@@ -239,7 +250,7 @@ if [[ ! -s "$_codex_raw" ]]; then
     printf '%s\n' "1" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
-    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+    emit_token_record_status
     exit 1
 fi
 
@@ -253,7 +264,7 @@ then
     printf '%s\n' "99" > "${OUTPUT_CANON}.done"
     emit_kv STATUS "ERROR"
     emit_kv OUTPUT_FILE "$OUTPUT_CANON"
-    emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+    emit_token_record_status
     exit 99
 fi
 
@@ -299,7 +310,7 @@ printf '%s\n' "0" > "${OUTPUT_CANON}.done"
 
 emit_kv STATUS "OK"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"
-emit_kv TOKEN_RECORD "${OUTPUT_CANON}.token-record"
+emit_token_record_status
 emit_kv SCOUT_WRITTEN "$SCOUT_WRITTEN"
 [[ -z "$SCOUT_FAIL_REASON" ]] || emit_kv SCOUT_FAIL_REASON "$SCOUT_FAIL_REASON"
 exit 0

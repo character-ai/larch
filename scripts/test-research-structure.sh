@@ -40,6 +40,20 @@ fail() {
   FAIL=$((FAIL + 1))
 }
 
+contains() {
+  local file="$1" literal="$2" label="$3"
+  if grep -Fq -- "$literal" "$file"; then
+    PASS=$((PASS + 1))
+  else
+    fail "$label"
+  fi
+}
+
+line_for() {
+  local file="$1" literal="$2"
+  grep -nF -m 1 -- "$literal" "$file" | cut -d: -f1
+}
+
 # ---------- Check 1: SKILL.md + 4 reference files exist ----------
 
 [[ -f "$SKILL_MD" ]]         || fail "SKILL.md missing: $SKILL_MD"
@@ -207,6 +221,33 @@ if grep -Fqi 'Codex telemetry is unmeasurable' "$RESEARCH_MD"; then
 else
   PASS=$((PASS + 1))
 fi
+
+# ---------- Check 12: Research/validation sidecar ingestion pins ----------
+
+for file in "$RESEARCH_MD" "$VALIDATION_MD"; do
+  base=$(basename "$file")
+  contains "$file" 'token append-record' "[$base sidecar] missing token append-record"
+  contains "$file" 'token record-vendor-sidecar' "[$base sidecar] missing token record-vendor-sidecar"
+  contains "$file" 'env -u LARCH_TOKEN_LEDGER' "[$base sidecar] missing env -u LARCH_TOKEN_LEDGER"
+  contains "$file" '-u LARCH_TOKEN_SESSION_ID' "[$base sidecar] missing -u LARCH_TOKEN_SESSION_ID"
+  contains "$file" "RESEARCH_TMPDIR=\"\$RESEARCH_TMPDIR\"" "[$base sidecar] missing RESEARCH_TMPDIR binding"
+done
+
+collect_line=$(line_for "$VALIDATION_MD" "\${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode")
+parse_line=$(line_for "$VALIDATION_MD" "1. Parse the structured output for each reviewer's \`STATUS\` and \`REVIEWER_FILE\`.")
+ingest_line=$(line_for "$VALIDATION_MD" '2. **Codex/Cursor validation sidecar ingestion after collection settles**')
+status_line=$(line_for "$VALIDATION_MD" '3. **Runtime-timeout replacement**')
+if [[ -n "$collect_line" && -n "$parse_line" && -n "$ingest_line" && -n "$status_line" \
+      && "$collect_line" -lt "$parse_line" && "$parse_line" -lt "$ingest_line" && "$ingest_line" -lt "$status_line" ]]; then
+  PASS=$((PASS + 1))
+else
+  fail "[validation sidecar] ingestion must follow collect/result parsing and precede status decisions"
+fi
+
+contains "$VALIDATION_MD" 'REVIEWER_FILE' '[validation sidecar] candidate expansion must include REVIEWER_FILE'
+contains "$VALIDATION_MD" '-retry.txt' '[validation sidecar] candidate expansion must include -retry.txt'
+contains "$VALIDATION_MD" '-ns-retry.txt' '[validation sidecar] candidate expansion must include -ns-retry.txt'
+contains "$VALIDATION_MD" 'Deduplicate candidate paths before ingestion.' '[validation sidecar] candidate expansion must dedupe paths'
 
 # ---------- Summary ----------
 

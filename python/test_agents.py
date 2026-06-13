@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ import pytest
 import agents
 import config
 from agents import LaunchFailure, TierAttempt
+from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB_COMMON = REPO_ROOT / "scripts" / "lib-external-launcher-common.sh"
@@ -41,6 +43,28 @@ def _bash_classify(*args: str) -> tuple[str, str]:
         if line.startswith("LAUNCHER_FAILURE_REASON="):
             reason = line.split("=", 1)[1]
     return cls, reason
+
+
+class IngestRunner:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+        self.envs: list[Mapping[str, str] | None] = []
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,
+        check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
+    ) -> CommandResult:
+        call = tuple(argv)
+        self.calls.append(call)
+        self.envs.append(env)
+        return CommandResult(call, 0, "", "", 0.01)
 
 
 def test_parse_launcher_exit_text() -> None:
@@ -82,6 +106,110 @@ def test_resolve_launcher_exit_prefers_done_then_captured_then_file(
     assert agents.resolve_launcher_exit("", path, process_rc=7) == 3
     path.unlink()
     assert agents.resolve_launcher_exit("", path, process_rc=7) == 7
+
+
+def test_ingest_launcher_token_sidecar_uses_stdout_token_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_TOKEN_LEDGER", str(tmp_path / "stale-ledger.jsonl"))
+    monkeypatch.setenv("LARCH_TOKEN_SESSION_ID", "stale-session")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path / "design"))
+    monkeypatch.setenv("RESEARCH_TMPDIR", str(tmp_path / "research"))
+    monkeypatch.setenv("SESSION_ENV_PATH", str(tmp_path / "session.env"))
+    runner = IngestRunner()
+    seen: set[str] = set()
+    token_record = tmp_path / "stdout.token-record"
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout=f"LAUNCHER_EXIT=0\nTOKEN_RECORD={token_record}\n",
+        tmpdir=str(tmp_path),
+        implement_tmpdir=str(tmp_path),
+        seen=seen,
+        cwd=str(tmp_path),
+    )
+
+    assert [call[2:4] for call in runner.calls] == [("token", "append-record"), ("token", "record-vendor-sidecar")]
+    assert seen == {str(token_record)}
+    active_env = runner.envs[-1]
+    assert active_env is not None
+    assert active_env["IMPLEMENT_TMPDIR"] == str(tmp_path)
+    for key in ("LARCH_TOKEN_LEDGER", "LARCH_TOKEN_SESSION_ID", "DESIGN_TMPDIR", "RESEARCH_TMPDIR", "SESSION_ENV_PATH"):
+        assert key not in active_env
+
+
+def test_ingest_launcher_token_sidecar_output_fallback(tmp_path: Path) -> None:
+    runner = IngestRunner()
+    seen: set[str] = set()
+    output = tmp_path / "ci-fix-codex.out"
+    fallback = Path(f"{output}.token-record")
+    _ = fallback.write_text("TOOL=codex\nTOTAL=1\n", encoding="utf-8")
+
+    assert agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="LAUNCHER_EXIT=0\n",
+        output=output,
+        tmpdir=str(tmp_path),
+        implement_tmpdir=str(tmp_path),
+        seen=seen,
+        allow_output_fallback=True,
+    )
+
+    assert seen == {str(fallback)}
+    assert any(call[-1] == str(fallback) for call in runner.calls)
+
+
+def test_ingest_launcher_token_sidecar_no_output_fallback_when_disabled(tmp_path: Path) -> None:
+    runner = IngestRunner()
+    output = tmp_path / "ci-fix-claude.out"
+    _ = Path(f"{output}.token-record").write_text("TOOL=claude\nTOTAL=1\n", encoding="utf-8")
+
+    assert not agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="LAUNCHER_EXIT=0\n",
+        output=output,
+        tmpdir=str(tmp_path),
+        implement_tmpdir=str(tmp_path),
+        seen=set(),
+        allow_output_fallback=False,
+    )
+    assert not runner.calls
+
+
+def test_ingest_launcher_token_sidecar_missing_returns_false(tmp_path: Path) -> None:
+    runner = IngestRunner()
+    assert not agents.ingest_launcher_token_sidecar(
+        runner,
+        launcher_stdout="LAUNCHER_EXIT=0\n",
+        output=tmp_path / "missing.out",
+        tmpdir=str(tmp_path),
+        implement_tmpdir=str(tmp_path),
+        seen=set(),
+        allow_output_fallback=True,
+    )
+    assert not runner.calls
+
+
+def test_ingest_launcher_token_sidecar_dedups_append_but_records_each_time(tmp_path: Path) -> None:
+    runner = IngestRunner()
+    seen: set[str] = set()
+    token_record = tmp_path / "repeat.token-record"
+    stdout = f"TOKEN_RECORD={token_record}\n"
+
+    for _ in range(2):
+        assert agents.ingest_launcher_token_sidecar(
+            runner,
+            launcher_stdout=stdout,
+            tmpdir=str(tmp_path),
+            implement_tmpdir=str(tmp_path),
+            seen=seen,
+        )
+
+    append_calls = [call for call in runner.calls if call[2:4] == ("token", "append-record")]
+    active_calls = [call for call in runner.calls if call[2:4] == ("token", "record-vendor-sidecar")]
+    assert len(append_calls) == 1
+    assert len(active_calls) == 2
 
 
 def test_classify_success() -> None:

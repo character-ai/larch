@@ -2854,6 +2854,32 @@ def launch_tier(
 LaunchFn = Callable[[str], TierAttempt]
 
 
+_TOKEN_SIDECAR_ENV_UNSET = (
+    "LARCH_TOKEN_LEDGER",
+    "LARCH_TOKEN_SESSION_ID",
+    "DESIGN_TMPDIR",
+    "RESEARCH_TMPDIR",
+    "SESSION_ENV_PATH",
+)
+
+
+def token_sidecar_ingest_env(
+    *,
+    implement_tmpdir: str | None = None,
+    tmpdir: str | None = None,
+    tmpdir_env_key: str = "IMPLEMENT_TMPDIR",
+) -> dict[str, str]:
+    """Return an env for active-ledger sidecar ingestion without stale ledger vars."""
+    env = dict(os.environ)
+    for key in _TOKEN_SIDECAR_ENV_UNSET:
+        _ = env.pop(key, None)
+    if implement_tmpdir:
+        env["IMPLEMENT_TMPDIR"] = implement_tmpdir
+    elif tmpdir:
+        env[tmpdir_env_key] = tmpdir
+    return env
+
+
 def ingest_launcher_token_sidecar(
     runner: Runner,
     *,
@@ -2863,6 +2889,7 @@ def ingest_launcher_token_sidecar(
     implement_tmpdir: str | None = None,
     seen: set[str],
     cwd: str | None = None,
+    allow_output_fallback: bool = False,
 ) -> bool:
     """Ingest a TOKEN_RECORD sidecar from launcher stdout into the token ledger.
 
@@ -2870,14 +2897,18 @@ def ingest_launcher_token_sidecar(
     then calls ``token record-vendor-sidecar`` on every invocation so that
     partial-failure retries still record vendor usage.
     """
-    _ = output
     token_record: str | None = None
     for line in launcher_stdout.splitlines():
         if line.startswith("TOKEN_RECORD="):
             token_record = line.split("=", 1)[1].strip()
             break
     if not token_record:
-        return False
+        if allow_output_fallback and output is not None:
+            fallback = Path(f"{output}.token-record")
+            if fallback.is_file() and fallback.stat().st_size > 0:
+                token_record = str(fallback)
+        if not token_record:
+            return False
     effective_tmpdir = tmpdir if tmpdir is not None else implement_tmpdir
     if token_record not in seen:
         seen.add(token_record)
@@ -2891,6 +2922,7 @@ def ingest_launcher_token_sidecar(
         [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar",
          "--input", token_record],
         cwd=cwd,
+        env=token_sidecar_ingest_env(implement_tmpdir=implement_tmpdir, tmpdir=tmpdir),
     )
     return True
 

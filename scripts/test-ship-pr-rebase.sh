@@ -332,7 +332,7 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
 (
     set -euo pipefail
     CASE_DIR="$TMPROOT/sidecar-waterfall"
-    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl"
+    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl" "$CASE_DIR/bin"
     # shellcheck source=scripts/ship-pr.sh
     source "$SHIP_PR"
     SCRIPT_DIR="$CASE_DIR/scripts"
@@ -341,6 +341,22 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
     CALL_LOG="$CASE_DIR/calls.log"
     : >"$STATE_FILE"
     : >"$CALL_LOG"
+    cat >"$CASE_DIR/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+input=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --input) input=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'record-vendor-sidecar|%s|IMPLEMENT_TMPDIR=%s|LARCH_TOKEN_LEDGER=%s|LARCH_TOKEN_SESSION_ID=%s|DESIGN_TMPDIR=%s|RESEARCH_TMPDIR=%s|SESSION_ENV_PATH=%s\n' \
+    "$input" "${IMPLEMENT_TMPDIR:-}" "${LARCH_TOKEN_LEDGER:-}" "${LARCH_TOKEN_SESSION_ID:-}" "${DESIGN_TMPDIR:-}" "${RESEARCH_TMPDIR:-}" "${SESSION_ENV_PATH:-}" >>"${CALL_LOG:?}"
+exit 0
+EOF
+    chmod +x "$CASE_DIR/bin/python3"
+    export CALL_LOG
 
     python3() {
         local verb="" input="" out=""
@@ -409,7 +425,13 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
     _stage_and_push_ci_fixes() { printf 'STAGE|%s\n' "$2" >>"$CALL_LOG"; return 0; }
     larch_err() { return 0; }
 
-    run_ci_fix_vendor ci-merge run-1 "" 1 ""
+    PATH="$CASE_DIR/bin:$PATH" \
+    LARCH_TOKEN_LEDGER="$CASE_DIR/stale-ledger.jsonl" \
+    LARCH_TOKEN_SESSION_ID="stale-session" \
+    DESIGN_TMPDIR="$CASE_DIR/stale-design" \
+    RESEARCH_TMPDIR="$CASE_DIR/stale-research" \
+    SESSION_ENV_PATH="$CASE_DIR/stale-session.env" \
+        run_ci_fix_vendor ci-merge run-1 "" 1 ""
     codex_append_line=$(grep -n 'append-record|.*\.codex\.token-record' "$CALL_LOG" | cut -d: -f1)
     codex_vendor_line=$(grep -n 'record-vendor-sidecar|.*\.codex\.token-record' "$CALL_LOG" | cut -d: -f1)
     rollback_line=$(grep -n '^ROLLBACK$' "$CALL_LOG" | cut -d: -f1)
@@ -423,8 +445,11 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
         || fail "(G) codex record-vendor-sidecar should run once; log=$(cat "$CALL_LOG")"
     [[ "$(grep -c 'append-record|.*\.cursor\.token-record' "$CALL_LOG")" -eq 1 ]] \
         || fail "(G) cursor append-record should run once; log=$(cat "$CALL_LOG")"
-    [[ "$(grep -c 'record-vendor-sidecar|.*\.cursor\.token-record|'"$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
+    [[ "$(grep -c 'record-vendor-sidecar|.*\.cursor\.token-record|IMPLEMENT_TMPDIR='"$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
         || fail "(G) cursor vendor ingest should export IMPLEMENT_TMPDIR; log=$(cat "$CALL_LOG")"
+    if grep -E 'record-vendor-sidecar\|.*(LARCH_TOKEN_LEDGER=[^|]+|LARCH_TOKEN_SESSION_ID=[^|]+|DESIGN_TMPDIR=[^|]+|RESEARCH_TMPDIR=[^|]+|SESSION_ENV_PATH=[^|]+)' "$CALL_LOG"; then
+        fail "(G) vendor ingest must clear stale token env; log=$(cat "$CALL_LOG")"
+    fi
 )
 
 # ---------------------------------------------------------------------------
@@ -433,7 +458,7 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
 (
     set -euo pipefail
     CASE_DIR="$TMPROOT/sidecar-stage"
-    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl"
+    mkdir -p "$CASE_DIR/scripts" "$CASE_DIR/impl" "$CASE_DIR/bin"
     # shellcheck source=scripts/ship-pr.sh
     source "$SHIP_PR"
     SCRIPT_DIR="$CASE_DIR/scripts"
@@ -444,6 +469,22 @@ grep -Fq 'unknown --resume-phase' <<<"$legacy_out" \
     : >"$STATE_FILE"
     : >"$CALL_LOG"
     printf '%s\n' 'TOOL=cursor' 'INPUT=4' 'OUTPUT=5' 'TOTAL=9' 'RAW=cursor_ci_fix' > "$TOKEN_RECORD"
+    cat >"$CASE_DIR/bin/python3" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+input=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --input) input=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'record-vendor-sidecar|%s|IMPLEMENT_TMPDIR=%s|LARCH_TOKEN_LEDGER=%s|LARCH_TOKEN_SESSION_ID=%s|DESIGN_TMPDIR=%s|RESEARCH_TMPDIR=%s|SESSION_ENV_PATH=%s\n' \
+    "$input" "${IMPLEMENT_TMPDIR:-}" "${LARCH_TOKEN_LEDGER:-}" "${LARCH_TOKEN_SESSION_ID:-}" "${DESIGN_TMPDIR:-}" "${RESEARCH_TMPDIR:-}" "${SESSION_ENV_PATH:-}" >>"${CALL_LOG:?}"
+exit 0
+EOF
+    chmod +x "$CASE_DIR/bin/python3"
+    export CALL_LOG
 
     cat >"$SCRIPT_DIR/ci-behind-count.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -494,11 +535,20 @@ EOF
 
     CI_FIX_REBASE_PENDING=false
     SHIP_PR_INGESTED_TOKEN_RECORDS=()
-    _stage_and_push_ci_fixes ci-initial "$TOKEN_RECORD" step10 ""
+    PATH="$CASE_DIR/bin:$PATH" \
+    LARCH_TOKEN_LEDGER="$CASE_DIR/stale-ledger.jsonl" \
+    LARCH_TOKEN_SESSION_ID="stale-session" \
+    DESIGN_TMPDIR="$CASE_DIR/stale-design" \
+    RESEARCH_TMPDIR="$CASE_DIR/stale-research" \
+    SESSION_ENV_PATH="$CASE_DIR/stale-session.env" \
+        _stage_and_push_ci_fixes ci-initial "$TOKEN_RECORD" step10 ""
     [[ "$(grep -c "append-record|$TOKEN_RECORD" "$CALL_LOG")" -eq 1 ]] \
         || fail "(H) stage append-record should run once; log=$(cat "$CALL_LOG")"
-    [[ "$(grep -c "record-vendor-sidecar|$TOKEN_RECORD|$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
+    [[ "$(grep -c "record-vendor-sidecar|$TOKEN_RECORD|IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR" "$CALL_LOG")" -eq 1 ]] \
         || fail "(H) stage vendor ingest should run once with IMPLEMENT_TMPDIR; log=$(cat "$CALL_LOG")"
+    if grep -E 'record-vendor-sidecar\|.*(LARCH_TOKEN_LEDGER=[^|]+|LARCH_TOKEN_SESSION_ID=[^|]+|DESIGN_TMPDIR=[^|]+|RESEARCH_TMPDIR=[^|]+|SESSION_ENV_PATH=[^|]+)' "$CALL_LOG"; then
+        fail "(H) vendor ingest must clear stale token env; log=$(cat "$CALL_LOG")"
+    fi
 )
 
 echo "PASS: test-ship-pr-rebase.sh — CI-fix rebase structural pins, lint handoff KVs, fork postbump guard, legacy resume, sidecar ingest, and resume guard hold (A-H, D1-runtime, D2)"

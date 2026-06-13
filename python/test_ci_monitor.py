@@ -310,7 +310,111 @@ def test_default_launch_fn_ingests_external_token_sidecar(
     assert ingest_calls[0]["tmpdir"] == str(tmp_path)
     assert ingest_calls[0]["implement_tmpdir"] == str(tmp_path)
     assert ingest_calls[0]["cwd"] == str(tmp_path)
+    assert ingest_calls[0]["allow_output_fallback"] is True
     assert isinstance(ingest_calls[0]["seen"], set)
+
+
+@pytest.mark.parametrize(("tier", "expected_fallback"), [("codex", True), ("cursor", True), ("claude", False)])
+def test_default_launch_fn_gates_output_fallback_by_tier(
+    tier: str,
+    expected_fallback: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    monkeypatch.setattr(ci_monitor, "_implement_tmpdir", lambda: str(tmp_path))
+
+    def fake_build_launch_argv(given_tier: str, **_kwargs: object) -> list[str]:
+        return ["launch", given_tier]
+
+    monkeypatch.setattr(ci_monitor.agents, "build_launch_argv", fake_build_launch_argv)
+    ingest_calls: list[dict[str, object]] = []
+
+    def fake_ingest(_runner: RecordingRunner, **kwargs: object) -> bool:
+        ingest_calls.append(kwargs)
+        return False
+
+    monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
+    runner.responses[("launch", tier)] = _cr(("launch", tier), stdout="LAUNCHER_EXIT=0\n")
+    launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        run_id="run",
+        repo="owner/repo",
+        plan_file=None,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+
+    _ = launch_fn(tier)
+
+    assert ingest_calls[0]["allow_output_fallback"] is expected_fallback
+
+
+def test_default_launch_fn_clears_fallback_sidecar_before_codex_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ci_monitor, "_implement_tmpdir", lambda: str(tmp_path))
+
+    def fake_build_launch_argv(tier: str, **_kwargs: object) -> list[str]:
+        return ["launch", tier, "--output", str(tmp_path / f"ci-fix-{tier}.out")]
+
+    monkeypatch.setattr(ci_monitor.agents, "build_launch_argv", fake_build_launch_argv)
+
+    def fake_ingest(_runner: RecordingRunner, **_kwargs: object) -> bool:
+        return True
+
+    monkeypatch.setattr(ci_monitor.agents, "ingest_launcher_token_sidecar", fake_ingest)
+
+    class FreshnessRunner(RecordingRunner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            output = Path(argv[argv.index("--output") + 1])
+            fallback = Path(f"{output}.token-record")
+            assert not fallback.exists()
+            _ = fallback.write_text("TOOL=codex\nTOTAL=1\n", encoding="utf-8")
+            return super().run(
+                argv,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                check=check,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+    runner = FreshnessRunner()
+    output = tmp_path / "ci-fix-codex.out"
+    _ = Path(f"{output}.token-record").write_text("stale\n", encoding="utf-8")
+    runner.responses[("launch", "codex", "--output", str(output))] = _cr(
+        ("launch", "codex"),
+        stdout="LAUNCHER_EXIT=0\n",
+    )
+    launch_fn = ci_monitor._make_default_launch_fn(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        run_id="run",
+        repo="owner/repo",
+        plan_file=None,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        output_dir=str(tmp_path),
+        cwd=str(tmp_path),
+        failure_log_paths=[],
+    )
+
+    attempt = launch_fn("codex")
+
+    assert attempt.launcher_exit == 0
 
 
 def test_default_launch_fn_dedups_repeated_external_token_sidecar(
