@@ -623,8 +623,8 @@ fi
 
 
 def test_validate_unified_headers_rejects_malformed_diff_lines() -> None:
-    assert plan_quality._validate_unified_headers("--- \n+++ b/plan.txt\n") is False
-    assert plan_quality._validate_unified_headers("--- a/plan.txt\n+++ \n") is False
+    assert plan_quality.validate_unified_headers("--- \n+++ b/plan.txt\n") is False
+    assert plan_quality.validate_unified_headers("--- a/plan.txt\n+++ \n") is False
 
 
 def test_is_new_script_matches_dot_prefixed_claude_paths(tmp_path: Path) -> None:

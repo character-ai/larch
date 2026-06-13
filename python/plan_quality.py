@@ -1276,7 +1276,7 @@ def _extract_unified_diff(output: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def _validate_unified_headers(patch: str) -> bool:
+def validate_unified_headers(patch: str) -> bool:
     old = new = seen = False
     for line in patch.splitlines():
         if line.startswith("diff --git "):
@@ -1434,7 +1434,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         if patch_format == "unified-diff":
             patch = _extract_unified_diff(output)
             _atomic_write(patch_path, patch)
-            if not patch or not _validate_unified_headers(patch):
+            if not patch or not validate_unified_headers(patch):
                 set_tier_status(ord_, "invalid-patch")
                 restore()
                 return False
