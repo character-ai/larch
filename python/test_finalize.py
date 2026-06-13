@@ -354,6 +354,13 @@ def test_kill_session_background_processes_skips_live_python_ancestors(
 
     assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is True
 
+    assert runner.calls[:5] == [
+        ["ps", "-o", "ppid=", "-p", "200"],
+        ["ps", "-o", "ppid=", "-p", "100"],
+        ["ps", "-o", "ppid=", "-p", "50"],
+        ["sh", "-c", "printf '%s %s' $$ ${PPID:-}"],
+        ["ps", "-o", "ppid=", "-p", "300"],
+    ]
     kill_calls = [call for call in runner.calls if call[:2] == ["kill", "-TERM"]]
     assert kill_calls == [["kill", "-TERM", "999"]]
     assert ["kill", "-TERM", "50"] not in runner.calls
