@@ -100,7 +100,7 @@ the existing notes), so the section lands in the `--note-lines-file` appendix th
 `render-run-summary.sh` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
 
 The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
-time, cost, reviewers launched), a Total row, optional reviewer timing Mermaid
+time, cost, reviewers launched), a Total row, optional reviewer timing ASCII
 Gantt charts, the top reviewers by suggestions accepted (`vendor/archetype`),
 and a failed-reviewer-slot breakdown. Final reports do not pass `--no-gantt`.
 Reviewer timing charts are included when timing data is available. The

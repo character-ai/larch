@@ -1135,11 +1135,15 @@ rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
 assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
 assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
 assert_contains 'cursor/correctness — 2' "$rpd_body" 'review phase detail top reviewer'
-# Completed-review output can include reviewer timing Gantt charts.
+# Completed-review output can include reviewer timing ASCII Gantt charts.
 assert_contains '### Round 1 reviewer timing' "$rpd_body" 'review phase detail includes reviewer timing heading'
-assert_contains '```mermaid' "$rpd_body" 'review phase detail includes Mermaid fence'
-assert_contains 'dateFormat X' "$rpd_body" 'review phase detail includes Mermaid dateFormat'
-assert_contains 'axisFormat %H:%M:%S' "$rpd_body" 'review phase detail includes hour axisFormat'
+assert_contains '```' "$rpd_body" 'review phase detail includes plain ASCII fence'
+assert_not_contains '```mermaid' "$rpd_body" 'review phase detail omits Mermaid fence'
+assert_not_contains 'dateFormat X' "$rpd_body" 'review phase detail omits Mermaid dateFormat'
+assert_not_contains 'axisFormat %H:%M:%S' "$rpd_body" 'review phase detail omits hour axisFormat'
+assert_contains 'cursor/correctness' "$rpd_body" 'review phase detail includes ASCII chart label'
+assert_contains '50s' "$rpd_body" 'review phase detail includes bare ASCII duration'
+assert_contains 'window 0:00-1:05 (65s)' "$rpd_body" 'review phase detail uses m:ss title span'
 # Regression (issue #3794): round-meta.json only under live working dir -> no completed rounds for selected root.
 # This reproduces the path-mismatch bug: renderer must NOT find the table when
 # round-meta.json exists only under IMPLEMENT_TMPDIR/round-N/ (old wrong root).

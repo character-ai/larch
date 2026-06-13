@@ -7,51 +7,48 @@ HELPER="$REPO/scripts/render-review-phase-detail.sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-MERMAID_OPTIONAL_SKIP_EMITTED=0
-
-mermaid_required() {
-    [ -n "${GITHUB_ACTIONS:-}" ] && return 0
-    [ "${LARCH_MERMAID_REQUIRED:-}" = "1" ] && return 0
-    return 1
-}
-
-_mermaid_cli_available() {
-    [ -x "$REPO/mermaid-lint/node_modules/.bin/mmdc" ] && return 0
-    command -v mmdc >/dev/null 2>&1
-}
-
-assert_mermaid_valid() {
+assert_ascii_chart_invariants() {
     local file="$1"
-    grep -Fq -- '```mermaid' "$file" || return 0
-    if ! _mermaid_cli_available; then
-        if mermaid_required; then
-            fail 'Mermaid CLI unavailable in required validation mode'
-        fi
-        if [ "${MERMAID_OPTIONAL_SKIP_EMITTED:-0}" -eq 0 ]; then
-            printf 'SKIP: Mermaid CLI unavailable; Mermaid parse validation skipped\n'
-            MERMAID_OPTIONAL_SKIP_EMITTED=1
-        fi
-        return 0
-    fi
-    local lint_out lint_rc
-    set +e
-    lint_out="$(python3 "$REPO/python/cli.py" lint mermaid-fences "$file" 2>&1)"
-    lint_rc=$?
-    set -e
-    if [ "$lint_rc" -eq 0 ]; then
-        return 0
-    fi
-    if [ "$lint_rc" -eq 2 ]; then
-        if mermaid_required; then
-            fail "Mermaid lint exit 2 in required validation mode: $lint_out"
-        fi
-        if [ "${MERMAID_OPTIONAL_SKIP_EMITTED:-0}" -eq 0 ]; then
-            printf 'SKIP: Mermaid CLI unavailable; Mermaid parse validation skipped\n'
-            MERMAID_OPTIONAL_SKIP_EMITTED=1
-        fi
-        return 0
-    fi
-    fail "Mermaid lint failed: $lint_out"
+    python3 - "$file" <<'PYCHART'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read().splitlines()
+in_fence = False
+chart = []
+charts = []
+for line in text:
+    if line == "```":
+        if in_fence:
+            charts.append(chart)
+            chart = []
+            in_fence = False
+        else:
+            in_fence = True
+        continue
+    if in_fence:
+        chart.append(line)
+if not charts:
+    raise SystemExit("no plain fenced charts found")
+for chart in charts:
+    borders = [line for line in chart if "┌" in line or "└" in line]
+    rows = [line for line in chart if "│" in line]
+    if not borders or not rows:
+        continue
+    left = borders[0].find("┌") if "┌" in borders[0] else borders[0].find("└")
+    right = borders[0].find("┐") if "┐" in borders[0] else borders[0].find("┘")
+    for line in borders:
+        l = line.find("┌") if "┌" in line else line.find("└")
+        r = line.find("┐") if "┐" in line else line.find("┘")
+        assert l == left, line
+        assert r == right, line
+    axis = chart[1] if len(chart) > 1 else ""
+    assert axis.find("0:00") == left + 1, axis
+    for line in rows:
+        assert line.find("│") == left, line
+        assert line.rfind("│") == right, line
+        track = line[left + 1:right]
+        assert set(track) <= {" ", "█"}, track
+        assert not re.search(r"█+ +█+", track), track
+PYCHART
 }
 
 command -v jq >/dev/null 2>&1 || { printf 'SKIP: jq unavailable\n'; exit 0; }
@@ -137,38 +134,30 @@ if grep -Fq -- '💰' "$OUT"; then fail 'output must not contain the dollar-prim
 grep -Fq -- 'per-round vendor cost' "$OUT" || fail 'missing vendor-cost footnote'
 pass 'no-token-ledger cost cells are em dashes; footnote present'
 
-# --- Test 5b: reviewer timing Gantt charts render after table and before top reviewers ---
+# --- Test 5b: reviewer timing ASCII Gantt charts render after table and before top reviewers ---
 total_line=$(grep -nF '| **Total** |' "$OUT" | head -1 | cut -d: -f1 || true)
 gantt_line=$(grep -nF '### Round 1 reviewer timing' "$OUT" | head -1 | cut -d: -f1 || true)
 top_line=$(grep -nF '**Top reviewers**' "$OUT" | head -1 | cut -d: -f1 || true)
 [[ -n "$total_line" && -n "$gantt_line" && -n "$top_line" && "$total_line" -lt "$gantt_line" && "$gantt_line" -lt "$top_line" ]] \
     || fail 'Gantt chart must render after Total row and before Top reviewers'
-grep -Fq -- '```mermaid' "$OUT" || fail 'Gantt chart missing Mermaid fence'
-grep -Fq -- 'gantt' "$OUT" || fail 'Gantt chart missing gantt directive'
-grep -Fq -- 'dateFormat X' "$OUT" || fail 'Gantt chart missing dateFormat X'
-grep -Fq -- 'axisFormat %H:%M:%S' "$OUT" || fail 'Gantt chart missing hour axisFormat'
-if grep -Fq -- 'axisFormat %M:%S' "$OUT"; then fail 'Gantt chart must not use minute-wrapping axisFormat'; fi
-grep -Eq ':[^,]+, [0-9]+, [0-9]+$' "$OUT" || fail 'Gantt task line must use start and end fields'
-grep -Eq ':[^,]+, [1-9][0-9]*, [0-9]+$' "$OUT" || fail 'Gantt fixture must include nonzero task start'
-if grep -Eq ':[^,]+, [0-9]+, [0-9]+s$' "$OUT"; then fail 'Gantt task line must not use duration suffix'; fi
-grep -Fq -- 'cursor/structure :r1_t1' "$OUT" || fail 'Gantt label must use slot_map when available'
-grep -Fq -- 'unknown/reviewer -unsafe name :r1_t2' "$OUT" || fail 'Gantt fallback label must render sanitized unsafe punctuation'
-grep -Fq -- 'cursor/correctness :r2_t1' "$OUT" || fail 'Gantt must render round 2 task'
-grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'Gantt must render round 2 heading'
-if grep -Eq '^[[:space:]]+.*[:,].*:r[0-9]+_t[0-9]+,' "$OUT"; then
-    fail 'Gantt labels must not contain unsafe colon/comma punctuation'
-fi
-r1_ids=$(grep -Eo 'r1_t[0-9]+' "$OUT" | sort | uniq | wc -l | tr -d ' ')
-r1_task_lines=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$OUT" || true)
-[ "$r1_ids" -eq "$r1_task_lines" ] || fail 'Gantt ids must be deterministic and unique per round'
-pass 'reviewer timing Gantt charts render with safe labels and ids'
-assert_mermaid_valid "$OUT"
+grep -Fq -- '```' "$OUT" || fail 'ASCII chart missing plain fence'
+if grep -Fq -- '```mermaid' "$OUT"; then fail 'ASCII chart must not use Mermaid fence'; fi
+if grep -Fq -- 'dateFormat X' "$OUT" || grep -Fq -- 'axisFormat %H:%M:%S' "$OUT"; then fail 'ASCII chart must not contain Mermaid directives'; fi
+grep -Fq -- 'Round 1 reviewer timing  ·  window 0:00-5:00 (300s)' "$OUT" || fail 'ASCII chart title must use m:ss span'
+grep -Fq -- 'cursor/structure' "$OUT" || fail 'ASCII label must use slot_map when available'
+grep -Fq -- 'unknown/reviewer:unsafe,name' "$OUT" || fail 'ASCII fallback label must preserve punctuation'
+grep -Fq -- 'cursor/correctness' "$OUT" || fail 'ASCII chart must render round 2 task'
+grep -Fq -- '### Round 2 reviewer timing' "$OUT" || fail 'ASCII chart must render round 2 heading'
+grep -Fq -- '120s' "$OUT" || fail 'ASCII chart must include bare duration suffix'
+if grep -Eq '\([0-9]+-[0-9]+\)' "$OUT"; then fail 'ASCII chart must not include parenthesized ranges'; fi
+assert_ascii_chart_invariants "$OUT"
+pass 'reviewer timing ASCII charts render with raw labels and invariants'
 
 NO_GANTT_OUT="$WORK/no-gantt.md"
 "$HELPER" --rounds-root "$ROOT" --findings-file "$ROOT/review-findings-full.jsonl" \
     --timing-ledger "$ROOT/timing-ledger.tsv" --skill implement --no-gantt --output "$NO_GANTT_OUT"
 grep -Fq -- '| 1 | 4 | 2 | 2 | 1 | 5m 00s | — | 6 |' "$NO_GANTT_OUT" || fail '--no-gantt must keep table rows'
-if grep -Fq -- '```mermaid' "$NO_GANTT_OUT"; then fail '--no-gantt must suppress Mermaid fences'; fi
+if grep -Fq -- '```' "$NO_GANTT_OUT"; then fail '--no-gantt must suppress ASCII fences'; fi
 if grep -Fq -- '### Round 1 reviewer timing' "$NO_GANTT_OUT"; then fail '--no-gantt must suppress timing headings'; fi
 pass '--no-gantt suppresses charts only'
 
@@ -301,8 +290,8 @@ grep -Fq -- '**Reviewer slot failures**: 1' "$DOUT" || fail 'design collector pl
 grep -Fq -- '- unknown/collector-failure-1: 1' "$DOUT" \
     || fail "design collector placeholder failure attribution wrong: $(grep -F 'collector-failure' "$DOUT" || true)"
 grep -Fq -- '### Round 1 reviewer timing' "$DOUT" || fail 'design skill fixture missing reviewer timing despite vendor skill mismatch'
-grep -Fq -- 'claude_sub/claude-plan-generic :r1_t1' "$DOUT" || fail 'design skill fixture must join vendor row to slot_map despite vendor skill mismatch'
-assert_mermaid_valid "$DOUT"
+grep -Fq -- 'claude_sub/claude-plan-generic' "$DOUT" || fail 'design skill fixture must join vendor row to slot_map despite vendor skill mismatch'
+assert_ascii_chart_invariants "$DOUT"
 pass 'design skill fixture renders counts, attribution, collector failures, and timing'
 
 CAP="$WORK/cap-run"
@@ -318,10 +307,30 @@ for i in $(seq 1 30); do
 done
 CAP_OUT="$WORK/cap.md"
 "$HELPER" --rounds-root "$CAP" --timing-ledger "$CAP/timing-ledger.tsv" --skill implement --output "$CAP_OUT"
-cap_tasks=$(grep -Ec '^[[:space:]]+.*:r1_t[0-9]+, [0-9]+, [0-9]+$' "$CAP_OUT" || true)
+cap_tasks=$(grep -Ec '^codex/cap-[0-9][0-9]' "$CAP_OUT" || true)
 [ "$cap_tasks" -eq 25 ] || fail "Gantt task cap must render 25 tasks (got $cap_tasks)"
-assert_mermaid_valid "$CAP_OUT"
+assert_ascii_chart_invariants "$CAP_OUT"
 pass 'Gantt task cap limits each round to 25 tasks'
+
+SORT_RUN="$WORK/sort-run"
+mkdir -p "$SORT_RUN/round-1"
+cat >"$SORT_RUN/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":3}}}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000100\t100\t0\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000000\timplement\t-\tcodex\treview\t1700000050\t1700000060\t10\tz label-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000000\timplement\t-\tcodex\treview\t1700000010\t1700000020\t10\tlabel with spaces-output.txt\t0\tcomplete\n'
+    printf 'v1\tvendor\t1700000000\timplement\t-\tcodex\treview\t1700000010\t1700000015\t5\ta label-output.txt\t0\tcomplete\n'
+} >"$SORT_RUN/timing-ledger.tsv"
+SORT_OUT="$WORK/sort.md"
+"$HELPER" --rounds-root "$SORT_RUN" --timing-ledger "$SORT_RUN/timing-ledger.tsv" --skill implement --output "$SORT_OUT"
+a_line=$(grep -n '^unknown/a label ' "$SORT_OUT" | cut -d: -f1)
+spaces_line=$(grep -n '^unknown/label with spaces ' "$SORT_OUT" | cut -d: -f1)
+z_line=$(grep -n '^unknown/z label ' "$SORT_OUT" | cut -d: -f1)
+[[ -n "$a_line" && -n "$spaces_line" && -n "$z_line" && "$a_line" -lt "$spaces_line" && "$spaces_line" -lt "$z_line" ]] \
+    || fail 'ASCII rows must sort by absolute start, end, then label with tab delimiter'
+pass 'ASCII rows sort by absolute start, end, then label'
 
 MAL="$WORK/malformed-run"
 mkdir -p "$MAL/round-1"
@@ -394,10 +403,34 @@ JSON
 GP_OUT="$WORK/gantt-preservation.md"
 "$HELPER" --rounds-root "$GANTT_PRES" --timing-ledger "$GANTT_PRES/timing-ledger.tsv" --skill implement --output "$GP_OUT"
 grep -Fq -- '### Round 1 reviewer timing' "$GP_OUT" || fail 'Gantt preservation fixture missing timing heading'
-grep -Fq -- 'cursor/structure :r1_t1' "$GP_OUT" \
+grep -Fq -- 'cursor/structure' "$GP_OUT" \
     || fail 'Gantt must include vendor row overlapping wider unfiltered round window'
-assert_mermaid_valid "$GP_OUT"
+assert_ascii_chart_invariants "$GP_OUT"
 pass 'Gantt preservation: vendor rows join by unfiltered round overlap'
+
+FAIL_RENDER="$WORK/fail-render"
+mkdir -p "$FAIL_RENDER/round-1"
+cat >"$FAIL_RENDER/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":1}}}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000060\t60\t0\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000001\timplement\t-\tcodex\treview\t1700000001\t1700000010\t9\tcodex-review-output.txt\t0\tcomplete\n'
+} >"$FAIL_RENDER/timing-ledger.tsv"
+FAIL_BIN="$WORK/fail-bin"; mkdir -p "$FAIL_BIN"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$FAIL_BIN/python3"; chmod +x "$FAIL_BIN/python3"
+FAIL_OUT="$WORK/fail-render.md"
+PATH="$FAIL_BIN:$PATH" "$HELPER" --rounds-root "$FAIL_RENDER" --timing-ledger "$FAIL_RENDER/timing-ledger.tsv" --skill implement --output "$FAIL_OUT" \
+    || fail 'renderer failure must not abort helper'
+grep -Fq -- '| 1 | 0 | 0 | 0 | 0 | 1m 00s | — | 1 |' "$FAIL_OUT" || fail 'renderer failure must preserve table'
+grep -Fq -- 'Reviewer timing chart unavailable.' "$FAIL_OUT" || fail 'renderer failure must emit neutral unavailable note'
+if grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$FAIL_OUT"; then fail 'renderer failure with rows must not emit no-task note'; fi
+pass 'renderer failure is best-effort and not misreported as no tasks'
+
+CWD_OUT="$WORK/cwd.md"
+( cd "$WORK" && "$HELPER" --rounds-root "$GANTT_PRES" --timing-ledger "$GANTT_PRES/timing-ledger.tsv" --skill implement --output "$CWD_OUT" )
+grep -Fq -- 'cursor/structure' "$CWD_OUT" || fail 'renderer must launch when cwd is outside repo root'
+pass 'renderer launches via SCRIPT_DIR outside repo root'
 
 ROUND_META="$REPO/scripts/write-design-round-meta.sh"
 TSV_SEC="$WORK/tsv-fallback-security-oos"

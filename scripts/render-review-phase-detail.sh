@@ -370,38 +370,33 @@ AWK
     case "$fail_total" in ''|*[!0-9]*) fail_total=0 ;; esac
 fi
 
-# ---- reviewer timing charts (best-effort Mermaid Gantt) ----
+fmt_mss() {
+    local s="$1" m sec
+    case "$s" in ''|*[!0-9]*) s=0 ;; esac
+    [ "$s" -ge 0 ] || s=0
+    m=$((s / 60)); sec=$((s % 60))
+    printf '%d:%02d' "$m" "$sec"
+}
+
+# ---- reviewer timing charts (best-effort ASCII Gantt) ----
 gantt_file="$WORK_DIR/gantt.md"
 : >"$gantt_file"
 if [ "$GANTT_ENABLED" -eq 1 ] && [ -n "$TIMING_LEDGER" ] && [ -f "$TIMING_LEDGER" ] && [ -s "$round_windows_file" ]; then
     gantt_awk="$WORK_DIR/gantt.awk"
     cat >"$gantt_awk" <<'AWK'
 function isint(v) { return v ~ /^[0-9]+$/ }
-function trim(v) { sub(/^[[:space:]]+/, "", v); sub(/[[:space:]]+$/, "", v); return v }
-function clean_label(v) {
-    gsub(/:/, " -", v)
-    gsub(/,/, " ", v)
-    gsub(/[\t\r\n]/, " ", v)
-    gsub(/[^A-Za-z0-9 _\/.-]/, " ", v)
-    gsub(/[[:space:]][[:space:]]+/, " ", v)
-    v = trim(v)
-    if (length(v) > 60) v = substr(v, 1, 60)
-    v = trim(v)
-    if (v == "") v = "reviewer"
-    return v
-}
 function base(path,    n, parts) {
     n = split(path, parts, "/")
     return parts[n]
 }
 function label_for(out, vendor, kind,    bn, val) {
     bn = base(out)
-    if (bn in m) return clean_label(m[bn])
+    if (bn in m) return m[bn]
     if (bn != "" && bn != "-") {
         val = derive(bn)
-        if (val != "" && val != "unknown/-") return clean_label(val)
+        if (val != "" && val != "unknown/-") return val
     }
-    return clean_label(vendor "/" kind)
+    return vendor "/" kind
 }
 FILENAME==mapf { m[$1]=$2; next }
 $2=="vendor" && NF >= 9 && isint($8) && isint($9) {
@@ -412,7 +407,7 @@ $2=="vendor" && NF >= 9 && isint($8) && isint($9) {
     ce = (ve > rend ? rend : ve)
     if (ce <= cs) next
     label = label_for((NF >= 11 ? $11 : ""), $6, $7)
-    printf "%d\t%d\t%s\n", cs - rstart, ce - rstart, label
+    printf "%s\t%d\t%d\n", label, cs, ce
 }
 AWK
     while IFS=$'\t' read -r gw_rn gw_start gw_end; do
@@ -422,22 +417,27 @@ AWK
         tasks_file="$WORK_DIR/gantt-round-$gw_rn.tsv"
         awk -F'\t' -v mapf="$slot_map" -v rstart="$gw_start" -v rend="$gw_end" \
             -f "$derive_awk" -f "$gantt_awk" "$slot_map" "$TIMING_LEDGER" 2>/dev/null \
-            | sort -n -k1,1 -k2,2 -k3,3 | head -n 25 >"$tasks_file" || : >"$tasks_file"
+            | LC_ALL=C sort -t $'\t' -k2,2n -k3,3n -k1,1 | head -n 25 >"$tasks_file" || : >"$tasks_file"
         {
             printf '### Round %s reviewer timing\n\n' "$gw_rn"
             if [ -s "$tasks_file" ]; then
-                printf '```mermaid\n'
-                printf 'gantt\n'
-                printf '    title Round %s reviewer timing\n' "$gw_rn"
-                printf '    dateFormat X\n'
-                printf '    axisFormat %%H:%%M:%%S\n'
-                printf '    section Reviewers\n'
-                seq=0
-                while IFS=$'\t' read -r rel_start rel_end rel_label; do
-                    seq=$((seq + 1))
-                    printf '    %s :r%s_t%s, %s, %s\n' "$rel_label" "$gw_rn" "$seq" "$rel_start" "$rel_end"
-                done <"$tasks_file"
-                printf '```\n\n'
+                chart=""
+                if chart="$(python3 "$SCRIPT_DIR/../python/cli.py" gantt render \
+                    --window-start-s "$gw_start" \
+                    --window-end-s "$gw_end" \
+                    --rows-tsv "$tasks_file" 2>/dev/null)"; then
+                    if [ -n "$chart" ]; then
+                        span=$((gw_end - gw_start))
+                        printf '```\n'
+                        printf 'Round %s reviewer timing  ·  window 0:00-%s (%ss)\n' "$gw_rn" "$(fmt_mss "$span")" "$span"
+                        printf '%s\n' "$chart"
+                        printf '```\n\n'
+                    else
+                        printf 'No reviewer timing tasks overlapped this round.\n\n'
+                    fi
+                else
+                    printf 'Reviewer timing chart unavailable.\n\n'
+                fi
             else
                 printf 'No reviewer timing tasks overlapped this round.\n\n'
             fi

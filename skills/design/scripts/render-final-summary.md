@@ -68,7 +68,7 @@ When `$DESIGN_TMPDIR/plan-review` is absent, it creates that directory as an
 empty rounds root so the shared renderer can emit `## Review Phase Detail` plus
 `No review rounds completed.`. If preparing that root fails, the helper keeps the
 prior best-effort empty behavior. Final summaries do not pass `--no-gantt`, so
-reviewer timing Gantt charts appear when timing data is available. Valid roots
+reviewer timing ASCII Gantt charts appear when timing data is available. Valid roots
 with zero completed rounds render `No review rounds completed.`. Live terminal
 progress may skip the shared renderer when every discovered round dir lacks
 `round-meta.json`; this final-summary helper does not apply that skip. Compose/render

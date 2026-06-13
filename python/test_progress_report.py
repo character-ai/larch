@@ -1314,3 +1314,105 @@ def test_render_design_plan_review_stale_claude_vote_no_voter_block(
 
     assert "plan vote in progress" not in report
     assert "round 1 in progress" in report
+
+
+def _write_progress_ledger(path: Path, *, round_skill: str = "implement", vendor_skill: str = "implement") -> None:
+    path.write_text(
+        "".join(
+            [
+                f"v1\tround\t100\t{round_skill}\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n",
+                f"v1\tvendor\t101\t{vendor_skill}\t-\tcursor\treview\t1010\t1030\t20\tcursor-specialist-correctness-output.txt\t0\tcomplete\n",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _assert_embedded_chart_invariants(report: str) -> None:
+    lines = report.splitlines()
+    start = lines.index("```")
+    end = lines.index("```", start + 1)
+    chart = lines[start + 1 : end]
+    top = next(line for line in chart if "┌" in line)
+    bottom = next(line for line in chart if "└" in line)
+    left = top.index("┌")
+    right = top.index("┐")
+    assert bottom.index("└") == left
+    assert bottom.index("┘") == right
+    axis = chart[1]
+    assert axis.index("0:00") == left + 1
+    assert axis.index("1:00") + len("1:00") - 1 == right - 1
+    for line in chart:
+        if "│" not in line:
+            continue
+        assert line.index("│") == left
+        assert line.rindex("│") == right
+        track = line[left + 1 : right]
+        assert set(track) <= {" ", "█"}
+        assert "█ █" not in track
+
+
+def test_progress_implement_appends_ascii_chart_from_explicit_live_ledger(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    run_id = "run-1"
+    rounds_root = impl / "larch-logs" / "implement" / run_id
+    round_dir = rounds_root / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text(
+        '{"slot":"correctness","tool":"cursor","output":"/tmp/cursor-specialist-correctness-output.txt"}\n',
+        encoding="utf-8",
+    )
+    _write_progress_ledger(impl / "timing-ledger.tsv")
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "Review Phase Detail\n| 1 |")
+
+    report = progress_report._render_review_detail(impl, run_id)
+
+    assert report.index("Review Phase Detail") < report.index("### Round 1 reviewer timing")
+    assert "```mermaid" not in report
+    assert "dateFormat" not in report
+    assert "cursor/correctness" in report
+    assert "20s" in report
+    assert "Round 1 reviewer timing  ·  window 0:00-1:00 (60s)" in report
+    _assert_embedded_chart_invariants(report)
+
+
+def test_progress_design_charts_ignore_skill_filters_and_use_13_column_layout(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    design = tmp_path / "design"
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text(
+        '{"slot":"correctness","tool":"cursor","output":"/tmp/cursor-specialist-correctness-output.txt"}\n',
+        encoding="utf-8",
+    )
+    # Round skill and vendor skill intentionally mismatch the design call.
+    _write_progress_ledger(design / "timing-ledger.tsv", round_skill="implement", vendor_skill="implement")
+    with (design / "timing-ledger.tsv").open("a", encoding="utf-8") as handle:
+        handle.write("short\n")
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "detail")
+
+    report = progress_report._render_design_review_detail(design)
+
+    assert "detail" in report
+    assert "cursor/correctness" in report
+    assert "20s" in report
+    assert "window 0:00-1:00 (60s)" in report
+    assert "1m 00s" not in report
+    _assert_embedded_chart_invariants(report)
+
+
+def test_progress_chart_failure_preserves_detail(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    _write_progress_ledger(impl / "timing-ledger.tsv")
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "detail survives")
+
+    def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(progress_report, "render_gantt", boom)
+
+    assert progress_report._render_review_detail(impl, "") == "detail survives"
