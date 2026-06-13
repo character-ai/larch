@@ -117,7 +117,8 @@ def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) ->
     scope_file = rts.kv_get(result.stdout, "FILE_LIST_FILE")
     assert scope_file is not None
     scope_path = Path(scope_file)
-    assert scope_path.is_file() and scope_path.stat().st_size > 0
+    assert scope_path.is_file()
+    assert scope_path.stat().st_size > 0
     assert "skills/review/SKILL.md" in scope_path.read_text(encoding="utf-8")
 
 
