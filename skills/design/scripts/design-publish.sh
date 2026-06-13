@@ -8,9 +8,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$SCRIPT_DIR/lib-phase-driver.sh"
 larch_quiet_init
 
-fail() {
-    larch_err "design-publish.sh: $*"
+publish_tail_fail() {
+    local bail=$1 exit_code=$2 detail_log=${3:-}
+    local failure_log="$DESIGN_TMPDIR/design-publish-tail.failure.log"
+    if [[ -z "$detail_log" ]]; then
+        detail_log="$failure_log"
+    fi
+    stage_design_terminal_state failed-publish-tail publish publish design-publish "$bail" "$exit_code" "$detail_log"
+    export SUMMARY_OUTCOME=failed-publish-tail
+    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+        --outcome failed-publish-tail \
+        ${REPO:+--repo "$REPO"} \
+        --post-publish-only || true
     exit 2
+}
+
+fail() {
+    local msg="design-publish.sh: $*"
+    larch_err "$msg"
+    printf '%s\n' "$msg" >"$DESIGN_TMPDIR/design-publish-tail.failure.log"
+    publish_tail_fail publish-tail-failed 2 "$DESIGN_TMPDIR/design-publish-tail.failure.log"
 }
 
 usage() {
@@ -182,7 +199,7 @@ add_warn() {
 
 
 stage_design_terminal_state() {
-    local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-}
+    local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-} root_hint=${9:-}
     local helper="$PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
     [[ -x "$helper" ]] || return 0
     local args=(
@@ -198,6 +215,7 @@ stage_design_terminal_state() {
         --summary-outcome "$outcome"
     )
     [[ -z "$detail_log" ]] || args+=(--failure-detail-log "$detail_log")
+    [[ -z "$root_hint" ]] || args+=(--root-cause-hint "$root_hint")
     set +e
     "$helper" "${args[@]}"         >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log"         2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
     local stage_rc=$?
@@ -573,7 +591,7 @@ if [[ -z "$SESSION_ID" ]]; then
     SUMMARY_OUTCOME=publish-skipped
 elif [[ "${PUBLISH_OK:-}" != true ]]; then
     SUMMARY_OUTCOME=failed-publish
-    stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log"
+    stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log" environment
 fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${PR_URL:-}"

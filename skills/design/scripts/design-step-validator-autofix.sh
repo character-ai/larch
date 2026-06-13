@@ -142,3 +142,86 @@ if [ "${_autofix_rc:-0}" -ne 0 ]; then
   _autofix_status=failed
 fi
 [ -n "${_autofix_log_file:-}" ] || _autofix_log_file="$DESIGN_TMPDIR/validate-plan-commands.log"
+
+autofix_site_token() {
+  case "${SITE:-}" in
+    *"Step 5c"*) printf '%s\n' step5c ;;
+    *"Gate B"*|*"Step 3.5"*) printf '%s\n' gate-b ;;
+    *discussion-round2*) printf '%s\n' discussion-round2 ;;
+    *"Step 2b"*) printf '%s\n' step2b ;;
+    *) printf '%s\n' validator ;;
+  esac
+}
+
+autofix_trigger_token() {
+  case "${_autofix_status:-}" in
+    exhausted|failed|unavailable|skipped-cycle-cap) printf '%s\n' "$_autofix_status" ;;
+    *) printf '%s\n' failed ;;
+  esac
+}
+
+validator_autofix_record_escalation() {
+  case "${_autofix_status:-}" in
+    exhausted|failed|unavailable|skipped-cycle-cap) ;;
+    *) return 0 ;;
+  esac
+  design_require_plugin_root
+  [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+  local helper site trigger args
+  helper="$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+  [[ -x "$helper" ]] || return 0
+  site=$(autofix_site_token)
+  trigger=$(autofix_trigger_token)
+  args=(
+    --profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR"
+    record-escalation --site "$site" --trigger "$trigger"
+    --step validator --phase validation --dispatcher design-step-validator-autofix
+    --exit-code "${_autofix_rc:-unknown}"
+  )
+  case "${_autofix_log_file:-}" in
+    "$DESIGN_TMPDIR"/*)
+      if [ -f "$_autofix_log_file" ] && [ ! -L "$_autofix_log_file" ]; then
+        args+=(--failure-detail-log "$_autofix_log_file")
+      fi
+      ;;
+  esac
+  set +e
+  "$helper" "${args[@]}" \
+    >"$DESIGN_TMPDIR/validator-autofix-record-escalation.stdout.log" \
+    2>"$DESIGN_TMPDIR/validator-autofix-record-escalation.stderr.log"
+  set -e
+}
+
+validator_autofix_operator_cancel_audit() {
+  case "${SUMMARY_OUTCOME:-}" in
+    cancelled-*) ;;
+    *) return 0 ;;
+  esac
+  design_require_plugin_root
+  [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+  local sentinel="$DESIGN_TMPDIR/design-failure-operator-action.env"
+  local chat="$DESIGN_TMPDIR/design-failure-operator-action-chat.md"
+  local detail="$DESIGN_TMPDIR/design-failure-validator-cancel-audit.log"
+  [ -e "$sentinel" ] && return 0
+  cat >"$sentinel" <<EOF2
+DESIGN_FAILURE_OPERATOR_ACTION=true
+REASON=validator-operator-cancel
+OUTCOME=$SUMMARY_OUTCOME
+EOF2
+  {
+    printf '**ℹ /design auto-report skipped:** operator action or cancellation outcome `%s`.\n\n' "$SUMMARY_OUTCOME"
+    printf 'No public larch bug was filed. The skip was recorded in the run log.\n'
+  } >"$chat"
+  printf 'design validator autofix operator cancel: %s\n' "$SUMMARY_OUTCOME" >"$detail"
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+    --log "$DESIGN_TMPDIR/execution-issues.md" \
+    --site "design validator autofix" \
+    --tool "design-step-validator-autofix.sh" \
+    --exit-code 0 \
+    --category Warnings \
+    --output-file "$detail" \
+    --redact >/dev/null 2>&1 || true
+}
+
+validator_autofix_record_escalation
+validator_autofix_operator_cancel_audit

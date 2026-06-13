@@ -50,3 +50,15 @@ env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D5" --outcome failed-publ
 grep -Fxq 'PRESERVED=true' "$D5/preserve.out" || fail 'different terminal state was not preserved'
 grep -Fxq 'FAILURE_OUTCOME=failed-clarify' "$D5/design-failure-terminal-state.env" || fail 'different state overwritten'
 pass 'preserves existing different terminal state'
+
+D6=$(mktemp -d)
+mkdir -p "${HOME}/.cache/larch/sessions"
+D6=$(mktemp -d "${HOME}/.cache/larch/sessions/larch-test-design-terminal.XXXXXX")
+trap 'rm -rf "$D" "$D2" "$D3" "$D4" "$D5" "$D6"' EXIT
+inside_log="$D6/design-log-publish.failure.log"
+printf 'publish failed\n' >"$inside_log"
+env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D6" --outcome failed-publish --step publish --phase publish --site design-publish --trigger failed --bail-reason publish-failed --exit-code 1 --source-script design-publish --failure-detail-log "$inside_log" >/dev/null
+grep -Fxq "FAILURE_DETAIL_LOG=$inside_log" "$D6/design-failure-terminal-state.env" || fail '/Users failure detail log rejected'
+REPORT_SH="$ROOT/skills/implement/scripts/stall-recovery-report.sh"
+env -u CLAUDE_PLUGIN_ROOT "$REPORT_SH" --profile generic --artifact-prefix design-failure --implement-tmpdir "$D6" validate-terminal-state --primary-state-file "$D6/design-failure-terminal-state.env" | grep -Fxq 'VALID=true' || fail 'validate-terminal-state rejected /Users failure detail log'
+pass 'accepts failure detail log under /Users design tmpdir'

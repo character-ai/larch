@@ -52,11 +52,146 @@ MARKER="$DESIGN_TMPDIR/design-failure-escalation-record-failure.env"
 ROOT_FILE="$DESIGN_TMPDIR/design-failure-root-cause.md"
 BOUNDED_ROOT_FILE="$DESIGN_TMPDIR/design-failure-bounded-root-cause.md"
 SENSITIVE_FILE="$DESIGN_TMPDIR/design-failure-sensitive-corpus.env"
+ISSUE_INPUT="$DESIGN_TMPDIR/design-failure-issue-input.md"
 CHAT_PRINT="$DESIGN_TMPDIR/design-failure-chat-print.md"
 OPERATOR_CHAT="$DESIGN_TMPDIR/design-failure-operator-action-chat.md"
 TERMINAL_SENTINEL="$DESIGN_TMPDIR/design-failure-terminal-report.env"
 ESCALATION_SENTINEL="$DESIGN_TMPDIR/design-failure-escalation-success.env"
 OPERATOR_SENTINEL="$DESIGN_TMPDIR/design-failure-operator-action.env"
+COMPOSE_ENV="$DESIGN_TMPDIR/design-failure-compose.env"
+
+compose_env_key() {
+    python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$COMPOSE_ENV" --key "$1" --default "${2:-}"
+}
+
+tier_a_eligible() {
+    "$REPORT_SH" "${helper_common[@]}" is-larch-dev-clone \
+        --working-tree-root "$PLUGIN_ROOT" \
+        --implement-tmpdir "$DESIGN_TMPDIR" 2>/dev/null | grep -Fxq 'LARCH_DEV_CLONE=true'
+}
+
+report_surface() {
+    if tier_a_eligible; then
+        printf '%s\n' issue-input
+    else
+        printf '%s\n' chat-print
+    fi
+}
+
+report_output_file() {
+    case "$1" in
+        issue-input) printf '%s\n' "$ISSUE_INPUT" ;;
+        *) printf '%s\n' "$CHAT_PRINT" ;;
+    esac
+}
+
+populate_design_sensitive_corpus() {
+    local class_file=${1:-$CLASS_FILE} attempts_file=${2:-$ATTEMPTS_FILE}
+    if [ ! -f "$class_file" ]; then
+        class_file="$DESIGN_TMPDIR/design-failure-classification.seed.env"
+        : >"$class_file"
+    fi
+    [ -f "$attempts_file" ] || attempts_file="$ATTEMPTS_FILE"
+    "$REPORT_SH" "${helper_common[@]}" populate-sensitive-corpus \
+        --sensitive-corpus-file "$SENSITIVE_FILE" \
+        --classification-file "$class_file" \
+        --attempts-file "$attempts_file" \
+        --escalation-ledger-file "$LEDGER" \
+        --escalation-fallback-file "$FALLBACK" \
+        --record-failure-marker "$MARKER" \
+        >"$DESIGN_TMPDIR/design-failure-populate-sensitive.stdout.log" \
+        2>"$DESIGN_TMPDIR/design-failure-populate-sensitive.stderr.log" || true
+}
+
+persist_effective_sensitive_corpus() {
+    populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"
+}
+
+file_tier_a_after_compose() {
+    local body_file=$1
+    local dedup_env="$DESIGN_TMPDIR/design-failure-tier-a-dedup.env"
+    local dedup_norm="$DESIGN_TMPDIR/design-failure-tier-a-dedup.normalized.env"
+    local status title repo helper_out
+    if ! "$REPORT_SH" "${helper_common[@]}" dedup-tier-a-report --body-file "$body_file" >"$dedup_env" 2>"$DESIGN_TMPDIR/design-failure-tier-a-dedup.stderr.log"; then
+        return 0
+    fi
+    "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$dedup_env" >"$dedup_norm" 2>/dev/null || true
+    cat "$dedup_norm" >>"$COMPOSE_ENV"
+    status=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$dedup_norm" --key STALL_RECOVERY_REPORT_STATUS --default '')
+    case "$status" in
+        no-match|lookup-failed-open)
+            repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+            [ -n "$repo" ] || return 0
+            title=$(sed -n '1s/^### //p' "$body_file" | sed 's/^\[Bug\] //')
+            [ -n "$title" ] || title="/design terminal failure"
+            helper_out="$DESIGN_TMPDIR/design-failure-tier-a-file.env"
+            if "$PLUGIN_ROOT/scripts/file-failure-report-cross-repo.sh" \
+                --repo "$repo" \
+                --body-file "$body_file" \
+                --title "$title" \
+                --publication-tier tier-a \
+                >"$helper_out" 2>"$DESIGN_TMPDIR/design-failure-tier-a-file.stderr.log"; then
+                local file_norm="$DESIGN_TMPDIR/design-failure-tier-a-file.normalized.env"
+                "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$helper_out" >"$file_norm" 2>/dev/null || true
+                cat "$file_norm" >>"$COMPOSE_ENV"
+            fi
+            ;;
+    esac
+}
+
+handle_compose_outcome() {
+    local kind=$1 decision=$2 sentinel=$3 artifact_key=$4
+    local status reason artifact
+    status=$(compose_env_key STALL_RECOVERY_REPORT_STATUS "")
+    case "$status" in
+        skipped_operator_action)
+            write_operator_action_audit "compose-$kind"
+            emit_kv DESIGN_FAILURE_REPORT_DECISION operator-action-skip
+            emit_kv DESIGN_FAILURE_REPORT_ARTIFACT "$OPERATOR_CHAT"
+            exit 0
+            ;;
+        fallback-print-required)
+            reason=$(compose_env_key STALL_RECOVERY_REPORT_FALLBACK_REASON "compose-$kind")
+            write_fallback_chat "$reason"
+            exit 0
+            ;;
+        filed|dry-run|dedup-comment|no-match|lookup-failed-open|printed)
+            cp "$COMPOSE_ENV" "$sentinel"
+            emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
+            emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
+            artifact=$(compose_env_key "$artifact_key" "")
+            [ -n "$artifact" ] && emit_kv DESIGN_FAILURE_REPORT_ARTIFACT "$artifact"
+            exit 0
+            ;;
+        "")
+            if [ "$decision" = terminal-failure ] && [ -s "$CHAT_PRINT" ]; then
+                cp "$COMPOSE_ENV" "$sentinel"
+                emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
+                emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
+                exit 0
+            fi
+            if [ "$decision" = terminal-failure ] && [ -s "$ISSUE_INPUT" ]; then
+                cp "$COMPOSE_ENV" "$sentinel"
+                emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
+                emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
+                emit_kv DESIGN_FAILURE_REPORT_ARTIFACT "$ISSUE_INPUT"
+                exit 0
+            fi
+            write_fallback_chat "compose-status-missing"
+            exit 0
+            ;;
+        *)
+            write_fallback_chat "compose-status-$status"
+            exit 0
+            ;;
+    esac
+}
+
+escalation_evidence_present() {
+    [ -s "$LEDGER" ] || [ -s "$FALLBACK" ] || [ -s "$MARKER" ] && return 0
+    [ -f "$DESIGN_TMPDIR/execution-issues.md" ] && [ ! -L "$DESIGN_TMPDIR/execution-issues.md" ] && \
+        grep -Eq '^#{2,3}[[:space:]]+Tool Failure: record-escalation([[:space:]]|$)' "$DESIGN_TMPDIR/execution-issues.md"
+}
 
 append_run_log_audit() {
     local reason=$1 log_file="$DESIGN_TMPDIR/execution-issues.md" detail="$DESIGN_TMPDIR/design-failure-audit.log"
@@ -130,7 +265,7 @@ summary=$summary
 The reporter used bounded /design state tokens and local ledger evidence only.
 EOF2
     cp "$ROOT_FILE" "$BOUNDED_ROOT_FILE"
-    : >"$SENSITIVE_FILE"
+    populate_design_sensitive_corpus
 }
 
 helper_common=(--profile generic --artifact-prefix design-failure --implement-tmpdir "$DESIGN_TMPDIR")
@@ -174,23 +309,27 @@ case "$OUTCOME" in
         prepare_root_cause terminal
         "$REPORT_SH" "${helper_common[@]}" init-attempts --attempts-file "$ATTEMPTS_FILE" >/dev/null
         "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" classify >"$DESIGN_TMPDIR/design-failure-classify.env"
+        _report_surface=$(report_surface)
+        _report_output=$(report_output_file "$_report_surface")
+        populate_design_sensitive_corpus "$CLASS_FILE" "$ATTEMPTS_FILE"
         if ! "$REPORT_SH" "${helper_common[@]}" "${state_overrides[@]}" compose-report \
             --report-kind terminal-failure \
-            --surface chat-print \
+            --surface "$_report_surface" \
             --classification-file "$CLASS_FILE" \
             --attempts-file "$ATTEMPTS_FILE" \
             --root-cause-file "$ROOT_FILE" \
             --bounded-root-cause-file "$BOUNDED_ROOT_FILE" \
             --sensitive-corpus-file "$SENSITIVE_FILE" \
-            --output-file "$CHAT_PRINT" >"$DESIGN_TMPDIR/design-failure-compose.env" 2>"$DESIGN_TMPDIR/design-failure-compose.stderr.log"; then
+            --output-file "$_report_output" >"$COMPOSE_ENV" 2>"$DESIGN_TMPDIR/design-failure-compose.stderr.log"; then
             append_run_log_audit terminal-compose-failed
             write_fallback_chat terminal-compose-failed
             exit 0
         fi
-        cp "$DESIGN_TMPDIR/design-failure-compose.env" "$TERMINAL_SENTINEL"
-        emit_kv DESIGN_FAILURE_REPORT_DECISION terminal-failure
-        emit_kv DESIGN_FAILURE_REPORT_ENV "$TERMINAL_SENTINEL"
-        exit 0
+        persist_effective_sensitive_corpus
+        if [ "$_report_surface" = issue-input ]; then
+            file_tier_a_after_compose "$_report_output"
+        fi
+        handle_compose_outcome terminal-failure terminal-failure "$TERMINAL_SENTINEL" STALL_RECOVERY_REPORT_ARTIFACT
         ;;
 esac
 
@@ -199,15 +338,18 @@ case "$OUTCOME" in
     *) emit_skip outcome-not-success-allowlist; exit 0 ;;
 esac
 
-if [ ! -s "$LEDGER" ] && [ ! -s "$FALLBACK" ] && [ ! -s "$MARKER" ]; then
+if ! escalation_evidence_present; then
     emit_skip no-escalation-evidence
     exit 0
 fi
 prepare_root_cause escalation
 "$REPORT_SH" "${helper_common[@]}" init-attempts --attempts-file "$ATTEMPTS_FILE" >/dev/null
+_report_surface=$(report_surface)
+_report_output=$(report_output_file "$_report_surface")
+populate_design_sensitive_corpus "" "$ATTEMPTS_FILE"
 if ! "$REPORT_SH" "${helper_common[@]}" compose-report \
     --report-kind escalation-success \
-    --surface chat-print \
+    --surface "$_report_surface" \
     --attempts-file "$ATTEMPTS_FILE" \
     --escalation-ledger-file "$LEDGER" \
     --escalation-fallback-file "$FALLBACK" \
@@ -215,11 +357,13 @@ if ! "$REPORT_SH" "${helper_common[@]}" compose-report \
     --root-cause-file "$ROOT_FILE" \
     --bounded-root-cause-file "$BOUNDED_ROOT_FILE" \
     --sensitive-corpus-file "$SENSITIVE_FILE" \
-    --output-file "$CHAT_PRINT" >"$DESIGN_TMPDIR/design-failure-compose.env" 2>"$DESIGN_TMPDIR/design-failure-compose.stderr.log"; then
+    --output-file "$_report_output" >"$COMPOSE_ENV" 2>"$DESIGN_TMPDIR/design-failure-compose.stderr.log"; then
     append_run_log_audit escalation-compose-failed
     write_fallback_chat escalation-compose-failed
     exit 0
 fi
-cp "$DESIGN_TMPDIR/design-failure-compose.env" "$ESCALATION_SENTINEL"
-emit_kv DESIGN_FAILURE_REPORT_DECISION escalation-success
-emit_kv DESIGN_FAILURE_REPORT_ENV "$ESCALATION_SENTINEL"
+persist_effective_sensitive_corpus
+if [ "$_report_surface" = issue-input ]; then
+    file_tier_a_after_compose "$_report_output"
+fi
+handle_compose_outcome escalation-success escalation-success "$ESCALATION_SENTINEL" STALL_RECOVERY_REPORT_ARTIFACT

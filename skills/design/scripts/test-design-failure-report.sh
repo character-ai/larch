@@ -18,7 +18,13 @@ env -u CLAUDE_PLUGIN_ROOT "$STAGE" --design-tmpdir "$D2" --outcome failed-clarif
 LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D2" --outcome failed-clarify >"$D2/report.out"
 grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=terminal-failure' "$D2/report.out" || fail 'terminal decision missing'
 [ -s "$D2/design-failure-terminal-report.env" ] || fail 'terminal sentinel missing'
-grep -Fq '[Bug] /design terminal:' "$D2/design-failure-chat-print.md" || fail 'design terminal title missing'
+if [ -s "$D2/design-failure-chat-print.md" ]; then
+  grep -Fq '[Bug] /design terminal:' "$D2/design-failure-chat-print.md" || fail 'design terminal title missing'
+elif [ -s "$D2/design-failure-issue-input.md" ]; then
+  grep -Fq '[Bug] /design terminal:' "$D2/design-failure-issue-input.md" || fail 'design terminal title missing'
+else
+  fail 'terminal report artifact missing'
+fi
 LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D2" --outcome failed-clarify >"$D2/second.out"
 grep -Fxq 'DESIGN_FAILURE_REPORT_REASON=terminal-sentinel-present' "$D2/second.out" || fail 'terminal sentinel did not skip duplicate'
 pass 'terminal report and duplicate skip'
@@ -29,7 +35,13 @@ utc=2026-01-01T00:00:00Z	site=step3-review	trigger=main-agent-vote-required	step
 ROW
 LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D3" --outcome approved >"$D3/escalation.out"
 grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=escalation-success' "$D3/escalation.out" || fail 'escalation-success decision missing'
-grep -Fq '[Bug] /design escalation:' "$D3/design-failure-chat-print.md" || fail 'design escalation title missing'
+if [ -s "$D3/design-failure-chat-print.md" ]; then
+  grep -Fq '[Bug] /design escalation:' "$D3/design-failure-chat-print.md" || fail 'design escalation title missing'
+elif [ -s "$D3/design-failure-issue-input.md" ]; then
+  grep -Fq '[Bug] /design escalation:' "$D3/design-failure-issue-input.md" || fail 'design escalation title missing'
+else
+  fail 'escalation report artifact missing'
+fi
 pass 'escalation-success from ledger on approved outcome'
 
 D4=$(mktemp -d)

@@ -129,8 +129,36 @@ design_bg_wait_marker_start design-step5c || true
      >"$_publish_stdout_file"
    _publish_rc=$?
    set -e
+   abort_failed_publish_tail() {
+     local rc=$1
+     [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+     design_require_plugin_root
+     local stage_helper="$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+     [[ -x "$stage_helper" ]] || return 0
+     set +e
+     "$stage_helper" --design-tmpdir "$DESIGN_TMPDIR" \
+       --outcome failed-publish-tail \
+       --step publish \
+       --phase publish \
+       --site design-publish \
+       --trigger publish-tail-failed \
+       --bail-reason publish-tail-failed \
+       --exit-code "$rc" \
+       --source-script design-step5c \
+       --summary-outcome failed-publish-tail \
+       >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
+       2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+     set -e
+     export SUMMARY_OUTCOME=failed-publish-tail
+     "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+       --outcome failed-publish-tail \
+       --mode "${MODE:-N/A}" \
+       ${REPO:+--repo "$REPO"} \
+       --post-publish-only || true
+   }
    if [[ "${_publish_rc:-0}" -eq 2 ]]; then
      rm -f "$_publish_stdout_file"
+     abort_failed_publish_tail 2
      printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
      exit 1
    fi
@@ -139,6 +167,7 @@ design_bg_wait_marker_start design-step5c || true
    fi
    if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 && "${_publish_rc:-0}" -ne 4 ]]; then
      rm -f "$_publish_stdout_file"
+     abort_failed_publish_tail "${_publish_rc:-1}"
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
      exit 1
    fi

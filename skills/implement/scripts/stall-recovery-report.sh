@@ -126,7 +126,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 [--profile implement|generic] [--artifact-prefix PREFIX] <init-attempts|classify|record-escalation|normalize-outcome|compose-report|dedup-tier-a-report|normalize-file-failure-report-env|normalize-issue-env|validate-token|validate-terminal-state|validate-tier-b-public-file|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 [--profile implement|generic] [--artifact-prefix PREFIX] <init-attempts|classify|record-escalation|normalize-outcome|compose-report|dedup-tier-a-report|normalize-file-failure-report-env|normalize-issue-env|validate-token|validate-terminal-state|validate-tier-b-public-file|populate-sensitive-corpus|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
 }
 
 die_argv() {
@@ -1015,6 +1015,10 @@ cmd_validate_terminal_state() {
     [ "$missing" = 0 ] || { emit_kv VALID false; exit 1; }
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in ""|\#*) continue ;; *=*) key=${line%%=*}; value=${line#*=} ;; *) emit_kv VALID false; exit 1 ;; esac
+        if [ "$key" = FAILURE_DETAIL_LOG ]; then
+            terminal_state_value_valid "$key" "$value" "$tmpdir" || { emit_kv VALID false; exit 1; }
+            continue
+        fi
         case "$value" in *$'\r'*|*$'\n'*|http://*|https://*|*github.com*|*'/Users/'*|*'/home/'*|*' larch '*|*'```'*) emit_kv VALID false; exit 1 ;; esac
         terminal_state_value_valid "$key" "$value" "$tmpdir" || { emit_kv VALID false; exit 1; }
     done <"$state_file"
@@ -2113,6 +2117,13 @@ build_sensitive_corpus_from_evidence() {
     append_sensitive_evidence_from_file "$tmpdir/run-log-pointer.txt" "$out"
     append_sensitive_evidence_from_file "$tmpdir/plan.txt" "$out"
     append_sensitive_evidence_from_file "$tmpdir/feature-description.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/issue-body.txt" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/composed-plan.md" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/final-summary.md" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/validate-plan-commands.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-log-publish.failure.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-plan-write.failure.log" "$out"
+    append_sensitive_evidence_from_file "$tmpdir/design-publish-tail.failure.log" "$out"
     detail_log=$(kv_get "$class_file" FAILURE_DETAIL_LOG "")
     case "$detail_log" in
         "$tmpdir"/*)
@@ -2121,6 +2132,39 @@ build_sensitive_corpus_from_evidence() {
             fi
             ;;
     esac
+}
+
+cmd_populate_sensitive_corpus() {
+    local tmpdir="" sensitive_file="" class_file="" attempts_file="" ledger="" fallback="" marker="" out="" rc
+    while [ $# -gt 0 ]; do
+        parse_global_report_flag "$@"; rc=${PARSED_GLOBAL_FLAG:-0}
+        if [ "$rc" = 2 ]; then shift 2; continue; fi
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --sensitive-corpus-file) [ $# -ge 2 ] || die_argv "--sensitive-corpus-file requires a value"; sensitive_file=$2; shift 2 ;;
+            --classification-file) [ $# -ge 2 ] || die_argv "--classification-file requires a value"; class_file=$2; shift 2 ;;
+            --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
+            --escalation-ledger-file) [ $# -ge 2 ] || die_argv "--escalation-ledger-file requires a value"; ledger=$2; shift 2 ;;
+            --escalation-fallback-file) [ $# -ge 2 ] || die_argv "--escalation-fallback-file requires a value"; fallback=$2; shift 2 ;;
+            --record-failure-marker) [ $# -ge 2 ] || die_argv "--record-failure-marker requires a value"; marker=$2; shift 2 ;;
+            *) die_argv "unknown populate-sensitive-corpus option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || tmpdir="${GLOBAL_IMPLEMENT_TMPDIR:-}"
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$sensitive_file" ] || sensitive_file="$(artifact_path "$tmpdir" "$DEFAULT_SENSITIVE_CORPUS")"
+    [ -n "$class_file" ] || class_file="$(artifact_path "$tmpdir" "$DEFAULT_CLASSIFICATION_FILE")"
+    [ -n "$attempts_file" ] || attempts_file="$(artifact_path "$tmpdir" "$DEFAULT_ATTEMPTS_FILE")"
+    [ -n "$ledger" ] || ledger="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_LEDGER")"
+    [ -n "$fallback" ] || fallback="$(artifact_path "$tmpdir" "$DEFAULT_ESCALATION_FALLBACK")"
+    [ -n "$marker" ] || marker="$(artifact_path "$tmpdir" "$DEFAULT_RECORD_FAILURE_MARKER")"
+    validate_tmpdir_write_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" false || exit 1
+    out="$tmpdir/${ARTIFACT_PREFIX:-stall-recovery}-sensitive-corpus.effective.$$"
+    build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$out"
+    cp "$out" "$sensitive_file"
+    rm -f "$out"
+    emit_kv SENSITIVE_CORPUS_FILE "$sensitive_file"
 }
 
 record_escalation_tool_failure_present() {
@@ -2839,6 +2883,7 @@ main() {
         validate-token) cmd_validate_token "$@" ;;
         validate-terminal-state) cmd_validate_terminal_state "$@" ;;
         validate-tier-b-public-file) cmd_validate_tier_b_public_file "$@" ;;
+        populate-sensitive-corpus) cmd_populate_sensitive_corpus "$@" ;;
         chat-print) cmd_chat_print "$@" ;;
         is-larch-dev-clone) cmd_is_larch_dev_clone "$@" ;;
         bug-body)
