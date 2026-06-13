@@ -1,0 +1,219 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the plan and summary sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# [OOS] Token recording, NDJSON gaps &amp; research sidecar ingestion — 7 items
+
+## Out-of-Scope Observations — Token recording, NDJSON gaps &amp; research sidecar ingestion
+
+Combined from issues #4092 and #4083.
+
+### Item 1 — Codex drafter sidecar copy failure hidden after billable usage
+
+- **Location**: scripts/launch-codex-drafter.sh
+- **Description**: `launch-codex-drafter.sh` copies the raw Codex sidecar to a stable path with `cp || true`, silently swallowing copy failures. If the copy fails after billable usage is written to the raw sidecar, the token record is lost with no operator-visible error. Suggested fix: remove `|| true`, or log and surface the failure explicitly.
+
+### Item 2 — Golden fixtures duplicate the shipped default rate table
+
+- **Location**: python/fixtures/report_tokens_design_golden.md, python/fixtures/report_tokens_implement_golden.md, python/report_tokens_cost.py, python/test_report_tokens_cost.py
+- **Description**: `report_tokens_design_golden.md` and `report_tokens_implement_golden.md` embed copies of the shipped default rate table, creating a second authority outside `python/report_tokens_cost.py`. Edits to the canonical table won't update the fixtures automatically, causing silent test drift.
+
+### Item 3 — Unknown TOOL sidecars split NDJSON and active-ledger behavior silently
+
+- **Description**: When `TOOL=` is unknown or malformed, `append_token_record_from_sidecar()` appends a row to `token-report.ndjson` while `record_vendor_from_sidecar` silently skips the active-ledger recording. Live cost displays will be inconsistent with the NDJSON record.
+
+### Item 4 — Python lint-fix Codex usage missing from NDJSON and active ledger
+
+- **Location**: python/checks.py, scripts/lint-fix-loop.sh
+- **Description**: The Python ship lint-fix path in `python/checks.py` calls `record-vendor` directly into the active ledger but does not append the Codex launcher `.token-record` to `token-report.ndjson`. The path also lacks `append_token_record_from_sidecar` coverage, so lint-fix Codex usage is absent from the NDJSON stream.
+
+### Item 5 — relevant-checks.sh missing lint-fix-loop harness mapping
+
+- **Location**: scripts/relevant-checks.sh
+- **Description**: `scripts/relevant-checks.sh` does not map edits to `scripts/lint-fix-loop.sh` to `test-lint-fix-loop.sh`. Changes to the lint-fix-loop can land without the corresponding harness running. Fix: add a `scripts/lint-fix-loop.sh → test-lint-fix-loop.sh` mapping entry.
+
+### Item 6 — Research/Codex lanes write token-record without ledger ingestion
+
+- **Location**: skills/research/references/research-phase.md:135-150
+- **Description**: Research lanes (and other Codex execution lanes beyond the drafter) write `${OUTPUT}.token-record` sidecars, but sidecar ingestion in research phase is prompt-only prose. Research/validation/voter/judge lanes can finish without ledger rows even when sidecars exist.
+
+### Item 7 — Bash-only ship-pr.sh recovery inapplicable to default Python ship driver
+
+- **Location**: python/ship.py
+- **Description**: Bash-only `ship-pr.sh` recovery ingestion does not help operators on the default Python ship driver. When `LARCH_SHIP_PR_IMPL` is unset, `python/ship.py` owns CI fix/recovery, so the recovery ingestion logic in the Bash path is a dead code path for most users.
+
+---
+*Combined from [#4092, #4083] by /combine-issues --oos*
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: Item 2 fix target
+- **Question**: Which file(s) need updating to remove the rate-table second authority?
+- **Resolution**: Fix `test_display_rates_shipped_defaults_snapshot` in `python/test_report_tokens_cost.py` to reference `DEFAULT_RATE_TABLE_PER_M` instead of hardcoding values. Golden fixture files use hardcoded test costs and don't embed the rate table.
+- **Source**: codebase
+
+## Decision 2: Item 6 fix approach
+- **Question**: Prose update to SKILL.md or new script?
+- **Resolution**: Prose update to `skills/research/references/research-phase.md` — add explicit ingestion steps after the collection step for each successful Codex lane.
+- **Source**: codebase + user deferral
+
+## Decision 3: Items 4 and 7 scope overlap
+- **Question**: Does Item 7 require a separate ship.py fix beyond the checks.py change?
+- **Resolution**: Items 4 and 7 describe the same gap. Fixing `_run_codex` in `python/checks.py` to add NDJSON append covers both.
+- **Source**: codebase + user deferral
+
+## Decision 4: Item 3 fix approach
+- **Question**: How to surface the NDJSON/active-ledger split for unknown TOOL?
+- **Resolution**: Add a stderr warning in `record_vendor_from_sidecar` when vendor is "unknown" (after parse). Minimal, non-data-loss approach.
+- **Source**: codebase
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Fix silent token-record failures in three distinct paths: drafter copy, lint-fix NDJSON, and unknown-TOOL split.
+- Add missing harness mapping (`lint-fix-loop.sh`) and research-phase Codex sidecar ingestion instructions.
+- Eliminate the hardcoded rate-value second authority in the snapshot test.
+
+### Non-goals
+- Do not change the cost-reporting schema or add new token-record fields.
+- Do not refactor how `token-report.ndjson` or the active ledger work at a structural level.
+- Do not port Bash `ship-pr.sh` recovery ingestion to Python separately (covered by the `checks.py` fix).
+
+### Approach sketch
+- `launch-codex-drafter.sh`: replace `2&gt;/dev/null || true` after the `cp` with a stderr warning via `larch_err`.
+- `python/tokens.py`: add a `print(…, file=sys.stderr)` warning in `record_vendor_from_sidecar` when vendor is `"unknown"` (after parse, before early-return).
+- `python/checks.py`: add `token append-record` subprocess call in `_run_codex` after the existing `record-vendor` call; thread `implement_tmpdir` from `run_lint_fix`.
+- `scripts/relevant-checks.sh`: add a `case` arm mapping `scripts/lint-fix-loop.sh` to `test-lint-fix-loop`.
+- `python/test_report_tokens_cost.py`: rewrite `test_display_rates_shipped_defaults_snapshot` to reference `DEFAULT_RATE_TABLE_PER_M` and `DEFAULT_VENDOR_MODEL` instead of literal values.
+- `skills/research/references/research-phase.md`: after `collect-agent-results.sh` settles, add explicit per-lane ingestion instructions for each `STATUS=OK` Codex lane (both `token append-record` and `record-vendor-sidecar`).
+
+### Surfaces in scope
+- `scripts/launch-codex-drafter.sh` (Item 1)
+- `python/tokens.py` (Item 3)
+- `python/checks.py` (Items 4 + 7)
+- `scripts/relevant-checks.sh` (Item 5)
+- `python/test_report_tokens_cost.py` (Item 2)
+- `skills/research/references/research-phase.md` (Item 6)
+
+### Open questions
+- None.
+
+</design_outline>
+
