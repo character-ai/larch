@@ -17,7 +17,7 @@ import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 
 import agents
 import logging_util
@@ -430,7 +430,9 @@ def _path_matches_pre_coder_snapshot(round_dir: Path, pre_head: str, path: str) 
 def _round_coder_delta_paths(round_dir: Path, pre_head: str) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
-    pre_tracked_set = {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+    pre_tracked_set: set[str] = (
+        {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+    )
     deltas: list[str] = []
     seen: set[str] = set()
     for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
@@ -849,7 +851,7 @@ def _step5_probe_prior_round_env(implement_tmpdir: Path, prior_round: int) -> bo
 
 
 @contextlib.contextmanager
-def _stderr_sidecar(path: Path) -> Iterator[None]:
+def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         original = sys.stderr
@@ -1070,31 +1072,6 @@ def _run_coder_codex(round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         shutil.copyfile(output, tool_log)
         return True
     return False
-
-
-def _dirty_paths() -> set[str]:
-    paths: set[str] = set()
-    result = _run(["git", "status", "--porcelain"])
-    if result.returncode != 0:
-        return paths
-    for line in result.stdout.splitlines():
-        if not line:
-            continue
-        path = line[3:] if len(line) > 3 else line
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        paths.add(path)
-    return paths
-
-
-def _submodule_dirty_count(submodules: list[str]) -> int:
-    count = 0
-    for path in _dirty_paths():
-        for sub in submodules:
-            if path == sub or path.startswith(f"{sub}/"):
-                count += 1
-                break
-    return count
 
 
 def _stage_and_commit_round(round_num: int, round_dir: Path) -> str:
