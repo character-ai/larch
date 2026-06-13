@@ -409,6 +409,9 @@ boundary_markers = (
     'terminal postplan fence',
     '> **🔶 /design 3b: arch diagram**',
     'Step 3 resume fence (all mid-loop returns)',
+    '**Gate A "Ready for review" / Gate C "Re-run review panel" re-entry only**',
+    '--mode skip',
+    '--mode architectural',
 )
 
 for (_start_a, end_a), (start_b, _end_b) in zip(fences, fences[1:]):
@@ -519,6 +522,8 @@ assert_reference_updates() {
   contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-apply' 'SKILL missing MAV accepted-findings apply resume'
   contains "$SKILL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation' 'SKILL missing zero-findings continuation resume'
   contains "$SKILL_MD" 'design-step3-entry.sh --reentry' 'SKILL missing Step 3 entry reentry wrapper prose'
+  awk '/^```bash$/,/^```$/ { if (/design-step3-entry\.sh --reentry/) found=1 } END { exit !found }' "$SKILL_MD" \
+    || fail 'SKILL Step 3 re-entry bash fence missing --reentry'
   contains "$APPROVAL_MD" 'design-step3-entry.sh --reentry' 'approval-gates missing Step 3 entry reentry wrapper prose'
   contains "$APPROVAL_MD" 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation' 'approval-gates missing collapsed continuation resume prose'
   ! grep -Fq '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh" --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --site discussion-round2' "$DISCUSSION_MD" \

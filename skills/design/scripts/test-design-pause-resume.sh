@@ -1494,6 +1494,27 @@ out_normal_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_NO
   || fail "normal postplan pause should happen before completion marker"
 
 
+echo "=== Step 3 first-entry pause before review launch (no resume flags) ==="
+DESIGN_FIRST_PAUSE="$TMP/design-step3-first-pause"
+make_design_tmpdir "$DESIGN_FIRST_PAUSE"
+: >"$DESIGN_FIRST_PAUSE/.pause-requested"
+printf 'issue body step3 first pause\n' >"$BODY_FILE"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+out_first_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_FIRST_PAUSE" ISSUE_NUMBER=9 REPO=owner/repo \
+  bash "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" 2>&1)
+[[ "$out_first_pause" == *"PAUSE_OK=true"* ]] || fail "step3 first-entry pause mismatch: $out_first_pause"
+shopt -s nullglob
+for f in "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-"*; do
+  fail "first-entry pause should not create step3-round files: $f"
+done
+for f in "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.gate-b-per-round-approval-round-"*; do
+  fail "first-entry pause should not create gate-b-per-round-approval files: $f"
+done
+for f in "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.postplan-operator-continue-"*; do
+  fail "first-entry pause should not create postplan-operator-continue files: $f"
+done
+shopt -u nullglob
+
 echo "=== Step 3 resume-state wrapper writes before pause-save ==="
 for resume_case in findings apply postapply continuation postplan; do
   DESIGN_RESUME="$TMP/design-step3-resume-$resume_case"
