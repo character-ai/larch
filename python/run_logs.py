@@ -2634,6 +2634,10 @@ def _append_execution_issue(log_file: Path, category: str, entry: str) -> None:
             lock.rmdir()
 
 
+def append_execution_issue(log_file: Path, category: str, entry: str) -> None:
+    _append_execution_issue(log_file, category, entry)
+
+
 _EXECUTION_ISSUE_CATEGORIES = {
     "Pre-existing Code Issues",
     "Tool Failures",

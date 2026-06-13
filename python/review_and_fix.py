@@ -303,7 +303,7 @@ def _scrub_findings(input_file: Path, output_file: Path, log_file: Path) -> tupl
 
 
 def _submodule_paths() -> list[str]:
-    return sorted(redact._discover_submodule_paths(Path.cwd()))
+    return sorted(redact.discover_submodule_paths(Path.cwd()))
 
 
 def _emit_submodule_prohibition(submodules: list[str]) -> str:
@@ -1687,7 +1687,7 @@ def _append_record_escalation_tool_failure(implement_tmpdir: Path, reason: str) 
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs._append_execution_issue(execution, "Tool Failures", entry)
+        run_logs.append_execution_issue(execution, "Tool Failures", entry)
 
 
 def _record_escalation_if_needed(implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:

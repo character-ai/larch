@@ -435,7 +435,7 @@ def test_record_escalation_failure_appends_tool_failure(tmp_path, monkeypatch):
     stderr_path.parent.mkdir(parents=True)
     stderr_path.write_text("boom\n", encoding="utf-8")
 
-    def fail_helper(argv, **_kwargs):
+    def fail_helper(_argv, **_kwargs):
         class Result:
             returncode = 1
             stdout = ""
