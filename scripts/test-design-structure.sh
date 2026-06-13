@@ -565,6 +565,10 @@ assert_step6_cleanup_wrappers() {
   contains "$SCRIPT_DIR/design-step6-prelude.sh" 'STEP6_PRELUDE_STATUS=skipped' 'Step 6 prelude wrapper missing skip exit status'
   contains "$SCRIPT_DIR/design-step6-cleanup.sh" 'session cleanup-tmpdir' 'Step 6 cleanup wrapper missing cleanup call'
   contains "$SCRIPT_DIR/design-step6-prelude.sh" '.design-step5c-status.env' 'Step 6 prelude wrapper missing Step 5c status read'
+  contains "$SCRIPT_DIR/design-step6-prelude.sh" '.bg-wait-active' 'Step 6 prelude wrapper missing in-flight marker guard'
+  contains "$SCRIPT_DIR/design-step6-cleanup.sh" '.bg-wait-active' 'Step 6 cleanup wrapper missing in-flight marker guard'
+  contains "$SCRIPT_DIR/design-step6-prelude.sh" 'appears still in-flight' 'Step 6 prelude wrapper missing in-flight diagnostic'
+  contains "$SCRIPT_DIR/design-step6-cleanup.sh" 'appears still in-flight' 'Step 6 cleanup wrapper missing in-flight diagnostic'
 }
 
 assert_route_integration_pins() {
