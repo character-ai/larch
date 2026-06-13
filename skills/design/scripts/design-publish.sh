@@ -219,9 +219,9 @@ result_env_lock_dir() {
 }
 
 result_env_lock_acquire() {
-    local lock_dir attempt
+    local lock_dir
     lock_dir="$(result_env_lock_dir)"
-    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         if mkdir "$lock_dir" 2>/dev/null; then
             return 0
         fi
