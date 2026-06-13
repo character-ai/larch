@@ -1,0 +1,174 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# sh-to-py C3a2: design plan-command validation + revision waterfall
+
+Part of the sh-to-py bash-to-Python migration (umbrella tracking issue links all parts).
+
+**Goal**: Port the plan-quality machinery the /design review loop invokes: plan-command parse/validate/auto-fix, plan-size checks, plan validation, and the plan-revision waterfall.
+
+**Absorbs (approx lines)**: skills/design/scripts/revise-plan-with-waterfall.sh (794), auto-fix-plan-commands.sh (528), validate-plan-commands.sh (416) plus its fixtures, parse-plan-commands.sh (79), lib-plan-optional-trailers.sh (130), check-plan-size.sh (381), validate-plan.sh (105), invoke-plan-validator.sh (15); scripts/compose-plan-goals-test.sh (106).
+
+**Notes**: validation is pure-local (good first design-side cutover); the revision waterfall reuses B4 launcher tiers; prompt rendering from B6. Harnesses test-revise-plan-with-waterfall.sh (1468), test-check-plan-size.sh, and the validate-plan-commands fixture suite port to pytest here.
+
+**Dependencies (wired natively via /block-issue)**: F2, F3, B4, B6.
+
+**Definition of done**: importable functions; CLI verbs in python/cli.py; direct call-site cutover (no shims); pytest replaces harness coverage; absorbed bash + harnesses deleted; stale-reference sweep; make lint + py-lint + py-test green.
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Port all plan-quality bash scripts (parse, validate, check-size, revise, auto-fix, optional-trailers) to a new `python/plan_quality.py` module and register CLI verbs in `cli.py`.
+- Delete all absorbed bash/awk scripts, their harnesses, and fixture files; replace harness coverage with pytest.
+- Cut over every direct caller to `python3 cli.py &lt;domain&gt; &lt;verb&gt;` with no shims.
+
+### Non-goals
+- Porting `lib-drift-baseline.sh` (still used by `design-postplan-emit.sh`, deferred).
+- Porting `gate-b-dedup-plan.sh` itself (update only the `lib-plan-optional-trailers.sh` usage inside it).
+- Adding new validation behavior beyond what the bash scripts implement.
+- Porting `design-driver.sh`, `design-postplan-emit.sh`, or `review-design-step3-loop.sh` (only update their call sites).
+
+### Approach sketch
+- Create `python/plan_quality.py` with parse-commands, check-size, validate-commands, validate, revise, auto-fix, and optional-trailer functions (awk logic ported to pure Python).
+- Register verbs under the existing `plan` domain in `cli.py` (extends `plan scope-paths`), or under a new `plan-quality` domain if the domain structure is clearer.
+- Port `fixtures/parse-plan-commands/` and `fixtures/validate-plan-commands/` to pytest parametrize fixtures in `python/test_plan_quality.py`.
+- Update consumer call sites: `design-postplan-emit.sh`, `design-driver.sh`, `gate-b-dedup-plan.sh`, `design-step-validator-autofix.sh`, `design-step2b5.sh`, `run-step1-plan-log.sh`.
+- Append all retired paths to `python/migrated-scripts.tsv` and run stale-reference sweep.
+
+### Surfaces in scope
+- `python/plan_quality.py` (new)
+- `python/test_plan_quality.py` (new)
+- `python/cli.py` (new verbs)
+- `python/migrated-scripts.tsv` (extended)
+- `skills/design/scripts/` — delete ~12 absorbed scripts + awk files; update consumer scripts
+- `scripts/` — delete `compose-plan-goals-test.sh` + harness; update `run-step1-plan-log.sh`
+- `docs/python-migration.md`, `skills/design/SKILL.md`, `AGENTS.md`, reference docs (stale-reference sweep)
+
+### Open questions
+- CLI domain: extend existing `plan` domain, or use a new `plan-quality` domain?
+
+</design_outline>
+
