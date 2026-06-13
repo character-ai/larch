@@ -64,7 +64,12 @@ def _title_matches(
     normalized_expected = raw_expected[: match.start()].rstrip() if match else raw_expected
     if not normalized_expected:
         return False
-    suffix_number = str(pr_number) if pr_number is not None else expected_number
+    if pr_number is not None:
+        suffix_number = str(pr_number)
+    elif allow_plain_prefix:
+        suffix_number = expected_number
+    else:
+        suffix_number = ""
     suffix = f"(#{suffix_number})" if suffix_number else ""
     numbered_expected = f"{normalized_expected} {suffix}" if suffix else normalized_expected
 
