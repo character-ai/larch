@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 from gantt import GanttRow, format_mss, render_gantt
 
@@ -186,6 +186,27 @@ def _latest_timing_mark(ledger: Path) -> tuple[str, int | None]:
             latest_ts = ts
             latest_label = cols[4]
     return latest_label, latest_ts
+
+
+def _latest_timing_mark_for_label(ledger: Path, label_matcher: Callable[[str], bool]) -> int | None:
+    latest_ts: int | None = None
+    try:
+        lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return latest_ts
+    for line in lines:
+        cols = line.split("\t")
+        if len(cols) < TIMING_MARK_MIN_COLS or cols[0] != "v1" or cols[1] != "mark":
+            continue
+        try:
+            ts = int(cols[2])
+        except ValueError:
+            continue
+        if not label_matcher(cols[4]):
+            continue
+        if latest_ts is None or ts >= latest_ts:
+            latest_ts = ts
+    return latest_ts
 
 
 def _human_elapsed(start_s: int | None, *, now: int | None = None) -> str:
@@ -632,20 +653,22 @@ def _round_dir_is_fresh(round_dir: Path, mark_ts: int | None) -> bool:
 
 def _render_implement(run: LiveRun) -> str:
     tmpdir = run.tmpdir
-    step_label, start_s = _latest_timing_mark(tmpdir / "timing-ledger.tsv")
+    ledger = tmpdir / "timing-ledger.tsv"
+    step_label, start_s = _latest_timing_mark(ledger)
+    step5_start_s = _latest_timing_mark_for_label(ledger, lambda label: "Step 5" in label)
     phase = _kv_value(tmpdir / "ship-pr-state.sh", "PHASE")
     if (tmpdir / "ship-pr-state.sh").is_file():
         return _render_ship_pr(tmpdir)
     done_marker = tmpdir / "progress" / "done"
     if not done_marker.exists():
         if "Step 5" in step_label or (not step_label and not phase):
-            report = _render_step5(tmpdir, _resolve_run_id(tmpdir), start_s)
+            report = _render_step5(tmpdir, _resolve_run_id(tmpdir), step5_start_s)
             if report:
                 return report
         else:
             round_dir = _current_round_dir(tmpdir)
             if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
-                report = _render_step5(tmpdir, _resolve_run_id(tmpdir), start_s)
+                report = _render_step5(tmpdir, _resolve_run_id(tmpdir), step5_start_s)
                 if report:
                     return report + "\nnote: step marks stale; phase inferred from round artifacts"
     return _render_generic("implement", step_label, start_s, tmpdir)
@@ -982,15 +1005,17 @@ def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
 
 
 def _render_design(run: LiveRun) -> str:
-    step_label, start_s = _latest_timing_mark(run.tmpdir / "timing-ledger.tsv")
+    ledger = run.tmpdir / "timing-ledger.tsv"
+    step_label, start_s = _latest_timing_mark(ledger)
+    plan_review_start_s = _latest_timing_mark_for_label(ledger, _is_design_plan_review_step)
     if _is_design_plan_review_step(step_label):
-        report = _render_design_plan_review(run.tmpdir, start_s)
+        report = _render_design_plan_review(run.tmpdir, plan_review_start_s)
         if report:
             return report
     else:
         round_dir = _current_round_dir(run.tmpdir / "plan-review")
         if round_dir is not None and _round_dir_is_fresh(round_dir, start_s):
-            report = _render_design_plan_review(run.tmpdir, start_s)
+            report = _render_design_plan_review(run.tmpdir, plan_review_start_s)
             if report:
                 return report + "\nnote: step marks stale; phase inferred from round artifacts"
     return _render_generic("design", step_label, start_s, run.tmpdir)
