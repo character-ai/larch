@@ -102,7 +102,7 @@ assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies'
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_deny "$out" 'live marker plus Bash ls DESIGN_TMPDIR denies'
 
-session_tmpdir_ls='ls "$SESSION_TMPDIR"'
+session_tmpdir_ls="ls \"\$SESSION_TMPDIR\""
 out=$(run_payload "$(payload_bash "$session_tmpdir_ls")")
 assert_deny "$out" 'live marker plus Bash ls SESSION_TMPDIR denies'
 
