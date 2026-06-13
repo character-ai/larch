@@ -516,7 +516,7 @@ def test_merge_pr_conflict_signal_after_admin_failed_advances_main(
     assert "cannot be cleanly created" in out.error
 
 
-def test_merge_pr_not_mergeable_admin_failed_advances_main(
+def test_merge_pr_not_mergeable_review_only_requires_review(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -532,16 +532,24 @@ def test_merge_pr_not_mergeable_admin_failed_advances_main(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    review_decision_calls = {"count": 0}
+
+    def fake_review_decision(*_a: object, **_k: object) -> str:
+        review_decision_calls["count"] += 1
+        return "REVIEW_REQUIRED"
+
     monkeypatch.setattr(
         merge_module.gh,
         "pr_review_decision",
-        lambda *_a, **_k: pytest.fail("review decision should not be read"),
+        fake_review_decision,
     )
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert out.result == config.MERGE_RESULT_REVIEW_REQUIRED
+    assert "requires approving review" in out.error
     assert "not mergeable" in out.error
+    assert review_decision_calls["count"] == 1
 
 
 def test_merge_pr_runs_version_race_gate_before_admin_merge(

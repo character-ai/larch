@@ -35,7 +35,6 @@ _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _MERGE_CONFLICT_SIGNALS = (
     "merge conflicts",
     "cannot be cleanly created",
-    "not mergeable",
 )
 
 
