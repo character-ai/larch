@@ -818,12 +818,17 @@ grep -Fq -- '**Reviewer slot failures**: 1' "$RPD_D/final-summary.md" \
     || fail 'Review Phase Detail missing collector failure count'
 grep -Fq -- '### Round 1 reviewer timing' "$RPD_D/final-summary.md" \
     || fail 'design final summary missing reviewer timing heading'
-grep -Fq -- '```mermaid' "$RPD_D/final-summary.md" \
-    || fail 'design final summary missing Mermaid fence'
-grep -Fq -- 'dateFormat X' "$RPD_D/final-summary.md" \
-    || fail 'design final summary missing dateFormat X'
-grep -Fq -- 'axisFormat %H:%M:%S' "$RPD_D/final-summary.md" \
-    || fail 'design final summary missing hour axisFormat'
+grep -Fq -- '```' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing plain ASCII fence'
+if grep -Fq -- '```mermaid' "$RPD_D/final-summary.md"; then fail 'design final summary must omit Mermaid fence'; fi
+if grep -Fq -- 'dateFormat X' "$RPD_D/final-summary.md"; then fail 'design final summary must omit dateFormat X'; fi
+if grep -Fq -- 'axisFormat %H:%M:%S' "$RPD_D/final-summary.md"; then fail 'design final summary must omit hour axisFormat'; fi
+grep -Fq -- 'claude_sub/claude-plan-generic' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing ASCII chart label'
+grep -Fq -- '50s' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing bare ASCII duration'
+grep -Fq -- 'window 0:00-1:05 (65s)' "$RPD_D/final-summary.md" \
+    || fail 'design final summary missing m:ss chart title'
 grep -Fq -- '## Review Phase Detail' "$std_rpd" || fail 'stdout missing Review Phase Detail section'
 pass 'post-publish appends Review Phase Detail from plan-review rounds'
 

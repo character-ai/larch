@@ -132,6 +132,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("generate", "cursor-implementer"): ("rendering", "generate_cursor_implementer_main"),
     ("generate", "topology-docs"): ("rendering", "generate_topology_docs_main"),
     ("generate", "check"): ("rendering", "generate_check_main"),
+    ("gantt", "render"): ("gantt", "gantt_render_main"),
     ("ship", "design-log"): ("design_log_ship", "main"),
     ("ship", "pr"): ("ship", "main"),
     ("clarify", "state"): ("clarify", "clarify_state_main"),

@@ -5,3 +5,17 @@ required argument validation, implement outcome summary shape, token-data-missin
 `--cost-unavailable`, corrupt all-zero token-report warning rendering, renderer
 fallback behavior including degraded bucketed line counts, and stdout body
 emission for the Step 17 `--print-stdout` callsite.
+
+## Recent contract coverage
+
+The harness verifies final-report wrapper integration still appends Review Phase
+Detail for completed rounds. Reviewer timing appears as a plain fenced ASCII
+chart when timing data exists, with raw labels, bare `Ns` durations, the
+`0:00-M:SS` title span, and no Mermaid timing directives. Final reports do not
+pass `--no-gantt`.
+
+Run with:
+
+```bash
+make test-write-final-report
+```
