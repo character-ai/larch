@@ -111,6 +111,6 @@ abs_plan_u="$DESIGNU/plan.txt"
 printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=%s %s\n' "$(printf '%q' --plan-file)" "$(printf '%q' "$abs_plan_u")" >"$val_actions_unset"
 out=$(env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$DESIGNU" --action-file "$val_actions_unset")
 printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS failed with CLAUDE_PLUGIN_ROOT unset"
-grep -Fq 'python3 "$PLUGIN_ROOT/python/cli.py" plan validate' "$SUBJECT" || fail "design-driver missing python plan validate dispatch"
+grep -Fq "python3 \"\$PLUGIN_ROOT/python/cli.py\" plan validate" "$SUBJECT" || fail "design-driver missing python plan validate dispatch"
 
 echo "PASS: test-design-driver.sh"
