@@ -10,7 +10,6 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 SCRIPT="$SCRIPT_DIR/stall-recovery-report.sh"
-CONTRACT_MD="$SCRIPT_DIR/stall-recovery-report.md"
 
 [ -x "$SCRIPT" ] || { echo "FAIL: $SCRIPT not executable"; exit 1; }
 
@@ -23,8 +22,6 @@ pass() { PASS=$((PASS + 1)); echo "PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL: $1"; shift || true; [ "$#" -gt 0 ] && printf '%s\n' "$*" | sed 's/^/    /'; }
 
 GHP_TOKEN_CASE13='ghp_''123456789012345678901234567890123456'
-GHP_TOKEN_CASE16='ghp_''abcdef123456789012345678901234567890'
-: "$CONTRACT_MD" "$GHP_TOKEN_CASE16"
 
 assert_eq() {
     local expected=$1 actual=$2 label=$3
@@ -85,8 +82,6 @@ classify_fixture() {
     log="$dir/failure.log"
     printf '%s\n' "$log_text" >"$log"
     run_capture "$out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log"
-    CLASSIFY_OUT="$out"
-    : "$CLASSIFY_OUT"
 }
 
 # New terminal-only / escalation-success reporting seams.
