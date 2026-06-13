@@ -10,15 +10,15 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 |---|---:|---|---|
 | <a id="design.plan_review.cursor_archetypes"></a>`design.plan_review.cursor_archetypes` | Cursor | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.codex_archetypes"></a>`design.plan_review.codex_archetypes` | Codex | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
-| <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 3 | scout proposes specialists fanned into Cursor+Codex dyn slots | `skills/design/references/plan-review.md` |
+| <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 3 | scout proposes specialists fanned into Cursor+Codex dyn slots | `python/plan_scout.py` |
 | <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | round gated static plus dynamic | NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar | `skills/design/references/plan-review.md` |
-| <a id="design.decompose.panel_slots"></a>`design.decompose.panel_slots` | 8 fixed | 4 archetypes x 2 vendors via decompose-panel-dispatch.sh | `skills/design/references/decompose-panel.md` |
-| <a id="design.decompose.dispatch"></a>`design.decompose.dispatch` | decompose-panel-dispatch.sh | renders prompts + dispatch-with-waterfall | `skills/design/scripts/decompose-panel-dispatch.sh` |
-| <a id="design.decompose.aggregator"></a>`design.decompose.aggregator` | decompose-aggregator.sh | single-slot merge of eight proposals | `skills/design/scripts/decompose-aggregator.sh` |
-| <a id="design.decompose.file_issues"></a>`design.decompose.file_issues` | decompose-file-issues.sh | prepare annotate close-original | `skills/design/scripts/decompose-file-issues.sh` |
-| <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | test-decompose-panel-dispatch.sh | offline panel regression harness | `skills/design/scripts/test-decompose-panel-dispatch.sh` |
-| <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | test-decompose-aggregator.sh | offline aggregator merge harness | `skills/design/scripts/test-decompose-aggregator.sh` |
-| <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | test-decompose-file-issues.sh | offline prepare annotate close-original harness | `skills/design/scripts/test-decompose-file-issues.sh` |
+| <a id="design.decompose.panel_slots"></a>`design.decompose.panel_slots` | 8 fixed | 4 archetypes x 2 vendors via python/cli.py | `skills/design/references/decompose-panel.md` |
+| <a id="design.decompose.dispatch"></a>`design.decompose.dispatch` | python/cli.py | renders prompts + dispatch-with-waterfall | `python/cli.py` |
+| <a id="design.decompose.aggregator"></a>`design.decompose.aggregator` | python/cli.py | single-slot merge of panel proposals | `python/cli.py` |
+| <a id="design.decompose.file_issues"></a>`design.decompose.file_issues` | python/cli.py | prepare annotate close-original | `python/cli.py` |
+| <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | cli.py | offline panel regression coverage | `python/cli.py` |
+| <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |
+| <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | cli.py | offline prepare annotate close-original coverage | `python/cli.py` |
 | <a id="design.plan.preview_emit"></a>`design.plan.preview_emit` | Step 3 plan-candidate preview | Gate C final-plan preview | `skills/design/scripts/emit-design-plan-preview.sh` |
 | <a id="design.plan_commands.validate"></a>`design.plan_commands.validate` | Tier2+opt-in Tier3 | plan fenced bash/sh | `python/plan_quality.py` |
 | <a id="implement.conflict_review.panel"></a>`implement.conflict_review.panel` | 3-reviewer | Claude Code Reviewer subagent + Codex + Cursor | `skills/implement/references/conflict-resolution.md` |

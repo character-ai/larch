@@ -123,7 +123,7 @@ set -euo pipefail
 export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch"
 export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub"
 export SCOUT_CODEX_PROSE=true
-exec "$REPO_ROOT/scripts/scout-dynamic-archetypes.sh" "\$@"
+exec python3 "$REPO_ROOT/python/cli.py" scout dynamic-archetypes "\$@"
 STUB
 chmod +x "$scout_wrapper"
 

@@ -870,14 +870,7 @@ exclude = [
   "skills/design/scripts/test-findings-classification.sh",
   "skills/design/scripts/test-plan-review-loop.sh",
   "skills/design/scripts/test-finalize-plan.sh",
-  "skills/design/scripts/test-scout-plan-archetypes-wrapper.sh",
   "skills/design/scripts/test-dispatch-plan-review-panel.sh",
-  "skills/design/scripts/decompose-panel-dispatch.sh",
-  "skills/design/scripts/decompose-aggregator.sh",
-  "skills/design/scripts/decompose-file-issues.sh",
-  "skills/design/scripts/test-decompose-panel-dispatch.sh",
-  "skills/design/scripts/test-decompose-aggregator.sh",
-  "skills/design/scripts/test-decompose-file-issues.sh",
   "skills/design/scripts/decompose-prompts/decomposition-specialist.txt",
   "skills/design/scripts/decompose-prompts/dependency-analyst.txt",
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
@@ -1009,12 +1002,7 @@ exclude = [
   "scripts/lib-design-tmpdir.sh",
   "scripts/test-lib-design-tmpdir.sh",
   "scripts/test-lib-design-tmpdir.md",
-  # scripts/lib-scope-anchor-handoff.sh is a sourced-only validator for
-  # plan-review scope-anchor relay gating. scripts/test-lib-scope-anchor-handoff.sh
-  # is its Makefile-only regression harness (test-lib-scope-anchor-handoff target).
   # Agent-lint does not follow sibling `source` directives or Makefile targets.
-  "scripts/lib-scope-anchor-handoff.sh",
-  "scripts/test-lib-scope-anchor-handoff.sh",
   # (added by #359 — ADOPTED= contract pin). Invoked only from Makefile's
   # test-harnesses target; no SKILL.md reference. Phase 3 first consumes
   # Makefile-only.
@@ -1216,14 +1204,7 @@ exclude = [
   "skills/design/scripts/test-findings-classification.md",
   "skills/design/scripts/test-plan-review-loop.md",
   "skills/design/scripts/test-finalize-plan.md",
-  "skills/design/scripts/test-scout-plan-archetypes-wrapper.md",
   "skills/design/scripts/test-dispatch-plan-review-panel.md",
-  "skills/design/scripts/decompose-panel-dispatch.md",
-  "skills/design/scripts/decompose-aggregator.md",
-  "skills/design/scripts/decompose-file-issues.md",
-  "skills/design/scripts/test-decompose-panel-dispatch.md",
-  "skills/design/scripts/test-decompose-aggregator.md",
-  "skills/design/scripts/test-decompose-file-issues.md",
   "skills/design/scripts/test-render-final-summary.md",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",

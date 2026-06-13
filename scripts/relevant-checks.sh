@@ -274,11 +274,32 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            scripts/lib-scope-anchor-handoff.sh)
+            python/rendering.py|python/test_rendering.py)
                 append_target_once test-plan-review-loop
                 append_target_once test-run-step3-review
                 append_target_once test-launch-claude-subprocess
                 append_target_once test-lib-scope-anchor-handoff
+                append_target_once test-dispatch-plan-voters
+                append_target_once test-aggregate-findings
+                ;;
+        esac
+
+        case "$f" in
+            python/decompose.py|python/test_decompose.py)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-decompose-file-issues
+                append_target_once test-decompose-panel-dispatch
+                append_target_once test-decompose-aggregator
+                ;;
+        esac
+        case "$f" in
+            python/plan_scout.py|python/test_plan_scout.py)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-scout-dynamic-archetypes
+                append_target_once test-scout-plan-archetypes-wrapper
+                append_target_once test-dispatch-panel-core-dynamic
                 ;;
         esac
         case "$f" in

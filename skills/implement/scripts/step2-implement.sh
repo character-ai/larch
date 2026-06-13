@@ -488,10 +488,10 @@ write_empty_coder_scout_manifest() {
 normalize_coder_scout_manifest() {
     local input="$1" output="$2" wrapper wrapper_out scout_status status_count
     [[ -s "$input" ]] || return 1
-    wrapper="$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh"
-    [[ -x "$wrapper" ]] || return 1
+    wrapper="$PLUGIN_ROOT/python/cli.py"
+    [[ -f "$wrapper" ]] || return 1
     mkdir -p "$(dirname "$output")" || return 1
-    wrapper_out="$("$wrapper" --filter-manifest "$input" "$output" --max-archetypes 3 2>/dev/null || true)"
+    wrapper_out="$(python3 "$wrapper" scout filter-manifest "$input" "$output" --max-archetypes 3 2>/dev/null || true)"
     status_count=$(printf '%s\n' "$wrapper_out" | awk -F= '$1 == "SCOUT_STATUS" { count++ } END { print count + 0 }')
     [[ "$status_count" == "1" ]] || return 1
     scout_status=$(printf '%s\n' "$wrapper_out" | awk -F= '$1 == "SCOUT_STATUS" { print substr($0, index($0, "=") + 1) }')

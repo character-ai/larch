@@ -21,7 +21,7 @@ Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gat
 
 Shared prune-decision helper: `${CLAUDE_PLUGIN_ROOT}/scripts/lib-prune-decision.sh` / `${CLAUDE_PLUGIN_ROOT}/scripts/lib-prune-decision.md`.
 
-Dynamic reviewer scout contract and harness: `${CLAUDE_PLUGIN_ROOT}/scripts/scout-dynamic-archetypes.sh` / `${CLAUDE_PLUGIN_ROOT}/scripts/scout-dynamic-archetypes.md` / `${CLAUDE_PLUGIN_ROOT}/scripts/test-scout-dynamic-archetypes.sh`.
+Dynamic reviewer scout contract and harness: `${CLAUDE_PLUGIN_ROOT}/python/cli.py scout dynamic-archetypes` / `${CLAUDE_PLUGIN_ROOT}/python/plan_scout.py` / `${CLAUDE_PLUGIN_ROOT}/python/test_plan_scout.py`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup

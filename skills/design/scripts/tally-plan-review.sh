@@ -11,9 +11,6 @@ CLI="$PLUGIN_ROOT/python/cli.py"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 [[ -f "$CLI" ]] || { larch_err "tally-plan-review.sh: missing python/cli.py at $CLI"; exit 2; }
-# shellcheck source=skills/design/scripts/lib-findings-classification.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
@@ -118,7 +115,7 @@ write_tally_stub() {
 
 write_findings_classification_stub() {
     mkdir -p "$(dirname "$FINDINGS_CLASSIFICATION_OUT")"
-    emit_findings_classification_header > "$FINDINGS_CLASSIFICATION_OUT"
+    python3 "$PLUGIN_ROOT/python/cli.py" voting findings-classification-header > "$FINDINGS_CLASSIFICATION_OUT"
 }
 
 tally_error_exit() {
@@ -417,7 +414,7 @@ write_findings_classification() {
     local tmp id block reviewer kind result security tsv_result body_severity
     local p voter_file parsed vote correctness severity quality uncertain tool
     tmp=$(mktemp "${FINDINGS_CLASSIFICATION_OUT}.XXXXXX")
-    emit_findings_classification_header > "$tmp"
+    python3 "$PLUGIN_ROOT/python/cli.py" voting findings-classification-header > "$tmp"
     while IFS= read -r id || [[ -n "$id" ]]; do
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"

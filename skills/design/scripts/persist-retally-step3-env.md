@@ -2,7 +2,7 @@
 
 Refreshes both Step 3 result envs (`.step3-plan-review-result.env` and
 `.step3-review-result.env`) after a `/design` MainAgent re-tally, routing
-`SCOPE_ANCHOR_FILE` through `larch_scope_anchor_retally_handoff_value`.
+`SCOPE_ANCHOR_FILE` through `python/cli.py scope-anchor retally-handoff`.
 On successful re-tally, it also merges current `accepted-plan-findings.md`
 blocks into `accepted-plan-findings-all.md` and merges current
 `oos-accepted-design.md` with `.oos-accepted-design.prev.md`, so cumulative
@@ -22,7 +22,7 @@ merge uses normalized `Description` keys. Both merges are skipped on
   parsed re-tally stdout KV preferred, `--retally-input-anchor` fallback on
   `ok` when stdout omits the KV; omits the key on `tally-error`; never
   persists CR/LF or out-of-tmpdir paths (validators from
-  `scripts/lib-scope-anchor-handoff.sh`). See `SECURITY.md` "Plan-review
+  `python/cli.py scope-anchor`). See `SECURITY.md` "Plan-review
   scope-anchor pipeline" — path-only handoff surface. The cumulative accepted
   merge reads only `### FINDING_N:` blocks from the current accepted file and
   appends blocks not already present byte-for-byte in the cumulative file; the

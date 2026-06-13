@@ -94,6 +94,21 @@ _SEVERITY_VALUES = {"blocker", "major", "minor", "nit", "uncertain"}
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
 _UNCERTAIN_VALUES = {"true", "false"}
 
+FINDINGS_CLASSIFICATION_HEADER = (
+    "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity"
+)
+
+
+def findings_classification_header() -> str:
+    return FINDINGS_CLASSIFICATION_HEADER
+
+
+def findings_classification_header_main(argv: list[str]) -> int:
+    if argv:
+        return _error("usage: findings-classification-header")
+    print(findings_classification_header())
+    return 0
+
 
 def _python_cli(plugin_root: str = "") -> Path:
     root = Path(plugin_root) if plugin_root else _plugin_root()

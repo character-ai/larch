@@ -94,7 +94,7 @@ test-harnesses-5: test-review-and-fix-dispatch test-dispatch-code-voters-regress
 
 test-harnesses-6: test-stall-recovery-report test-resolve-upstream-larch-repo test-file-failure-report-cross-repo test-validate-citations test-design-multi-round-integration test-launch-claude-review test-token-vendor-scrapers test-sessionstart test-reviewer-prune test-step-18b-final-report test-gate-b-dedup-plan test-references-headers test-render-cost-line-callsites test-pause-skill test-lib-phase-driver test-implement-fence-shape
 
-test-harnesses-7: test-launch-cursor-ci test-collect-findings test-lint-fix-loop test-launch-claude-subprocess test-gate-b-apply-mode test-decompose-file-issues test-persist-retally-step3-env test-plan-review-scope-anchor test-read-result-env test-agent-model-args test-step-8-ship test-design-step3-state test-rebase-push-force-lease test-lib-submodule-prohibition
+test-harnesses-7: test-launch-cursor-ci test-collect-findings test-lint-fix-loop test-launch-claude-subprocess test-gate-b-apply-mode test-decompose-file-issues test-persist-retally-step3-env test-plan-review-scope-anchor test-lib-scope-anchor-handoff test-read-result-env test-agent-model-args test-step-8-ship test-design-step3-state test-rebase-push-force-lease test-lib-submodule-prohibition
 
 test-harnesses-8: test-launch-review-cursor-core test-collect-agent-results test-gather-branch-context test-classify-diff-mode test-validate-citations-budget test-refresh-run-logs test-emit-design-plan-preview test-validate-plan-commands test-render-run-summary test-degraded-tools-gate test-parse-design-argv test-relevant-checks-validation test-ci-status test-compose-pr-summary test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts
 
@@ -225,6 +225,9 @@ test-check-scope-reduction-marker:
 
 test-plan-review-scope-anchor:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-scope-anchor.sh
+
+test-lib-scope-anchor-handoff:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_rendering.py -q
 
 test-clarify-comment:
 	cd python && $(PYTHON) -m pytest test_clarify.py
@@ -420,13 +423,13 @@ test-pause-skill:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
 
 test-decompose-panel-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-panel-dispatch.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-decompose-aggregator:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-aggregator.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-decompose-file-issues:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-decompose-file-issues.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_decompose.py -q
 
 test-design-step2b-drafter:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step2b-drafter.sh
@@ -561,7 +564,7 @@ test-lint-awk-multibyte-regex:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lint-awk-multibyte-regex.sh
 
 test-scout-plan-archetypes-wrapper:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-review-panel:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-dispatch-plan-review-panel.sh
@@ -801,7 +804,7 @@ test-dispatch-panel-limits:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section limits
 
 test-scout-dynamic-archetypes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-scout-dynamic-archetypes.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
 
 test-dispatch-plan-voters:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-plan-voters.sh

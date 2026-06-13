@@ -135,3 +135,7 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
 - `scripts/run-step1-plan-log.sh` defaults to `plan compose-goals-test` without a retired executable guard.
 - Absorbed shell harness targets now select `python/test_plan_quality.py`; survivor harnesses remain for shell call sites.
+
+### C3c design decomposition and scout cutover
+
+The C3c slice moves /design decomposition helpers to `python/decompose.py`, dynamic archetype scouting to `python/plan_scout.py`, scope-anchor handoff and rendering to `python/rendering.py`, and the findings-classification TSV header to `python/voting.py`. `/review` dynamic scout dispatch and drafter `filter-manifest` callers now use direct `python/cli.py` verbs so the retired shell wrappers are not kept as shims.

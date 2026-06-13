@@ -75,8 +75,6 @@ esac
 unset _findings_canon
 # shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
 source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
-# shellcheck source=scripts/lib-scope-anchor-handoff.sh
-source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 MARKER_HELPER="$PLUGIN_ROOT/python/cli.py"
 if [[ ! -f "$MARKER_HELPER" ]]; then
     MARKER_HELPER="$SCRIPT_DIR/../../../python/cli.py"
@@ -90,7 +88,10 @@ kv_get() {
 }
 
 validate_scope_anchor_file() {
-    larch_scope_anchor_validate_review "$1" "$REVIEW_TMPDIR_CANON"
+    python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor validate \
+        --mode review \
+        --review-tmpdir "$REVIEW_TMPDIR_CANON" \
+        --path "$1"
 }
 
 execution_issues_log() {
