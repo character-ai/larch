@@ -527,7 +527,7 @@ D_PY="$TMP/default-python-revise"
 write_common "$D_PY"
 write_ok_stubs "$D_PY"
 FAKE_PLUGIN="$D_PY/fake-plugin"
-mkdir -p "$FAKE_PLUGIN/python" "$FAKE_PLUGIN/skills/design/scripts"
+mkdir -p "$FAKE_PLUGIN/python" "$FAKE_PLUGIN/scripts" "$FAKE_PLUGIN/skills/design/scripts"
 cp "$ROOT/python/"*.py "$FAKE_PLUGIN/python/"
 mv "$FAKE_PLUGIN/python/cli.py" "$FAKE_PLUGIN/python/real-cli.py"
 cat >"$FAKE_PLUGIN/python/cli.py" <<'SPYCLI'
@@ -543,6 +543,10 @@ def main() -> None:
         if spy:
             with open(spy, "a", encoding="utf-8") as handle:
                 handle.write(" ".join(sys.argv[3:]) + "\n")
+        if "--plan-file" in sys.argv:
+            plan_file = sys.argv[sys.argv.index("--plan-file") + 1]
+            with open(plan_file, "a", encoding="utf-8") as handle:
+                handle.write("\n# revised\n")
         print("REVISE_STATUS=ok")
         print("REVISE_TIER_1_STATUS=skipped-not-present")
         print("REVISE_TIER_2_STATUS=skipped-not-present")
@@ -555,6 +559,8 @@ if __name__ == "__main__":
     main()
 SPYCLI
 chmod +x "$FAKE_PLUGIN/python/cli.py"
+ln -sf "$ROOT/scripts/lib-scope-anchor-handoff.sh" "$FAKE_PLUGIN/scripts/lib-scope-anchor-handoff.sh"
+ln -sf "$ROOT/skills/design/scripts/review-design-step3-loop.sh" "$FAKE_PLUGIN/skills/design/scripts/review-design-step3-loop.sh"
 ln -sf "$D_PY/revise-ok.sh" "$FAKE_PLUGIN/skills/design/scripts/revise-plan-with-waterfall"".sh"
 printf 'awaiting-apply\n' >"$D_PY/.step3-round-1.phase"
 printf '1\n' >"$D_PY/review-round-count.txt"
@@ -565,8 +571,8 @@ cat >"$D_PY/accepted-plan-findings.md" <<'FINDINGS'
 FINDINGS
 round_stub="$(write_round_stub "$D_PY" 'exit 99')"
 : >"$D_PY/revise-waterfall-spy.log"
-out="$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 \
-  -u RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH \
+out="$(env -u LARCH_QUIET_LOG_FILE -u RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH \
+  LARCH_QUIET_DISABLE=1 \
   CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
   REVISE_WATERFALL_SPY_LOG="$D_PY/revise-waterfall-spy.log" \
   RUN_STEP3_PLAN_REVIEW_LOOP_SH="$round_stub" \
