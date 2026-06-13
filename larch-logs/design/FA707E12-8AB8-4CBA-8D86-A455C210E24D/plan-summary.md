@@ -1,0 +1,1 @@
+Port plan-quality bash into `python/plan_quality.py`, cut callers to `python3 python/cli.py plan ...`, replace shell harnesses with pytest parity coverage, delete retired scripts and fixtures, and update stale references plus migration manifest.
