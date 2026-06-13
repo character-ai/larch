@@ -7,7 +7,7 @@
 External plan-review launches are transitively covered by the launch-time
 health gate in `python/cli.py agent run-external-agent`: the Step 3 review launcher
 family funnels Codex/Cursor commands through that chokepoint, so this driver
-does not own a separate `check-reviewers.sh` probe or timeout knob.
+does not own a separate `agent check-reviewers` probe or timeout knob.
 
 ## Invariants
 

@@ -169,14 +169,14 @@ external_launch_health_gate() {
             if [[ -n "$timeout_bin" ]]; then
                 if [[ -n "$_probe_stderr_tmp" ]]; then
                     if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>"$_probe_stderr_tmp"); then
                         probe_rc=0
                     else
                         probe_rc=$?
                     fi
                 else
                     if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                         probe_rc=0
                     else
                         probe_rc=$?
@@ -185,14 +185,14 @@ external_launch_health_gate() {
             else
                 if [[ -n "$_probe_stderr_tmp" ]]; then
                     if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>"$_probe_stderr_tmp"); then
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>"$_probe_stderr_tmp"); then
                         probe_rc=0
                     else
                         probe_rc=$?
                     fi
                 else
                     if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
-                        "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                        python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                         probe_rc=0
                     else
                         probe_rc=$?
@@ -205,14 +205,14 @@ external_launch_health_gate() {
             if [[ -n "$timeout_bin" ]]; then
                 if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
                     "$timeout_bin" "$timeout_seconds" \
-                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                     probe_rc=0
                 else
                     probe_rc=$?
                 fi
             else
                 if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_PROBE_TTL_SECONDS=0 \
-                    "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+                    python3 "$script_dir/../python/cli.py" agent check-reviewers "$skip_arg" 2>/dev/null); then
                     probe_rc=0
                 else
                     probe_rc=$?

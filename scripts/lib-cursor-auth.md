@@ -15,15 +15,15 @@ Passing `--api-key <key>` on the `cursor agent` argv leaked the secret into `pyt
 - `scripts/launch-review.sh --tool cursor` — review reviewer panel launcher (via `cursor_launcher_setup_auth_argv`).
 - `scripts/launch-cursor-implement.sh` — Cursor implementer launcher (Step 2 of `/implement`; via `cursor_launcher_setup_auth_argv`).
 - `python/cli.py agent launch-cursor-ci` — Cursor CI-fix launcher (via `cursor_launcher_setup_auth_argv`).
-- `scripts/check-reviewers.sh` — reviewer presence check (sources the lib; calls `cursor_preread_service_token` + `cursor_auth_export_env` — `cursor_auth_preflight` is invoked separately to gate the probe loop).
-- `scripts/run-negotiation-round.sh` — negotiation runner (calls `cursor_auth_export_env` after `cursor_auth_preflight`).
+- `python/cli.py agent check-reviewers` — reviewer presence check (sources the lib; calls `cursor_preread_service_token` + `cursor_auth_export_env` — `cursor_auth_preflight` is invoked separately to gate the probe loop).
+- `python/cli.py agent run-negotiation-round` — negotiation runner (calls `cursor_auth_export_env` after `cursor_auth_preflight`).
 - `python/cli.py agent cursor-auth-preflight` — Darwin preflight **gate** for runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward. It runs `cursor_auth_preflight` and emits **no** argv flags; the markdown blocks rely on the orchestrator's inherited `CURSOR_API_KEY` for the Cursor child.
 
 ## Invariants
 
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - `cursor_auth_export_env` mutates only `CURSOR_API_KEY` in the environment (export/unset); it builds no argv. Callers pass no auth argv element.
-- `cursor_auth_preflight` returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-review.sh --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
+- `cursor_auth_preflight` returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-review.sh --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `agent run-negotiation-round`).
 - Darwin-only service-specific keychain probe (`security find-generic-password -a cursor-user -s cursor-access-token`); on non-Darwin, preflight is a no-op. Darwin preflight uses three attempts with 200ms sleeps between failed attempts. Each production attempt suppresses stdout and stderr with `>/dev/null 2>&1`. Exit `2` still means Cursor auth was not confirmed by preflight. Direct callers still receive the final actionable stderr after all attempts fail.
 - Darwin-only keychain pre-read uses `security find-generic-password -a cursor-user -s cursor-access-token -w`; failures and empty reads are silent no-ops so callers retain Cursor's default auth fallback.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.

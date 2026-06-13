@@ -32,7 +32,7 @@ CODEX_BINARY_FOUND=false
 CURSOR_BINARY_FOUND=false
 CODEX_PRESENT=false
 CURSOR_PRESENT=false
-_check_out=$("$PLUGIN_ROOT/scripts/check-reviewers.sh" 2>/dev/null || true)
+_check_out=$(python3 "$PLUGIN_ROOT/python/cli.py" agent check-reviewers 2>/dev/null || true)
 if [ -n "$_check_out" ]; then
     _v=$(printf '%s\n' "$_check_out" | awk -F= '/^CODEX_BINARY_FOUND=/{print substr($0, index($0,"=")+1); exit}')
     [ -n "$_v" ] && CODEX_BINARY_FOUND="$_v"

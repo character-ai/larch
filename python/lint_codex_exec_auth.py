@@ -14,7 +14,6 @@ GIT = shutil.which("git") or "git"
 ALLOWED_SHELL_FILES = {
     "scripts/launch-review.sh",
     "scripts/launch-codex-implement.sh",
-    "scripts/check-reviewers.sh",
     "skills/review-and-fix/scripts/review-and-fix.sh",
 }
 ALLOWED_PYTHON_FILES = {"python/agents.py"}

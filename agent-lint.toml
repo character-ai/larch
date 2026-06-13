@@ -512,7 +512,6 @@ exclude = [
   "scripts/relevant-checks.sh",
   "scripts/check-contains-pins.sh",
   "scripts/test-check-contains-pins.sh",
-  "scripts/test-run-negotiation-round.sh",
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-progress-report.sh",
@@ -618,15 +617,6 @@ exclude = [
   # directives only, which agent-lint does not follow.
   "scripts/lib-failed-agent-stderr-tail.sh",
   "scripts/test-lib-failed-agent-stderr-tail.sh",
-  # scripts/check-reviewers.sh is the health-probe script for external reviewer
-  # availability. It is invoked from lib-external-launcher-common.sh and other
-  # shell callers; structured SKILL.md invocation is indirect.
-  "scripts/check-reviewers.sh",
-  # scripts/test-check-reviewers.sh is the regression harness for
-  # scripts/check-reviewers.sh probe acceptance logic. Referenced only from
-  # Makefile (test-check-reviewers target) and scripts/test-check-reviewers.md
-  # (sibling contract).
-  "scripts/test-check-reviewers.sh",
   # scripts/test-external-tool-registry.sh is the regression harness for the
   # external-tool registry. Referenced only from Makefile
   # (test-external-tool-registry target) and scripts/test-external-tool-registry.md
@@ -1133,11 +1123,6 @@ exclude = [
   "skills/implement/scripts/test-check-review-changes.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
   "skills/design/scripts/dedup-plan-lines.md",
-  # scripts/check-reviewers.md is the sibling contract for the health-probe
-  # script. scripts/test-check-reviewers.md is the sibling contract for the
-  # probe acceptance regression harness. Both follow the harness-sibling pattern.
-  "scripts/check-reviewers.md",
-  "scripts/test-check-reviewers.md",
   "scripts/test-external-tool-registry.md",
   "scripts/test-check-topology-rule-paths.md",
   # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
@@ -1158,7 +1143,6 @@ exclude = [
   "scripts/relevant-checks.md",
   "scripts/check-contains-pins.md",
   "scripts/test-check-contains-pins.md",
-  "scripts/test-run-negotiation-round.md",
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
   "scripts/test-hook-bg-poll-guard.md",

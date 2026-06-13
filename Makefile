@@ -706,7 +706,7 @@ test-launch-codex-ci:
 	cd python && $(PYTHON) -m pytest test_agents.py -q
 
 test-run-negotiation-round:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-run-negotiation-round.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k negotiation_round
 
 test-run-external-agent-args:
 	cd python && $(PYTHON) -m pytest test_agents.py -q
@@ -968,7 +968,7 @@ test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
 
 test-check-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-reviewers.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k check_reviewers
 
 test-degraded-tools-gate:
 	cd python && $(PYTHON) -m pytest test_agents.py -q

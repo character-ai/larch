@@ -667,7 +667,7 @@ run_health_gate_case() {
     local case_dir="$TMPDIR_ROOT/health-$label"
     local rc_file="$case_dir/rc"
     local call_file="$case_dir/checker-call"
-    mkdir -p "$case_dir/scripts" "$case_dir/bin" "$case_dir/python/stubs/session"
+    mkdir -p "$case_dir/scripts" "$case_dir/bin" "$case_dir/python/stubs/session" "$case_dir/python/stubs/agent"
     cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$case_dir/scripts/lib-external-launcher-common.sh"
     cp "$REPO_ROOT"/python/*.py "$case_dir/python/"
     mv "$case_dir/python/cli.py" "$case_dir/python/real-cli.py"
@@ -681,6 +681,10 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     if len(sys.argv) >= 3 and sys.argv[1] == "session":
         stub = root / "stubs" / "session" / sys.argv[2]
+        if stub.is_file() and os.access(stub, os.X_OK):
+            os.execv(str(stub), [str(stub), *sys.argv[3:]])
+    if len(sys.argv) >= 3 and sys.argv[1] == "agent":
+        stub = root / "stubs" / "agent" / sys.argv[2]
         if stub.is_file() and os.access(stub, os.X_OK):
             os.execv(str(stub), [str(stub), *sys.argv[3:]])
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
@@ -704,7 +708,7 @@ awk -F= -v key="$key" -v default="$default" '$1==key{print substr($0, index($0, 
 EOF
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$case_dir/scripts/lib-quiet.sh"
     chmod +x "$case_dir/python/cli.py" "$case_dir/python/stubs/session/read-key"
-    cat > "$case_dir/scripts/check-reviewers.sh" <<'EOF'
+    cat > "$case_dir/python/stubs/agent/check-reviewers" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 {
@@ -727,7 +731,7 @@ if [[ -n "${LARCH_TEST_PRESENT_LINE:-}" ]]; then
 fi
 exit "${LARCH_TEST_CHECKER_RC:-0}"
 EOF
-    chmod +x "$case_dir/scripts/check-reviewers.sh"
+    chmod +x "$case_dir/python/stubs/agent/check-reviewers"
     cat > "$case_dir/bin/timeout" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -891,7 +895,7 @@ assert_file_contains "codex-exec outer meta records timing kind" "$_outer_meta" 
 assert_file_contains "codex-exec outer meta records add dirs" "$_outer_meta" "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]"
 
 # shellcheck disable=SC2016
-_codex_auth_inventory='launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `check-reviewers.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `run-negotiation-round.sh`'
+_codex_auth_inventory='launch-review.sh --tool codex`, `python/cli.py agent launch-codex-ci`, `launch-codex-implement.sh`, the Codex health probe in `python/cli.py agent check-reviewers`, `skills/review-and-fix/scripts/review-and-fix.sh`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `lint-fix-loop.sh`, and `python/cli.py agent run-negotiation-round`'
 for _inventory_file in \
     "$REPO_ROOT/docs/external-reviewers.md" \
     "$REPO_ROOT/docs/configuration-and-permissions.md" \
