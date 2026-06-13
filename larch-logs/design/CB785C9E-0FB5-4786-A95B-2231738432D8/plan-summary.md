@@ -1,0 +1,1 @@
+Plan ports four leaf review-dispatch scripts into `python/review_dispatch.py`, registers four `agent` verbs, retargets direct callers, replaces three bash harnesses with pytest parity, retires script contracts, and updates stale docs/manifest rows.
