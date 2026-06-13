@@ -13,7 +13,7 @@ ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE/scripts/"
 ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE/scripts/"
 printf '#!/bin/bash\nexit 2\n' >"$FAKE/skills/design/scripts/design-publish.sh"
 chmod +x "$FAKE/skills/design/scripts/design-publish.sh"
-printf '#!/bin/bash\n: >"$DESIGN_TMPDIR/final-summary.md"\n' >"$FAKE/skills/design/scripts/render-final-summary.sh"
+printf "#!/bin/bash\n: >\"\$DESIGN_TMPDIR/final-summary.md\"\n" >"$FAKE/skills/design/scripts/render-final-summary.sh"
 chmod +x "$FAKE/skills/design/scripts/render-final-summary.sh"
 set +e
 CLAUDE_PLUGIN_ROOT="$FAKE" DESIGN_TMPDIR="$D" "$ROOT/skills/design/scripts/design-step5c.sh" 2>"$D/err"
