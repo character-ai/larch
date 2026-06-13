@@ -94,7 +94,7 @@ test-harnesses-5: test-review-and-fix-dispatch test-dispatch-code-voters-regress
 
 test-harnesses-6: test-stall-recovery-report test-resolve-upstream-larch-repo test-file-failure-report-cross-repo test-validate-citations test-design-multi-round-integration test-launch-claude-review test-token-vendor-scrapers test-sessionstart test-reviewer-prune test-step-18b-final-report test-gate-b-dedup-plan test-references-headers test-render-cost-line-callsites test-pause-skill test-lib-phase-driver test-implement-fence-shape
 
-test-harnesses-7: test-launch-cursor-ci test-collect-findings test-lint-fix-loop test-launch-claude-subprocess test-gate-b-apply-mode test-decompose-file-issues test-persist-retally-step3-env test-plan-review-scope-anchor test-read-result-env test-agent-model-args test-step-8-ship test-design-step3-state test-rebase-push-force-lease test-lib-submodule-prohibition
+test-harnesses-7: test-launch-cursor-ci test-collect-findings test-lint-fix-loop test-launch-claude-subprocess test-gate-b-apply-mode test-decompose-file-issues test-persist-retally-step3-env test-plan-review-scope-anchor test-lib-scope-anchor-handoff test-read-result-env test-agent-model-args test-step-8-ship test-design-step3-state test-rebase-push-force-lease test-lib-submodule-prohibition
 
 test-harnesses-8: test-launch-review-cursor-core test-collect-agent-results test-gather-branch-context test-classify-diff-mode test-validate-citations-budget test-refresh-run-logs test-emit-design-plan-preview test-validate-plan-commands test-render-run-summary test-degraded-tools-gate test-parse-design-argv test-relevant-checks-validation test-ci-status test-compose-pr-summary test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts
 

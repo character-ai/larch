@@ -468,6 +468,20 @@ def test_scope_anchor_validate_design_and_render(tmp_path: Path, capsys: pytest.
     assert "Scope &lt;only&gt; &amp; token" in out
 
 
+def test_scope_anchor_validate_rejects_unreadable_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _reset_quiet(monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    anchor = design / "anchor.txt"
+    anchor.write_text("scope", encoding="utf-8")
+    anchor.chmod(0o000)
+    try:
+        rc = rendering.scope_anchor_validate_main(["--mode", "design", "--design-tmpdir", str(design), "--path", str(anchor)])
+        assert rc == 1
+    finally:
+        anchor.chmod(0o644)
+
+
 def test_scope_anchor_validate_rejects_outside_design(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     design = tmp_path / "design"

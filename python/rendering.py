@@ -237,6 +237,8 @@ def _scope_anchor_common_shape_ok(path: Path) -> bool:
         size = path.stat().st_size
         if size <= 0 or size > _SCOPE_ANCHOR_MAX_BYTES:
             return False
+        with path.open("rb") as handle:
+            handle.read(1)
     except OSError:
         return False
     return True

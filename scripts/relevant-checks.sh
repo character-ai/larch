@@ -279,6 +279,8 @@ run_direct_relevant_targets() {
                 append_target_once test-run-step3-review
                 append_target_once test-launch-claude-subprocess
                 append_target_once test-lib-scope-anchor-handoff
+                append_target_once test-dispatch-plan-voters
+                append_target_once test-aggregate-findings
                 ;;
         esac
 

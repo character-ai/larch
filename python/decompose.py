@@ -466,9 +466,6 @@ def dispatch_panel(
         cap.write_text(dispatch_out, encoding="utf-8")
         _append_failure(design_tmpdir, site="design Step 2b.5 decompose panel", tool="dispatch-with-waterfall.sh", exit_code=wf.returncode, output_file=cap)
     kvs = _parse_kv_lines(dispatch_out)
-    for line in dispatch_out.splitlines():
-        if line.startswith("WARN="):
-            _emit_kv("WARN", line.split("=", 1)[1])
     dispatch_ok = kvs.get("DISPATCH_OK", "")
     fallback_count = kvs.get("FALLBACK_COUNT", "0")
     combined_fallback_count = kvs.get("COMBINED_FALLBACK_COUNT", fallback_count or "0")
@@ -521,9 +518,14 @@ def dispatch_panel(
         degraded = True
         if usable > 0 and panel_status == "ok":
             panel_status = "degraded"
-    sys.stdout.write(dispatch_out)
-    if dispatch_out and not dispatch_out.endswith("\n"):
-        sys.stdout.write("\n")
+    for line in dispatch_out.splitlines():
+        if not line or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        if key == "WARN":
+            _emit_kv("WARN", val)
+        else:
+            _emit_kv(key, val)
     _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
     _emit_kv("DEGRADED_PANEL", degraded)
     _emit_kv("PANEL_STATUS", panel_status)

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 import decompose
+import pytest
 
 
 def _design_tmp(tmp_path: Path) -> Path:
@@ -111,3 +112,96 @@ def test_dispatch_panel_and_aggregate_with_stub_waterfall(tmp_path: Path, monkey
     status = decompose.aggregate_partition(design_tmpdir=d, panel_outputs_file=d / "decompose" / "panel-outputs.ndjson", codex_present=True, cursor_present=True, output=d / "partition.md")
     assert status == "ok"
     assert (d / "partition.md").is_file()
+
+
+def _panel_stub(tmp_path: Path, *, mode: str = "ok", static_ok: str = "true", exit_code: int = 0, partial_first: bool = False, path_limit: int = 0) -> Path:
+    stub = tmp_path / "waterfall.sh"
+    if partial_first:
+        body = (
+            "#!/usr/bin/env bash\n"
+            'slots=""\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --slots-file ]]; then slots=$2; shift 2; else shift; fi; done\n'
+            "paths=$(mktemp)\nfirst=true\nwhile IFS= read -r row; do out=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())[\"output\"])' <<<\"$row\"); "
+            'if [[ "$first" == true ]]; then printf "narration only\\n" >"$out"; first=false; else printf "## Recommendation\\nsplit\\n" >"$out"; printf "%s\\n" "$out" >>"$paths"; fi; done <"$slots"\n'
+            'printf "DISPATCH_OK=true\\nFALLBACK_COUNT=0\\nCOMBINED_FALLBACK_COUNT=0\\nSTATIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES_PATH=%s\\n" "$paths"\n'
+        )
+    elif path_limit > 0:
+        body = (
+            "#!/usr/bin/env bash\n"
+            'slots=""\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --slots-file ]]; then slots=$2; shift 2; else shift; fi; done\n'
+            "paths=$(mktemp)\nn=0\nwhile IFS= read -r row; do out=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())[\"output\"])' <<<\"$row\"); "
+            'printf "## Recommendation\\nsplit\\n" >"$out"; n=$((n+1)); '
+            f"if (( n <= {path_limit} )); then printf '%s\\n' \"$out\" >>\"$paths\"; fi; done <\"$slots\"\n"
+            'printf "DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES_PATH=%s\\n" "$paths"\n'
+        )
+    else:
+        rec = "## Recommendation\\nsplit\\n" if mode == "ok" else "no heading\\n"
+        body = (
+            "#!/usr/bin/env bash\n"
+            'slots=""\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --slots-file ]]; then slots=$2; shift 2; else shift; fi; done\n'
+            "paths=$(mktemp)\nwhile IFS= read -r row; do out=$(python3 -c 'import json,sys; print(json.loads(sys.stdin.read())[\"output\"])' <<<\"$row\"); "
+            f"printf '{rec}' >\"$out\"; printf '%s\\n' \"$out\" >>\"$paths\"; done <\"$slots\"\n"
+            f'printf "DISPATCH_OK=true\\nFALLBACK_COUNT=0\\nCOMBINED_FALLBACK_COUNT=0\\nSTATIC_DISPATCH_OK={static_ok}\\nALL_OUTPUT_FILES_PATH=%s\\n" "$paths"\n'
+            f"exit {exit_code}\n"
+        )
+    stub.write_text(body, encoding="utf-8")
+    stub.chmod(0o755)
+    return stub
+
+
+def test_panel_degraded_when_static_dispatch_false(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    stub = _panel_stub(tmp_path, static_ok="false")
+    monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    out = capsys.readouterr().out
+    assert "DEGRADED_PANEL=true" in out
+    assert "PANEL_STATUS=degraded" in out
+
+
+def test_panel_partial_paths_file_marks_degraded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    stub = _panel_stub(tmp_path, path_limit=4)
+    monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    out = capsys.readouterr().out
+    assert "DEGRADED_PANEL=true" in out
+
+
+def test_panel_both_tools_absent_generic_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    claude = tmp_path / "claude.sh"
+    claude.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf '## Recommendation\\nGeneric\\n' >\"$out\"\nprintf '0\\n' >\"${out}.done\"\n", encoding="utf-8")
+    claude.chmod(0o755)
+    monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_REVIEW", str(claude))
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "false", "--cursor-present", "false", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    rows = [json.loads(line) for line in (d / "decompose" / "panel-outputs.ndjson").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["archetype"] == "generic"
+    assert "PANEL_STATUS=ok" in capsys.readouterr().out
+
+
+def test_aggregate_failed_when_dispatch_broken(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    panel = d / "panel.ndjson"
+    panel.write_text('{"archetype":"decomposition-specialist","vendor":"cursor","output":"OUT1","status":"ok"}\n', encoding="utf-8")
+    (d / "OUT1").write_text("## Recommendation\nsplit\n", encoding="utf-8")
+    stub = tmp_path / "agg.sh"
+    stub.write_text("#!/usr/bin/env bash\nprintf 'DISPATCH_OK=false\\nALL_OUTPUT_FILES_PATH=/dev/null\\n'\n", encoding="utf-8")
+    stub.chmod(0o755)
+    monkeypatch.setenv("DECOMPOSE_AGGREGATE_WATERFALL_SH", str(stub))
+    decompose.aggregate_main(["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-present", "true", "--cursor-present", "true", "--output", str(d / "merged.md"), "--timeout", "30"])
+    assert "AGGREGATOR_STATUS=failed" in capsys.readouterr().out
+
+
+def test_panel_replays_waterfall_kvs_on_contract_stream(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    stub = _panel_stub(tmp_path)
+    monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
+    decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
+    out = capsys.readouterr().out
+    assert "DISPATCH_OK=true" in out
+    assert "ALL_OUTPUT_FILES_PATH=" in out

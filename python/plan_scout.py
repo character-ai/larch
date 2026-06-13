@@ -1,4 +1,4 @@
-"""Dynamic reviewer archetype scouting helpers."""
+"""Dynamic reviewer archetype scouting helpers (up to 3 plan-review specialists)."""
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 from __future__ import annotations
@@ -166,7 +166,11 @@ def validate_dynamic_manifest(data: object, *, max_archetypes: int, mode: str = 
             warnings.append(f"invalid focus_area for {name}")
             continue
         weight = item.get("weight")
-        if not isinstance(weight, int) or isinstance(weight, bool) or weight < 1 or weight > MAX_ARCHETYPE_WEIGHT:
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or weight != int(weight):
+            warnings.append(f"invalid weight for {name}")
+            continue
+        weight_int = int(weight)
+        if weight_int < 1 or weight_int > MAX_ARCHETYPE_WEIGHT:
             warnings.append(f"invalid weight for {name}")
             continue
         rationale = item.get("rationale")
@@ -189,7 +193,7 @@ def validate_dynamic_manifest(data: object, *, max_archetypes: int, mode: str = 
             body = prompt_body
             if not re.search(re.escape(REQUIRED_CLOSING_SENTENCE).replace("\\.", r"\.?") + r"$", body):
                 body = body.rstrip(" .") + ". " + REQUIRED_CLOSING_SENTENCE
-            out.append({"name": name, "focus_area": focus, "weight": int(weight), "rationale": rationale, "prompt_body": body})
+            out.append({"name": name, "focus_area": focus, "weight": weight_int, "rationale": rationale, "prompt_body": body})
     if valid_total > max_archetypes:
         warnings.append(f"validated archetypes exceed max cap: {valid_total} > {max_archetypes}; truncating")
     return ManifestResult({"archetypes": out}, warnings, before, valid_total)
@@ -488,6 +492,8 @@ def scout_dynamic_archetypes(
             probe = _load_json_salvage(raw, parse_error) if raw.is_file() and raw.stat().st_size > 0 else None
             if probe is None and raw.is_file() and raw.stat().st_size > 0:
                 _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="json_parse")
+            elif probe is not None and not (isinstance(probe, dict) and isinstance(probe.get("archetypes"), list)):
+                _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason="invalid_archetypes_shape")
             else:
                 _emit_scout_result("empty", output, 0, latency_ms)
         return
@@ -562,10 +568,16 @@ def scout_plan_archetypes(
         _write_empty_manifest(output)
         _emit_scout_result("parse-failed", output, 0, 0, manifest_key=True)
         return
+    inner_status = status
     filter_tmp = output.with_name(output.name + ".filter-out")
-    status, count = filter_plan_manifest(output, filter_tmp, max_archetypes=max_archetypes)
+    filter_status, count = filter_plan_manifest(output, filter_tmp, max_archetypes=max_archetypes)
     filter_tmp.replace(output)
-    _emit_scout_result(status if status in {"ok", "empty"} else "validation-failed", output, count, 0, manifest_key=True)
+    if filter_status == "parse-failed":
+        _emit_scout_result("parse-failed", output, count, 0, manifest_key=True)
+    elif inner_status in {"ok", "empty"}:
+        _emit_scout_result(inner_status, output, count, 0, manifest_key=True)
+    else:
+        _emit_scout_result("validation-failed", output, count, 0, manifest_key=True)
 
 
 def _parse_bool(value: str, flag: str) -> bool:

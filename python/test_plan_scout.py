@@ -98,6 +98,60 @@ def test_dynamic_description_cursor_miss_then_claude_winner(tmp_path: Path, monk
     assert "cursor description-mode tier missed scout JSON" in stdout
 
 
+def test_validate_accepts_integral_float_weights() -> None:
+    result = plan_scout.validate_dynamic_manifest({"archetypes": [_row("deep-risk", weight=3.0)]}, max_archetypes=3, mode="review")
+    assert result.manifest["archetypes"][0]["weight"] == 3
+
+
+def test_dynamic_invalid_archetypes_shape_is_parse_failed(tmp_path: Path, monkeypatch, capsys) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude.sh"
+    claude.write_text("#!/usr/bin/env bash\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output-file ]]; then out=$2; shift 2; else shift; fi; done\nprintf '{\"archetypes\":{}}' >\"$out\"\nprintf 'ELAPSED=1\\n'\n", encoding="utf-8")
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=False)
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=parse-failed" in stdout
+    assert "invalid_archetypes_shape" in stdout
+
+
+def test_plan_wrapper_preserves_parse_failed_from_filter(tmp_path: Path, monkeypatch, capsys) -> None:
+    plan = tmp_path / "plan.txt"
+    desc = tmp_path / "feature-description.txt"
+    plan.write_text("### UPDATED: `python/foo.py`\n", encoding="utf-8")
+    desc.write_text("Feature", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    stub = tmp_path / "scout.sh"
+    stub.write_text("#!/usr/bin/env bash\nout=\"\"\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf 'not-json' >\"$out\"\nprintf 'SCOUT_STATUS=ok\\nSCOUT_OUTPUT=%s\\nSCOUT_ARCHETYPE_COUNT=0\\n' \"$out\"\n", encoding="utf-8")
+    stub.chmod(0o755)
+    monkeypatch.setenv("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", str(stub))
+    plan_scout.scout_plan_archetypes(plan_file=plan, description_file=desc, output=out, max_archetypes=3, session_env_path=str(tmp_path / "env"), codex_present=False, cursor_present=False)
+    assert "SCOUT_STATUS=parse-failed" in capsys.readouterr().out
+
+
+def test_plan_wrapper_preserves_ok_when_filter_removes_all(tmp_path: Path, monkeypatch, capsys) -> None:
+    plan = tmp_path / "plan.txt"
+    desc = tmp_path / "feature-description.txt"
+    plan.write_text("### UPDATED: `python/foo.py`\n", encoding="utf-8")
+    desc.write_text("Feature", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    stub = tmp_path / "scout.sh"
+    stub.write_text("#!/usr/bin/env bash\nout=\"\"\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --output ]]; then out=$2; shift 2; else shift; fi; done\nprintf '{\"archetypes\":[{\"name\":\"arch\",\"focus_area\":\"architecture\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect architecture.\"}]}' >\"$out\"\nprintf 'SCOUT_STATUS=ok\\nSCOUT_OUTPUT=%s\\nSCOUT_ARCHETYPE_COUNT=1\\n' \"$out\"\n", encoding="utf-8")
+    stub.chmod(0o755)
+    monkeypatch.setenv("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", str(stub))
+    plan_scout.scout_plan_archetypes(plan_file=plan, description_file=desc, output=out, max_archetypes=3, session_env_path=str(tmp_path / "env"), codex_present=False, cursor_present=False)
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert "SCOUT_ARCHETYPE_COUNT=0" in stdout
+    assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
+
+
 def test_plan_wrapper_uses_inner_override_and_filters(tmp_path: Path, monkeypatch, capsys) -> None:
     plan = tmp_path / "plan.txt"
     desc = tmp_path / "feature-description.txt"
