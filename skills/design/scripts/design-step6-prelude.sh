@@ -86,6 +86,7 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 if [[ ! -f "$DESIGN_TMPDIR/.design-step5c-status.env" && -n "${DESIGN_TMPDIR:-}" && -f "$DESIGN_TMPDIR/.bg-wait-active" ]]; then
   printf '%s\n' "**⚠ Step 6 prelude: design-step5c.sh appears still in-flight (.bg-wait-active present); do not proceed until <task-notification> fires.**" >&2
   exit 1

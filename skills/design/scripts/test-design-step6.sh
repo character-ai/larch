@@ -24,10 +24,21 @@ not_contains() {
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-step6.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+STUB="$TMP/stub-plugin"
+mkdir -p "$STUB/scripts"
+cat >"$STUB/scripts/design-pause-save.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'pause-save-called\n' >>"${LARCH_TEST_PAUSE_LOG:?}"
+exit 0
+STUB
+chmod +x "$STUB/scripts/design-pause-save.sh"
+
 run_subject() {
-  local subject="$1" design_tmp="$2" stdout_file="$3" stderr_file="$4"
+  local subject="$1" design_tmp="$2" stdout_file="$3" stderr_file="$4" plugin_root="${5:-$ROOT}"
   set +e
-  CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$design_tmp" "$subject" >"$stdout_file" 2>"$stderr_file"
+  CLAUDE_PLUGIN_ROOT="$plugin_root" DESIGN_TMPDIR="$design_tmp" ISSUE_NUMBER="${ISSUE_NUMBER:-99}" \
+    env LARCH_TEST_PAUSE_LOG="${LARCH_TEST_PAUSE_LOG:-}" \
+    "$subject" >"$stdout_file" 2>"$stderr_file"
   local got=$?
   set -e
   printf '%s\n' "$got"
@@ -72,5 +83,19 @@ got=$(run_subject "$CLEANUP" "$D4" "$D4/cleanup.stdout" "$D4/cleanup.stderr")
 contains "$D4/cleanup.stdout" 'CLEANUP_STATUS=preserved' 'cleanup sidecar-plus-marker path must emit preserved status'
 not_contains "$D4/cleanup.stderr" 'appears still in-flight' 'cleanup sidecar-plus-marker path must not write in-flight diagnostic'
 pass 'status sidecar overrides stale marker'
+
+D5=$(mktemp -d "$TMP/pause-inflight.XXXXXX")
+: >"$D5/.pause-requested"
+: >"$D5/.bg-wait-active"
+export LARCH_TEST_PAUSE_LOG="$D5/pause.log"
+got=$(run_subject "$PRELUDE" "$D5" "$D5/prelude.stdout" "$D5/prelude.stderr" "$STUB")
+[[ "$got" -eq 0 ]] || fail "prelude pause must win over in-flight guard (got $got)"
+contains "$D5/pause.log" 'pause-save-called' 'prelude pause-inflight path must exec pause-save'
+not_contains "$D5/prelude.stderr" 'appears still in-flight' 'prelude pause-inflight path must not write in-flight diagnostic'
+got=$(run_subject "$CLEANUP" "$D5" "$D5/cleanup.stdout" "$D5/cleanup.stderr" "$STUB")
+[[ "$got" -eq 0 ]] || fail "cleanup pause must win over in-flight guard (got $got)"
+contains "$D5/pause.log" 'pause-save-called' 'cleanup pause-inflight path must exec pause-save'
+not_contains "$D5/cleanup.stderr" 'appears still in-flight' 'cleanup pause-inflight path must not write in-flight diagnostic'
+pass 'pause wins over in-flight guard'
 
 printf 'PASS: test-design-step6.sh\n'
