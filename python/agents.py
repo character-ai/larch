@@ -7,6 +7,7 @@ import argparse
 import html
 import contextlib
 import json
+import multiprocessing
 import os
 import platform
 import re
@@ -20,6 +21,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Timer
+from typing import Any
 
 import config
 import git
@@ -156,6 +158,8 @@ class CheckReviewersResult:
     cursor_binary_found: bool
     codex_present: bool
     cursor_present: bool
+    codex_probe_timed_out: bool = False
+    cursor_probe_timed_out: bool = False
 
     def kv(self) -> dict[str, str]:
         codex_present = str(self.codex_present).lower()
@@ -704,20 +708,42 @@ def _run_probe_command(cmd: Sequence[str], *, timeout: int, env: dict[str, str],
         return config.EXIT_TIMEOUT
 
 
-def _run_one_cursor_probe(timeout: int) -> int:
-    probe_out: Path | None = None
-    cfg_tmp: Path | None = None
-    old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
+@dataclass(frozen=True)
+class _CursorProbeSetup:
+    cfg_tmp: Path
+    old_cfg: str | None
+
+
+def _cursor_probe_setup_chain() -> _CursorProbeSetup | None:
     try:
-        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-cursor-probe.") as handle:
-            probe_out = Path(handle.name)
         cursor_preread_service_token()
         cursor_auth_export_env()
         cfg_tmp = Path(tempfile.mkdtemp(prefix="larch-cursor-cfg-", dir=str(_probe_tmpdir())))
+        old_cfg = os.environ.get("CURSOR_CONFIG_DIR")
         os.environ["CURSOR_CONFIG_DIR"] = str(cfg_tmp)
         user_cfg = Path.home() / ".cursor" / "cli-config.json"
         if user_cfg.is_file():
             shutil.copyfile(user_cfg, cfg_tmp / "cli-config.json")
+        return _CursorProbeSetup(cfg_tmp=cfg_tmp, old_cfg=old_cfg)
+    except OSError:
+        return None
+
+
+def _cursor_probe_cleanup_private_config_dir(setup: _CursorProbeSetup | None) -> None:
+    if setup is None:
+        return
+    shutil.rmtree(setup.cfg_tmp, ignore_errors=True)
+    if setup.old_cfg is None:
+        os.environ.pop("CURSOR_CONFIG_DIR", None)
+    else:
+        os.environ["CURSOR_CONFIG_DIR"] = setup.old_cfg
+
+
+def _run_one_cursor_probe(timeout: int) -> int:
+    probe_out: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, dir=str(_probe_tmpdir()), prefix="larch-cursor-probe.") as handle:
+            probe_out = Path(handle.name)
         try:
             model_args = list(resolve_model_args("cursor").argv)
         except ValueError:
@@ -732,6 +758,8 @@ def _run_one_cursor_probe(timeout: int) -> int:
             stdout=probe_out,
             stderr=probe_out,
         )
+        if rc == config.EXIT_TIMEOUT:
+            return config.EXIT_TIMEOUT
         if rc == 0:
             return 0
         if external_auth_verdict("cursor", probe_out) == "auth":
@@ -741,12 +769,6 @@ def _run_one_cursor_probe(timeout: int) -> int:
         if probe_out is not None:
             with contextlib.suppress(OSError):
                 probe_out.unlink()
-        if cfg_tmp is not None:
-            shutil.rmtree(cfg_tmp, ignore_errors=True)
-        if old_cfg is None:
-            os.environ.pop("CURSOR_CONFIG_DIR", None)
-        else:
-            os.environ["CURSOR_CONFIG_DIR"] = old_cfg
 
 
 def _run_one_codex_probe(timeout: int) -> int:
@@ -791,6 +813,8 @@ def _run_one_codex_probe(timeout: int) -> int:
         state = external_serial_lock_acquire("codex")
         external_serial_lock_release_after(state)
         rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
+        if rc == config.EXIT_TIMEOUT:
+            return config.EXIT_TIMEOUT
         if rc == 0:
             return 0
         if external_auth_verdict("codex", probe_out, probe_side) == "auth":
@@ -805,16 +829,36 @@ def _run_one_codex_probe(timeout: int) -> int:
                     path.unlink()
 
 
-def _probe_with_retries(tool: str, max_retries: int, timeout: int) -> bool:
-    runner = _run_one_codex_probe if tool == "codex" else _run_one_cursor_probe
+def _run_codex_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
     for attempt in range(1, max(max_retries, 1) + 1):
-        rc = runner(timeout)
+        rc = _run_one_codex_probe(timeout)
+        if rc == config.EXIT_TIMEOUT:
+            return False, True
         if rc == 0:
-            return True
+            return True, False
         if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
             continue
-        return False
-    return False
+        return False, False
+    return False, False
+
+
+def _run_cursor_probes(max_retries: int, timeout: int) -> tuple[bool, bool]:
+    setup = _cursor_probe_setup_chain()
+    if setup is None:
+        return False, False
+    try:
+        for attempt in range(1, max(max_retries, 1) + 1):
+            rc = _run_one_cursor_probe(timeout)
+            if rc == config.EXIT_TIMEOUT:
+                return False, True
+            if rc == 0:
+                return True, False
+            if rc == _AUTH_RETRY_RC and attempt < max(max_retries, 1):
+                continue
+            return False, False
+        return False, False
+    finally:
+        _cursor_probe_cleanup_private_config_dir(setup)
 
 
 def check_reviewers(
@@ -833,6 +877,8 @@ def check_reviewers(
         cursor_binary_found = shutil.which("cursor") is not None
         codex_present = False
         cursor_present = False
+        codex_probe_timed_out = False
+        cursor_probe_timed_out = False
 
         if cursor_binary_found and not skip_cursor_probe:
             cached = _read_fresh_probe_stamp(_probe_stamp_path("cursor"), ttl, negative_ttl)
@@ -840,10 +886,8 @@ def check_reviewers(
                 cursor_present = cached
             else:
                 preflight = cursor_auth_preflight(caller="agent check-reviewers")
-                if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC:
-                    cursor_present = _probe_with_retries("cursor", 1, timeout)
-                else:
-                    cursor_present = _probe_with_retries("cursor", max_auth_retries, timeout)
+                max_retries = 1 if preflight.rc == _CURSOR_PREFLIGHT_AUTH_RC else max_auth_retries
+                cursor_present, cursor_probe_timed_out = _run_cursor_probes(max_retries, timeout)
                 _write_probe_stamp(_probe_stamp_path("cursor"), cursor_present)
 
         if codex_binary_found and not skip_codex_probe:
@@ -852,7 +896,7 @@ def check_reviewers(
             if cached is not None:
                 codex_present = cached
             else:
-                codex_present = _probe_with_retries("codex", max_auth_retries, timeout)
+                codex_present, codex_probe_timed_out = _run_codex_probes(max_auth_retries, timeout)
                 _write_probe_stamp(stamp, codex_present)
 
         return CheckReviewersResult(
@@ -860,6 +904,8 @@ def check_reviewers(
             cursor_binary_found=cursor_binary_found,
             codex_present=codex_present,
             cursor_present=cursor_present,
+            codex_probe_timed_out=codex_probe_timed_out,
+            cursor_probe_timed_out=cursor_probe_timed_out,
         )
 
 
@@ -1281,6 +1327,26 @@ def _nonnegative_float_env(name: str, default: float) -> float:
     return value if value >= 0 else default
 
 
+def _check_reviewers_child(conn: object, **kwargs: object) -> None:
+    try:
+        result = check_reviewers(**kwargs)  # type: ignore[arg-type]
+        with contextlib.suppress(Exception):
+            conn.send(("result", result))  # type: ignore[attr-defined]
+    except BaseException as exc:  # defensive child boundary; parent fail-opens.
+        with contextlib.suppress(Exception):
+            conn.send(("error", f"{type(exc).__name__}: {exc}"))  # type: ignore[attr-defined]
+    finally:
+        with contextlib.suppress(Exception):
+            conn.close()  # type: ignore[attr-defined]
+
+
+def _check_reviewers_process_context() -> Any:
+    try:
+        return multiprocessing.get_context("fork")
+    except ValueError:
+        return multiprocessing.get_context()
+
+
 def _external_health_gate(tool: str) -> tuple[bool, str]:
     if tool not in {"codex", "cursor"}:
         return True, ""
@@ -1299,18 +1365,52 @@ def _external_health_gate(tool: str) -> tuple[bool, str]:
         env["LARCH_EXTERNAL_AUTH_RETRIES"] = "1"
         if attempt:
             env["LARCH_PROBE_TTL_SECONDS"] = "0"
+        ctx = _check_reviewers_process_context()
+        parent_conn, child_conn = ctx.Pipe(duplex=False)
+        process = ctx.Process(
+            target=_check_reviewers_child,
+            kwargs={
+                "conn": child_conn,
+                "skip_codex_probe": tool == "cursor",
+                "skip_cursor_probe": tool == "codex",
+                "probe_timeout_seconds": timeout,
+                "env": env,
+            },
+        )
         try:
-            result = check_reviewers(
-                skip_codex_probe=tool == "cursor",
-                skip_cursor_probe=tool == "codex",
-                probe_timeout_seconds=timeout,
-                env=env,
-            )
+            process.start()
+            child_conn.close()
+            process.join(timeout)
+            if process.is_alive():
+                process.terminate()
+                process.join(1)
+                if process.is_alive() and hasattr(process, "kill"):
+                    process.kill()
+                    process.join(1)
+                return False, f"health-probe timed out after {timeout}s"
+            if not parent_conn.poll():
+                return True, ""
+            kind, payload = parent_conn.recv()
         except TimeoutError:
+            process.terminate()
+            process.join(1)
             return False, f"health-probe timed out after {timeout}s"
         except Exception as exc:  # defensive fail-open parity for helper crashes.
             last_stderr = str(exc)
             return True, ""
+        finally:
+            parent_conn.close()
+        if kind == "error":
+            last_stderr = str(payload)
+            return True, ""
+        result = payload
+        probe_timed_out = (
+            getattr(result, "codex_probe_timed_out", False)
+            if tool == "codex"
+            else getattr(result, "cursor_probe_timed_out", False)
+        )
+        if probe_timed_out:
+            return False, f"health-probe timed out after {timeout}s"
         last_stdout = "\n".join(result.kv_lines()) if hasattr(result, "kv_lines") else ""
         found = None
         for line in last_stdout.splitlines():

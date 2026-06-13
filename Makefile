@@ -968,7 +968,7 @@ test-check-phantom-dirty:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-phantom-dirty.sh
 
 test-check-reviewers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k check_reviewers
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_agents.py -q -k 'check_reviewers or health_gate'
 
 test-degraded-tools-gate:
 	cd python && $(PYTHON) -m pytest test_agents.py -q
