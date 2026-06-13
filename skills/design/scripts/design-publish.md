@@ -25,7 +25,7 @@
 6. `python/cli.py named-block write --marker plan` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
 7. `python/cli.py diagrams upsert` when architecture file is **non-empty**, when `architecture-diagram.md` is **absent** and `architecture-diagram.skipped` is present (`--clear-architecture`), or when `architecture-diagram.md` is **empty** and `architecture-diagram.skipped` is present (`--clear-architecture`). Subshell stdout capture to `diagrams-architecture-upsert.stdout`; non-blocking failures.
 8. When `SESSION_ID` non-empty: after the best-effort diagram upsert block, run `python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue rename --state designed` best-effort and parse `RENAMED`; this rename is not gated on `PUBLISH_OK` and may still run when diagram upsert skipped or failed. Rename-failure `WARN=` text reports the runtime diagram upsert state instead of asserting that a diagram was posted.
-9. When `SESSION_ID` non-empty: run `scripts/design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, and recovery branch metadata; unexpected non-zero without `PUBLISH_OK=`, exit 0 without `PUBLISH_OK=`, or `PUBLISH_OK=false` → `PUBLISH_OK=false` + Warnings. Failed publish envelopes keep the existing `run-log append-failure --redact` reporting.
+9. When `SESSION_ID` non-empty: run `scripts/design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, and recovery branch metadata; unexpected non-zero without `PUBLISH_OK=`, exit 0 without `PUBLISH_OK=`, or `PUBLISH_OK=false` → `PUBLISH_OK=false` + Warnings unless `.design-publish-result.env` already records publish-tail success. Existing `PUBLISH_OK=true` short-circuits the publish call after `PLAN_WRITE_OK=true`, preserves the existing PR metadata, and keeps the summary on the approved path.
 10. When `SESSION_ID` empty: `WARN=` via quiet driver (`add_warn`); skip publish and rename.
 11. Before rendering, export design-log recovery metadata plus `RENAMED`, `NEW_TITLE`, `UPSERT_RAN`, `UPSERT_STATUS`, and `DESIGNED_ADMISSION_READY` so failed-publish summary notes match the publish-tail admission state. `DESIGNED_ADMISSION_READY` uses the same `[DESIGNED]` plus required-space prefix shape as `/implement` admission and is forced false when the diagram upsert ran but did not return `UPSERT_STATUS=ok`. `render-final-summary.sh --post-publish-only` runs after the publish attempt whenever `PLAN_WRITE_OK=true`, including publish failures, so diagnostics refresh regardless of publish outcome.
 12. `design_reentry_marker_write` runs after publish/summary only when `SESSION_ID` is non-empty **and** `PUBLISH_OK=true`; Step 6 cleanup is likewise gated by the publish result outside this driver.
@@ -37,6 +37,30 @@ Exports `DESIGN_TMPDIR`, `ISSUE_NUMBER`, and `SESSION_ID` before every `render-f
 Allowlist: `PLAN_WRITE_OK`, `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE`, `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, `RECOVERY_BRANCH`, `LOG_RECOVERY_BRANCH`, `RENAMED`, `NEW_TITLE`, `DESIGNED_ADMISSION_READY`, `UPSERT_STATUS`, `ARCHITECTURE_SOURCE`, `FINAL_SUMMARY_PATH`, `WARN`.
 
 On success `VALIDATE_STATUS=ok`; on `--skip-validate`, `VALIDATE_STATUS=skipped`.
+
+Write-once preservation is deliberately narrow. Existing `PUBLISH_OK=true`
+protects the result env only for publish-tail writes after `PLAN_WRITE_OK=true`
+and only when the current invocation has a concrete `PUBLISH_OK=true|false`
+value. Validation defects, plan-write failures, publish-skipped runs with an
+empty `SESSION_ID`, and missing current `PUBLISH_OK` do not preserve stale
+success.
+
+When preservation fires, the driver skips the whole result-env write. Existing
+PR metadata remains authoritative, while stdout still reflects the current
+invocation. The driver loads preserved `PR_NUMBER`, `PR_URL`, and
+`RECOVERY_BRANCH` for the approved summary path.
+
+Result-env write decisions are serialized with a small `${RESULT_ENV}.lock.d`
+directory lock. The lock covers the re-read of existing `PUBLISH_OK=true` and
+the write-or-skip decision. If the lock cannot be acquired, the driver skips
+only when an eligible existing success is already visible; otherwise it returns
+the result-env write failure after emitting stdout KVs. Symlink refusal remains
+owned by `phase_driver_write_result_env`.
+
+Existing `PUBLISH_OK=true` also protects `final-summary.md`: later publish-tail
+invocations skip the pre-publish timing render, skip deleting the existing
+summary, skip `design-log-publish.sh`, and re-check before any `failed-publish`
+terminal-state staging or failed summary render.
 
 ## Exit codes
 

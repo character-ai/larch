@@ -226,8 +226,16 @@ emit_report_gate_sidecars_from_disk() {
    LOG_RECOVERY_BRANCH=""
    _publish_input="$DESIGN_TMPDIR/.design-publish-result.env"
    _publish_input_is_temp=false
-   if [[ "${_publish_rc:-0}" -eq 3 ]]; then
+   if [[ "${_publish_rc:-0}" -eq 1 ]]; then
+     _publish_input="$DESIGN_TMPDIR/.design-publish-result.env.rc1-primary-missing.$$"
+     _publish_input_is_temp=true
+     rm -f "$_publish_input"
+   elif [[ "${_publish_rc:-0}" -eq 3 ]]; then
      _publish_input="$DESIGN_TMPDIR/.design-publish-result.env.rc3-primary-missing.$$"
+     _publish_input_is_temp=true
+     rm -f "$_publish_input"
+   elif [[ "${_publish_rc:-0}" -eq 4 ]]; then
+     _publish_input="$DESIGN_TMPDIR/.design-publish-result.env.rc4-primary-missing.$$"
      _publish_input_is_temp=true
      rm -f "$_publish_input"
    fi

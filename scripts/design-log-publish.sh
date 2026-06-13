@@ -6,7 +6,8 @@
 #   PUBLISH_OK=true|false
 #   PR_NUMBER=<digits or empty>
 #   PR_URL=<url or empty>
-#   RECOVERY_BRANCH=<branch name> (only when PUBLISH_OK=false after a successful git push)
+#   RECOVERY_BRANCH=<branch name> (when PUBLISH_OK=false after a successful git push,
+#     or when the concurrent-worktree guard fires and the matching remote branch is known)
 #
 # Usage:
 #   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
@@ -239,16 +240,26 @@ wt_cleanup() {
 trap wt_cleanup EXIT
 
 REMOTE_BRANCH_EXISTS=false
-if [[ "$REASON" == "pause" ]]; then
-    git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
-    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
-        REMOTE_BRANCH_EXISTS=true
+git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
+    REMOTE_BRANCH_EXISTS=true
+fi
+
+if [[ "$REASON" == "final" ]]; then
+    git -C "$REPO_ROOT" fetch origin "$ORIGIN_DEFAULT:refs/remotes/origin/$ORIGIN_DEFAULT" >/dev/null 2>&1 || true
+    if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" | grep -q .; then
+        emit_publish_result true "" ""
+        exit 0
     fi
 fi
+
 if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
     larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        _PUBLISH_META_RECOVERY_BRANCH="$WT_BRANCH"
+    fi
     emit_publish_result false
-    if [[ "$REASON" == "pause" && "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
         emit_kv RECOVERY_BRANCH "$WT_BRANCH"
     fi
     exit 0
@@ -273,7 +284,7 @@ if ! mkdir -p "$WT_DIR"; then
     exit 0
 fi
 WT_BASE_REF="origin/$ORIGIN_DEFAULT"
-if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+if [[ "$REASON" == "pause" && "$REMOTE_BRANCH_EXISTS" == true ]]; then
     WT_BASE_REF="origin/$WT_BRANCH"
 fi
 if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "$WT_BASE_REF" >/dev/null 2>&1; then
