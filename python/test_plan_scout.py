@@ -69,6 +69,44 @@ def test_filter_plan_manifest_statuses(tmp_path: Path, capsys) -> None:
     assert json.loads(out.read_text(encoding="utf-8")) == {"archetypes": []}
 
 
+def test_dynamic_diff_mode_stages_large_diff_and_emits_warning(tmp_path: Path, monkeypatch, capsys) -> None:
+    diff = tmp_path / "review.diff"
+    plan = tmp_path / "plan.md"
+    diff.write_text("diff --git a/big b/big\n+" + ("x" * 300_000) + "\n", encoding="utf-8")
+    plan.write_text("# plan\n", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude.sh"
+    claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "while [[ $# -gt 0 ]]; do if [[ $1 == --output-file ]]; then out=$2; shift 2; else shift; fi; done\n"
+        "printf '{\"archetypes\":[{\"name\":\"api-contract\",\"focus_area\":\"correctness\",\"weight\":4,\"rationale\":\"API changes are central.\",\"prompt_body\":\"Check API contract compatibility.\"}]}' >\"$out\"\n"
+        "printf 'ELAPSED=1\\n'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(
+        mode="diff",
+        max_archetypes=4,
+        output=out,
+        diff_file=str(diff),
+        plan_file=str(plan),
+        cursor_present=False,
+    )
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert "staged --diff-file" in stdout
+    assert f">{plan_scout.MAX_CONTEXT_BYTES}" in stdout
+    staged_diff = out.parent / "staged-context" / "diff.txt"
+    assert staged_diff.is_file()
+    assert staged_diff.stat().st_size > plan_scout.MAX_CONTEXT_BYTES
+    prompt = (out.parent / "staged-context" / "scout-dynamic-archetypes-prompt.md").read_text(encoding="utf-8")
+    assert str(staged_diff) in prompt
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "api-contract"
+
+
 def test_dynamic_zero_cap_writes_empty(tmp_path: Path, capsys) -> None:
     out = tmp_path / "manifest.json"
     plan_scout.scout_dynamic_archetypes(mode="diff", max_archetypes=0, output=out, diff_file="unused")

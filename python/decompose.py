@@ -503,6 +503,7 @@ def dispatch_panel(
     if slot_count > 0 and len(resolved_paths) < slot_count:
         degraded = True
     usable = 0
+    warned_missing_paths = False
 
     def match_resolved(manifest_out: str) -> str:
         base = Path(manifest_out).name
@@ -512,10 +513,21 @@ def dispatch_panel(
         return ""
 
     for row in manifest_rows:
-        out_resolved = match_resolved(str(row.get("output", ""))) if resolved_paths else ""
-        if not out_resolved:
+        manifest_out = str(row.get("output", ""))
+        slot = str(row.get("slot", ""))
+        arch = slot.removeprefix("decomp-cursor-").removeprefix("decomp-codex-")
+        vendor = str(row.get("tool", ""))
+        if resolved_paths:
+            out_resolved = match_resolved(manifest_out)
+            if not out_resolved:
+                _write_json_line(panel_rows, {"archetype": arch, "vendor": vendor, "output": manifest_out, "status": "missing"})
+                continue
+        else:
             if all_slots_dropped == "true":
                 continue
+            if not warned_missing_paths:
+                _err("decompose-panel-dispatch.sh: ALL_OUTPUT_FILES_PATH empty or missing; skipping manifest rows (no resolved paths)")
+                warned_missing_paths = True
             continue
         status = "missing"
         path = Path(out_resolved)
@@ -524,9 +536,7 @@ def dispatch_panel(
             usable += 1
         elif path.is_file():
             status = "unparsed"
-        slot = str(row.get("slot", ""))
-        arch = slot.removeprefix("decomp-cursor-").removeprefix("decomp-codex-")
-        _write_json_line(panel_rows, {"archetype": arch, "vendor": str(row.get("tool", "")), "output": out_resolved, "status": status})
+        _write_json_line(panel_rows, {"archetype": arch, "vendor": vendor, "output": out_resolved, "status": status})
     panel_status = "ok"
     if usable == 0:
         panel_status = "panel-failed"

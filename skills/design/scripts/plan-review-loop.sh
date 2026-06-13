@@ -233,7 +233,19 @@ _scope_anchor_handoff_value() {
         --loop-status "${LOOP_STATUS:-}")
     [[ -z "${_PARSED_SCOPE_ANCHOR_FILE:-}" ]] || args+=(--candidate "$_PARSED_SCOPE_ANCHOR_FILE")
     [[ -z "${_LOOP_SCOPE_ANCHOR_IN:-}" ]] || args+=(--candidate "$_LOOP_SCOPE_ANCHOR_IN")
-    python3 "$PLUGIN_ROOT/python/cli.py" "${args[@]}"
+    local _handoff=""
+    set +e
+    _handoff="$(python3 "$PLUGIN_ROOT/python/cli.py" "${args[@]}")"
+    local _handoff_rc=$?
+    set -e
+    if (( _handoff_rc == 2 )); then
+        emit_kv WARN "plan-review-loop: scope-anchor design-handoff configuration error (exit $_handoff_rc)"
+        return 0
+    elif (( _handoff_rc != 0 )); then
+        emit_kv WARN "plan-review-loop: scope-anchor design-handoff failed (exit $_handoff_rc)"
+        return 0
+    fi
+    printf '%s' "$_handoff"
 }
 
 write_step3_result_env() {

@@ -170,6 +170,10 @@ def test_panel_partial_paths_file_marks_degraded(tmp_path: Path, monkeypatch: py
     decompose.panel_dispatch_main(["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"])
     out = capsys.readouterr().out
     assert "DEGRADED_PANEL=true" in out
+    rows = [json.loads(line) for line in (d / "decompose" / "panel-outputs.ndjson").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 8
+    assert sum(1 for row in rows if row["status"] == "ok") == 4
+    assert sum(1 for row in rows if row["status"] == "missing") == 4
 
 
 def test_panel_both_tools_absent_generic_claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
