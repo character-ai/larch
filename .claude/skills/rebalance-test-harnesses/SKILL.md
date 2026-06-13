@@ -11,6 +11,7 @@ allowed-tools: Bash, Read, Write
 Automates the procedure documented in `docs/linting.md §Refreshing harness shard balance`
 using the Python machinery in `python/harness_ci_timing.py`,
 `python/harness_makefile.py`, and `python/harness_shard_packer.py`.
+Keep `scripts/rebalance.md` aligned with this prompt when the script contract changes.
 
 ## Usage
 
@@ -26,6 +27,9 @@ All flags are optional; defaults are sensible for normal use in this repository.
 2. Compute the per-target median wall time.
 3. Sort all shard targets slowest-to-fastest and distribute across 20 shards in
    round-robin order (LPT heuristic — guarantees the slowest tests never cluster).
+   Before packing, run a warning-only feasibility preflight on the exact measured
+   target set passed to the packer. The preflight ignores orphan timing rows
+   whose targets are not present in the shard target set.
 4. Write the new `test-harnesses-N:` lines to `Makefile`.
 5. Validate the partition with `bash scripts/test-harness-shards-coverage.sh`.
 6. Commit, push a new branch, and create a PR.
@@ -33,7 +37,9 @@ All flags are optional; defaults are sensible for normal use in this repository.
    two more via `gh workflow run ci.yaml --ref <branch>`.
 8. Collect timing from all three runs, compute median per-shard wall times.
 9. Verify: `max_shard_total − min_shard_total ≤ 15 s`.
-10. Print a before / after comparison table.
+10. Print a before / after comparison table. BEFORE shows the estimated spread
+    of the new layout from baseline medians. AFTER shows the measured spread of
+    that same new layout from verification CI runs.
 11. **Merge is intentionally commented out.** Inspect the PR and merge manually
     (or uncomment the `_merge_pr` call in `scripts/rebalance.py` when you are
     satisfied).
