@@ -454,6 +454,7 @@ def scout_dynamic_archetypes(
     last_status = "claude-failed"
     latency_ms = 0
     if cursor_present:
+        raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".cursor.launch.env")
         launch_review = os.environ.get("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH", str(PLUGIN_ROOT / "scripts" / "launch-review.sh"))
@@ -473,6 +474,7 @@ def scout_dynamic_archetypes(
         else:
             cursor_miss = True
     if winner is None:
+        raw.unlink(missing_ok=True)
         cap_hit.unlink(missing_ok=True)
         launch_env = Path(str(output) + ".claude.launch.env")
         launch_env.parent.mkdir(parents=True, exist_ok=True)
