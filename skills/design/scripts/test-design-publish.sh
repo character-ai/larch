@@ -1345,6 +1345,70 @@ else
 fi
 
 
+# --- dual-invocation lock: success-first failure-second ---
+D_DUAL_SF="$TMP/dual-success-first"
+setup_design_tmp "$D_DUAL_SF"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_PR_NUMBER=55
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/55
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DUAL_SF" --issue 42 --session-id sid-dual --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "dual success-first inv1" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=true' "$D_DUAL_SF/.design-publish-result.env" \
+  || fail "dual success-first inv1 must record PUBLISH_OK=true"
+render_lines_after_inv1=$(wc -l <"$RENDER_LOG" | tr -d ' ')
+export PUBLISH_OK_VALUE=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DUAL_SF" --issue 42 --session-id sid-dual --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "dual success-first inv2" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=true' "$D_DUAL_SF/.design-publish-result.env" \
+  || fail "dual success-first inv2 must preserve PUBLISH_OK=true"
+if grep -Fxq 'PUBLISH_OK=false' "$D_DUAL_SF/.design-publish-result.env"; then
+    fail "dual success-first inv2 must not write PUBLISH_OK=false"
+else
+    pass "dual success-first lock skips failure clobber"
+fi
+grep -Fxq 'PR_NUMBER=55' "$D_DUAL_SF/.design-publish-result.env" \
+  || fail "dual success-first must preserve PR_NUMBER metadata"
+grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/55' "$D_DUAL_SF/.design-publish-result.env" \
+  || fail "dual success-first must preserve PR_URL metadata"
+if tail -n +"$((render_lines_after_inv1 + 1))" "$RENDER_LOG" | grep -q -- '--outcome failed-publish'; then
+    fail "dual success-first inv2 must not render failed-publish"
+else
+    pass "dual success-first inv2 keeps approved summary path"
+fi
+
+# --- dual-invocation lock: failure-first success-second ---
+D_DUAL_FS="$TMP/dual-failure-first"
+setup_design_tmp "$D_DUAL_FS"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DUAL_FS" --issue 42 --session-id sid-dual2 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "dual failure-first inv1" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=false' "$D_DUAL_FS/.design-publish-result.env" \
+  || fail "dual failure-first inv1 must record PUBLISH_OK=false"
+unset PUBLISH_OK_VALUE
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DUAL_FS" --issue 42 --session-id sid-dual2 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "dual failure-first inv2" 0 "$rc"
+last_publish_ok=$(awk -F= '/^PUBLISH_OK=/{v=$2} END{print v}' "$D_DUAL_FS/.design-publish-result.env")
+[[ "$last_publish_ok" == true ]] \
+  || fail "dual failure-first final PUBLISH_OK must be true (got ${last_publish_ok:-empty})"
+pass "dual failure-first success wins"
+
 grep -Fq 'stage_design_terminal_state failed-plan-write' "$SUBJECT" || fail 'design-publish stages failed-plan-write'
 grep -Fq 'stage_design_terminal_state failed-publish' "$SUBJECT" || fail 'design-publish stages failed-publish'
 grep -Fq 'DESIGN_FAILURE_VERSION=1' "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" || fail 'terminal state helper writes required version key'

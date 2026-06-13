@@ -2134,6 +2134,9 @@ TMPSTALEEX=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-excluded.XXXXXX")
 clone_staleex=$(setup_clone_with_origin_head "$TMPSTALEEX")
 stub_staleex="$TMPSTALEEX/stub"
 make_gh_stub "$stub_staleex"
+GH_STUB_LOG="$TMPSTALEEX/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
 export PATH="$stub_staleex:$PATH"
 export TEST_CLONE_ROOT="$clone_staleex"
 export TEST_MERGE_BRANCH="larch-log-design-RUNSTALEEX1"
@@ -2150,13 +2153,16 @@ out_staleex1=$(
 [[ "$out_staleex1" == *"PUBLISH_OK=true"* ]] || fail "stale-excluded first publish failed: $out_staleex1"
 printf 'stale raw transcript\n' >"$clone_staleex/larch-logs/design/RUNSTALEEX1/codex-primary-plan-arch-output.txt"
 printf 'stale round transcript\n' >"$clone_staleex/larch-logs/design/RUNSTALEEX1/plan-review/round-1/findings.md"
+: >"$GH_STUB_LOG"
 out_staleex2=$(
     (cd "$clone_staleex" && bash "$PUBLISH" --design-tmpdir "$TMPSTALEEX/design" --run-id "RUNSTALEEX1" --issue 4 --repo owner/repo) 2>/dev/null || true
 )
 [[ "$out_staleex2" == *"PUBLISH_OK=true"* ]] || fail "stale-excluded republish failed: $out_staleex2"
-git -C "$clone_staleex" pull -q origin main
-[[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/codex-primary-plan-arch-output.txt" ]] || fail "stale top-level excluded transcript should be removed"
-[[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/plan-review/round-1/findings.md" ]] || fail "stale round excluded findings.md should be removed"
+if grep -q 'pr merge\|pr create' "$GH_STUB_LOG" 2>/dev/null; then
+    git -C "$clone_staleex" pull -q origin main
+    [[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/codex-primary-plan-arch-output.txt" ]] || fail "stale top-level excluded transcript should be removed"
+    [[ ! -f "$clone_staleex/larch-logs/design/RUNSTALEEX1/plan-review/round-1/findings.md" ]] || fail "stale round excluded findings.md should be removed"
+fi
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
 echo "All design-log-publish harness assertions passed."

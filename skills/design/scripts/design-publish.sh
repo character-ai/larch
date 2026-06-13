@@ -702,6 +702,11 @@ export UPSERT_RAN="${UPSERT_RAN:-false}"
 export UPSERT_STATUS="${UPSERT_STATUS:-}"
 refresh_designed_admission_ready
 export DESIGNED_ADMISSION_READY
+if result_env_publish_ok_is_true; then
+    PUBLISH_OK=true
+    SUMMARY_OUTCOME=approved
+    result_env_load_success_metadata
+fi
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \

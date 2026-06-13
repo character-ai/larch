@@ -245,7 +245,7 @@ if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH
     REMOTE_BRANCH_EXISTS=true
 fi
 
-if [[ "$REASON" == "final" && "$REMOTE_BRANCH_EXISTS" != true ]]; then
+if [[ "$REASON" == "final" ]]; then
     git -C "$REPO_ROOT" fetch origin "$ORIGIN_DEFAULT:refs/remotes/origin/$ORIGIN_DEFAULT" >/dev/null 2>&1 || true
     if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" | grep -q .; then
         emit_publish_result true "" ""
