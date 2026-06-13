@@ -67,11 +67,13 @@ scripts/old-helper.sh    #1234
 
 Rules:
 
-- **Path-precise references only.** The linter matches the full repo-relative
-  manifest path and same-directory `$SCRIPT_DIR/<basename>.sh` /
-  `${SCRIPT_DIR}/<basename>.sh` forms derived from that manifest path. It never
-  matches repo-wide bare basenames, so a live file at
-  `other/path/run-analysis.sh` will not be flagged for a retired path at
+- **Path-precise references plus scoped dev-skill basenames.** The linter matches
+  the full repo-relative manifest path everywhere and same-directory
+  `$SCRIPT_DIR/<basename>.sh` / `${SCRIPT_DIR}/<basename>.sh` forms derived from
+  that manifest path. It also matches bare basenames only in same-directory
+  `.claude/skills/**/*.md` dev-skill docs when no live sibling `.sh` exists.
+  Repo-wide bare basenames outside that scoped branch are not matched, so a live
+  file at `other/path/run-analysis.sh` will not be flagged for a retired path at
   `scripts/old/run-analysis.sh`.
 - **`scripts/ship-pr.sh` retention carve-out.** Because the legacy bash driver
   remains live during staged migration, matches in `scripts/ship-pr.sh` are

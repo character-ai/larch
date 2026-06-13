@@ -296,34 +296,6 @@ jobs:
           rm -rf "$tmp"
       - name: Verify ripgrep
         run: rg --version | head -1
-      # Shard 12 runs test-render-review-phase-detail (Makefile test-harnesses-12).
-      # Keep matrix.shard == 12 in sync with the Makefile shard hosting that target.
-      - uses: actions/setup-node@v5
-        if: matrix.shard == 12
-        with:
-          node-version: 'lts/*'
-          cache: npm
-          cache-dependency-path: mermaid-lint/package-lock.json
-      - uses: actions/cache@v5
-        if: matrix.shard == 12
-        id: harness-node-modules-cache
-        with:
-          path: mermaid-lint/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('mermaid-lint/package.json', 'mermaid-lint/package-lock.json') }}
-      - uses: actions/cache@v5
-        if: matrix.shard == 12
-        id: harness-puppeteer-cache
-        with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('mermaid-lint/package-lock.json') }}
-      - name: Install Mermaid CLI (shard 12 renderer harness)
-        if: matrix.shard == 12 && (steps.harness-node-modules-cache.outputs.cache-hit != 'true' || steps.harness-puppeteer-cache.outputs.cache-hit != 'true')
-        env:
-          npm_config_fetch_retries: "5"
-          npm_config_fetch_retry_factor: "2"
-          npm_config_fetch_retry_mintimeout: "10000"
-          npm_config_fetch_retry_maxtimeout: "120000"
-        run: cd mermaid-lint && npm ci
       - name: Run test harnesses (shard ${{ matrix.shard }} of 20)
         run: make test-harnesses-${{ matrix.shard }}
 
