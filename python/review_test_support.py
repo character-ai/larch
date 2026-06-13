@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "python" / "cli.py"
+GIT = shutil.which("git") or "git"
 
 
 def run_review(
@@ -399,7 +401,7 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=2\\nMERGED_COUNT=0\\nREASON=ok\\n'
     return paths
 
 
-def build_review_core_env(stub_dir: Path, stubs: dict[str, Path], **overrides: str) -> dict[str, str]:
+def build_review_core_env(_stub_dir: Path, stubs: dict[str, Path], **overrides: str) -> dict[str, str]:
     env = {
         "CLAUDE_PLUGIN_ROOT": str(ROOT),
         "LARCH_QUIET_DISABLE": "1",
@@ -503,14 +505,14 @@ esac
 
 def init_git_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], cwd=path, check=True)
-    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=path, check=True)
+    subprocess.run([GIT, "init", "-q"], cwd=path, check=True)
+    subprocess.run([GIT, "config", "user.email", "test@example.com"], cwd=path, check=True)
+    subprocess.run([GIT, "config", "user.name", "Test User"], cwd=path, check=True)
+    subprocess.run([GIT, "config", "commit.gpgsign", "false"], cwd=path, check=True)
     _ = (path / "src").mkdir(exist_ok=True)
     _ = (path / "src" / "main.py").write_text("original\n", encoding="utf-8")
-    subprocess.run(["git", "add", "src/main.py"], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=path, check=True)
+    subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
+    subprocess.run([GIT, "commit", "-qm", "init"], cwd=path, check=True)
     _ = (path / "src" / "main.py").write_text("changed\n", encoding="utf-8")
-    subprocess.run(["git", "add", "src/main.py"], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-qm", "feature"], cwd=path, check=True)
+    subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
+    subprocess.run([GIT, "commit", "-qm", "feature"], cwd=path, check=True)

@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 from typing import TYPE_CHECKING
 from pathlib import Path
 
