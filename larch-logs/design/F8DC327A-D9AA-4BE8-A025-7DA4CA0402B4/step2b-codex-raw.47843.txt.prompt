@@ -1,0 +1,207 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# auto-error-reporting: port terminal-failure reporting to /design
+
+Part 3 of 3 of the auto-error-reporting rework. Part 1: #3988. Part 2: #3991 (cross-repo filing; this issue's blocker).
+
+#### Context
+
+`/design` has no failure-reporting machinery today: no `STALL_TRACKING` analog, no classifier, no auto-filing. Hard failures halt or log to `$DESIGN_TMPDIR/execution-issues.md` and produce no durable larch issue. Likewise, script-to-main-agent escalations inside /design (a script-owned fix loop fails and the main agent repairs inline) leave no trace even though they are expensive.
+
+#### Requirements
+
+1. **Define the /design hard-failure and escalation surface**: terminal halts after the skill's own internal retries did not recover (publish failure, clarify-loop exhaustion, judge-panel collapse, helper hard failures), plus escalation events where a script-owned repair loop (plan-review/revision loop, validation and publish repair helpers) failed to fix a problem and handed it to the main agent. Enumerating the exact set is the first design task.
+2. **Stage failure and escalation state in `$DESIGN_TMPDIR`** (a design-side equivalent of the implement stall state and escalation ledger) and gate reporting at design teardown, mirroring /implement Step 18a.
+3. **Reuse the shared core** extracted in #3988 (skill-parameterized classification, attempts bookkeeping, escalation ledger, two-tier composition) and the filing layer from part 2 (cross-repo filing plus signature dedup). No forked copy of the helper.
+4. **Same policy as /implement**: terminal filing plus escalation-event filing on otherwise-successful runs; at most one issue per run; mandatory root-cause with cited evidence and a `larch-defect | environment | operator-action` verdict; skip filing on `operator-action` (record in chat and the run log); Tier A full info in larch dev clones; Tier B larch-internal-only fields and a bounded narrative elsewhere; no log tails in Tier B (v1).
+5. **SECURITY.md and docs** updated for the new /design surfaces.
+
+#### Dependencies
+
+Blocked by #3991 (which is blocked by #3988): the /design port wires into the final shared filing layer once, instead of being rewired after cross-repo filing lands.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: stall-recovery-report.sh parameterization strategy
+- **Question**: Should /design parameterize stall-recovery-report.sh via --profile / --artifact-prefix flags (generic mode) or add --skill design as a first-class arm?
+- **Resolution**: Add generic parameterization flags (--profile generic, --artifact-prefix, --step-vocab-file or inline vocab overrides, state-file overrides). The stall-recovery-report.md explicitly defers "Public generic profile flags such as --profile generic, --artifact-prefix, state-file overrides, vocabulary overrides, and generic ledger overrides" to #3992.
+- **Source**: codebase (skills/implement/scripts/stall-recovery-report.md deferred-to-#3992 note)
+
+## Decision 2: /design terminal failure surface
+- **Question**: Which /design outcomes are terminal failures (file report) vs operator actions (skip)?
+- **Resolution**: Terminal failures: PLAN_WRITE_OK=false, PUBLISH_OK=false (after successful plan write), Step 3 LOOP_STATUS=postplan-failed, design-publish.sh exit 2. Operator actions (skip filing, record in chat/log): all cancelled-* outcomes. Approved paths: escalation-success filing only when escalation ledger is non-empty.
+- **Source**: codebase + issue requirements
+
+## Decision 3: /design escalation surface
+- **Question**: Which /design events count as escalation (script-owned fix loop failed, handed to main agent)?
+- **Resolution**: Step 3 LOOP_STATUS=main-agent-vote-required (0-judge MAV), Step 3 LOOP_STATUS=main-agent-apply-required (dedup fail in loop), validator autofix exhausted/failed/unavailable at Steps 2b/Gate-B/discussion-round2/5c.
+- **Source**: codebase (SKILL.md Step 3 post-loop branch matrix, SKILL.md Plan command validator failure shared section)
+
+## Decision 4: teardown gate location
+- **Question**: Where does the /design failure-report gate run — inside render-final-summary.sh or as a new pre-step?
+- **Resolution**: Inside render-final-summary.sh --post-publish-only phase (after outcome is known), analogous to Step 18a.5 running "before Step 18b and outside the active STALL_TRACKING gate." This is the unified terminal point for all /design run paths.
+- **Source**: codebase (render-final-summary.sh --pre-publish-only / --post-publish-only split; SKILL.md Step 18a.5 for implement analog)
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Extend `stall-recovery-report.sh` with generic parameterization flags so `/design` can use it without forking.
+- Record /design escalation events (MAV, autofix-exhausted) and terminal failures in `$DESIGN_TMPDIR`.
+- Wire a failure-report gate into `/design` teardown (inside `render-final-summary.sh`) to file one report per run via the cross-repo filing layer.
+
+### Non-goals
+- No retry/recovery mechanism for /design failures; this is reporting only.
+- No move of `stall-recovery-report.sh` out of `skills/implement/scripts/`; callers reference it by absolute path.
+- No changes to `/implement` failure reporting behavior.
+
+### Approach sketch
+- Add `--profile generic` / `--artifact-prefix &lt;prefix&gt;` / step-vocab / phase-vocab overrides to `stall-recovery-report.sh`; design uses prefix `design-failure`.
+- Add `stall-recovery-report.sh record-escalation` calls (with design-specific step/phase tokens) at MAV and autofix-exhausted sites in `SKILL.md` / `design-step-validator-autofix.sh`.
+- New `design-failure-report.sh` script: checks terminal-failure markers and escalation ledger in `$DESIGN_TMPDIR`, classifies outcome, composes Tier A / Tier B report, calls `file-failure-report-cross-repo.sh`.
+- Wire `design-failure-report.sh` call into `render-final-summary.sh --post-publish-only` phase before the run-summary upsert.
+- Update `SECURITY.md` and `docs/` for new /design surfaces.
+
+### Surfaces in scope
+- `skills/implement/scripts/stall-recovery-report.sh` (add profile/artifact-prefix parameterization)
+- `skills/implement/scripts/stall-recovery-report.md` (update subcommand docs)
+- `skills/implement/scripts/test-stall-recovery-report.sh` (parameterization tests)
+- `skills/design/scripts/render-final-summary.sh` (wire teardown gate)
+- `skills/design/scripts/design-failure-report.sh` (new — teardown gate driver)
+- `skills/design/scripts/design-failure-report.md` (new sibling)
+- `skills/design/scripts/design-step-validator-autofix.sh` (add escalation recording on exhausted path)
+- `skills/design/SKILL.md` (Step 3 MAV escalation recording call site)
+- `SECURITY.md`, `docs/`
+
+### Open questions
+- None.
+
+</design_outline>
+
