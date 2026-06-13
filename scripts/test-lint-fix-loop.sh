@@ -610,6 +610,9 @@ ARGV0A="$CASE0A/launcher.argv"
 make_repo "$REPO0A"
 make_fixture_scripts "$SCRIPTS0A"
 make_session "$SESSION0A"
+printf 'case0a-active-session\n' > "$SESSION0A/session-id"
+CASE0A_ACTIVE_SLUG=$(printf '%s' 'case0a-active-session' | shasum -a 256 | awk '{print $1}')
+CASE0A_STALE_SLUG=$(printf '%s' 'stale-parent-session' | shasum -a 256 | awk '{print $1}')
 mkdir -p "$STALE_DESIGN0A" "$STALE_RESEARCH0A"
 printf 'stale session env\n' > "$STALE_SESSION_ENV0A"
 printf 'synthetic checks failure\n' > "$CHECKS0A"
@@ -648,8 +651,12 @@ fi
 if compgen -G "$STALE_RESEARCH0A/larch-tokens-*.jsonl" >/dev/null; then
     fail "case0a stale RESEARCH_TMPDIR must not receive active ledger rows"
 fi
+[[ -f "$SESSION0A/larch-tokens-${CASE0A_ACTIVE_SLUG}.jsonl" ]] \
+    || fail "case0a expected active ledger at larch-tokens-${CASE0A_ACTIVE_SLUG}.jsonl"
+[[ ! -f "$SESSION0A/larch-tokens-${CASE0A_STALE_SLUG}.jsonl" ]] \
+    || fail "case0a must not write active ledger using stale LARCH_TOKEN_SESSION_ID slug"
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' \
-    "$SESSION0A"/larch-tokens-*.jsonl >/dev/null \
+    "$SESSION0A/larch-tokens-${CASE0A_ACTIVE_SLUG}.jsonl" >/dev/null \
     || fail "case0a expected codex_lint_fix active ledger row under IMPLEMENT_TMPDIR"
 jq -e 'select(.tool=="codex" and .raw=="codex_lint_fix" and .total==1050 and .model=="gpt-5.5")' \
     "$SESSION0A/token-report.ndjson" >/dev/null \
@@ -774,6 +781,43 @@ case0b1_out=$(printf '%s\n' "$case0b1_result" | sed -n '2,$p')
 [[ "$case0b1_rc" == "0" ]] || fail "case0b1 expected rc 0 (#3207 waterfall to main-agent), got $case0b1_rc"
 assert_contains "$case0b1_out" 'LINT_FIX_STATUS=main-agent-required' "case0b1 treats LAUNCHER_EXIT=1 as Codex failure"
 assert_contains "$case0b1_out" 'FAILURE_REASON=dispatch-failed' "case0b1 retains dispatch-failed diagnostic"
+
+# Case 0c: record-vendor-sidecar failure relays exit code and stderr in lint-fix output.
+CASE0C="$TMPROOT/case0c"
+REPO0C="$CASE0C/repo"
+SCRIPTS0C="$CASE0C/scripts"
+SESSION0C="$CASE0C/session"
+CHECKS0C="$CASE0C/checks.log"
+WRAPPER0C="$CASE0C/wrapper.sh"
+PYTHON0C="$CASE0C/bin"
+REAL_PYTHON0C="$(command -v python3)"
+make_repo "$REPO0C"
+make_fixture_scripts "$SCRIPTS0C"
+make_session "$SESSION0C"
+printf 'synthetic checks failure\n' > "$CHECKS0C"
+write_wrapper_codex_telemetry "$WRAPPER0C"
+mkdir -p "$PYTHON0C"
+cat > "$PYTHON0C/python3" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+joined="\$*"
+if [[ "\$joined" == *"token record-vendor-sidecar"* ]]; then
+    printf 'LARCH_LINT_FIX_SIDECAR_PROBE\n' >&2
+    exit 17
+fi
+exec "$REAL_PYTHON0C" "\$@"
+EOF
+chmod +x "$PYTHON0C/python3"
+
+case0c_result=$(
+    PATH="$PYTHON0C:$PATH" \
+    run_case "$SCRIPTS0C" "$REPO0C" "$SESSION0C" "$CHECKS0C" "$WRAPPER0C"
+)
+case0c_rc=$(printf '%s\n' "$case0c_result" | sed -n '1p')
+case0c_out=$(printf '%s\n' "$case0c_result" | sed -n '2,$p')
+[[ "$case0c_rc" == "0" ]] || fail "case0c expected rc 0, got $case0c_rc"
+assert_contains "$case0c_out" 'codex active-ledger token append failed with exit 17' "case0c sidecar exit relay"
+assert_contains "$case0c_out" 'codex active-ledger token append stderr: LARCH_LINT_FIX_SIDECAR_PROBE' "case0c sidecar stderr relay"
 
 # Case 1: external coder commits on the same clean branch; lint-fix-loop accepts it.
 CASE1="$TMPROOT/case1"

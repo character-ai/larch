@@ -196,8 +196,11 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
 
    ```bash
    _append_err="$(mktemp)"
-   if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err"; then
-     _append_rc=$?
+   set +e
+   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err"
+   _append_rc=$?
+   set -e
+   if (( _append_rc != 0 )); then
      printf 'WARNING: token append-record failed with exit %s' "$_append_rc" >&2
      if [[ -s "$_append_err" ]]; then printf ': %s' "$(cat "$_append_err")" >&2; fi
      printf '\n' >&2
@@ -206,8 +209,11 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
    fi
    rm -f "$_append_err"
    _active_err="$(mktemp)"
-   if ! env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err"; then
-     _active_rc=$?
+   set +e
+   env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err"
+   _active_rc=$?
+   set -e
+   if (( _active_rc != 0 )); then
      printf 'WARNING: token record-vendor-sidecar failed with exit %s' "$_active_rc" >&2
      if [[ -s "$_active_err" ]]; then printf ': %s' "$(cat "$_active_err")" >&2; fi
      printf '\n' >&2
