@@ -113,6 +113,8 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-validator-autofix.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-validator-autofix.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step-validator-autofix.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg-validator.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-ap-continue.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step0-clarify-hard-halt.sh`
@@ -184,6 +186,9 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-prepare.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg-stage.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/_dbg5c2.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-cleanup.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-cleanup.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step6-prelude.sh`
