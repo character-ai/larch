@@ -75,8 +75,6 @@ esac
 unset _findings_canon
 # shellcheck source=python/legacy_review_shell/aggregate-findings-phrases.inc.bash
 source "$SCRIPT_DIR/aggregate-findings-phrases.inc.bash"
-# shellcheck source=scripts/lib-scope-anchor-handoff.sh
-source "$PLUGIN_ROOT/scripts/lib-scope-anchor-handoff.sh"
 MARKER_HELPER="$PLUGIN_ROOT/python/cli.py"
 if [[ ! -f "$MARKER_HELPER" ]]; then
     MARKER_HELPER="$SCRIPT_DIR/../../python/cli.py"

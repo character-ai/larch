@@ -314,12 +314,6 @@ exclude = [
   "scripts/ci-failed-jobs.md",
   "scripts/test-ci-failed-jobs.sh",
   "scripts/test-ci-failed-jobs.md",
-  # scripts/test-compose-collector-failure-log.sh is the Makefile-only
-  # regression harness for scripts/compose-collector-failure-log.sh. The
-  # helper is invoked from /design sketch collection paths; the harness is
-  # covered by the test-compose-collector-failure-log target.
-  "scripts/test-compose-collector-failure-log.sh",
-  "scripts/test-compose-collector-failure-log.md",
   "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
