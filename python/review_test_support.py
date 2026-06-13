@@ -453,6 +453,13 @@ def run_review_core(
 
 
 def write_aggregate_dispatch_stub(path: Path, *, merge_kind: str = "merge", mode: str = "ok") -> None:
+    exhausted_output = """Aggregator narrative: pseudo-heading plus attestation must fail validation.
+
+### FINDING_1 not-a-valid-heading-line
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+"""
     write_executable(
         path,
         f"""#!/usr/bin/env bash
@@ -491,6 +498,11 @@ EOF
 - **Concern**: missing reviewer line
 - **Suggested revision**: n/a
 
+EOF
+        ;;
+      validation_exhausted)
+        cat > "$out" <<'EOF'
+{exhausted_output.rstrip()}
 EOF
         ;;
     esac

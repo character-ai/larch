@@ -203,6 +203,83 @@ def test_tally_scope_fit_drift_reclassifies_out_of_diff(tmp_path: Path) -> None:
     assert "docs/linting.md" in (case / "oos.md").read_text(encoding="utf-8")
 
 
+def test_tally_plan_file_scope_fit_exemption(tmp_path: Path) -> None:
+    case = tmp_path / "plan-exempt"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Stale shard reference.
+- **Suggested revision**: Update.
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "scope-files.txt").write_text("scripts/dispatch-code-voters.sh\n", encoding="utf-8")
+    _ = (case / "plan.txt").write_text("Touch docs/linting.md per plan section 3.\n", encoding="utf-8")
+    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text("FINDING_1: YES\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--scope-files",
+        str(case / "scope-files.txt"),
+        "--plan-file",
+        str(case / "plan.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(result.stdout, "OUT_OF_SCOPE_DRIFT_COUNT") == "0"
+    assert rts.kv_get(result.stdout, "ACCEPTED_COUNT") == "1"
+    assert "docs/linting.md" in (case / "accepted-findings.md").read_text(encoding="utf-8")
+
+
+def test_emit_tally_preserves_existing_oos_accepted_sink(tmp_path: Path) -> None:
+    case = tmp_path / "preserve-oos"
+    case.mkdir()
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=1\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text(
+        """### OOS_1: [OUT_OF_SCOPE] preserved observation
+- **Reviewer**: stub
+- **Concern**: keep me
+""",
+        encoding="utf-8",
+    )
+    sink = case / "oos-accepted-review.md"
+    preserved = "### OOS_1: [OUT_OF_SCOPE] tally-written preserved sink\n"
+    _ = sink.write_text(preserved, encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert sink.read_text(encoding="utf-8") == preserved
+
+
 def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
     case = tmp_path / "zero-voters"
     case.mkdir()

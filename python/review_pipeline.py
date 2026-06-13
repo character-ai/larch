@@ -6,6 +6,8 @@ Each verb is a CLI façade: ``run_legacy()`` executes the matching script under
 ``logging_util.emit``. Importable call sites such as ``review_pipeline.dispatch_panel()``
 still shell out today; a native in-process port remains follow-up work tracked in
 ``docs/python-migration.md``.
+
+review panel_hard topology authority: specialists per vendor, Cursor + Codex.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ def run_legacy(script_name: str, argv: list[str]) -> int:
     env = os.environ.copy()
     if not env.get("CLAUDE_PLUGIN_ROOT"):
         env["CLAUDE_PLUGIN_ROOT"] = str(_PLUGIN_ROOT)
-    result = proc.run(["bash", str(script), *argv], cwd=str(_PLUGIN_ROOT), env=env)
+    result = proc.run(["bash", str(script), *argv], cwd=os.getcwd(), env=env)
     for line in result.stdout.splitlines():
         logging_util.emit(line)
     if result.stdout and not result.stdout.endswith("\n"):

@@ -152,6 +152,16 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
 
+def test_review_core_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
+    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"review_pipeline": MagicMock(review_core_main=mock_main)}):
+        rc = cli.main(["review", "core", "--help"])
+    assert rc == 0
+    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
+
+
 # ---------------------------------------------------------------------------
 # Subprocess cases (integration)
 # ---------------------------------------------------------------------------

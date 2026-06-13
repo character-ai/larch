@@ -786,22 +786,22 @@ test-review-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh
 
 test-gather-context:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k gather_context
 
 test-review-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k review_core
 
 test-dispatch-panel-core:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_core
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dynamic
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic'
 
 test-dispatch-panel-reuse:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_reuse
 
 test-dispatch-panel-limits:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_limits
 
 test-scout-dynamic-archetypes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
@@ -816,7 +816,7 @@ test-lib-submodule-prohibition:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-submodule-prohibition.sh
 
 test-collect-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k collect_findings
 
 test-aggregate-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py

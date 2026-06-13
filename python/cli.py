@@ -312,6 +312,16 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("plan", "auto-fix-commands"),
     ("plan", "optional-trailers"),
     ("plan", "compose-goals-test"),
+    ("review", "gather-context"),
+    ("review", "dispatch-panel"),
+    ("review", "collect-findings"),
+    ("review", "check-reviewer-failure-threshold"),
+    ("review", "aggregate-findings"),
+    ("review", "tally-code-votes"),
+    ("review", "emit-tally"),
+    ("review", "log-phase"),
+    ("review", "core"),
+    ("review", "compose-findings"),
 })
 
 
