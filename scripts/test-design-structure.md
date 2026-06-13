@@ -18,7 +18,7 @@ The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins th
 
 ## Recent contract coverage
 
-- Covers the Step 5c publish gate, clarify fail-closed publish/recovery metadata, clarify sub-step 6 summary outcome branch, pause-check `--repo` forwarding, init `--repo` persistence pins, and the Step 0 degraded-tools gate fence that sources durable design env and passes all four explicit false-defaulted operands.
+- Covers the Step 5c publish gate, clarify fail-closed publish/recovery metadata, clarify sub-step 6 summary outcome branch, pause-check `--repo` forwarding, init `--repo` persistence pins, and the Step 0 session wrapper degraded-tools gate that passes all four explicit presence operands and emits the decision envelope.
 
 ## Step 3b FINALIZE and sentinel routing
 
