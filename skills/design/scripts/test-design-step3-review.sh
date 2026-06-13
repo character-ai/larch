@@ -40,6 +40,7 @@ pass 'Step 3 postplan-failed stages terminal state at runtime'
 D_LOOP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-escalation.XXXXXX")
 DESIGN_TMPDIR="$D_LOOP"
 export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
+# shellcheck source=skills/design/scripts/review-design-step3-loop.sh
 # shellcheck disable=SC1091
 source "$LOOP"
 step3_record_report_evidence tally-error
