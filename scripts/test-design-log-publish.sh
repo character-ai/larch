@@ -1994,6 +1994,110 @@ git -C "$clone_dd" pull -q origin main
 [[ ! -f "$clone_dd/larch-logs/design/RUNDEDUP1/plan-review/round-1/findings.md" ]] || fail "round-1/findings.md should be concise-excluded"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 
+echo "=== final concurrent guard emits recovery branch ==="
+TMPCONC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-concurrent.XXXXXX")
+clone_conc=$(setup_clone_with_origin_head "$TMPCONC")
+stub_conc="$TMPCONC/stub"
+make_gh_stub "$stub_conc"
+export PATH="$stub_conc:$PATH"
+branch_conc="larch-log-design-RUNCONC1"
+git -C "$clone_conc" switch -q -c "$branch_conc"
+mkdir -p "$clone_conc/larch-logs/design/RUNCONC1"
+printf 'branch-only\n' >"$clone_conc/larch-logs/design/RUNCONC1/branch-only.txt"
+git -C "$clone_conc" add larch-logs/design/RUNCONC1/branch-only.txt
+git -C "$clone_conc" commit -q -m "seed concurrent branch"
+git -C "$clone_conc" push -q origin "$branch_conc"
+git -C "$clone_conc" switch -q main
+git -C "$clone_conc" worktree add -q "$TMPCONC/held-worktree" "$branch_conc"
+mkdir -p "$TMPCONC/design"
+printf 'body\n' >"$TMPCONC/design/plan.txt"
+out_conc=$(
+    (cd "$clone_conc" && bash "$PUBLISH" --design-tmpdir "$TMPCONC/design" --run-id "RUNCONC1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_conc" == *"PUBLISH_OK=false"* ]] || fail "final concurrent guard should fail closed: $out_conc"
+[[ "$out_conc" == *"RECOVERY_BRANCH=$branch_conc"* ]] || fail "final concurrent guard should emit recovery branch: $out_conc"
+grep -Fxq "DESIGN_LOG_RECOVERY_BRANCH=$branch_conc" "$TMPCONC/design/.design-log-publish-metadata.env" \
+  || fail "final concurrent metadata should record recovery branch"
+git -C "$clone_conc" worktree remove --force "$TMPCONC/held-worktree" >/dev/null 2>&1 || true
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== final mode bases worktree on origin default despite remote log branch ==="
+TMPBASE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-base.XXXXXX")
+clone_base=$(setup_clone_with_origin_head "$TMPBASE")
+stub_base="$TMPBASE/stub"
+make_gh_stub "$stub_base"
+export PATH="$stub_base:$PATH"
+export TEST_CLONE_ROOT="$clone_base"
+export TEST_MERGE_BRANCH="larch-log-design-RUNBASE1"
+git -C "$clone_base" switch -q -c "$TEST_MERGE_BRANCH"
+mkdir -p "$clone_base/larch-logs/design/RUNBASE1"
+printf 'branch-only\n' >"$clone_base/larch-logs/design/RUNBASE1/branch-only.txt"
+git -C "$clone_base" add larch-logs/design/RUNBASE1/branch-only.txt
+git -C "$clone_base" commit -q -m "seed branch-only sentinel"
+git -C "$clone_base" push -q origin "$TEST_MERGE_BRANCH"
+git -C "$clone_base" switch -q main
+mkdir -p "$TMPBASE/design"
+printf 'fresh body\n' >"$TMPBASE/design/plan.txt"
+out_base=$(
+    (cd "$clone_base" && bash "$PUBLISH" --design-tmpdir "$TMPBASE/design" --run-id "RUNBASE1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_base" == *"PUBLISH_OK=false"* ]] || fail "final base publish should fail closed on non-fast-forward remote branch: $out_base"
+git -C "$clone_base" pull -q origin main
+[[ ! -f "$clone_base/larch-logs/design/RUNBASE1/branch-only.txt" ]] || fail "final mode must not inherit branch-only sentinel"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+
+echo "=== final idempotent success after squash merge and branch deletion ==="
+TMPIDEM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-idem.XXXXXX")
+clone_idem=$(setup_clone_with_origin_head "$TMPIDEM")
+stub_idem="$TMPIDEM/stub"
+make_gh_stub "$stub_idem"
+GH_STUB_LOG="$TMPIDEM/gh.log"
+: >"$GH_STUB_LOG"
+export PATH="$stub_idem:$PATH" GH_STUB_LOG
+updater="$TMPIDEM/updater"
+git clone -q "$TMPIDEM/upstream.git" "$updater"
+git -C "$updater" config user.email "t@t"
+git -C "$updater" config user.name "t"
+mkdir -p "$updater/larch-logs/design/RUNIDEM1"
+printf 'merged log\n' >"$updater/larch-logs/design/RUNIDEM1/plan.txt"
+git -C "$updater" add larch-logs/design/RUNIDEM1/plan.txt
+git -C "$updater" commit -q -m "squash design log"
+git -C "$updater" push -q origin main
+mkdir -p "$TMPIDEM/design"
+printf 'new attempt\n' >"$TMPIDEM/design/plan.txt"
+out_idem=$(
+    (cd "$clone_idem" && bash "$PUBLISH" --design-tmpdir "$TMPIDEM/design" --run-id "RUNIDEM1" --issue 4 --repo owner/repo --reason final) 2>/dev/null || true
+)
+[[ "$out_idem" == *"PUBLISH_OK=true"* ]] || fail "final idempotent publish should succeed: $out_idem"
+if grep -q 'pr create\|pr merge' "$GH_STUB_LOG" 2>/dev/null; then
+    fail "final idempotent success must not create or merge a PR"
+else
+    :
+fi
+
+echo "=== pause does not take final default-tree idempotent success ==="
+TMPPAUSEIDEM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-idem.XXXXXX")
+clone_pause_idem=$(setup_clone_with_origin_head "$TMPPAUSEIDEM")
+stub_pause_idem="$TMPPAUSEIDEM/stub"
+make_gh_stub "$stub_pause_idem"
+export PATH="$stub_pause_idem:$PATH"
+updater_pause="$TMPPAUSEIDEM/updater"
+git clone -q "$TMPPAUSEIDEM/upstream.git" "$updater_pause"
+git -C "$updater_pause" config user.email "t@t"
+git -C "$updater_pause" config user.name "t"
+mkdir -p "$updater_pause/larch-logs/design/RUNPAUSEIDEM1"
+printf 'merged log\n' >"$updater_pause/larch-logs/design/RUNPAUSEIDEM1/plan.txt"
+git -C "$updater_pause" add larch-logs/design/RUNPAUSEIDEM1/plan.txt
+git -C "$updater_pause" commit -q -m "squash design log"
+git -C "$updater_pause" push -q origin main
+mkdir -p "$TMPPAUSEIDEM/design/plan-review"
+ln -s "$TMPPAUSEIDEM/design" "$TMPPAUSEIDEM/design/plan-review/bad-link"
+printf 'pause attempt\n' >"$TMPPAUSEIDEM/design/plan.txt"
+out_pause_idem=$(
+    (cd "$clone_pause_idem" && bash "$PUBLISH" --design-tmpdir "$TMPPAUSEIDEM/design" --run-id "RUNPAUSEIDEM1" --issue 4 --repo owner/repo --reason pause) 2>/dev/null || true
+)
+[[ "$out_pause_idem" == *"PUBLISH_OK=false"* ]] || fail "pause must not use final idempotent success path: $out_pause_idem"
+
 echo "=== five-round concise publish stays within byte budget ==="
 TMP5R=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-five-round.XXXXXX")
 clone5r=$(setup_clone_with_origin_head "$TMP5R")

@@ -12,7 +12,9 @@ branch by:
    `python3 python/cli.py run-log commit`'s default-branch guard — not a `main`-only string
    compare).
 3. Creating a disposable git worktree on branch `larch-log-design-<RUN_ID>`
-   from `origin/<default>`. Before `git worktree add`, the script refuses to
+   from `origin/<default>` for final publishes. Final mode keeps that base even
+   when `origin/larch-log-design-<RUN_ID>` already exists. Before
+   `git worktree add`, the script refuses to
    start when that branch name is already checked out in another worktree, and
    it does not ignore a failed `git branch -D` for an existing local branch with
    the same name. Unlike `/implement` and `/fix-issue`, `/design` does not
@@ -136,6 +138,17 @@ branch by:
 
 ## Empty Porcelain (Final)
 
+Before allocating the disposable worktree, `--reason final` best-effort fetches
+`origin/<default>` and probes the default-branch tree for
+`larch-logs/design/<RUN_ID>` when no matching remote log branch is known. If
+that tree already exists, the script emits `PUBLISH_OK=true` with empty PR fields
+and exits without creating a new PR. This check does not require the remote log
+branch to exist, so it still works after `gh pr merge --squash --delete-branch`
+deletes `larch-log-design-<RUN_ID>`.
+It uses `git ls-tree`, not `merge-base --is-ancestor`, because design-log PRs
+are squash-merged and the log branch tip is not expected to remain an ancestor
+of the default branch.
+
 For `--reason final`, an empty `git status --porcelain -- larch-logs/design/<RUN_ID>`
 after staging is treated as an idempotent success only when `origin/<default>`
 already contains at least one path below that run directory. In that case the
@@ -203,7 +216,7 @@ exclusively under `breadcrumbs/` via `larch_log_publish_breadcrumbs_shared`.
 | `PUBLISH_OK` | `true` when the publish succeeded and the squash `--admin` merge completed after the required CI checks passed; `false` on validation failure, init/copy/redact failure, git/gh errors, a required check that did not pass during the CI-wait gate, or merge refusal. |
 | `PR_NUMBER` | GitHub PR number when known (may be set when `PUBLISH_OK=false` if create succeeded but merge failed). |
 | `PR_URL` | PR URL when known. |
-| `RECOVERY_BRANCH` | Recovery ref name when `PUBLISH_OK=false`: `larch-log-design-<RUN_ID>` after a successful push that still needs cleanup, or `larch-log-design-recovery-<RUN_ID>` when push failed and the local commit was preserved only in the consumer clone. |
+| `RECOVERY_BRANCH` | Recovery ref name when `PUBLISH_OK=false`: `larch-log-design-<RUN_ID>` after a successful push that still needs cleanup, `larch-log-design-<RUN_ID>` when the concurrent-worktree guard fires for final or pause mode and the matching remote branch is known, or `larch-log-design-recovery-<RUN_ID>` when push failed and the local commit was preserved only in the consumer clone. |
 
 `--dry-run` validates arguments, confirms `--design-tmpdir` exists, requires
 `git` and `gh` on `PATH`, resolves `git rev-parse --show-toplevel` and

@@ -14,6 +14,9 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Does not derive the root Claude PID from `$PPID` internally.
+- Parses `design-publish.sh` exit `0` from `.design-publish-result.env` first with stdout fallback.
+- Forces stdout authority for exit `1`, `3`, and `4` by using a guaranteed-absent primary result env. This prevents stale primary success data from masking current plan-write failures, result-env write failures, or validator defects.
+- Aborts before normal result parsing for exit `2` and unexpected non-zero exits.
 
 ## Harness
 

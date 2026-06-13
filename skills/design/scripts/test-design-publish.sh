@@ -107,6 +107,15 @@ if [[ -n "$design_tmpdir" && -d "$design_tmpdir" ]]; then
     printf 'DESIGN_LOG_PR_URL=%s\n' "${PUBLISH_PR_URL:-}"
     printf 'DESIGN_LOG_RECOVERY_BRANCH=%s\n' "${PUBLISH_RECOVERY_BRANCH:-}"
   } >"$design_tmpdir/.design-log-publish-metadata.env"
+  if [[ "${PUBLISH_SEED_RESULT_BEFORE_RETURN:-false}" == true ]]; then
+    {
+      printf 'PLAN_WRITE_OK=true\n'
+      printf 'PUBLISH_OK=true\n'
+      printf 'PR_NUMBER=%s\n' "${PUBLISH_SEED_PR_NUMBER:-42}"
+      printf 'PR_URL=%s\n' "${PUBLISH_SEED_PR_URL:-https://github.com/owner/repo/pull/42}"
+      printf 'RECOVERY_BRANCH=%s\n' "${PUBLISH_SEED_RECOVERY_BRANCH:-}"
+    } >"$design_tmpdir/.design-publish-result.env"
+  fi
 fi
 if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
   exit "${PUBLISH_STUB_RC}"
@@ -308,6 +317,8 @@ export PATH="$STUB:$PATH"
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
         PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
+        PUBLISH_SEED_RESULT_BEFORE_RETURN PUBLISH_SEED_PR_NUMBER PUBLISH_SEED_PR_URL \
+        PUBLISH_SEED_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
         RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE NEW_TITLE_VALUE RESOLVE_REPO_VALUE \
         MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE \
@@ -1217,6 +1228,121 @@ grep -q 'tracking-issue rename .*--state designed' "$RENAME_LOG" \
 assert_rename_before_publish "no architecture call-log ordering rename→publish" "$CALL_LOG"
 grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
   || fail "missing diagram artifacts must record rename outcome"
+
+# --- publish-tail write-once and summary protection ---
+D_WRITE_ONCE="$TMP/write-once-publish-failure"
+setup_design_tmp "$D_WRITE_ONCE"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export PUBLISH_SEED_RESULT_BEFORE_RETURN=true
+export PUBLISH_SEED_PR_NUMBER=42
+export PUBLISH_SEED_PR_URL=https://github.com/owner/repo/pull/42
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_WRITE_ONCE" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "write-once preserves concurrent publish success" 0 "$rc"
+grep -Fxq 'PUBLISH_OK=true' "$D_WRITE_ONCE/.design-publish-result.env" \
+  || fail "write-once result env must keep PUBLISH_OK=true"
+if grep -Fxq 'PUBLISH_OK=false' "$D_WRITE_ONCE/.design-publish-result.env"; then
+    fail "write-once result env must not append PUBLISH_OK=false"
+else
+    pass "write-once skipped failure clobber"
+fi
+grep -Fxq 'PR_NUMBER=42' "$D_WRITE_ONCE/.design-publish-result.env" \
+  || fail "write-once must preserve PR_NUMBER=42"
+grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/42' "$D_WRITE_ONCE/.design-publish-result.env" \
+  || fail "write-once must preserve PR_URL"
+if grep -q -- '--outcome failed-publish' "$RENDER_LOG"; then
+    fail "write-once concurrent success must not render failed-publish"
+else
+    pass "write-once concurrent success keeps approved summary path"
+fi
+
+D_SHORT="$TMP/pre-publish-success-short-circuit"
+setup_design_tmp "$D_SHORT"
+cat >"$D_SHORT/.design-publish-result.env" <<'EOF_RESULT'
+PLAN_WRITE_OK=true
+PUBLISH_OK=true
+PR_NUMBER=77
+PR_URL=https://github.com/owner/repo/pull/77
+EOF_RESULT
+printf 'approved content\n' >"$D_SHORT/final-summary.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_SHORT" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "pre-publish success short-circuit" 0 "$rc"
+if grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then
+    fail "pre-publish success must skip design-log-publish"
+else
+    pass "pre-publish success skips design-log-publish"
+fi
+grep -Fxq 'PR_NUMBER=77' "$D_SHORT/.design-publish-result.env" \
+  || fail "pre-publish success must preserve original PR_NUMBER"
+grep -Fxq 'PR_URL=https://github.com/owner/repo/pull/77' "$D_SHORT/.design-publish-result.env" \
+  || fail "pre-publish success must preserve original PR_URL"
+grep -q -- '--outcome approved' "$RENDER_LOG" \
+  || fail "pre-publish success should render approved outcome"
+if grep -q -- '--outcome failed-publish' "$RENDER_LOG"; then
+    fail "pre-publish success must not render failed-publish"
+else
+    pass "pre-publish success protects final summary from failed-publish"
+fi
+
+D_DEF_STALE="$TMP/stale-success-validator-defects"
+setup_design_tmp "$D_DEF_STALE"
+cat >"$D_DEF_STALE/.design-publish-result.env" <<'EOF_RESULT'
+PLAN_WRITE_OK=true
+PUBLISH_OK=true
+PR_NUMBER=99
+EOF_RESULT
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DEF_STALE" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "stale success overwritten on validator defects" 4 "$rc"
+grep -Fxq 'VALIDATE_STATUS=defects-found' "$D_DEF_STALE/.design-publish-result.env" \
+  || fail "validator defects must overwrite stale success with current status"
+if grep -Fxq 'PUBLISH_OK=true' "$D_DEF_STALE/.design-publish-result.env"; then
+    fail "validator defects must not preserve stale PUBLISH_OK=true"
+else
+    pass "validator defects do not preserve stale success"
+fi
+
+D_PLAN_STALE="$TMP/stale-success-plan-write"
+setup_design_tmp "$D_PLAN_STALE"
+cat >"$D_PLAN_STALE/.design-publish-result.env" <<'EOF_RESULT'
+PLAN_WRITE_OK=true
+PUBLISH_OK=true
+PR_NUMBER=100
+EOF_RESULT
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PLAN_BLOCK_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PLAN_STALE" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "stale success overwritten on plan-write failure" 1 "$rc"
+grep -Fxq 'PLAN_WRITE_OK=false' "$D_PLAN_STALE/.design-publish-result.env" \
+  || fail "plan-write failure must write PLAN_WRITE_OK=false"
+if grep -Fxq 'PUBLISH_OK=true' "$D_PLAN_STALE/.design-publish-result.env"; then
+    fail "plan-write failure must not preserve stale PUBLISH_OK=true"
+else
+    pass "plan-write failure does not preserve stale success"
+fi
 
 
 grep -Fq 'stage_design_terminal_state failed-plan-write' "$SUBJECT" || fail 'design-publish stages failed-plan-write'
