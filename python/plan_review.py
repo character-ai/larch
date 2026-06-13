@@ -1046,6 +1046,7 @@ def finalize_plan(argv: Sequence[str]) -> int:
 
 
 def emit_design_plan_preview(argv: Sequence[str]) -> int:
+    """Step 3 plan-candidate preview and Gate C final-plan preview."""
     return _run_legacy(("skills", "design", "scripts", "emit-design-plan-preview.sh"), argv)
 
 
