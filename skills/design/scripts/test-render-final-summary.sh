@@ -858,9 +858,9 @@ cat >"$WARN_D/execution-issues.md" <<'EOF'
 - **Diagnostic bullet**: not an issue entry
   ```
 EOF
-DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" IMPLEMENT_TMPDIR="" \
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" IMPLEMENT_TMPDIR="" \
     "$SUBJECT" --outcome approved --post-publish-only >/dev/null 2>/dev/null
-grep -Fq -- '- **Warnings**: 2' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
+grep -Fq -- '- **Warnings**: 1' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
 pass 'non-step warning entry count ignores fenced diagnostics'
 
 
