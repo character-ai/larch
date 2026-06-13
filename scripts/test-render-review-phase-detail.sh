@@ -427,6 +427,33 @@ grep -Fq -- 'Reviewer timing chart unavailable.' "$FAIL_OUT" || fail 'renderer f
 if grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$FAIL_OUT"; then fail 'renderer failure with rows must not emit no-task note'; fi
 pass 'renderer failure is best-effort and not misreported as no tasks'
 
+FAIL_EXTRACT="$WORK/fail-extract"
+mkdir -p "$FAIL_EXTRACT/round-1"
+cat >"$FAIL_EXTRACT/round-1/round-meta.json" <<'JSON'
+{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0","NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},"summary":{"panel":{"total_slot_count":1}}}
+JSON
+{
+    printf 'v1\tround\t1700000000\timplement\tStep 5 — code review\t1\t1700000000\t1700000060\t60\t0\t0\t0\t-\n'
+    printf 'v1\tvendor\t1700000001\timplement\t-\tcodex\treview\t1700000001\t1700000010\t9\tcodex-review-output.txt\t0\tcomplete\n'
+} >"$FAIL_EXTRACT/timing-ledger.tsv"
+FAIL_SORT_BIN="$WORK/fail-sort-bin"; mkdir -p "$FAIL_SORT_BIN"
+cat >"$FAIL_SORT_BIN/sort" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+    case "$arg" in
+        -k2,2n) exit 1 ;;
+    esac
+done
+exec /usr/bin/sort "$@"
+SH
+chmod +x "$FAIL_SORT_BIN/sort"
+FAIL_EXTRACT_OUT="$WORK/fail-extract.md"
+PATH="$FAIL_SORT_BIN:$PATH" "$HELPER" --rounds-root "$FAIL_EXTRACT" --timing-ledger "$FAIL_EXTRACT/timing-ledger.tsv" --skill implement --output "$FAIL_EXTRACT_OUT" \
+    || fail 'extraction failure must not abort helper'
+grep -Fq -- 'Reviewer timing chart unavailable.' "$FAIL_EXTRACT_OUT" || fail 'extraction failure must emit unavailable note'
+if grep -Fq -- 'No reviewer timing tasks overlapped this round.' "$FAIL_EXTRACT_OUT"; then fail 'extraction failure with overlapping vendor rows must not emit no-task note'; fi
+pass 'extraction failure is not misreported as no tasks'
+
 CWD_OUT="$WORK/cwd.md"
 ( cd "$WORK" && "$HELPER" --rounds-root "$GANTT_PRES" --timing-ledger "$GANTT_PRES/timing-ledger.tsv" --skill implement --output "$CWD_OUT" )
 grep -Fq -- 'cursor/structure' "$CWD_OUT" || fail 'renderer must launch when cwd is outside repo root'

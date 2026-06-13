@@ -151,3 +151,28 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     )
     assert bad_result.returncode != 0
     assert "Traceback" not in bad_result.stderr
+
+
+def test_cli_empty_stdout_when_all_rows_filtered_outside_window(tmp_path: Path) -> None:
+    rows = tmp_path / "rows.tsv"
+    _ = rows.write_text("a\t50\t90\nb\t200\t250\n", encoding="utf-8")
+    cli = str(Path(__file__).with_name("cli.py"))
+    result = subprocess.run(
+        [
+            sys.executable,
+            cli,
+            "gantt",
+            "render",
+            "--window-start-s",
+            "100",
+            "--window-end-s",
+            "140",
+            "--rows-tsv",
+            str(rows),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""

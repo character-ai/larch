@@ -416,10 +416,17 @@ AWK
         case "$gw_end" in ''|*[!0-9]*) continue ;; esac
         tasks_file="$WORK_DIR/gantt-round-$gw_rn.tsv"
         sorted_file="$WORK_DIR/gantt-round-$gw_rn-sorted.tsv"
-        awk -F'\t' -v mapf="$slot_map" -v rstart="$gw_start" -v rend="$gw_end" \
+        extraction_failed=0
+        if ! awk -F'\t' -v mapf="$slot_map" -v rstart="$gw_start" -v rend="$gw_end" \
             -f "$derive_awk" -f "$gantt_awk" "$slot_map" "$TIMING_LEDGER" 2>/dev/null \
-            | LC_ALL=C sort -t $'\t' -k2,2n -k3,3n -k1,1 >"$sorted_file" || : >"$sorted_file"
-        head -n 25 "$sorted_file" >"$tasks_file" || : >"$tasks_file"
+            | LC_ALL=C sort -t $'\t' -k2,2n -k3,3n -k1,1 >"$sorted_file"; then
+            extraction_failed=1
+            : >"$sorted_file"
+        fi
+        if ! head -n 25 "$sorted_file" >"$tasks_file"; then
+            extraction_failed=1
+            : >"$tasks_file"
+        fi
         {
             printf '### Round %s reviewer timing\n\n' "$gw_rn"
             if [ -s "$tasks_file" ]; then
@@ -440,6 +447,8 @@ AWK
                 else
                     printf 'Reviewer timing chart unavailable.\n\n'
                 fi
+            elif [ "$extraction_failed" -eq 1 ]; then
+                printf 'Reviewer timing chart unavailable.\n\n'
             else
                 printf 'No reviewer timing tasks overlapped this round.\n\n'
             fi
