@@ -15,7 +15,7 @@ PYTHON ?= python3
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
 .PHONY: test-step-7a test-step-8-ship
-.PHONY: test-stall-recovery-report test-step-18b-final-report
+.PHONY: test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
 .PHONY: test-review-design-step3-loop
@@ -82,7 +82,7 @@ lint-awk-multibyte-regex:
 # appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20
 
-test-harnesses-1: test-stall-recovery-report
+test-harnesses-1: test-stall-recovery-report-1
 
 test-harnesses-2: test-plan-review-loop
 
@@ -96,7 +96,7 @@ test-harnesses-6: test-write-final-report test-auto-fix-plan-commands test-emit-
 
 test-harnesses-7: test-design-failure-report test-dispatch-code-voters-regressions-r1-r2 test-oos-disposition-gate test-gate-b-apply-mode test-design-step3-review test-review-implement-step5-loop-timing test-flush-execution-issues test-scrub-log-secrets test-lint-bash32 test-references-headers test-rebase-push-fork-mode test-lib-prune-decision
 
-test-harnesses-8: test-dispatch-panel-core-dynamic test-file-design-oos test-implement-bootstrap-invoke test-render-findings-batch test-check-topology-rule-paths test-classify-bump test-capture-session-transcript test-refresh-run-logs test-record-plan-review-round-timing test-redact test-verify-skill-called test-emit-plan test-pause-skill test-implement-step2-routing
+test-harnesses-8: test-stall-recovery-report-2 test-dispatch-panel-core-dynamic test-file-design-oos test-implement-bootstrap-invoke test-render-findings-batch test-check-topology-rule-paths test-classify-bump test-capture-session-transcript test-refresh-run-logs test-record-plan-review-round-timing test-redact test-verify-skill-called test-emit-plan test-pause-skill test-implement-step2-routing
 
 test-harnesses-9: test-launch-review-cursor-core test-review-core test-oos-issue-cap test-dispatch-code-voters-retry-codex-fail-and-fallback test-run-step5-review test-persist-retally-step3-env test-record-implement-review-round-timing test-resolve-upstream-larch-repo test-cache-root-validation test-lint-bare-grep-probe test-implement-admission test-research-structure test-git-push test-run-step2-dispatch test-implement-cleanup-roundtrip
 
@@ -113,7 +113,7 @@ test-harnesses-15: test-dispatch-with-waterfall test-render-final-summary test-r
 
 test-harnesses-16: test-step2-dispatch test-dispatch-panel-limits test-validate-citations test-review-design-step3-loop test-dispatch-code-voters-retry-claude test-render-review-phase-detail test-decompose-file-issues test-parse-bootstrap-routing-envelope test-lib-scope-anchor-handoff test-append-tool-failure test-release-prepare test-review-structure test-ci-status test-finalize-plan test-quick-mode-docs-sync test-anti-halt
 
-test-harnesses-17: test-dispatch-panel-core test-dispatch-plan-review-panel test-design-publish test-design-postplan-emit test-ci-wait test-file-failure-report-cross-repo test-wait-for-reviewers test-design-step2b-drafter test-implement-review-token-propagation test-larch-logs-manifest test-release-set-version test-ci-failed-jobs test-check-stale-plugin test-render-run-summary-format test-research-banner test-implement-positional-issue test-render-run-summary-callsites
+test-harnesses-17: test-stall-recovery-report-3 test-dispatch-panel-core test-dispatch-plan-review-panel test-design-publish test-design-postplan-emit test-ci-wait test-file-failure-report-cross-repo test-wait-for-reviewers test-design-step2b-drafter test-implement-review-token-propagation test-larch-logs-manifest test-release-set-version test-ci-failed-jobs test-check-stale-plugin test-render-run-summary-format test-research-banner test-implement-positional-issue test-render-run-summary-callsites
 
 test-harnesses-18: test-ship-pr-oos-pr-prep test-launch-review-cursor-retry test-codex-implementer test-validate-citations-budget test-materialize-manifest-oos test-check-contains-pins test-revise-plan-with-waterfall test-lib-failed-agent-stderr-tail test-lint-awk-multibyte-regex test-gather-branch-context test-relevant-checks-validation test-check-scope-reduction-marker test-external-tool-registry test-refresh-execution-issues test-subskill-anchors test-implement-rebase-macro
 
@@ -651,8 +651,14 @@ test-run-step2-dispatch:
 test-step2-dispatch:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step2-dispatch.sh
 
-test-stall-recovery-report:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report.sh
+test-stall-recovery-report-1:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-1.sh
+
+test-stall-recovery-report-2:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-2.sh
+
+test-stall-recovery-report-3:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report-3.sh
 
 test-resolve-upstream-larch-repo:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
