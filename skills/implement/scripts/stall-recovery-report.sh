@@ -651,7 +651,7 @@ safe_bail_reason_value() {
         "") printf '\n'; return 0 ;;
     esac
     case "$1" in
-        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|ci-local-unfixable|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
+        adopted-issue-closed|adopted-issue-is-pr|all-vendors-failed|branch-create-failed|ci-fix-exhausted|design-flaw|dirty-state-after-timeout|dirty-tree|escalate|first-fixer-non-health|fix-attempts-exhausted|main-branch-post-dispatch|orchestrator-envelope-invalid|protected-path-edit-required-out-of-scope|qa-loop-exceeded|recovery-out-of-scope|review-required|run-flags-persist-failed|ship-pr-internal-lint-fix|tracking-init-failed|wrapper-validation-failure|\
         branch-changed|cap_hit|codex-runtime-failure|cursor-bailed-no-reason|cursor-modified-history|cursor-runtime-failure|detached-head-prohibited|interactive-subprocess-unsupported|main-branch-prohibited|manifest-missing|manifest-oos-materialization-failed|manifest-schema-invalid|protected-path-modified|qa-pending-missing|redactor-not-executable|resume-incompatible|submodule-dirty|submodule-edit-required-out-of-scope|\
         local-unfixable|checks-failed|checks-timeout|ci-health-failed|ci-timeout|ci-status-error|ci-too-many-rebases|no-fix-path|main-agent-required|coder-main-agent-required|main-agent-vote-required|\
         poll-budget-exhausted|ci-wait-unexpected-exit|no-ci-checks-observed|ci-status-stale|ci-decide-error)
@@ -2434,25 +2434,19 @@ lint_runtime_bail_tokens() {
         larch_err "stall-recovery-report.sh: cannot import runtime bail tokens from python/config.py"
         return 1
     fi
+    compound_safe=$(safe_bail_reason_value "ci-local-unfixable:job_1,job-2")
+    compound_bad=$(safe_bail_reason_value "ci-local-unfixable:../../secret")
+    if [ "$compound_safe" != "ci-local-unfixable:job_1,job-2" ] || [ "$compound_bad" != redacted ]; then
+        larch_err "stall-recovery-report.sh: ci-local-unfixable compound grammar drift"
+        return 1
+    fi
     while IFS= read -r token || [ -n "$token" ]; do
         [ -n "$token" ] || continue
-        case "$token" in
-            ci-local-unfixable)
-                compound_safe=$(safe_bail_reason_value "ci-local-unfixable:job_1,job-2")
-                compound_bad=$(safe_bail_reason_value "ci-local-unfixable:../../secret")
-                if [ "$compound_safe" != "ci-local-unfixable:job_1,job-2" ] || [ "$compound_bad" != redacted ]; then
-                    larch_err "stall-recovery-report.sh: ci-local-unfixable compound grammar drift"
-                    return 1
-                fi
-                ;;
-            *)
-                safe=$(safe_bail_reason_value "$token")
-                if [ "$safe" != "$token" ]; then
-                    larch_err "stall-recovery-report.sh: runtime bail token not render-safe: $token"
-                    return 1
-                fi
-                ;;
-        esac
+        safe=$(safe_bail_reason_value "$token")
+        if [ "$safe" != "$token" ]; then
+            larch_err "stall-recovery-report.sh: runtime bail token not render-safe: $token"
+            return 1
+        fi
     done <<EOF
 $tokens
 EOF
