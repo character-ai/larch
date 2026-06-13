@@ -1,0 +1,251 @@
+You are an expert engineer researching this repository and producing an implementation plan for /design Step 2b.
+
+You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.
+
+Drafting requirements to follow:
+- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.
+- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.
+- Read discussion-round1.md when present for scope boundaries and strict constraints.
+- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.
+- Read brainstorm.md when present as additive ideation context for plan drafting.
+- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, or ### REWRITTEN: (at least one ASCII space after ### before the keyword).
+- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>.
+- The final plan body must end with a whole-line diff_lines: <N> trailer.
+- Optionally include up to three dynamic plan-review archetypes in a scout block after the plan. The launcher validates, filters, caps, and materializes this block; invalid post-plan scout output is ignored.
+- Scout sentinels inside the summary or plan are fatal format errors. Never put LARCH_SCOUT_* markers in the plan body.
+
+Readability style (trusted):
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+- **No em dashes**: never use em dashes; use periods, commas, colons, or semicolons instead.
+- **Hedge vs. direct**: hedge uncertain claims ("may contain", "can fail") instead of absolutes; keep directives imperative.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+
+Required output format:
+[optional]
+LARCH_SUMMARY_BEGIN
+A concise summary for large-plan preview. Omit this whole summary block only when no useful summary is needed.
+LARCH_SUMMARY_END
+[/optional]
+LARCH_PLAN_BEGIN
+Full implementation plan body ending with diff_lines: <N>.
+LARCH_PLAN_END
+[optional]
+LARCH_SCOUT_BEGIN
+{"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive ending with the required citation sentence."}]}
+LARCH_SCOUT_END
+[/optional]
+
+Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.
+
+Untrusted feature description:
+<feature_description encoding="literal-redacted">
+# ASCII Gantt reviewer-timing charts in /design + /implement (final + progress)
+
+## Summary
+
+Replace the Mermaid `gantt` reviewer-timing charts with a **reusable Python ASCII Gantt renderer** drawn in a plain code fence, then wire it into both the **final report** and the **progress report** for **/design** and **/implement**. The renderer must be reusable by **/review**. It is **fully generic**: it renders a chart for any set of `(label, start_s, end_s)` rows and hard-codes no task labels, vendors, or sections. No rendering-logic duplication.
+
+## Why
+
+- Reviewer-timing charts are emitted today as `mermaid` `gantt` fenced blocks by `scripts/render-review-phase-detail.sh` (reviewer-timing charts section), shared by `/implement` (`skills/implement/scripts/write-final-report.sh`) and `/design` (`skills/design/scripts/render-final-summary.sh --skill design`).
+- **Mermaid only renders in a JS engine** (GitHub web, mermaid.live). It does **not** render in the Claude Code terminal where the operator first reads the summary, nor in the committed `final-summary.md`, `gh issue view`, or diffs. There the operator sees raw Mermaid DSL. There is no `mmdc` locally either.
+- An ASCII chart in a plain fence renders identically in terminal, committed file, GitHub, PR body, and `gh`.
+
+## Deliverables
+
+1. **Python library — fully generic.** One stdlib-only module (for example `python/gantt.py`, exposed via a `python3 python/cli.py ...` verb). Input: a chart window `(window_start_s, window_end_s)` and a list of `(label, start_s, end_s)` rows. Output: the ASCII chart string. Single source of rendering truth.
+   - **Hard-codes NO labels or domain knowledge** — no task names, vendor names, archetypes, sections, phases, or `/design`-vs-`/implement` specifics. Labels are opaque caller-supplied strings. The renderer must draw a correct chart for **any** set of `(label, start_s, end_s)` rows. The call sites own all meaning; the library only measures, scales, and draws.
+2. **Final report.** Replace the Mermaid emission in `render-review-phase-detail.sh` with a call to the library. One change covers both skills (both already route through this script): each review round renders an ASCII Gantt.
+3. **Progress report.** `python/progress_report.py` (the `p` / `progress` prompt) renders an ASCII Gantt for **every completed review round**, for `/design` and `/implement`, by calling the same library.
+4. **Reuse.** The same function backs final report, progress report, and `/review`. No duplicate bar/axis/box logic.
+
+## Rendering spec (exact)
+
+- **Data source (caller's job, not the library's).** The call site extracts rows from `timing-ledger.tsv` (`type=vendor` rows: `start_s`, `end_s`, label), windows them to each round via `type=round` rows, caps at 25 rows per round, and sorts by start then end, then passes the resulting opaque `(label, start_s, end_s)` rows to the generic library. Labels pass through **as-is** (see Out of scope).
+- **Labels.** Full task label, left-justified, column width = longest label. **No truncation.** Lines may exceed 80 columns (acceptable; wide monitors).
+- **Track.** Fixed width `W` cells (for example 56), scaled to the round window; `span = max relative end`.
+- **Bars.** Continuous **whole-cell `█` only**. `start_col = round(start*W/span)`, `end_col = round(end*W/span)`, minimum 1 cell, clamp to `W`. **No partial/sub-cell block glyphs** (`▏▎▍▌▋▊▉`): they leave a background sliver mid-bar that reads as a vertical line inside the bar on dark terminals.
+- **Box.** Top `┌` + `─`×`W` + `┐`, bottom `└` + `─`×`W` + `┘`. **Border interior must equal `W`** so the right border lines up with each row's right `│`. Flat: one group, no sections.
+- **Axis.** A line above the box: left label `0:00` under the first track cell; right label = window end (`m:ss`) ending under the last track cell.
+- **Row.** `&lt;label&gt; │&lt;track&gt;│ &lt;duration&gt;`, duration bare (`Ns`), right-justified, **no parentheses, no start-end range column**.
+- **Fence.** Wrap in a plain fence, not a `mermaid` fence.
+
+## Example (real Round-1 data, run 374D97E6)
+
+```
+Round 1 reviewer timing  ·  window 0:00-17:00 (1020s)
+                                         0:00                                               17:00
+                                        ┌────────────────────────────────────────────────────────┐
+cursor/dyn-cursor-plan-scout-security   │█████████                                               │ 152s
+cursor/cursor-plan-requirements         │█████████                                               │ 162s
+cursor/cursor-plan-arch                 │███████████                                             │ 196s
+cursor/cursor-plan-pragmatic            │███████████                                             │ 196s
+cursor/dyn-cursor-plan-wire-parity      │███████████                                             │ 196s
+codex/codex-plan-innovation             │███████████                                             │ 205s
+codex/dyn-codex-plan-scout-security     │████████████                                            │ 214s
+cursor/cursor-plan-innovation           │████████████                                            │ 223s
+cursor/dyn-cursor-plan-retirement-sweep │█████████████                                           │ 236s
+codex/codex-plan-pragmatic              │██████████████                                          │ 248s
+codex/dyn-codex-plan-wire-parity        │███████████████                                         │ 264s
+codex/dyn-codex-plan-retirement-sweep   │███████████████                                         │ 272s
+codex/codex-plan-requirements           │███████████████                                         │ 276s
+codex/codex-plan-arch                   │████████████████                                        │ 281s
+cursor/plan-requirements                │                ████████                                │ 151s
+unknown/aggregator                      │                           ███                          │  60s
+claude/vote                             │                              █████████████████████     │ 382s
+cursor/vote                             │                              ██████                    │ 108s
+codex/vote                              │                              ██████████                │ 178s
+unknown/codex                           │                                                     ███│  62s
+                                        └────────────────────────────────────────────────────────┘
+```
+
+Labels are passed through as-is from the current timing source (note `cursor/plan-requirements`, `unknown/aggregator`, `unknown/codex`). Correcting them is out of scope here.
+
+## Tests / self-checks (assert in the harness)
+
+1. **Right edges aligned.** Every row's right `│` is at the same column as `┐` / `┘`.
+2. **Left edges aligned.** Every left `│` / `┌` / `└` at the same column.
+3. **Glyphs.** Track contains only space and `█` (no partial blocks).
+4. **No interior gap.** The run of `█` in any bar has no embedded space.
+
+## Out of scope (separate follow-up)
+
+- **Task labels.** Some are wrong or uninformative today (`cursor/plan-requirements` is not the requirements reviewer; `unknown/aggregator`, `cursor/review`, `codex/review`). Root cause for the follow-up: `render-review-phase-detail.sh` derives labels from the output basename (`derive.awk` / slot-map), and `launch-review.sh` defaults unspecified kinds to `codex-review` / `cursor-review`. The fix will read the timing-ledger `task_kind` column. Defer until real ASCII charts across multiple rounds make it easy to debug.
+- **Outlier handling** (for example `/implement` CI `.out` rows far right that compress real bars). Observe with real charts first.
+
+## Files (edit-in-sync)
+
+- `scripts/render-review-phase-detail.sh` (+ `.md`): swap Mermaid emit for the library call.
+- `skills/implement/scripts/write-final-report.sh` (+ `.md`).
+- `skills/design/scripts/render-final-summary.sh` (+ `.md`).
+- `python/progress_report.py` (+ `python/test_progress_report.py`).
+- new `python/gantt.py` (+ sibling `.md`, + tests), or equivalent shared module.
+- `scripts/test-render-review-phase-detail.sh` (+ `.md`): add the 4 self-checks.
+- Update the "Mermaid timing format" prose in `render-review-phase-detail.md`.
+
+
+</feature_description>
+
+
+Untrusted approach synthesis:
+<approach_synthesis encoding="literal-redacted">
+NO_SKETCHES
+
+</approach_synthesis>
+
+
+Untrusted discussion round 1:
+<discussion_round1 encoding="literal-redacted">
+## Decision 1: No scope decisions required
+- **Question**: N/A — spec fully defines inputs, outputs, rendering contract, tests, and out-of-scope items
+- **Resolution**: Proceed directly to plan drafting per issue #4192
+- **Source**: codebase
+
+</discussion_round1>
+
+
+Untrusted approved design outline:
+<design_outline encoding="literal-redacted">
+## Proposed Design Outline
+
+### Goals
+- Replace Mermaid `gantt` blocks in reviewer-timing sections with a stdlib-only ASCII Gantt renderer.
+- Back the final report (via `render-review-phase-detail.sh`), the progress report (`progress_report.py`), and `/review` from one shared rendering function with no duplicated bar/axis/box logic.
+
+### Non-goals
+- Task label corrections (e.g. `cursor/plan-requirements`, `unknown/aggregator`) — deferred.
+- Outlier handling (far-right CI `.out` rows compressing real bars) — deferred.
+- Changes to timing data collection or `timing-ledger.tsv` format.
+
+### Approach sketch
+- Add `python/gantt.py`: pure stdlib function `render_gantt(window_start_s, window_end_s, rows)` with no domain knowledge. Expose as `python3 python/cli.py gantt render` for bash callers.
+- In `render-review-phase-detail.sh`: replace the Mermaid emit block with a call to `python3 python/cli.py gantt render`; wrap output in a plain fence.
+- In `python/progress_report.py`: import `gantt` directly; after calling `_call_render_phase_detail_script` (still with `--no-gantt`), read `timing-ledger.tsv` and append per-completed-round ASCII Gantt blocks.
+- Add `python/gantt.md` (sibling contract) and `python/test_gantt.py` (tests).
+- Update `scripts/test-render-review-phase-detail.sh` with 4 spec assertions; update `render-review-phase-detail.md` "Mermaid timing format" prose.
+
+### Surfaces in scope
+- `python/gantt.py` (new) + `python/gantt.md` (new) + `python/test_gantt.py` (new)
+- `python/cli.py` (add `gantt render` entry)
+- `scripts/render-review-phase-detail.sh` + `.md`
+- `python/progress_report.py` + `python/test_progress_report.py`
+- `scripts/test-render-review-phase-detail.sh` + `.md`
+
+### Open questions
+- None.
+
+</design_outline>
+
