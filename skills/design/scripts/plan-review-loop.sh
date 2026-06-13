@@ -1782,7 +1782,8 @@ _agg_out="$_agg_in"
 if [[ "${LARCH_AGGREGATOR_DISABLED:-0}" == "1" ]]; then
     AGGREGATOR_STATUS="disabled"
 else
-    _agg_full=$("$PLUGIN_ROOT/skills/review/scripts/aggregate-findings.sh" \
+    set +e
+    _agg_full=$(python3 "$PLUGIN_ROOT/python/cli.py" review aggregate-findings \
         --findings-file "$_agg_in" \
         --review-tmpdir "$DESIGN_TMPDIR" \
         --codex-present "$CODEX_PRESENT" \
@@ -1793,8 +1794,15 @@ else
         --input-mode plan \
         --scope-anchor-file "$SCOPE_ANCHOR_FILE" \
         --allow-findings-outside-tmpdir true)
+    _agg_rc=$?
+    set -e
     AGGREGATED="false"
     REASON="ok"
+    if [[ "$_agg_rc" -ne 0 ]]; then
+        AGGREGATOR_STATUS="aggregate-error"
+    elif [[ -z "$_agg_full" ]]; then
+        AGGREGATOR_STATUS="aggregate-empty"
+    else
     while IFS= read -r _ln; do
         [[ -z "$_ln" ]] && continue
         _k="${_ln%%=*}"
@@ -1804,10 +1812,13 @@ else
             REASON) REASON="$_v" ;;
         esac
     done <<< "$_agg_full"
-    if [[ "$AGGREGATED" == "true" ]]; then
+    if ! grep -Fq 'AGGREGATED=' <<< "$_agg_full"; then
+        AGGREGATOR_STATUS="aggregate-missing-kv"
+    elif [[ "$AGGREGATED" == "true" ]]; then
         AGGREGATOR_STATUS="${REASON:-ok}"
     else
         AGGREGATOR_STATUS="$REASON"
+    fi
     fi
 fi
 

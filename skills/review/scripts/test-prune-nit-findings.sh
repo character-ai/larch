@@ -21,7 +21,7 @@ kv_get() {
     awk -F= -v k="$key" '$1==k{sub(/^[^=]*=/,"");print;exit}' "$file" 2>/dev/null || true
 }
 
-# Aggregated findings.md format (post-aggregate-findings.sh) includes Severity lines
+# Aggregated findings.md format (post-review aggregate-findings) includes Severity lines
 make_aggregated_findings() {
     local path="$1"
     cat > "$path" <<'EOF'

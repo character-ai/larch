@@ -496,7 +496,7 @@ test-findings-classification:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-findings-classification.sh
 
 test-review-findings-classification:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-findings-classification.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py
 
 test-plan-review-loop:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-plan-review-loop.sh
@@ -786,22 +786,22 @@ test-review-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh
 
 test-gather-context:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-gather-context.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k gather_context
 
 test-review-core:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-review-core.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k review_core
 
 test-dispatch-panel-core:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section core
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_core
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section core-dynamic
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic'
 
 test-dispatch-panel-reuse:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section reuse
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_reuse
 
 test-dispatch-panel-limits:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-dispatch-panel.sh --section limits
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dispatch_panel_limits
 
 test-scout-dynamic-archetypes:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_plan_scout.py -q
@@ -816,20 +816,20 @@ test-lib-submodule-prohibition:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-lib-submodule-prohibition.sh
 
 test-collect-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-collect-findings.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k collect_findings
 
 test-aggregate-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-aggregate-findings.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_aggregate.py
 
 test-prune-nit-findings:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-prune-nit-findings.sh
 
 test-tally-code-votes:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-tally-code-votes.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-check-reviewer-failure-threshold.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
 
 .PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge-and-r3-claude test-dispatch-code-voters-retry-claude test-dispatch-code-voters-retry-codex-success test-dispatch-code-voters-retry-cursor test-dispatch-code-voters-retry-codex-fail-and-fallback test-dispatch-code-voters-regressions-r1-r2 test-dispatch-code-voters-regressions-r3-codex
 test-dispatch-code-voters-happy:
@@ -857,10 +857,10 @@ test-dispatch-code-voters-retry-codex-fail-and-fallback:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-dispatch-code-voters.sh --section retry-codex-fail-and-fallback
 
 test-emit-tally:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-emit-tally.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py
 
 test-log-phase:
-	python3 python/cli.py timing harness-mark --label $@ -- bash skills/review/scripts/test-log-phase.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_tally.py
 
 # test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
 # prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four
@@ -939,7 +939,7 @@ test-compute-pr-line-counts:
 	cd python && $(PYTHON) -m pytest test_tokens.py -q
 
 test-compose-review-findings:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-compose-review-findings.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_compose_review.py
 
 
 

@@ -75,7 +75,7 @@ BACKTICKED_FOCUS_FILES = (
 )
 UNQUOTED_FOCUS_FILES = (
     "skills/review/SKILL.md",
-    "skills/review/scripts/dispatch-panel.sh",
+    "python/rendering.py",
     "skills/design/SKILL.md",
 )
 

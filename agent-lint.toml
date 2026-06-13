@@ -314,8 +314,7 @@ exclude = [
   "scripts/ci-failed-jobs.md",
   "scripts/test-ci-failed-jobs.sh",
   "scripts/test-ci-failed-jobs.md",
-  "scripts/test-compose-review-findings.sh",
-  "scripts/test-compose-review-findings.md",
+  "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "skills/implement/scripts/test-post-tracking-issue.sh",

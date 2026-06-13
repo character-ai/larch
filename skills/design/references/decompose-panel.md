@@ -121,7 +121,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose aggregate \
   --timeout 1800
 ```
 
-`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges use `python/cli.py decompose aggregate`, which still runs the **legacy three-tier waterfall** for its single merge slot (`/review`-style cross-tool + Claude pad). That is separate from the decomposition panel dispatch above.
+`review aggregate-findings` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges use `python/cli.py decompose aggregate`, which still runs the **legacy three-tier waterfall** for its single merge slot (`/review`-style cross-tool + Claude pad). That is separate from the decomposition panel dispatch above.
 
 The decomposition panel threads `--require-result-pattern '^[[:space:]]*## Recommendation'` with `--no-fallback`, so narration-only `STATUS=OK` outputs are dropped rather than retried on another vendor. Panel rows in `panel-outputs.ndjson` bind each manifest `output` to a succeeded path from `ALL_OUTPUT_FILES_PATH` when present; otherwise the row stays `missing` / `unparsed` on the manifest path.
 

@@ -92,7 +92,7 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Phase | Role | Skills | Fallback behavior |
 |---|---|---|---|
 | Plan review | Review implementation plans | `/design` | **Full waterfall** (Cursor↔Codex→Claude per slot) |
-| Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `dispatch-panel.sh`) |
+| Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `review dispatch-panel`) |
 | [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | **Full waterfall** (Voter 2/3 per slot) |
 | Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude) |
 | Implementer (Step 2) | Write the implementation | `/implement` | **Selection waterfall** keyed on `--coder` (chosen → other external → Claude main-agent), #3207 |

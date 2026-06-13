@@ -39,8 +39,20 @@ usage() {
 FINDINGS_FILE=""
 REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
-REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 PY_CLI="${REVIEW_AND_FIX_PY_CLI:-$PLUGIN_ROOT/python/cli.py}"
+if [[ -n "${REVIEW_AND_FIX_REVIEW_CORE_SH:-}" ]]; then
+    [[ -x "$REVIEW_AND_FIX_REVIEW_CORE_SH" ]] || {
+        larch_err "review-and-fix.sh: REVIEW_AND_FIX_REVIEW_CORE_SH is not executable: $REVIEW_AND_FIX_REVIEW_CORE_SH"
+        exit 2
+    }
+    REVIEW_CORE_CMD=("$REVIEW_AND_FIX_REVIEW_CORE_SH")
+else
+    [[ -f "$PY_CLI" ]] || {
+        larch_err "review-and-fix.sh: missing python/cli.py at $PY_CLI"
+        exit 2
+    }
+    REVIEW_CORE_CMD=(python3 "$PY_CLI" review core)
+fi
 if [[ -n "${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-}" ]]; then
     RUN_EXTERNAL_AGENT_CMD=("$REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH")
 else
@@ -62,14 +74,26 @@ else
     }
     WRITE_TALLY_CMD=(python3 "$PY_CLI" voting write-tally)
 fi
-COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
+if [[ -n "${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-}" ]]; then
+    [[ -x "$REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH" ]] || {
+        larch_err "review-and-fix.sh: REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH is not executable: $REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH"
+        exit 2
+    }
+    COMPOSE_CMD=("$REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH")
+else
+    [[ -f "$PY_CLI" ]] || {
+        larch_err "review-and-fix.sh: missing python/cli.py at $PY_CLI"
+        exit 2
+    }
+    COMPOSE_CMD=(python3 "$PY_CLI" review compose-findings)
+fi
 LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-}"
 
 _scrub_submodule_paths() {
     if [[ -n "$SCRUB_SUBMODULE_PATHS_SH" && -x "$SCRUB_SUBMODULE_PATHS_SH" ]]; then
         "$SCRUB_SUBMODULE_PATHS_SH" "$@"
     else
-        python3 "$PLUGIN_ROOT/python/cli.py" redact scrub-submodule-paths "$@"
+        python3 "$PY_CLI" redact scrub-submodule-paths "$@"
     fi
 }
 
@@ -77,7 +101,7 @@ _larch_log() {
     if [[ -n "$LARCH_LOG_SH" && -x "$LARCH_LOG_SH" ]]; then
         "$LARCH_LOG_SH" "$@"
     else
-        python3 "$PLUGIN_ROOT/python/cli.py" run-log "$@"
+        python3 "$PY_CLI" run-log "$@"
     fi
 }
 IMPLEMENT_TMPDIR=""
@@ -137,8 +161,8 @@ kv_get() {
 
 session_get() {
     local key="$1" default_value="${2:-}"
-    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -f "$PLUGIN_ROOT/python/cli.py" ]]; then
-        python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value" || printf '%s\n' "$default_value"
+    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && -f "$PY_CLI" ]]; then
+        python3 "$PY_CLI" session read-key --file "$SESSION_ENV_PATH" --key "$key" --default "$default_value" || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi
@@ -927,8 +951,6 @@ compose_review_findings_output() {
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
     [[ -n "$output" ]] || return 1
-    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 1
-
     [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
     compose_args=(
         --implement-tmpdir "$impl_tmpdir"
@@ -936,7 +958,7 @@ compose_review_findings_output() {
         --output "$output"
     )
     [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
-    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1
+    "${COMPOSE_CMD[@]}" "${compose_args[@]}" >/dev/null 2>&1
 }
 
 derive_code_review_tally_from_composed_findings() {
@@ -983,7 +1005,6 @@ flush_review_batches() {
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
     [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
     [[ "$neutral" =~ ^[0-9]+$ ]] || neutral=0
-    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
     command -v python3 >/dev/null 2>&1 || return 0
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
@@ -1286,7 +1307,7 @@ append_log_write_failure() {
             --redact
         )
         [[ -n "$verdict" ]] && helper_args+=(--verdict "$verdict")
-        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+        python3 "$PY_CLI" run-log append-failure \
             "${helper_args[@]}" >/dev/null 2>&1 || true
     else
         larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
@@ -1348,7 +1369,6 @@ _implement_round_body() {
     round_num_dec=$((10#$ROUND_NUM))
     [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" && ! -L "$IMPLEMENT_TMPDIR" ]] || { larch_err "review-and-fix.sh: --implement-tmpdir must name a directory"; exit 2; }
     [[ -n "$SESSION_ENV_PATH" ]] || SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
-    [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
     { [[ ${#RUN_EXTERNAL_AGENT_CMD[@]} -eq 1 && -f "${RUN_EXTERNAL_AGENT_CMD[0]}" ]] || \
       { command -v "${RUN_EXTERNAL_AGENT_CMD[0]}" >/dev/null 2>&1 && [[ -f "${RUN_EXTERNAL_AGENT_CMD[1]:-}" ]]; }; } || {
         larch_err "review-and-fix.sh: run-external-agent command unavailable: ${RUN_EXTERNAL_AGENT_CMD[*]}"
@@ -1448,7 +1468,7 @@ _implement_round_body() {
     [[ -n "$PRE_SCOUTED_MANIFEST" && "$MODE" != "mav-apply" ]] && core_args+=(--pre-scouted-manifest "$PRE_SCOUTED_MANIFEST")
 
     set +e
-    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${REVIEW_CORE_CMD[@]}" "${core_args[@]}" > "$core_out"
     core_rc=$?
     set -e
 
@@ -1485,7 +1505,7 @@ _implement_round_body() {
             touch "$degraded_retry_flag"
             append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
             set +e
-            IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+            IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${REVIEW_CORE_CMD[@]}" "${core_args[@]}" > "$core_out"
             core_rc=$?
             set -e
             touch "$degraded_retry_done"
@@ -1605,7 +1625,7 @@ _implement_round_body() {
                     printf '\n' >> "$skipped_security_file"
                 elif [[ "$sec_rc" -eq 1 ]]; then
                     OOS_WRITE_SEQ=$((OOS_WRITE_SEQ + 1))
-                    python3 "${PLUGIN_ROOT}/python/cli.py" oos normalize-header \
+                    python3 "$PY_CLI" oos normalize-header \
                         --seq "$OOS_WRITE_SEQ" --block-file "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
                 else

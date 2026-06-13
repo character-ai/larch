@@ -16,7 +16,8 @@ paths:
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
-  - "skills/review/scripts/dispatch-panel.sh"
+  - "python/review_pipeline.py"
+  - "python/legacy_review_shell/dispatch-panel.sh"
   - "skills/design/scripts/emit-design-plan-preview.sh"
 ---
 

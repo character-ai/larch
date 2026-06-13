@@ -337,6 +337,18 @@ run_review_and_fix() {
     )
 }
 
+run_review_and_fix_default_core() {
+    local work="$1"; shift
+    (
+        cd "$work"
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        CURSOR_API_KEY=test-cursor-key \
+        REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+        PATH="$TMP/default-core-bin:$PATH" \
+        "$SCRIPT" "$@" 3>&1
+    )
+}
+
 if section_runs dispatch; then
 work_prune_skipped="$TMP/prune-skipped"
 make_work_repo "$work_prune_skipped"
@@ -354,6 +366,184 @@ set -e
 grep -Fq 'REVIEW_AND_FIX_STATUS=prune-skipped' <<< "$out_prune" || fail "prune-skipped status missing"
 grep -Fq "prune_ledger=$impl_prune/reviewer-prune-ledger.tsv" "$core_argv_log" || fail "review-and-fix did not pass prune ledger"
 pass "prune-skipped status and ledger forwarding"
+
+mkdir -p "$TMP/review-core-stages"
+cat > "$TMP/review-core-stages/gather.sh" <<'EOF_GATHER'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$out"
+printf 'DIFF_FILE=%s/diff.patch\nFILE_LIST_FILE=%s/scope-files.txt\nCOMMIT_LOG_FILE=%s/commits.txt\nCOMMIT_COUNT=1\nSCOPE_FILES_COUNT=1\nMODE=diff\n' "$out" "$out" "$out"
+EOF_GATHER
+cat > "$TMP/review-core-stages/dispatch.sh" <<'EOF_DISPATCH'
+#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$tmp"
+external="$tmp/codex-specialist-correctness-output.txt"
+claude="$tmp/claude-generic-output.txt"
+printf 'reviewer finding\n' > "$external"
+printf 'claude finding\n' > "$claude"
+printf '0\n' > "$claude.done"
+printf 'EXTERNAL_OUTPUT_FILES=%s\nCLAUDE_OUTPUT_FILES=%s\nPANEL_MODE=normal\nPANEL_SHAPE=hard\nSCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSTATIC_SLOT_COUNT=1\nSLOT_COUNT=1\n' "$external" "$claude"
+cat > "$tmp/panel-manifest.ndjson" <<EOF
+{"slot":"correctness","tool":"codex","output":"$external","agent":"agents/reviewer-correctness.md"}
+EOF
+printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\nDISPATCH_OK=true\n' "$tmp"
+EOF_DISPATCH
+cat > "$TMP/review-core-stages/collect.sh" <<'EOF_COLLECT'
+#!/usr/bin/env bash
+set -euo pipefail
+findings=""
+oos=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --findings-file) findings="$2"; shift 2 ;;
+    --oos-file) oos="$2"; shift 2 ;;
+    --external-output-files|--claude-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$(dirname "$findings")"
+rtmp="$(dirname "$findings")"
+: > "${oos:-$rtmp/oos.md}"
+cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+EOF
+cat > "$findings" <<'EOF'
+### FINDING_1: Default core path
+- **Reviewer**: stub
+- **Concern**: concern
+- **Suggested revision**: fix it
+EOF
+printf 'FINDINGS_COUNT=1\nOOS_COUNT=0\nDIRTY_DETECTED=false\nCOLLECT_OK=true\nCOLLECTOR_OUTPUT_FILE=collector.env\n'
+EOF_COLLECT
+cat > "$TMP/review-core-stages/tally.sh" <<'EOF_TALLY'
+#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+printf 'FINDING_1_ACCEPTED=true\n' > "$tmp/review-tally.env"
+cat > "$tmp/accepted-findings.md" <<'EOF'
+### FINDING_1: Default core path
+- **Concern**: concern
+- **Suggested revision**: fix it
+EOF
+: > "$tmp/rejected-findings.md"
+printf '# tally\n' > "$tmp/voting-tally.md"
+printf 'TALLY_STATUS=ok\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\nTALLY_OK=true\n' "$tmp" "$tmp" "$tmp" "$tmp"
+EOF_TALLY
+cat > "$TMP/review-core-stages/emit.sh" <<'EOF_EMIT'
+#!/usr/bin/env bash
+set -euo pipefail
+tmp=""
+session=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    --session-env-path) session="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+printf '{"schema_version":2,"accepted_count":1,"rejected_count":0}\n' > "$tmp/review-summary.json"
+if [[ -n "$session" && -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+  cp "$tmp/review-summary.json" "${IMPLEMENT_TMPDIR}/default-core-parent-summary.json"
+fi
+printf 'EMIT_OK=true\nREVIEW_SUMMARY_FILE=%s/review-summary.json\n' "$tmp"
+EOF_EMIT
+cat > "$TMP/review-core-stages/check-dirty.sh" <<'EOF_DIRTY'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'STATUS=clean\nMODE=checkpoint\n'
+EOF_DIRTY
+cat > "$TMP/review-core-stages/check-threshold.sh" <<'EOF_THRESHOLD'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'INTENDED_SLOTS=1\nSUCCEEDED_SLOTS=1\nFAILED_SLOTS=0\nCOUNTED_SLOTS=1\nDROPPED_STATIC_SLOTS=0\nTHRESHOLD_OK=true\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=0\n'
+EOF_THRESHOLD
+cat > "$TMP/review-core-stages/dispatch-voters.sh" <<'EOF_VOTERS'
+#!/usr/bin/env bash
+set -euo pipefail
+review_tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) review_tmpdir="$2"; shift 2 ;;
+    --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$review_tmpdir"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/claude-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/cursor-vote-output.txt"
+printf 'VOTER_1_PATH=%s/claude-vote-output.txt\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$review_tmpdir"
+printf 'VOTER_2_PATH=%s/codex-vote-output.txt\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$review_tmpdir"
+printf 'VOTER_3_PATH=%s/cursor-vote-output.txt\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$review_tmpdir"
+printf 'DISPATCH_OK=true\n'
+EOF_VOTERS
+chmod +x "$TMP/review-core-stages"/*.sh
+mkdir -p "$TMP/default-core-bin"
+real_py="$(command -v python3)"
+cat > "$TMP/default-core-bin/python3" <<EOF_PYWRAP
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == *"/python/cli.py" && "\${2:-}" == "review" && "\${3:-}" == "core" ]]; then
+  printf '%s\\n' "\$*" >> "$TMP/default-review-core-argv.log"
+  printf 'IMPLEMENT_TMPDIR=%s\\n' "\${IMPLEMENT_TMPDIR:-}" >> "$TMP/default-review-core-argv.log"
+  REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/review-core-stages/gather.sh" \
+  REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/review-core-stages/dispatch.sh" \
+  REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/review-core-stages/collect.sh" \
+  REVIEW_CORE_TALLY_VOTES_SH="$TMP/review-core-stages/tally.sh" \
+  REVIEW_CORE_EMIT_TALLY_SH="$TMP/review-core-stages/emit.sh" \
+  REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/review-core-stages/check-dirty.sh" \
+  REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/review-core-stages/check-threshold.sh" \
+  REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/review-core-stages/dispatch-voters.sh" \
+  LARCH_AGGREGATOR_DISABLED=1 \
+  exec "$real_py" "\$@"
+fi
+exec "$real_py" "\$@"
+EOF_PYWRAP
+chmod +x "$TMP/default-core-bin/python3"
+: > "$TMP/default-review-core-argv.log"
+work_default_core="$TMP/default-review-core"
+make_work_repo "$work_default_core"
+impl_default="$work_default_core/implement"
+mkdir -p "$impl_default"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$impl_default/session-env.sh"
+set +e
+out_default=$(run_review_and_fix_default_core "$work_default_core" \
+    --implement-tmpdir "$impl_default" --mode diff --round-num 1 \
+    --session-env-path "$impl_default/session-env.sh" --run-id default-core-run 2>&1)
+rc_default=$?
+set -e
+[[ "$rc_default" -eq 0 ]] || { echo "$out_default" >&2; fail "default review core path expected exit 0 got $rc_default"; }
+grep -Fq 'review core' "$TMP/default-review-core-argv.log" || fail "default path did not invoke python cli review core"
+grep -Fq -- '--output-dir' "$TMP/default-review-core-argv.log" || fail "default review core argv missing --output-dir"
+grep -Fq "IMPLEMENT_TMPDIR=$impl_default" "$TMP/default-review-core-argv.log" || fail "IMPLEMENT_TMPDIR not propagated to default review core"
+[[ -f "$impl_default/default-core-parent-summary.json" ]] || fail "emit-tally parent copy missing under IMPLEMENT_TMPDIR"
+grep -Fq 'REVIEW_CORE_STATUS=fix-required' "$impl_default/round-1/review-core.env" 2>/dev/null \
+    || grep -Fq 'REVIEW_CORE_STATUS=fix-required' <<< "$out_default" \
+    || fail "default review core path missing REVIEW_CORE_STATUS relay"
+pass "default REVIEW_CORE_CMD path with stage stubs and IMPLEMENT_TMPDIR handoff"
 
 work_agg_exhaust="$TMP/agg-validation-exhausted-prop"
 make_work_repo "$work_agg_exhaust"

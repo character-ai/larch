@@ -78,11 +78,11 @@ sanitized per line with `sanitize_diagnostic_line` (after any `redact-secrets.sh
 pass). Routed sites:
 
 - **HIGH**: `scripts/ship-pr.sh` (`append_tool_failure_local` fallback relay),
-  `skills/review/scripts/collect-findings.sh` (collector and wait failure-log
+  `python/cli.py review collect-findings` (collector and wait failure-log
   relays).
 - **MEDIUM** (defense-in-depth on internal-script stderr in reviewer/CI paths):
   `scripts/collect-agent-results.sh` (`$WAIT_STDERR` relay),
-  `skills/review/scripts/review-core.sh` (`$aggregate_stderr` relay).
+  `python/cli.py review core` (`$aggregate_stderr` relay).
 
 Reviewed and intentionally **not** routed (LOW): `scripts/eval-research.sh` git
 stderr (dev/eval harness), `scripts/validate-citations.sh` `__VC_DRY_RUN` test

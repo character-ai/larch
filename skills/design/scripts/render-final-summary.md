@@ -61,7 +61,7 @@ flags to the renderer.
 Before invoking `render-run-summary.sh`, `invoke_render()` removes stale
 `review-phase-detail.md`, prepares a valid rounds root, removes stale
 `review-findings-full.jsonl`, calls
-`scripts/compose-review-findings.sh --design-artifacts-dir`, and then calls
+`python/cli.py review compose-findings --design-artifacts-dir`, and then calls
 `scripts/render-review-phase-detail.sh --skill design` with `--rounds-root`,
 `--findings-file`, `--timing-ledger`, optional `--token-ledger`, and `--output`.
 When `$DESIGN_TMPDIR/plan-review` is absent, it creates that directory as an

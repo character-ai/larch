@@ -307,7 +307,7 @@ sub-header. When no voting artifact is attached for this run, the body may note 
 
 ### code-review-tally.json
 
-**Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix.sh` / `review-core.sh`; standalone `/review` is a separate skill).
+**Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix.sh` / `review core`; standalone `/review` is a separate skill).
 
 One JSON object per `/implement` session with the same tally envelope fields as
 `plan-review-tally.json`. `exonerated_count` is an informational sub-count of
@@ -324,7 +324,7 @@ is not separately enumerated in the tally envelope counters.
 
 **Mode**: replace (line-delimited JSON). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `python/legacy_review_shell/compose-review-findings.sh` (producer contract; `python/cli.py review compose-findings` is the CLI entrypoint).
 
 **Backward compatibility**: Committed `larch-logs/**/review-findings-full.jsonl` may mix envelopes across runs. Normalize each line in three ways: **(1) v2** when `(has("reviewer_slots") and (.reviewer_slots | type == "array"))` — use `reviewer_slots` (and optional `schema_version`) as the canonical slot list. **(2) Legacy** only when v2 is absent: a string `reviewer` field (often without `schema_version`). **(3) Unknown / partial** — sparse historical stub rows may omit both usable shapes; log and skip (or count as unknown) rather than assuming a full v2 field set or treating `reviewer_slots: null`/non-array as v2. Example `jq` sketch:
 
@@ -338,7 +338,7 @@ else
 end
 ```
 
-See `scripts/compose-review-findings.md` for the same mixed-stream contract.
+See `python/legacy_review_shell/compose-review-findings.sh` for the same mixed-stream contract (`python/cli.py review compose-findings` is the CLI entrypoint).
 
 ### version-bump-reasoning.md
 
@@ -403,7 +403,7 @@ The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the exec
 ### round-<N>/
 
 **Mode**: directory replace-by-file. **Written**: first at the end of each
-`review-core.sh` round during `/implement` Step 5, then optionally refreshed
+`review core` round during `/implement` Step 5, then optionally refreshed
 later in the same round after the coder finishes if `review-and-fix.sh`
 produces additional registered artifacts (for example coder-side files).
 
@@ -416,7 +416,7 @@ per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
 `python/cli.py run-log` because the aggregates already cover their content),
 panel manifest (with `archetype_ref` for dynamic slots — see below),
-code-voter slots, and any later registered coder artifacts. The `review-core.sh`
+code-voter slots, and any later registered coder artifacts. The `review core`
 flush is the first snapshot for the round; `review-and-fix.sh` may run one more
 `write-round` after coder application so the committed round directory reflects
 the full round state before the later shared log-commit paths copy it into

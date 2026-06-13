@@ -25,7 +25,7 @@ Derived sources:
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves the downstream script path when
     `CLAUDE_PLUGIN_ROOT` is not already set.
   - token/timing keys are re-exported for downstream telemetry compatibility.
-- **Round cap**: The launcher uses a flat Step 5 round cap of **5** as a hard ceiling. The cap is forwarded unchanged as `--round-cap` on the `review-and-fix.sh` argv only (this script does **not** emit `--panel` — panel selection lives inside `review-and-fix.sh` → `review-core.sh`).
+- **Round cap**: The launcher uses a flat Step 5 round cap of **5** as a hard ceiling. The cap is forwarded unchanged as `--round-cap` on the `review-and-fix.sh` argv only (this script does **not** emit `--panel` — panel selection lives inside `review-and-fix.sh` → `review core`).
 - `$IMPLEMENT_TMPDIR/plan.txt`: forwarded as `--plan-file` when present and non-empty.
 - `$IMPLEMENT_TMPDIR/session-id`: forwarded as `--run-id`.
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
