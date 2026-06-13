@@ -17,6 +17,8 @@ fail() { FAIL=$((FAIL + 1)); printf 'FAIL: %s\n' "$1" >&2; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-hook-bg-poll-guard.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 export TMPDIR="$TMP"
+export HOME="$TMP/home"
+mkdir -p "$HOME"
 
 D="$TMP/claude-design-bg-guard"
 mkdir -p "$D/tasks" "$D/plan-review/round-1"
@@ -26,7 +28,7 @@ write_marker() {
   local pid="$1" start="$2" timeout="${3:-21600}" step="${4:-design-step3-review}"
   cat >"$MARKER" <<EOF_MARKER
 PID=$pid
-CLAUDE_PID=$$
+  CLAUDE_PID=$$
 START_EPOCH=$start
 STEP=$step
 TIMEOUT_S=$timeout
@@ -45,7 +47,7 @@ payload_bash() {
 
 run_payload() {
   local payload="$1"
-  printf '%s' "$payload" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK"
+  printf '%s' "$payload" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-}" "$HOOK"
 }
 
 assert_allow() {
@@ -115,6 +117,31 @@ assert_deny "$out" 'live marker plus Read tasks/foo.output denies'
 
 out=$(run_payload "$(payload_bash "\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh")")
 assert_allow "$out" 'wrapper-routed design-run call allows'
+
+compound_wrapper_probe="\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh && $design_tmpdir_ls"
+out=$(run_payload "$(payload_bash "$compound_wrapper_probe")")
+assert_deny "$out" 'compound wrapper plus appended probe denies'
+
+filetest_loop='while [ ! -f .step3-review-result.env ]; do sleep 5; done'
+out=$(run_payload "$(payload_bash "$filetest_loop" "$D")")
+assert_deny "$out" 'live marker plus file-test sleep loop denies'
+
+out=$(run_payload "$(payload_bash "rg plan-review docs/" "/tmp/other-repo")")
+assert_allow "$out" 'plan-review substring outside live tmpdir allows'
+
+out=$(run_payload "$(payload_bash "awk '{print}' \"\$DESIGN_TMPDIR/plan-review/round-1/foo-output.txt\"")")
+assert_deny "$out" 'live marker plus awk against DESIGN_TMPDIR output denies'
+
+write_marker $$ "$(date +%s)"
+printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(date +%s)" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER"
+out=$(LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_payload "$(payload_bash "$design_tmpdir_ls")")
+assert_allow "$out" 'foreign-session marker does not deny current session'
+write_marker $$ "$(date +%s)"
+printf '0\n' >"$D/bg-poll-guard-denials.count"
+chmod 444 "$D/bg-poll-guard-denials.count" 2>/dev/null || true
+out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
+chmod 644 "$D/bg-poll-guard-denials.count" 2>/dev/null || true
+assert_deny "$out" 'deny JSON emitted even when telemetry count write fails'
 
 out=$(printf '{not-json' | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 assert_allow "$out" 'malformed JSON silently allows'

@@ -19,6 +19,11 @@ now=$(date +%s 2>/dev/null) || exit 0
 case "$now" in ''|*[!0-9]*) exit 0 ;; esac
 
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || exit 0
+HOOK_CLAUDE_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+_input_claude_pid=$(printf '%s' "$INPUT" | jq -r '.claude_pid // .parent_pid // ""' 2>/dev/null) || _input_claude_pid=""
+if [ -n "$_input_claude_pid" ] && [ "$_input_claude_pid" != "null" ]; then
+  HOOK_CLAUDE_PID="$_input_claude_pid"
+fi
 
 canonical_dir() {
   [ -n "$1" ] || return 1
@@ -64,12 +69,17 @@ marker_value() {
 }
 
 marker_is_live() {
-  local marker="$1" dir pid start timeout age limit grace
+  local marker="$1" dir pid start timeout age limit grace stored_claude_pid hook_claude_pid
   [ -f "$marker" ] || return 1
   [ ! -L "$marker" ] || return 1
   dir=$(dirname "$marker") || return 2
   dir=$(canonical_dir "$dir" 2>/dev/null) || return 2
   is_allowed_marker_parent "$dir" || return 1
+  stored_claude_pid=$(marker_value "$marker" CLAUDE_PID 2>/dev/null) || stored_claude_pid=""
+  hook_claude_pid="${HOOK_CLAUDE_PID:-}"
+  if [ -n "$stored_claude_pid" ] && [ -n "$hook_claude_pid" ] && [ "$stored_claude_pid" != "$hook_claude_pid" ]; then
+    return 1
+  fi
   pid=$(marker_value "$marker" PID) || return 2
   start=$(marker_value "$marker" START_EPOCH) || return 2
   timeout=$(marker_value "$marker" TIMEOUT_S) || return 2
@@ -111,8 +121,8 @@ increment_denial_count() {
 
 deny_if_needed() {
   local dir="$1"
-  increment_denial_count "$dir" || exit 0
   json_deny
+  increment_denial_count "$dir" || true
   exit 0
 }
 
@@ -147,16 +157,65 @@ path_is_known_result() {
   return 1
 }
 
-bash_is_wrapper_routed() {
-  local cmd="$1"
-  case "$cmd" in
+_PROBE_VERB_RE='(ls|cat|wc|stat|find|head|tail|test|grep|rg|ripgrep|awk|sed|python3?|jq|dd|cmp)'
+
+bash_trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+bash_first_sync_segment() {
+  local cmd="$1" rest ch in_s in_d seg
+  in_s=0
+  in_d=0
+  seg=""
+  rest="$cmd"
+  while [ -n "$rest" ]; do
+    ch=${rest:0:1}
+    case "$ch" in
+      \') [ "$in_d" -eq 0 ] && in_s=$((1 - in_s)) ;;
+      \") [ "$in_s" -eq 0 ] && in_d=$((1 - in_d)) ;;
+    esac
+    if [ "$in_s" -eq 0 ] && [ "$in_d" -eq 0 ]; then
+      case "$rest" in
+        '&&'*|'||'*|';'*)
+          bash_trim "$seg"
+          return 0
+          ;;
+      esac
+    fi
+    seg="$seg$ch"
+    rest="${rest:1}"
+  done
+  bash_trim "$seg"
+}
+
+bash_segment_is_wrapper_routed() {
+  local seg="$1"
+  case "$seg" in
     *design-run-*.sh*design-step3-review.sh*|*design-run-*.sh*design-step5c.sh*|*design-run-*.sh*design-step-final-summary.sh*) return 0 ;;
   esac
   return 1
 }
 
+bash_is_strict_wrapper_only() {
+  local cmd="$1" first rest
+  first=$(bash_first_sync_segment "$cmd")
+  bash_segment_is_wrapper_routed "$first" || return 1
+  rest="$cmd"
+  rest="${rest#"$first"}"
+  rest="${rest#"${rest%%[![:space:]]*}"}"
+  case "$rest" in
+    '') return 0 ;;
+    '&&'*|'||'*|';'*) return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 bash_has_probe_verb() {
-  printf '%s' "$1" | grep -Eq '(^|[^[:alnum:]_])(ls|cat|wc|stat|find|head|tail|test|grep)([^[:alnum:]_]|$)'
+  printf '%s' "$1" | grep -Eq "(^|[^[:alnum:]_])${_PROBE_VERB_RE}([^[:alnum:]_]|$)"
 }
 
 bash_has_probe_target() {
@@ -164,11 +223,11 @@ bash_has_probe_target() {
   local design_tmpdir_ref="\$DESIGN_TMPDIR"
   local design_tmpdir_braced="\${DESIGN_TMPDIR}"
   case "$cmd" in
-    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$dir"*|*plan-review*|**-output.txt*|*tasks/*.output*) return 0 ;;
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in
-      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review*|*tasks/*.output*) return 0 ;;
+      *.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|**-output.txt*|*tasks/*.output*) return 0 ;;
     esac
   fi
   return 1
@@ -176,12 +235,17 @@ bash_has_probe_target() {
 
 bash_is_sleep_probe() {
   local cmd="$1"
-  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq 'sleep[[:space:]]+[0-9]+[^&;|]*&&[^\n]*(ls|cat|wc|stat|find|head|tail|test|grep)'
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "sleep[[:space:]]+[0-9]+[^&;|]*&&[^\\n]*${_PROBE_VERB_RE}"
 }
 
 bash_is_watcher_loop() {
   local cmd="$1"
-  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq '(while|until|for)[[:space:]].*sleep[[:space:]]+[0-9]+.*(ls|cat|wc|stat|find|head|tail|test|grep)'
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq "(while|until|for)[[:space:]].*sleep[[:space:]]+[0-9]+.*${_PROBE_VERB_RE}"
+}
+
+bash_is_filetest_sleep_loop() {
+  local cmd="$1"
+  printf '%s' "$cmd" | tr '\n' ' ' | grep -Eq '(while|until)[[:space:]].*(\[|\[\[).*(sleep|;).*sleep[[:space:]]+[0-9]+|(while|until)[[:space:]].*sleep[[:space:]]+[0-9]+.*(\[|\[\[)'
 }
 
 live_dirs_file=$(mktemp "${TMPDIR:-/tmp}/larch-bg-poll-live.XXXXXX") || exit 0
@@ -228,7 +292,7 @@ fi
 
 cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
-bash_is_wrapper_routed "$cmd" && exit 0
+bash_is_strict_wrapper_only "$cmd" && exit 0
 while IFS= read -r dir || [ -n "$dir" ]; do
   [ -n "$dir" ] || continue
   if bash_has_probe_verb "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
@@ -238,6 +302,9 @@ while IFS= read -r dir || [ -n "$dir" ]; do
     deny_if_needed "$dir"
   fi
   if bash_is_watcher_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
+    deny_if_needed "$dir"
+  fi
+  if bash_is_filetest_sleep_loop "$cmd" && bash_has_probe_target "$cmd" "$dir" "$cwd_canon"; then
     deny_if_needed "$dir"
   fi
 done <"$live_dirs_file"

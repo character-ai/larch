@@ -49,7 +49,7 @@ Design an implementation plan for a feature and review it with the mechanical pl
 **Compact reviewer status table**: Use the twice-per-wait reviewer status cadence. Print a compact table exactly twice for each immediate-background wait:
 
 1. **Post-launch**: immediately after the background launch ack, show each known slot as pending (`⏳`) or skipped (`⊘`) when the skip is already known.
-2. **Post-notification**: after `<task-notification>`, show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${ROUND_NUM}/reviewer-status.tsv`.
+2. **Post-notification**: after `<task-notification>`, parse `.step3-review-result.env` when present for round binding, then show final statuses from `$DESIGN_TMPDIR/latest-reviewer-status.tsv`; if that file is missing, fall back to `$DESIGN_TMPDIR/plan-review/round-${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUNDS_COMPLETED:-1}}}/reviewer-status.tsv`.
 
 ```
 📊 Reviewers: | Cursor-Arch: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ⏳ | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ⏳ | Codex-Requirements: ⏳ |
