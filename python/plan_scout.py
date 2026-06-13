@@ -291,6 +291,14 @@ def _validate_prompt_override(path: str, plugin_root: Path) -> Path | None:
     return canon
 
 
+def validate_context_file(label: str, path: str, roots: list[Path]) -> Path:
+    return _validate_context_file(label, path, roots)
+
+
+def validate_prompt_override(path: str, plugin_root: Path) -> Path | None:
+    return _validate_prompt_override(path, plugin_root)
+
+
 def _escape_prompt_data(text: str) -> str:
     return html.escape(text, quote=False)
 

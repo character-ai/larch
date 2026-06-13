@@ -12,6 +12,7 @@ import subprocess
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import logging_util
 import proc
@@ -489,7 +490,7 @@ def dispatch_panel(
             _emit_kv("DEGRADED_PANEL", value=True)
             _emit_kv("PANEL_STATUS", "panel-failed")
             raise UsageError("malformed decompose-slots.ndjson") from None
-        manifest_rows.append(row)
+        manifest_rows.append(cast("dict[str, object]", row))
     slot_count = len(manifest_rows)
     try:
         combined_fallback_n = int(combined_fallback_count)
@@ -566,8 +567,9 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
             if not isinstance(row, dict):
                 _emit_kv("AGGREGATOR_STATUS", "failed")
                 raise UsageError("malformed panel-outputs.ndjson") from None
-            outp = Path(row.get("output", ""))
-            _ = handle.write(f"\n## Panel output ({row.get('archetype', '')} / {row.get('vendor', '')})\n\n")
+            row_obj = cast("dict[str, object]", row)
+            outp = Path(str(row_obj.get("output", "")))
+            _ = handle.write(f"\n## Panel output ({row_obj.get('archetype', '')} / {row_obj.get('vendor', '')})\n\n")
             if outp.is_file():
                 _ = handle.write(outp.read_text(encoding="utf-8", errors="replace"))
             else:
