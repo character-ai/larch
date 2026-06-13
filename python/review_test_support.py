@@ -23,7 +23,7 @@ def run_review(
     if quiet_disable:
         merged["LARCH_QUIET_DISABLE"] = "1"
     else:
-        merged.pop("LARCH_QUIET_DISABLE", None)
+        _ = merged.pop("LARCH_QUIET_DISABLE", None)
     if env:
         merged.update(env)
     return subprocess.run(
@@ -505,14 +505,14 @@ esac
 
 def init_git_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run([GIT, "init", "-q"], cwd=path, check=True)
-    subprocess.run([GIT, "config", "user.email", "test@example.com"], cwd=path, check=True)
-    subprocess.run([GIT, "config", "user.name", "Test User"], cwd=path, check=True)
-    subprocess.run([GIT, "config", "commit.gpgsign", "false"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "init", "-q"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "config", "user.email", "test@example.com"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "config", "user.name", "Test User"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "config", "commit.gpgsign", "false"], cwd=path, check=True)
     _ = (path / "src").mkdir(exist_ok=True)
     _ = (path / "src" / "main.py").write_text("original\n", encoding="utf-8")
-    subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
-    subprocess.run([GIT, "commit", "-qm", "init"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "commit", "-qm", "init"], cwd=path, check=True)
     _ = (path / "src" / "main.py").write_text("changed\n", encoding="utf-8")
-    subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
-    subprocess.run([GIT, "commit", "-qm", "feature"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "add", "src/main.py"], cwd=path, check=True)
+    _ = subprocess.run([GIT, "commit", "-qm", "feature"], cwd=path, check=True)
