@@ -557,6 +557,45 @@ setup_oos_caller_repo() {
     )
 }
 
+setup_review_pipeline_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b review-pipeline-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/review_pipeline.py
+        git add python/review_pipeline.py
+        git commit -q -m "touch review pipeline"
+    )
+}
+
+setup_review_aggregate_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b review-aggregate-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/review_aggregate.py
+        git add python/review_aggregate.py
+        git commit -q -m "touch review aggregate"
+    )
+}
+
+setup_compose_review_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b compose-review-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/compose_review.py
+        git add python/compose_review.py
+        git commit -q -m "touch compose review"
+    )
+}
+
 setup_lint_fix_loop_repo() {
     local dir="$1"
     setup_git_repo "$dir"
@@ -866,6 +905,35 @@ assert_stdout_not_contains "3q: does not route removed serializer harness" "$RUN
     "test-oos-serialize"
 assert_stdout_not_contains "3q: does not route removed normalizer harness" "$RUN_OUT" \
     "test-normalize-oos-block-header"
+
+echo "=== Section 3r: C1b review Python module routing ==="
+
+REPO_3R="$TMPROOT/repo-review-pipeline"
+STUB_3R="$TMPROOT/stub-review-pipeline"
+setup_review_pipeline_repo "$REPO_3R"
+make_stub_dir "$STUB_3R" present absent
+run_checks "$REPO_3R" "$(controlled_path "$STUB_3R")"
+assert_exit_eq "3r: review pipeline change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3r: routes gather-context harness" "$RUN_OUT" "test-gather-context"
+assert_stdout_contains "3r: routes review-core harness" "$RUN_OUT" "test-review-core"
+assert_stdout_contains "3r: routes dispatch-panel core-dynamic harness" "$RUN_OUT" "test-dispatch-panel-core-dynamic"
+assert_stdout_contains "3r: routes collect-findings harness" "$RUN_OUT" "test-collect-findings"
+
+REPO_3R_AGG="$TMPROOT/repo-review-aggregate"
+STUB_3R_AGG="$TMPROOT/stub-review-aggregate"
+setup_review_aggregate_repo "$REPO_3R_AGG"
+make_stub_dir "$STUB_3R_AGG" present absent
+run_checks "$REPO_3R_AGG" "$(controlled_path "$STUB_3R_AGG")"
+assert_exit_eq "3r-agg: review aggregate change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3r-agg: routes aggregate-findings harness" "$RUN_OUT" "test-aggregate-findings"
+
+REPO_3R_COMPOSE="$TMPROOT/repo-compose-review"
+STUB_3R_COMPOSE="$TMPROOT/stub-compose-review"
+setup_compose_review_repo "$REPO_3R_COMPOSE"
+make_stub_dir "$STUB_3R_COMPOSE" present absent
+run_checks "$REPO_3R_COMPOSE" "$(controlled_path "$STUB_3R_COMPOSE")"
+assert_exit_eq "3r-compose: compose review change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3r-compose: routes compose-review-findings harness" "$RUN_OUT" "test-compose-review-findings"
 
 echo "=== Section 4: preflight failure ==="
 

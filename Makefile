@@ -795,7 +795,7 @@ test-dispatch-panel-core:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py
 
 test-dispatch-panel-core-dynamic:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py-dynamic
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k dynamic
 
 test-dispatch-panel-reuse:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py

@@ -307,11 +307,14 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-grep 'collect-agent-results.sh' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
+grep -Fq 'run_legacy("collect-findings.sh"' "$REPO_ROOT/python/review_pipeline.py" \
+  || fail "(13) python/review_pipeline.py does not delegate review collect-findings to collect-findings.sh"
+COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/legacy_review_shell/collect-findings.sh"
+grep 'collect-agent-results.sh' "$COLLECT_FINDINGS_IMPL" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
   | grep -Fq -- '--validation-mode' \
-  || fail "(13) no collect-findings.sh line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
+  || fail "(13) no review collect-findings implementation line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
 
 # ---------------------------------------------------------------------------
 # (14) Specialist prompt rendering is wired (#659).
@@ -352,11 +355,13 @@ done
 #      '### In-Scope Findings', AND '### Out-of-Scope Observations' together —
 #      pinning the parser-side mode-conditional wording in Step 3a item 2.
 # ---------------------------------------------------------------------------
-grep 'In description mode' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
+grep -Fq 'run_legacy("collect-findings.sh"' "$REPO_ROOT/python/review_pipeline.py" \
+  || fail "(16) python/review_pipeline.py does not delegate review collect-findings to collect-findings.sh"
+grep 'In description mode' "$COLLECT_FINDINGS_IMPL" \
   | grep -F 'dual-list output' \
   | grep -F '### In-Scope Findings' \
   | grep -Fq '### Out-of-Scope Observations' \
-  || fail "(16) no collect-findings.sh line carries 'In description mode', 'dual-list output', '### In-Scope Findings', AND '### Out-of-Scope Observations' together — Step 3a description-mode dual-list parsing contract is broken"
+  || fail "(16) no review collect-findings implementation line carries 'In description mode', 'dual-list output', '### In-Scope Findings', AND '### Out-of-Scope Observations' together — Step 3a description-mode dual-list parsing contract is broken"
 
 # ---------------------------------------------------------------------------
 # (17) Step 3a diff-mode external-reviewer single-list preservation (#659).
@@ -364,10 +369,10 @@ grep 'In description mode' "$REPO_ROOT/python/legacy_review_shell/collect-findin
 #      'entire output' together — pinning Step 3a item 2's diff-mode preservation
 #      so a future blanket rewrite cannot flatten the description/diff modes.
 # ---------------------------------------------------------------------------
-grep 'In diff mode' "$REPO_ROOT/python/legacy_review_shell/collect-findings.sh" \
+grep 'In diff mode' "$COLLECT_FINDINGS_IMPL" \
   | grep -F 'single-list output' \
   | grep -Fq 'entire output' \
-  || fail "(17) no collect-findings.sh line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
+  || fail "(17) no review collect-findings implementation line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
 
 # ---------------------------------------------------------------------------
 # (18) Step 4 final summary + larch-log filing pins (description-mode batch path).

@@ -412,6 +412,27 @@ run_direct_relevant_targets() {
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
+            python/review_pipeline.py|python/test_review_pipeline.py|python/legacy_review_shell/*)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-gather-context
+                append_target_once test-review-core
+                append_target_once test-dispatch-panel-core
+                append_target_once test-dispatch-panel-core-dynamic
+                append_target_once test-dispatch-panel-reuse
+                append_target_once test-dispatch-panel-limits
+                append_target_once test-collect-findings
+                ;;
+            python/review_aggregate.py|python/test_review_aggregate.py)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-aggregate-findings
+                ;;
+            python/compose_review.py|python/test_compose_review.py)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                append_target_once test-compose-review-findings
+                ;;
             python/review_tally.py|python/test_review_tally.py)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
