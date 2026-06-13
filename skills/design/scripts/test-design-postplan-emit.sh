@@ -88,7 +88,7 @@ def _append_call_log(line: str) -> None:
             handle.write(line + "\n")
 
 def _stub_plan_validate(argv: list[str]) -> int:
-    _append_call_log("validator " + " ".join(argv))
+    _append_call_log("plan validate " + " ".join(argv))
     stub_rc = int(os.environ.get("VALIDATOR_STUB_RC", "0"))
     if stub_rc != 0:
         if os.environ.get("VALIDATOR_EMIT_STATUS_ON_FAIL", "false") == "true":
@@ -122,12 +122,19 @@ def _stub_plan_check_size(argv: list[str]) -> int:
             design_tmpdir = argv[idx + 1]
             break
         idx += 1
+    if not any(
+        name in os.environ
+        for name in ("CHECK_SIZE_STUB_RC", "CHECK_SIZE_STATUS_VALUE", "CHECK_SIZE_STDERR")
+    ):
+        root = Path(__file__).resolve().parent
+        os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), "plan", "check-size", *argv])
     stub_rc = int(os.environ.get("CHECK_SIZE_STUB_RC", "0"))
     status = os.environ.get("CHECK_SIZE_STATUS_VALUE", "under-threshold")
     stderr = os.environ.get("CHECK_SIZE_STDERR", "")
     if stderr and design_tmpdir:
         log = Path(design_tmpdir) / "check-plan-size.validation.log"
         log.write_text(stderr + "\n", encoding="utf-8")
+        print(stderr, file=sys.stderr)
     print(f"PLAN_SIZE_STATUS={status}")
     print("DRIFT_TRIGGER_FIRED=false")
     print("SIZE_TRIGGER_FIRED=false")
@@ -650,10 +657,10 @@ cat >"$FAKE_SCRIPTS/run-log append-failure" <<'STUB'
 printf 'APPENDED=false\nLOG=/tmp/leak\n'
 exit 7
 STUB
-chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/run-log append-failure"
+chmod +x "$FAKE_SCRIPTS/run-log append-failure"
 setup_design_tmp "$D27" full
 set +e
-run_subject "$D27" --with-plan-size
+bash "$SUBJECT" --design-tmpdir "$D27" --with-plan-size >"$D27/stdout.txt" 2>"$D27/stderr.txt"
 rc=$?
 set -e
 assert_rc "merged plan-size append failure is fatal" 1 "$rc"
