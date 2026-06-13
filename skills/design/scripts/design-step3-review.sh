@@ -305,12 +305,12 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
 done <"$_plan_review_stdout_file"
 rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**" >&2
+  larch_err "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
   exit 1
 fi
 if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
   if [[ ! "${STEP3_REVIEW_LOOP_STATUS}" =~ ^(complete|cap-hit|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed|panel-failed|tally-error|degraded-empty-collector)$ ]]; then
-    printf '%s\n' "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**" >&2
+    larch_err "**⚠ Step 3: missing or invalid STEP3_REVIEW_LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
     STEP3_REVIEW_LOOP_STATUS=panel-failed
   fi
   case "${STEP3_REVIEW_LOOP_STATUS}" in
@@ -319,7 +319,7 @@ if [[ -n "${STEP3_REVIEW_LOOP_STATUS:-}" ]]; then
     main-agent-apply-required|per-round-approval-required|postplan-operator-required) LOOP_STATUS=complete ;;
   esac
 elif [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required|main-agent-apply-required|per-round-approval-required|postplan-operator-required|postplan-failed)$ ]]; then
-  printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**" >&2
+  larch_err "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
