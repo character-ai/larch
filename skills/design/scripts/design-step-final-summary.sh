@@ -108,6 +108,7 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
   exit 1
 fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Marker step id: STEP=design-step-final-summary
 design_bg_wait_marker_start design-step-final-summary || true
 export CLAUDE_PLUGIN_ROOT

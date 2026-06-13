@@ -222,8 +222,10 @@ bash_has_probe_target() {
   local cmd="$1" dir="$2" cwd_canon="$3"
   local design_tmpdir_ref="\$DESIGN_TMPDIR"
   local design_tmpdir_braced="\${DESIGN_TMPDIR}"
+  local session_tmpdir_ref="\$SESSION_TMPDIR"
+  local session_tmpdir_braced="\${SESSION_TMPDIR}"
   case "$cmd" in
-    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in
@@ -258,7 +260,7 @@ while IFS= read -r marker || [ -n "$marker" ]; do
   marker_rc=$?
   case "$marker_rc" in
     0) printf '%s\n' "$LIVE_MARKER_DIR" >>"$live_dirs_file" ;;
-    1) ;;
+    1|2) ;;
     *) exit 0 ;;
   esac
 done <<EOF_MARKERS

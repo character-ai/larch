@@ -96,9 +96,10 @@ design_bg_wait_marker_start() {
     printf 'START_EPOCH=%s\n' "$(date +%s)"
     printf 'STEP=%s\n' "$step"
     printf 'TIMEOUT_S=21600\n'
-  } >"$_bg_wait_tmp"
-  mv -f "$_bg_wait_tmp" "$_bg_wait_marker"
+  } >"$_bg_wait_tmp" || return 1
+  mv -f "$_bg_wait_tmp" "$_bg_wait_marker" || { rm -f "$_bg_wait_tmp" 2>/dev/null || true; return 1; }
   trap 'rm -f "${_bg_wait_marker:-}" "${_bg_wait_tmp:-}"' EXIT
+  return 0
 }
 design_require_plugin_root
 design_source_env_optional
@@ -112,7 +113,7 @@ if [[ ! -f "$DESIGN_TMPDIR/.completed/step-5b" ]]; then
 fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Marker step id: STEP=design-step5c
-design_bg_wait_marker_start design-step5c
+design_bg_wait_marker_start design-step5c || true
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1

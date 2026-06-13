@@ -301,6 +301,8 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step3-review.sh" 'STEP=design-step3-review' 'Step 3 review wrapper missing marker step id'
   contains "$SCRIPT_DIR/design-step-final-summary.sh" 'STEP=design-step-final-summary' 'Final summary wrapper missing marker step id'
   contains "$SCRIPT_DIR/design-step5c.sh" 'STEP=design-step5c' 'Step 5c wrapper missing marker step id'
+  contains "$SCRIPT_DIR/design-step5c.sh" 'design_bg_wait_marker_start design-step5c || true' 'Step 5c wrapper missing fail-soft bg wait marker call'
+  contains "$SCRIPT_DIR/design-step-final-summary.sh" 'pause-requested' 'Final summary wrapper missing pause-check before bg wait marker'
   contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/plan-review/round-${round_num}/reviewer-status.tsv' 'plan-review-loop missing round reviewer status artifact'
   contains "$SCRIPT_DIR/plan-review-loop.sh" '$DESIGN_TMPDIR/latest-reviewer-status.tsv' 'plan-review-loop missing latest reviewer status artifact'
 }
