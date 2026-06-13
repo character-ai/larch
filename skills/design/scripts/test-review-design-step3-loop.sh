@@ -559,7 +559,6 @@ if __name__ == "__main__":
     main()
 SPYCLI
 chmod +x "$FAKE_PLUGIN/python/cli.py"
-ln -sf "$ROOT/scripts/lib-scope-anchor-handoff.sh" "$FAKE_PLUGIN/scripts/lib-scope-anchor-handoff.sh"
 ln -sf "$ROOT/skills/design/scripts/review-design-step3-loop.sh" "$FAKE_PLUGIN/skills/design/scripts/review-design-step3-loop.sh"
 ln -sf "$D_PY/revise-ok.sh" "$FAKE_PLUGIN/skills/design/scripts/revise-plan-with-waterfall"".sh"
 printf 'awaiting-apply\n' >"$D_PY/.step3-round-1.phase"

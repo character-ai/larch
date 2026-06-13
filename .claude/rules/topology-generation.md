@@ -13,7 +13,6 @@ paths:
   - "skills/design/references/plan-review.md"
   - "skills/design/references/decompose-panel.md"
   - "python/plan_quality.py"
-  - "skills/design/scripts/validate-plan.sh"
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
