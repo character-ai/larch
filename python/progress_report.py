@@ -307,7 +307,7 @@ def _derive_progress_label(output: str, vendor: str, task_kind: str) -> str:
     core = core.lower()
     for prefix in ("cursor-specialist-", "codex-specialist-", "claude_sub-specialist-", "claude-specialist-"):
         if core.startswith(prefix):
-            return f"{prefix.split('-')[0]}/{core[len(prefix):]}"
+            return f"{prefix.split('-', maxsplit=1)[0]}/{core[len(prefix):]}"
     for prefix in ("cursor-", "codex-", "claude_sub-", "claude-"):
         if core.startswith(prefix):
             rest = core[len(prefix) :] or "panel"
