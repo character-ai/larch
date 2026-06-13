@@ -509,11 +509,13 @@ def scout_dynamic_archetypes(
         _write_empty_manifest(output)
         _emit_scout_result("parse-failed", output, 0, latency_ms, fail_reason=str(exc))
         return
+    _write_manifest(output, result.manifest)
     warnings_file = Path(str(output) + ".warnings")
     warnings_file.write_text("\n".join(result.warnings) + ("\n" if result.warnings else ""), encoding="utf-8")
     for warning in result.warnings:
-        _emit_kv("WARN", warning)
-    _write_manifest(output, result.manifest)
+        sanitized = _sanitize_warning(warning)
+        if sanitized:
+            _emit_kv("WARN", sanitized)
     count = len(result.manifest["archetypes"])
     status = "empty" if count == 0 else "ok"
     if mode == "description" and cursor_present and cursor_miss and claude_winner and status == "ok":

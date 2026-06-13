@@ -208,3 +208,52 @@ def test_panel_replays_waterfall_kvs_on_contract_stream(tmp_path: Path, monkeypa
     out = capsys.readouterr().out
     assert "DISPATCH_OK=true" in out
     assert "ALL_OUTPUT_FILES_PATH=" in out
+
+
+def test_close_original_idempotent_when_already_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    (d / ".decompose-original-closed").touch()
+    dec = d / "decompose"
+    dec.mkdir(exist_ok=True)
+    (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://x/1\n", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    gh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    status = decompose.close_original_issue(design_tmpdir=d, original_issue="99", repo="o/r")
+    assert status == "ok"
+
+
+def test_panel_dispatch_malformed_slots_ndjson(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Plan\n", encoding="utf-8")
+    stub = tmp_path / "waterfall.sh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'slots=""\nwhile [[ $# -gt 0 ]]; do if [[ $1 == --slots-file ]]; then slots=$2; shift 2; else shift; fi; done\n'
+        'printf "not-json\\n" >"$slots"\n'
+        "printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES_PATH=/dev/null\\n'\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("DECOMPOSE_PANEL_WATERFALL_SH", str(stub))
+    rc = decompose.panel_dispatch_main(
+        ["--design-tmpdir", str(d), "--codex-present", "true", "--cursor-present", "true", "--mode", "plan", "--plan-file", str(d / "plan.txt"), "--timeout", "30"],
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "PANEL_STATUS=panel-failed" in out
+
+
+def test_aggregate_malformed_panel_ndjson(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    d = _design_tmp(tmp_path)
+    panel = d / "panel.ndjson"
+    panel.write_text("not-json\n", encoding="utf-8")
+    rc = decompose.aggregate_main(
+        ["--design-tmpdir", str(d), "--panel-outputs-file", str(panel), "--codex-present", "true", "--cursor-present", "true", "--output", str(d / "merged.md"), "--timeout", "30"],
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "AGGREGATOR_STATUS=failed" in out

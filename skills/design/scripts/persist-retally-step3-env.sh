@@ -59,12 +59,23 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
     esac
 done <"$RETALLY_STDOUT_FILE"
 
+_scope_handoff=""
+set +e
 _scope_handoff="$(python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor retally-handoff \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --tally-plan-review-status "$TALLY_PLAN_REVIEW_STATUS" \
     --loop-status "$LOOP_STATUS" \
     --parsed-input "${_PARSED_SCOPE_ANCHOR_FILE:-}" \
     --retally-input-anchor "${RETALLY_INPUT:-}")"
+_retally_handoff_rc=$?
+set -e
+if (( _retally_handoff_rc == 2 )); then
+    _scope_handoff=""
+    emit_kv WARN "persist-retally-step3-env: scope-anchor retally-handoff configuration error (exit $_retally_handoff_rc)"
+elif (( _retally_handoff_rc != 0 )); then
+    _scope_handoff=""
+    emit_kv WARN "persist-retally-step3-env: scope-anchor retally-handoff failed (exit $_retally_handoff_rc)"
+fi
 _RESOLVED_ROUND_NUM=""
 _RESOLVED_ROUND_DIR=""
 

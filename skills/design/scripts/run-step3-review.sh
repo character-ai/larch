@@ -373,7 +373,17 @@ fi
 
 validate_scope_anchor_handoff
 recover_main_agent_scope_anchor
-python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor relay-allowed --tally-plan-review-status "${TALLY_PLAN_REVIEW_STATUS:-}" --loop-status "${LOOP_STATUS:-}" || SCOPE_ANCHOR_FILE=""
+_RELAY_ALLOWED_RC=0
+python3 "$PLUGIN_ROOT/python/cli.py" scope-anchor relay-allowed --tally-plan-review-status "${TALLY_PLAN_REVIEW_STATUS:-}" --loop-status "${LOOP_STATUS:-}" || _RELAY_ALLOWED_RC=$?
+if (( _RELAY_ALLOWED_RC == 1 )); then
+    SCOPE_ANCHOR_FILE=""
+elif (( _RELAY_ALLOWED_RC == 2 )); then
+    emit_kv WARN "Step 3: scope-anchor relay-allowed configuration error (exit $_RELAY_ALLOWED_RC); clearing SCOPE_ANCHOR_FILE"
+    SCOPE_ANCHOR_FILE=""
+elif (( _RELAY_ALLOWED_RC != 0 )); then
+    emit_kv WARN "Step 3: scope-anchor relay-allowed unexpected exit $_RELAY_ALLOWED_RC; clearing SCOPE_ANCHOR_FILE"
+    SCOPE_ANCHOR_FILE=""
+fi
 
 emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
 emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"

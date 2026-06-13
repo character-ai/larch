@@ -273,6 +273,8 @@ def _run_command(argv: Sequence[str], *, stdin: Path | None = None, stdout: Path
 
 
 def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str) -> str:
+    if (design_tmpdir / ".decompose-original-closed").is_file():
+        return "ok"
     dec = design_tmpdir / "decompose"
     filed = dec / "partition-filed.md"
     if not filed.is_file():
@@ -471,7 +473,23 @@ def dispatch_panel(
     static_dispatch_ok = kvs.get("STATIC_DISPATCH_OK", "true")
     all_outputs_file = kvs.get("ALL_OUTPUT_FILES_PATH", "")
     all_slots_dropped = kvs.get("ALL_SLOTS_DROPPED", "")
-    manifest_rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+    manifest_rows: list[dict[str, object]] = []
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
+            _emit_kv("DEGRADED_PANEL", True)
+            _emit_kv("PANEL_STATUS", "panel-failed")
+            raise UsageError("malformed decompose-slots.ndjson") from None
+        if not isinstance(row, dict):
+            _emit_kv("PANEL_OUTPUTS_FILE", panel_rows)
+            _emit_kv("DEGRADED_PANEL", True)
+            _emit_kv("PANEL_STATUS", "panel-failed")
+            raise UsageError("malformed decompose-slots.ndjson") from None
+        manifest_rows.append(row)
     slot_count = len(manifest_rows)
     try:
         combined_fallback_n = int(combined_fallback_count)
@@ -540,7 +558,14 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
         for line in panel_outputs_file.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            row = json.loads(line)
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                _emit_kv("AGGREGATOR_STATUS", "failed")
+                raise UsageError("malformed panel-outputs.ndjson") from None
+            if not isinstance(row, dict):
+                _emit_kv("AGGREGATOR_STATUS", "failed")
+                raise UsageError("malformed panel-outputs.ndjson") from None
             outp = Path(row.get("output", ""))
             _ = handle.write(f"\n## Panel output ({row.get('archetype', '')} / {row.get('vendor', '')})\n\n")
             if outp.is_file():

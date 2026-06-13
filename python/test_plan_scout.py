@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import plan_scout
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _row(name: str = "deep-risk", **overrides: object) -> dict[str, object]:
@@ -165,3 +169,135 @@ def test_plan_wrapper_uses_inner_override_and_filters(tmp_path: Path, monkeypatc
     plan_scout.scout_plan_archetypes(plan_file=plan, description_file=desc, output=out, max_archetypes=3, session_env_path=str(tmp_path / "env"), codex_present=False, cursor_present=False)
     assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["deep-risk"]
     assert "SCOUT_STATUS=ok" in capsys.readouterr().out
+
+
+def test_validate_prompt_override_rejects_outside_root_symlink_and_oversize(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    valid = plugin_root / "prompt.txt"
+    valid.write_text("ok", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("nope", encoding="utf-8")
+    link = plugin_root / "link.txt"
+    link.symlink_to(valid)
+    big = plugin_root / "big.txt"
+    big.write_bytes(b"x" * (plan_scout.MAX_CONTEXT_BYTES + 1))
+    assert plan_scout._validate_prompt_override(str(valid), plugin_root) == valid
+    assert plan_scout._validate_prompt_override(str(outside), plugin_root) is None
+    assert plan_scout._validate_prompt_override(str(link), plugin_root) is None
+    assert plan_scout._validate_prompt_override(str(big), plugin_root) is None
+
+
+def test_validate_context_file_rejects_outside_allowed_roots(tmp_path: Path) -> None:
+    import pytest
+
+    plugin_root = tmp_path / "plugin"
+    session_root = tmp_path / "session"
+    plugin_root.mkdir()
+    session_root.mkdir()
+    allowed = session_root / "scope.txt"
+    allowed.write_text("ok", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("nope", encoding="utf-8")
+    roots = [plugin_root, session_root]
+    assert plan_scout._validate_context_file("--scope-files", str(allowed), roots) == allowed
+    with pytest.raises(plan_scout.UsageError, match="outside allowed roots"):
+        plan_scout._validate_context_file("--scope-files", str(outside), roots)
+
+
+def test_dynamic_archetypes_rejects_invalid_prompt_override(tmp_path: Path) -> None:
+    import pytest
+
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review", encoding="utf-8")
+    override = tmp_path / "override.txt"
+    override.write_text("override", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    with pytest.raises(plan_scout.UsageError, match="prompt-override-file rejected"):
+        plan_scout.scout_dynamic_archetypes(
+            mode="description",
+            max_archetypes=3,
+            output=out,
+            scope_files=str(scope),
+            description_file=str(desc),
+            prompt_override_file=str(override),
+        )
+
+
+def test_plan_wrapper_retries_without_override_when_prompt_override_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    plan = tmp_path / "plan.txt"
+    desc = tmp_path / "feature-description.txt"
+    plan.write_text("### UPDATED: `python/foo.py`\n", encoding="utf-8")
+    desc.write_text("Feature", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    calls = tmp_path / "calls.count"
+    calls.write_text("0", encoding="utf-8")
+    stub = tmp_path / "scout.sh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f'calls="{calls}"\n'
+        "n=$(cat \"$calls\")\n"
+        "echo $((n+1)) >\"$calls\"\n"
+        "out=\"\"\n"
+        "has_override=false\n"
+        "while [[ $# -gt 0 ]]; do\n"
+        "  if [[ $1 == --output ]]; then out=$2; shift 2\n"
+        "  elif [[ $1 == --prompt-override-file ]]; then has_override=true; shift 2\n"
+        "  else shift; fi\n"
+        "done\n"
+        "if [[ $has_override == true && $n -eq 0 ]]; then\n"
+        "  printf 'FAILURE_REASON=prompt-override-invalid\\n'; exit 2\n"
+        "fi\n"
+        "printf '{\"archetypes\":[{\"name\":\"deep-risk\",\"focus_area\":\"risk-integration\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect seams.\"}]}' >\"$out\"\n"
+        "printf 'SCOUT_STATUS=ok\\n'\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    monkeypatch.setenv("SCOUT_PLAN_ARCHETYPES_SCOUT_SH", str(stub))
+    plan_scout.scout_plan_archetypes(
+        plan_file=plan,
+        description_file=desc,
+        output=out,
+        max_archetypes=3,
+        session_env_path=str(tmp_path / "env"),
+        codex_present=False,
+        cursor_present=False,
+    )
+    stdout = capsys.readouterr().out
+    assert int(calls.read_text(encoding="utf-8").strip()) == 2
+    assert "SCOUT_STATUS=ok" in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
+
+
+def test_dynamic_manifest_warning_with_cr_in_invalid_name_does_not_abort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    scope = tmp_path / "scope.txt"
+    desc = tmp_path / "desc.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    desc.write_text("review this", encoding="utf-8")
+    out = tmp_path / "manifest.json"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude.sh"
+    payload = json.dumps(
+        {
+            "archetypes": [
+                {"name": "bad\nname", "focus_area": "architecture", "weight": 1, "rationale": "bad", "prompt_body": "Inspect."},
+                {"name": "deep-risk", "focus_area": "risk-integration", "weight": 1, "rationale": "ok", "prompt_body": "Inspect seams."},
+            ],
+        },
+    )
+    claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "while [[ $# -gt 0 ]]; do if [[ $1 == --output-file ]]; then out=$2; shift 2; else shift; fi; done\n"
+        f"printf '%s' '{payload}' >\"$out\"\n"
+        "printf 'ELAPSED=1\\n'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH", str(claude))
+    plan_scout.scout_dynamic_archetypes(mode="description", max_archetypes=3, output=out, scope_files=str(scope), description_file=str(desc), cursor_present=False)
+    stdout = capsys.readouterr().out
+    assert "SCOUT_STATUS=ok" in stdout
+    assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "deep-risk"
