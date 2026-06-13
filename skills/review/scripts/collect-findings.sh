@@ -231,7 +231,7 @@ append_non_ok_collector_results_from_file() {
                 combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
                 _structured_record=$(printf 'COLLECTOR_STATUS=%s\nREVIEWER_FILE=%s\nTOOL=%s\nEXIT_CODE=%s\n' \
                     "$status" "$reviewer_file" "${tool:-unknown}" "${exit_code:-0}")
-                "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
+                python3 "$PLUGIN_ROOT/python/cli.py" agent compose-collector-failure-log \
                     --reviewer-file "$reviewer_file" \
                     --structured-record "$_structured_record" \
                     --output "$combined" >/dev/null 2>&1 || true
@@ -255,7 +255,7 @@ append_non_ok_collector_results_from_file() {
         combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
         _structured_record=$(printf 'COLLECTOR_STATUS=%s\nREVIEWER_FILE=%s\nTOOL=%s\nEXIT_CODE=%s\n' \
             "$status" "$reviewer_file" "${tool:-unknown}" "${exit_code:-0}")
-        "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" agent compose-collector-failure-log \
             --reviewer-file "$reviewer_file" \
             --structured-record "$_structured_record" \
             --output "$combined" >/dev/null 2>&1 || true
@@ -315,11 +315,11 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
     for f in "${CLAUDE_OUTPUT_FILES[@]}"; do sentinels+=("${f}.done"); done
     wait_log="$REVIEW_TMPDIR/wait-for-claude-reviewers.log"
     set +e
-    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_log" 2>&1
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" python3 "$PLUGIN_ROOT/python/cli.py" agent wait-reviewers --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_log" 2>&1
     wait_rc=$?
     set -e
     if [[ "$wait_rc" -ne 0 ]]; then
-        append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$wait_log"
+        append_review_failure "review Step 3a" "agent wait-reviewers" "$wait_rc" "$wait_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if command -v python3 >/dev/null 2>&1; then

@@ -253,7 +253,7 @@ VOTER_3_STATUS="launched"
 voter1_wait_timed_out=false
 _wait_rc=0
 
-# FINDING_2: capture stdout — wait-for-reviewers.sh emits TIMEOUT rows on
+# FINDING_2: capture stdout — agent wait-reviewers emits TIMEOUT rows on
 # stdout and exits 0 even when sentinels never appear, so an exit-only check
 # would silently miss timeouts. FINDING_5: use if/fi (not arithmetic && cmd)
 # because the arithmetic test returns 1 on the normal zero-exit path and would
@@ -265,7 +265,7 @@ wait_sentinels=()
 if (( ${#wait_sentinels[@]} > 0 )); then
     _wait_out_file=$(mktemp "${REVIEW_TMPDIR}/voter-wait.XXXXXX")
     set +e
-    "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" \
+    python3 "$PLUGIN_ROOT/python/cli.py" agent wait-reviewers \
         --timeout "${LARCH_VOTER_WAIT_TIMEOUT:-60}" \
         "${wait_sentinels[@]}" >"$_wait_out_file" 2>&1
     _wait_rc=$?

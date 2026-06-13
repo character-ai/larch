@@ -13,7 +13,7 @@
 For each non-`OK` collector status, compose the failure log via the dedicated helper (do NOT improvise the composition; the helper guarantees the structured record is always present so the resulting `execution-issues.md` entry is never empty):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/compose-collector-failure-log.sh \
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent compose-collector-failure-log \
   --reviewer-file "<REVIEWER_FILE-path-from-collector-record>" \
   --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|FAILURE_REASON=…>' \
   --output "$DESIGN_TMPDIR/<slot>-collector.failure.log"

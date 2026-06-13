@@ -6,7 +6,7 @@
 
 set -uo pipefail
 
-# Drop wait-for-reviewers.sh's sentinel-poll cadence to 0.05s. Each successful
+# Drop agent wait-reviewers' sentinel-poll cadence to 0.05s. Each successful
 # retry case otherwise pays one full 5s default poll waiting for the retry
 # sentinel to appear. Production callers inherit the 5s default; only this
 # stub-driven harness needs the fast cadence. Companion knob to the existing

@@ -732,17 +732,18 @@ fi
 
 echo "# Case: WAIT_STDERR relay strips control bytes (SCRIPT_DIR sibling harness)"
 HARNESS_WAIT="$TMPROOT/wait-relay-harness"
-mkdir -p "$HARNESS_WAIT/scripts"
+mkdir -p "$HARNESS_WAIT/scripts" "$HARNESS_WAIT/python"
 for dep in collect-agent-results.sh external-tool-registry.sh lib-external-launcher-common.sh lib-failed-agent-stderr-tail.sh lib-net.sh lib-quiet.sh; do
     cp "$REPO_ROOT/scripts/$dep" "$HARNESS_WAIT/scripts/"
 done
 chmod +x "$HARNESS_WAIT/scripts"/*.sh
-cat > "$HARNESS_WAIT/scripts/wait-for-reviewers.sh" <<'WAIT_RELAY_STUB'
-#!/usr/bin/env bash
-printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
-exit 1
+cat > "$HARNESS_WAIT/python/cli.py" <<'WAIT_RELAY_STUB'
+import sys
+if sys.argv[1:3] == ["agent", "wait-reviewers"]:
+    sys.stderr.write("HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m\n")
+    raise SystemExit(1)
+raise SystemExit(2)
 WAIT_RELAY_STUB
-chmod +x "$HARNESS_WAIT/scripts/wait-for-reviewers.sh"
 OUT_WAIT="$TMPROOT/wait-relay-out.txt"
 printf 'NO_ISSUES_FOUND\n' > "$OUT_WAIT"
 printf '1\n' > "${OUT_WAIT}.done"

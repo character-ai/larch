@@ -95,7 +95,7 @@ Dirty-tree recovery runs after collection. It scans every launched reviewer outp
 
 Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete; `review-core.sh` emits `SCOUT_MANIFEST`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`, every `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_N`, and `findings-classification-round-map.env` for the wrapper to consume. Wrappers that persist forensic vote/rating TSVs must iterate the recorded round keys (or the round-map file) rather than copying only the latest `FINDINGS_CLASSIFICATION_TSV_FILE`. Description-mode zero-scope exits still emit `SCOUT_STATUS=na`, `DYNAMIC_SLOTS=0`, and an empty `SCOUT_MANIFEST` so wrappers can parse a stable KV contract.
 
-Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still documents heavy-worker Step 1 as `gather-branch-context.sh`, while inline `review-core.sh` uses `gather-context.sh` to match the current inline path. This PR documents the divergence rather than changing heavy-worker behavior.
+Part 2 remains the larger review-engine boundary. Heavy-worker references should point at the live `skills/review/scripts/gather-context.sh` wrapper, which now delegates branch-context gathering through the Python CLI.
 
 `review-core.sh` emits `→ review: consolidating findings` immediately before the `collect-findings.sh` invocation. The existing `⚠ review-core: emit-tally failed …` breadcrumb uses the same `larch_err` path, so both lines are operator-visible on stderr and mirrored into the quiet log.
 

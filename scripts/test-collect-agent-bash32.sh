@@ -109,7 +109,7 @@ else
     # validator returns exit 0 (STATUS=OK). Basename contains `cursor` so
     # `derive_tool` in the collector attributes correctly. Pre-create the
     # .done sentinel containing 0 BEFORE invoking the collector so
-    # wait-for-reviewers.sh finds it immediately under the small --timeout.
+    # agent wait-reviewers finds it immediately under the small --timeout.
     F2="$TMPROOT/cursor-substantive-output.txt"
     awk 'BEGIN { for (i = 0; i < 250; i++) printf "lorem%d ", i; printf "\n" }' > "$F2"
     echo 'See path/to/file.md:42 for the relevant context.' >> "$F2"

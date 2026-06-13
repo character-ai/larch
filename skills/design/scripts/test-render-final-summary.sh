@@ -727,7 +727,7 @@ cat >"$WARN_D/execution-issues.md" <<'EOF'
 - **Diagnostic bullet**: not an issue entry
   ```
 EOF
-DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" \
+DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" IMPLEMENT_TMPDIR="" \
     "$SUBJECT" --outcome approved --post-publish-only >/dev/null 2>/dev/null
 grep -Fq -- '- **Warnings**: 2' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
 pass 'non-step warning entry count ignores fenced diagnostics'
@@ -766,7 +766,7 @@ pass 'zero denial sidecar omits blocked-polling note'
 : >"$BG_D/execution-issues.md"
 printf '3\n' >"$BG_D/bg-poll-guard-denials.count"
 std_bg_positive="$TMP/std-bg-positive.log"
-DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-POSITIVE" \
+DESIGN_TMPDIR="$BG_D" ISSUE_NUMBER="" SESSION_ID="RUN-BG-POSITIVE" IMPLEMENT_TMPDIR="" \
     "$SUBJECT" --outcome approved --post-publish-only >"$std_bg_positive" 2>/dev/null
 grep -Fq -- '- **Blocked polling attempts**: 3' "$BG_D/final-summary.md" || fail 'positive denial sidecar must render blocked-polling note'
 grep -Fq -- '- **Warnings**: 2' "$BG_D/final-summary.md" || fail 'positive denial sidecar must increase warning count'

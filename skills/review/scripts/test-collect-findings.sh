@@ -8,6 +8,7 @@ SCRIPT="$REPO_ROOT/skills/review/scripts/collect-findings.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-collect-findings.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 
 assert_stdout_cap() {
@@ -480,12 +481,15 @@ mkdir -p "$wait_harness/python"
 cp "$REPO_ROOT"/python/*.py "$wait_harness/python/"
 chmod +x "$wait_harness/scripts/"*.sh
 cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$wait_harness/skills/review/scripts/"
-cat > "$wait_harness/scripts/wait-for-reviewers.sh" <<'WAIT_RELAY_STUB'
-#!/usr/bin/env bash
-printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
-exit 1
+cat > "$wait_harness/python/cli.py" <<'WAIT_RELAY_STUB'
+import sys
+if sys.argv[1:3] == ["agent", "wait-reviewers"]:
+    sys.stderr.write("HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m\n")
+    raise SystemExit(1)
+if sys.argv[1:3] == ["agent", "compose-collector-failure-log"]:
+    raise SystemExit(0)
+raise SystemExit(2)
 WAIT_RELAY_STUB
-chmod +x "$wait_harness/scripts/wait-for-reviewers.sh"
 claude_wait="$TMP/claude-wait-relay.txt"
 cat > "$claude_wait" <<'EOF'
 ### In-Scope Findings

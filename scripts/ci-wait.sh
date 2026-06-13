@@ -3,7 +3,7 @@
 #
 # Consolidates the CI polling loop into a single blocking call, replacing
 # many individual sleep + ci-status.sh + ci-decide.sh tool calls.
-# Prints compact dot-based progress to stderr (like wait-for-reviewers.sh).
+# Prints compact dot-based progress to stderr (like agent wait-reviewers).
 # Outputs machine-parseable results to stdout when the action is NOT "wait".
 #
 # **Synchronous-only invocation contract**: callers MUST invoke ci-wait.sh

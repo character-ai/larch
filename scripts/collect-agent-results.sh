@@ -2,7 +2,7 @@
 # collect-agent-results.sh — Collect, validate, and optionally retry external reviewer outputs.
 #
 # Consolidates the post-launch validation+retry pattern used across all skills.
-# Wraps wait-for-reviewers.sh, validates each output, retries once on empty or
+# Wraps python/cli.py agent wait-reviewers, validates each output, retries once on empty or
 # transient network failure via .meta files written by run-external-agent.sh,
 # and emits structured results.
 #
@@ -25,7 +25,7 @@
 #   the collector must still resolve to at least one non-blank path line.
 #
 # Options:
-#   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
+#   --timeout <seconds>            Timeout for python/cli.py agent wait-reviewers (e.g., 1860)
 #   --substantive-validation       After the existing non-empty + retry path settles,
 #                                  invoke scripts/validate-research-output.sh on each
 #                                  STATUS=OK entry. On validator failure, rewrite the
@@ -86,7 +86,7 @@
 # Exit codes:
 #   0 — normal completion (results are informational, not errors)
 #   1 — argument error (missing required option or unknown flag) or non-zero
-#       exit propagated from wait-for-reviewers.sh.
+#       exit propagated from python/cli.py agent wait-reviewers.
 
 # No -e: exit codes from reviewer subprocesses and retries are informational.
 set -uo pipefail
@@ -299,7 +299,7 @@ for f in "${OUTPUT_FILES[@]}"; do
     SENTINELS+=("${f}.done")
 done
 
-# Issue #1188: do not silently swallow wait-for-reviewers.sh's non-zero exit
+# Issue #1188: do not silently swallow agent wait-reviewers' non-zero exit
 # (usage errors like a bad --timeout, or fatals like its mktemp failure).
 # Stderr goes to a temp file so the success path stays free of poll progress.
 # The EXIT trap covers signal-driven exits (e.g., SIGTERM mid-wait) so the
@@ -310,7 +310,7 @@ WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
     exit 1
 }
 trap 'rm -f -- "$WAIT_STDERR"' EXIT
-WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
+WAIT_OUTPUT=$(python3 "$SCRIPT_DIR/../python/cli.py" agent wait-reviewers --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$WAIT_STDERR"
@@ -906,7 +906,7 @@ for i in "${!OUTPUT_FILES[@]}"; do
     # wait emits indexed records keyed by argv order. OUTPUT_FILES[$i]
     # (0-based) corresponds to wait's idx (1-based) = i+1.
     if is_index_timed_out "$((i + 1))"; then
-        # wait-for-reviewers.sh reported TIMEOUT (sentinel never appeared)
+        # agent wait-reviewers reported TIMEOUT (sentinel never appeared)
         STATUS="SENTINEL_TIMEOUT"
         EXIT_CODE="124"
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
@@ -1130,7 +1130,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
 
     # Wait for retry sentinels
     if [[ ${#RETRY_SENTINELS[@]} -gt 0 ]]; then
-        "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$MAX_RETRY_TIMEOUT" "${RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
+        python3 "$SCRIPT_DIR/../python/cli.py" agent wait-reviewers --timeout "$MAX_RETRY_TIMEOUT" "${RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
 
         # Check retry results and update. Indices that fail-closed before
         # launch (mark_retry_metadata_invalid) leave RETRY_LAUNCHED[$j] unset;
@@ -1339,7 +1339,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
         done
 
         if [[ ${#NS_RETRY_SENTINELS[@]} -gt 0 ]]; then
-            "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$NS_MAX_RETRY_TIMEOUT" \
+            python3 "$SCRIPT_DIR/../python/cli.py" agent wait-reviewers --timeout "$NS_MAX_RETRY_TIMEOUT" \
                 "${NS_RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
 
             VAL_ARGS_NS=()

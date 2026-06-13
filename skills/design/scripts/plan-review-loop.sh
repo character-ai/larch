@@ -1293,7 +1293,7 @@ while IFS= read -r _rec || [[ -n "$_rec" ]]; do
         _fail_slug=$(python3 -c 'import re,sys; s=sys.argv[1].strip(); s=re.sub(r"[^A-Za-z0-9._+-]+","_",s); print((s or "slot")[:200])' "$_slot_name")
         _fail_log="$DESIGN_TMPDIR/${_fail_slug}-collector.failure.log"
         _srec="REVIEWER_FILE=${_rf}|TOOL=${_tool}|STATUS=${_st}|EXIT_CODE=${_xc}|FAILURE_REASON=${_fr}"
-        "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
+        python3 "$PLUGIN_ROOT/python/cli.py" agent compose-collector-failure-log \
             --reviewer-file "$_rf" \
             --structured-record "$_srec" \
             --output "$_fail_log" || true
