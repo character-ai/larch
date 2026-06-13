@@ -45,127 +45,27 @@ assert_order() {
 }
 
 make_fake_plugin() {
-    local root="$1" postplan_mode="${2:-stub}"
+    local root="$1"
     mkdir -p "$root/scripts" "$root/skills/design/scripts" "$root/skills/design/references" "$root/python"
-    cat > "$root/python/cli.py" <<EOF_CLI
+    cat > "$root/skills/design/references/readability-style.md" <<'STYLE'
+- Test readability style.
+STYLE
+    cat > "$root/python/cli.py" <<'CLI'
 #!/usr/bin/env python3
 import os
 import subprocess
 import sys
 
-repo_root = "$REPO_ROOT"
-call_log = os.environ.get("CALL_LOG")
-if len(sys.argv) >= 3 and sys.argv[1] == "timing" and sys.argv[2] == "mark":
-    if call_log:
-        with open(call_log, "a", encoding="utf-8") as handle:
-            handle.write("timing " + " ".join(sys.argv[3:]) + "\\n")
-    raise SystemExit(0)
-os.execv(sys.executable, [sys.executable, os.path.join(repo_root, "python", "cli.py"), *sys.argv[1:]])
-EOF_CLI
+REAL_CLI = os.path.join(os.environ.get("LARCH_TEST_REAL_REPO_ROOT", ""), "python", "cli.py")
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "preview":
+        raise SystemExit(0)
+    if REAL_CLI and os.path.isfile(REAL_CLI):
+        raise SystemExit(subprocess.call([sys.executable, REAL_CLI, *sys.argv[1:]]))
+    raise SystemExit(2)
+CLI
     chmod +x "$root/python/cli.py"
-    ln -s "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$root/scripts/lib-design-tmpdir.sh"
-    cat > "$root/skills/design/references/readability-style.md" <<'STYLE'
-- Test readability style.
-STYLE
-    cat > "$root/skills/design/scripts/design-step2b-prelude.sh" <<'PRELUDE'
-#!/usr/bin/env bash
-echo "PRELUDE_SOURCED_OR_EXECUTED" >>"${CALL_LOG:?}"
-exit 77
-PRELUDE
-    chmod +x "$root/skills/design/scripts/design-step2b-prelude.sh"
-    cat > "$root/scripts/design-pause-save.sh" <<'PAUSE'
-#!/usr/bin/env bash
-set -euo pipefail
-step2a="no"
-for ((i=1; i <= $#; i++)); do
-  if [[ "${!i}" == --design-tmpdir ]]; then
-    j=$((i + 1))
-    [[ -f "${!j}/.completed/step-2a" ]] && step2a="yes"
-  fi
-done
-echo "pause-save step2a=$step2a $*" >>"${CALL_LOG:?}"
-exit 0
-PAUSE
-    chmod +x "$root/scripts/design-pause-save.sh"
-    if [[ "$postplan_mode" == real ]]; then
-        ln -s "$POSTPLAN_REAL" "$root/skills/design/scripts/design-step2b-postplan.sh"
-        cat > "$root/skills/design/scripts/design-postplan-emit.sh" <<'EMIT'
-#!/usr/bin/env bash
-set -euo pipefail
-design_tmpdir=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --design-tmpdir) design_tmpdir="$2"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-echo "emit $*" >>"${CALL_LOG:?}"
-rc="${FAKE_POSTPLAN_EMIT_RC:-0}"
-case "$rc" in
-  10)
-    cat >"$design_tmpdir/.design-postplan-emit-result.env" <<'ENV'
-VALIDATE_STATUS=defects-found
-VALIDATE_DEFECT_COUNT=2
-VALIDATE_SKIPPED_COUNT=0
-VALIDATE_UNSAFE_TOKEN_COUNT=0
-VALIDATE_LOG_FILE=validate-plan-commands.log
-ENV
-    printf 'validator defects\n'
-    exit 10
-    ;;
-  11)
-    printf 'pause requested by emit\n'
-    exit 11
-    ;;
-  12)
-    printf 'plan size trigger\n'
-    exit 12
-    ;;
-  13)
-    printf 'partition requested\n'
-    exit 13
-    ;;
-  1|2|7)
-    printf 'fatal postplan rc %s\n' "$rc"
-    exit "$rc"
-    ;;
-  *)
-    printf 'postplan ok\n'
-    exit 0
-    ;;
-esac
-EMIT
-        chmod +x "$root/skills/design/scripts/design-postplan-emit.sh"
-    else
-        cat > "$root/skills/design/scripts/design-step2b-postplan.sh" <<'POSTPLAN'
-#!/usr/bin/env bash
-set -euo pipefail
-echo "postplan $*" >>"${CALL_LOG:?}"
-printf '%s\n' "$*" >"${POSTPLAN_ARGV_FILE:?}"
-case "${POSTPLAN_STUB_MODE:-ok}" in
-  ok)
-    mkdir -p "${DESIGN_TMPDIR:?}/.completed"
-    : >"$DESIGN_TMPDIR/.completed/step-2b"
-    : >"$DESIGN_TMPDIR/.completed/step-2b.5"
-    printf 'POSTPLAN_RC=0\nPOSTPLAN_STATUS=ok\n'
-    exit 0
-    ;;
-  rc13)
-    mkdir -p "${DESIGN_TMPDIR:?}/.completed"
-    : >"$DESIGN_TMPDIR/.completed/step-2b"
-    printf 'POSTPLAN_RC=13\nPOSTPLAN_STATUS=partition-requested\n'
-    exit 0
-    ;;
-  incomplete)
-    exit 0
-    ;;
-  *)
-    exit 1
-    ;;
-esac
-POSTPLAN
-        chmod +x "$root/skills/design/scripts/design-step2b-postplan.sh"
-    fi
 }
 
 write_session_env() {
@@ -182,6 +82,7 @@ export CURSOR_PRESENT='false'
 export LARCH_DESIGN_DRAFTER='codex'
 export CLAUDE_PLUGIN_ROOT='$plugin_root'
 export LARCH_TOKEN_SESSION_ID='step2b-drafter-test'
+export LARCH_TEST_REAL_REPO_ROOT='$REPO_ROOT'
 export IMPLEMENT_TMPDIR=''
 unset LARCH_TOKEN_LEDGER
 EOF_ENV

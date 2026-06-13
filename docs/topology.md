@@ -11,7 +11,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.plan_review.cursor_archetypes"></a>`design.plan_review.cursor_archetypes` | Cursor | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.codex_archetypes"></a>`design.plan_review.codex_archetypes` | Codex | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 3 | scout proposes specialists fanned into Cursor+Codex dyn slots | `python/plan_scout.py` |
-| <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | round gated static plus dynamic | NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar | `skills/design/references/plan-review.md` |
+| <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | round gated static plus dynamic | NDJSON manifest from python/cli.py plan-review panel-dispatch via paths-file sidecar | `python/plan_review_panel.py` |
 | <a id="design.decompose.panel_slots"></a>`design.decompose.panel_slots` | 8 fixed | 4 archetypes x 2 vendors via python/cli.py | `skills/design/references/decompose-panel.md` |
 | <a id="design.decompose.dispatch"></a>`design.decompose.dispatch` | python/cli.py | renders prompts + dispatch-with-waterfall | `python/cli.py` |
 | <a id="design.decompose.aggregator"></a>`design.decompose.aggregator` | python/cli.py | single-slot merge of panel proposals | `python/cli.py` |

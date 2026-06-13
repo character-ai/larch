@@ -115,3 +115,60 @@ def test_record_report_evidence_writes_escalation_ledger(tmp_path: Path) -> None
     text = ledger.read_text(encoding="utf-8")
     assert "trigger=tally-error" in text
     assert "phase=validation" in text
+
+
+def test_record_report_evidence_requires_design_tmpdir() -> None:
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--record-report-evidence",
+        "panel-failed",
+    )
+    assert proc.returncode == 2
+    assert "design-tmpdir is required" in proc.stderr
+
+
+def test_record_report_evidence_rejects_relative_tmpdir() -> None:
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        "relative",
+        "--record-report-evidence",
+        "panel-failed",
+    )
+    assert proc.returncode == 2
+
+
+def test_drift_baseline_rejects_invalid_line_counts(tmp_path: Path) -> None:
+    assert plan_review.drift_baseline_write_once(tmp_path, "10\n", "20") == 1
+    assert plan_review.drift_baseline_write_once(tmp_path, "10", "bad") == 1
+    assert not (tmp_path / "drift-baseline.env").exists()
+
+
+def test_drift_baseline_cli_rejects_invalid_counts(tmp_path: Path) -> None:
+    proc = run_cli(
+        "plan-review",
+        "drift-baseline",
+        "write-once",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-lines",
+        "1\n2",
+        "--diff-lines",
+        "3",
+    )
+    assert proc.returncode == 1
+    assert not (tmp_path / "drift-baseline.env").exists()
+
+
+def test_scope_anchor_relay_allowed_cli() -> None:
+    proc = run_cli(
+        "scope-anchor",
+        "relay-allowed",
+        "--tally-plan-review-status",
+        "ok",
+        "--loop-status",
+        "complete",
+    )
+    assert proc.returncode == 0, proc.stderr

@@ -11,12 +11,16 @@ import argparse
 import base64
 import gzip
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from collections.abc import Callable, Sequence
+
+import logging_util
+from session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -1082,11 +1086,32 @@ def run_plan_review_round(argv: Sequence[str]) -> int:
     return _run_legacy(("skills", "design", "scripts", "plan-review-loop.sh"), argv)
 
 
-def step3_record_report_evidence(status: str, design_tmpdir: str | Path | None = None) -> int:
+def step3_record_report_evidence(
+    status: str,
+    design_tmpdir: str | Path | None = None,
+    *,
+    cli_surface: bool = False,
+) -> int:
     """Stage Step 3 escalation evidence for env-read and terminal paths."""
-    tmpdir = Path(design_tmpdir or os.environ.get("DESIGN_TMPDIR", ""))
-    if not str(tmpdir):
+    if cli_surface:
+        if design_tmpdir is None:
+            print("plan-review run: --design-tmpdir is required with --record-report-evidence", file=sys.stderr)
+            return 2
+        tmpdir_raw = str(design_tmpdir)
+    else:
+        tmpdir_raw = str(design_tmpdir or os.environ.get("DESIGN_TMPDIR", ""))
+    if not tmpdir_raw:
         return 0
+    ok, message = validate_design_tmpdir(tmpdir_raw)
+    if not ok:
+        if cli_surface:
+            print(f"plan-review run: {message}", file=sys.stderr)
+        return 2
+    tmpdir = Path(tmpdir_raw)
+    if tmpdir.is_symlink():
+        if cli_surface:
+            print("plan-review run: design-tmpdir must not be a symlink", file=sys.stderr)
+        return 2
     phases = {
         "main-agent-vote-required": "validation",
         "main-agent-apply-required": "validation",
@@ -1139,7 +1164,9 @@ def step3_record_report_evidence(status: str, design_tmpdir: str | Path | None =
             sentinel.touch()
             return 0
     except OSError:
+        logging_util.emit_kv("WARN", f"Step 3: failed to record design escalation evidence for {status}")
         return 1
+    logging_util.emit_kv("WARN", f"Step 3: failed to record design escalation evidence for {status}")
     return 1
 
 
@@ -1177,7 +1204,15 @@ def round_revise_artifact_excluded(name: str) -> bool:
 
 
 def drift_baseline_write_once(design_tmpdir: str | Path, plan_lines: str, diff_lines: str) -> int:
-    path = Path(design_tmpdir) / "drift-baseline.env"
+    ok, _message = validate_design_tmpdir(str(design_tmpdir))
+    if not ok:
+        return 1
+    tmpdir = Path(design_tmpdir)
+    if tmpdir.is_symlink():
+        return 1
+    if not re.fullmatch(r"[0-9]+", plan_lines) or not re.fullmatch(r"[0-9]+", diff_lines):
+        return 1
+    path = tmpdir / "drift-baseline.env"
     if path.exists() or path.is_symlink():
         return 0
     try:
@@ -1225,7 +1260,7 @@ def run_main(argv: list[str] | None = None) -> int:
             didx = args.index("--design-tmpdir")
             if didx + 1 < len(args):
                 design_tmpdir = args[didx + 1]
-        return step3_record_report_evidence(status, design_tmpdir)
+        return step3_record_report_evidence(status, design_tmpdir, cli_surface=True)
     return run_step3_review(args)
 
 

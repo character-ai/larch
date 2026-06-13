@@ -1,4 +1,7 @@
-"""Panel and voter dispatch entry points for /design plan review."""
+"""Panel and voter dispatch entry points for /design plan review.
+
+Topology anchor: round gated static plus dynamic.
+"""
 
 from __future__ import annotations
 

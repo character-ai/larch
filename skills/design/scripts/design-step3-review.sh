@@ -424,7 +424,7 @@ set +e
 _rre_rc=$?
 set -e
 if [[ "${_rre_rc:-0}" -ne 0 ]]; then
-  rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
+  rm -f "$_safe_step3_env"
   printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**" >&2
   STEP3_REVIEW_LOOP_STATUS=panel-failed
   LOOP_STATUS=panel-failed
@@ -434,20 +434,20 @@ if [[ "${_rre_rc:-0}" -ne 0 ]]; then
 else
   # shellcheck source=/dev/null
   . "$_safe_step3_env"
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _key="${_line%%=*}"; _value="${_line#*=}"
+    case "$_key" in
+      STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
+        [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+        ;;
+      WARN)
+        if [[ "$_step3_primary_regular" == true ]]; then
+          printf '%s\n' "WARN=$_value"
+        fi
+        ;;
+    esac
+  done <"$_plan_review_stdout_file"
 fi
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _key="${_line%%=*}"; _value="${_line#*=}"
-  case "$_key" in
-    STEP3_REVIEW_LOOP_STATUS|POSTPLAN_RC|DEDUP_RC|FINAL_ROUND_NUM)
-      [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
-      ;;
-    WARN)
-      if [[ "$_step3_primary_regular" == true ]]; then
-        printf '%s\n' "WARN=$_value"
-      fi
-      ;;
-  esac
-done <"$_plan_review_stdout_file"
 rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   larch_err "**⚠ Step 3: plan-review run configuration error (exit 2); aborting plan review**"

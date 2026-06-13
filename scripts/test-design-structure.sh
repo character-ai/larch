@@ -492,7 +492,7 @@ assert_wrapper_pause_before_work() {
     'design-step3b-sanitize.sh:mermaid sanitize' \
     'design-step3b-entry.sh:architecture-diagram.skipped' \
     'design-step3b-tail.sh:design Step 4 — rejected findings' \
-    'design-step35-settle.sh:gate-b-dedup-plan.sh'
+    'design-step35-settle.sh:plan-review gate-b-dedup'
   do
     wrapper="${entry%%:*}"
     label="${entry#*:}"

@@ -129,7 +129,7 @@ assert_contains "rendering.py unquoted focus-area enum" \
 # ── dispatch-plan-voters.sh runtime render smoke ─────────────────────────────
 
 plan_voter_tmp="$TMP/plan-voters"
-PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/python/cli.py plan-review voter-dispatch" \
+PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" plan-review voter-dispatch \
     --ballot-file "$ballot_file" \
     --design-tmpdir "$plan_voter_tmp" \
     --codex-available false \
