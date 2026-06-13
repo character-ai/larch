@@ -674,6 +674,10 @@ def _redact_capture(repo_root: Path, text: str) -> str:
     return "[redaction unavailable; capture withheld]\n"
 
 
+def redact_capture(repo_root: Path, text: str) -> str:
+    return _redact_capture(repo_root, text)
+
+
 def validate_plan_command_rows(
     rows: list[PlanCommandRow],
     repo_root: str | Path,
@@ -1608,6 +1612,10 @@ def _git_status_snapshot(repo: Path) -> bytes:
             entry += b"not-regular\0"
         chunks.append(entry)
     return b"".join(chunks)
+
+
+def git_status_snapshot(repo: Path) -> bytes:
+    return _git_status_snapshot(repo)
 
 
 def _check_repo_dirty_delta(before: bytes, after: bytes, log_file: Path) -> bool:

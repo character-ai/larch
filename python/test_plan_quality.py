@@ -1148,7 +1148,7 @@ def test_redact_capture_withholds_raw_text_on_failure(monkeypatch: pytest.Monkey
         return subprocess.CompletedProcess(args=(), returncode=1, stdout="", stderr="")
 
     monkeypatch.setattr(plan_quality.subprocess, "run", fail_redact)
-    redacted = plan_quality._redact_capture(REPO_ROOT, secret)
+    redacted = plan_quality.redact_capture(REPO_ROOT, secret)
     assert secret not in redacted
     assert "withheld" in redacted
 
@@ -1159,7 +1159,7 @@ def test_git_status_snapshot_detects_untracked_content_change(tmp_path: Path) ->
     subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
     untracked = tmp_path / "scratch.txt"
     untracked.write_text("before\n", encoding="utf-8")
-    before = plan_quality._git_status_snapshot(tmp_path)
+    before = plan_quality.git_status_snapshot(tmp_path)
     untracked.write_text("after\n", encoding="utf-8")
-    after = plan_quality._git_status_snapshot(tmp_path)
+    after = plan_quality.git_status_snapshot(tmp_path)
     assert before != after
