@@ -67,6 +67,8 @@ def test_classify_diff_modes_and_repo_anchored_generators(tmp_path: Path, monkey
     assert review_dispatch.classify_diff(str(_diff(tmp_path, "diff --git a/docs/a.md b/scripts/test-a.sh\n"))) == "generic"
     assert review_dispatch.classify_diff(str(_diff(tmp_path, "diff --git a//abs b//abs\n"))) == "generic"
     assert review_dispatch.classify_diff(str(_diff(tmp_path, "diff --git a/docs/../x.md b/docs/../x.md\n"))) == "generic"
+    assert review_dispatch.classify_diff(str(_diff(tmp_path, "diff --git a/docs/guide/chapter.md b/docs/guide/chapter.md\n"))) == "generic"
+    assert review_dispatch.classify_diff(str(_diff(tmp_path, "diff --git a/pkg/tests/nested/foo.py b/pkg/tests/nested/foo.py\n"))) == "generic"
 
 
 def test_classify_diff_main_validation_precedes_quiet(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,6 +106,9 @@ def test_wait_validation_and_stdout_grammar(tmp_path: Path, capsys: pytest.Captu
         monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", bad_poll)
         assert review_dispatch.wait_reviewers_main([str(tmp_path / "x.done")]) == 1
         assert "WAIT_FOR_REVIEWERS_POLL_INTERVAL" in capsys.readouterr().err
+    for good_poll in (".5", "1."):
+        monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", good_poll)
+        assert review_dispatch._parse_poll_interval(good_poll) == float(good_poll)
     monkeypatch.setenv("WAIT_FOR_REVIEWERS_POLL_INTERVAL", "0.01")
     done = tmp_path / "same.done"
     done.write_text("0\n", encoding="utf-8")
@@ -151,16 +156,18 @@ def test_gather_branch_context_outputs_and_excludes_larch_logs(tmp_path: Path, c
     assert _git(repo, "init", "-b", "main").returncode == 0
     assert _git(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _git(repo, "config", "user.name", "Test User").returncode == 0
-    (repo / "a.txt").write_text("base\n", encoding="utf-8")
-    (repo / "larch-logs").mkdir()
-    (repo / "larch-logs" / "ignored.txt").write_text("base\n", encoding="utf-8")
+    (repo / "src").mkdir()
+    (repo / "src" / "feature.txt").write_text("v1\n", encoding="utf-8")
     assert _git(repo, "add", ".").returncode == 0
-    assert _git(repo, "commit", "-m", "base").returncode == 0
+    assert _git(repo, "commit", "-m", "base code").returncode == 0
     assert _git(repo, "checkout", "-b", "feature").returncode == 0
-    (repo / "a.txt").write_text("base\nfeature\n", encoding="utf-8")
-    (repo / "larch-logs" / "ignored.txt").write_text("changed\n", encoding="utf-8")
-    assert _git(repo, "add", ".").returncode == 0
-    assert _git(repo, "commit", "-m", "feature").returncode == 0
+    (repo / "larch-logs" / "run").mkdir(parents=True)
+    (repo / "larch-logs" / "run" / "session.txt").write_text("run-log\n", encoding="utf-8")
+    assert _git(repo, "add", "larch-logs").returncode == 0
+    assert _git(repo, "commit", "-m", "add run log").returncode == 0
+    (repo / "src" / "feature.txt").write_text("v1\nv2\n", encoding="utf-8")
+    assert _git(repo, "add", "src/feature.txt").returncode == 0
+    assert _git(repo, "commit", "-m", "feature change").returncode == 0
     out = tmp_path / "out"
     out.mkdir()
     monkeypatch.chdir(repo)
@@ -168,10 +175,15 @@ def test_gather_branch_context_outputs_and_excludes_larch_logs(tmp_path: Path, c
     captured = capsys.readouterr().out
     assert "DIFF_FILE=" in captured
     assert "COMMIT_COUNT=1" in captured
-    assert "feature" in (out / "diff.txt").read_text(encoding="utf-8")
-    assert "larch-logs" not in (out / "diff.txt").read_text(encoding="utf-8")
-    assert "larch-logs" not in (out / "file-list.txt").read_text(encoding="utf-8")
-    assert "feature" in (out / "commit-log.txt").read_text(encoding="utf-8")
+    diff_text = (out / "diff.txt").read_text(encoding="utf-8")
+    file_list_text = (out / "file-list.txt").read_text(encoding="utf-8")
+    commit_log_text = (out / "commit-log.txt").read_text(encoding="utf-8")
+    assert "src/feature.txt" in diff_text
+    assert "src/feature.txt" in file_list_text
+    assert "feature change" in commit_log_text
+    assert "add run log" not in commit_log_text
+    assert "larch-logs" not in diff_text
+    assert "larch-logs" not in file_list_text
     assert review_dispatch.gather_branch_context_main(["--output-dir", str(tmp_path / "missing")]) == 1
 
 

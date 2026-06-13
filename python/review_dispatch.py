@@ -87,7 +87,7 @@ def _parse_poll_interval(raw: str) -> float | None:
         return None
     if raw.count(".") > 1:
         return None
-    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", raw):
+    if not re.fullmatch(r"[0-9.]+", raw):
         return None
     if "." not in raw and int(raw, 10) < 1:
         return None
@@ -238,13 +238,15 @@ def _classify_path(path: str, generated: set[str]) -> str:
     )
     if any(re.fullmatch(pattern, path) for pattern in test_patterns[:2]):
         return "test-only"
-    if re.search(r"/(tests|test)/.*\.(sh|py|go|bats)$", path):
+    if re.fullmatch(r"[^/]+/tests/[^/]+\.(sh|py|go|bats)$", path) or re.fullmatch(
+        r"[^/]+/test/[^/]+\.(sh|py|go|bats)$", path
+    ):
         return "test-only"
     if any(re.fullmatch(pattern, base) for pattern in test_patterns[2:]) or base.endswith(".bats"):
         return "test-only"
     if (
-        re.fullmatch(r"docs/.*\.(md|txt|rst|adoc)", path)
-        or re.fullmatch(r"scripts/.*\.md", path)
+        re.fullmatch(r"docs/[^/]+\.(md|txt|rst|adoc)$", path)
+        or re.fullmatch(r"scripts/[^/]+\.md$", path)
         or path in {"README.md", "SECURITY.md", "AGENTS.md", "CLAUDE.md", "KARPATHY_CLAUDE.md"}
     ):
         return "docs-only"
