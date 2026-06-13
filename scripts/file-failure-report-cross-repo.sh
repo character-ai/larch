@@ -125,8 +125,15 @@ reject_tier_b_comment_if_unsafe() {
         echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
         return 0
     fi
-    if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
-        "${_tier_b_profile_args[@]}" \
+    if [ "${#_tier_b_profile_args[@]}" -gt 0 ]; then
+        if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
+            "${_tier_b_profile_args[@]}" \
+            --implement-tmpdir "$body_dir" \
+            --candidate-file "$comment_file" \
+            --sensitive-corpus-file "$sensitive_corpus_file" >/dev/null 2>"$err"; then
+            return 0
+        fi
+    elif ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
         --implement-tmpdir "$body_dir" \
         --candidate-file "$comment_file" \
         --sensitive-corpus-file "$sensitive_corpus_file" >/dev/null 2>"$err"; then
