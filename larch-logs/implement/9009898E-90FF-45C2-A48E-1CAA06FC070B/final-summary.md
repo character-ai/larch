@@ -1,13 +1,13 @@
-## /implement run 9009898E-90FF-45C2-A48E-1CAA06FC070B — bailed
+## /implement run 9009898E-90FF-45C2-A48E-1CAA06FC070B — pr-created
 
-- **Outcome**: bailed
 - **Mode**: N/A
-- **Duration**: 00:21:03
-- **Cost**: 💰 TOTAL ~$8.99 — Claude $1.09, Codex $5.98, Cursor $1.16, Claude (subprocess) $0.76  |  Tokens: 11686k
+- **Duration**: 00:21:58
+- **Cost**: 💰 TOTAL ~$9.21 — Claude $1.31, Codex $5.98, Cursor $1.16, Claude (subprocess) $0.76  |  Tokens: 12056k
 - **Issue**: #4237 — https://github.com/character-ai/larch/issues/4237
+- **PR**: #4258 — https://github.com/character-ai/larch/pull/4258
 - **Plan review**: N/A
 - **Code review**: 0/4 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +211/-8, larch-logs +561/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -15,6 +15,7 @@
 
 <!-- larch:run-summary v=1 -->
 
+**Note:** `--merge` was not set — merge the PR manually when ready.
 
 ## Review Phase Detail
 
