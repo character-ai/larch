@@ -235,8 +235,24 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step3-review.sh" 'monitor-mode-unavailable' 'Step 3 review wrapper missing monitor-mode failure reason'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'rm -f "$_result_env"' 'Step 3 review wrapper may replay a stale result envelope'
   contains "$SCRIPT_DIR/design-step3-review.sh" 'exit 0' 'Step 3 review wrapper monitor-mode failure must exit 0'
-  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '--input "$DESIGN_TMPDIR/architecture-diagram.candidate.md"' 'Step 3b sanitizer wrapper must use DESIGN_TMPDIR candidate path'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" 'DIAGRAM_REQUIRED=' 'Step 3b entry wrapper missing DIAGRAM_REQUIRED emit'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" '### NEW:' 'Step 3b entry classifier missing NEW heading token pin'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" 'Backtick normalization strips one surrounding pair before extension and SKILL.md checks.' 'Step 3b entry classifier missing backtick normalization pin'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" 'SKILL.md' 'Step 3b entry classifier missing SKILL.md architectural pin'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'architecture-diagram.skipped' 'Step 3b entry wrapper missing visible skipped sentinel'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" 'ACTION=FINALIZE' 'Step 3b entry wrapper missing inline FINALIZE'
+  contains "$SCRIPT_DIR/design-step3b-entry.sh" '.completed/step-3b' 'Step 3b entry wrapper missing step-3b completion sentinel'
+  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '--input "$_candidate"' 'Step 3b sanitizer wrapper must use candidate path'
+  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '---LARCH-DIAGRAM-BEGIN---' 'Step 3b sanitizer wrapper missing diagram begin marker'
+  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '---LARCH-DIAGRAM-END---' 'Step 3b sanitizer wrapper missing diagram end marker'
+  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" 'ACTION=FINALIZE' 'Step 3b sanitizer wrapper missing inline FINALIZE'
+  contains "$SCRIPT_DIR/design-step3b-sanitize.sh" '.completed/step-3b' 'Step 3b sanitizer wrapper missing step-3b completion sentinel'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" '---LARCH-REJECTED-BEGIN---' 'Step 3b tail wrapper missing rejected begin marker'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" '---LARCH-REJECTED-END---' 'Step 3b tail wrapper missing rejected end marker'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" '--variant gatec' 'Step 3b tail wrapper missing Gate C preview call'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" '.pause-save-complete" ] && exit 0' 'Step 3b tail wrapper missing pause-save early exit after preview'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" 'SKIP_APPROVE_REQUESTED_GATEC=' 'Step 3b tail wrapper missing Gate C skip-approve emit'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" '.completed/step-4' 'Step 3b tail wrapper missing step-4 sentinel write'
   contains "$SCRIPT_DIR/design-step5c.sh" '${SKIP_VALIDATE:+--skip-validate}' 'Step 5c wrapper missing skip-validate reentry flag'
   contains "$SCRIPT_DIR/design-step5c.sh" '.design-step5c-status.env' 'Step 5c wrapper missing status sidecar write'
   contains "$SCRIPT_DIR/design-step6-cleanup.sh" '.design-step5c-status.env' 'Step 6 cleanup wrapper missing Step 5c status sidecar read'
@@ -256,9 +272,6 @@ assert_wrapper_contract_pins() {
   contains "$SCRIPT_DIR/design-step2b-postplan.sh" '_postplan_site' 'Step 2b postplan wrapper missing site-aware snapshot branch'
   contains "$SCRIPT_DIR/design-step3b-entry.sh" 'pause-requested' 'Step 3b entry wrapper missing pause-check before skip/architectural mutations'
   contains "$SCRIPT_DIR/design-step1d5.sh" 'complete' 'Step 1d.5 wrapper missing complete mode sentinel write'
-  contains "$SCRIPT_DIR/design-step4b.sh" 'step-4' 'Step 4b wrapper missing step-4 sentinel write'
-  ! grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-4"' "$SCRIPT_DIR/design-step4.sh" \
-    || fail 'Step 4 entry wrapper must not write step-4 sentinel'
   contains "$SCRIPT_DIR/design-step6-prelude.sh" '.design-step5c-status.env' 'Step 6 prelude wrapper missing Step 5c status read before step-5d'
   contains "$SCRIPT_DIR/design-step6-prelude.sh" 'CLEANUP_ELIGIBLE' 'Step 6 prelude wrapper missing cleanup eligibility gate'
   contains "$SCRIPT_DIR/design-step6-prelude.sh" 'PUBLISH_OK' 'Step 6 prelude wrapper missing publish gate before step-5d'
@@ -376,18 +389,12 @@ boundary_markers = (
     '--site step2b',
     '--mode entry',
     '--mode repair',
-    '--mode skip',
-    '--mode architectural',
     '--mode complete',
     '#### Step 2b drafter',
     '#### Step 2b postplan',
     'terminal postplan fence',
     '> **🔶 /design 3b: arch diagram**',
-    'branch-local skip fence below',
-    'architectural entry cleanup fence below',
     'Step 3 resume fence (all mid-loop returns)',
-    '--mode skip',
-    '--mode architectural',
 )
 
 for (_start_a, end_a), (start_b, _end_b) in zip(fences, fences[1:]):
@@ -432,7 +439,7 @@ assert_degraded_tools_gate_fence() {
   contains "$SKILL_MD" 'STEP0_STATUS' 'SKILL missing STEP0_STATUS consume prose'
   contains "$SCRIPT_DIR/design-step3-entry.sh" '.pause-save-complete' 'Step 3 combined entry wrapper missing pause-save stop guard'
   contains "$SCRIPT_DIR/design-step3-entry.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 3 combined entry wrapper missing stale pause-save sentinel clear'
-  contains "$SCRIPT_DIR/design-step4b.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 4b combined wrapper missing stale pause-save sentinel clear'
+  contains "$SCRIPT_DIR/design-step3b-tail.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 3b tail wrapper missing stale pause-save sentinel clear'
   contains "$SCRIPT_DIR/design-step6.sh" 'rm -f "$DESIGN_TMPDIR/.pause-save-complete"' 'Step 6 combined wrapper missing stale pause-save sentinel clear'
 }
 
@@ -457,7 +464,8 @@ assert_wrapper_pause_before_work() {
     'design-step0-init.sh:design-init-runparams.sh' \
     'design-step3-entry-state.sh:design-step3-state.sh' \
     'design-step3b-sanitize.sh:mermaid sanitize' \
-    'design-step3b-entry.sh:architecture-diagram.skipped'
+    'design-step3b-entry.sh:architecture-diagram.skipped' \
+    'design-step3b-tail.sh:design Step 4 — rejected findings'
   do
     wrapper="${entry%%:*}"
     label="${entry#*:}"
@@ -482,6 +490,15 @@ assert_reference_updates() {
   ! grep -Fq 'with the canonical session-env / pause prelude' "$APPROVAL_MD" \
     || fail 'approval-gates.md must not instruct a separate postplan pause prelude'
   contains "$APPROVAL_MD" 'design-step5c.sh --skip-validate' 'approval-gates.md missing Step 5c skip-validate wrapper reference'
+  contains "$APPROVAL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'approval-gates.md missing Gate C full-plan helper reference'
+  contains "$SKILL_MD" 'emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full' 'SKILL.md missing Gate C full-plan helper reference'
+  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'step3|gatec|step2b|full' 'emit-design-plan-preview.sh usage missing full variant'
+  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'full)' 'emit-design-plan-preview.sh missing full case'
+  contains "$SCRIPT_DIR/emit-design-plan-preview.sh" 'cat "$design_tmpdir/plan.txt"' 'emit-design-plan-preview.sh full variant must emit complete plan'
+  ! grep -Fq 'cat `$DESIGN_TMPDIR/plan.txt`' "$APPROVAL_MD" \
+    || fail 'approval-gates.md must use full-plan helper instead of raw Gate C cat'
+  ! grep -Fq 'both paths `cat` `$DESIGN_TMPDIR/plan.txt`' "$SKILL_MD" \
+    || fail 'SKILL.md must use full-plan helper instead of raw Gate C cat prose'
   contains "$DISCUSSION_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-postplan.sh --site discussion-round2' 'discussion-rounds.md missing launcher-form discussion-round2 postplan reference'
   contains "$DISCUSSION_MD" 'The launcher supplies `--session-env-path` and `--claude-pid`; the wrapper owns rehydration and pause checks' 'discussion-rounds.md missing launcher-owned rehydration wording'
   ! grep -Fq '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step2b-postplan.sh" --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID" --site discussion-round2' "$DISCUSSION_MD" \
@@ -646,10 +663,10 @@ assert_wrapper_fence_ordering() {
   second_line=$(grep -nF 'design-step3-state.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   (( first_line < second_line )) || fail "$wrapper must pause-check before direct-review state mutation"
 
-  wrapper='design-step4b.sh'
-  first_line=$(grep -nF 'design-step4b-read.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  second_line=$(grep -nF 'step-4' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
-  (( first_line < second_line )) || fail "$wrapper must write step-4 only after Gate C read"
+  wrapper='design-step3b-tail.sh'
+  first_line=$(grep -nF 'SKIP_APPROVE_REQUESTED_GATEC=' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF '.completed/step-4' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
+  (( first_line < second_line )) || fail "$wrapper must write step-4 only after Gate C skip read"
   wrapper='design-step5c.sh'
   first_line=$(grep -nF 'design-pause-save.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)
   second_line=$(grep -nF 'design-publish.sh' "$SCRIPT_DIR/$wrapper" | head -1 | cut -d: -f1)

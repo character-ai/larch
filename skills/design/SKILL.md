@@ -164,20 +164,12 @@ The wrapper-only D3 surface uses these script contracts. Keep direct wrappers an
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-complete.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-complete.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-sanitize.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-sanitize.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b-preview.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b-preview.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b-read.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b-read.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step4b.md`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.sh`
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.sh`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.sh`
@@ -687,21 +679,13 @@ Loop back through the launcher-only Step 3 resume fence before launching the nex
 
 Print: `> **🔶 /design 3b: arch diagram**`
 
-**This step runs on most paths through Step 3** — whether voting produced revisions, rejected all findings, or was skipped entirely because all reviewers reported no issues. It executes before Step 4, with one exception: non-architectural plans emit a placeholder and skip generation (see below).
+**This step runs on most paths through Step 3** — whether voting produced revisions, rejected all findings, or was skipped entirely because all reviewers reported no issues.
 
-Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
+Parse `DIAGRAM_REQUIRED=` from the entry wrapper output.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`, then run the branch-local skip fence below, then IMMEDIATELY run the Step 3b completion boundary below, then Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
+If `DIAGRAM_REQUIRED=false`, do not generate a diagram. The wrapper has removed stale diagram files, written `architecture-diagram.skipped`, emitted the skip breadcrumb, run FINALIZE, and written `.completed/step-3b`. Continue directly to the tail wrapper below.
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode skip
-```
-
-**Otherwise** (plan is architectural): before generation, sanitizer, or failure handling, run the architectural entry cleanup fence below, then generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode architectural
-```
+If `DIAGRAM_REQUIRED=true`, the entry wrapper has removed stale diagram files and the skipped sentinel. Generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
 **MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
 
@@ -709,56 +693,36 @@ Choose the most appropriate mermaid diagram type for the feature (e.g., `graph T
 
 Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md` to avoid sanitizer rejection.
 
-Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. The candidate file includes the `## Architecture Diagram` heading and mermaid fence. Validate it before promotion:
+Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. The candidate file includes the `## Architecture Diagram` heading and mermaid fence. Validate and complete Step 3b with:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-sanitize.sh
 ```
 
-On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`. Also print the promoted diagram under a `## Architecture Diagram` header with a mermaid code fence:
+If the sanitizer wrapper emits a body between `---LARCH-DIAGRAM-BEGIN---` and `---LARCH-DIAGRAM-END---`, re-emit that exact body verbatim in chat. Do not paraphrase or reconstruct it.
 
-```
-## Architecture Diagram
+If diagram generation fails before a candidate is written, print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`, append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `run-log append-failure` under `Warnings`, and call `design-step3b-sanitize.sh` so it fails closed, deletes any stale candidate, records the warning, runs FINALIZE, and writes `.completed/step-3b` only after FINALIZE succeeds.
 
-```mermaid
-<diagram content>
-```
-```
-
-**If diagram generation and sanitizer validation succeed**, run the Step 3b completion boundary below, then Step 4.
-
-**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. Print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. Capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure --site "design Step 3b" --tool "python/cli.py mermaid sanitize architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then run the Step 3b completion boundary below, then Step 4.
-
-**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` and append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `run-log append-failure` under `Warnings`. Then IMMEDIATELY run the Step 3b completion boundary below, then Step 4.
-
-> **Run the Step 3b completion boundary below, then Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
-
-At the Step 3b completion boundary, including the non-architectural skip path, run FINALIZE and write `step-3b` only after FINALIZE succeeds:
-
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-complete.sh
-```
+> **Continue to the tail wrapper IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting, Gate C, issue plan write, and cleanup still must run.
 
 <!-- step:4 — Rejected Plan Review Findings Report -->
 
 Print: `> **🔶 /design 4: rejected findings**`
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step4.sh
-```
-
-Print any rejected plan review findings:
-
 **MANDATORY — READ ENTIRE FILE before composing rejected findings output: `skills/design/references/readability-style.md`.**
 
-1. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty (it exists after the Step 3b completion-boundary FINALIZE on fresh runs; the Step 4 entry fence runs a compatibility FINALIZE only for old paused sessions missing `.completed/finalize`).
-2. If it has content, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-3. If `$DESIGN_TMPDIR/rejected-findings.md` is empty, continue.
+Run the combined tail wrapper. It owns Step 4 compatibility FINALIZE, emits rejected findings between stable markers, emits the Gate C preview, reads `skip_approve_requested`, and writes `.completed/step-4` when no pause-save early exit occurs.
 
-After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
+```
+
+If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim under a `## Unimplemented Plan Review Suggestions` heading. If the body is empty, continue without printing that heading.
+
+After rejected findings are handled, IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 
 > **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal — Gate C + issue plan write + cleanup still must run.
-`.completed/step-4` is written by the Step 4b wrapper (`design-step4b.sh`) after Gate C preview/read and before Step 5.
+`.completed/step-4` is written by the tail wrapper after Gate C preview/read and before Step 5.
 
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
@@ -768,17 +732,13 @@ Print: `> **🔶 /design 4b: gate C**`
 
 Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
 
-**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `emit-design-plan-preview.sh --variant gatec` (same threshold/outline/bold-note rules as Step 3).
+**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `design-step3b-tail.sh`, which calls `emit-design-plan-preview.sh --variant gatec` with the same threshold/outline/bold-note rules as Step 3.
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step4b.sh
-```
-
-Before the Gate C `AskUserQuestion`, `design-step4b.sh` emits the Gate C preview and reads `skip_approve_requested` from `run-params.json` in the same wrapper call:
+Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from the tail wrapper output.
 
 When `_skip_approve_requested_gatec=true`, auto-approve Gate C: print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed directly to Step 5 **without** calling `AskUserQuestion`. When `_skip_approve_requested_gatec=false`, fire the Gate C `AskUserQuestion` per `approval-gates.md`.
 
-Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip_approve_requested_gatec=false`). When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths `cat` `$DESIGN_TMPDIR/plan.txt` into chat, but only `See full plan` drops itself from the re-fired prompt. On **See full plan**, cat `$DESIGN_TMPDIR/plan.txt` under a `## Final Design Plan` header, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip_approve_requested_gatec=false`). When the review-round counter is below the flattened cap of 5, the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**. `See full plan` is the structured path and `Other` remains as a backward-compat escape. On **See full plan**, run `emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full`, then re-fire the same Gate C `AskUserQuestion` minus the See full plan option. If the user picks `Other` and asks for the full plan, run `emit-design-plan-preview.sh --design-tmpdir "$DESIGN_TMPDIR" --variant full` and re-fire the same cap-aware Gate C `AskUserQuestion` with the same option set. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`); when Gate A later exits via **Ready for review**, the eventual re-review returns through Step 3b, Step 4, and then Gate C. On **Re-run review panel** (only when offered), write `: > "$DESIGN_TMPDIR/.step3-reentry"` and re-enter Step 3 with the current `plan.txt` (skip Step 2a — reviewers see the latest plan with all user-approved or operator-approved/applied prior feedback applied); the fresh review proceeds through Step 3.5, the heuristic continuation check, Step 3b, Step 4, and then Gate C. The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 

@@ -85,8 +85,16 @@ design_source_env_optional() {
   fi
 }
 
+design_pause_check() {
+  if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  fi
+}
+
 design_source_env_optional
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -n "${DESIGN_TMPDIR:-}" ] && rm -f "$DESIGN_TMPDIR/.pause-save-complete"
+
+design_pause_check
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4 — rejected findings" || true
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e
@@ -99,3 +107,28 @@ if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
     exit "$_finalize_rc"
   fi
 fi
+
+printf '%s\n' '---LARCH-REJECTED-BEGIN---'
+if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
+  cat "$DESIGN_TMPDIR/rejected-findings.md"
+fi
+printf '%s\n' '---LARCH-REJECTED-END---'
+
+design_pause_check
+LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4b — gate C" || true
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --variant gatec
+[ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
+
+_skip_approve_requested_gatec=false
+if command -v jq >/dev/null 2>&1; then
+  case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
+    true) _skip_approve_requested_gatec=true ;;
+  esac
+elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+  _skip_approve_requested_gatec=true
+fi
+printf 'SKIP_APPROVE_REQUESTED_GATEC=%s\n' "$_skip_approve_requested_gatec"
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-4"

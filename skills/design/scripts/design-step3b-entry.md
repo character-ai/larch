@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of inline Bash.
+Wrapper for `/design` Step 3b entry. It marks Step 3.5 complete, classifies `plan.txt`, emits `DIAGRAM_REQUIRED=true|false`, and completes the no-diagram path inline.
 
 ## Primary callers
 
@@ -13,6 +13,9 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Does not derive the root Claude PID from `$PPID` internally.
+- Classifies only `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` plan headings.
+- Treats missing, empty, heading-free, script, Python, `SKILL.md`, extensionless, and unrecognized paths as architectural.
+- Runs FINALIZE and writes `.completed/step-3b` inside the non-architectural branch only after the driver succeeds.
 
 ## Harness
 
