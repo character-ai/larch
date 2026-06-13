@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 from collections import defaultdict, deque
 from collections.abc import Sequence
 from pathlib import Path

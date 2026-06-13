@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import decompose
-import pytest
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _design_tmp(tmp_path: Path) -> Path:
