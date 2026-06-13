@@ -126,7 +126,8 @@ reject_tier_b_comment_if_unsafe() {
         echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
         return 0
     fi
-    local corpus_copy="$validate_tmpdir/$(basename "$sensitive_corpus_file")"
+    local corpus_copy
+    corpus_copy="$validate_tmpdir/$(basename "$sensitive_corpus_file")"
     if [ "$sensitive_corpus_file" != "$corpus_copy" ]; then
         cp "$sensitive_corpus_file" "$corpus_copy" 2>/dev/null || {
             echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
