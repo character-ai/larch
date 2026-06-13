@@ -1,0 +1,1 @@
+Plan: remove the polling motive in `/design`, add explicit yield rules, add a live background-wait marker, deny tmpdir/task-output probes while the marker is live, and surface denial counts in final summaries.
