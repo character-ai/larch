@@ -2161,6 +2161,42 @@ def test_persist_stall_metadata_treats_zero_pr_number_as_absent(tmp_path: Path) 
     assert data["PR_NUMBER"] == "44"
 
 
+def test_terminal_finalize_write_emits_success_breadcrumb(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ctx = _ctx(tmp_path, pr_number=7, pr_closed=True)
+    ship._write_terminal_finalize_if_terminal(ctx, Outcome.OK, "")  # pyright: ignore[reportPrivateUsage]
+
+    captured = capsys.readouterr()
+    data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert data["EXIT_CODE"] == "0"
+    assert "ship.py: finalize-state-written:" in captured.err
+    assert f"path={tmp_path / 'finalize-state.sh'}" in captured.err
+    assert "outcome=OK" in captured.err
+    assert "step=" in captured.err
+
+    transient_dir = tmp_path / "transient"
+    transient_dir.mkdir()
+    invalid = Path("/not/allowed/larch")
+    _ = capsys.readouterr()
+    ship._write_terminal_finalize_if_terminal(  # pyright: ignore[reportPrivateUsage]
+        _ctx(transient_dir),
+        Outcome.TRANSIENT,
+        "checks",
+    )
+    ship._write_terminal_finalize_if_terminal(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, tmpdir=str(invalid)),
+        Outcome.OK,
+        "done",
+    )
+
+    captured = capsys.readouterr()
+    assert "finalize-state-written" not in captured.err
+    assert not (transient_dir / "finalize-state.sh").exists()
+    assert not (invalid / "finalize-state.sh").exists()
+
+
 def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     ship.finalize.write_finalize_state_merged(target, {"STALL_TRACKING": "true", "STALL_STEP": "existing"})

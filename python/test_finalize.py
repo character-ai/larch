@@ -327,6 +327,38 @@ def test_cache_sessions_root_ignores_empty_or_relative_xdg(monkeypatch: pytest.M
     assert finalize.cache_sessions_root() == Path.home() / ".cache" / "larch" / "sessions"
 
 
+def test_kill_session_background_processes_skips_live_python_ancestors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(finalize.os, "getpid", lambda: 200)
+    monkeypatch.setattr(finalize.os, "getppid", lambda: 100)
+    runner = RecordingRunner(
+        strict=True,
+        responses=[
+            CommandResult(("ps", "-o", "ppid=", "-p", "200"), 0, "100\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "100"), 0, "50\n", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "50"), 0, "1\n", "", 0.01),
+            CommandResult(("sh", "-c", "printf '%s %s' $$ ${PPID:-}"), 0, "300 100", "", 0.01),
+            CommandResult(("ps", "-o", "ppid=", "-p", "300"), 0, "\n", "", 0.01),
+            CommandResult(
+                ("sh", "-c", "process-list"),
+                0,
+                "50\n999\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("kill", "-TERM", "999"), 0, "", "", 0.01),
+        ],
+    )
+
+    assert finalize.kill_session_background_processes(runner, _ctx(tmp_path)) is True
+
+    kill_calls = [call for call in runner.calls if call[:2] == ["kill", "-TERM"]]
+    assert kill_calls == [["kill", "-TERM", "999"]]
+    assert ["kill", "-TERM", "50"] not in runner.calls
+
+
 def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state_merged(target, {"CUSTOM_PIN": "keep", "STALL_TRACKING": "true"})
