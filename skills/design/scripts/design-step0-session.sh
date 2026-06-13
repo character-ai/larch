@@ -212,6 +212,8 @@ if [[ "${DEGRADED:-false}" == true ]]; then
     printf '%s\n' '- Step 0 degraded-tools gate: both external tools unavailable; proceeding degraded (non-interactive)' >>"$DESIGN_TMPDIR/execution-issues.md"
     : >"$DESIGN_TMPDIR/.degraded-tools-gate-prompted"
     STEP0_STATUS=degraded-both-down-auto
+  elif [[ "$BOTH_DOWN_SEEN" == true && "${BOTH_DOWN:-}" == true && "$_design_interactive" == true && -f "$DESIGN_TMPDIR/.degraded-tools-gate-prompted" ]]; then
+    STEP0_STATUS=degraded-both-down-auto
   else
     STEP0_STATUS=needs-degraded-decision
   fi

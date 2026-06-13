@@ -397,6 +397,7 @@ assert_degraded_tools_gate_fence() {
   contains "$SCRIPT_DIR/design-step0-session.sh" 'BOTH_DOWN_SEEN' 'Step 0 session wrapper missing BOTH_DOWN parse presence tracking'
   contains "$SCRIPT_DIR/design-step0-session.sh" 'degraded-both-down-auto' 'Step 0 session wrapper missing non-interactive both-down branch'
   contains "$SCRIPT_DIR/design-step0-session.sh" '.degraded-tools-gate-prompted' 'Step 0 session wrapper missing prompted sentinel write'
+  contains "$SCRIPT_DIR/design-step0-session.sh" '-f "$DESIGN_TMPDIR/.degraded-tools-gate-prompted"' 'Step 0 session wrapper missing sentinel short-circuit'
   contains "$SCRIPT_DIR/design-step0-session.sh" 'LARCH_SKILL_NON_INTERACTIVE' 'Step 0 session wrapper missing explicit non-interactive signal'
   contains "$SCRIPT_DIR/design-step0-init.sh" 'feature-description.txt' 'Step 0 init wrapper missing feature-description write'
   contains "$SCRIPT_DIR/design-step0-route.sh" "printf 'ROUTE=%s" 'Step 0 route wrapper missing ROUTE stdout emit'
