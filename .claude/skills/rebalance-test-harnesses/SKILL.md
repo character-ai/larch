@@ -11,6 +11,7 @@ allowed-tools: Bash, Read, Write
 Automates the procedure documented in `docs/linting.md §Refreshing harness shard balance`
 using the Python machinery in `python/harness_ci_timing.py`,
 `python/harness_makefile.py`, and `python/harness_shard_packer.py`.
+Keep `scripts/rebalance.md` aligned with this prompt when the script contract changes.
 
 ## Usage
 
