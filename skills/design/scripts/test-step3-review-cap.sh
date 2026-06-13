@@ -46,8 +46,8 @@ fi
 grep -Fq 'Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set)' "$APPROVAL_GATES" \
     || fail 'approval-gates missing loop-mode Gate B branch'
 # shellcheck disable=SC2016 # Markdown literal contains parameter syntax intentionally.
-grep -Fq '.step3-round-$STEP3_RESUME_ROUND.phase` as `awaiting-continuation`' "$APPROVAL_GATES" \
-    || fail 'approval-gates missing STEP3_RESUME_ROUND continuation phase marker'
+grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation' "$APPROVAL_GATES" \
+    || fail 'approval-gates missing wrapper-owned continuation resume contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'Legacy `--mode single` only' "$APPROVAL_GATES" \
     || fail 'approval-gates missing legacy-only continuation branch'

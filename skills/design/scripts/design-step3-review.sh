@@ -49,6 +49,9 @@ PLAN_WRITE_OK="${PLAN_WRITE_OK:-}"
 STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 STARTING_ROUND=""
 STARTING_ROUND_SEEN=false
+RESUME_PHASE=""
+RESUME_FINDINGS_FILE=""
+POSTPLAN_OPERATOR_CONTINUE=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -69,6 +72,23 @@ while [ "$#" -gt 0 ]; do
       STARTING_ROUND="${2:-}"
       shift 2
       ;;
+    --phase)
+      if [ "$#" -lt 2 ]; then
+        printf '%s\n' 'design-step3-review.sh: --phase requires a value' >&2
+        exit 2
+      fi
+      RESUME_PHASE="${2:-}"
+      shift 2
+      ;;
+    --findings-file)
+      if [ "$#" -lt 2 ]; then
+        printf '%s\n' 'design-step3-review.sh: --findings-file requires a value' >&2
+        exit 2
+      fi
+      RESUME_FINDINGS_FILE="${2:-}"
+      shift 2
+      ;;
+    --postplan-operator-continue) POSTPLAN_OPERATOR_CONTINUE=true; shift ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
@@ -127,6 +147,92 @@ design_bg_wait_marker_start() {
 }
 design_source_env_optional
 larch_err() { printf '%s\n' "$*" >&2; }
+
+STEP3_REVIEW_HAS_RESUME_STATE=false
+if [ -n "${RESUME_PHASE:-}" ] || [ -n "${RESUME_FINDINGS_FILE:-}" ] || [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
+  STEP3_REVIEW_HAS_RESUME_STATE=true
+fi
+
+step3_review_usage_error() {
+  printf '%s\n' "design-step3-review.sh: $*" >&2
+  exit 2
+}
+
+step3_review_read_round_count() {
+  local _count_file="$DESIGN_TMPDIR/review-round-count.txt" _raw=""
+  if [ -s "$_count_file" ]; then
+    _raw="$(tr -d '[:space:]' <"$_count_file" 2>/dev/null || true)"
+    case "$_raw" in
+      ''|*[!0-9]*) printf '0\n' ;;
+      *) printf '%s\n' "$((10#$_raw))" ;;
+    esac
+  else
+    printf '0\n'
+  fi
+}
+
+step3_review_canonical_file() {
+  local _path="$1" _dir _base
+  _dir="$(dirname "$_path")"
+  _base="$(basename "$_path")"
+  (cd "$_dir" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$_base") || return 1
+}
+
+step3_review_validate_resume_state() {
+  local _last_count _start_dec _canon_findings
+  [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] || return 0
+  [ "$STARTING_ROUND_SEEN" = true ] || step3_review_usage_error 'resume-state flags require --starting-round'
+  case "${RESUME_PHASE:-}" in
+    ''|awaiting-apply|awaiting-revise|awaiting-post-apply|awaiting-postplan-operator|awaiting-continuation) ;;
+    awaiting-vote) step3_review_usage_error '--phase awaiting-vote is internal and cannot be used as a resume phase' ;;
+    *) step3_review_usage_error "invalid --phase: ${RESUME_PHASE}" ;;
+  esac
+  _last_count="$(step3_review_read_round_count)"
+  _start_dec=$((10#$STARTING_ROUND))
+  if [ "$_start_dec" -gt "$((_last_count + 1))" ]; then
+    step3_review_usage_error "--starting-round cannot exceed last consumed review round + 1 (got: $STARTING_ROUND, last consumed: $_last_count)"
+  fi
+  if [ -n "${RESUME_FINDINGS_FILE:-}" ]; then
+    case "$RESUME_FINDINGS_FILE" in
+      /*) ;;
+      *) step3_review_usage_error '--findings-file must be an absolute path' ;;
+    esac
+    case "$RESUME_FINDINGS_FILE" in
+      *$'\n'*|*$'\r'*) step3_review_usage_error '--findings-file must not contain newline or carriage return' ;;
+    esac
+    [ ! -L "$RESUME_FINDINGS_FILE" ] || step3_review_usage_error '--findings-file must not be a symlink'
+    [ -f "$RESUME_FINDINGS_FILE" ] || step3_review_usage_error '--findings-file must be a regular file'
+    [ -r "$RESUME_FINDINGS_FILE" ] || step3_review_usage_error '--findings-file must be readable'
+    _canon_findings="$(step3_review_canonical_file "$RESUME_FINDINGS_FILE")" || step3_review_usage_error '--findings-file parent cannot be resolved'
+    case "$_canon_findings" in
+      "$DESIGN_TMPDIR"/*) RESUME_FINDINGS_FILE="$_canon_findings" ;;
+      *) step3_review_usage_error '--findings-file must resolve under DESIGN_TMPDIR' ;;
+    esac
+  fi
+}
+
+step3_review_write_resume_state() {
+  local _phase_file _phase_tmp _approval_env _approval_tmp _continue_file _continue_tmp
+  [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] || return 0
+  if [ -n "${RESUME_PHASE:-}" ]; then
+    _phase_file="$DESIGN_TMPDIR/.step3-round-${STARTING_ROUND}.phase"
+    _phase_tmp="${_phase_file}.tmp.$$"
+    printf '%s\n' "$RESUME_PHASE" >"$_phase_tmp"
+    mv "$_phase_tmp" "$_phase_file"
+  fi
+  if [ -n "${RESUME_FINDINGS_FILE:-}" ]; then
+    _approval_env="$DESIGN_TMPDIR/.gate-b-per-round-approval-round-${STARTING_ROUND}.env"
+    _approval_tmp="${_approval_env}.tmp.$$"
+    printf 'FINDINGS_FILE=%s\n' "$RESUME_FINDINGS_FILE" >"$_approval_tmp"
+    mv "$_approval_tmp" "$_approval_env"
+  fi
+  if [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
+    _continue_file="$DESIGN_TMPDIR/.postplan-operator-continue-${STARTING_ROUND}"
+    _continue_tmp="${_continue_file}.tmp.$$"
+    : >"$_continue_tmp"
+    mv "$_continue_tmp" "$_continue_file"
+  fi
+}
 if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" ]; then
   # shellcheck source=scripts/lib-quiet.sh
   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-quiet.sh" || true
@@ -135,7 +241,19 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
   exit 1
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-tmpdir.sh" ]; then
+  # shellcheck source=scripts/lib-design-tmpdir.sh
+  source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-tmpdir.sh"
+  larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+fi
+step3_review_validate_resume_state
+if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+else
+  step3_review_write_resume_state
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+fi
 # Marker step id: STEP=design-step3-review
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {

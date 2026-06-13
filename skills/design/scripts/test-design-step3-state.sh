@@ -127,4 +127,29 @@ grep -Fq 'prior cumulative snapshot' "$D6/.accepted-plan-findings-all.prev.md" |
 grep -Fq 'prior oos' "$D6/oos-accepted-design.md" || fail "auto continuation should preserve accepted OOS"
 grep -Fq 'prior oos snapshot' "$D6/.oos-accepted-design.prev.md" || fail "auto continuation should preserve accepted OOS snapshot"
 
+
+
+echo "=== state helper ownership split stays narrow ==="
+D7="$TMP/no-preview-clear"
+mkdir -p "$D7/.completed"
+: >"$D7/.step3-reentry"
+: >"$D7/.step3-entry-plan-printed"
+out=$(run_action "$D7" direct-review-entry)
+[[ "$out" == *'STEP3_STATE=direct-review-entry'* ]] || fail "direct-review entry state missing: $out"
+[[ -f "$D7/.step3-entry-plan-printed" ]] || fail "direct-review entry must not clear preview sentinel"
+
+D8="$TMP/auto-no-preview-clear"
+mkdir -p "$D8/.completed"
+: >"$D8/.step3-entry-plan-printed"
+out=$(run_action "$D8" auto-continuation-entry)
+[[ "$out" == *'STEP3_STATE=auto-continuation-entry'* ]] || fail "auto-continuation state missing: $out"
+[[ -f "$D8/.step3-entry-plan-printed" ]] || fail "auto-continuation state helper must not clear preview sentinel"
+
+set +e
+bad_out=$("$SUBJECT" --design-tmpdir "$D8" --postplan-operator-continue 2>&1)
+bad_rc=$?
+set -e
+[[ "$bad_rc" -eq 2 ]] || fail "state helper should reject postplan operator mode rc=$bad_rc: $bad_out"
+find "$TMP" -name '.postplan-operator-continue-*' -print -quit | grep -q . \
+  && fail "state helper must not write postplan operator continue markers"
 printf 'PASS: test-design-step3-state.sh\n'

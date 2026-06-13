@@ -1405,4 +1405,132 @@ out_psc_load=$(bash "$LOAD" --design-tmpdir "$RESTORE_PSC" --issue 9 --repo owne
 [[ "$out_psc_load" == *"LOAD_OK=true"* ]] || fail "pause-save-complete load failed: $out_psc_load"
 [[ ! -e "$RESTORE_PSC/.pause-save-complete" ]] || fail "pause load should clear stale .pause-save-complete"
 
+
+echo "=== launcher-owned Step 3 re-entry and preview sentinel ownership ==="
+DESIGN_ENTRY="$TMP/design-step3-entry-reentry"
+make_design_tmpdir "$DESIGN_ENTRY"
+printf 'entry plan\n' >"$DESIGN_ENTRY/plan.txt"
+: >"$DESIGN_ENTRY/.step3-entry-plan-printed"
+env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_ENTRY" ISSUE_NUMBER=9 \
+  bash "$REPO_ROOT/skills/design/scripts/design-step3-entry.sh" --reentry >/dev/null
+[[ -f "$DESIGN_ENTRY/.completed/step-1e" ]] || fail "step3 entry --reentry missing step-1e"
+[[ ! -f "$DESIGN_ENTRY/.step3-reentry" ]] || fail "step3 entry --reentry should let entry-state consume marker"
+[[ -f "$DESIGN_ENTRY/.step3-entry-plan-printed" ]] || fail "step3 entry --reentry must not clear preview sentinel"
+
+DESIGN_CONT_CLEAR="$TMP/design-continuation-clear"
+make_design_tmpdir "$DESIGN_CONT_CLEAR"
+: >"$DESIGN_CONT_CLEAR/.step3-entry-plan-printed"
+: >"$DESIGN_CONT_CLEAR/.pause-requested"
+printf 'issue body continuation clear\n' >"$BODY_FILE"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+out_cont_clear=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_CONT_CLEAR" ISSUE_NUMBER=9 REPO=owner/repo \
+  bash "$REPO_ROOT/skills/design/scripts/design-step3-continuation-entry.sh" 2>&1)
+[[ "$out_cont_clear" == *"PAUSE_OK=true"* ]] || fail "continuation entry pause mismatch: $out_cont_clear"
+[[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-entry-plan-printed" ]] \
+  || fail "continuation entry should clear preview sentinel before pause-save"
+
+
+echo "=== design-step2b-postplan completion-only marker ownership ==="
+DESIGN_STEP2B_ONLY="$TMP/design-step2b-only"
+make_design_tmpdir "$DESIGN_STEP2B_ONLY"
+env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_STEP2B_ONLY" ISSUE_NUMBER=9 \
+  bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" --write-step2b-completion-only >/dev/null
+[[ -f "$DESIGN_STEP2B_ONLY/.completed/step-2b" ]] || fail "step2b-only completion missing step-2b"
+[[ ! -f "$DESIGN_STEP2B_ONLY/.completed/step-2b.5" ]] || fail "step2b-only completion must not write step-2b.5"
+
+DESIGN_STEP2B5_ONLY="$TMP/design-step2b5-only"
+make_design_tmpdir "$DESIGN_STEP2B5_ONLY"
+env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_STEP2B5_ONLY" ISSUE_NUMBER=9 \
+  bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" --write-completion-only >/dev/null
+[[ -f "$DESIGN_STEP2B5_ONLY/.completed/step-2b.5" ]] || fail "completion-only missing step-2b.5"
+[[ ! -f "$DESIGN_STEP2B5_ONLY/.completed/step-2b" ]] || fail "completion-only without include must not write step-2b"
+
+DESIGN_BOTH_COMPLETE="$TMP/design-both-complete"
+make_design_tmpdir "$DESIGN_BOTH_COMPLETE"
+env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_BOTH_COMPLETE" ISSUE_NUMBER=9 \
+  bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" --write-completion-only --include-step2b >/dev/null
+[[ -f "$DESIGN_BOTH_COMPLETE/.completed/step-2b" && -f "$DESIGN_BOTH_COMPLETE/.completed/step-2b.5" ]] \
+  || fail "completion-only include should write both markers"
+
+for mode in step2b step2b5 both; do
+  DESIGN_PAUSED="$TMP/design-completion-paused-$mode"
+  make_design_tmpdir "$DESIGN_PAUSED"
+  : >"$DESIGN_PAUSED/.pause-requested"
+  printf 'issue body completion %s\n' "$mode" >"$BODY_FILE"
+  rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+  case "$mode" in
+    step2b) args=(--write-step2b-completion-only) ;;
+    step2b5) args=(--write-completion-only) ;;
+    both) args=(--write-completion-only --include-step2b) ;;
+  esac
+  out_completion_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_PAUSED" ISSUE_NUMBER=9 REPO=owner/repo \
+    bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" "${args[@]}" 2>&1)
+  [[ "$out_completion_pause" == *"PAUSE_OK=true"* ]] || fail "completion pause $mode mismatch: $out_completion_pause"
+  case "$mode" in
+    step2b)
+      [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b" ]] || fail "paused step2b marker missing"
+      [[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b.5" ]] || fail "paused step2b-only wrote step-2b.5"
+      ;;
+    step2b5)
+      [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b.5" ]] || fail "paused step2b.5 marker missing"
+      [[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b" ]] || fail "paused step2b.5-only wrote step-2b"
+      ;;
+    both)
+      [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b" && -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b.5" ]] \
+        || fail "paused include markers missing"
+      ;;
+  esac
+done
+
+DESIGN_NORMAL_PAUSE="$TMP/design-normal-postplan-pause"
+make_design_tmpdir "$DESIGN_NORMAL_PAUSE"
+: >"$DESIGN_NORMAL_PAUSE/.pause-requested"
+printf 'issue body normal postplan pause\n' >"$BODY_FILE"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+out_normal_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_NORMAL_PAUSE" ISSUE_NUMBER=9 REPO=owner/repo \
+  bash "$REPO_ROOT/skills/design/scripts/design-step2b-postplan.sh" --site gate-b 2>&1)
+[[ "$out_normal_pause" == *"PAUSE_OK=true"* ]] || fail "normal postplan pause mismatch: $out_normal_pause"
+[[ ! -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-2b.5" ]] \
+  || fail "normal postplan pause should happen before completion marker"
+
+
+echo "=== Step 3 resume-state wrapper writes before pause-save ==="
+for resume_case in findings apply postapply continuation postplan; do
+  DESIGN_RESUME="$TMP/design-step3-resume-$resume_case"
+  make_design_tmpdir "$DESIGN_RESUME"
+  printf '1\n' >"$DESIGN_RESUME/review-round-count.txt"
+  printf 'findings\n' >"$DESIGN_RESUME/filtered-findings.md"
+  : >"$DESIGN_RESUME/.pause-requested"
+  printf 'issue body step3 resume %s\n' "$resume_case" >"$BODY_FILE"
+  rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+  case "$resume_case" in
+    findings) args=(--starting-round 1 --findings-file "$DESIGN_RESUME/filtered-findings.md") ;;
+    apply) args=(--starting-round 1 --phase awaiting-apply) ;;
+    postapply) args=(--starting-round 1 --phase awaiting-post-apply) ;;
+    continuation) args=(--starting-round 1 --phase awaiting-continuation) ;;
+    postplan) args=(--starting-round 1 --postplan-operator-continue) ;;
+  esac
+  out_resume_pause=$(env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" DESIGN_TMPDIR="$DESIGN_RESUME" ISSUE_NUMBER=9 REPO=owner/repo \
+    bash "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" "${args[@]}" 2>&1)
+  [[ "$out_resume_pause" == *"PAUSE_OK=true"* ]] || fail "step3 resume pause $resume_case mismatch: $out_resume_pause"
+  case "$resume_case" in
+    findings)
+      grep -Fq "FINDINGS_FILE=$DESIGN_RESUME/filtered-findings.md" "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.gate-b-per-round-approval-round-1.env" \
+        || fail "paused findings-file env missing"
+      ;;
+    apply)
+      [[ "$(cat "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase")" == awaiting-apply ]] || fail "paused apply phase missing"
+      ;;
+    postapply)
+      [[ "$(cat "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase")" == awaiting-post-apply ]] || fail "paused postapply phase missing"
+      ;;
+    continuation)
+      [[ "$(cat "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.step3-round-1.phase")" == awaiting-continuation ]] || fail "paused continuation phase missing"
+      ;;
+    postplan)
+      [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.postplan-operator-continue-1" ]] || fail "paused postplan continue marker missing"
+      ;;
+  esac
+done
+
 echo "All assertions passed."

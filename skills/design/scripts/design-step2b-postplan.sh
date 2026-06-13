@@ -11,6 +11,9 @@ SITE=""
 SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
 SKIP_VALIDATE=""
 PUBLIC_ARGV_WORDS=()
+WRITE_COMPLETION_ONLY=false
+INCLUDE_STEP2B=false
+WRITE_STEP2B_COMPLETION_ONLY=false
 
 # Prompt-side values may be supplied only as environment variables by Claude Code.
 # Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
@@ -58,6 +61,9 @@ while [ "$#" -gt 0 ]; do
     --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
     --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
     --skip-validate) SKIP_VALIDATE=1; shift ;;
+    --write-completion-only) WRITE_COMPLETION_ONLY=true; shift ;;
+    --include-step2b) INCLUDE_STEP2B=true; shift ;;
+    --write-step2b-completion-only) WRITE_STEP2B_COMPLETION_ONLY=true; shift ;;
     --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
     --loop-status) LOOP_STATUS="$2"; shift 2 ;;
     --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
@@ -86,6 +92,38 @@ design_source_env_optional() {
 }
 
 design_source_env_optional
+design_require_plugin_root
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
+if [ -z "${DESIGN_TMPDIR:-}" ]; then
+  printf '%s\n' "/design Step 2b postplan: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 2
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+if [ "$WRITE_COMPLETION_ONLY" = true ] && [ "$WRITE_STEP2B_COMPLETION_ONLY" = true ]; then
+  printf '%s\n' 'design-step2b-postplan.sh: completion-only modes are mutually exclusive' >&2
+  exit 2
+fi
+if [ "$INCLUDE_STEP2B" = true ] && [ "$WRITE_COMPLETION_ONLY" != true ]; then
+  printf '%s\n' 'design-step2b-postplan.sh: --include-step2b requires --write-completion-only' >&2
+  exit 2
+fi
+if [ "$WRITE_STEP2B_COMPLETION_ONLY" = true ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2b"
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  exit 0
+fi
+if [ "$WRITE_COMPLETION_ONLY" = true ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+  if [ "$INCLUDE_STEP2B" = true ]; then
+    : > "$DESIGN_TMPDIR/.completed/step-2b"
+  fi
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  exit 0
+fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 _postplan_site="${SITE:-step2b}"
 if [[ "$_postplan_site" != "step2b" ]]; then
@@ -107,10 +145,10 @@ case "${_postplan_rc:-1}" in
   0)
     printf 'POSTPLAN_RC=%s\n' "${_postplan_rc}"
     printf 'POSTPLAN_STATUS=ok\n'
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2b.5"
     if [[ "$_postplan_site" == step2b || -z "$_postplan_site" ]]; then
-      mkdir -p "$DESIGN_TMPDIR/.completed"
       : > "$DESIGN_TMPDIR/.completed/step-2b"
-      : > "$DESIGN_TMPDIR/.completed/step-2b.5"
     fi
     ;;
   10)

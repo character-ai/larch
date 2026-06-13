@@ -18,3 +18,6 @@ Centralizes state transitions that must be safe across pause/resume and direct S
 ## Harness
 
 `skills/design/scripts/test-design-step3-state.sh` covers Gate-B bypass, direct-review re-entry, pause hygiene, auto-continuation cleanup, and settled lower-round loop-state cleanup.
+## Ownership split
+
+`design-step3-review.sh --postplan-operator-continue` writes the non-plan-changing postplan resume marker. Legacy continuation preview cleanup is owned by `design-step3-continuation-entry.sh`. Do not add or document a `design-step3-state.sh` mode for postplan operator continue.
