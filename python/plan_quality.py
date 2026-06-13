@@ -1575,34 +1575,39 @@ def _tmpdir_guard_backup(design_tmpdir: Path, manifest_text: str, backup_dir: Pa
 
 
 def _tmpdir_guard_restore(design_tmpdir: Path, before_text: str, after_text: str, backup_dir: Path) -> bool:
-    before_paths = {line.split("\t", 2)[2] for line in before_text.splitlines() if line.count("\t") >= 2}
-    after_paths = {line.split("\t", 2)[2] for line in after_text.splitlines() if line.count("\t") >= 2}
-    for rel in sorted(after_paths - before_paths, reverse=True):
-        if not _tmpdir_guard_rel_safe(rel):
-            return False
-        target = design_tmpdir / rel
-        if target.is_dir():
-            shutil.rmtree(target)
-        else:
-            target.unlink(missing_ok=True)
-    for line in before_text.splitlines():
-        if not line:
-            continue
-        parts = line.split("\t")
-        if len(parts) < 3:
-            return False
-        kind, _hash, rel = parts[0], parts[1], parts[2]
-        if not _tmpdir_guard_rel_safe(rel):
-            return False
-        dest = design_tmpdir / rel
-        if kind == "FILE":
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(backup_dir / rel, dest)
-        elif kind == "DIR":
-            dest.mkdir(parents=True, exist_ok=True)
-        else:
-            return False
-    return True
+    try:
+        before_paths = {line.split("\t", 2)[2] for line in before_text.splitlines() if line.count("\t") >= 2}
+        after_paths = {line.split("\t", 2)[2] for line in after_text.splitlines() if line.count("\t") >= 2}
+        for rel in sorted(after_paths - before_paths, reverse=True):
+            if not _tmpdir_guard_rel_safe(rel):
+                return False
+            target = design_tmpdir / rel
+            if target.is_symlink():
+                target.unlink(missing_ok=True)
+            elif target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink(missing_ok=True)
+        for line in before_text.splitlines():
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 3:
+                return False
+            kind, _hash, rel = parts[0], parts[1], parts[2]
+            if not _tmpdir_guard_rel_safe(rel):
+                return False
+            dest = design_tmpdir / rel
+            if kind == "FILE":
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup_dir / rel, dest)
+            elif kind == "DIR":
+                dest.mkdir(parents=True, exist_ok=True)
+            else:
+                return False
+        return True
+    except OSError:
+        return False
 
 
 def _git_status_snapshot(repo: Path) -> bytes:

@@ -415,9 +415,11 @@ AWK
         case "$gw_start" in ''|*[!0-9]*) continue ;; esac
         case "$gw_end" in ''|*[!0-9]*) continue ;; esac
         tasks_file="$WORK_DIR/gantt-round-$gw_rn.tsv"
+        sorted_file="$WORK_DIR/gantt-round-$gw_rn-sorted.tsv"
         awk -F'\t' -v mapf="$slot_map" -v rstart="$gw_start" -v rend="$gw_end" \
             -f "$derive_awk" -f "$gantt_awk" "$slot_map" "$TIMING_LEDGER" 2>/dev/null \
-            | LC_ALL=C sort -t $'\t' -k2,2n -k3,3n -k1,1 | head -n 25 >"$tasks_file" || : >"$tasks_file"
+            | LC_ALL=C sort -t $'\t' -k2,2n -k3,3n -k1,1 >"$sorted_file" || : >"$sorted_file"
+        head -n 25 "$sorted_file" >"$tasks_file" || : >"$tasks_file"
         {
             printf '### Round %s reviewer timing\n\n' "$gw_rn"
             if [ -s "$tasks_file" ]; then

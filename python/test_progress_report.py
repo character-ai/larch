@@ -1416,3 +1416,73 @@ def test_progress_chart_failure_preserves_detail(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr(progress_report, "render_gantt", boom)
 
     assert progress_report._render_review_detail(impl, "") == "detail survives"
+
+
+def test_progress_round_windows_aggregate_multiple_rows() -> None:
+    rows = [
+        "v1\tround\t100\timplement\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n".split("\t"),
+        "v1\tround\t101\timplement\tStep 5\t1\t1000\t1200\t200\t1\t0\t0\t-\n".split("\t"),
+    ]
+    assert progress_report._progress_round_windows(rows) == {1: (1000, 1200)}
+
+
+def test_progress_multi_row_round_window_includes_vendor_and_title_span(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text(
+        '{"slot":"correctness","tool":"cursor","output":"/tmp/cursor-specialist-correctness-output.txt"}\n',
+        encoding="utf-8",
+    )
+    (impl / "timing-ledger.tsv").write_text(
+        "".join(
+            [
+                "v1\tround\t100\timplement\tStep 5\t1\t1000\t1060\t60\t1\t0\t0\t-\n",
+                "v1\tround\t101\timplement\tStep 5\t1\t1000\t1200\t200\t1\t0\t0\t-\n",
+                "v1\tvendor\t102\timplement\t-\tcursor\treview\t1150\t1170\t20\tcursor-specialist-correctness-output.txt\t0\tcomplete\n",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "Review Phase Detail")
+
+    report = progress_report._render_review_detail(impl, "")
+
+    assert "Review Phase Detail" in report
+    assert "cursor/correctness" in report
+    assert "Round 1 reviewer timing  ·  window 0:00-3:20 (200s)" in report
+    assert "### Round 1 reviewer timing" in report
+    assert "```" in report
+
+
+def test_progress_missing_ledger_preserves_detail_without_chart(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "detail survives")
+
+    report = progress_report._render_review_detail(impl, "")
+
+    assert report == "detail survives"
+    assert "### Round" not in report
+    assert "```" not in report
+
+
+def test_progress_bad_ledger_preserves_detail_without_chart(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(_MINIMAL_ROUND_META, encoding="utf-8")
+    (impl / "timing-ledger.tsv").write_text("malformed\nshort\nv1\tvendor\tbad\trow\n", encoding="utf-8")
+    monkeypatch.setattr(progress_report, "_call_render_phase_detail_script", lambda *_args: "detail survives")
+
+    report = progress_report._render_review_detail(impl, "")
+
+    assert report == "detail survives"
+    assert "### Round" not in report
+    assert "```" not in report
