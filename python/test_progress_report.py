@@ -131,6 +131,25 @@ def test_implement_pointer_match_ship_pr(tmp_path: Path, monkeypatch) -> None:  
     assert "iteration: 2" in report
 
 
+def test_implement_pointer_match_ship_pr_unlisted_phase(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    cwd = tmp_path / "repo"
+    cwd.mkdir()
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _write_implement_pointer(home, "123", impl, cwd)
+    _write_mark(impl, "Step 0 — preflight")
+    (impl / "ship-pr-state.sh").write_text("PHASE=bump\n", encoding="utf-8")
+
+    report = progress_report._report(str(cwd))
+
+    assert report == "Ship-PR phase: bump"
+
+
 def test_implement_step5_renderer(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
