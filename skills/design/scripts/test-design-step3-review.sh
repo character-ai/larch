@@ -46,9 +46,48 @@ source "$LOOP"
 step3_record_report_evidence tally-error
 [ -s "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" ] || fail 'tally-error must record escalation ledger row'
 grep -Fq 'trigger=tally-error' "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail 'tally-error ledger trigger missing'
+grep -Fq 'phase=validation' "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail 'tally-error ledger phase missing'
 [ ! -f "$DESIGN_TMPDIR/design-failure-terminal-state.env" ] || fail 'panel degradation must not stage terminal state'
 rm -rf "$D_LOOP"
 pass 'Step 3 tally-error records escalation evidence without terminal state'
+
+assert_escalation_recorded() {
+  local status="$1" expected_phase="$2"
+  local dir
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-escalation-${status}.XXXXXX")
+  DESIGN_TMPDIR="$dir"
+  export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
+  # shellcheck source=skills/design/scripts/review-design-step3-loop.sh
+  # shellcheck disable=SC1091
+  source "$LOOP"
+  step3_record_report_evidence "$status"
+  [ -s "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" ] || fail "${status} must record escalation ledger row"
+  grep -Fq "trigger=${status}" "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail "${status} ledger trigger missing"
+  grep -Fq "phase=${expected_phase}" "$DESIGN_TMPDIR/design-failure-escalation-ledger.tsv" || fail "${status} ledger phase=${expected_phase} missing"
+  [ ! -f "$DESIGN_TMPDIR/design-failure-terminal-state.env" ] || fail "${status} must not stage terminal state"
+  rm -rf "$dir"
+}
+
+for status in main-agent-vote-required main-agent-apply-required panel-failed degraded-empty-collector; do
+  assert_escalation_recorded "$status" validation
+done
+assert_escalation_recorded postplan-operator-required postplan
+pass 'Step 3 main-agent and degradation statuses record escalation evidence'
+
+D_REMAP=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-remap.XXXXXX")
+DESIGN_TMPDIR="$D_REMAP"
+export DESIGN_TMPDIR PLUGIN_ROOT="$ROOT"
+# shellcheck source=skills/design/scripts/lib-phase-driver.sh
+source "$ROOT/skills/design/scripts/lib-phase-driver.sh"
+larch_quiet_init
+# shellcheck source=skills/design/scripts/review-design-step3-loop.sh
+# shellcheck disable=SC1091
+source "$LOOP"
+step3_loop_persist_envelope main-agent-apply-required 1 1 1
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required' "$DESIGN_TMPDIR/.step3-review-result.env" || fail 'remap guard: STEP3_REVIEW_LOOP_STATUS must stay main-agent-apply-required'
+grep -Fxq 'LOOP_STATUS=complete' "$DESIGN_TMPDIR/.step3-review-result.env" || fail 'remap guard: LOOP_STATUS must remap to complete for main-agent-apply-required'
+rm -rf "$D_REMAP"
+pass 'Step 3 remap-vs-status guard preserves STEP3_REVIEW_LOOP_STATUS distinct from LOOP_STATUS'
 
 if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'

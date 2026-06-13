@@ -61,7 +61,6 @@ step3_stage_postplan_failed() {
     set -e
     if grep -Fxq 'STAGED=false' "$DESIGN_TMPDIR/step3-stage-terminal-state.stdout.log" 2>/dev/null; then
         emit_kv WARN "Step 3: terminal state preserved with conflicting outcome/site/trigger"
-        return 1
     fi
     if [[ "$rc" -eq 0 ]]; then
         : >"$sentinel"

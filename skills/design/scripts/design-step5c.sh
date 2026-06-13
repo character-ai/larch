@@ -114,6 +114,18 @@ fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 # Marker step id: STEP=design-step5c
 design_bg_wait_marker_start design-step5c || true
+emit_report_gate_sidecars_from_disk() {
+  local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
+  : >"$handoff"
+  for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
+    [ -s "$sidecar" ] || continue
+    cat "$sidecar" >>"$handoff"
+    printf '\n' >>"$handoff"
+  done
+  if [ -s "$handoff" ]; then
+    printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
+  fi
+}
    _publish_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-publish-stdout.XXXXXX")" || {
      printf '%s\n' "**⚠ Step 5c: could not allocate design-publish stdout capture; aborting /design**" >&2
      exit 1
@@ -180,16 +192,12 @@ design_bg_wait_marker_start design-step5c || true
        --mode "${MODE:-N/A}" \
        ${REPO:+--repo "$REPO"} \
        --post-publish-only || true
+     emit_report_gate_sidecars_from_disk
    }
    if [[ "${_publish_rc:-0}" -eq 2 ]]; then
      rm -f "$_publish_stdout_file"
      abort_failed_publish_tail 2
      printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
-     exit 1
-   fi
-   if [[ "${_publish_rc:-0}" -eq 5 ]]; then
-     rm -f "$_publish_stdout_file"
-     printf '%s\n' "**⚠ Step 5c: design-publish.sh setup error (exit 5); aborting /design**" >&2
      exit 1
    fi
    if [[ "${_publish_rc:-0}" -eq 3 ]]; then
@@ -293,16 +301,4 @@ if [[ "${_publish_rc:-0}" -eq 4 ]]; then
   printf 'STEP5C_STATUS=validator-defects\n'
 fi
 
-emit_report_gate_sidecars_from_disk() {
-  local sidecar handoff="$DESIGN_TMPDIR/design-report-gate-sidecars.md"
-  : >"$handoff"
-  for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
-    [ -s "$sidecar" ] || continue
-    cat "$sidecar" >>"$handoff"
-    printf '\n' >>"$handoff"
-  done
-  if [ -s "$handoff" ]; then
-    printf 'REPORT_GATE_SIDECARS_FILE=%s\n' "$handoff"
-  fi
-}
 emit_report_gate_sidecars_from_disk

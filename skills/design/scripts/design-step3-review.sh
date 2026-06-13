@@ -277,7 +277,15 @@ set -e
 if [[ "${_rre_rc:-0}" -ne 0 ]]; then
   rm -f "$_plan_review_stdout_file" "$_safe_step3_env"
   printf '%s\n' "**⚠ Step 3: could not read step3 review result env; treating plan review as panel-failed**" >&2
+  STEP3_REVIEW_LOOP_STATUS=panel-failed
   LOOP_STATUS=panel-failed
+  export PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
+  # shellcheck source=skills/design/scripts/lib-phase-driver.sh
+  source "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-phase-driver.sh"
+  larch_quiet_init
+  # shellcheck source=skills/design/scripts/review-design-step3-loop.sh
+  source "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/review-design-step3-loop.sh"
+  step3_record_report_evidence panel-failed
 else
   # shellcheck source=/dev/null
   . "$_safe_step3_env"
