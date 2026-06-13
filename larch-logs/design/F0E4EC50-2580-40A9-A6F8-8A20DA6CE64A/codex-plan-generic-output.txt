@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	plan.txt:29-35; skills/design/scripts/lib-phase-driver.sh:62-68; skills/design/scripts/design-step3-review.sh:133-145	New pre-launch result-envelope helper is not required to preserve the existing symlink-refusing result-env write contract	If .step3-review-result.env is a symlink or otherwise untrusted, a naive overwrite in the new helper can follow the symlink and corrupt data outside the session while bypassing the wrapper's existing symlink refusal path	Revise the plan to require a symlink-safe atomic writer for the helper, preferably phase_driver_write_result_env or an equivalent explicit symlink refusal, with stdout KV fallback still emitted on write refusal
+
+1. **[security] `plan.txt:29-35`**
+   - **Concern:** The new helper writes `.step3-review-result.env`, but the plan does not require the existing symlink-safe result-env write pattern.
+   - **Scenario:** A stale or malicious symlink at `.step3-review-result.env` could be followed by a naive `>` overwrite.
+   - **Suggested revision:** Require `phase_driver_write_result_env` or equivalent symlink refusal before writing the pre-launch `panel-failed` envelope.
