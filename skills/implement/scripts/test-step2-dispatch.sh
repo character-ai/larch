@@ -34,6 +34,8 @@
 #     non-zero exit with a needs_qa manifest (13c) or a status=bailed manifest
 #     (13d) still hard-bails codex-runtime-failure (13d also asserts the
 #     dispatcher token wins over the manifest's own bail_reason).
+#   - Test 13a-scout-cursor: Cursor writes the scout sidecar at the canonical
+#     same path later normalized by the dispatcher.
 #   - --workflow is rejected as an unknown flag.
 #   - needs_qa repair path: stub-Codex writes a needs_qa manifest without
 #     needs_qa.questions and a qa-pending.json with items[] format; dispatcher
@@ -828,6 +830,77 @@ if [[ "$OUT_13A_SCOUT_QA" == *"STATUS=needs_qa"* ]] \
     pass
 else
     fail 13a-scout-qa "needs_qa run should canonicalize invalid scout sidecar; out=$OUT_13A_SCOUT_QA status=$(cat "$TMP13A_SCOUT_QA/step2-scout-coder-status.env" 2>/dev/null || true)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13a-scout-cursor: Cursor writes the scout sidecar at the canonical
+# same path the dispatcher later materializes, so normalization must work when
+# input and output are identical.
+# ---------------------------------------------------------------------------
+TMP13A_SCOUT_CURSOR="$SCRATCH/test13a-scout-cursor"; mkdir -p "$TMP13A_SCOUT_CURSOR"
+SCRATCH_REPO_13A_SCOUT_CURSOR="$SCRATCH/scratch-repo-13a-scout-cursor"
+make_step2_git_repo "$SCRATCH_REPO_13A_SCOUT_CURSOR"
+STUB13A_SCOUT_CURSOR="$SCRATCH/stub-bin-13a-scout-cursor"; mkdir -p "$STUB13A_SCOUT_CURSOR"
+cat > "$STUB13A_SCOUT_CURSOR/cursor" <<'STUB13A_SCOUT_CURSOR'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+: "${STUB_EXPECT_SCOUT_PATH:?}"
+prompt_arg=""
+for arg in "$@"; do
+    prompt_arg="$arg"
+done
+[[ -n "${STUB_PROMPT_CAPTURE:-}" ]] && printf '%s\n' "$prompt_arg" > "$STUB_PROMPT_CAPTURE"
+case "$prompt_arg" in
+    *"$STUB_EXPECT_SCOUT_PATH"*) ;;
+    *) printf 'missing cursor scout path in prompt\n' >&2; exit 8 ;;
+esac
+cat > "$STUB_EXPECT_SCOUT_PATH.tmp" <<'JSON'
+{"archetypes":[{"name":"requirements","focus_area":"correctness","weight":1,"rationale":"Reserved static reviewer.","prompt_body":"Check requirements coverage."},{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}]}
+JSON
+mv "$STUB_EXPECT_SCOUT_PATH.tmp" "$STUB_EXPECT_SCOUT_PATH"
+printf 'edited by cursor scout stub\n' >> "$PWD/README.md"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: cursor scout sidecar complete",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": []
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf '{"usage":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB13A_SCOUT_CURSOR
+chmod +x "$STUB13A_SCOUT_CURSOR/cursor"
+
+SCOUT_EXPECTED_13A_CURSOR="$TMP13A_SCOUT_CURSOR/scout-coder-manifest.json"
+OUT_13A_SCOUT_CURSOR=$(cd "$SCRATCH_REPO_13A_SCOUT_CURSOR" && \
+    PATH="$STUB13A_SCOUT_CURSOR:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13A_SCOUT_CURSOR/manifest.json" \
+    STUB_EXPECT_SCOUT_PATH="$SCOUT_EXPECTED_13A_CURSOR" \
+    STUB_PROMPT_CAPTURE="$TMP13A_SCOUT_CURSOR/prompt-capture.txt" \
+    LARCH_CURSOR_MODEL=stub-cursor-model \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP13A_SCOUT_CURSOR" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+if [[ "$OUT_13A_SCOUT_CURSOR" == *"STATUS=complete"* ]] \
+   && [[ "$OUT_13A_SCOUT_CURSOR" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT_13A_SCOUT_CURSOR" == *"SCOUT_CODER_STATUS=ok"* ]] \
+   && [[ -f "$TMP13A_SCOUT_CURSOR/step2-external-scout-eligible.txt" ]] \
+   && [[ "$(jq -r '.archetypes | length' "$SCOUT_EXPECTED_13A_CURSOR")" == "1" ]] \
+   && [[ "$(jq -r '.archetypes[0].name' "$SCOUT_EXPECTED_13A_CURSOR")" == "api-contract" ]] \
+   && no_wrapper_stdout_lines "$OUT_13A_SCOUT_CURSOR" \
+   && grep -Fq "$SCOUT_EXPECTED_13A_CURSOR" "$TMP13A_SCOUT_CURSOR/prompt-capture.txt"; then
+    pass
+else
+    fail 13a-scout-cursor "cursor same-path sidecar should normalize in place without wrapper stdout; out=$OUT_13A_SCOUT_CURSOR status=$(cat "$TMP13A_SCOUT_CURSOR/step2-scout-coder-status.env" 2>/dev/null || true)"
 fi
 
 # ---------------------------------------------------------------------------
