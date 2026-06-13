@@ -144,6 +144,12 @@ printf '%s\n' "$ct_out" | grep -Fq 'unknown option' || fail "removed --convergen
 echo "=== postplan wrappers clear stale scout sidecars ==="
 POSTPLAN_ROOT="$TMP/postplan-root"
 mkdir -p "$POSTPLAN_ROOT/skills/design/scripts"
+mkdir -p "$POSTPLAN_ROOT/scripts"
+cat >"$POSTPLAN_ROOT/scripts/lib-design-tmpdir.sh" <<'EOS'
+# Minimal stub for test harness — provides larch_design_tmpdir_validate only.
+LARCH_LIB_DESIGN_TMPDIR_LOADED=1
+larch_design_tmpdir_validate() { return 0; }
+EOS
 cat >"$POSTPLAN_ROOT/skills/design/scripts/design-postplan-emit.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
