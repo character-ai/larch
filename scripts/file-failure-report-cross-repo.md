@@ -43,3 +43,9 @@ Tier B callers must not pass raw ledger TSV, raw root-cause files, full report b
 - Tier A `--dedup-only` lookup failure or marker-missing emits `FILE_FAILURE_REPORT_STATUS=lookup-failed-open` and exits 0.
 - Non-dedup missing marker, lookup failure, auth failure, network failure, comment failure, or create failure emits `FILE_FAILURE_REPORT_STATUS=fallback-print-required` with `FILE_FAILURE_REPORT_FALLBACK_REASON=<token>` and exits 0.
 - `--dry-run` validates inputs and marker rules, emits `FILE_FAILURE_REPORT_STATUS=dry-run`, and makes no `gh` calls.
+
+## Prefix-aware Tier B sensitive corpus
+
+`--sensitive-corpus-file PATH` overrides the default `stall-recovery-sensitive-corpus.env` beside `--body-file`. `/implement` callers keep the default path. `/design` callers pass `design-failure-sensitive-corpus.env` so duplicate Tier B reports validate occurrence comments against the design-prefixed sensitive corpus.
+
+Tier B comments fail closed to `fallback-print-required` when the sensitive corpus is missing, invalid, unreadable, or flags a sensitive token. Raw full-report body rejection recognizes both `/implement` and `/design` headings, so duplicate occurrence comments contain only bounded slices. Duplicate `/design` reports still exact-match the public signature marker and post `+1 occurrence` comments when validation passes.

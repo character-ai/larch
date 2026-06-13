@@ -13,6 +13,7 @@ FILE_OOS_MD="$REPO_ROOT/skills/design/scripts/file-design-oos.md"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
+DECOMPOSE_PANEL_MD="$REPO_ROOT/skills/design/references/decompose-panel.md"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -616,6 +617,24 @@ assert_behavioral_harness_pins() {
   contains "$REPO_ROOT/skills/design/scripts/test-step3-orchestrator-fence.sh" 'invoke_step3_review_wrapper' 'Step 3 handoff harness must exercise design-step3-review.sh'
 }
 
+
+assert_design_failure_reporting_contract() {
+  contains "$SKILL_MD" 'invoke `design-stage-terminal-state.sh` before the hard exit, stage `failed-clarify`' 'Step 0b clarify hard fail must stage failed-clarify'
+  contains "$SKILL_MD" 'Clarify operator cancel remains `operator-action` or `cancelled-clarify`' 'Step 0b clarify cancel must remain operator action or cancelled-clarify'
+  contains "$SKILL_MD" 'export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail`' 'SUMMARY_OUTCOME enumeration must include design failure outcomes'
+  contains "$SKILL_MD" 'On the second `PANEL_STATUS=panel-failed`, Split-path stages `failed-judge-panel` through `design-stage-terminal-state.sh`' 'Step 2b.5 second panel-failed must stage failed-judge-panel'
+  contains "$SKILL_MD" 'runs the Final summary block before exit 1, preserves `$DESIGN_TMPDIR`, and does not delegate retry exhaustion to `design-step3-review.sh`' 'Step 2b.5 must own retry exhaustion and run final summary'
+  contains "$SKILL_MD" 'Prompt-side orchestration must not call `record-escalation` for those statuses.' 'Step 3 prompt side must not record script-owned escalation'
+  contains "$SKILL_MD" '`panel-failed`, `tally-error`, and `degraded-empty-collector` remain non-terminal Gate B bypass statuses' 'Step 3 panel degradation must be non-terminal'
+  contains "$SKILL_MD" 'When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, set `SUMMARY_OUTCOME=failed-postplan`' 'Step 3 postplan-failed must route prompt-side final summary'
+  contains "$SKILL_MD" '`postplan-operator-required` is escalation evidence.' 'postplan-operator-required must be escalation trigger'
+  if grep -Fq 'design-step-clarify.sh' "$SKILL_MD"; then
+    fail 'SKILL.md must not reference non-existent design-step-clarify.sh'
+  fi
+  contains "$DECOMPOSE_PANEL_MD" '--outcome failed-judge-panel' 'decompose-panel retry exhaustion command must use failed-judge-panel'
+  contains "$DECOMPOSE_PANEL_MD" '--trigger decompose-panel-retry-exhausted' 'decompose-panel retry exhaustion command must use decompose trigger'
+}
+
 assert_wrapper_fence_ordering() {
   local wrapper first_line second_line
   wrapper='design-step3-entry-state.sh'
@@ -654,6 +673,7 @@ assert_postplan_thin_fence "$SCRIPT_DIR/design-step2b-postplan.sh" 'design-step2
 assert_publish_fence_guards
 assert_step6_cleanup_wrappers
 assert_wrapper_fence_ordering
+assert_design_failure_reporting_contract
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
 assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"

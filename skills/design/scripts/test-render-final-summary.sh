@@ -10,6 +10,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/render-final-summary.sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
+stdout_starts_with_summary() {
+    local summary_file="$1" stdout_file="$2" label="$3"
+    python3 - "$summary_file" "$stdout_file" "$label" <<'PY_SUMMARY_PREFIX'
+import sys
+summary = open(sys.argv[1], encoding="utf-8").read()
+stdout = open(sys.argv[2], encoding="utf-8").read()
+label = sys.argv[3]
+if not stdout.startswith(summary):
+    print(f"FAIL: {label}", file=sys.stderr)
+    raise SystemExit(1)
+PY_SUMMARY_PREFIX
+}
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/trfs.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -91,7 +103,7 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-SENTINEL-OOS" \
     "$SUBJECT" --outcome approved --post-publish-only >"$std_sentinel_oos" 2>/dev/null
 grep -q -- '- \*\*OOS filed\*\*: 3' "$D/final-summary.md" || fail 'sentinel fallback must show OOS count from sentinel when oos-issues-created.md is absent'
 grep -Fq -- 'URLs unavailable' "$D/final-summary.md" || fail 'sentinel fallback must note URLs unavailable when using sentinel count'
-cmp -s "$D/final-summary.md" "$std_sentinel_oos" || fail 'sentinel fallback stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_sentinel_oos" 'sentinel fallback stdout/file mismatch'
 pass 'sentinel fallback reports OOS count when oos-issues-created.md is absent'
 rm -f "$D/oos-issue-sentinel"
 : >"$D/oos-issues-created.md"
@@ -176,8 +188,16 @@ outline_sentinel_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summ
 outline_note_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
 [[ -n "$outline_sentinel_line" && -n "$outline_note_line" && "$outline_note_line" -gt "$outline_sentinel_line" ]] \
     || fail 'cancelled-outline note must be appended after sentinel'
-cmp -s "$D/final-summary.md" "$outline_std" || fail 'cancelled-outline stdout/file mismatch'
+grep -Fq -- '**ℹ /design auto-report skipped:** operator action or cancellation outcome `cancelled-outline`.' "$outline_std" || fail 'cancelled-outline stdout missing operator-action sidecar'
+python3 - "$D/final-summary.md" "$outline_std" <<'PY'
+import sys
+summary = open(sys.argv[1], encoding="utf-8").read()
+stdout = open(sys.argv[2], encoding="utf-8").read()
+if not stdout.startswith(summary):
+    raise SystemExit("cancelled-outline stdout must start with final-summary body")
+PY
 pass 'cancelled-outline outcome renders'
+rm -f "$D/design-failure-operator-action.env" "$D/design-failure-operator-action-chat.md"
 
 PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/python"
@@ -225,7 +245,7 @@ CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=
     "$SUBJECT" --outcome approved --post-publish-only >"$std_fresh_timing" 2>/dev/null
 grep -Fq -- '- **Duration**: 12s' "$D/final-summary.md" || fail 'post-publish path must refresh timing-report-final.json duration'
 [[ -f "$D/timing-report-final.stderr.log" ]] || fail 'post-publish timing refresh must capture timing stderr'
-cmp -s "$D/final-summary.md" "$std_fresh_timing" || fail 'post-publish timing refresh stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_fresh_timing" 'post-publish timing refresh stdout/file mismatch'
 pass 'post-publish refreshes final timing JSON'
 
 std_codex="$TMP/std-codex.log"
@@ -242,7 +262,7 @@ grep -Fq 'Claude $' "$std_codex" || fail 'stdout per-agent cost line missing Cla
 grep -Fq 'Codex $' "$std_codex" || fail 'stdout per-agent cost line missing Codex slot'
 grep -Fq 'Cursor $' "$std_codex" || fail 'stdout per-agent cost line missing Cursor slot'
 grep -Fq 'Tokens: ' "$std_codex" || fail 'stdout per-agent cost line missing token count'
-cmp -s "$D/final-summary.md" "$std_codex" || fail 'codex buckets stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_codex" 'codex buckets stdout/file mismatch'
 if grep -Eq 'BLENDED_WARN|blended rate' "$std_codex" "$D/final-summary.md" "$TMP/std-codex.err"; then
     fail 'codex per-bucket design summary must not surface blended-rate warnings'
 fi
@@ -294,7 +314,7 @@ CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=
     "$SUBJECT" --outcome approved --post-publish-only >"$std_post_na" 2>/dev/null
 # shellcheck disable=SC2016
 grep -Fq '💰 TOTAL: $2.34' "$D/final-summary.md" || fail 'post success with N/A cost must preserve prior usable cost line'
-cmp -s "$D/final-summary.md" "$std_post_na" || fail 'post success preserved-cost stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_post_na" 'post success preserved-cost stdout/file mismatch'
 pass 'post success preserves prior usable cost line'
 
 cp "$PLUGIN_STUB/scripts/render-run-summary.sh" "$TMP/render-run-summary.real"
@@ -343,7 +363,7 @@ case "$fb_line2" in \*\*⚠\ Degraded\ fallback*) ;; *) fail 'renderer-fail fall
 case "$fb_line3" in '- **Duration**:'*|'- **Outcome**:'*) ;; *) fail 'renderer-fail fallback third non-empty line must be first schema bullet' ;; esac
 if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
 if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
-cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_fb" 'renderer-fail fallback stdout/file mismatch'
 pass 'renderer-fail fallback prints final file once'
 std_fb_cancel="$TMP/std-fallback-cancelled.log"
 : >"$D/final-summary.md"
@@ -366,7 +386,7 @@ fb_cancel_run_summary_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final
 fb_cancel_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
 [[ -n "$fb_cancel_run_summary_line" && -n "$fb_cancel_fallback_line" && "$fb_cancel_fallback_line" -gt "$fb_cancel_run_summary_line" ]] \
     || fail 'renderer-fail cancelled fallback marker must follow run-summary marker'
-cmp -s "$D/final-summary.md" "$std_fb_cancel" || fail 'renderer-fail cancelled fallback stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_fb_cancel" 'renderer-fail cancelled fallback stdout/file mismatch'
 std_fb_skip="$TMP/std-fallback-publish-skipped.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="" \
@@ -379,7 +399,7 @@ grep -Fq -- '- **Run logs**: `N/A`' "$D/final-summary.md" || fail 'renderer-fail
 if grep -Fq 'Publish recovery' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not emit recovery prose'; fi
 if grep -Fq 'Log recovery' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not emit log recovery prose'; fi
 if grep -Fq 'larch-logs/design/unknown/' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not synthesize unknown run-log path'; fi
-cmp -s "$D/final-summary.md" "$std_fb_skip" || fail 'renderer-fail publish-skipped fallback stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_fb_skip" 'renderer-fail publish-skipped fallback stdout/file mismatch'
 std_fb_co="$TMP/std-fallback-cancelled-outline.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CO" \
@@ -401,7 +421,7 @@ CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=
 grep -Fq -- '**⚠ Degraded fallback — full renderer failed; warning could not be recorded in execution issues.**' "$D/final-summary.md" \
     || fail 'renderer-fail fallback must disclose missing warning record'
 grep -Fq -- '- **Warnings**: 0' "$D/final-summary.md" || fail 'renderer-fail fallback without warning record must keep warning count at 0'
-cmp -s "$D/final-summary.md" "$std_fb_nowarn" || fail 'renderer-fail no-warning fallback stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$std_fb_nowarn" 'renderer-fail no-warning fallback stdout/file mismatch'
 cp "$TMP/render-run-summary.real" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 
@@ -637,18 +657,18 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
 grep -Fq -- "- **Log recovery branch**: \`larch-log-design-RUNRECOVERY\`" "$D/final-summary.md" || fail 'failed-publish missing recovery branch'
 grep -Fq -- '- **Log flush PR**: #456 — https://github.com/owner/repo/pull/456' "$D/final-summary.md" || fail 'failed-publish missing flush PR'
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the issue is [DESIGNED]; retry log publish from the preserved design tmpdir before starting /implement when the session may contain secrets.' "$D/final-summary.md" || fail 'failed-publish missing admission-ready recovery guidance'
-cmp -s "$D/final-summary.md" "$failed_publish_stdout" || fail 'failed-publish recovery stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$failed_publish_stdout" 'failed-publish recovery stdout/file mismatch'
 failed_publish_not_ready_stdout="$TMP/std-failed-publish-not-ready.log"
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
     "$SUBJECT" --outcome failed-publish --post-publish-only >"$failed_publish_not_ready_stdout" 2>/dev/null
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.' "$D/final-summary.md" || fail 'failed-publish missing rename-not-confirmed recovery guidance'
-cmp -s "$D/final-summary.md" "$failed_publish_not_ready_stdout" || fail 'failed-publish not-ready stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$failed_publish_not_ready_stdout" 'failed-publish not-ready stdout/file mismatch'
 failed_publish_diagram_stdout="$TMP/std-failed-publish-diagram.log"
 RENAMED=true UPSERT_RAN=true UPSERT_STATUS=failed \
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
     "$SUBJECT" --outcome failed-publish --post-publish-only >"$failed_publish_diagram_stdout" 2>/dev/null
 grep -Fq -- "- **Publish recovery**: design logs did not finish publishing and the issue title is [DESIGNED], but the diagram comment was not confirmed; verify or repair \`larch:diagrams\` before starting /implement, then retry logs manually from the preserved design tmpdir." "$D/final-summary.md" || fail 'failed-publish missing diagram recovery guidance'
-cmp -s "$D/final-summary.md" "$failed_publish_diagram_stdout" || fail 'failed-publish diagram stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$failed_publish_diagram_stdout" 'failed-publish diagram stdout/file mismatch'
 unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH RENAMED DESIGNED_ADMISSION_READY UPSERT_RAN UPSERT_STATUS
 pass 'failed-publish recovery bullets'
 
@@ -662,7 +682,7 @@ grep -Fq -- '- **Publish**: skipped — no SESSION_ID / run-log; the plan was wr
 grep -Fq -- '- **Run logs**: `N/A`' "$D/final-summary.md" || fail 'publish-skipped Run logs must be N/A'
 if grep -Fq 'Publish recovery' "$D/final-summary.md"; then fail 'publish-skipped must not emit failed-publish recovery prose'; fi
 if grep -Fq 'larch-logs/design/unknown/' "$D/final-summary.md"; then fail 'publish-skipped must not synthesize unknown run-log path'; fi
-cmp -s "$D/final-summary.md" "$publish_skipped_stdout" || fail 'publish-skipped stdout/file mismatch'
+stdout_starts_with_summary "$D/final-summary.md" "$publish_skipped_stdout" 'publish-skipped stdout/file mismatch'
 pass 'publish-skipped primary bullets'
 
 for summary_outcome in \
@@ -688,7 +708,7 @@ do
     grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
     grep -Fq -- '- **Cost**:' "$matrix_stdout" || fail "matrix $summary_outcome stdout missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$matrix_stdout" || fail "matrix $summary_outcome stdout missing sentinel"
-    cmp -s "$D/final-summary.md" "$matrix_stdout" || fail "matrix $summary_outcome stdout/file mismatch"
+    stdout_starts_with_summary "$D/final-summary.md" "$matrix_stdout" "matrix $summary_outcome stdout/file mismatch"
     if [[ "$summary_outcome" == approved || "$summary_outcome" == approved-partition ]]; then
         if grep -Fq -- '- **Outcome**:' "$D/final-summary.md"; then
             fail "matrix $summary_outcome must omit Outcome bullet"
@@ -834,5 +854,15 @@ grep -Fq -- 'window 0:00-1:05 (65s)' "$RPD_D/final-summary.md" \
     || fail 'design final summary missing m:ss chart title'
 grep -Fq -- '## Review Phase Detail' "$std_rpd" || fail 'stdout missing Review Phase Detail section'
 pass 'post-publish appends Review Phase Detail from plan-review rounds'
+
+
+grep -Fq 'design-failure-report.sh' "$SUBJECT" || fail 'render-final-summary must invoke design-failure-report.sh'
+grep -Fq 'design-failure-report.stdout.log' "$SUBJECT" || fail 'render-final-summary must capture report helper stdout'
+grep -Fq 'design-failure-report.stderr.log' "$SUBJECT" || fail 'render-final-summary must capture report helper stderr'
+grep -Fq 'print_report_gate_sidecars' "$SUBJECT" || fail 'render-final-summary must print report sidecars outside summary body'
+for outcome in failed-postplan failed-clarify failed-judge-panel failed-publish-tail; do
+  grep -Fq "$outcome" "$SUBJECT" || fail "render-final-summary must accept $outcome"
+done
+pass 'design failure report gate static contract'
 
 printf 'PASS: test-render-final-summary.sh\n'

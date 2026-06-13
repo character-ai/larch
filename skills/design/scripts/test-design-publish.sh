@@ -1181,6 +1181,12 @@ assert_rename_before_publish "no architecture call-log ordering rename→publish
 grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
   || fail "missing diagram artifacts must record rename outcome"
 
+
+grep -Fq 'stage_design_terminal_state failed-plan-write' "$SUBJECT" || fail 'design-publish stages failed-plan-write'
+grep -Fq 'stage_design_terminal_state failed-publish' "$SUBJECT" || fail 'design-publish stages failed-publish'
+grep -Fq 'DESIGN_FAILURE_VERSION=1' "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" || fail 'terminal state helper writes required version key'
+pass 'design-publish terminal-state staging static contract'
+
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2
     exit 1

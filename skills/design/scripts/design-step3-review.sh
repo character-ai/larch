@@ -334,6 +334,6 @@ fi
 [[ -n "${DEGRADED_PANEL:-}" ]] && printf 'DEGRADED_PANEL=%s\n' "$DEGRADED_PANEL"
 [[ -n "${PLAN_REVIEW_CONTINUE_REASON:-}" ]] && printf 'PLAN_REVIEW_CONTINUE_REASON=%s\n' "$PLAN_REVIEW_CONTINUE_REASON"
 if [[ "${STEP3_REVIEW_LOOP_STATUS:-}" == postplan-failed ]]; then
-  printf '%s\n' "**⚠ Step 3: postplan failed; preserving \$DESIGN_TMPDIR for operator repair — do not advance to Step 3b or Gate C.**"
+  printf '%s\n' 'SUMMARY_OUTCOME=failed-postplan'
   exit 1
 fi

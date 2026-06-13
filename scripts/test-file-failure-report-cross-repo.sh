@@ -218,6 +218,27 @@ assert_eq 0 "$rc" "tier-b: missing validator exits 0"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-validator")" "tier-b: missing validator falls back"
 assert_eq unsafe-tier-b-comment "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-validator")" "tier-b: missing validator reports unsafe comment"
 
+
+
+dir=$(make_case design-prefix-dedup)
+sed 's#/implement#/design#g' "$dir/body.md" >"$dir/design-body.md"
+printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
+GH_STUB_CASE=dedup; export GH_STUB_CASE; run_script "$dir" "$dir/out-design" --repo owner/repo --body-file "$dir/design-body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
+assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design")" "design-prefix: duplicate comments with explicit corpus"
+contains "$dir/comment.json" '+1 occurrence' "design-prefix: comment includes occurrence line"
+
+dir=$(make_case design-prefix-raw-heading)
+printf '### [Bug] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
+printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
+GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-raw")" "design-prefix: raw /design heading rejected"
+
+dir=$(make_case design-prefix-missing-corpus)
+missing_corpus="$dir/design-failure-sensitive-corpus.env"
+GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-missing" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$missing_corpus" --root-cause-file "$dir/root.md"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-missing")" "design-prefix: missing explicit corpus falls back"
+assert_eq invalid-sensitive-corpus-file "$(kv FILE_FAILURE_REPORT_FALLBACK_REASON "$dir/out-design-missing")" "design-prefix: missing explicit corpus reason"
+
 if [ "$FAIL" -ne 0 ]; then
     echo "FAILURES: $FAIL"
     exit 1

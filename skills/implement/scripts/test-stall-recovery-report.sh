@@ -2349,6 +2349,122 @@ else
     fail "24: escalation public signature changes with sanitized trigger"
 fi
 
+
+
+dir=$(make_tmp case25-generic-profile)
+cat >"$dir/design-failure-terminal-state.env" <<EOF
+DESIGN_FAILURE_VERSION=1
+DESIGN_FAILURE_KIND=terminal
+FAILURE_OUTCOME=failed-judge-panel
+STALL_STEP=judge-panel
+PHASE=judge-panel
+SITE=decompose-panel
+TRIGGER=decompose-panel-retry-exhausted
+BAIL_REASON=decompose-panel-retry-exhausted
+EXIT_CODE=1
+FAILURE_DETAIL_LOG=
+SOURCE_SCRIPT=split-path
+EOF
+run_capture "$SANDBOX/case25-validate-token.out" "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" validate-token --token-kind step --value judge-panel
+assert_eq true "$(kv VALID "$SANDBOX/case25-validate-token.out")" "25: generic validate-token accepts design step"
+if "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" validate-token --token-kind step --value not-a-step >/"$SANDBOX/case25-invalid-token.out" 2>/dev/null; then
+    fail "25: generic validate-token rejects unknown step"
+else
+    pass "25: generic validate-token rejects unknown step"
+fi
+run_capture "$SANDBOX/case25-validate-terminal.out" "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" validate-terminal-state --primary-state-file "$dir/design-failure-terminal-state.env"
+assert_eq true "$(kv VALID "$SANDBOX/case25-validate-terminal.out")" "25: validate-terminal-state accepts design state"
+run_capture "$SANDBOX/case25-classify.out" "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" classify --primary-state-file "$dir/design-failure-terminal-state.env"
+assert_contains 'CLASSIFICATION_FILE=' "$(cat "$SANDBOX/case25-classify.out")" "25: generic classify emits classification file"
+[ -f "$dir/design-failure-classification.env" ] || fail "25: generic classify writes prefixed classification"
+cat >"$dir/design-failure-root-cause.md" <<EOF
+verdict=larch-defect
+confidence=medium
+summary=Decompose panel retry exhausted
+
+Evidence cites bounded design state.
+EOF
+cp "$dir/design-failure-root-cause.md" "$dir/design-failure-bounded-root-cause.md"
+: >"$dir/design-failure-sensitive-corpus.env"
+run_capture "$SANDBOX/case25-compose.out" env LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" compose-report --report-kind terminal-failure --surface chat-print
+assert_contains '[Bug] /design terminal:' "$(cat "$dir/design-failure-chat-print.md")" "25: generic title says /design"
+assert_contains '## /design terminal-failure report' "$(cat "$dir/design-failure-chat-print.md")" "25: generic body says /design"
+assert_contains 'larch-stall:signature=' "$(cat "$dir/design-failure-chat-print.md")" "25: generic marker present"
+mkdir -p "$dir/bin"
+cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s
+' "$*" >>"$GH_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s
+' '{"number":1,"body":"different","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    printf '%s
+' 'https://github.com/character-ai/larch/issues/125'
+    exit 0
+fi
+exit 9
+EOF
+chmod +x "$dir/bin/gh"
+run_capture "$SANDBOX/case25-compose-file.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" compose-report --report-kind terminal-failure --surface chat-print
+assert_eq filed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case25-compose-file.out")" "25: generic Tier B filing uses prefixed artifacts"
+assert_eq https://github.com/character-ai/larch/issues/125 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case25-compose-file.out")" "25: generic Tier B filing emits URL"
+assert_contains 'issue create -R character-ai/larch --title [Bug] /design terminal:' "$(cat "$dir/gh.log")" "25: generic Tier B filing passes design title"
+design_marker_hash=$(grep -Eo '<!-- larch-stall:signature=[0-9a-f]{64} -->' "$dir/design-failure-chat-print.md" | head -n 1 | sed 's/^<!-- larch-stall:signature=//; s/ -->$//')
+cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s
+' "$*" >>"$GH_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '{"number":125,"body":"duplicate <!-- larch-stall:signature=%s -->","pull_request":null}
+' "$DESIGN_MARKER_HASH"
+    exit 0
+fi
+if [ "$1" = api ] && [ "${2:-}" = --method ]; then
+    input=""
+    prev=""
+    for arg in "$@"; do
+        if [ "$prev" = --input ]; then input=$arg; fi
+        prev=$arg
+    done
+    [ -n "$input" ] && cp "$input" "$GH_COMMENT_CAPTURE"
+    printf '%s
+' '{"html_url":"https://github.com/character-ai/larch/issues/125#issuecomment-25"}'
+    exit 0
+fi
+exit 9
+EOF
+chmod +x "$dir/bin/gh"
+: >"$dir/gh.log"
+run_capture "$SANDBOX/case25-compose-dedup.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" DESIGN_MARKER_HASH="$design_marker_hash" GH_COMMENT_CAPTURE="$dir/comment.json" "$SCRIPT" --profile generic --artifact-prefix design-failure --implement-tmpdir "$dir" compose-report --report-kind terminal-failure --surface chat-print
+assert_eq dedup-comment "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case25-compose-dedup.out")" "25: generic Tier B dedup validates prefixed corpus"
+assert_eq https://github.com/character-ai/larch/issues/125#issuecomment-25 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case25-compose-dedup.out")" "25: generic Tier B dedup emits comment URL"
+assert_contains '+1 occurrence' "$(cat "$dir/comment.json")" "25: generic Tier B dedup posts occurrence comment"
+assert_not_contains 'issue create' "$(cat "$dir/gh.log")" "25: generic Tier B dedup skips create"
+
+impl_dir=$(make_tmp case25-implement-defaults)
+cat >"$impl_dir/ship-pr-state.sh" <<EOF
+STALL_TRACKING=true
+STALL_STEP=5
+PHASE=review
+BAIL_REASON=main-agent-required
+EXIT_CODE=1
+DISPATCHER=claude
+EOF
+run_capture "$SANDBOX/case25-implement-classify.out" "$SCRIPT" classify --implement-tmpdir "$impl_dir"
+[ -f "$impl_dir/stall-recovery-classification.env" ] || fail "25: implement default classification filename remains stall-recovery"
+[ ! -e "$impl_dir/design-failure-classification.env" ] || fail "25: implement default must not write design prefix"
+pass "25: implement default filenames remain unchanged"
+
+sig_impl=$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case23-compose.out" 2>/dev/null || true)
+sig_design=$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case25-compose.out")
+[ -z "$sig_impl" ] || [ "$sig_impl" != "$sig_design" ] || fail "25: generic signatures include skill/profile separation"
+pass "25: generic signatures include skill/profile separation"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

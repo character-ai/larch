@@ -180,6 +180,40 @@ add_warn() {
     WARN_LINES+=("$1")
 }
 
+
+stage_design_terminal_state() {
+    local outcome=$1 step=$2 phase=$3 site=$4 trigger=$5 bail=$6 exit_code=$7 detail_log=${8:-}
+    local helper="$PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+    [[ -x "$helper" ]] || return 0
+    local args=(
+        --design-tmpdir "$DESIGN_TMPDIR"
+        --outcome "$outcome"
+        --step "$step"
+        --phase "$phase"
+        --site "$site"
+        --trigger "$trigger"
+        --bail-reason "$bail"
+        --exit-code "$exit_code"
+        --source-script design-publish
+        --summary-outcome "$outcome"
+    )
+    [[ -z "$detail_log" ]] || args+=(--failure-detail-log "$detail_log")
+    set +e
+    "$helper" "${args[@]}"         >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log"         2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+    local stage_rc=$?
+    set -e
+    if [[ "$stage_rc" -ne 0 ]]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design terminal state staging" \
+            --tool "design-stage-terminal-state.sh" \
+            --exit-code "$stage_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log" \
+            --redact >/dev/null 2>&1 || true
+    fi
+}
+
 publish_recovery_detail() {
     local _details=()
     [[ -n "${PR_NUMBER:-}" ]] && _details+=("PR #$PR_NUMBER")
@@ -386,6 +420,8 @@ _plan_block_args=(named-block write --marker plan --issue "$ISSUE" --content-fil
 [[ -n "$ISSUE_WIRE_REPO" ]] && _plan_block_args+=(--repo "$ISSUE_WIRE_REPO")
 if ! python3 "$PLUGIN_ROOT/python/cli.py" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
+    printf 'plan-block write failed\n' >"$DESIGN_TMPDIR/design-plan-write.failure.log"
+    stage_design_terminal_state failed-plan-write publish plan-write design-publish failed plan-write-failed 1 "$DESIGN_TMPDIR/design-plan-write.failure.log"
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         ${REPO:+--repo "$REPO"} \
@@ -537,6 +573,7 @@ if [[ -z "$SESSION_ID" ]]; then
     SUMMARY_OUTCOME=publish-skipped
 elif [[ "${PUBLISH_OK:-}" != true ]]; then
     SUMMARY_OUTCOME=failed-publish
+    stage_design_terminal_state failed-publish publish publish design-publish failed publish-failed "${_publish_rc:-1}" "$DESIGN_TMPDIR/design-log-publish.failure.log"
 fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${PR_URL:-}"

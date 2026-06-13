@@ -1140,3 +1140,14 @@ setup:
 
 test-check-contains-pins:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-check-contains-pins.sh
+
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step3-review
+
+test-design-stage-terminal-state:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-stage-terminal-state.sh
+
+test-design-failure-report:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-failure-report.sh
+
+test-design-step3-review:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh

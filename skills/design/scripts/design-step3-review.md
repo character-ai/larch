@@ -19,3 +19,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 ## Harness
 
 Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+
+## KV-only postplan failure
+
+When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, this wrapper emits `SUMMARY_OUTCOME=failed-postplan` and exits non-zero. It does not print final-summary prose; prompt-side orchestration runs the Final summary block.

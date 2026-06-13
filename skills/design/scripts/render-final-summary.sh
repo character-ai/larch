@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size|cancelled-decompose|cancelled-outline|failed-plan-write|failed-publish|publish-skipped) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size|cancelled-decompose|cancelled-outline|failed-plan-write|failed-publish|failed-postplan|failed-clarify|failed-judge-panel|failed-publish-tail|publish-skipped) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -666,6 +666,45 @@ restore_preserved_cost_line() {
 }
 
 
+
+run_design_failure_report_gate() {
+    [ "$PHASE" = post ] || return 0
+    local helper="$PLUGIN_ROOT/skills/design/scripts/design-failure-report.sh"
+    local out_file="$DESIGN_TMPDIR/design-failure-report.stdout.log"
+    local err_file="$DESIGN_TMPDIR/design-failure-report.stderr.log"
+    [ -x "$helper" ] || return 0
+    set +e
+    "$helper" --design-tmpdir "$DESIGN_TMPDIR" --outcome "$OUTCOME" ${REPO:+--repo "$REPO"} ${ISSUE:+--issue "$ISSUE"} ${RUN_ID:+--run-id "$RUN_ID"} >"$out_file" 2>"$err_file"
+    local gate_rc=$?
+    set -e
+    if [ "$gate_rc" -ne 0 ]; then
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design failure report gate" \
+            --tool "design-failure-report.sh" \
+            --exit-code "$gate_rc" \
+            --category Warnings \
+            --redact \
+            --output-file "$err_file" \
+            >/dev/null 2>&1 || true
+        refresh_issue_counts
+    fi
+}
+
+print_report_gate_sidecars() {
+    local sidecar
+    for sidecar in "$DESIGN_TMPDIR/design-failure-chat-print.md" "$DESIGN_TMPDIR/design-failure-operator-action-chat.md"; do
+        [ -s "$sidecar" ] || continue
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+                printf '%s\n' "$line" >&3
+            else
+                printf '%s\n' "$line"
+            fi
+        done <"$sidecar"
+    done
+}
+
 render_or_fallback() {
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
     local summary_file="$DESIGN_TMPDIR/final-summary.md"
@@ -692,7 +731,8 @@ if [ "$PHASE" = pre ]; then
     exit 0
 fi
 
-# post phase: render to file, then print the resolved file exactly once.
+# post phase: run the report gate, render to file, then print the resolved file exactly once.
+run_design_failure_report_gate
 render_or_fallback
 while IFS= read -r line || [ -n "$line" ]; do
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
@@ -701,6 +741,7 @@ while IFS= read -r line || [ -n "$line" ]; do
         printf '%s\n' "$line"
     fi
 done < "$DESIGN_TMPDIR/final-summary.md"
+print_report_gate_sidecars
 
 if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ] && [ -s "$DESIGN_TMPDIR/final-summary.md" ]; then
     marker="<!-- larch:final-summary v1 runid=${RUN_ID} -->"

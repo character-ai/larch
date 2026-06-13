@@ -131,6 +131,8 @@ run_direct_relevant_targets() {
                 ;;
             skills/design/scripts/design-publish.sh|skills/design/scripts/design-publish.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-design-publish.md|python/plan_quality.py|python/test_plan_quality.py)
                 append_target_once test-design-publish
+                append_target_once test-design-stage-terminal-state
+                append_target_once test-design-failure-report
                 append_target_once test-design-structure
                 ;;
         esac
@@ -165,8 +167,9 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/test-auto-fix-plan-commands.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/auto-fix-plan-commands.sh|skills/design/scripts/auto-fix-plan-commands.md|skills/design/scripts/test-auto-fix-plan-commands.sh|skills/design/scripts/design-step-validator-autofix.sh|skills/design/scripts/design-step-validator-autofix.md)
                 append_target_once test-auto-fix-plan-commands
+                append_target_once test-design-failure-report
                 ;;
         esac
         case "$f" in
@@ -204,14 +207,31 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/design-stage-terminal-state.sh|skills/design/scripts/design-stage-terminal-state.md|skills/design/scripts/test-design-stage-terminal-state.sh|skills/design/scripts/test-design-stage-terminal-state.md)
+                append_target_once test-design-stage-terminal-state
+                append_target_once test-stall-recovery-report
+                ;;
+            skills/design/scripts/design-failure-report.sh|skills/design/scripts/design-failure-report.md|skills/design/scripts/test-design-failure-report.sh|skills/design/scripts/test-design-failure-report.md)
+                append_target_once test-design-failure-report
+                append_target_once test-stall-recovery-report
+                append_target_once test-file-failure-report-cross-repo
+                ;;
+            skills/design/scripts/review-design-step3-loop.sh|skills/design/scripts/review-design-step3-loop.md|skills/design/scripts/design-step3-review.sh|skills/design/scripts/design-step3-review.md|skills/design/scripts/test-design-step3-review.sh|skills/design/scripts/test-design-step3-review.md)
+                append_target_once test-design-step3-review
+                append_target_once test-run-step3-review
+                ;;
+        esac
+        case "$f" in
             skills/design/scripts/render-final-summary.sh|skills/design/scripts/render-final-summary.md|skills/design/scripts/test-render-final-summary.sh|skills/design/scripts/test-render-final-summary.md|scripts/test-render-final-summary-bash32.sh|scripts/test-render-final-summary-bash32.md)
                 append_target_once test-render-final-summary
+                append_target_once test-design-failure-report
                 append_target_once test-render-final-summary-bash32
                 ;;
         esac
         case "$f" in
             skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh|skills/design/scripts/dedup-plan-lines.py|skills/design/scripts/dedup-plan-lines.md)
                 append_target_once test-plan-review-loop
+                append_target_once test-design-step3-review
                 append_target_once test-design-multi-round-integration
                 ;;
         esac
@@ -322,9 +342,12 @@ run_direct_relevant_targets() {
                 ;;
             scripts/file-failure-report-cross-repo.sh|scripts/file-failure-report-cross-repo.md|scripts/test-file-failure-report-cross-repo.sh|scripts/test-file-failure-report-cross-repo.md)
                 append_target_once test-file-failure-report-cross-repo
+                append_target_once test-design-failure-report
                 ;;
             skills/implement/scripts/stall-recovery-report.sh|skills/implement/scripts/stall-recovery-report.md|skills/implement/scripts/stall-recovery-report-allowlists.tsv|skills/implement/scripts/test-stall-recovery-report.sh|skills/implement/scripts/test-stall-recovery-report.md|skills/implement/references/stall-recovery.md)
                 append_target_once test-stall-recovery-report
+                append_target_once test-design-stage-terminal-state
+                append_target_once test-design-failure-report
                 ;;
         esac
         case "$f" in

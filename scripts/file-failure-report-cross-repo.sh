@@ -8,7 +8,7 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 STALL_REPORT_SCRIPT="$PLUGIN_ROOT/skills/implement/scripts/stall-recovery-report.sh"
 
 usage() {
-    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
+    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
 }
 
 emit_kv() { printf '%s=%s\n' "$1" "$2"; }
@@ -99,22 +99,22 @@ assemble_comment() {
 
 reject_tier_b_comment_if_unsafe() {
     local body_file=$1 comment_file=$2 err=$3
-    if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /implement|^## /implement .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
+    if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
         echo "file-failure-report-cross-repo.sh: tier-b comment contains raw report body section" >"$err"
         return 0
     fi
-    local body_dir sensitive_file
+    local body_dir
     body_dir=$(dirname "$body_file")
-    sensitive_file="$body_dir/stall-recovery-sensitive-corpus.env"
+    [ -n "${sensitive_corpus_file:-}" ] || sensitive_corpus_file="$body_dir/stall-recovery-sensitive-corpus.env"
     if [ ! -x "$STALL_REPORT_SCRIPT" ]; then
         echo "file-failure-report-cross-repo.sh: tier-b comment validator unavailable" >"$err"
         return 0
     fi
-    if [ ! -f "$sensitive_file" ] || [ -L "$sensitive_file" ] || [ ! -r "$sensitive_file" ]; then
+    if [ ! -f "$sensitive_corpus_file" ] || [ -L "$sensitive_corpus_file" ] || [ ! -r "$sensitive_corpus_file" ]; then
         echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
         return 0
     fi
-    if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file --implement-tmpdir "$body_dir" --candidate-file "$comment_file" --sensitive-corpus-file "$sensitive_file" >/dev/null 2>"$err"; then
+    if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file --implement-tmpdir "$body_dir" --candidate-file "$comment_file" --sensitive-corpus-file "$sensitive_corpus_file" >/dev/null 2>"$err"; then
         return 0
     fi
     return 1
@@ -127,6 +127,7 @@ dedup_only=false
 attempts_file=""
 escalation_file=""
 root_file=""
+sensitive_corpus_file=""
 publication_tier="tier-a"
 dry_run=false
 
@@ -139,6 +140,7 @@ while [ $# -gt 0 ]; do
         --attempts-file) [ $# -ge 2 ] || { usage; exit 2; }; attempts_file=$2; shift 2 ;;
         --escalation-ledger-file) [ $# -ge 2 ] || { usage; exit 2; }; escalation_file=$2; shift 2 ;;
         --root-cause-file) [ $# -ge 2 ] || { usage; exit 2; }; root_file=$2; shift 2 ;;
+        --sensitive-corpus-file) [ $# -ge 2 ] || { usage; exit 2; }; sensitive_corpus_file=$2; shift 2 ;;
         --publication-tier) [ $# -ge 2 ] || { usage; exit 2; }; publication_tier=$2; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
         *) usage; exit 2 ;;
@@ -164,6 +166,10 @@ if [ -n "$escalation_file" ] && ! validate_read_file "$escalation_file" "--escal
 fi
 if [ -n "$root_file" ] && ! validate_read_file "$root_file" "--root-cause-file"; then
     status_fallback invalid-root-cause-file
+    exit 0
+fi
+if [ -n "$sensitive_corpus_file" ] && ! validate_read_file "$sensitive_corpus_file" "--sensitive-corpus-file"; then
+    status_fallback invalid-sensitive-corpus-file
     exit 0
 fi
 
