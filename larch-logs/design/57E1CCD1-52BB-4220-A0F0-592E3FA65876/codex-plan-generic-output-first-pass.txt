@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	requirements	plan.txt:183-240	Missing explicitly required harness updates for test-design-postplan-emit.sh and the structure harness	The acceptance criteria require test-design-postplan-emit.sh and the structure harness to be extended, but the plan only extends test-design-step2b-drafter.sh, so the required verification for byte-compatible postplan routing and one-call Step 2b structure remains incomplete	Add minimal updates for skills/design/scripts/test-design-postplan-emit.sh and scripts/test-design-structure.sh, or explicitly state the exact existing assertions that satisfy the acceptance criterion
+
+1. **[requirements] Missing required harness updates.**
+   - **Location:** `plan.txt:183-240`
+   - **Concern:** The plan omits the named acceptance-test surfaces.
+   - **Suggested revision:** Add the smallest checks needed in `skills/design/scripts/test-design-postplan-emit.sh` and `scripts/test-design-structure.sh`.
