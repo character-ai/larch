@@ -844,3 +844,146 @@ def test_revise_waterfall_prompt_uses_untrusted_blocks(tmp_path: Path) -> None:
     assert '<plan encoding="literal-redacted">' in prompt
     assert "&lt;&lt;&lt;INJECT" in prompt
     assert "<<<INJECT" not in prompt.split("literal-redacted")[-1]
+
+
+def test_allow_flag_accepts_dot_slash_prefixed_script(tmp_path: Path) -> None:
+    script = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands" / "demo-stdout-help.sh"
+    plan = f"""### UPDATED: {script.relative_to(REPO_ROOT)}
+- Adds flag: `--known-flag`
+```bash
+./{script.relative_to(REPO_ROOT)} --known-flag
+```
+diff_lines: 1
+"""
+    summary = _validate_text(plan, tmp_path)
+    assert "kind=unknown-flag flag=known-flag" not in summary.log_text
+
+
+def test_check_plan_size_missing_plan_returns_rc2(tmp_path: Path) -> None:
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 2, cp.stdout
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["PLAN_SIZE_STATUS"] == "missing-plan"
+
+
+def test_check_plan_size_missing_diff_lines_returns_rc2(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text("body only\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 2, cp.stdout
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["PLAN_SIZE_STATUS"] == "missing-diff-lines"
+
+
+def test_check_plan_size_invalid_mechanical_churn_returns_rc2(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text("body\nmechanical_churn: 35\ndiff_lines: 10\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 2, cp.stdout
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["PLAN_SIZE_STATUS"] == "invalid-mechanical-churn"
+
+
+def test_check_plan_size_hard_trigger_fires(tmp_path: Path) -> None:
+    body = "\n".join(["line"] * 801)
+    (tmp_path / "plan.txt").write_text(f"{body}\ndiff_lines: 801\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["SIZE_TRIGGER_FIRED"] == "true"
+    assert "plan-body-lines" in out["TRIGGER_REASONS"]
+
+
+def test_validate_plan_missing_plan_file_returns_rc2(tmp_path: Path) -> None:
+    missing = tmp_path / "missing-plan.txt"
+    cp = run_cli("plan", "validate", "--plan-file", str(missing), "--repo-root", str(REPO_ROOT))
+    assert cp.returncode == 2
+    assert "unreadable plan file" in cp.stderr
+
+
+def test_validate_commands_missing_tsv_returns_rc2(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.tsv"
+    log = tmp_path / "validate.log"
+    cp = run_cli(
+        "plan",
+        "validate-commands",
+        "--tsv-file",
+        str(missing),
+        "--log-file",
+        str(log),
+        "--repo-root",
+        str(REPO_ROOT),
+    )
+    assert cp.returncode == 2
+    assert "unreadable TSV" in cp.stderr
+
+
+def test_validate_commands_defaults_plugin_root_without_repo_root(tmp_path: Path) -> None:
+    tsv = tmp_path / "commands.tsv"
+    tsv.write_text(
+        "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid\n"
+        "invocation\t2\tskills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh\tunknown-flag\t\t\tcmd1\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "validate.log"
+    cp = run_cli("plan", "validate-commands", "--tsv-file", str(tsv), "--log-file", str(log), cwd=Path("/"))
+    assert cp.returncode == 0, cp.stderr
+    assert "VALIDATE_STATUS=defects-found" in cp.stdout
+    assert log.read_text(encoding="utf-8").endswith("UNSAFE_TOKEN_COUNT=0\n")
+
+
+def test_revise_waterfall_restores_plan_after_failed_round(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --plan-file) plan="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cat >"$plan" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+corrupted
+diff_lines: 9
+PLAN
+: >"$out"
+exit 0
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"].startswith("failed")
+    assert plan.read_text(encoding="utf-8") == original
+
+
+def test_redact_capture_withholds_raw_text_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "SECRET_TOKEN=super-secret-value\n"
+
+    def fail_redact(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=(), returncode=1, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fail_redact)
+    redacted = plan_quality._redact_capture(REPO_ROOT, secret)
+    assert secret not in redacted
+    assert "withheld" in redacted
+
+
+def test_git_status_snapshot_detects_untracked_content_change(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
+    untracked = tmp_path / "scratch.txt"
+    untracked.write_text("before\n", encoding="utf-8")
+    before = plan_quality._git_status_snapshot(tmp_path)
+    untracked.write_text("after\n", encoding="utf-8")
+    after = plan_quality._git_status_snapshot(tmp_path)
+    assert before != after

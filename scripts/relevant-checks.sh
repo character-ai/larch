@@ -170,6 +170,31 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-postplan-emit.sh|skills/design/scripts/design-postplan-emit.md|skills/design/scripts/test-design-postplan-emit.sh|skills/design/scripts/test-design-postplan-emit.md)
+                append_target_once test-design-postplan-emit
+                ;;
+        esac
+        case "$f" in
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-driver.sh|skills/design/scripts/design-driver.md|skills/design/scripts/test-design-driver.sh|skills/design/scripts/test-design-driver.md)
+                append_target_once test-design-driver
+                ;;
+        esac
+        case "$f" in
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/gate-b-dedup-plan.sh|skills/design/scripts/gate-b-dedup-plan.md|skills/design/scripts/test-gate-b-dedup-plan.sh|skills/design/scripts/test-gate-b-dedup-plan.md)
+                append_target_once test-gate-b-dedup-plan
+                ;;
+        esac
+        case "$f" in
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/design-step2b5.sh|skills/design/scripts/design-step2b5.md)
+                append_target_once test-check-plan-size
+                ;;
+        esac
+        case "$f" in
+            python/plan_quality.py|python/test_plan_quality.py|scripts/run-step1-plan-log.sh|scripts/run-step1-plan-log.md|scripts/test-run-step1-plan-log.sh|scripts/test-run-step1-plan-log.md)
+                append_target_once test-run-step1-plan-log
+                ;;
+        esac
+        case "$f" in
             python/agents.py|python/test_agents.py)
                 append_target_once test-launch-codex-exec
                 append_target_once test-launch-codex-ci
@@ -191,7 +216,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh|scripts/test-revise-plan-with-waterfall.sh)
+            python/plan_quality.py|python/test_plan_quality.py|skills/design/scripts/review-design-step3-loop.sh)
                 append_target_once test-revise-plan-with-waterfall
                 ;;
         esac

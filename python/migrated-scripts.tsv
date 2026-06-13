@@ -452,6 +452,16 @@ scripts/test-lib-title-eligibility.md	#3926
 scripts/test-lib-title-markers.sh	#3926
 scripts/test-extract-plan-scope-paths.sh	#3926
 scripts/test-extract-plan-scope-paths.md	#3926
+skills/design/scripts/test-invoke-plan-validator.sh	#3679
+skills/design/scripts/test-invoke-plan-validator.md	#3679
+skills/design/scripts/test-parse-plan-commands.sh	#3679
+skills/design/scripts/test-parse-plan-commands.md	#3679
+skills/design/scripts/test-validate-plan-commands.sh	#3679
+skills/design/scripts/test-validate-plan-commands.md	#3679
+skills/design/scripts/test-check-plan-size.sh	#3679
+skills/design/scripts/test-check-plan-size.md	#3679
+scripts/test-revise-plan-with-waterfall.sh	#3679
+scripts/test-revise-plan-with-waterfall.md	#3679
 scripts/agent-model-args.md	#3673
 scripts/agent-model-args.sh	#3673
 scripts/read-claude-model.sh	#3673

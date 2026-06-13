@@ -54,6 +54,8 @@ make_tmpdir() {
     } > "$dir/session-env.sh"
 }
 
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+
 COMPOSE_SPY="$TMP/compose-spy.sh"
 cat > "$COMPOSE_SPY" <<'EOF'
 #!/usr/bin/env bash
@@ -116,6 +118,16 @@ run-plan
 plan-goals-test
 --input-file
 $case_dir/plan-goals-test.md" "larch-log argv derived"
+
+echo "=== default compose CLI path (no compose override) ==="
+case_dir="$TMP/default-compose"
+make_tmpdir "$case_dir"
+log_argv="$TMP/log-default.argv"
+out="$(RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Default compose")"
+assert_contains "$out" "LOG_WRITTEN=true" "default compose path passes through larch-log stdout"
+assert_contains "$(cat "$case_dir/plan-goals-test.md")" "## Goal
+Default compose" "default compose CLI wrote plan-goals-test.md"
+assert_contains "$(cat "$case_dir/plan-goals-test.md")" "## Implementation Plan" "default compose output includes implementation plan section"
 
 echo "=== canonical RUN_ID prefers sentinel over session-id ==="
 case_dir="$TMP/run-id-sentinel"

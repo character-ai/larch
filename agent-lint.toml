@@ -485,13 +485,6 @@ exclude = [
   # with a Makefile-only regression harness; Step 3 single-pass no longer
   # references it from skills/design/SKILL.md.
   "python/cli.py plan revise-waterfall",
-  # scripts/test-revise-plan-with-waterfall.sh is the Makefile-only regression
-  # harness for the retained helper. Referenced only from Makefile
-  # (test-revise-plan-with-waterfall target) and
-  # scripts/test-revise-plan-with-waterfall.md (sibling contract), matching the
-  # same Makefile-only pattern as test-design-multi-round-integration.sh above.
-  "scripts/test-revise-plan-with-waterfall.sh",
-  "scripts/test-revise-plan-with-waterfall.md",
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.
@@ -905,8 +898,6 @@ exclude = [
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
   "skills/design/scripts/test-emit-plan.sh",
-  "skills/design/scripts/test-parse-plan-commands.sh",
-  "skills/design/scripts/test-validate-plan-commands.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
   "skills/design/scripts/test-findings-classification.sh",
   "skills/design/scripts/test-plan-review-loop.sh",
@@ -1254,8 +1245,6 @@ exclude = [
   "skills/design/scripts/test-design-publish.md",
   "skills/design/scripts/test-design-pause-resume.md",
   "skills/design/scripts/test-emit-plan.md",
-  "skills/design/scripts/test-parse-plan-commands.md",
-  "skills/design/scripts/test-validate-plan-commands.md",
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-findings-classification.md",
   "skills/design/scripts/test-plan-review-loop.md",

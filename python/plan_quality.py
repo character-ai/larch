@@ -651,7 +651,9 @@ def _is_new_script(rows: list[PlanCommandRow], script: str) -> bool:
 
 
 def _allow_flag(rows: list[PlanCommandRow], script: str, flag: str) -> bool:
-    return any(row.row_type == "updated_flag" and row.script_path == script and row.flag == flag for row in rows)
+    while script.startswith("./"):
+        script = script[2:]
+    return any(row.row_type == "updated_flag" and row.script_path.lstrip("./") == script and row.flag == flag for row in rows)
 
 
 def _redact_capture(repo_root: Path, text: str) -> str:
@@ -669,7 +671,7 @@ def _redact_capture(repo_root: Path, text: str) -> str:
                 return proc.stdout
         except OSError:
             pass
-    return text[:65536]
+    return "[redaction unavailable; capture withheld]\n"
 
 
 def validate_plan_command_rows(
@@ -826,7 +828,7 @@ def validate_plan_commands_main(argv: list[str]) -> int:
     if not tsv.is_file():
         diagnostic(f"validate-commands: unreadable TSV: {tsv}")
         return 2
-    repo = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from(tsv.parent)
+    repo = _repo_root_for_plan(tsv.parent, args.repo_root)
     summary = validate_plan_command_rows(
         _read_tsv(tsv), repo, args.dry_runnable_registry, args.source_kind, args.help_timeout, args.dry_run_timeout
     )
@@ -847,7 +849,7 @@ def validate_plan_main(argv: list[str]) -> int:
     if not plan.is_file():
         diagnostic(f"validate: unreadable plan file: {plan}")
         return 2
-    repo = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from(plan.parent)
+    repo = _repo_root_for_plan(plan, args.repo_root)
     source_kind = args.source_kind or ("composed" if plan.name == "composed-plan.md" else "plan")
     rows = parse_plan_commands(plan.read_text(encoding="utf-8", errors="replace"), repo, _plugin_root(repo))
     summary = validate_plan_command_rows(rows, repo, None, source_kind)
@@ -1441,6 +1443,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:
         hash_after = _sha256_file(plan)
         snapshot.unlink(missing_ok=True)
     else:
+        restore()
         all_statuses = " ".join(statuses.values())
         status = "failed-no-patch" if not any(x in all_statuses for x in ("invalid-patch", "apply-failed", "emit-plan-failed")) else ("failed-validation" if "invalid-patch" in all_statuses else "failed-apply")
         tier_out = ""
@@ -1578,6 +1581,32 @@ def _git_status_snapshot(repo: Path) -> bytes:
     if untracked.returncode != 0:
         raise OSError("git ls-files failed")
     chunks.append(untracked.stdout)
+    chunks.append(b"UNTRACKED_HASHES\0")
+    pos = 0
+    while pos < len(untracked.stdout):
+        end = untracked.stdout.find(b"\0", pos)
+        if end == -1:
+            break
+        rel = untracked.stdout[pos:end].decode("utf-8", errors="surrogateescape")
+        pos = end + 1
+        if not rel:
+            continue
+        path = repo / rel
+        entry = rel.encode("utf-8", errors="surrogateescape") + b"\0"
+        if path.is_symlink():
+            try:
+                target = os.readlink(path)
+            except OSError:
+                target = ""
+            entry += hashlib.sha256(target.encode("utf-8", errors="surrogateescape")).hexdigest().encode() + b"\0"
+        elif path.is_file():
+            try:
+                entry += hashlib.sha256(path.read_bytes()).hexdigest().encode() + b"\0"
+            except OSError:
+                entry += b"missing\0"
+        else:
+            entry += b"not-regular\0"
+        chunks.append(entry)
     return b"".join(chunks)
 
 
@@ -1750,8 +1779,10 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     except ValueError:
         diagnostic("auto-fix-commands: --plan-file must be under --design-tmpdir")
         return 2
-    repo = Path(args.repo_root).resolve() if args.repo_root else _repo_root_from(Path.cwd())
-    plugin = _plugin_root(repo)
+    validate_repo = _repo_root_for_plan(plan, args.repo_root)
+    plugin = _plugin_root(validate_repo)
+    consumer_repo = _repo_root_from(Path.cwd())
+    repo = consumer_repo if _git_repo_root(Path.cwd()) else validate_repo
     codex_available = args.codex_available or args.codex_present
     cursor_available = args.cursor_available or args.cursor_present
     vendors = []
@@ -1781,9 +1812,9 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     gate_b = os.environ.get("LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH", str(plugin / "skills" / "design" / "scripts" / "gate-b-dedup-plan.sh"))
     validate_sh = os.environ.get("LARCH_AUTOFIX_VALIDATE_PLAN_SH")
     validator_cli = (
-        [validate_sh, "--plan-file", str(plan), "--repo-root", str(repo)]
+        [validate_sh, "--plan-file", str(plan), "--repo-root", str(validate_repo)]
         if validate_sh
-        else [sys.executable, str(plugin / "python" / "cli.py"), "plan", "validate", "--plan-file", str(plan), "--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]
+        else [sys.executable, str(plugin / "python" / "cli.py"), "plan", "validate", "--plan-file", str(plan), "--repo-root", str(validate_repo), "--design-tmpdir", str(design_tmpdir)]
     )
     target_rel = str(plan.relative_to(design_tmpdir))
     for attempt in range(1, max_attempts + 1):
