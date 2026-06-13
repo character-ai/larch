@@ -703,7 +703,7 @@ If the sanitizer wrapper emits a body between `---LARCH-DIAGRAM-BEGIN---` and `-
 
 If diagram generation fails before a candidate is written, print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`, append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `run-log append-failure` under `Warnings`, and call `design-step3b-sanitize.sh` so it fails closed, deletes any stale candidate, records the warning, runs FINALIZE, and writes `.completed/step-3b` only after FINALIZE succeeds.
 
-> **Continue to the tail wrapper IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting, Gate C, issue plan write, and cleanup still must run.
+> **Continue to Step 4 IMMEDIATELY via the tail wrapper.** The architecture diagram branch is not terminal — rejected-findings reporting, Gate C, issue plan write, and cleanup still must run.
 
 <!-- step:4 — Rejected Plan Review Findings Report -->
 
