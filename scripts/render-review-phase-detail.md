@@ -19,11 +19,11 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
 |------|----------|---------|
 | `--rounds-root DIR` | yes | Directory containing `round-<N>/` subdirs (live: `$IMPLEMENT_TMPDIR`; committed: the run-log dir). |
 | `--findings-file F` | no | `review-findings-full.jsonl` for top-reviewer attribution. |
-| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column **and** the per-round cost window. |
+| `--timing-ledger F` | no | `timing-ledger.tsv`; per-round `type=round` rows supply the Time column through the `--skill`-filtered table window, per-round Cost attribution through the same filtered table window, and reviewer timing chart windows through the unfiltered Gantt window. |
 | `--token-ledger F` | no | `larch-tokens-<hash>.jsonl`; vendor token records (timestamp-windowed to each round) supply the per-round vendor Cost column. |
 | `--skill implement\|design` | no | Default `implement`; `design` renders the same table from design plan-review round artifacts. |
 | `--top-n N` | no | Top-reviewers cap (default `7`). |
-| `--no-gantt` | no | Suppress ASCII reviewer timing charts only. Intended for terminal progress callers. |
+| `--no-gantt` | no | Suppress ASCII reviewer timing charts only. Intended for callers that need table-only output. |
 | `--output F` | no | Write the section to `F`; otherwise print to stdout. |
 
 ## Data sources (per round)
@@ -37,8 +37,9 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
   suggestions" is satisfied by the source tally itself.
 - **Reviewers launched** — `round-<N>/round-meta.json` `.summary.panel.total_slot_count`
   (falls back to `static_slot_count + dynamic_slot_count`).
-- **Time** — `timing-ledger.tsv` `type=round` rows (`max(end_s) - min(start_s)` per
-  round number, column 6). Renders `—` when no ledger / round timing is present
+- **Time** — `timing-ledger.tsv` `type=round` rows are filtered by `--skill`
+  for the table window, then measured as `max(end_s) - min(start_s)` per round
+  number, column 6. Renders `—` when no ledger / round timing is present
   (committed logs do not carry the ledger).
 - **Reviewer timing charts**: `timing-ledger.tsv` `type=vendor` rows provide
   reviewer task windows. Column 8 is `start_s`; column 9 is `end_s`. Round
@@ -49,7 +50,8 @@ sentinel in `summary-final.md` / the tracking-issue `larch:final-summary` commen
   label with a tab-delimited sort because label is the first TSV field. It caps
   at 25 tasks after sorting.
 - **Cost** — the per-round **vendor** cost (Codex + Cursor + Claude subprocess).
-  Vendor token records from `--token-ledger` are attributed to a round by
+  Per-round Cost attribution uses the same `--skill`-filtered table window as
+  Time. Vendor token records from `--token-ledger` are attributed to a round by
   timestamp window (`jq fromdateiso8601` on each record's `ts` against the
   round's epoch `start_s`/`end_s` from `timing-ledger.tsv`), summed per vendor,
   and priced with `python/report_tokens_cost.py` (the ledger's combined `cache_create` is mapped

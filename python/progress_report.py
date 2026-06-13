@@ -14,16 +14,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from gantt import GanttRow, format_mss, render_gantt
-
 TIMING_MARK_MIN_COLS = 5
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
+RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
 
 _MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
 _MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
 _MD_ITALIC_RE = re.compile(r"(?<![_\w])_([^_\n]+)_(?![_\w])")
 _MD_HEADING_RE = re.compile(r"^#{1,6} ")
+
 
 def _strip_md_for_terminal(text: str) -> str:
     """Remove Markdown decorators for plain-text terminal display."""
@@ -265,184 +265,6 @@ def _round_dirs(implement_tmpdir: Path) -> list[Path]:
         return []
     return sorted(dirs, key=lambda p: _round_number(p) or 0)
 
-TIMING_LEDGER_COLS = 13
-TIMING_ROUND_N_COL = 5
-TIMING_ROUND_START_COL = 6
-TIMING_ROUND_END_COL = 7
-TIMING_VENDOR_VENDOR_COL = 5
-TIMING_VENDOR_KIND_COL = 6
-TIMING_VENDOR_START_COL = 7
-TIMING_VENDOR_END_COL = 8
-TIMING_VENDOR_OUTPUT_COL = 10
-PROGRESS_GANTT_ROW_CAP = 25
-
-
-def _completed_round_dirs(rounds_root: Path) -> list[Path]:
-    return [path for path in _round_dirs(rounds_root) if (path / "round-meta.json").is_file()]
-
-
-def _basename(path: str) -> str:
-    return Path(path).name
-
-
-def _derive_progress_label(output: str, vendor: str, task_kind: str) -> str:
-    core = _basename(output)
-    for suffix in (".txt", "-output-ns-retry", "-output", "-ns-retry"):
-        core = core.removesuffix(suffix)
-    core = core.lower()
-    for prefix in ("cursor-specialist-", "codex-specialist-", "claude_sub-specialist-", "claude-specialist-"):
-        if core.startswith(prefix):
-            return f"{prefix.split('-', maxsplit=1)[0]}/{core[len(prefix):]}"
-    for prefix in ("cursor-", "codex-", "claude_sub-", "claude-"):
-        if core.startswith(prefix):
-            rest = core[len(prefix) :] or "panel"
-            return f"{prefix[:-1]}/{rest}"
-    if core in {"", "panel"}:
-        return "panel/panel"
-    if core:
-        return f"unknown/{core}"
-    return f"{vendor}/{task_kind}"
-
-
-def _progress_label_map(round_dirs: list[Path]) -> dict[str, str]:
-    labels: dict[str, str] = {}
-    for round_dir in round_dirs:
-        for manifest in (round_dir / "panel-manifest.ndjson", round_dir / "plan-review-slots.ndjson"):
-            try:
-                lines = manifest.read_text(encoding="utf-8", errors="replace").splitlines()
-            except OSError:
-                continue
-            for line in lines:
-                if not line.strip():
-                    continue
-                try:
-                    parsed: object = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(parsed, dict):
-                    continue
-                row = cast("dict[str, object]", parsed)
-                output = row.get("output")
-                tool = row.get("tool")
-                slot = row.get("slot")
-                if isinstance(output, str) and isinstance(tool, str) and isinstance(slot, str):
-                    labels[_basename(output)] = f"{tool}/{slot}"
-    return labels
-
-
-def _parse_int(value: str) -> int | None:
-    try:
-        return int(value)
-    except ValueError:
-        return None
-
-
-def _timing_lines(timing_ledger: Path) -> list[list[str]]:
-    try:
-        lines = timing_ledger.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-    rows: list[list[str]] = []
-    for line in lines:
-        parts = line.split("\t")
-        if len(parts) < TIMING_LEDGER_COLS or parts[0] != "v1":
-            continue
-        rows.append(parts)
-    return rows
-
-
-def _progress_round_windows(rows: list[list[str]]) -> dict[int, tuple[int, int]]:
-    windows: dict[int, tuple[int, int]] = {}
-    for parts in rows:
-        if parts[1] != "round":
-            continue
-        round_n = _parse_int(parts[TIMING_ROUND_N_COL])
-        start_s = _parse_int(parts[TIMING_ROUND_START_COL])
-        end_s = _parse_int(parts[TIMING_ROUND_END_COL])
-        if round_n is None or start_s is None or end_s is None or end_s <= start_s:
-            continue
-        old = windows.get(round_n)
-        if old is None:
-            windows[round_n] = (start_s, end_s)
-        else:
-            windows[round_n] = (min(old[0], start_s), max(old[1], end_s))
-    return windows
-
-
-def _progress_vendor_rows(
-    rows: list[list[str]],
-    *,
-    window_start_s: int,
-    window_end_s: int,
-    labels: dict[str, str],
-) -> list[GanttRow]:
-    out: list[GanttRow] = []
-    for parts in rows:
-        if parts[1] != "vendor":
-            continue
-        start_s = _parse_int(parts[TIMING_VENDOR_START_COL])
-        end_s = _parse_int(parts[TIMING_VENDOR_END_COL])
-        if start_s is None or end_s is None:
-            continue
-        if end_s <= window_start_s or start_s >= window_end_s:
-            continue
-        clamped_start = max(start_s, window_start_s)
-        clamped_end = min(end_s, window_end_s)
-        if clamped_end <= clamped_start:
-            continue
-        output = parts[TIMING_VENDOR_OUTPUT_COL]
-        label = labels.get(_basename(output)) or _derive_progress_label(
-            output,
-            parts[TIMING_VENDOR_VENDOR_COL],
-            parts[TIMING_VENDOR_KIND_COL],
-        )
-        out.append(GanttRow(label, clamped_start, clamped_end))
-    return sorted(out, key=lambda row: (row.start_s, row.end_s, row.label))[:PROGRESS_GANTT_ROW_CAP]
-
-
-def _render_progress_timing_charts(rounds_root: Path, timing_ledger: Path) -> str:
-    try:
-        round_dirs = _completed_round_dirs(rounds_root)
-        if not round_dirs or not timing_ledger.is_file():
-            return ""
-        rows = _timing_lines(timing_ledger)
-        windows = _progress_round_windows(rows)
-        labels = _progress_label_map(round_dirs)
-        sections: list[str] = []
-        for round_dir in round_dirs:
-            round_n = _round_number(round_dir)
-            if round_n is None or round_n not in windows:
-                continue
-            window_start_s, window_end_s = windows[round_n]
-            chart_rows = _progress_vendor_rows(
-                rows,
-                window_start_s=window_start_s,
-                window_end_s=window_end_s,
-                labels=labels,
-            )
-            if not chart_rows:
-                continue
-            chart = render_gantt(window_start_s, window_end_s, chart_rows)
-            if not chart:
-                continue
-            span = max(0, window_end_s - window_start_s)
-            sections.append(
-                "\n".join(
-                    [
-                        f"### Round {round_n} reviewer timing",
-                        "",
-                        "```",
-                        f"Round {round_n} reviewer timing  ·  window 0:00-{format_mss(span)} ({span}s)",
-                        chart,
-                        "```",
-                    ]
-                )
-            )
-        return "\n\n".join(sections)
-    except Exception:  # pylint: disable=broad-except
-        return ""
-
-
 
 def _all_round_dirs_inflight(rounds_root: Path) -> bool:
     dirs = _round_dirs(rounds_root)
@@ -546,13 +368,19 @@ def _call_render_phase_detail_script(
     script = Path(__file__).resolve().parent.parent / "scripts" / "render-review-phase-detail.sh"
     if not script.is_file():
         return ""
-    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill, "--no-gantt"]
+    argv = [str(script), "--rounds-root", str(rounds_root), "--skill", skill]
     if timing_ledger is not None and timing_ledger.is_file():
         argv.extend(["--timing-ledger", str(timing_ledger)])
     if token_ledger is not None and token_ledger.is_file():
         argv.extend(["--token-ledger", str(token_ledger)])
     try:
-        result = subprocess.run(argv, text=True, capture_output=True, timeout=6, check=False)
+        result = subprocess.run(
+            argv,
+            text=True,
+            capture_output=True,
+            timeout=RENDER_PHASE_DETAIL_TIMEOUT_SECONDS,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError):
         return ""
     if result.returncode != 0:
@@ -561,16 +389,13 @@ def _call_render_phase_detail_script(
 
 
 def _render_review_detail(implement_tmpdir: Path, run_id: str) -> str:
-    rounds_root = _review_rounds_root(implement_tmpdir, run_id)
     timing = implement_tmpdir / "timing-ledger.tsv"
-    detail = _call_render_phase_detail_script(
-        rounds_root,
+    return _call_render_phase_detail_script(
+        _review_rounds_root(implement_tmpdir, run_id),
         "implement",
         timing if timing.is_file() else None,
         _latest_token_ledger(implement_tmpdir),
     )
-    charts = _render_progress_timing_charts(rounds_root, timing)
-    return "\n\n".join(part for part in (detail, charts) if part)
 
 
 def _render_step5(implement_tmpdir: Path, run_id: str) -> str:
@@ -873,15 +698,12 @@ def _design_elapsed(round_dir: Path, step_start_s: int | None) -> str:
 
 def _render_design_review_detail(design_tmpdir: Path) -> str:
     timing = design_tmpdir / "timing-ledger.tsv"
-    rounds_root = design_tmpdir / "plan-review"
-    detail = _call_render_phase_detail_script(
-        rounds_root,
+    return _call_render_phase_detail_script(
+        design_tmpdir / "plan-review",
         "design",
         timing if timing.is_file() else None,
         _latest_token_ledger(design_tmpdir),
     )
-    charts = _render_progress_timing_charts(rounds_root, timing)
-    return "\n\n".join(part for part in (detail, charts) if part)
 
 
 def _render_design_plan_review(design_tmpdir: Path, start_s: int | None) -> str:
