@@ -1,0 +1,1 @@
+Add `design-step3-mav.sh` as a thin Step 3 MainAgent vote wrapper. Keep the LLM vote judgment in `SKILL.md`. Move scope-anchor rendering, re-tally, persist, timing, warning logging, and phase routing into the wrapper, with a focused harness and Makefile target.
