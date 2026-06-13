@@ -95,8 +95,8 @@ for script in [
     'skills/implement/scripts/run-step-checks.sh --site step3',
     'skills/implement/scripts/step-5-entry.sh',
     'skills/implement/scripts/run-step-checks.sh --site step5-self-review',
-    'skills/implement/scripts/commit-review-fixes.sh --stage-all',
-    'scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1',
+    'python/cli.py review-and-fix commit-fixes --stage-all',
+    'python/cli.py review-and-fix step5 --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1',
     'skills/implement/scripts/run-step-checks.sh --site step5-review-fixes',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit',
@@ -132,8 +132,8 @@ for name in wrappers:
     if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f'{sh} is not executable')
 
 # Existing wrappers that gained behavior.
-require('skills/implement/scripts/commit-review-fixes.sh', '--stage-all', 'commit-review-fixes --stage-all')
-require('skills/implement/scripts/commit-review-fixes.sh', 'git add -A', 'commit-review-fixes stage all implementation')
+require('python/review_and_fix.py', '--stage-all', 'commit-fixes --stage-all')
+require('python/review_and_fix.py', '"git", "add", "-A"', 'commit-fixes stage all implementation')
 require('skills/implement/scripts/commit-implementation.sh', 'LARCH_TIMING_LEDGER', 'commit-implementation telemetry self-rehydration')
 require('skills/implement/scripts/step-18b-final-report.sh', 'cleanup.sh" --help', 'step-18b cleanup smoke')
 require('skills/implement/scripts/step-18b-final-report.sh', 'Step 18 — cleanup', 'step-18b telemetry mark')
@@ -158,13 +158,13 @@ require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 for script, timeout in [
-    (launcher + 'scripts/run-step5-review.sh', 'timeout: 21600000'),
+    (launcher + 'python/cli.py review-and-fix step5', 'timeout: 21600000'),
     (launcher + 'skills/implement/scripts/step-7a.sh', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
-require_near(skill, launcher + 'scripts/run-step5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
+require_near(skill, launcher + 'python/cli.py review-and-fix step5', '<task-notification>', 'Step 5 review task notification wait', 1800)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 2-post-dispatch', 'phantom 2-post-dispatch probe')
 require(skill, launcher + 'scripts/phantom-probe-with-warn.sh --step 8-pre-ship', 'phantom 8-pre-ship probe')
@@ -246,8 +246,8 @@ for needle in [
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
-require('skills/implement/scripts/step-5-resume.sh', 'commit-review-fixes.sh" --stage-all || true', 'step-5-resume commit failure guard')
-require('skills/implement/scripts/step-5-resume.sh', 'run-step5-review.sh', 'step-5-resume review loop resume')
+require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume commit failure guard')
+require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
 require('scripts/ship-pr.sh', 'pr-create) advance_phase pr-prep; state_set RESUME_PHASE ""', 'ship-pr pr-create resume token consumption')
 exit_matrix = Path('skills/implement/references/ship-pr-exit-matrix.md')
 if exit_matrix.is_file():

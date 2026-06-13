@@ -27,8 +27,7 @@ paths:
   - "skills/implement/SKILL.md"
   - "skills/issue/SKILL.md"
   - "python/issue_create.py"
-  - "skills/review-and-fix/scripts/review-and-fix.md"
-  - "skills/review-and-fix/scripts/review-and-fix.sh"
+  - "python/cli.py review-and-fix apply-findings"
 ---
 
 # gh `--body` / `--notes` - File-Backed Only

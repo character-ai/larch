@@ -7,7 +7,7 @@ Regression harness pinning anti-polling-loop rules across `AGENTS.md`, `skills/i
 Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job. Issue #4110 adds the result-file variant for `/design` Step 3. The harness pins these surfaces:
 
 - `AGENTS.md` — the canonical bullet covering both Monitor and Bash polling loops.
-- `skills/implement/SKILL.md` — Step 5 delegates reviewer waiting to `scripts/run-step5-review.sh` instead of ad-hoc polling loops.
+- `skills/implement/SKILL.md` — Step 5 delegates reviewer waiting to `python/cli.py review-and-fix step5` instead of ad-hoc polling loops.
 - `skills/design/SKILL.md` — both Step 3 immediate-background fences carry the result-file sleep-loop ban and consequence prose.
 - `skills/shared/orchestrator-never.md` — the shared NEVER list carries the `run_in_background` result-file sleep-loop ban.
 
@@ -17,7 +17,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 
 - `AGENTS.md` carries the extended phrasing `Don't spawn a Monitor or a Bash` and explicitly mentions the `for`/`while`/`until` + `sleep` form.
 - The harness also pins the AGENTS.md per-turn output-file read ban (`poll the task output file once per turn`) on the `/implement` delivery path (issue #3195).
-- `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`.
+- `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/python/cli.py review-and-fix step5`.
 - `/design` Step 3 carries the exact literal ``NEVER poll `.step3-review-result.env` with a sleep loop.`` exactly twice, covering the initial fence and resume `--starting-round` fence.
 - `skills/shared/orchestrator-never.md` carries the exact shared NEVER literal for `run_in_background` result-file sleep loops.
 

@@ -65,7 +65,7 @@ below.
 | `scripts/dispatch-plan-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/dispatch-code-voters.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | As plan voters. |
 | `scripts/dispatch-with-waterfall.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
-| `skills/review-and-fix/scripts/review-and-fix.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
+| `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
 | `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `launch-review.sh` (**D**), Claude tier via `launch-claude-subprocess.sh` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `launch-claude-subprocess.sh` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
 | `scripts/lint-fix-loop.sh` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
@@ -91,7 +91,7 @@ the carrier into its `run-log append-failure` source and (b) call
 4. `dispatch-plan-voters.sh` / `dispatch-code-voters.sh` /
    `dispatch-with-waterfall.sh` dropped-slot give-up: resolve from `VOTER_*_PATH`
    then batch-append; expose the dropped-slot output path.
-5. `review-and-fix.sh` `run_coder_dispatch_*` give-up: explicit per-tool sinks +
+5. `review-and-fix CLI` `run_coder_dispatch_*` give-up: explicit per-tool sinks +
    batch append.
 6. `plan_scout.py`: tier-specific raw stems
    (`${OUTPUT}.raw.cursor` / `.raw.claude`) + direct-Claude tier site-aware

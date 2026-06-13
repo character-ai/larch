@@ -1,6 +1,6 @@
 # Review Heavy Worker Reference
 
-**Consumer**: `/review` heavy-phase Agent-tool subagent dispatched when `/review` is invoked with `--subagent` AND `diff_mode=true` (reachable from standalone `/review --diff --subagent`; `/implement` Step 5 now calls `review-and-fix.sh` directly instead of invoking `/review`).
+**Consumer**: `/review` heavy-phase Agent-tool subagent dispatched when `/review` is invoked with `--subagent` AND `diff_mode=true` (reachable from standalone `/review --diff --subagent`; `/implement` Step 5 now calls `review-and-fix CLI` directly instead of invoking `/review`).
 
 **Contract**: The subagent runs the token-heavy diff-mode review machinery (Steps 1-3: gather context, launch reviewers, recursive collect/vote/fix loop) in isolated context so reviewer transcripts, panel rounds, and fix reasoning do not enter the parent conversation. Code edits (Step 3e) write directly to the git working tree and are visible to the parent when the subagent returns. The subagent writes file-backed artifacts under `$REVIEW_TMPDIR/` that the parent consumes for Steps 4-5.
 

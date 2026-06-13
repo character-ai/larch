@@ -46,7 +46,7 @@ this detector's scope.
 
 This session-wide baseline answers "which untracked files are new since
 `/implement` started?". It is intentionally distinct from
-`pre-review-untracked.txt` and `skills/implement/scripts/check-review-changes.sh`,
+`pre-review-untracked.txt` and `python/cli.py review-and-fix check-changes`,
 which answer "which untracked files are new since `/review` started?" for
 review-change detection.
 

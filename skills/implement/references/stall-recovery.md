@@ -93,7 +93,7 @@ The finding must distinguish observation from inference and cite evidence by pat
 
 ## Ship-pr and script handoff ownership
 
-- `run-step5-review.sh` records `coder-main-agent-required` directly.
+- `review-and-fix step5` records `coder-main-agent-required` directly.
 - Step 5 `main-agent-vote-required` is emitted as `STEP5_REVIEW_LEDGER_*` for the prompt side to record once.
 - `lint-fix-loop.sh` emits `LINT_FIX_LEDGER_*` only for `main-agent-required` paths.
 - Python `ship.py` emits ledger-ready JSON keys only for Step 8+ `NEEDS_USER_INPUT` handoffs.

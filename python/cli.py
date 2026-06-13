@@ -150,6 +150,12 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("review", "log-phase"): ("review_tally", "log_phase_main"),
     ("review", "core"): ("review_pipeline", "review_core_main"),
     ("review", "compose-findings"): ("compose_review", "compose_findings_main"),
+    ("review-and-fix", "apply-findings"): ("review_and_fix", "apply_findings"),
+    ("review-and-fix", "step5"): ("review_and_fix", "step5"),
+    ("review-and-fix", "check-changes"): ("review_and_fix", "check_changes"),
+    ("review-and-fix", "commit-fixes"): ("review_and_fix", "commit_fixes"),
+    ("review-and-fix", "write-rejected"): ("review_and_fix", "write_rejected"),
+    ("review-and-fix", "record-round-timing"): ("review_and_fix", "record_round_timing"),
     ("mermaid", "sanitize"): ("rendering", "mermaid_sanitize_main"),
     ("diagrams", "upsert"): ("rendering", "diagrams_upsert_main"),
     ("generate", "code-reviewer-agent"): ("rendering", "generate_code_reviewer_agent_main"),
@@ -324,6 +330,12 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
     ("review", "log-phase"),
     ("review", "core"),
     ("review", "compose-findings"),
+    ("review-and-fix", "apply-findings"),
+    ("review-and-fix", "step5"),
+    ("review-and-fix", "check-changes"),
+    ("review-and-fix", "commit-fixes"),
+    ("review-and-fix", "write-rejected"),
+    ("review-and-fix", "record-round-timing"),
 })
 
 

@@ -1,6 +1,6 @@
 # step-6-entry.sh
 
-Step 6 review boundary helper. Rehydrates telemetry keys, writes .review-boundary-passed, and runs check-review-changes.sh.
+Step 6 review boundary helper. Rehydrates telemetry keys, writes .review-boundary-passed, and runs review-and-fix check-changes.
 
 ## Caller
 

@@ -2,7 +2,7 @@
 
 Synthesizes `round-meta.json` in an `/implement` code-review round directory
 from the new-format artifacts written by the review pipeline. Called from
-`review-and-fix.sh` (`_implement_round_body`) immediately before
+`review-and-fix CLI` (`_implement_round_body`) immediately before
 `flush_round_log_after_coder` so the file is present when `write-round` copies
 round artifacts to the larch-log.
 
@@ -50,7 +50,7 @@ left empty; implement rounds do not have a `round-summary.env` equivalent.
 
 ## Callers
 
-- `skills/review-and-fix/scripts/review-and-fix.sh` (`_implement_round_body`,
+- `python/cli.py review-and-fix apply-findings` (`_implement_round_body`,
   before `flush_round_log_after_coder`)
 
 ## Analog

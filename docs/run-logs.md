@@ -307,7 +307,7 @@ sub-header. When no voting artifact is attached for this run, the body may note 
 
 ### code-review-tally.json
 
-**Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix.sh` / `review core`; standalone `/review` is a separate skill).
+**Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix CLI` / `review core`; standalone `/review` is a separate skill).
 
 One JSON object per `/implement` session with the same tally envelope fields as
 `plan-review-tally.json`. `exonerated_count` is an informational sub-count of
@@ -404,7 +404,7 @@ The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the exec
 
 **Mode**: directory replace-by-file. **Written**: first at the end of each
 `review core` round during `/implement` Step 5, then optionally refreshed
-later in the same round after the coder finishes if `review-and-fix.sh`
+later in the same round after the coder finishes if `review-and-fix CLI`
 produces additional registered artifacts (for example coder-side files).
 
 Contains a curated set of per-round artifacts: the aggregate `findings.md`,
@@ -417,7 +417,7 @@ reviewer outputs are excluded by `round_artifact_included` in
 `python/cli.py run-log` because the aggregates already cover their content),
 panel manifest (with `archetype_ref` for dynamic slots — see below),
 code-voter slots, and any later registered coder artifacts. The `review core`
-flush is the first snapshot for the round; `review-and-fix.sh` may run one more
+flush is the first snapshot for the round; `review-and-fix CLI` may run one more
 `write-round` after coder application so the committed round directory reflects
 the full round state before the later shared log-commit paths copy it into
 `larch-logs/implement/<RUN_ID>/round-<N>/` in the repo. There is no per-round

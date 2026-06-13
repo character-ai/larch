@@ -550,9 +550,9 @@ setup_oos_caller_repo() {
         git checkout -q -b oos-caller-change
         mkdir -p python skills/review-and-fix/scripts
         printf '%s\n' "VALUE = 1" > python/review_tally.py
-        printf '%s\n' "# review and fix" > skills/review-and-fix/scripts/review-and-fix.md
+        printf '%s\n' "# review and fix" > python/review_and_fix.py
         git add python/review_tally.py \
-            skills/review-and-fix/scripts/review-and-fix.md
+            python/review_and_fix.py
         git commit -q -m "touch oos caller docs"
     )
 }

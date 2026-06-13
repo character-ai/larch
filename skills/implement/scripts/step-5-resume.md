@@ -1,6 +1,6 @@
 # step-5-resume.sh
 
-Step 5 main-agent handoff resume helper. Records round timing, exits immediately for `--record-only`, otherwise optionally commits staged review fixes with `--stage-all` and re-enters `run-step5-review.sh`.
+Step 5 main-agent handoff resume helper. Records round timing, exits immediately for `--record-only`, otherwise optionally commits staged review fixes with `--stage-all` and re-enters `review-and-fix step5`.
 
 ## Caller
 

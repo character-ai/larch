@@ -90,7 +90,7 @@ readonly POS_MARKERS=(
 # /implement flags removed by #2485 (--auto, --hard, --inline, --quick,
 # --design-only, --no-issues, --issue, --design-classification,
 # --branch-info, --step-prefix, --subagent, --full). The public `--panel`
-# argv on review-and-fix.sh is also removed; SKILL.md may reference it in
+# argv on review-and-fix CLI is also removed; SKILL.md may reference it in
 # internal contexts only.
 readonly STALE_PHRASES=(
   "6 Cursor specialists"
@@ -318,7 +318,7 @@ run_self_test() {
   # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
 This is a fixture describing /implement Step 5.
-Step 5 delegates to review-and-fix.sh --panel hard.
+Step 5 delegates to review-and-fix CLI --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
 The review loop uses specialists per vendor in the Step 5 posture.
@@ -332,7 +332,7 @@ EOF
   # designed to catch.
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
-Step 5 delegates to review-and-fix.sh --panel hard.
+Step 5 delegates to review-and-fix CLI --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
 The review loop uses specialists per vendor in the Step 5 posture.
