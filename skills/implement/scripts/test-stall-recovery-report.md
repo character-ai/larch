@@ -20,7 +20,7 @@ Case map:
 - Case 9 covers invalid `--failure-detail-log` validation branches and asserts distinct stderr diagnostics for relative, outside-tmpdir, symlink, non-regular, and oversize paths.
 - Cases 10-12 cover attempts-file idempotency and larch-dev-clone detection, including fork suppression.
 - Case 13 additionally covers attempts-file containment across all entrypoints: init/record/classify reject outside-tmpdir and symlinked attempts paths before reading or writing.
-- Cases 13-18 cover sanitization and public-surface generation: public-surface sentinel/token redaction across bug body, terminal comment, issue-input wrapper, and consumer chat-print payload, classifier-env metadata sanitization, redactor invocation, allowlist parity lint, byte-stable bug bodies, attempt-table output, and dry-run behavior.
+- Cases 13-18 cover sanitization and legacy public-surface generation: public-surface sentinel/token redaction across test-only bug body, terminal comment, issue-input wrapper, and consumer chat-print payload, classifier-env metadata sanitization, redactor invocation, allowlist parity lint, byte-stable bug bodies, attempt-table output, and dry-run behavior.
 - Cases 19-20 cover success-path read-back ordering, negative durability simulations for temp-read / `mv` / destination-read failure handling, in-memory stall precedence, non-redispatch step handling, invalid-log fallback, in-memory-only recovery classification, stale-evidence precedence, broader network-error matching, and the Step 3 / Step 6 contract-failure no-reclassify rule.
 - Case 18 covers dry-run propagation across `bug-body`, `bug-comment`, and `issue-input-file`.
 - Case 19 covers the disk-clear ordering guard: in-memory stall remains authoritative until the false-on-disk rewrite is moved into place and re-read.
@@ -39,3 +39,4 @@ The classify harness includes a finalize-only stall case: when `finalize-state.s
 The generic `/issue --input-file` body-splitting footgun (OOS_2) is tracked in the #3550/#3547 family and is out of scope for this harness.
 
 - Case 23 covers the terminal-only rework seams: shared `normalize-outcome`, canonical escalation ledger recording, Tier B `compose-report`, root-caused escalation titles, prompt-state sensitive supplement rejection, and `operator-action` durable non-filing sentinel behavior.
+- Case 24 covers public report dedup signatures, exact marker placement, Tier B dry-run, Tier B upstream filing through the cross-repo helper, bounded public comment payload selection, and helper output normalization for comment URLs.

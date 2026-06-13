@@ -22,6 +22,12 @@ DEFAULT_ROOT_CAUSE_FILE="stall-recovery-root-cause.md"
 DEFAULT_BOUNDED_ROOT_CAUSE_FILE="stall-recovery-bounded-root-cause.md"
 DEFAULT_TITLE_FILE="stall-recovery-title.txt"
 DEFAULT_ATTEMPTS_FILE="stall-recovery-attempts.env"
+DEFAULT_TIER_A_ATTEMPTS_SLICE="stall-recovery-tier-a-attempts.md"
+DEFAULT_TIER_A_ESCALATION_SLICE="stall-recovery-tier-a-escalation.md"
+DEFAULT_TIER_A_ROOT_CAUSE_SLICE="stall-recovery-tier-a-root-cause.md"
+DEFAULT_TIER_B_ATTEMPTS_SLICE="stall-recovery-bounded-attempts.md"
+DEFAULT_TIER_B_ESCALATION_SLICE="stall-recovery-bounded-escalation-summary.md"
+DEFAULT_TIER_B_ROOT_CAUSE_SLICE="stall-recovery-bounded-root-cause-public.md"
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPTS_DIR/lib-quiet.sh"
@@ -30,7 +36,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 <init-attempts|classify|record-escalation|normalize-outcome|compose-report|normalize-issue-env|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 <init-attempts|classify|record-escalation|normalize-outcome|compose-report|dedup-tier-a-report|normalize-file-failure-report-env|normalize-issue-env|validate-tier-b-public-file|chat-print|record-attempt|retry-policy|is-larch-dev-clone|clear-stall|seed-terminal-state|lint> ..."
 }
 
 die_argv() {
@@ -67,6 +73,53 @@ hash_text() {
     fi
 }
 
+byte_len() {
+    LC_ALL=C wc -c | awk '{print $1}'
+}
+
+report_signature_field_line() {
+    local key=$1 value=${2:-} len
+    len=$(printf '%s' "$value" | byte_len)
+    printf '%s\t%s\t%s\n' "$key" "$len" "$value"
+}
+
+report_dedup_seed() {
+    local kind=$1 class_file=$2 ledger=$3 fallback=$4
+    local failure_class step phase bail site trigger
+    failure_class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
+    step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "")")
+    phase=$(safe_phase_value "$(kv_get "$class_file" PHASE "")")
+    bail=$(safe_bail_reason_value "$(kv_get "$class_file" BAIL_REASON "")")
+    site=""
+    trigger=""
+    if [ "$kind" = escalation-success ]; then
+        site=$(first_escalation_field site "$ledger" "$fallback" || true)
+        trigger=$(first_escalation_field trigger "$ledger" "$fallback" || true)
+        site=$(safe_site_value "$site")
+        trigger=$(safe_trigger_value "$trigger")
+    fi
+    {
+        printf 'larch-stall-report-dedup-v1\n'
+        report_signature_field_line report_kind "$kind"
+        report_signature_field_line failure_class "$failure_class"
+        report_signature_field_line step "$step"
+        report_signature_field_line phase "$phase"
+        report_signature_field_line safe_bail_token "$bail"
+        if [ "$kind" = escalation-success ]; then
+            report_signature_field_line escalation_site "$site"
+            report_signature_field_line escalation_trigger "$trigger"
+        fi
+    }
+}
+
+report_dedup_signature() {
+    report_dedup_seed "$@" | hash_text
+}
+
+report_marker() {
+    printf '<!-- larch-stall:signature=%s -->\n' "$1"
+}
+
 kv_get() {
     local file=$1 key=$2 default=${3-}
     python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default"
@@ -77,6 +130,10 @@ truthy() {
         1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+stall_recovery_dry_run_requested() {
+    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" || truthy "${DRY_RUN_DECISION:-}"
 }
 
 first_nonempty() {
@@ -1117,7 +1174,7 @@ cmd_bug_body_like() {
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
     validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
-    if truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}"; then
+    if stall_recovery_dry_run_requested; then
         dry_run=true
     fi
     if [ -z "$out_file" ]; then
@@ -1170,7 +1227,7 @@ cmd_issue_input_file() {
     { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } \
         | python3 "$PLUGIN_ROOT/python/cli.py" redact secrets >"$out_file.tmp.$$"
     mv -f "$out_file.tmp.$$" "$out_file"
-    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
+    stall_recovery_dry_run_requested && dry_run=true
     emit_kv INPUT_FILE "$out_file"
     emit_kv DRY_RUN_DECISION "$dry_run"
 }
@@ -1920,6 +1977,80 @@ compose_tier_a_issue() {
     return 0
 }
 
+write_tier_a_comment_payloads() {
+    local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 root_file=$6
+    local attempts_out="$tmpdir/$DEFAULT_TIER_A_ATTEMPTS_SLICE"
+    local escalation_out="$tmpdir/$DEFAULT_TIER_A_ESCALATION_SLICE"
+    local root_out="$tmpdir/$DEFAULT_TIER_A_ROOT_CAUSE_SLICE"
+    attempts_table "$attempts_file" >"$attempts_out"
+    {
+        append_file_if_readable "Escalation ledger" "$ledger"
+        append_file_if_readable "Fallback escalation evidence" "$fallback"
+        append_file_if_readable "Record-failure marker" "$marker"
+        if record_escalation_tool_failure_present "$tmpdir"; then
+            printf '\n## Record-escalation Tool Failure\n\n'
+            printf -- '- tagged record-escalation Tool Failure present\n'
+        fi
+    } >"$escalation_out.raw.$$"
+    redact_to_file "$escalation_out.raw.$$" "$escalation_out"
+    rm -f "$escalation_out.raw.$$"
+    redact_to_file "$root_file" "$root_out"
+}
+
+write_tier_b_comment_payloads() {
+    local tmpdir=$1 attempts_file=$2 ledger=$3 fallback=$4 marker=$5 bounded_file=$6
+    local attempts_out="$tmpdir/$DEFAULT_TIER_B_ATTEMPTS_SLICE"
+    local escalation_out="$tmpdir/$DEFAULT_TIER_B_ESCALATION_SLICE"
+    local root_out="$tmpdir/$DEFAULT_TIER_B_ROOT_CAUSE_SLICE"
+    attempts_table "$attempts_file" >"$attempts_out"
+    {
+        append_escalation_row_summaries "$ledger" ""
+        append_escalation_row_summaries "$fallback" "fallback"
+        [ -s "$marker" ] && printf -- '- record-failure marker present\n'
+        append_record_escalation_tool_failure_evidence "$tmpdir"
+    } >"$escalation_out"
+    {
+        printf '## Bounded root-cause summary\n\n'
+        parse_root_cause_file "$bounded_file" summary ""
+        printf '\n\n## Bounded root-cause details\n\n'
+        root_cause_prose "$bounded_file"
+        printf '\n'
+    } >"$root_out"
+}
+
+issue_url_number() {
+    local url=$1
+    case "$url" in
+        https://github.com/*/*/issues/[0-9]*)
+            case "$url" in *'#'*|*'/'[0-9]*/*) return 1 ;; esac
+            printf '%s\n' "${url##*/}"
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+normalize_file_failure_report_env_file() {
+    local env_file=$1
+    local status url reason number
+    status=$(kv_get "$env_file" FILE_FAILURE_REPORT_STATUS "")
+    url=$(kv_get "$env_file" FILE_FAILURE_REPORT_URL "")
+    reason=$(kv_get "$env_file" FILE_FAILURE_REPORT_FALLBACK_REASON "")
+    case "$status" in
+        filed|dry-run|dedup-comment|no-match|fallback-print-required|lookup-failed-open) ;;
+        *) status="fallback-print-required"; reason=$(first_nonempty "$reason" helper-status-missing) ;;
+    esac
+    emit_kv STALL_RECOVERY_REPORT_STATUS "$status"
+    if [ -n "$url" ]; then
+        emit_kv STALL_RECOVERY_REPORT_URL "$url"
+        if number=$(issue_url_number "$url"); then
+            emit_kv STALL_RECOVERY_REPORT_ISSUE_URL "$url"
+            emit_kv STALL_RECOVERY_REPORT_ISSUE_NUMBER "$number"
+        fi
+    fi
+    [ -n "$reason" ] && emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON "$reason"
+}
+
 tier_a_allowed() {
     local tmpdir=$1 root=${2:-} forked
     forked=$(first_nonempty \
@@ -1932,9 +2063,93 @@ tier_a_allowed() {
     is_larch_dev_clone "$root"
 }
 
+cmd_validate_tier_b_public_file() {
+    local tmpdir="" candidate="" sensitive_file="" effective=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --candidate-file) [ $# -ge 2 ] || die_argv "--candidate-file requires a value"; candidate=$2; shift 2 ;;
+            --sensitive-corpus-file) [ $# -ge 2 ] || die_argv "--sensitive-corpus-file requires a value"; sensitive_file=$2; shift 2 ;;
+            *) die_argv "unknown validate-tier-b-public-file option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$candidate" ] || die_missing "--candidate-file is required"
+    [ -f "$candidate" ] || die_argv "--candidate-file must be regular"
+    [ ! -L "$candidate" ] || die_argv "--candidate-file must not be a symlink"
+    [ -r "$candidate" ] || die_argv "--candidate-file must be readable"
+    [ -n "$sensitive_file" ] || sensitive_file="$tmpdir/$DEFAULT_SENSITIVE_CORPUS"
+    validate_tmpdir_local_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" || exit 1
+    effective="$tmpdir/stall-recovery-sensitive-corpus.public.$$"
+    build_sensitive_corpus_from_evidence "$tmpdir" "$sensitive_file" "$tmpdir/$DEFAULT_CLASSIFICATION_FILE" "$tmpdir/$DEFAULT_ATTEMPTS_FILE" "$tmpdir/$DEFAULT_ESCALATION_LEDGER" "$tmpdir/$DEFAULT_ESCALATION_FALLBACK" "$tmpdir/$DEFAULT_RECORD_FAILURE_MARKER" "$effective"
+    if sensitive_token_rejects_file "$effective" "$candidate"; then
+        rm -f "$effective"
+        die_argv "candidate contains sensitive token"
+    fi
+    rm -f "$effective"
+    emit_kv TIER_B_PUBLIC_FILE_SAFE true
+}
+
+cmd_normalize_file_failure_report_env() {
+    local tmpdir="" file=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --file-failure-report-env) [ $# -ge 2 ] || die_argv "--file-failure-report-env requires a value"; file=$2; shift 2 ;;
+            *) die_argv "unknown normalize-file-failure-report-env option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$file" ] || die_missing "--file-failure-report-env is required"
+    validate_tmpdir_local_file "$tmpdir" "$file" "--file-failure-report-env" || exit 1
+    normalize_file_failure_report_env_file "$file"
+}
+
+cmd_dedup_tier_a_report() {
+    local tmpdir="" body_file="" attempts_file="" escalation_file="" root_file="" repo="" out helper
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --body-file) [ $# -ge 2 ] || die_argv "--body-file requires a value"; body_file=$2; shift 2 ;;
+            --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
+            --escalation-ledger-file) [ $# -ge 2 ] || die_argv "--escalation-ledger-file requires a value"; escalation_file=$2; shift 2 ;;
+            --root-cause-file) [ $# -ge 2 ] || die_argv "--root-cause-file requires a value"; root_file=$2; shift 2 ;;
+            *) die_argv "unknown dedup-tier-a-report option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    [ -n "$body_file" ] || body_file="$tmpdir/$DEFAULT_ISSUE_INPUT"
+    [ -n "$attempts_file" ] || attempts_file="$tmpdir/$DEFAULT_TIER_A_ATTEMPTS_SLICE"
+    [ -n "$escalation_file" ] || escalation_file="$tmpdir/$DEFAULT_TIER_A_ESCALATION_SLICE"
+    [ -n "$root_file" ] || root_file="$tmpdir/$DEFAULT_TIER_A_ROOT_CAUSE_SLICE"
+    validate_tmpdir_local_file "$tmpdir" "$body_file" "--body-file" || exit 1
+    if stall_recovery_dry_run_requested; then
+        emit_kv STALL_RECOVERY_REPORT_STATUS dry-run
+        return 0
+    fi
+    helper="$SCRIPTS_DIR/file-failure-report-cross-repo.sh"
+    [ -x "$helper" ] || { emit_kv STALL_RECOVERY_REPORT_STATUS lookup-failed-open; emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON helper-missing; return 0; }
+    repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+    if [ -z "$repo" ]; then
+        emit_kv STALL_RECOVERY_REPORT_STATUS lookup-failed-open
+        emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON current-repo-unresolved
+        return 0
+    fi
+    [ -f "$attempts_file" ] || atomic_write_text "$attempts_file" ""
+    [ -f "$escalation_file" ] || atomic_write_text "$escalation_file" ""
+    [ -f "$root_file" ] || atomic_write_text "$root_file" ""
+    out="$tmpdir/stall-recovery-tier-a-dedup.env"
+    "$helper" --repo "$repo" --body-file "$body_file" --dedup-only --publication-tier tier-a \
+        --attempts-file "$attempts_file" --escalation-ledger-file "$escalation_file" --root-cause-file "$root_file" >"$out"
+    normalize_file_failure_report_env_file "$out"
+}
+
 cmd_compose_report() {
     local tmpdir="" kind="" surface="" attempts_file="" class_file="" ledger="" fallback="" marker="" root_file="" bounded_file="" title_file="" sensitive_file="" out_file=""
-    local verdict summary title raw_file tier status=printed dry_run=false sensitive_effective_file working_tree_root
+    local verdict summary title raw_file marked_file tier status="" dry_run=false sensitive_effective_file working_tree_root report_sig helper upstream_repo helper_out title_site title_trigger
     while [ $# -gt 0 ]; do
         case "$1" in
             --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
@@ -2040,16 +2255,23 @@ ROOT_CAUSE_FILE=$root_file
     fi
     case "$kind" in
         terminal-failure) title="[Bug] /implement terminal: $title ($(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")") at $(safe_step_value "$(kv_get "$class_file" STALL_STEP "")"))" ;;
-        escalation-success) title="[Bug] /implement escalation: $title ($(safe_site_value "$(first_escalation_field site "$ledger" "$fallback")"):$(safe_trigger_value "$(first_escalation_field trigger "$ledger" "$fallback")"))" ;;
+        escalation-success)
+            title_site=$(first_escalation_field site "$ledger" "$fallback" || true)
+            title_trigger=$(first_escalation_field trigger "$ledger" "$fallback" || true)
+            title="[Bug] /implement escalation: $title ($(safe_site_value "$title_site"):$(safe_trigger_value "$title_trigger"))"
+            ;;
     esac
+    report_sig=$(report_dedup_signature "$kind" "$class_file" "$ledger" "$fallback")
     raw_file="$out_file.raw.$$"
+    marked_file="$out_file.marked.$$"
     if [ "$surface" = issue-input ]; then
         tier=A
-        status=printed
         compose_tier_a_issue "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$title" "$tmpdir" >"$raw_file"
+        awk -v marker="$(report_marker "$report_sig")" 'NR == 1 { print; printf "%s\n", marker; next } { print }' "$raw_file" >"$marked_file"
+        mv -f "$marked_file" "$raw_file"
+        write_tier_a_comment_payloads "$tmpdir" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file"
     else
         tier=B
-        status=printed
         validate_tmpdir_local_file "$tmpdir" "$sensitive_file" "--sensitive-corpus-file" || exit 1
         validate_tmpdir_local_file "$tmpdir" "$bounded_file" "--bounded-root-cause-file" || exit 1
         validate_root_cause_artifact "$bounded_file" || exit 1
@@ -2060,25 +2282,55 @@ ROOT_CAUSE_FILE=$root_file
             rm -f "$raw_file"
             die_argv "bounded root-cause contains sensitive token"
         fi
-        { printf '### %s\n\n' "$title"; compose_tier_b_projection "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$bounded_file"; } >"$raw_file"
+        { printf '### %s\n\n' "$title"; report_marker "$report_sig"; printf '\n'; compose_tier_b_projection "$kind" "$class_file" "$attempts_file" "$ledger" "$fallback" "$marker" "$root_file" "$bounded_file"; } >"$raw_file"
         if sensitive_token_rejects_file "$sensitive_effective_file" "$raw_file"; then
             rm -f "$sensitive_effective_file"
             rm -f "$raw_file"
             die_argv "chat-print contains sensitive token"
         fi
         rm -f "$sensitive_effective_file"
+        write_tier_b_comment_payloads "$tmpdir" "$attempts_file" "$ledger" "$fallback" "$marker" "$bounded_file"
     fi
     redact_to_file "$raw_file" "$out_file"
     rm -f "$raw_file"
-    truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
+    stall_recovery_dry_run_requested && dry_run=true
     emit_kv STALL_RECOVERY_REPORT_KIND "$kind"
-    emit_kv STALL_RECOVERY_REPORT_STATUS "$status"
     emit_kv STALL_RECOVERY_REPORT_TIER "$tier"
     emit_kv STALL_RECOVERY_REPORT_ARTIFACT "$out_file"
     emit_kv STALL_RECOVERY_REPORT_VERDICT "$verdict"
-    emit_kv STALL_RECOVERY_REPORT_ISSUE_NUMBER ""
-    emit_kv STALL_RECOVERY_REPORT_ISSUE_URL ""
+    emit_kv REPORT_DEDUP_SIGNATURE "$report_sig"
     emit_kv DRY_RUN_DECISION "$dry_run"
+    if [ "$dry_run" = true ]; then
+        emit_kv STALL_RECOVERY_REPORT_STATUS dry-run
+        return 0
+    fi
+    if [ "$surface" = issue-input ]; then
+        if truthy "${LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES:-}" && ! truthy "${LARCH_STALL_RECOVERY_ENABLE_TEST_FILING:-}"; then
+            emit_kv STALL_RECOVERY_REPORT_STATUS printed
+        fi
+        return 0
+    fi
+    if truthy "${LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES:-}" && ! truthy "${LARCH_STALL_RECOVERY_ENABLE_TEST_FILING:-}"; then
+        emit_kv STALL_RECOVERY_REPORT_STATUS printed
+        return 0
+    fi
+    helper="$SCRIPTS_DIR/file-failure-report-cross-repo.sh"
+    if ! upstream_repo=$("$SCRIPTS_DIR/resolve-upstream-larch-repo.sh" 2>/dev/null); then
+        emit_kv STALL_RECOVERY_REPORT_STATUS fallback-print-required
+        emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON upstream-repo-unresolved
+        return 0
+    fi
+    helper_out="$tmpdir/stall-recovery-tier-b-file.env"
+    if [ ! -x "$helper" ]; then
+        emit_kv STALL_RECOVERY_REPORT_STATUS fallback-print-required
+        emit_kv STALL_RECOVERY_REPORT_FALLBACK_REASON cross-repo-helper-missing
+        return 0
+    fi
+    "$helper" --repo "$upstream_repo" --body-file "$out_file" --title "$title" --publication-tier tier-b \
+        --attempts-file "$tmpdir/$DEFAULT_TIER_B_ATTEMPTS_SLICE" \
+        --escalation-ledger-file "$tmpdir/$DEFAULT_TIER_B_ESCALATION_SLICE" \
+        --root-cause-file "$tmpdir/$DEFAULT_TIER_B_ROOT_CAUSE_SLICE" >"$helper_out"
+    normalize_file_failure_report_env_file "$helper_out"
 }
 
 cmd_chat_print() {
@@ -2236,6 +2488,9 @@ main() {
         record-escalation) cmd_record_escalation "$@" ;;
         normalize-outcome) cmd_normalize_outcome "$@" ;;
         compose-report) cmd_compose_report "$@" ;;
+        dedup-tier-a-report) cmd_dedup_tier_a_report "$@" ;;
+        normalize-file-failure-report-env) cmd_normalize_file_failure_report_env "$@" ;;
+        validate-tier-b-public-file) cmd_validate_tier_b_public_file "$@" ;;
         chat-print) cmd_chat_print "$@" ;;
         is-larch-dev-clone) cmd_is_larch_dev_clone "$@" ;;
         bug-body)

@@ -1541,6 +1541,66 @@ assert_contains '| Larch version | `' "$(cat "$dir/out.md")" "23: compose-report
 assert_contains "| Run ID | \`unknown\` |" "$(cat "$dir/out.md")" "23: compose-report includes run id"
 assert_contains 'Bounded larch-only finding.' "$(cat "$dir/out.md")" "23: compose-report renders bounded root-cause prose"
 assert_not_contains 'client-only-token' "$(cat "$dir/out.md")" "23: compose-report excludes prompt supplement token"
+
+dir_tier_a=$(make_tmp case23-tier-a-parse-marker)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_a/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_a/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_a/stall-recovery-root-cause.md"
+run_capture "$SANDBOX/case23-tier-a-parse-marker.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_a" --report-kind terminal-failure --surface issue-input --output-file "$dir_tier_a/issue-input.md"
+assert_eq 0 "$RC" "23: Tier A dry-run compose exits 0"
+tier_a_sig=$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case23-tier-a-parse-marker.out")
+run_capture "$SANDBOX/case23-tier-a-parse-marker-parse.out" python3 "$REPO_ROOT/python/cli.py" issue parse-input --input-file "$dir_tier_a/issue-input.md" --output-dir "$dir_tier_a/parsed"
+assert_eq 0 "$RC" "23: parse-input accepts Tier A issue input"
+assert_eq 1 "$(kv ITEMS_TOTAL "$SANDBOX/case23-tier-a-parse-marker-parse.out")" "23: Tier A issue input parses as one item"
+assert_contains "<!-- larch-stall:signature=$tier_a_sig -->" "$(cat "$(kv ITEM_1_BODY_FILE "$SANDBOX/case23-tier-a-parse-marker-parse.out")")" "23: parse-input preserves Tier A dedup marker"
+
+dir_tier_b_dry=$(make_tmp case23-tier-b-dry-run-no-gh)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_b_dry/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_b_dry/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_b_dry/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir_tier_b_dry/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir_tier_b_dry/stall-recovery-sensitive-corpus.env"
+mkdir -p "$dir_tier_b_dry/bin"
+printf '#!/usr/bin/env bash\necho "$@" >>"%s/gh.calls"\nexit 9\n' "$dir_tier_b_dry" >"$dir_tier_b_dry/bin/gh"
+chmod +x "$dir_tier_b_dry/bin/gh"
+run_capture "$SANDBOX/case23-tier-b-dry-run-no-gh.out" env "PATH=$dir_tier_b_dry/bin:$PATH" LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_b_dry" --report-kind terminal-failure --surface chat-print --output-file "$dir_tier_b_dry/chat.md"
+assert_eq 0 "$RC" "23: Tier B dry-run compose exits 0"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-tier-b-dry-run-no-gh.out")" "23: Tier B dry-run status"
+if [ ! -e "$dir_tier_b_dry/gh.calls" ]; then
+    pass "23: Tier B dry-run compose makes no gh calls"
+else
+    fail "23: Tier B dry-run compose should not call gh" "$(cat "$dir_tier_b_dry/gh.calls")"
+fi
+
+dir_tier_b_fail=$(make_tmp case23-tier-b-create-fail)
+cp "$dir/stall-recovery-classification.env" "$dir_tier_b_fail/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir_tier_b_fail/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir_tier_b_fail/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir_tier_b_fail/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir_tier_b_fail/stall-recovery-sensitive-corpus.env"
+mkdir -p "$dir_tier_b_fail/bin"
+cat >"$dir_tier_b_fail/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_STUB_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s\n' '{"number":1,"body":"different report","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    echo create failed >&2
+    exit 1
+fi
+echo unexpected gh: "$*" >&2
+exit 9
+STUB
+chmod +x "$dir_tier_b_fail/bin/gh"
+run_capture "$SANDBOX/case23-tier-b-create-fail.out" env "PATH=$dir_tier_b_fail/bin:$PATH" "GH_STUB_LOG=$dir_tier_b_fail/gh.calls" LARCH_STALL_RECOVERY_ENABLE_TEST_FILING=1 "$SCRIPT" compose-report --implement-tmpdir "$dir_tier_b_fail" --report-kind terminal-failure --surface chat-print --output-file "$dir_tier_b_fail/chat.md"
+assert_eq 0 "$RC" "23: Tier B helper create failure exits 0"
+assert_eq fallback-print-required "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case23-tier-b-create-fail.out")" "23: Tier B helper create failure falls back to chat print"
+assert_eq create-failed "$(kv STALL_RECOVERY_REPORT_FALLBACK_REASON "$SANDBOX/case23-tier-b-create-fail.out")" "23: Tier B helper create failure reason"
+assert_contains 'issue create' "$(cat "$dir_tier_b_fail/gh.calls")" "23: Tier B helper attempts create before fallback"
+assert_contains '[Bug] /implement terminal: lint fix loop missed retry path' "$(cat "$dir_tier_b_fail/chat.md")" "23: Tier B helper fallback leaves chat artifact"
 printf 'stale-partial-row' >"$dir/stall-recovery-escalation-ledger.tsv"
 run_capture "$SANDBOX/case23-record-newline.out" "$SCRIPT" record-escalation --implement-tmpdir "$dir" --site step5 --trigger main-agent-required --step 5 --phase review --dispatcher lint-fix-loop --exit-code 1
 assert_contains $'stale-partial-row\nutc=' "$(cat "$dir/stall-recovery-escalation-ledger.tsv")" "23: record-escalation repairs missing trailing newline"
@@ -1870,6 +1930,301 @@ printf 'FORKED_TARGET=true\nSTALL_TRACKING=false\nCI_PASSED=false\n' >"$dir/ship
 run_capture "$SANDBOX/case23-normalize-forked-ci-failed.out" "$SCRIPT" normalize-outcome --implement-tmpdir "$dir"
 assert_eq forked-dry-run "$(kv IMPLEMENT_NORMALIZED_OUTCOME "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: normalize-outcome preserves forked outcome"
 assert_eq true "$(kv IMPLEMENT_OUTCOME_SUCCEEDED "$SANDBOX/case23-normalize-forked-ci-failed.out")" "23: forked dry-run succeeds without CI_PASSED"
+
+dir=$(make_tmp case24-public-signature)
+cat >"$dir/stall-recovery-classification.env" <<'EOF'
+FAILURE_CLASS=dispatch-failure
+FAILURE_SIGNATURE=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+STALL_STEP=2
+PHASE=implementation
+BAIL_REASON=wrapper-validation-failure
+EXIT_CODE=4
+MATCHED_CLASSIFIER_PATTERN=dispatch-output
+DISPATCHER=codex
+EOF
+printf 'version=1
+created_utc=2026-01-01T00:00:00Z
+attempt_count=0
+' >"$dir/stall-recovery-attempts.env"
+cat >"$dir/stall-recovery-root-cause.md" <<'EOF'
+verdict=larch-defect
+confidence=high
+summary=dispatcher envelope regression
+
+The dispatcher returned a malformed envelope in the retry path.
+EOF
+cp "$dir/stall-recovery-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+printf 'client-only-token
+' >"$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-issue-input.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface issue-input --output-file "$dir/issue.md"
+assert_eq 0 "$RC" "24: non-legacy issue-input composition exits 0"
+assert_eq "" "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-issue-input.out")" "24: issue-input composition emits no branchable status"
+assert_eq a123f505e4cef146b80a49ca0a4a93e0a3ea2c123a59ba471c6e6e056116d038 "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" "24: public signature golden vector"
+assert_contains '<!-- larch-stall:signature=a123f505e4cef146b80a49ca0a4a93e0a3ea2c123a59ba471c6e6e056116d038 -->' "$(cat "$dir/issue.md")" "24: Tier A artifact includes public marker"
+assert_not_contains 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$(cat "$dir/issue.md")" "24: public marker does not use retry failure signature"
+
+dir2=$(make_tmp case24-public-signature-stability)
+cp "$dir/stall-recovery-classification.env" "$dir2/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir2/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir2/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir2/stall-recovery-bounded-root-cause.md"
+printf 'RUN_ID=run-specific-id
+BRANCH_NAME=feature/specific-branch
+' >"$dir2/session-env.sh"
+run_capture "$SANDBOX/case24-stability.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir2" --report-kind terminal-failure --surface issue-input --output-file "$dir2/issue.md"
+assert_eq "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-stability.out")" "24: terminal public signature ignores repo/run fields"
+
+dir3=$(make_tmp case24-public-signature-exclusions)
+cp "$dir/stall-recovery-attempts.env" "$dir3/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir3/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir3/stall-recovery-bounded-root-cause.md"
+awk '
+    /^MATCHED_CLASSIFIER_PATTERN=/ { print "MATCHED_CLASSIFIER_PATTERN=lint-output"; next }
+    /^DISPATCHER=/ { print "DISPATCHER=cursor"; next }
+    { print }
+    END { print "SKILL=consumer-specific-skill" }
+' "$dir/stall-recovery-classification.env" >"$dir3/stall-recovery-classification.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=ship-pr\ttrigger=first-fixer-non-health\tstep=8\tphase=ci-initial\tdispatcher=ship-pr\texit_code=3\n' >"$dir3/stall-recovery-escalation-ledger.tsv"
+printf 'RECORD_ESCALATION_FAILED=true\nREASON=secret-terminal-marker\n' >"$dir3/stall-recovery-escalation-record-failure.env"
+run_capture "$SANDBOX/case24-exclusions.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir3" --report-kind terminal-failure --surface issue-input --output-file "$dir3/issue.md"
+assert_eq "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-exclusions.out")" "24: terminal public signature ignores dispatcher, matched classifier, skill, and escalation data"
+
+dir4=$(make_tmp case24-public-signature-bail-inclusion)
+cp "$dir/stall-recovery-attempts.env" "$dir4/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir4/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir4/stall-recovery-bounded-root-cause.md"
+awk '
+    /^BAIL_REASON=/ { print "BAIL_REASON=main-agent-required"; next }
+    { print }
+' "$dir/stall-recovery-classification.env" >"$dir4/stall-recovery-classification.env"
+run_capture "$SANDBOX/case24-bail-inclusion.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES CLAUDE_PROJECT_DIR="$REPO_ROOT" "$SCRIPT" compose-report --implement-tmpdir "$dir4" --report-kind terminal-failure --surface issue-input --output-file "$dir4/issue.md"
+if [ "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-issue-input.out")" != "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-bail-inclusion.out")" ]; then
+    pass "24: terminal public signature changes with safe bail token"
+else
+    fail "24: terminal public signature changes with safe bail token"
+fi
+
+dir=$(make_tmp case24-tier-b-dry-run)
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-dry-run.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-dry-run.out")" "24: Tier B dry-run emits dry-run status"
+assert_contains '<!-- larch-stall:signature=' "$(cat "$dir/chat.md")" "24: Tier B artifact includes public marker"
+
+dir=$(make_tmp case24-tier-b-file)
+mkdir -p "$dir/bin"
+cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = issue ] && [ "${2:-}" = create ]; then
+    printf '%s\n' 'https://github.com/character-ai/larch/issues/99'
+    exit 0
+fi
+exit 9
+EOF
+chmod +x "$dir/bin/gh"
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-file.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq filed "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-file.out")" "24: Tier B create success emits filed"
+assert_eq https://github.com/character-ai/larch/issues/99 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-tier-b-file.out")" "24: Tier B create success emits URL"
+assert_contains 'issue create -R character-ai/larch --title' "$(cat "$dir/gh.log")" "24: Tier B passes title to cross-repo filer"
+assert_contains "dispatcher envelope regression" "$(cat "$dir/stall-recovery-bounded-root-cause-public.md")" "24: Tier B writes bounded root-cause slice"
+assert_not_contains "stall-recovery-root-cause.md" "$(cat "$dir/gh.log")" "24: Tier B does not pass raw root-cause file"
+
+dir=$(make_tmp case24-tier-b-dedup)
+mkdir -p "$dir/bin"
+cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_LOG"
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    printf '%s\n' '{"number":7,"body":"duplicate <!-- larch-stall:signature=a123f505e4cef146b80a49ca0a4a93e0a3ea2c123a59ba471c6e6e056116d038 -->","pull_request":null}'
+    exit 0
+fi
+if [ "$1" = api ] && [ "${2:-}" = --method ]; then
+    input=""
+    prev=""
+    for arg in "$@"; do
+        if [ "$prev" = --input ]; then input=$arg; fi
+        prev=$arg
+    done
+    [ -n "$input" ] && cp "$input" "$GH_COMMENT_CAPTURE"
+    printf '%s\n' '{"html_url":"https://github.com/character-ai/larch/issues/7#issuecomment-100"}'
+    exit 0
+fi
+exit 9
+EOF
+chmod +x "$dir/bin/gh"
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-dedup.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq dedup-comment "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-dedup.out")" "24: Tier B dedup emits dedup-comment"
+assert_eq https://github.com/character-ai/larch/issues/7#issuecomment-100 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-tier-b-dedup.out")" "24: Tier B dedup emits comment URL"
+assert_contains '+1 occurrence' "$(cat "$dir/comment.json")" "24: Tier B dedup posts bounded occurrence comment"
+assert_not_contains 'issue create' "$(cat "$dir/gh.log")" "24: Tier B dedup does not create duplicate"
+
+badroot="$SANDBOX/case24-bad-plugin-root"
+mkdir -p "$badroot/skills/implement/scripts" "$badroot/scripts" "$badroot/python" "$badroot/.claude-plugin"
+cp "$SCRIPT" "$badroot/skills/implement/scripts/stall-recovery-report.sh"
+cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$badroot/skills/implement/scripts/"
+cp "$SCRIPT_DIR/stall-recovery-report.md" "$badroot/skills/implement/scripts/"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$badroot/scripts/"
+cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$badroot/scripts/"
+cp "$REPO_ROOT/scripts/file-failure-report-cross-repo.sh" "$badroot/scripts/"
+cp "$REPO_ROOT/scripts/resolve-upstream-larch-repo.sh" "$badroot/scripts/"
+cp "$REPO_ROOT"/python/*.py "$badroot/python/"
+printf '{"repository":"https://example.com/not/larch"}\n' >"$badroot/.claude-plugin/plugin.json"
+chmod +x "$badroot/skills/implement/scripts/stall-recovery-report.sh" "$badroot/scripts/file-failure-report-cross-repo.sh" "$badroot/scripts/resolve-upstream-larch-repo.sh"
+dir=$(make_tmp case24-tier-b-resolver-failure)
+cp "$SANDBOX/case24-public-signature/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case24-public-signature/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case24-public-signature/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+run_capture "$SANDBOX/case24-tier-b-resolver-failure.out" env -u LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES "$badroot/skills/implement/scripts/stall-recovery-report.sh" compose-report --implement-tmpdir "$dir" --report-kind terminal-failure --surface chat-print --output-file "$dir/chat.md"
+assert_eq fallback-print-required "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-b-resolver-failure.out")" "24: Tier B resolver failure falls back"
+assert_eq upstream-repo-unresolved "$(kv STALL_RECOVERY_REPORT_FALLBACK_REASON "$SANDBOX/case24-tier-b-resolver-failure.out")" "24: Tier B resolver failure reason"
+
+dir=$(make_tmp case24-normalize-comment-url)
+cat >"$dir/file.env" <<'EOF'
+FILE_FAILURE_REPORT_STATUS=dedup-comment
+FILE_FAILURE_REPORT_URL=https://github.com/owner/repo/issues/7#issuecomment-99
+EOF
+run_capture "$SANDBOX/case24-normalize-comment-url.out" "$SCRIPT" normalize-file-failure-report-env --implement-tmpdir "$dir" --file-failure-report-env "$dir/file.env"
+assert_eq dedup-comment "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-normalize-comment-url.out")" "24: helper status maps dedup-comment"
+assert_eq https://github.com/owner/repo/issues/7#issuecomment-99 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-normalize-comment-url.out")" "24: helper URL maps canonical URL"
+assert_eq "" "$(kv STALL_RECOVERY_REPORT_ISSUE_URL "$SANDBOX/case24-normalize-comment-url.out")" "24: comment URL does not populate issue URL alias"
+
+TIER_A_MARKER_HASH=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+make_tier_a_dedup_case() {
+    local name=$1 dir
+    dir=$(make_tmp "$name")
+    mkdir -p "$dir/bin"
+    cat >"$dir/body.md" <<EOF
+### [Bug] /implement stall: fixture
+
+<!-- larch-stall:signature=$TIER_A_MARKER_HASH -->
+
+Tier A body.
+EOF
+    cat >"$dir/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$GH_LOG"
+if [ "$1" = repo ] && [ "${2:-}" = view ]; then
+    printf '%s\n' 'owner/current-repo'
+    exit 0
+fi
+if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+    case "${GH_STUB_CASE:-no-match}" in
+        no-match)
+            printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
+            ;;
+        lookup-fail)
+            printf '%s\n' 'lookup failed' >&2
+            exit 2
+            ;;
+        dedup)
+            printf '{"number":7,"body":"duplicate <!-- larch-stall:signature=%s -->","pull_request":null}\n' "$GH_MARKER_HASH"
+            ;;
+    esac
+    exit 0
+fi
+if [ "$1" = api ] && [ "${2:-}" = --method ]; then
+    printf '%s\n' '{"html_url":"https://github.com/owner/current-repo/issues/7#issuecomment-101"}'
+    exit 0
+fi
+exit 9
+EOF
+    chmod +x "$dir/bin/gh"
+    printf '%s\n' "$dir"
+}
+
+dir=$(make_tier_a_dedup_case case24-tier-a-dedup-no-match)
+run_capture "$SANDBOX/case24-tier-a-dedup-no-match.out" env PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" GH_STUB_CASE=no-match GH_MARKER_HASH="$TIER_A_MARKER_HASH" "$SCRIPT" dedup-tier-a-report --implement-tmpdir "$dir" --body-file "$dir/body.md"
+assert_eq no-match "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-a-dedup-no-match.out")" "24: Tier A dedup no-match status"
+assert_not_contains 'FILE_FAILURE_REPORT_STATUS=' "$(cat "$SANDBOX/case24-tier-a-dedup-no-match.out")" "24: Tier A dedup stdout is normalized"
+assert_contains 'repos/owner/current-repo/issues?state=open&per_page=100' "$(cat "$dir/gh.log")" "24: Tier A dedup binds current repo"
+
+dir=$(make_tier_a_dedup_case case24-tier-a-dedup-lookup-fail)
+run_capture "$SANDBOX/case24-tier-a-dedup-lookup-fail.out" env PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" GH_STUB_CASE=lookup-fail GH_MARKER_HASH="$TIER_A_MARKER_HASH" "$SCRIPT" dedup-tier-a-report --implement-tmpdir "$dir" --body-file "$dir/body.md"
+assert_eq lookup-failed-open "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-a-dedup-lookup-fail.out")" "24: Tier A dedup lookup failure fails open"
+assert_eq lookup-failed "$(kv STALL_RECOVERY_REPORT_FALLBACK_REASON "$SANDBOX/case24-tier-a-dedup-lookup-fail.out")" "24: Tier A dedup lookup failure reason"
+
+dir=$(make_tier_a_dedup_case case24-tier-a-dedup-comment)
+run_capture "$SANDBOX/case24-tier-a-dedup-comment.out" env PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" GH_STUB_CASE=dedup GH_MARKER_HASH="$TIER_A_MARKER_HASH" "$SCRIPT" dedup-tier-a-report --implement-tmpdir "$dir" --body-file "$dir/body.md"
+assert_eq dedup-comment "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-a-dedup-comment.out")" "24: Tier A dedup duplicate status"
+assert_eq https://github.com/owner/current-repo/issues/7#issuecomment-101 "$(kv STALL_RECOVERY_REPORT_URL "$SANDBOX/case24-tier-a-dedup-comment.out")" "24: Tier A dedup duplicate URL"
+
+dir=$(make_tier_a_dedup_case case24-tier-a-dedup-dry-run)
+run_capture "$SANDBOX/case24-tier-a-dedup-dry-run.out" env PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" dedup-tier-a-report --implement-tmpdir "$dir" --body-file "$dir/body.md"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-a-dedup-dry-run.out")" "24: Tier A dedup dry-run status"
+if [ ! -e "$dir/gh.log" ]; then
+    pass "24: Tier A dedup dry-run makes no gh calls"
+else
+    fail "24: Tier A dedup dry-run makes no gh calls" "$(cat "$dir/gh.log")"
+fi
+
+dir=$(make_tier_a_dedup_case case24-tier-a-dedup-dry-run-decision)
+run_capture "$SANDBOX/case24-tier-a-dedup-dry-run-decision.out" env PATH="$dir/bin:$PATH" GH_LOG="$dir/gh.log" DRY_RUN_DECISION=true "$SCRIPT" dedup-tier-a-report --implement-tmpdir "$dir" --body-file "$dir/body.md"
+assert_eq dry-run "$(kv STALL_RECOVERY_REPORT_STATUS "$SANDBOX/case24-tier-a-dedup-dry-run-decision.out")" "24: Tier A dedup honors DRY_RUN_DECISION"
+if [ ! -e "$dir/gh.log" ]; then
+    pass "24: Tier A dedup DRY_RUN_DECISION makes no gh calls"
+else
+    fail "24: Tier A dedup DRY_RUN_DECISION makes no gh calls" "$(cat "$dir/gh.log")"
+fi
+
+dir=$(make_tmp case24-escalation-signature-a)
+cp "$SANDBOX/case23-compose/stall-recovery-classification.env" "$dir/stall-recovery-classification.env"
+cp "$SANDBOX/case23-compose/stall-recovery-attempts.env" "$dir/stall-recovery-attempts.env"
+cp "$SANDBOX/case23-compose/stall-recovery-root-cause.md" "$dir/stall-recovery-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-bounded-root-cause.md" "$dir/stall-recovery-bounded-root-cause.md"
+cp "$SANDBOX/case23-compose/stall-recovery-sensitive-corpus.env" "$dir/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=step5\ttrigger=main-agent-required\tstep=5\tphase=review\n' >"$dir/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case24-escalation-signature-a.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir" --report-kind escalation-success --surface chat-print --output-file "$dir/chat.md"
+dir2=$(make_tmp case24-escalation-signature-b)
+cp "$dir/stall-recovery-classification.env" "$dir2/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir2/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir2/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir2/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir2/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=ship-pr\ttrigger=main-agent-required\tstep=5\tphase=review\n' >"$dir2/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case24-escalation-signature-b.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir2" --report-kind escalation-success --surface chat-print --output-file "$dir2/chat.md"
+if [ "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-a.out")" != "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-b.out")" ]; then
+    pass "24: escalation public signature changes with sanitized site"
+else
+    fail "24: escalation public signature changes with sanitized site"
+fi
+
+dir3=$(make_tmp case24-escalation-signature-trigger)
+cp "$dir/stall-recovery-classification.env" "$dir3/stall-recovery-classification.env"
+cp "$dir/stall-recovery-attempts.env" "$dir3/stall-recovery-attempts.env"
+cp "$dir/stall-recovery-root-cause.md" "$dir3/stall-recovery-root-cause.md"
+cp "$dir/stall-recovery-bounded-root-cause.md" "$dir3/stall-recovery-bounded-root-cause.md"
+cp "$dir/stall-recovery-sensitive-corpus.env" "$dir3/stall-recovery-sensitive-corpus.env"
+printf 'utc=2026-01-01T00:00:00Z\tsite=step5\ttrigger=first-fixer-non-health\tstep=5\tphase=review\n' >"$dir3/stall-recovery-escalation-ledger.tsv"
+run_capture "$SANDBOX/case24-escalation-signature-trigger.out" env LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" compose-report --implement-tmpdir "$dir3" --report-kind escalation-success --surface chat-print --output-file "$dir3/chat.md"
+if [ "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-a.out")" != "$(kv REPORT_DEDUP_SIGNATURE "$SANDBOX/case24-escalation-signature-trigger.out")" ]; then
+    pass "24: escalation public signature changes with sanitized trigger"
+else
+    fail "24: escalation public signature changes with sanitized trigger"
+fi
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

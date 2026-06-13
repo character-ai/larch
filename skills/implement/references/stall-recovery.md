@@ -25,6 +25,12 @@ Use these `$IMPLEMENT_TMPDIR` paths for `/implement`:
 - `stall-recovery-root-cause.md`
 - `stall-recovery-bounded-root-cause.md`
 - `stall-recovery-title.txt`
+- `stall-recovery-tier-a-attempts.md`
+- `stall-recovery-tier-a-escalation.md`
+- `stall-recovery-tier-a-root-cause.md`
+- `stall-recovery-bounded-attempts.md`
+- `stall-recovery-bounded-escalation-summary.md`
+- `stall-recovery-bounded-root-cause-public.md`
 
 The helper keeps internal seams for a later `/design` profile. Do not add public generic profile flags in this part.
 
@@ -37,7 +43,7 @@ The helper keeps internal seams for a later `/design` profile. Do not add public
 5. **Retry dispatch.** Respect the retry caps from `stall-recovery-report.md`. Record only branches that hand work to Main Claude. Do not record ordinary retries or reships. Dispatch by `RESUME_HINT`: `step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline; for protected-path stalls, Codex cannot edit the protected path. Continue through the normal current-run checks, commit, review, and ship sequence. `step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` (same immediate-background fence: `run_in_background: true`, `timeout: 21600000`); wait for `<task-notification>` before advancing. `step5-review` resumes Step 5 review and reaches Step 8 only through the normal current-run sequence.
 6. **Record prompt-side Main Claude handoffs before edits.** Call `record-escalation` before Step 18a inline `step2-impl` repair and before inline `step8-shippr` repair when Step 18a itself owns the repair. Stable owner tokens are `step2-impl` and `step8-shippr`.
 7. **Success after recovery.** Clear stall state with `clear-stall`. Do not file here. Success-with-ledger reporting is owned only by Step 18a.5.
-8. **Terminal failure.** Seed durable terminal stall state with `seed-terminal-state`. Main Claude must investigate before report composition and write `stall-recovery-root-cause.md`. If Tier B may be used, also write `stall-recovery-bounded-root-cause.md`, `stall-recovery-title.txt`, and `stall-recovery-sensitive-corpus.env`. Then call `compose-report --report-kind terminal-failure` exactly once. Tier A uses `--surface issue-input` and then `/larch:issue --input-file`; Tier B uses `--surface chat-print`. Write `stall-recovery-terminal-report.env` atomically after the issue is filed, after Tier B is printed, or after an operator-action skip result.
+8. **Terminal failure.** Seed durable terminal stall state with `seed-terminal-state`. Main Claude must investigate before report composition and write `stall-recovery-root-cause.md`. If Tier B may be used, also write `stall-recovery-bounded-root-cause.md`, `stall-recovery-title.txt`, and `stall-recovery-sensitive-corpus.env`. Then call `compose-report --report-kind terminal-failure` exactly once. Tier A uses `--surface issue-input` as artifact composition only, then runs `dedup-tier-a-report` before `/larch:issue`. Tier B uses `--surface chat-print`; the helper resolves upstream larch, dedups, and files or comments unless dry-run is active. Write `stall-recovery-terminal-report.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
 9. **Operator action.** If the root-cause verdict is `operator-action`, compose-report writes the non-filing record and sentinel. Do not file or print a public report.
 
 ## Step 18a.5 escalation-success procedure
@@ -63,13 +69,13 @@ Generic Tool Failures do not count. Missing attempts history is initialized as z
 
 If eligible, Main Claude reads validated failure detail, `ship-pr-state.sh`, `finalize-state.sh`, `session-env.sh`, attempts, classification, ledger, fallback evidence, record-failure marker, execution issues, run-log pointer when present, and prompt-state values it used. It writes root-cause artifacts for why the script loop needed Main Claude. Then it writes the prompt-state sensitive supplement immediately before `compose-report --report-kind escalation-success`.
 
-Tier A files through `/larch:issue --input-file` after full-output secret redaction. Tier B prints `stall-recovery-chat-print.md` only. Write `stall-recovery-escalation-success.env` atomically after filed, printed, or operator-action skip result.
+Tier A files through `/larch:issue --input-file ... --no-dedup` after full-output secret redaction and exact-signature dedup. Tier B files or comments upstream after composing `stall-recovery-chat-print.md`. Write `stall-recovery-escalation-success.env` atomically after filed, commented, fallback-printed, dry-run, or operator-action skip result.
 
 ## Tier policy
 
 Tier A applies only when `is-larch-dev-clone` is true and `FORKED_TARGET=false`. It bypasses TSV allowlists and redacts the full public issue input, including headings. It may include run linkage, branch, PR URL, validated logs, run-log pointer, full attempts, escalation ledger, root-cause finding, and verbatim bail reason after redaction.
 
-Tier B covers consumer repos and forked runs. It prints through chat only. It uses allowlisted machine fields plus bounded root-cause prose. Bounded prose and title validation reject client repo names, branch names, paths, PR URLs, plan text, issue text, state-file client values, evidence-log values, attempts, ledger, fallback evidence, record-failure markers, run-log pointers, and prompt-state supplement tokens. Allowlisted larch operational terms are exempt.
+Tier B covers consumer repos and forked runs. It files or comments in the resolved upstream larch repository on success, and prints through chat only on fallback or dry-run. It uses allowlisted machine fields plus bounded root-cause prose. Bounded prose and title validation reject client repo names, branch names, paths, PR URLs, plan text, issue text, state-file client values, evidence-log values, attempts, ledger, fallback evidence, record-failure markers, run-log pointers, and prompt-state supplement tokens. Allowlisted larch operational terms are exempt.
 
 ## Root-cause finding schema
 
@@ -92,4 +98,27 @@ The finding must distinguish observation from inference and cite evidence by pat
 - Bash `ship-pr.sh` emits ledger-ready data for opt-in handoffs and returns before recovery-waterfall edits on ship-pr-internal lint-fix `main-agent-required`.
 - Clean retries, reships, and health-only paths do not record escalation events.
 
-Report target stays unchanged in this part.
+## Filing flow
+
+Tier A keeps the current `/larch:issue` filing target. It must:
+
+1. Compose `issue-input` and treat compose output as artifact metadata only.
+2. If dry-run is active, skip dedup and `/larch:issue`, then write the terminal sentinel with `STALL_RECOVERY_REPORT_STATUS=dry-run`.
+3. Run `stall-recovery-report.sh dedup-tier-a-report`.
+4. Branch only on `STALL_RECOVERY_REPORT_STATUS`.
+5. On `dedup-comment`, skip `/larch:issue`.
+6. On `no-match` or `lookup-failed-open`, call `/larch:issue --input-file ... --no-dedup`.
+7. On `fallback-print-required`, print the sanitized artifact instead of creating a duplicate.
+8. After successful `/larch:issue`, run `normalize-issue-env` or an equivalent writer, persist `ISSUE_URL` and `ISSUE_NUMBER`, and emit `STALL_RECOVERY_REPORT_STATUS=filed`, `STALL_RECOVERY_REPORT_URL`, `STALL_RECOVERY_REPORT_ISSUE_URL`, and `STALL_RECOVERY_REPORT_ISSUE_NUMBER`.
+
+Tier B now files public reports in the resolved upstream larch repository. It must:
+
+1. Call `compose-report --surface chat-print`.
+2. On `filed` or `dedup-comment`, print only a short notice using `STALL_RECOVERY_REPORT_URL`.
+3. On `fallback-print-required`, print `stall-recovery-chat-print.md` for manual filing.
+4. On `dry-run`, keep local artifact-only behavior.
+5. On `skipped_operator_action`, keep the local sentinel and do not file.
+
+`is-larch-dev-clone` selects the content tier only. It no longer decides whether a public report is filed. Tier B passes only bounded public comment payload files to the cross-repo helper: bounded attempts, allowlisted escalation site/trigger summaries, and bounded root-cause prose. It must not pass raw root-cause files, raw ledgers, full report bodies, raw logs, paths, branches, or run IDs to the Tier B comment path.
+
+Public report dedup uses the `REPORT_DEDUP_SIGNATURE` marker, not retry `FAILURE_SIGNATURE`. The marker is exact `<!-- larch-stall:signature=<64-hex> -->`. Terminal signatures include only `report_kind`, `failure_class`, `step`, `phase`, and `safe_bail_token`. Escalation-success signatures add sanitized `escalation_site` and `escalation_trigger`. Dispatcher, matched classifier, evidence digests, paths, branches, run IDs, raw state, raw logs, and `skill=implement` stay out of the Part 2 seed.

@@ -16,6 +16,7 @@ PYTHON ?= python3
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count test-ci-decide
 .PHONY: test-step-7a test-step-8-ship
 .PHONY: test-stall-recovery-report test-step-18b-final-report
+.PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
@@ -91,7 +92,7 @@ test-harnesses-4: test-plan-review-loop test-review-design-step3-loop test-captu
 
 test-harnesses-5: test-review-and-fix-dispatch test-dispatch-code-voters-regressions-r1-r2 test-launch-codex-drafter test-parse-drafter-output test-pipe-sigpipe-safety test-scrub-log-secrets test-check-reviewer-failure-threshold test-block-submodule test-ci-behind-count test-implement-fork-env test-post-tracking-issue test-run-external-agent-args test-plan-adequacy-audit test-implement-preflight test-lib-prune-decision test-synthesis-subagent
 
-test-harnesses-6: test-stall-recovery-report test-validate-citations test-design-multi-round-integration test-launch-claude-review test-token-vendor-scrapers test-sessionstart test-reviewer-prune test-step-18b-final-report test-gate-b-dedup-plan test-references-headers test-render-cost-line-callsites test-pause-skill test-lib-phase-driver test-implement-fence-shape
+test-harnesses-6: test-stall-recovery-report test-resolve-upstream-larch-repo test-file-failure-report-cross-repo test-validate-citations test-design-multi-round-integration test-launch-claude-review test-token-vendor-scrapers test-sessionstart test-reviewer-prune test-step-18b-final-report test-gate-b-dedup-plan test-references-headers test-render-cost-line-callsites test-pause-skill test-lib-phase-driver test-implement-fence-shape
 
 test-harnesses-7: test-launch-cursor-ci test-collect-findings test-lint-fix-loop test-launch-claude-subprocess test-gate-b-apply-mode test-decompose-file-issues test-persist-retally-step3-env test-plan-review-scope-anchor test-read-result-env test-agent-model-args test-step-8-ship test-design-step3-state test-rebase-push-force-lease test-lib-submodule-prohibition
 
@@ -646,6 +647,12 @@ test-step2-dispatch:
 
 test-stall-recovery-report:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-stall-recovery-report.sh
+
+test-resolve-upstream-larch-repo:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-resolve-upstream-larch-repo.sh
+
+test-file-failure-report-cross-repo:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-file-failure-report-cross-repo.sh
 
 test-step-18b-final-report:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-18b-final-report.sh
