@@ -1,0 +1,1 @@
+Plan: add a permanent `submodule-restricted` stall class, keep Tier B and coder-waterfall no-ops where current code already satisfies them, fix the rebase macro text, and delegate review pre-scout manifest filtering to the Python scout filter.
