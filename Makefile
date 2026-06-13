@@ -296,10 +296,10 @@ test-timing-ledger:
 	cd python && $(PYTHON) -m pytest test_timing.py -q
 
 test-review-and-fix-record-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k record_timing
 
 test-review-and-fix-step5-loop-timing:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-record-plan-review-round-timing.sh
@@ -746,7 +746,7 @@ test-commit-implementation:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-commit-implementation.sh
 
 test-review-and-fix-commit-fixes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k commit_fixes
 
 test-generate-code-flow-diagram:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-generate-code-flow-diagram.sh
@@ -755,7 +755,7 @@ test-refresh-execution-issues:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-refresh-execution-issues.sh
 
 test-review-and-fix-write-rejected:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k write_rejected
 
 test-slack-issue-announce:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-slack-issue-announce.sh
@@ -883,19 +883,19 @@ test-review-and-fix:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
 
 test-review-and-fix-dispatch:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k dispatch
 
 test-review-and-fix-convergence:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k convergence
 
 test-review-and-fix-parsers:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k parsers
 
 test-review-and-fix-step5-starting-round:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k starting_round
 
 test-review-and-fix-step5:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k step5
 
 test-scrub-submodule-paths:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_redact.py
@@ -962,7 +962,7 @@ test-compose-review-findings:
 
 
 test-review-and-fix-check-changes:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_review_and_fix.py -q -k check_changes
 
 test-check-mid-run-dirty-tree:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_dirty_tree.py -x -q -k 'baseline or checkpoint'
