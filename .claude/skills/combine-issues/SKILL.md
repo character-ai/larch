@@ -27,6 +27,16 @@ Good candidates share at least one of:
 
 Do NOT combine issues that are genuinely independent and benefit from separate review (e.g., a bug fix and an unrelated feature).
 
+## Session Temp Directory
+
+Before writing any body files, create a unique temp directory for this run:
+
+```bash
+COMBINE_TMPDIR=$(mktemp -d)
+```
+
+Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp/<name>` path; those paths collide when a prior run left a file at the same location.
+
 <!-- step:1 — Fetch Eligible Issues -->
 
 ```bash
@@ -53,12 +63,12 @@ Ask the user which groups to apply (e.g., "all", "1,3", or "none").
 
 <!-- step:3 — Apply Approved Combinations -->
 
-For each approved group, write the combined body to a temp file, then invoke:
+For each approved group, write the combined body to `$COMBINE_TMPDIR/group-<N>.md`, then invoke:
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues apply \
   --title "<combined title>" \
-  --body-file "<temp-file>" \
+  --body-file "$COMBINE_TMPDIR/group-<N>.md" \
   --source-issues "<comma-separated issue numbers>"
 ```
 
@@ -82,6 +92,32 @@ if [ -z "$REPO" ]; then
   exit 1
 fi
 ```
+
+Create a unique temp directory for body files and state files for this run:
+
+```bash
+COMBINE_TMPDIR=$(mktemp -d)
+```
+
+Set these variable paths under `$COMBINE_TMPDIR` before running any OOS step:
+
+- `SOURCE_TO_COMBINED_JSON=$COMBINE_TMPDIR/source-to-combined.json`
+- `COMBINED_ISSUES_JSON=$COMBINE_TMPDIR/combined-issues.json`
+- `BLOCKED_SOURCES_JSON=$COMBINE_TMPDIR/blocked-sources.json`
+- `WRITE_RESULTS_JSON=$COMBINE_TMPDIR/write-results.json`
+- `EXCEPTION_DECISIONS_JSON=$COMBINE_TMPDIR/exception-decisions.json`
+- `DEPS_JSON=$COMBINE_TMPDIR/deps.json`
+- `OPEN_ISSUES_JSON=$COMBINE_TMPDIR/open-issues.json`
+- `INHERITED_PLAN_JSON=$COMBINE_TMPDIR/inherited-plan.json`
+- `REFRESHED_OPEN_ISSUES_JSON=$COMBINE_TMPDIR/open-issues-refreshed.json`
+- `FINAL_INHERITED_PLAN_JSON=$COMBINE_TMPDIR/inherited-plan-final.json`
+- `AUDIT_OPEN_ISSUES_JSON=$COMBINE_TMPDIR/audit-open-issues.json`
+- `EXISTING_EDGES_JSON=$COMBINE_TMPDIR/existing-edges.json`
+- `DECIDED_EDGES_JSON=$COMBINE_TMPDIR/decided-edges.json`
+- `PROSE_CANDIDATES_JSON=$COMBINE_TMPDIR/prose-candidates.json`
+- `TIER2_CANDIDATES_JSON=$COMBINE_TMPDIR/tier2-candidates.json`
+- `CLOSE_ELIGIBLE_JSON=$COMBINE_TMPDIR/close-eligible.json`
+- `AUDIT_PLAN_JSON=$COMBINE_TMPDIR/audit-plan.json`
 
 <!-- step:oos-1 — Fetch OOS Issues -->
 
@@ -152,13 +188,13 @@ Present the proposed scheme to the user. Ask: "Apply all groups (yes), apply spe
 
 <!-- step:oos-5 — Apply with Deferred Closure -->
 
-For each approved group, write the combined body to a temp file, then invoke:
+For each approved group, write the combined body to `$COMBINE_TMPDIR/oos-group-<N>.md`, then invoke:
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues apply \
   --repo "$REPO" \
   --title "<combined title>" \
-  --body-file "<temp-file>" \
+  --body-file "$COMBINE_TMPDIR/oos-group-<N>.md" \
   --source-issues "<comma-separated issue numbers to close>" \
   --defer-close
 ```
