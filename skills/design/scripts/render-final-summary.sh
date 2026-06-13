@@ -236,7 +236,9 @@ refresh_issue_counts() {
           /^### External Reviewer Issues$/ { sec=1; next }
           /^### Warnings$/ { sec=2; next }
           /^### / { sec=0; next }
-          /^- \*\*Step / {
+          /^[[:space:]]*```[[:space:]]*$/ { fence = !fence; next }
+          fence { next }
+          /^- \*\*/ {
             if (sec == 1) ex++
             if (sec == 2) wa++
             next

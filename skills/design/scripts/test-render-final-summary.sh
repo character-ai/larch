@@ -707,6 +707,31 @@ set -e
 test "$rc" -eq 2 || fail 'invalid outcome must exit 2'
 pass 'invalid outcome rejected'
 
+WARN_D="$TMP/design-warning-count"
+mkdir -p "$WARN_D"
+cat >"$WARN_D/run-params.json" <<'JSON'
+JSON
+cat >"$WARN_D/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Example
+- **Reviewer**: Codex-Pragmatic
+- **Focus area**: correctness
+- **Concern**: example
+EOF
+: >"$WARN_D/oos-accepted-design.md"
+: >"$WARN_D/oos-issues-created.md"
+cat >"$WARN_D/execution-issues.md" <<'EOF'
+### Warnings
+
+- **Non-step warning**:
+  ```
+- **Diagnostic bullet**: not an issue entry
+  ```
+EOF
+DESIGN_TMPDIR="$WARN_D" ISSUE_NUMBER="" SESSION_ID="RUN-WARN-COUNT" \
+    "$SUBJECT" --outcome approved --post-publish-only >/dev/null 2>/dev/null
+grep -Fq -- '- **Warnings**: 1' "$WARN_D/final-summary.md" || fail 'non-step warning entry must count once'
+pass 'non-step warning entry count ignores fenced diagnostics'
+
 
 BG_D="$TMP/design-bg-poll"
 mkdir -p "$BG_D"
