@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Tests for finalize.py."""
 
 from __future__ import annotations
