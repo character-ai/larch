@@ -672,21 +672,32 @@ run_design_failure_report_gate() {
     local helper="$PLUGIN_ROOT/skills/design/scripts/design-failure-report.sh"
     local out_file="$DESIGN_TMPDIR/design-failure-report.stdout.log"
     local err_file="$DESIGN_TMPDIR/design-failure-report.stderr.log"
+    local ex_before ex_after
+    ex_before=0
+    if [ -f "$DESIGN_TMPDIR/execution-issues.md" ]; then
+        ex_before=$(wc -c <"$DESIGN_TMPDIR/execution-issues.md" | tr -d '[:space:]')
+    fi
     [ -x "$helper" ] || return 0
     set +e
     "$helper" --design-tmpdir "$DESIGN_TMPDIR" --outcome "$OUTCOME" ${REPO:+--repo "$REPO"} ${ISSUE:+--issue "$ISSUE"} ${RUN_ID:+--run-id "$RUN_ID"} >"$out_file" 2>"$err_file"
     local gate_rc=$?
     set -e
-    if [ "$gate_rc" -ne 0 ]; then
-        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design failure report gate" \
-            --tool "design-failure-report.sh" \
-            --exit-code "$gate_rc" \
-            --category Warnings \
-            --redact \
-            --output-file "$err_file" \
-            >/dev/null 2>&1 || true
+    ex_after=0
+    if [ -f "$DESIGN_TMPDIR/execution-issues.md" ]; then
+        ex_after=$(wc -c <"$DESIGN_TMPDIR/execution-issues.md" | tr -d '[:space:]')
+    fi
+    if [ "$gate_rc" -ne 0 ] || [ "$ex_after" != "$ex_before" ]; then
+        if [ "$gate_rc" -ne 0 ]; then
+            python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+                --log "$DESIGN_TMPDIR/execution-issues.md" \
+                --site "design failure report gate" \
+                --tool "design-failure-report.sh" \
+                --exit-code "$gate_rc" \
+                --category Warnings \
+                --redact \
+                --output-file "$err_file" \
+                >/dev/null 2>&1 || true
+        fi
         refresh_issue_counts
     fi
 }
@@ -733,6 +744,7 @@ fi
 
 # post phase: run the report gate, render to file, then print the resolved file exactly once.
 run_design_failure_report_gate
+refresh_issue_counts
 render_or_fallback
 while IFS= read -r line || [ -n "$line" ]; do
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then

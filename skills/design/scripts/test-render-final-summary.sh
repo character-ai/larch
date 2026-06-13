@@ -698,6 +698,10 @@ for summary_outcome in \
     cancelled-outline \
     failed-plan-write \
     failed-publish \
+    failed-postplan \
+    failed-clarify \
+    failed-judge-panel \
+    failed-publish-tail \
     publish-skipped
 do
     session="RUN-MATRIX-${summary_outcome}"
@@ -718,7 +722,77 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'fourteen-outcome post-publish matrix'
+pass 'eighteen-outcome post-publish matrix'
+
+# --- report-gate KV isolation: helper stdout stays in sidecar log ---
+GATE_D="$TMP/design-gate-kv"
+mkdir -p "$GATE_D"
+: >"$GATE_D/execution-issues.md"
+cat >"$GATE_D/run-params.json" <<'JSON'
+JSON
+cat >"$GATE_D/voting-tally.md" <<'EOF'
+# Tally
+EOF
+: >"$GATE_D/accepted-plan-findings.md"
+: >"$GATE_D/oos-accepted-design.md"
+mkdir -p "$PLUGIN_STUB/skills/design/scripts"
+cat >"$PLUGIN_STUB/skills/design/scripts/design-failure-report.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'DESIGN_FAILURE_REPORT_DECISION=skip\n'
+printf 'DESIGN_FAILURE_REPORT_KV_ISOLATION_PROBE=distinctive-kv-42\n'
+EOF
+chmod +x "$PLUGIN_STUB/skills/design/scripts/design-failure-report.sh"
+gate_kv_stdout="$TMP/std-gate-kv.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$GATE_D" ISSUE_NUMBER="" SESSION_ID="RUN-GATE-KV" \
+    "$SUBJECT" --outcome approved --post-publish-only >"$gate_kv_stdout" 2>/dev/null
+grep -Fq 'DESIGN_FAILURE_REPORT_KV_ISOLATION_PROBE=distinctive-kv-42' "$GATE_D/design-failure-report.stdout.log" \
+    || fail 'report gate KV must land in sidecar stdout log'
+if grep -Fq 'DESIGN_FAILURE_REPORT_KV_ISOLATION_PROBE' "$gate_kv_stdout"; then
+    fail 'report gate KV must not leak into post-publish stdout'
+fi
+stdout_starts_with_summary "$GATE_D/final-summary.md" "$gate_kv_stdout" 'report gate KV isolation stdout/file mismatch'
+pass 'report-gate helper KVs isolated to sidecar log'
+
+# --- pre-publish must not invoke report gate ---
+pre_gate_d="$TMP/design-pre-gate"
+mkdir -p "$pre_gate_d"
+: >"$pre_gate_d/execution-issues.md"
+cat >"$pre_gate_d/run-params.json" <<'JSON'
+JSON
+cat >"$pre_gate_d/voting-tally.md" <<'EOF'
+# Tally
+EOF
+: >"$pre_gate_d/accepted-plan-findings.md"
+: >"$pre_gate_d/oos-accepted-design.md"
+rm -f "$pre_gate_d/design-failure-report.stdout.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$pre_gate_d" ISSUE_NUMBER="" SESSION_ID="RUN-PRE-GATE" \
+    "$SUBJECT" --outcome approved --pre-publish-only >/dev/null 2>&1
+if [ -f "$pre_gate_d/design-failure-report.stdout.log" ]; then
+    fail 'pre-publish path must not run design-failure-report gate'
+fi
+pass 'pre-publish path skips report gate'
+
+# --- gate audit appends refresh warning counts before render ---
+audit_d="$TMP/design-gate-audit"
+mkdir -p "$audit_d"
+: >"$audit_d/execution-issues.md"
+cat >"$audit_d/run-params.json" <<'JSON'
+JSON
+cat >"$audit_d/voting-tally.md" <<'EOF'
+# Tally
+EOF
+: >"$audit_d/accepted-plan-findings.md"
+: >"$audit_d/oos-accepted-design.md"
+env -u CLAUDE_PLUGIN_ROOT "$ROOT/skills/design/scripts/design-stage-terminal-state.sh" \
+    --design-tmpdir "$audit_d" --outcome failed-clarify --step clarify --phase clarify-loop \
+    --site clarify-loop --trigger failed --bail-reason clarify-hard-halt --exit-code 1 \
+    --source-script clarify-loop --summary-outcome failed-clarify >/dev/null
+audit_stdout="$TMP/std-gate-audit.log"
+CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$audit_d" ISSUE_NUMBER="" SESSION_ID="RUN-GATE-AUDIT" \
+    "$SUBJECT" --outcome failed-publish --post-publish-only >"$audit_stdout" 2>/dev/null
+grep -Fq '### Warnings' "$audit_d/execution-issues.md" || fail 'invalid terminal state gate must append execution-issues audit'
+grep -Fq -- '- **Warnings**: 1' "$audit_d/final-summary.md" || fail 'warning count must refresh after gate audit before render'
+pass 'report gate audit refreshes warning counts before render'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

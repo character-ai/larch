@@ -29,6 +29,13 @@ LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT"
 grep -Fxq 'DESIGN_FAILURE_REPORT_REASON=terminal-sentinel-present' "$D2/second.out" || fail 'terminal sentinel did not skip duplicate'
 pass 'terminal report and duplicate skip'
 
+D2b=$(mktemp -d)
+env -u CLAUDE_PLUGIN_ROOT "$STAGE" --design-tmpdir "$D2b" --outcome failed-clarify --step clarify --phase clarify-loop --site clarify-loop --trigger failed --bail-reason clarify-hard-halt --exit-code 1 --source-script clarify-loop >/dev/null
+LARCH_STALL_RECOVERY_TEST_LEGACY_SURFACES=1 env -u CLAUDE_PLUGIN_ROOT "$SUBJECT" --design-tmpdir "$D2b" --outcome failed-publish >"$D2b/mismatch.out"
+grep -Fxq 'DESIGN_FAILURE_REPORT_DECISION=fallback-print-required' "$D2b/mismatch.out" || fail 'outcome mismatch did not fallback'
+grep -Fxq 'DESIGN_FAILURE_REPORT_REASON=terminal-state-outcome-mismatch' "$D2b/mismatch.out" || fail 'outcome mismatch reason missing'
+pass 'terminal state outcome mismatch fails closed'
+
 D3=$(mktemp -d)
 cat >"$D3/design-failure-escalation-ledger.tsv" <<'ROW'
 utc=2026-01-01T00:00:00Z	site=step3-review	trigger=main-agent-vote-required	step=step3	phase=validation	dispatcher=design-step3-review	exit_code=unknown	failure_detail_log=

@@ -800,7 +800,7 @@ safe_site_value() {
 safe_trigger_value() {
     case "${1:-}" in
         main-agent-required|coder-main-agent-required|main-agent-vote-required|fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|ci-fix-exhausted|first-fixer-non-health|local-unfixable|ship-pr-internal-lint-fix|lint-fix-main-agent-required|step2-impl|step8-shippr|dispatch-failed) printf '%s\n' "$1" ;;
-        main-agent-apply-required|postplan-operator-required|exhausted|failed|unavailable|skipped-cycle-cap|postplan-failed|panel-failed|tally-error|degraded-empty-collector|judge-panel-collapse|decompose-panel-retry-exhausted) if profile_is_generic; then printf '%s\n' "$1"; else printf 'redacted\n'; fi ;;
+        main-agent-apply-required|postplan-operator-required|exhausted|failed|unavailable|skipped-cycle-cap|postplan-failed|publish-tail-failed|plan-write-failed|publish-failed|panel-failed|tally-error|degraded-empty-collector|judge-panel-collapse|decompose-panel-retry-exhausted) if profile_is_generic; then printf '%s\n' "$1"; else printf 'redacted\n'; fi ;;
         ci-local-unfixable:*)
             if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^ci-local-unfixable:[A-Za-z0-9_,-]+$'; then
                 printf '%s\n' "$1"

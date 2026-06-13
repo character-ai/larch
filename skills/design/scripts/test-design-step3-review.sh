@@ -25,4 +25,14 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
   fail 'postplan-failed stdout must remain KV-only'
 fi
 grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$WRAPPER" || fail 'postplan-failed summary KV missing'
-pass 'Step 3 reporting static contract'
+
+D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
+trap 'rm -rf "$D_STEP3"' EXIT
+STAGE_HELPER="$ROOT/skills/design/scripts/design-stage-terminal-state.sh"
+env -u CLAUDE_PLUGIN_ROOT "$STAGE_HELPER" --design-tmpdir "$D_STEP3" \
+  --outcome failed-postplan --step postplan --phase postplan --site step3-review \
+  --trigger postplan-failed --bail-reason postplan-failed --exit-code 10 \
+  --source-script design-step3-review --summary-outcome failed-postplan >/dev/null
+[ -f "$D_STEP3/design-failure-terminal-state.env" ] || fail 'postplan-failed staging must write terminal state'
+grep -Fxq 'FAILURE_OUTCOME=failed-postplan' "$D_STEP3/design-failure-terminal-state.env" || fail 'postplan terminal outcome missing'
+pass 'Step 3 postplan-failed stages terminal state at runtime'

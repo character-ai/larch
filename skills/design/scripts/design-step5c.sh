@@ -135,6 +135,8 @@ design_bg_wait_marker_start design-step5c || true
      design_require_plugin_root
      local stage_helper="$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-stage-terminal-state.sh"
      [[ -x "$stage_helper" ]] || return 0
+     local detail_log="$DESIGN_TMPDIR/design-publish-tail.failure.log"
+     [ -f "$detail_log" ] || printf 'design-publish.sh failed (exit %s)\n' "$rc" >"$detail_log"
      set +e
      "$stage_helper" --design-tmpdir "$DESIGN_TMPDIR" \
        --outcome failed-publish-tail \
@@ -146,9 +148,30 @@ design_bg_wait_marker_start design-step5c || true
        --exit-code "$rc" \
        --source-script design-step5c \
        --summary-outcome failed-publish-tail \
+       --failure-detail-log "$detail_log" \
        >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
        2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+     local stage_rc=$?
      set -e
+     if grep -Fxq 'STAGED=false' "$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" 2>/dev/null; then
+       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+         --log "$DESIGN_TMPDIR/execution-issues.md" \
+         --site "design Step 5c publish-tail staging" \
+         --tool "design-stage-terminal-state.sh" \
+         --exit-code 0 \
+         --category Warnings \
+         --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log" \
+         --redact >/dev/null 2>&1 || true
+     elif [[ "$stage_rc" -ne 0 ]]; then
+       python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log append-failure \
+         --log "$DESIGN_TMPDIR/execution-issues.md" \
+         --site "design Step 5c publish-tail staging" \
+         --tool "design-stage-terminal-state.sh" \
+         --exit-code "$stage_rc" \
+         --category Warnings \
+         --output-file "$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log" \
+         --redact >/dev/null 2>&1 || true
+     fi
      export SUMMARY_OUTCOME=failed-publish-tail
      "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
        --outcome failed-publish-tail \

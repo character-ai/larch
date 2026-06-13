@@ -98,7 +98,7 @@ assemble_comment() {
 }
 
 reject_tier_b_comment_if_unsafe() {
-    local body_file=$1 comment_file=$2 err=$3
+    local body_file=$1 comment_file=$2 err=$3 validate_tmpdir=${4:-}
     local _tier_b_profile_args=()
     if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
         echo "file-failure-report-cross-repo.sh: tier-b comment contains raw report body section" >"$err"
@@ -106,6 +106,7 @@ reject_tier_b_comment_if_unsafe() {
     fi
     local body_dir
     body_dir=$(dirname "$body_file")
+    [ -n "$validate_tmpdir" ] || validate_tmpdir="$body_dir"
     [ -n "${sensitive_corpus_file:-}" ] || sensitive_corpus_file="$body_dir/stall-recovery-sensitive-corpus.env"
     case "$(basename "${sensitive_corpus_file:-}")" in
         design-failure-*)
@@ -125,18 +126,25 @@ reject_tier_b_comment_if_unsafe() {
         echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
         return 0
     fi
+    local corpus_copy="$validate_tmpdir/$(basename "$sensitive_corpus_file")"
+    if [ "$sensitive_corpus_file" != "$corpus_copy" ]; then
+        cp "$sensitive_corpus_file" "$corpus_copy" 2>/dev/null || {
+            echo "file-failure-report-cross-repo.sh: tier-b sensitive corpus unavailable" >"$err"
+            return 0
+        }
+    fi
     if [ "${#_tier_b_profile_args[@]}" -gt 0 ]; then
         if ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
             "${_tier_b_profile_args[@]}" \
-            --implement-tmpdir "$body_dir" \
+            --implement-tmpdir "$validate_tmpdir" \
             --candidate-file "$comment_file" \
-            --sensitive-corpus-file "$sensitive_corpus_file" >/dev/null 2>"$err"; then
+            --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then
             return 0
         fi
     elif ! "$STALL_REPORT_SCRIPT" validate-tier-b-public-file \
-        --implement-tmpdir "$body_dir" \
+        --implement-tmpdir "$validate_tmpdir" \
         --candidate-file "$comment_file" \
-        --sensitive-corpus-file "$sensitive_corpus_file" >/dev/null 2>"$err"; then
+        --sensitive-corpus-file "$corpus_copy" >/dev/null 2>"$err"; then
         return 0
     fi
     return 1
@@ -223,7 +231,7 @@ if issue_number=$(lookup_open_issue "$repo" "$marker" "$lookup_out" "$lookup_err
     comment_out="$tmpdir/comment.out"
     comment_err="$tmpdir/comment.err"
     assemble_comment "$comment_file" "$attempts_file" "$escalation_file" "$root_file"
-    if [ "$publication_tier" = tier-b ] && reject_tier_b_comment_if_unsafe "$body_file" "$comment_file" "$comment_err"; then
+    if [ "$publication_tier" = "tier-b" ] && reject_tier_b_comment_if_unsafe "$body_file" "$comment_file" "$comment_err" "$tmpdir"; then
         redact_stderr_file "$comment_err"
         status_fallback unsafe-tier-b-comment
         exit 0

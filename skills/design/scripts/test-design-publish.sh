@@ -47,9 +47,11 @@ trap 'rm -rf "$TMP"' EXIT
 
 FAKE_PLUGIN="$TMP/plugin"
 STUB="$FAKE_PLUGIN/scripts"
-mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts"
+mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts" "$FAKE_PLUGIN/skills/implement/scripts"
+ln -sf "$REPO_ROOT/skills/implement/scripts/stall-recovery-report.sh" "$FAKE_PLUGIN/skills/implement/scripts/stall-recovery-report.sh"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
+ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$STUB/lib-design-tmpdir.sh"
 write_reentry_guard_wrapper() {
     cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
 # shellcheck shell=bash
@@ -68,6 +70,7 @@ WRAP
 }
 write_reentry_guard_wrapper
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_PLUGIN/skills/design/scripts/lib-phase-driver.sh"
+ln -sf "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$FAKE_PLUGIN/skills/design/scripts/design-stage-terminal-state.sh"
 
 setup_design_tmp() {
     local d="$1"
@@ -563,6 +566,22 @@ grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
   || fail "failed-plan-write render missing DESIGN_TMPDIR"
 if grep -q 'tracking-issue rename' "$RENAME_LOG" 2>/dev/null; then fail "failed plan write must not rename"; else pass "failed plan write skipped rename"; fi
 if grep -q 'tracking-issue rename' "$CALL_LOG" 2>/dev/null; then fail "failed plan write call log must not rename"; else pass "failed plan write call log skipped rename"; fi
+
+D_FAIL_STAGE="$TMP/plan-block-stage"
+setup_design_tmp "$D_FAIL_STAGE"
+D_FAIL_STAGE_CANON=$(cd "$D_FAIL_STAGE" && pwd -P)
+printf 'plan-block write failed\n' >"$D_FAIL_STAGE_CANON/design-plan-write.failure.log"
+env -u CLAUDE_PLUGIN_ROOT "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" \
+  --design-tmpdir "$D_FAIL_STAGE_CANON" --outcome failed-plan-write --step publish \
+  --phase plan-write --site design-publish --trigger failed \
+  --bail-reason plan-write-failed --exit-code 1 --source-script design-publish \
+  --failure-detail-log "$D_FAIL_STAGE_CANON/design-plan-write.failure.log" \
+  --summary-outcome failed-plan-write >/dev/null
+[ -f "$D_FAIL_STAGE_CANON/design-failure-terminal-state.env" ] \
+  || fail 'plan-write failure path must stage terminal state'
+grep -Fxq 'FAILURE_OUTCOME=failed-plan-write' "$D_FAIL_STAGE_CANON/design-failure-terminal-state.env" \
+  || fail 'plan-write failure terminal outcome missing'
+pass 'plan-block failure stages terminal state at runtime'
 
 # --- happy path ---
 D_OK="$TMP/happy"
@@ -1185,6 +1204,22 @@ grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
 grep -Fq 'stage_design_terminal_state failed-plan-write' "$SUBJECT" || fail 'design-publish stages failed-plan-write'
 grep -Fq 'stage_design_terminal_state failed-publish' "$SUBJECT" || fail 'design-publish stages failed-publish'
 grep -Fq 'DESIGN_FAILURE_VERSION=1' "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" || fail 'terminal state helper writes required version key'
+
+# --- publish-tail hard exit stages terminal state via real helper (design-step5c contract) ---
+D_TAIL="$TMP/publish-tail-hard"
+setup_design_tmp "$D_TAIL"
+ln -sf "$REPO_ROOT/skills/design/scripts/design-stage-terminal-state.sh" "$FAKE_PLUGIN/skills/design/scripts/design-stage-terminal-state.sh"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export REDACT_STUB_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_TAIL" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "redactor failure exit 2 for publish-tail" 2 "$rc"
+[ -f "$D_TAIL/design-publish-tail.failure.log" ] || fail 'publish-tail hard exit must write failure log'
+pass 'publish-tail hard exit records failure log without duplicate render in design-publish'
 pass 'design-publish terminal-state staging static contract'
 
 if [[ "$FAIL" -gt 0 ]]; then

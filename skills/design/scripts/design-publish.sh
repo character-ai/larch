@@ -14,12 +14,7 @@ publish_tail_fail() {
     if [[ -z "$detail_log" ]]; then
         detail_log="$failure_log"
     fi
-    stage_design_terminal_state failed-publish-tail publish publish design-publish "$bail" "$exit_code" "$detail_log"
-    export SUMMARY_OUTCOME=failed-publish-tail
-    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-        --outcome failed-publish-tail \
-        ${REPO:+--repo "$REPO"} \
-        --post-publish-only || true
+    printf '%s\n' "design-publish.sh: publish-tail failure ($bail, exit $exit_code)" >>"$failure_log"
     exit 2
 }
 
@@ -222,10 +217,22 @@ stage_design_terminal_state() {
     )
     [[ -z "$detail_log" ]] || args+=(--failure-detail-log "$detail_log")
     [[ -z "$root_hint" ]] || args+=(--root-cause-hint "$root_hint")
+    local stage_out="$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log"
     set +e
-    "$helper" "${args[@]}"         >"$DESIGN_TMPDIR/design-stage-terminal-state.stdout.log"         2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
+    "$helper" "${args[@]}" >"$stage_out" 2>"$DESIGN_TMPDIR/design-stage-terminal-state.stderr.log"
     local stage_rc=$?
     set -e
+    if grep -Fxq 'STAGED=false' "$stage_out" 2>/dev/null; then
+        python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design terminal state staging" \
+            --tool "design-stage-terminal-state.sh" \
+            --exit-code 0 \
+            --category Warnings \
+            --output-file "$stage_out" \
+            --redact >/dev/null 2>&1 || true
+        return 1
+    fi
     if [[ "$stage_rc" -ne 0 ]]; then
         python3 "$PLUGIN_ROOT/python/cli.py" run-log append-failure \
             --log "$DESIGN_TMPDIR/execution-issues.md" \

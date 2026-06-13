@@ -61,7 +61,13 @@ OPERATOR_SENTINEL="$DESIGN_TMPDIR/design-failure-operator-action.env"
 COMPOSE_ENV="$DESIGN_TMPDIR/design-failure-compose.env"
 
 compose_env_key() {
-    python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$COMPOSE_ENV" --key "$1" --default "${2:-}"
+    local key=$1 default=${2:-} value=""
+    if [ "$key" = STALL_RECOVERY_REPORT_STATUS ] && [ -f "$COMPOSE_ENV" ]; then
+        value=$(grep -E '^STALL_RECOVERY_REPORT_STATUS=' "$COMPOSE_ENV" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+        printf '%s\n' "${value:-$default}"
+        return 0
+    fi
+    python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$COMPOSE_ENV" --key "$key" --default "$default"
 }
 
 tier_a_eligible() {
@@ -116,11 +122,13 @@ file_tier_a_after_compose() {
         return 0
     fi
     "$REPORT_SH" "${helper_common[@]}" normalize-file-failure-report-env --file-failure-report-env "$dedup_env" >"$dedup_norm" 2>/dev/null || true
-    cat "$dedup_norm" >>"$COMPOSE_ENV"
     status=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$dedup_norm" --key STALL_RECOVERY_REPORT_STATUS --default '')
     case "$status" in
         no-match|lookup-failed-open)
-            repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+            repo="$REPO"
+            if [ -z "$repo" ]; then
+                repo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+            fi
             [ -n "$repo" ] || return 0
             title=$(sed -n '1s/^### //p' "$body_file" | sed 's/^\[Bug\] //')
             [ -n "$title" ] || title="/design terminal failure"
@@ -164,19 +172,6 @@ handle_compose_outcome() {
             exit 0
             ;;
         "")
-            if [ "$decision" = terminal-failure ] && [ -s "$CHAT_PRINT" ]; then
-                cp "$COMPOSE_ENV" "$sentinel"
-                emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
-                emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
-                exit 0
-            fi
-            if [ "$decision" = terminal-failure ] && [ -s "$ISSUE_INPUT" ]; then
-                cp "$COMPOSE_ENV" "$sentinel"
-                emit_kv DESIGN_FAILURE_REPORT_DECISION "$decision"
-                emit_kv DESIGN_FAILURE_REPORT_ENV "$sentinel"
-                emit_kv DESIGN_FAILURE_REPORT_ARTIFACT "$ISSUE_INPUT"
-                exit 0
-            fi
             write_fallback_chat "compose-status-missing"
             exit 0
             ;;
@@ -304,6 +299,18 @@ case "$OUTCOME" in
         if ! "$REPORT_SH" "${helper_common[@]}" validate-terminal-state --primary-state-file "$TERMINAL_STATE" >/dev/null 2>"$DESIGN_TMPDIR/design-failure-validate-terminal-state.stderr.log"; then
             append_run_log_audit invalid-terminal-state
             write_fallback_chat invalid-terminal-state
+            exit 0
+        fi
+        state_outcome=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key FAILURE_OUTCOME --default '')
+        if [ -n "$state_outcome" ] && [ "$state_outcome" != "$OUTCOME" ]; then
+            append_run_log_audit terminal-state-outcome-mismatch
+            write_fallback_chat terminal-state-outcome-mismatch
+            exit 0
+        fi
+        state_summary=$(python3 "$PLUGIN_ROOT/python/cli.py" session read-key --file "$TERMINAL_STATE" --key SUMMARY_OUTCOME --default '')
+        if [ -n "$state_summary" ] && [ "$state_summary" != "$OUTCOME" ]; then
+            append_run_log_audit terminal-state-summary-mismatch
+            write_fallback_chat terminal-state-summary-mismatch
             exit 0
         fi
         prepare_root_cause terminal
